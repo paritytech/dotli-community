@@ -241,7 +241,7 @@ describe('redirect responder', () => {
   });
 
   it('As a site, I am refused and every watcher of the round is told of the state the refusal sets', () => {
-    // Given a redirect responder with a subscriber
+    // Given a redirect responder with a follower
     const { responder } = openRedirectResponder();
     const seen: string[] = [];
     onTestFinished(
@@ -253,7 +253,7 @@ describe('redirect responder', () => {
     // When the round refuses the site
     responder.refuse('declined');
 
-    // Then the subscriber saw the refusal
+    // Then the follower saw the refusal
     expect(seen).toEqual(['refused']);
   });
 

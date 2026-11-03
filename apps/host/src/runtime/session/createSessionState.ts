@@ -21,7 +21,10 @@ import type { DotliAuthState, Presence } from './types.js';
 export type AuthStateWriter = {
   /** Returns the current auth step. Never throws. */
   get(): DotliAuthState;
-  /** Publishes the next auth step. Never throws. */
+  /**
+   * Publishes the next auth step. A second set inside one store listener round is heard as that later step twice, so
+   * set at most once per round. Never throws.
+   */
   set(next: DotliAuthState): void;
 };
 

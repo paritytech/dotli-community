@@ -9,7 +9,7 @@ import { createClient, DisjointError, RpcError } from '@polkadot-api/substrate-c
 import type { JsonRpcProvider } from 'polkadot-api';
 import { atom } from 'nanostores';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { m, reportListener, spans as S } from '@dotli/metrics';
 import { CHAIN_HALTED_ERROR_DATA, createAsyncTaskPool, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
@@ -81,6 +81,8 @@ const HUB_CHAIN: Record<Params['source'], string> = {
  * so one retry is not enough. Bounded so a chain that dies instantly cannot spin a caller with no deadline.
  */
 const MAX_HALT_ATTEMPTS = 4;
+
+const reportPhaseListener = reportListener('resolve', 'resolver.status');
 
 /**
  * Builds the dotNS reads on the connections it is given. Each instance keeps its own clients.
@@ -389,12 +391,7 @@ function tellPhase(onPhase: PhaseCallback, next: DotnsResolverStatus): void {
   try {
     onPhase(phase);
   } catch (error) {
-    reportDefect(error, {
-      flow: 'resolve',
-      step: 'phase_callback',
-      metric: S.RESOLVE_PHASE_CALLBACK,
-      message: '[dot.li resolve] phase callback threw',
-    });
+    reportPhaseListener(error);
   }
 }
 

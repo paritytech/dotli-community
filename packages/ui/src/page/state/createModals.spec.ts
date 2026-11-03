@@ -164,12 +164,10 @@ describe('dialogs that cannot be shown', () => {
     const third = modals.open(buildView('Third'));
 
     // Then
+    expect(modals.store.get()).toEqual([]);
     await expect(first).resolves.toEqual({ result: 'dismissed' });
-    expect(modals.store.get()).toEqual([]);
     await expect(second).resolves.toEqual({ result: 'dismissed' });
-    expect(modals.store.get()).toEqual([]);
     await expect(third).resolves.toEqual({ result: 'dismissed' });
-    expect(modals.store.get()).toEqual([]);
   });
 
   it('As a product, I ask once the refusal stops and my request waits for an answer again', () => {
@@ -196,18 +194,20 @@ describe('a page that refuses twice', () => {
     const stopFirst = modals.refuseAll();
     const stopSecond = modals.refuseAll();
     const listeners = modals.store.lc;
-    const asked = modals.open(buildView('Late'));
 
     // When
     stopFirst();
     const afterFirstStop = modals.store.lc;
+    const askedAfterFirst = modals.open(buildView('After first'));
     stopSecond();
+    void modals.open(buildView('After second'));
 
     // Then
     expect(listeners).toBe(1);
-    await expect(asked).resolves.toEqual({ result: 'dismissed' });
     expect(afterFirstStop).toBe(1);
+    await expect(askedAfterFirst).resolves.toEqual({ result: 'dismissed' });
     expect(modals.store.lc).toBe(0);
+    expect(modals.store.get()).toHaveLength(1);
   });
 });
 

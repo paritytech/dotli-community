@@ -226,6 +226,29 @@ describe('createProtocolFrame', () => {
     expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
   });
 
+  it('As the host with an app open, I hear a version mismatch although a status listener throws on the failed frame', async () => {
+    // Given a frame waiting on its handshake, a status listener that throws on failed, and a mismatch listener
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    await advance();
+    frame.subscribeStatus(next => {
+      if (next === 'failed') {
+        throw new Error('listener broke');
+      }
+    });
+    const heard: Error[] = [];
+    frame.onVersionMismatch(error => heard.push(error));
+
+    // When the frame refuses the host wire version
+    dom.serveNewer();
+    await dom.retryHandshake();
+
+    // Then
+    expect(heard[0]).toBeInstanceOf(ProtocolVersionMismatchError);
+  });
+
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {
     // Given
     const dom = createFrameDom({ timers });
@@ -271,7 +294,7 @@ describe('createProtocolFrame', () => {
     expect(frame.getStatus()).toBe('booting');
   });
 
-  it('As the host, a frame status listener throws while the frame is dropped, and the frame is still cleaned up', async () => {
+  it('As the host, I drop a frame while a status listener throws and the change fails with that throw and the frame is still cleaned up', async () => {
     // Given a listening frame, and a status listener that throws when the frame goes idle
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -301,7 +324,7 @@ describe('createProtocolFrame', () => {
     expect(new URL(dom.getIframe().src).searchParams.get('mode')).toBe('rpc');
   });
 
-  it('As the host, a frame status listener throws when the frame listens, and the frame is dropped and rebuilt', async () => {
+  it('As the host, I see a frame dropped and rebuilt when a status listener throws as it listens', async () => {
     // Given a booting frame, its transport, and a status listener that throws when the frame listens
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -928,7 +951,7 @@ describe('protocol status', () => {
     ]);
   });
 
-  it('As a dotli integrator, I request from a status listener after a config change, a listener after it hears the status there is on its turn, and a later ready waiter waits on the rebuilt frame', async () => {
+  it('As a dotli integrator, I request from a status listener after a config change, and a later listener hears the status there is on its turn, and a later ready waiter waits on the rebuilt frame', async () => {
     // Given a boot request queued ahead of the rebuilding listener, a second listener, and a ready waiter after both
     const booting = catchRejection(host.client.frame.ensureReady());
     await host.listen();

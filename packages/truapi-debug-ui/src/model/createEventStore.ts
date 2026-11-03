@@ -51,19 +51,25 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
     dropped,
     /**
      * Pauses or resumes recording. A change bumps the version, and a repeat of the current state does nothing.
-     * Never throws.
+     * Never throws while the version's followers keep their rule.
      */
     setPaused,
     /** Whether recording is paused. Never throws. */
     isPaused,
-    /** Drops every kept event and the dropped count, then bumps the version. Never throws. */
+    /**
+     * Drops every kept event and the dropped count, then bumps the version. Never throws while the version's followers
+     * keep their rule.
+     */
     clear,
     /**
      * Keeps a TrUAPI message, stamped with the clock at insert. While paused it keeps only the reply that closes a call
-     * whose request the ring still holds. Never throws.
+     * whose request the ring still holds. Never throws while the version's followers keep their rule.
      */
     insertTruapi,
-    /** Keeps a host event under its own timestamp. Does nothing while paused. Never throws. */
+    /**
+     * Keeps a host event under its own timestamp. Does nothing while paused. Never throws while the version's followers
+     * keep their rule.
+     */
     insertDotli,
     /** The kept events, oldest first. The live ring, so a caller that holds on to it copies it first. Never throws. */
     list,

@@ -54,9 +54,9 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
        * Says what the frame is built with. Nothing boots before it, and requests made before the first config wait for
        * it up to a bound, so callers need not order themselves around the host's boot. The same config again does
        * nothing. A different one rebuilds a frame already asked for at once: its requests and ready waiters are
-       * rejected, except a ready waiter queued behind a status listener that already asked for the rebuilt frame, which
-       * waits on that frame, and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress,
-       * only this tab's port cycles. Never throws.
+       * rejected, and its chain connections halt as for a dead frame. A ready waiter queued behind a status listener
+       * that already asked for the rebuilt frame waits on that frame instead. A SharedWorker keeps its sync progress,
+       * only this tab's port cycles. Throws only what a status listener throws, after every listener heard the change.
        */
       configure: (config: ProtocolFrameConfig): void => {
         frame.configure(config);

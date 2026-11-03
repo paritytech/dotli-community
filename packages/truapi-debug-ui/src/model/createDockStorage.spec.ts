@@ -29,45 +29,45 @@ describe('createDockStorage()', () => {
     expect(dock).toBe('bottom');
   });
 
-  it('As a dotli developer, I pick the right dock and it is stored for the next mount', () => {
+  it('As a dotli developer, I pick the right dock and it is stored for the next page load', () => {
     // Given
     const storage = createMemoryStorage();
     const dockStorage = createDockStorage({ storage });
 
     // When
     dockStorage.set('right');
-    const nextMount = createDockStorage({ storage }).get();
+    const nextLoad = createDockStorage({ storage }).get();
 
     // Then
     expect(storage.getItem('truapi-debug:dock')).toBe('right');
-    expect(nextMount).toBe('right');
+    expect(nextLoad).toBe('right');
   });
 
-  it('As a dotli developer who docks back to the bottom, I leave nothing stored and the next mount docks at the bottom', () => {
+  it('As a dotli developer who docks back to the bottom, I leave nothing stored and the next page load docks at the bottom', () => {
     // Given
     const storage = createMemoryStorage({ entries: { 'truapi-debug:dock': 'right' } });
     const dockStorage = createDockStorage({ storage });
 
     // When
     dockStorage.set('bottom');
-    const nextMount = createDockStorage({ storage }).get();
+    const nextLoad = createDockStorage({ storage }).get();
 
     // Then
     expect(storage.getItem('truapi-debug:dock')).toBeNull();
-    expect(nextMount).toBe('bottom');
+    expect(nextLoad).toBe('bottom');
   });
 
-  it('As a dotli developer whose storage is blocked, I pick the right dock and it holds until the next mount docks at the bottom', () => {
+  it('As a dotli developer whose storage is blocked, I pick the right dock and it holds until the next page load docks at the bottom', () => {
     // Given
     const storage = createBlockedStorage();
     const dockStorage = createDockStorage({ storage });
 
     // When
     dockStorage.set('right');
-    const nextMount = createDockStorage({ storage }).get();
+    const nextLoad = createDockStorage({ storage }).get();
 
     // Then
     expect(dockStorage.get()).toBe('right');
-    expect(nextMount).toBe('bottom');
+    expect(nextLoad).toBe('bottom');
   });
 });

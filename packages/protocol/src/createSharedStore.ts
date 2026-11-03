@@ -63,8 +63,8 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
   const sharedAuthListeners = createListenerSet<SharedAuthChange>({
     onListenerError: reportListener('protocol', 'protocol.shared_auth'),
   });
-  // Latched from the status heard at each delivery, across rounds, since a listener ahead of this store's own can move
-  // the frame on before this store reads it.
+  // Latched from the status heard at each delivery, across rounds, so a frame that settled once keeps the store
+  // unavailable while a later one boots.
   let settledOnce = hasSettled(frame.getStatus());
 
   // Read from the frame's status on each call, so a frame status listener that runs before this store's own hears
@@ -110,6 +110,7 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
        * Called on each change only, with the status there is when its turn comes, so within one round of listeners it
        * can hear the same status twice and miss one. Does not start a frame. Returns the unsubscribe.
        */
+      // Each subscription its own listener, so one given twice is two and its unsubscribe ends only it.
       subscribeStatus: (listener: (status: SharedStoreStatus) => void) =>
         announced.listen(next => {
           listener(next);

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { themeState } from './runtime/state/themeState.js';
-import { createThemeController, createThemePreference, type ThemeController } from './createThemeController.js';
+import { createThemeController, type ThemeController } from './createThemeController.js';
 import type { SafeStorage } from '@dotli/shared';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createBlockedStorage } from './testing/createBlockedStorage.js';
@@ -281,7 +281,7 @@ function setupThemePage({ scheme, blocked = false }: Params): ThemePage {
     root,
     loadController() {
       return createThemeController({
-        preference: createThemePreference({ storage: local }),
+        storage: local,
         colorScheme: () => os,
         root: () => ({
           setAttribute(name: string, value: string) {

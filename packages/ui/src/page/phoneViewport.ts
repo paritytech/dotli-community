@@ -34,12 +34,14 @@ export function createPhoneViewport({ matchMedia }: PhoneViewportParams) {
   const store: ReadableAtom<boolean> = phone;
 
   return {
-    /** Whether the viewport is phone sized, as the media query's last `change` left it. `false` at build time. */
+    /**
+     * Whether the viewport is phone sized, following the media query's `change` while something listens. `false` at
+     * build time.
+     */
     store,
     /**
      * Whether the viewport is phone sized now, asked of the media query on each call. A window `resize` runs before the
-     * query fires `change`, so a resize handler reads the new answer here. `false` at build time. Never
-     * throws.
+     * query fires `change`, so a resize handler reads the new answer here. `false` at build time. Never throws.
      */
     isPhone,
   };

@@ -54,9 +54,6 @@ export const spans = {
    */
   RESOLVE_FAILURE_SCREEN: 'resolve.failure_screen',
 
-  /** Count. A caller's phase callback threw while the resolver told it a phase. Tagged `outcome` (error) and `reason`. */
-  RESOLVE_PHASE_CALLBACK: 'resolve.phase_callback',
-
   /** A cache read. Tag `outcome` (`hit, miss`) and `surface` (`cid_cache, block_cache`). */
   CACHE_READ: 'cache.read',
 

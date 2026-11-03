@@ -226,7 +226,8 @@ export function createProtocolFrame<E extends FrameElement>({
     slot = kept;
     // Before anything that can throw, so a failure is reported as this keeper's and is not retried by each caller.
     status.set('booting');
-    // A listener may have changed the config on `booting`, which dropped this boot and leaves nothing to mount for.
+    // A listener heard `booting` and changed the config already when this set ran outside a listener round. Inside
+    // one, a later change drops this boot through the slot.
     if (run.aborted) {
       return;
     }

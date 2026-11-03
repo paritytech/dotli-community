@@ -23,6 +23,7 @@ const SESSION_KEY = SHARED_CORE_SESSION_KEY;
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 const AUTH_SESSION_KEY = { tag: 'AuthSession' as const };
 const UNREACHABLE = new Error('protocol iframe never listened');
+const RESTORING: DotliAuthState = { tag: 'Restoring' };
 
 // The core reports these as `Bytes32` hex, so the UI state carries them through unencoded.
 const SESSION_PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' as const;
@@ -106,14 +107,14 @@ describe('session state', () => {
     elsewhere = false;
     role = 'page';
     // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
-    auth = atom<DotliAuthState>({ tag: 'Restoring' });
+    auth = atom<DotliAuthState>(RESTORING);
     auth.eq = () => false;
     reloadPage();
   });
 
   /** The page loading again over the same store: its auth state is Restoring and its restore reads once more. */
   function reloadPage(): void {
-    auth.set({ tag: 'Restoring' });
+    auth.set(RESTORING);
     // Reads the session once per load and keeps the answer.
     let loadRead: ReturnType<HostCoreStorage['readSession']> | undefined;
     session = createSessionState({

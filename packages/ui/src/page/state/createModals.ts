@@ -67,7 +67,7 @@ export type ModalHandoff = {
   view: ModalView<string>;
   /** Closes the step from elsewhere. */
   signal: AbortSignal;
-  /** Hears once how it closed: a button's result, the view's `dismissResult`, or `aborted`. */
+  /** Hears once how it closed: a button's result, the view's `dismissResult`, or `aborted`. Must not throw. */
   closed: (result: string) => void;
 };
 
@@ -131,7 +131,7 @@ export function createModals() {
   });
   const store: ReadableAtom<readonly ModalEntry[]> = entries;
   // One listener serves every refuseAll caller, so a repeated call adds none.
-  const refusal = createSharedRun({ begin: () => entries.listen(refuseOpen) });
+  const refusing = createSharedRun({ begin: () => entries.listen(refuseOpen) });
 
   return {
     /** The open dialogs, oldest first. */
@@ -155,9 +155,9 @@ export function createModals() {
      */
     refuseAll,
     /**
-     * Rejects every open dialog with an AbortError, then tells each handed-off view `aborted`. A handed-off view's
-     * `closed` that throws propagates, after every open dialog has rejected, and the views after it are not told. Safe
-     * to repeat. The queue works as a fresh one afterwards.
+     * Rejects every open dialog with an AbortError, then tells each handed-off view `aborted`. Never throws, as
+     * `closed` must not. A `closed` that throws anyway propagates after every open dialog has rejected, and the views
+     * after it are not told. Safe to repeat. The queue works as a fresh one afterwards.
      */
     dispose,
   };
@@ -225,7 +225,7 @@ export function createModals() {
 
   function refuseAll(): () => void {
     refuseOpen();
-    return refusal.join();
+    return refusing.join();
   }
 
   function refuseOpen(): void {

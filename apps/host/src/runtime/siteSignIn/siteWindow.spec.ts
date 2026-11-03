@@ -149,6 +149,7 @@ function createWindowParts({
       });
       flows.push(started);
       deliveries.push(flow.deliver);
+      // A copy of the atom's members, so a test may read only `get` and `listen` through it.
       const screen: WindowFlow['screen'] = {
         ...(flowScreen ?? started.screen),
         listen(listener) {
@@ -488,7 +489,7 @@ describe('site window screen chain', () => {
     flowScreen.set(pairing);
     const shownWithFlow = page.screen.get();
     // And the flow stores its sign-in, which empties the flow screen while the site's round has not moved on
-    page.deliveries[0]?.({ session: { blob: MAIN_BLOB, uiState: MAIN_UI_STATE }, localWallet: null });
+    must(page.deliveries[0], 'a delivery')({ session: { blob: MAIN_BLOB, uiState: MAIN_UI_STATE }, localWallet: null });
     const shownAfterDelivery = page.screen.get();
 
     // Then the window shows the flow's latest screen, and keeps it while the flow screen is null

@@ -17,7 +17,7 @@ every caller checks a name against.
   passed in, so it reads through the follow its owner already keeps. Work runs in named `createAsyncTaskPool` pools.
 - The client's status is held in one nanostores atom and replayed to each caller's phase callback. A caller hears each
   change with the status there is when its turn comes, so a read started inside a store's listener round can hear the
-  latest phase twice. A callback that throws is reported, and the client build goes on.
+  latest phase twice and miss an earlier one. A callback that throws is reported, and the client build goes on.
 - Contract reads go straight to Revive storage slots with no runtime call. Multi-slot reads pin one block and the
   contract's trie id, so bytes are never torn across blocks. Slot math and contenthash decoding sit in their own part.
 - Manifest records are read as text and checked by handwritten validators, kept apart so the eager path does not pull

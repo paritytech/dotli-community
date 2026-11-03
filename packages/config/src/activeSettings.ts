@@ -20,7 +20,10 @@ export function activeSettings(): Settings | null {
   return store.get();
 }
 
-/** Calls `listener` after each change to the settings. Returns the function that stops it. */
+/**
+ * Calls `listener` after each change to the settings. Returns the function that stops it. A listener must not throw,
+ * as its throw surfaces from the `setSettings` that caused the change.
+ */
 export function subscribeSettings(listener: () => void): () => void {
   return store.listen(listener);
 }

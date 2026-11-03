@@ -81,12 +81,17 @@ describe('useStore', () => {
   it('As a caller outside any reactive owner, I call useStore and it throws instead of leaking a subscription', () => {
     // Given
     const store = atom('x');
+    let thrown: unknown;
 
     // When
-    const read = () => useStore(store);
+    try {
+      useStore(store);
+    } catch (error) {
+      thrown = error;
+    }
 
     // Then
-    expect(read).toThrow('useStore must be called inside a component or reactive owner');
+    expect(thrown).toMatchObject({ message: 'useStore must be called inside a component or reactive owner' });
     expect(store.lc).toBe(0);
   });
 

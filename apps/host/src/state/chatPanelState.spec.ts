@@ -212,8 +212,9 @@ describe('chat panel state', () => {
     { stored: '480', opened: 480 },
     { stored: 'wide', opened: 360 },
     { stored: '100', opened: 360 },
+    { stored: '900', opened: 560 },
   ])(
-    'As a returning user, I open the panel at the width I saved, a stored width that does not parse opens at the default, and a stored width below the minimum opens at the default (stored $stored)',
+    'As a returning user, I open the panel at the width I saved, a stored width that does not parse opens at the default, a stored width below the minimum opens at the default, and one above the maximum opens at the maximum (stored $stored)',
     ({ stored, opened }) => {
       // Given a width saved in an earlier session and a product with chat
       local.setItem('dotli:chat-panel-width', stored);

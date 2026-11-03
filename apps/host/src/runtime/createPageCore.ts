@@ -211,8 +211,8 @@ export function createPageCore({
         }
         // A local wallet core holds its session in memory, so the stored one is not its to follow.
         if (!booted.local) {
-          // Runs in store listeners and a microtask, where a throw would reach the store's writer or nobody, so it is
-          // reported here and the stale check still runs.
+          // Runs in store listeners, where a throw would reach the store's writer, and in a microtask, where it would be
+          // uncaught, so it is reported here and the stale check still runs.
           function followStore(): void {
             try {
               booted.runtime.notifySessionStoreChanged();

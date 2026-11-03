@@ -21,7 +21,8 @@ export default defineConfig([
       message: 'The debug panel reads keys and chains through its host port, never through a chain or crypto library.',
     },
     {
-      // Its own kit stays its own: of the ui package only the Solid glue that mounts a root, and the pointer drag, whose pointer and selection rules must hold the same on every drag of the page.
+      // Its own kit stays its own: of the ui package only the Solid glue that mounts a root, and the pointer drag,
+      // whose pointer and selection rules must hold the same on every drag of the page.
       group: ['@dotli/ui'],
       allowImportNames: ['mountRoot', 'createDrags'],
       message:
@@ -41,7 +42,7 @@ export default defineConfig([
         '@config/eslint',
         '@config/vite',
       ],
-      'The debug panel reads the host through its port and the debug bus, the network config, and archive types and the encryption check from content, and keeps its dock and tab in persistent atoms. It takes no runtime, chain or storage package, and of the ui package only mountRoot and createDrags.',
+      'The debug panel reads the host through its port and the debug bus, the network config, and archive types and the encryption check from content, and keeps its dock and tab in persistent atoms. It takes no runtime or chain package, no storage package beyond the persistent atoms, and of the ui package only mountRoot and createDrags.',
     ),
   ]),
 ]);

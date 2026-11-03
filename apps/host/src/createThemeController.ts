@@ -3,29 +3,38 @@
 
 import { pageLocalStorage, type SafeStorage } from '@dotli/shared';
 import { createPersistentAtom } from '@dotli/stores-persistent';
-import type { WritableAtom } from 'nanostores';
 import { themeState, type ThemePreference } from './runtime/state/themeState.js';
 import { THEME_KEY } from './themeKey.js';
 
 /** The page parts the theme reads and writes. */
 type Params = {
-  /** The theme the user chose, kept for later sessions. */
-  preference: WritableAtom<ThemePreference>;
+  /** Keeps the theme the user chose for later sessions. */
+  storage: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Whether the OS prefers a light scheme, and its changes. */
   colorScheme: () => Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
   /** Carries `data-theme` and `data-theme-pref`, the page state the functional tests read. */
   root: () => Pick<Element, 'setAttribute'>;
 };
 
-type CreateThemePreferenceParams = {
-  /** Where the choice is kept. */
-  storage: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
-};
-
 export type ThemeController = ReturnType<typeof createThemeController>;
 
-/** Builds the theme over `preference`, the OS colour scheme and `root`. Never throws. */
-export function createThemeController({ preference, colorScheme, root }: Params) {
+// Built on first use, since the stored choice is read when its atom is built and a prerender loads this module too.
+let page: ThemeController | undefined;
+
+/**
+ * Builds the theme over the choice kept in `storage`, the OS colour scheme and `root`. The choice is System when
+ * nothing stored parses, and choosing System removes it. Never throws.
+ */
+export function createThemeController({ storage, colorScheme, root }: Params) {
+  const preference = createPersistentAtom<ThemePreference>({
+    key: THEME_KEY,
+    storage,
+    initial: 'system',
+    decode: decodeThemePreference,
+    // The key holds the bare name, not JSON, so a choice stored by an earlier build still reads.
+    encode: value => value,
+  });
+
   function resolveTheme(chosen: ThemePreference): 'light' | 'dark' {
     if (chosen !== 'system') {
       return chosen;
@@ -75,24 +84,6 @@ export function createThemeController({ preference, colorScheme, root }: Params)
   };
 }
 
-/**
- * Builds the theme choice kept in `storage`, System when nothing there parses. Choosing System removes the key. Never
- * throws.
- */
-export function createThemePreference({ storage }: CreateThemePreferenceParams): WritableAtom<ThemePreference> {
-  return createPersistentAtom<ThemePreference>({
-    key: THEME_KEY,
-    storage,
-    initial: 'system',
-    decode: decodeThemePreference,
-    // The key holds the bare name, not JSON, so a choice stored by an earlier build still reads.
-    encode: value => value,
-  });
-}
-
-// Built on first use, since the stored choice is read when its atom is built and a prerender loads this module too.
-let page: ThemeController | undefined;
-
 /** The page's theme, over its localStorage, the OS colour scheme and the document's root element. */
 export const pageTheme: ThemeController = {
   startTheme: startPageTheme,
@@ -109,7 +100,7 @@ function selectPageThemePref(preference: ThemePreference): void {
 
 function getPageTheme(): ThemeController {
   page ??= createThemeController({
-    preference: createThemePreference({ storage: pageLocalStorage }),
+    storage: pageLocalStorage,
     colorScheme: () => window.matchMedia('(prefers-color-scheme: light)'),
     root: () => document.documentElement,
   });

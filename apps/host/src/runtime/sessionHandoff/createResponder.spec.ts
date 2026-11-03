@@ -205,7 +205,7 @@ describe('session window responder', () => {
     expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
-  it("As a responder follower, I hear each state change and end on the responder's latest state", () => {
+  it("As a responder follower, I am told once per change and each time read the responder's latest state", () => {
     // Given a window whose first follower sends the result once vetted, and a second follower behind it
     const window = openWindow();
     const opener = must(window.opener, 'an opener');
@@ -226,7 +226,7 @@ describe('session window responder', () => {
     // When the opener is vetted, which the first follower answers at once
     window.post({ data: createHello('r1'), origin: PAGE, source: opener });
 
-    // Then the second follower heard both changes, each as the state at the time it was told, ending on the answer
+    // Then the second follower was told twice, both times of the answer
     expect(heard).toEqual([{ kind: 'answered' }, { kind: 'answered' }]);
     expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });

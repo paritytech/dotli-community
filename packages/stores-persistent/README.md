@@ -22,11 +22,10 @@ flowchart LR
 - It does not follow the browser's `storage` event. Another tab's write shows after a reload, and this page's next write
   replaces it.
 - A storage that fails on every call leaves the atom working in memory. Pass a storage that never throws.
-- It depends on the shared package for the storage type only.
 
 ## Public API
 
 - `createPersistentAtom({ key, storage, initial, decode, encode })` returns a writable atom. `decode` returns
   `undefined` for text that no longer parses, and `encode` defaults to `JSON.stringify`. It never throws when the
-  storage and `decode` never throw.
+  storage, `decode` and `encode` never throw.
 - `PersistentAtomParams`, the options `createPersistentAtom` takes.

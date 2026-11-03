@@ -35,7 +35,7 @@ export function createDockStorage({ storage = pageLocalStorage }: Params = {}) {
   });
 }
 
-// Built on first use, since the stored dock is read when its atom is built and a Node spec loads this module too.
+// Built on first use, so importing the module reads no storage.
 let page: DockStorage | undefined;
 
 /** The page's dock, in the page's local storage, the same atom on every call. Never throws. */

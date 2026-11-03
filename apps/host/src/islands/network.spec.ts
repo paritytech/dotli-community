@@ -11,7 +11,7 @@ import type { NetworkView } from '../components/chains/chains.js';
 import { INITIAL_NETWORK } from '../state/networkState.js';
 import { useNetworkPanel } from './network.js';
 
-/** `store`, counting the readers subscribed to it. */
+/** `store`, counting the readers listening to it. */
 function countingStore<T>(store: StoreSource<T>): { store: StoreSource<T>; readers: { count: number } } {
   const readers = { count: 0 };
   return {
@@ -21,10 +21,10 @@ function countingStore<T>(store: StoreSource<T>): { store: StoreSource<T>; reade
       init: store.init,
       listen: listener => {
         readers.count += 1;
-        const unsubscribe = store.listen(listener);
+        const unlisten = store.listen(listener);
         return () => {
           readers.count -= 1;
-          unsubscribe();
+          unlisten();
         };
       },
     },

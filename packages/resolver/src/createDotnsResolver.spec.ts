@@ -365,8 +365,10 @@ describe('createDotnsResolver', () => {
 
     // Then
     expect(owner).toBeNull();
-    expect(captured).toEqual(Array(3).fill({ flow: 'resolve', step: 'phase_callback' }));
-    expect(sentry.counted(S.RESOLVE_PHASE_CALLBACK)).toEqual(Array(3).fill({ outcome: 'error', reason: 'Error' }));
+    expect(captured).toEqual(Array(3).fill({ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }));
+    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual(
+      Array(3).fill({ outcome: 'error', reason: 'Error', owner: 'resolver.status' }),
+    );
   });
 
   it('As the host waiting on a name after the client is ready, I get my answer even when my phase callback throws on the replayed phase, and the throw is reported', async () => {
@@ -385,8 +387,10 @@ describe('createDotnsResolver', () => {
 
     // Then
     expect(owner).toBeNull();
-    expect(captured).toEqual([{ flow: 'resolve', step: 'phase_callback' }]);
-    expect(sentry.counted(S.RESOLVE_PHASE_CALLBACK)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }]);
+    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'resolver.status' },
+    ]);
   });
 
   it('As the host waiting on a name, I start a resolve from a store listener and hear asset-hub-syncing for both early phases', async () => {

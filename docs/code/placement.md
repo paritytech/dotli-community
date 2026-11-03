@@ -33,6 +33,8 @@ flowchart TD
     sandboxWire[sandbox-wire]
     shared[shared]
     storage[storage]
+    storesPersistent[stores-persistent]
+    storesSolid[stores-solid]
     transport[transport]
     truapiDebug[truapi-debug]
     truapiDebugUi[truapi-debug-ui]
@@ -51,12 +53,14 @@ flowchart TD
   resolver --> config & metrics & shared
   sandboxWire --> config
   storage --> config & metrics & shared
+  storesPersistent --> shared
   transport --> shared
   truapiDebug --> metrics & shared
   truapiDebugUi --> config & content & metrics & shared & truapiDebug
-  truapiDebugUi -->|useStore, mountRoot, createDrags only| ui
-  ui --> metrics & shared
-  uiStories --> metrics & shared
+  truapiDebugUi --> storesSolid & storesPersistent
+  truapiDebugUi -->|mountRoot, createDrags only| ui
+  ui --> metrics & shared & storesSolid
+  uiStories --> metrics & shared & storesSolid
   uiStories -->|its own testing entry| ui
 ```
 
@@ -70,7 +74,7 @@ Imports of the tooling packages. The ui package restricts its stories, the rest 
 flowchart TD
   host[host]
   viteUsers["protocol app, sandbox, bitswap, chains, config, content, protocol, resolver, sandbox-wire, truapi-debug-ui"]
-  eslintOnly["metrics, shared, storage, transport, truapi-debug"]
+  eslintOnly["metrics, shared, storage, stores-persistent, stores-solid, transport, truapi-debug"]
   uiRest["ui outside src/"]
   uiStories[ui stories]
   uiSrc["ui src/, no tooling package"]
@@ -91,30 +95,32 @@ flowchart TD
 
 ## Which package or app
 
-| If it is                                                                                                                       | It goes in                                            |
-| ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| The top-level shell: topbar, session and bridge, opening a product by `.dot` name in a sandbox iframe                          | `apps/host` (`@dotli/host`)                           |
-| The hidden protocol iframe that holds the light client and talks to the network on the host's behalf                           | `apps/protocol` (`@dotli/protocol-app`)               |
-| The per-product origin that loads and renders a product's files, with no name resolution                                       | `apps/sandbox` (`@dotli/sandbox`)                     |
-| Fetching single blocks from the Bulletin Chain through the light client, and relaying a sandbox's block requests               | `packages/bitswap` (`@dotli/bitswap`)                 |
-| Connecting to chains: the light client, the gateway providers over trusted RPC nodes, and the shared connection pool           | `packages/chains` (`@dotli/chains`)                   |
-| Build-time and runtime configuration: environment, networks, chain services, user settings and timeouts                        | `packages/config` (`@dotli/config`)                   |
-| Fetching a product's files by CID and proving they are the content the CID names                                               | `packages/content` (`@dotli/content`)                 |
-| Metrics, spans and error capture over Sentry                                                                                   | `packages/metrics` (`@dotli/metrics`)                 |
-| The host page's client for the hidden protocol frame, turning postMessage traffic into promises and streams                    | `packages/protocol` (`@dotli/protocol`)               |
-| Resolving a `.dot` name to its manifests and content hash through dotNS, and the dotNS naming rules                            | `packages/resolver` (`@dotli/resolver`)               |
-| The protocol between the host and a sandbox frame: URL params, messages and the host's listener                                | `packages/sandbox-wire` (`@dotli/sandbox-wire`)       |
-| A small, framework-free helper every other package may use: logging, errors, task pool, listener set, sync store               | `packages/shared` (`@dotli/shared`)                   |
-| Persistent browser data in IndexedDB databases: caches, local chat, the local wallet, site grants, scheduled notifications     | `packages/storage` (`@dotli/storage`)                 |
-| A generic transport between documents, with requests and subscriptions declared from codecs                                    | `packages/transport` (`@dotli/transport`)             |
-| The debug event bus and debug mode, with no UI                                                                                 | `packages/truapi-debug` (`@dotli/truapi-debug`)       |
-| The TrUAPI debug panel, which loads only in debug mode                                                                         | `packages/truapi-debug-ui` (`@dotli/truapi-debug-ui`) |
-| UI more than one app shows, with no domain and no data source: primitives, floating layers, stores, icons, tokens, brand marks | `packages/ui` (`@dotli/ui`)                           |
-| The Astro integration for Solid 2                                                                                              | `config/astro-solid` (`@config/astro-solid`)          |
-| Shared ESLint flat configs and the import-layer helpers                                                                        | `config/eslint` (`@config/eslint`)                    |
-| Tooling for the one Storybook at the repo root                                                                                 | `config/storybook` (`@config/storybook`)              |
-| Shared `tsconfig` bases                                                                                                        | `config/typescript` (`@config/typescript`)            |
-| A build plugin or option shared by the host, sandbox and protocol builds, or the tests' CSS-modules naming                     | `config/vite` (`@config/vite`)                        |
+| If it is                                                                                                                       | It goes in                                                |
+| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| The top-level shell: topbar, session and bridge, opening a product by `.dot` name in a sandbox iframe                          | `apps/host` (`@dotli/host`)                               |
+| The hidden protocol iframe that holds the light client and talks to the network on the host's behalf                           | `apps/protocol` (`@dotli/protocol-app`)                   |
+| The per-product origin that loads and renders a product's files, with no name resolution                                       | `apps/sandbox` (`@dotli/sandbox`)                         |
+| Fetching single blocks from the Bulletin Chain through the light client, and relaying a sandbox's block requests               | `packages/bitswap` (`@dotli/bitswap`)                     |
+| Connecting to chains: the light client, the gateway providers over trusted RPC nodes, and the shared connection pool           | `packages/chains` (`@dotli/chains`)                       |
+| Build-time and runtime configuration: environment, networks, chain services, user settings and timeouts                        | `packages/config` (`@dotli/config`)                       |
+| Fetching a product's files by CID and proving they are the content the CID names                                               | `packages/content` (`@dotli/content`)                     |
+| Metrics, spans and error capture over Sentry                                                                                   | `packages/metrics` (`@dotli/metrics`)                     |
+| The host page's client for the hidden protocol frame, turning postMessage traffic into promises and streams                    | `packages/protocol` (`@dotli/protocol`)                   |
+| Resolving a `.dot` name to its manifests and content hash through dotNS, and the dotNS naming rules                            | `packages/resolver` (`@dotli/resolver`)                   |
+| The protocol between the host and a sandbox frame: URL params, messages and the host's listener                                | `packages/sandbox-wire` (`@dotli/sandbox-wire`)           |
+| A small, framework-free helper every other package may use: logging, errors, task pool, listener set                           | `packages/shared` (`@dotli/shared`)                       |
+| Persistent browser data in IndexedDB databases: caches, local chat, the local wallet, site grants, scheduled notifications     | `packages/storage` (`@dotli/storage`)                     |
+| Keeping a nanostores atom in web storage                                                                                       | `packages/stores-persistent` (`@dotli/stores-persistent`) |
+| Reading a nanostores store in a Solid 2 component                                                                              | `packages/stores-solid` (`@dotli/stores-solid`)           |
+| A generic transport between documents, with requests and subscriptions declared from codecs                                    | `packages/transport` (`@dotli/transport`)                 |
+| The debug event bus and debug mode, with no UI                                                                                 | `packages/truapi-debug` (`@dotli/truapi-debug`)           |
+| The TrUAPI debug panel, which loads only in debug mode                                                                         | `packages/truapi-debug-ui` (`@dotli/truapi-debug-ui`)     |
+| UI more than one app shows, with no domain and no data source: primitives, floating layers, stores, icons, tokens, brand marks | `packages/ui` (`@dotli/ui`)                               |
+| The Astro integration for Solid 2                                                                                              | `config/astro-solid` (`@config/astro-solid`)              |
+| Shared ESLint flat configs and the import-layer helpers                                                                        | `config/eslint` (`@config/eslint`)                        |
+| Tooling for the one Storybook at the repo root                                                                                 | `config/storybook` (`@config/storybook`)                  |
+| Shared `tsconfig` bases                                                                                                        | `config/typescript` (`@config/typescript`)                |
+| A build plugin or option shared by the host, sandbox and protocol builds, or the tests' CSS-modules naming                     | `config/vite` (`@config/vite`)                            |
 
 ## Inside the host
 

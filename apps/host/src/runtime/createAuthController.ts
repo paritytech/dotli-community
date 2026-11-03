@@ -270,7 +270,7 @@ export function createAuthController({
 
   // The store never drops a set as equal, so every step of the ordered stream reaches here.
   let lastTag = auth.get().tag;
-  const unsubscribe = auth.listen(() => {
+  const unlisten = auth.listen(() => {
     const state = auth.get();
     const previous = lastTag;
     lastTag = state.tag;
@@ -369,7 +369,7 @@ export function createAuthController({
     },
     /** Stops following the auth state and closes the modal without cancelling a login. Never throws. */
     dispose(): void {
-      unsubscribe();
+      unlisten();
       closeAuthModal({ skipTruapiCancel: true });
     },
   };

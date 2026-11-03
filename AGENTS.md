@@ -103,7 +103,8 @@ TypeScript:
 UI:
 
 - Astro for static markup. Solid islands only for interactive controls, one module per island.
-- Keep the sync stores (`createSyncStore`) for app state. Don't swap them for Solid stores.
+- App state is a nanostores store. A component renders one through `useStore` from `@dotli/stores-solid`, never by
+  copying it into a Solid signal or store where `useStore` would do.
 - Colors only from tokens in `packages/ui/src/global.css`. dotli chrome is dark only.
 - Every icon is a Solid component with an `<svg>` inside, drawn in `currentColor`, with a `size` prop when it needs
   resizing. Never markup in a string or built from DOM calls.

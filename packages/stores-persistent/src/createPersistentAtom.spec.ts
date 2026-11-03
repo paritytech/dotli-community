@@ -7,7 +7,12 @@ import { createMemoryStorage } from '@dotli/shared/testing';
 import { createPersistentAtom } from './createPersistentAtom.js';
 
 function decodeNumber(raw: string): number | undefined {
-  const value: unknown = JSON.parse(raw);
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
   return typeof value === 'number' ? value : undefined;
 }
 
@@ -39,9 +44,12 @@ describe('createPersistentAtom', () => {
     expect(count.get()).toBe(3);
   });
 
-  it('As a page with a stored value that no longer parses, I read the initial value', () => {
+  it.each([
+    { stored: '"seven"', shape: 'has the wrong shape' },
+    { stored: 'seven', shape: 'is not JSON' },
+  ])('As a page whose stored value $shape, I read the initial value', ({ stored }) => {
     // Given
-    const storage = createSafeStorage(() => createMemoryStorage({ entries: { count: '"seven"' } }));
+    const storage = createSafeStorage(() => createMemoryStorage({ entries: { count: stored } }));
 
     // When
     const count = createPersistentAtom({ key: 'count', storage, initial: 3, decode: decodeNumber });

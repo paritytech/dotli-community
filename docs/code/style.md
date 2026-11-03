@@ -279,6 +279,26 @@ Why: the composed form says what happens. The inline form makes the reader work 
 
 ## State
 
+### App state is a nanostores store
+
+App state is a nanostores `atom`, and a value computed from stores is a `computed`. The owning module keeps the writable
+atom and exposes it as `ReadableAtom`. A follower calls `listen`, which waits for the next change. `subscribe` also
+calls it at once, so use it only where the current value is wanted too.
+
+```ts
+// Do
+const status = atom<Status>('idle');
+const statusStore: ReadableAtom<Status> = status;
+export const connection = { status: statusStore };
+
+connection.status.listen(next => {
+  report(next);
+});
+
+// Don't
+export const status = atom<Status>('idle');
+```
+
 ### Derive, don't store
 
 A value computable from other state is computed from it, not stored and kept in sync.
@@ -287,10 +307,10 @@ Why: two stored copies drift. A derived value can't.
 
 ```ts
 // Do
-const visible = derive([items, filter], (all, query) => all.filter(i => matches(i, query)));
+const visible = computed([items, filter], (all, query) => all.filter(i => matches(i, query)));
 
 // Don't
-const visible = createStore<Item[]>([]);
+const visible = atom<Item[]>([]);
 // ...plus an update in every place that changes items or filter
 ```
 

@@ -37,7 +37,7 @@ export function createSectionStorage({ storage = pageLocalStorage }: Params = {}
   });
 }
 
-// Built on first use, since the stored tab is read when its atom is built and a Node spec loads this module too.
+// Built on first use, so importing the module reads no storage.
 let page: SectionStorage | undefined;
 
 /** The page's open tab, in the page's local storage, the same atom on every call. Never throws. */

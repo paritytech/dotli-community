@@ -13,7 +13,7 @@ export type PersistentAtomParams<Value> = {
   initial: Value;
   /** Parses the stored text, or returns undefined when it no longer parses. Never throws. */
   decode: (raw: string) => Value | undefined;
-  /** Turns a value into the stored text. Defaults to `JSON.stringify`. */
+  /** Turns a value into the stored text. Defaults to `JSON.stringify`. Never throws. */
   encode?: (value: Value) => string;
 };
 
@@ -21,6 +21,9 @@ export type PersistentAtomParams<Value> = {
  * An atom that starts from its stored value and writes each change back.
  *
  * It reads once when built and never follows the `storage` event, so another tab's write shows after a reload.
+ *
+ * @example
+ * const dock = createPersistentAtom({ key: 'panel.dock', storage, initial: 'right', decode: parseDock });
  */
 export function createPersistentAtom<Value>({
   key,

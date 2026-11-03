@@ -1490,24 +1490,30 @@ describe('session window flow', () => {
     // Given a listener, registered before the flow, that moves auth on from Pairing to Authenticating
     const { flow, auth, responder, vet } = openWindow({
       beforeFlow(source) {
-        source.listen(state => {
-          if (state.tag === 'Pairing') {
-            source.set({ tag: 'Authenticating' });
-          }
-        });
+        onTestFinished(
+          source.listen(state => {
+            if (state.tag === 'Pairing') {
+              source.set({ tag: 'Authenticating' });
+            }
+          }),
+        );
       },
     });
     const seen = [flow.screen.get().pairing];
-    flow.screen.listen(() => {
-      seen.push(flow.screen.get().pairing);
-    });
+    onTestFinished(
+      flow.screen.listen(() => {
+        seen.push(flow.screen.get().pairing);
+      }),
+    );
     // And a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
     let readHost: string | null | undefined;
-    responder.state.listen(state => {
-      if (state.kind === 'vetted') {
-        readHost = flow.screen.get().pageHost;
-      }
-    });
+    onTestFinished(
+      responder.state.listen(state => {
+        if (state.kind === 'vetted') {
+          readHost = flow.screen.get().pageHost;
+        }
+      }),
+    );
 
     // When auth starts pairing and then the opener is vetted
     auth.set(PAIRING);

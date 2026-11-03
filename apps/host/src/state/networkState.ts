@@ -39,8 +39,8 @@ export const INITIAL_NETWORK: NetworkState = {
 };
 
 export function createNetworkState({ timers = realTimers, monitor = networkMonitorState }: Params = {}) {
-  // A monitor can change many times a second, so the snapshot is rebuilt only while someone listens, or on a `get`
-  // after a change.
+  // A monitor can change many times a second, so the snapshot is rebuilt only while someone listens, for a second after
+  // the last one leaves, and on a `get` after a change.
   const store: ReadableAtom<NetworkState> = computed(monitor.version, () => readSnapshot());
 
   return {

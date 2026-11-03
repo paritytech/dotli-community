@@ -176,6 +176,7 @@ describe('The network health store', () => {
     const listening = new Set<unknown>();
     const counted: HealthMonitor = {
       getChainClocks: monitor.getChainClocks,
+      // A copy of the atom's members, so the health store may read only `get` and `listen` through it.
       version: {
         ...monitor.version,
         listen(listener) {
@@ -258,6 +259,7 @@ describe('The network health store', () => {
     let unsubscribes = 0;
     const counting: HealthMonitor = {
       ...monitor,
+      // A copy of the atom's members, so the health store may read only `get` and `listen` through it.
       version: {
         ...monitor.version,
         listen(listener) {

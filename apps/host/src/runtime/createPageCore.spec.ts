@@ -1333,7 +1333,7 @@ describe('page core after a failed wallet read', () => {
     expect(outcomes).toEqual(['ok']);
   });
 
-  it('As the page, when telling the core the session store changed throws, the failure is reported and the stale check still runs', async () => {
+  it('As the page, I tell the core of a stored session change that throws and the failure is reported while the stale check still runs', async () => {
     // Given a pairing core whose runtime throws when told of a store change, and a store that now holds the wallet
     let walletFound = false;
     const { core, runtimes, storeListeners, counted, changes } = createReportingHarness({

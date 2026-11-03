@@ -62,7 +62,7 @@ type Params = {
   /** The core's permission store. */
   registry: Pick<PermissionAuthorizations, 'getStatuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
-  product: ReadableAtom<ProductState>;
+  product: Pick<ReadableAtom<ProductState>, 'get' | 'listen'>;
   /** What a retry waits on. The page's own timers by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };

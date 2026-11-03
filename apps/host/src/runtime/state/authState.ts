@@ -27,19 +27,22 @@ export const authState = {
   store,
   /** Returns the current auth step. Never throws. */
   get,
-  /** Publishes the next auth step and notifies every subscriber, even when it equals the current one. Never throws. */
+  /**
+   * Publishes the next auth step and notifies every listener, even when it equals the current one. A second set inside
+   * one store listener round is heard as that later step twice, so set at most once per round. Never throws.
+   */
   set,
   /**
    * Whether the user is logged in: from `Connected` until `Disconnected` or `Unreachable`. The login steps in between
    * leave it as it was, so a logged-in user who pairs again stays logged in. It already matches the step an auth
-   * subscriber hears.
+   * listener hears.
    */
   loggedInStore,
   /** Returns whether the user is logged in now. Never throws. */
   isLoggedIn,
 };
 
-// Subscribed at import, before any other auth listener, so every other listener sees the session already.
+// Listening from import, before any other auth listener, so every other listener sees the session already.
 auth.listen(followSession);
 
 function get(): DotliAuthState {
