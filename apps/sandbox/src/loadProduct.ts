@@ -36,7 +36,10 @@ type FetchArchive = typeof fetchArchive;
 /** Reads one block through the host's relay. */
 export type BlockSource = (cid: string) => Promise<Uint8Array>;
 
-/** What one load needs from the page. A member that throws or rejects fails the load at the step it ran in. */
+/**
+ * What one load needs from the page. A member that throws or rejects fails the load at the step it ran in, and a
+ * failed registration wins over a failed fetch.
+ */
 export type LoadProductDeps = {
   /** Progress text for the host's loading screen. */
   showStatus: (message: string) => void;
@@ -73,8 +76,7 @@ const contentLog = log.createChild({ flow: 'content' });
  * the frame goes away mid-load, or `failed` with the step that failed and its error.
  */
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
-  const { cid, backend, resolutionId } = params;
-  const isGateway = backend === 'rpc-gateway';
+  const { cid, resolutionId } = params;
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
   const stopApp = m.timer(S.APP_TOTAL);
@@ -90,34 +92,26 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
 
     step = 'sw_register';
     const stopWorkerTimer = m.timer(S.APP_SW_REGISTER);
-    const workerReady = deps.registerWorker({ waitForFreshController: freshStart }).then(stopWorkerTimer);
-
-    // The worker must control the page before the archive is handed to it.
-    await workerReady;
-    contentLog.event('Service worker ready', {
-      controlled: deps.isControlled(),
-      ms: deps.measureSinceStart(),
+    const workerReady = deps.registerWorker({ waitForFreshController: freshStart }).then(() => {
+      stopWorkerTimer();
+      contentLog.event('Service worker ready', {
+        controlled: deps.isControlled(),
+        ms: deps.measureSinceStart(),
+      });
     });
 
-    let result: FetchResult;
-    if (deps.blockSource === null) {
-      contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.measureSinceStart() });
-      deps.showStatus('Fetching via IPFS gateway...');
-      step = 'content_fetch';
-      result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, useGateway: true });
-    } else {
-      // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
-      contentLog.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.measureSinceStart() });
-      deps.showStatus('Fetching via bitswap...');
-      step = 'content_fetch';
-      result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, bitswapBlockSource: deps.blockSource });
+    // The fetch needs no worker, so it runs while the worker registers. A single page waits for the worker too, so a
+    // failed registration is still reported and the worker never claims a document that was already replaced.
+    const [worker, fetched] = await Promise.allSettled([workerReady, fetchContent(params, deps)]);
+    // The registration is the earlier step, so its failure names the load whatever the fetch did.
+    if (worker.status === 'rejected') {
+      throw worker.reason;
     }
-    contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
-      type: result.type,
-      bytes: countResultBytes(result),
-      files: countResultFiles(result),
-      ms: deps.measureSinceStart(),
-    });
+    if (fetched.status === 'rejected') {
+      step = 'content_fetch';
+      throw fetched.reason;
+    }
+    let result = fetched.value;
 
     if (result.type === 'single') {
       step = 'decrypt';
@@ -178,6 +172,29 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     const failedStep = error instanceof Error && error.name === CONTENT_ERRORS.VERIFICATION ? 'verify' : step;
     return { outcome: 'failed', step: failedStep, error };
   }
+}
+
+async function fetchContent(params: SandboxParams, deps: LoadProductDeps): Promise<FetchResult> {
+  const { cid, backend } = params;
+  const isGateway = backend === 'rpc-gateway';
+  let result: FetchResult;
+  if (deps.blockSource === null) {
+    contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.measureSinceStart() });
+    deps.showStatus('Fetching via IPFS gateway...');
+    result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, useGateway: true });
+  } else {
+    // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
+    contentLog.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.measureSinceStart() });
+    deps.showStatus('Fetching via bitswap...');
+    result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, bitswapBlockSource: deps.blockSource });
+  }
+  contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
+    type: result.type,
+    bytes: countResultBytes(result),
+    files: countResultFiles(result),
+    ms: deps.measureSinceStart(),
+  });
+  return result;
 }
 
 function countResultBytes(result: FetchResult): number {

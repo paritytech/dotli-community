@@ -193,12 +193,57 @@ describe('loadProduct', () => {
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: unreachable });
   });
 
-  it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([
+  it('As a visitor, I open a product and its content is fetched while the service worker still registers', async () => {
+    // Given a registration that settles a turn after it starts, and a fetch that records when it runs
+    const order: string[] = [];
+    const fetched: FetchResult = { type: 'single', content: encode('<h1>hi</h1>') };
+    const page = createHarness(fetched, {
+      registerWorker() {
+        order.push('worker started');
+        return Promise.resolve().then(() => {
+          order.push('worker settled');
+        });
+      },
+      fetchArchive() {
+        order.push('fetch');
+        return Promise.resolve(fetched);
+      },
+    });
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the fetch started before the registration settled
+    expect(outcome).toEqual({ outcome: 'loaded' });
+    expect(order).toEqual(['worker started', 'fetch', 'worker settled']);
+  });
+
+  it.each<[string, FetchResult | Error]>([
     [
-      'sw_register',
-      broken => ({ registerWorker: () => Promise.reject(broken) }),
-      { type: 'single', content: encode('') },
+      'cannot reach the gateway',
+      setErrorName(new Error('IPFS gateway ipfs.example unreachable for bafy'), CONTENT_ERRORS.GATEWAY_UNREACHABLE),
     ],
+    ['is torn down with the frame', new DOMException('The sandbox frame was torn down', 'AbortError')],
+    ['gives an archive', { type: 'archive', files: { 'index.html': encode('<main>app</main>') } }],
+    ['gives a single page', { type: 'single', content: encode('<h1>hi</h1>') }],
+  ])(
+    'As an operator, I break the worker registration while the fetch %s and see the failure reported at the worker registration',
+    async (_fetch, fetched) => {
+      // Given a fetch with that outcome and a registration that rejects
+      const broken = new Error('sw_register broke');
+      const page = createHarness(fetched, { registerWorker: () => Promise.reject(broken) });
+
+      // When the first attempt loads it
+      const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+      // Then the failure names the registration, the earlier step, and nothing is stored or written
+      expect(outcome).toEqual({ outcome: 'failed', step: 'sw_register', error: broken });
+      expect(page.stored).toEqual([]);
+      expect(page.written).toEqual([]);
+    },
+  );
+
+  it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([
     ['decrypt', broken => ({ decrypt: () => Promise.reject(broken) }), { type: 'single', content: encode('sealed') }],
     [
       'sw_store',

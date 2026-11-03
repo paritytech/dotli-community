@@ -111,8 +111,7 @@ async function injectCheckerIfEnabled(html: string): Promise<string> {
 let blockSource: BlockSource | null = null;
 
 function configure(params: SandboxParams): void {
-  // Said at once, since the sandbox must not stay silent, and the purge and the worker registration before the next
-  // progress can take seconds.
+  // Said at once, since the sandbox must not stay silent, and the purge before the next progress can take seconds.
   hostMessages.showStatus('Starting the app');
   // Before the first load, so a failure in it is still attributed to its page load.
   if (params.resolutionId !== null) {
