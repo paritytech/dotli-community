@@ -16,6 +16,7 @@ import {
   formatElapsed,
   getErrorMessage,
   log,
+  markHandled,
   createRandomId,
   realTimers,
   serializeError,
@@ -440,11 +441,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = readClock();
     performance.mark('dotli:resolve:start');
-    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded.
-    const manifestsRead = names.readManifests(label);
-    manifestsRead.catch(() => {
-      /* Awaited below. A CID failure first must not leave this unhandled. */
-    });
+    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded. A CID
+    // failure first leaves its failure to the load's outcome.
+    const manifestsRead = markHandled(names.readManifests(label));
     const cid = await resolveName();
 
     // Nothing to launch whatever the manifests say, so it does not wait on them.
@@ -541,10 +540,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
   // The core boots while the name resolves. The render awaits it and reports its failure, and a load that ends earlier
   // reports its own outcome instead.
-  const coreHold = frame.holdCore();
-  coreHold.catch(() => {
-    /* Awaited by the render. A load that ends before it must not leave this unhandled. */
-  });
+  const coreHold = markHandled(frame.holdCore());
   try {
     const cached = await readCachedCopy();
     if (cached !== null) {

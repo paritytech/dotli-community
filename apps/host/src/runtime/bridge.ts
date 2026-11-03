@@ -8,7 +8,7 @@ import type { ProductAccountId } from '@parity/truapi';
 import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn } from '@dotli/shared';
+import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../createHostPrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
@@ -70,9 +70,8 @@ const hostRuntime = createLazyLoad({
   },
 });
 // Preloaded so it is ready when the first product renders.
-void hostRuntime().catch(() => {
-  // The render or the core boot that asks next loads it again and reports its own failure.
-});
+// The render or the core boot that asks next loads it again and reports its own failure.
+void markHandled(hostRuntime());
 
 // Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
 // the page.

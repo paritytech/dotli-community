@@ -42,6 +42,12 @@ type Params = {
   isResumeOffered: () => boolean;
 };
 
+type ReadSessionToShowParams = {
+  local: LoadRestore['local'];
+  raw: string | null;
+  readCachedAccount: () => Promise<string | null>;
+};
+
 /** How pairing presents itself. */
 export type PairingPresentation = {
   /** The name pairing presents. */
@@ -112,8 +118,7 @@ export function createSessionState({
     return store.writeUiCache(state.connected ? JSON.stringify(state) : null);
   }
 
-  async function readUiCache(): Promise<TruapiSessionUiState | null> {
-    const raw = await store.readUiCache();
+  function parseCachedAccount(raw: string | null): TruapiSessionUiState | null {
     return raw === null ? null : parseUiStateCache(raw);
   }
 
@@ -127,32 +132,37 @@ export function createSessionState({
   }
 
   /** The session to show: the local wallet's when there is one, else the saved one with its cached account. */
-  async function readSessionToShow(
-    local: LoadRestore['local'],
-    raw: string | null,
-  ): Promise<TruapiSessionUiState | null> {
+  async function readSessionToShow({
+    local,
+    raw,
+    readCachedAccount,
+  }: ReadSessionToShowParams): Promise<TruapiSessionUiState | null> {
     if (local !== null) {
       return getLocalSessionUiState(local.identity);
     }
     if (raw === null) {
       return null;
     }
-    return (await readUiCache()) ?? { connected: true };
+    return parseCachedAccount(await readCachedAccount()) ?? { connected: true };
   }
 
   /**
    * Shows the local wallet when there is one, else what was saved, while the copy may show it. A read that finds
    * nothing ends only `Restoring` or `Unreachable`, and, while a core speaks, withdraws a sign-in the copy showed
-   * to the core's own report. It leaves a sign-out or a failure on show alone.
+   * to the core's own report. It leaves a sign-out or a failure on show alone. `readCachedAccount` is the raw read of
+   * the cached account, called only when a session of the saved copy is to be shown and never rejecting.
    */
-  async function applySavedSession(readSession: (restored: LoadRestore) => Promise<string | null>): Promise<void> {
+  async function applySavedSession(
+    readSession: (restored: LoadRestore) => Promise<string | null>,
+    readCachedAccount: () => Promise<string | null>,
+  ): Promise<void> {
     if (!isCopyAllowedToShow()) {
       return;
     }
     // The restore first, since the session read must come after the rule.
     const restored = await restore();
     const raw = await readSession(restored);
-    const session = await readSessionToShow(restored.local, raw);
+    const session = await readSessionToShow({ local: restored.local, raw, readCachedAccount });
     if (!isCopyAllowedToShow()) {
       return;
     }
@@ -175,10 +185,15 @@ export function createSessionState({
   /** Reads the saved session again and shows it, queued behind the read in flight, so the later read decides. */
   function refresh(): Promise<void> {
     return savedSessionReads.call(() =>
-      applySavedSession(async () => {
-        const read = await store.readSession();
-        return read.status === 'ok' ? read.blob : null;
-      }),
+      applySavedSession(
+        async () => {
+          const read = await store.readSession();
+          return read.status === 'ok' ? read.blob : null;
+        },
+        // A sign-in elsewhere writes the cached account right after the session whose change started this read, so
+        // the read waits for the session's.
+        () => store.readUiCache(),
+      ),
     );
   }
 
@@ -223,15 +238,21 @@ export function createSessionState({
       });
       // The load's own read, which the restore rule already made, with the flag it read beside a copy that held
       // nothing.
-      void savedSessionReads.call(() =>
-        applySavedSession(restored => {
-          if (hasHeldNothing(restored)) {
-            reportFlag(restored.presence);
-          }
-          const { session } = restored;
-          return Promise.resolve(session.status === 'ok' ? session.blob : null);
-        }),
-      );
+      void savedSessionReads.call(() => {
+        // The restore rule clears the cached account only with the session it drops, which makes the cache unused, so
+        // the read starts beside the rule. It never rejects.
+        const cachedAccount = store.readUiCache();
+        return applySavedSession(
+          restored => {
+            if (hasHeldNothing(restored)) {
+              reportFlag(restored.presence);
+            }
+            const { session } = restored;
+            return Promise.resolve(session.status === 'ok' ? session.blob : null);
+          },
+          () => cachedAccount,
+        );
+      });
       // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
       const stopChanges = store.subscribeStoredSession(() => {
         if (isCopyAllowedToShow()) {

@@ -12,6 +12,7 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   log,
+  markHandled,
   realTimers,
   type AsyncTaskPool,
   type ListenerSet,
@@ -272,9 +273,8 @@ export function createPageCore({
         throw error;
       },
     );
-    runtime.catch(() => {
-      // Logged above, and a redial nobody has asked for yet has no caller to tell.
-    });
+    // Logged above, and a redial nobody has asked for yet has no caller to tell.
+    void markHandled(runtime);
     const core: Core = {
       product,
       runtime,

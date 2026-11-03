@@ -4,7 +4,7 @@
 // The verifier's chunk starts loading when the check is built, not on the first block check. A failed load rejects the
 // check that asked for it and the next check tries again, while only the first miss of the page is reported.
 
-import { createLazyLoad } from '@dotli/shared';
+import { createLazyLoad, markHandled } from '@dotli/shared';
 
 type Verifier = {
   isBlockMatchingCid: (cid: string, bytes: Uint8Array) => boolean | Promise<boolean>;
@@ -30,6 +30,6 @@ export function createBlockVerifier({ load, report }: Params): (cid: string, byt
     },
   });
   // `onFirstMiss` already reported a failed load, and the next check loads again.
-  void verifier().catch(() => undefined);
+  void markHandled(verifier());
   return async (cid, bytes) => (await verifier()).isBlockMatchingCid(cid, bytes);
 }

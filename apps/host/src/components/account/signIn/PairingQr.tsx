@@ -5,7 +5,7 @@ import { createEffect, createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LogoSymbol } from '@dotli/ui/brand';
 import { Spinner } from '@dotli/ui';
-import { drawQrCode, type DrawQr } from '../qrCode.js';
+import { drawQrCode, prepareQrCode, type DrawQr } from '../qrCode.js';
 import { presentQr } from '../qrDrawer.js';
 import s from './PairingQr.module.css';
 
@@ -59,6 +59,8 @@ export type PairingQrProps = {
   link: boolean;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
+  /** Starts loading the code's drawing while the payload is made. Without one, the `qrcode` chunk starts loading. */
+  prepareQr?: (() => void) | undefined;
 };
 
 /** The pairing code on its tile, drawn as soon as its payload is known, with a spinner in its place until then. */
@@ -68,14 +70,18 @@ export function PairingQr(props: PairingQrProps): JSX.Element {
   // Last payload wins: a drawing is dropped once its payload is no longer on show.
   const [drawn, setDrawn] = createSignal<DrawnQr | null>(null);
   createEffect(
-    () => ({ payload: props.payload, drawQr: props.drawQr ?? drawQrCode }),
-    ({ payload, drawQr }) => {
+    () => ({ payload: props.payload, drawQr: props.drawQr, prepareQr: props.prepareQr ?? prepareQrCode }),
+    ({ payload, drawQr, prepareQr }) => {
+      if (payload === null) {
+        prepareQr();
+        return;
+      }
       const qrBox = box;
-      if (payload === null || qrBox === undefined) {
+      if (qrBox === undefined) {
         return;
       }
       return presentQr(payload, {
-        drawQr,
+        drawQr: drawQr ?? drawQrCode,
         createCanvas: shownPayload => {
           const canvas = document.createElement('canvas');
           canvas.dataset['qrPayload'] = shownPayload;

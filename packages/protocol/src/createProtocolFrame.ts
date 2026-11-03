@@ -12,6 +12,7 @@ import {
   createListenerSet,
   createDeferred,
   log,
+  markHandled,
   realTimers,
   toError,
   waitForStatus,
@@ -444,7 +445,7 @@ export function createProtocolFrame<E extends FrameElement>({
 function createFrameSlot() {
   const loaded = createDeferred<ProtocolTransport>();
   // No caller may be waiting for the load, and the loss is reported where the frame is dropped.
-  loaded.promise.catch(() => undefined);
+  void markHandled(loaded.promise);
   // The two widenings let the frame set each field later. A bare `null` would type it as `null` alone.
   return {
     /** Null until it is built. */

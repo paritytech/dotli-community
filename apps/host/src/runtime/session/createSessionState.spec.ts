@@ -296,6 +296,78 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
+  it('As a user with a paired session, I load the page and its cached account is read while the restore still reads the session', async () => {
+    // Given a stored session and its cached account, with every read held
+    await coreStorage.createAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    shared.readGate = gate.promise;
+    shared.reads.length = 0;
+
+    // When the session state starts
+    onTestFinished(session.start());
+    const readsWhileHeld = [...shared.reads];
+    gate.resolve();
+    await waitForAuth(() => auth.get().tag === 'Connected');
+
+    // Then both reads were issued while the gate was held
+    expect(readsWhileHeld).toContain(SESSION_KEY);
+    expect(readsWhileHeld).toContain(UI_STATE_CACHE_KEY);
+  });
+
+  it('As a user whose page refreshes its session after a change, I see the cached account read only after the session', async () => {
+    // Given a page started and settled with no session, then every read held and the first one watched
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Disconnected');
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    onTestFinished(() => {
+      gate.resolve();
+    });
+    shared.readGate = gate.promise;
+    shared.reads.length = 0;
+    const started = Promise.withResolvers<string>();
+    const read = shared.read.bind(shared);
+    shared.read = key => {
+      started.resolve(key);
+      return read(key);
+    };
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+
+    // When a sign-in lands through the shared store
+    shared.changeFromOtherTab(SESSION_KEY, '0x010203');
+    await started.promise;
+
+    // Then only the session is read while the gate is held
+    expect(shared.reads).toEqual([SESSION_KEY]);
+  });
+
+  it('As a visitor with no stored session beside a corrupt cached account, I load the page and nothing is counted', async () => {
+    // Given no stored session beside a corrupt cached account
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    shared.entries.set(UI_STATE_CACHE_KEY, '{"connected":tr');
+
+    // When the session state starts
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag !== 'Restoring');
+
+    // Then the cached account is dropped unparsed
+    expect(metrics.counted('shared_session.ui_cache')).toEqual([]);
+  });
+
+  it("As a visitor whose shared store is down, I load the page and the cached account's read failure is counted beside the session's", async () => {
+    // Given a shared store that cannot be read
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    shared.readError = UNREACHABLE;
+
+    // When the session state starts
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Unreachable');
+
+    // Then the cached account's failed read is counted
+    // Its own read chain reports it, apart from the session read that showed the store down.
+    await expect.poll(() => metrics.counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'read' }]);
+  });
+
   it('As a dotli integrator, I start session state twice and it keeps one subscription to the shared store', () => {
     // Given session state started once
     const first = session.start();

@@ -4,9 +4,11 @@
 /**
  * A site's transaction on Asset Hub: one chain client per session, which decodes the site's call for the review and
  * builds that decode into its signed transaction, filling every extension, and never submits it. The chain client loads
- * on first open and the extension fillers on first build, so the shell's eager path never carries them.
+ * on first open and the extension fillers start loading as a session opens rather than on the first build, so the
+ * shell's eager path never carries them.
  */
 
+import { markHandled } from '@dotli/shared';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type * as TxFillers from '@polkadot-api/signers-common';
 import type * as PolkadotApi from 'polkadot-api';
@@ -97,6 +99,8 @@ export function createSiteChain({
       if (provider === null) {
         throw new SiteChainError('unreachable', 'Asset Hub is not reachable on this chain backend');
       }
+      // A failed load is left to the build, which loads again and rejects with that load's error.
+      void markHandled(loadFillers());
       let api: typeof PolkadotApi;
       try {
         api = await loadApi();

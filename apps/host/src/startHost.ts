@@ -8,7 +8,7 @@ import { m, reportExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { topbarState } from './state/topbarState.js';
 import { showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
-import { log, pageLocalStorage } from '@dotli/shared';
+import { log, markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -95,10 +95,7 @@ export async function startHost({
   startShellState?.();
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
-  const bridgeChunk = loadBridge();
-  bridgeChunk.catch(() => {
-    /* Awaited at the bridge load. A settings failure first must not leave this unhandled. */
-  });
+  const bridgeChunk = markHandled(loadBridge());
   const settings = await settingsBoot;
   settingsState.init();
 

@@ -23,7 +23,7 @@ import { loadVerify } from '@dotli/content';
 import { getProtocolClient } from '@dotli/protocol';
 import { blockCache as pageBlockCache, cidCache } from '@dotli/storage';
 import { runWhenIdle, showNotification } from '@dotli/ui';
-import { formatElapsed, log, createRandomId } from '@dotli/shared';
+import { formatElapsed, log, markHandled, createRandomId } from '@dotli/shared';
 import {
   DEBUG,
   getActiveServicesConfig,
@@ -113,9 +113,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   if (debugMode.enabled) {
     debugBus.enableBuffering();
     // The describer reports its own failed load, and the boot reports the bridge's.
-    void loadBridge()
-      .then(bridge => bridge.wireDescriber.preload())
-      .catch(() => undefined);
+    void markHandled(loadBridge().then(bridge => bridge.wireDescriber.preload()));
     void startDebugPanel({
       load: loadTruapiDebugMount,
       host: async () => (await loadDebugPanelHost()).debugPanelHost,

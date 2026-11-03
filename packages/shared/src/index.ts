@@ -41,6 +41,7 @@ export { listenForDocumentVisible } from './listenForDocumentVisible.js';
 export { listenForPageReturn } from './listenForPageReturn.js';
 export type { LogEntry, LogLevel } from './log.js';
 export { bindLogSink, log } from './log.js';
+export { markHandled } from './markHandled.js';
 export { noop } from './noop.js';
 export { openIdb } from './openIdb.js';
 export { pageLocalStorage } from './pageLocalStorage.js';
