@@ -4,7 +4,6 @@
 // Responders a spec runs a site's round over: one that records what the window posts, and the window's real one over a
 // fake opener, vetted by the site.
 
-import { registerStoreStateReset } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { createResponder, type Responder, type ResponderState } from './createResponder.js';
@@ -43,9 +42,6 @@ export function createRecordingResponder({ origin, onHeld }: CreateRecordingResp
   const posts: SiteRoundPost[] = [];
   const vetted: ResponderState = { kind: 'vetted', origin, party: 'third' };
   const round = atom<ResponderState>(vetted);
-  registerStoreStateReset(() => {
-    round.set(vetted);
-  });
   let held: SiteRoundPost | null = null;
   function end(post: SiteRoundPost, state: ResponderState): void {
     const { kind } = round.get();

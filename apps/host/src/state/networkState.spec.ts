@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createManualTimers, resetAllStoresForTests as resetStores, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkMonitorState, type ChainPhase, type NetworkMonitor } from './networkMonitorState.js';
 import { createNetworkState, type NetworkState } from './networkState.js';
@@ -23,7 +23,7 @@ describe('network store', () => {
 
   it('As a user with the chains popover open, I watch a chain come up and see each phase and the verdict', () => {
     // Given
-    const { store } = createNetworkState({ timers, monitor });
+    const store = createNetworkState({ timers, monitor });
 
     // When
     monitor.recordChainPhase('relay', 'syncing');
@@ -41,7 +41,7 @@ describe('network store', () => {
 
   it('As a user opening the chains popover after a change nobody watched, I read the chains as of my opening and then hear each change', async () => {
     // Given a change while nobody is subscribed, and the popover opening five seconds later
-    const { store } = createNetworkState({ timers, monitor });
+    const store = createNetworkState({ timers, monitor });
     monitor.recordChainPhase('relay', 'syncing');
     await timers.advance(5_000);
 
@@ -61,7 +61,7 @@ describe('network store', () => {
   it('As the network panel, I read a fresh snapshot after each monitor change, and none is built while nobody reads', async () => {
     // Given a monitor that counts the snapshots built from it
     const { monitor: counting, builds } = countBuilds(monitor);
-    const { store } = createNetworkState({ timers, monitor: counting });
+    const store = createNetworkState({ timers, monitor: counting });
 
     // When the monitor changes with nobody reading, then the panel reads after each change
     monitor.recordChainPhase('relay', 'syncing');
@@ -87,11 +87,13 @@ describe('network store', () => {
 
   it('As a follower, I listen to the network store and hear each monitor change', () => {
     // Given
-    const { store } = createNetworkState({ timers, monitor });
+    const store = createNetworkState({ timers, monitor });
     const heard: string[] = [];
-    store.listen(value => {
-      heard.push(getRelayPhase(value) ?? 'none');
-    });
+    onTestFinished(
+      store.listen(value => {
+        heard.push(getRelayPhase(value) ?? 'none');
+      }),
+    );
 
     // When
     monitor.recordChainPhase('relay', 'syncing');
@@ -103,7 +105,7 @@ describe('network store', () => {
 
   it('As a test, I reset the stores while the network snapshot is read, and it rebuilds from the cleared monitor', () => {
     // Given a mounted snapshot that has seen a phase
-    const { store } = createNetworkState({ timers, monitor });
+    const store = createNetworkState({ timers, monitor });
     const stop = store.listen(() => undefined);
     monitor.recordChainPhase('relay', 'syncing');
 

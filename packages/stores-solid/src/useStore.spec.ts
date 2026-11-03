@@ -78,6 +78,24 @@ describe('useStore', () => {
     expect(view.value()).toBe('b');
   });
 
+  it('As a component reading a computed with only an initial, I read its value and see it again after it changes', () => {
+    // Given a component that reads a computed, which has no init, with no select
+    const source = atom(2);
+    const store = computed(source, count => count * 10);
+    const view = createOwned(() => ({ value: useStore(store, { initial: 0 }) }));
+    flush();
+    const first = view.value();
+
+    // When
+    source.set(3);
+    flush();
+
+    // Then
+    expect(first).toBe(20);
+    expect(view.value()).toBe(30);
+    view.dispose();
+  });
+
   it('As a caller outside any reactive owner, I call useStore and it throws instead of leaking a subscription', () => {
     // Given
     const store = atom('x');

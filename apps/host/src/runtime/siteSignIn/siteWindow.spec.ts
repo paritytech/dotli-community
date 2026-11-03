@@ -114,8 +114,6 @@ function createWindowParts({
   const flows: WindowFlow[] = [];
   // What each window flow was told to do once it stored a sign-in.
   const deliveries: SiteWindowFlowDeliver[] = [];
-  // One entry per listen on the screens of the window flows the window started.
-  const flowScreenListeners = new Set<object>();
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
@@ -149,20 +147,11 @@ function createWindowParts({
       });
       flows.push(started);
       deliveries.push(flow.deliver);
-      // A copy of the atom's members, so a test may read only `get` and `listen` through it.
-      const screen: WindowFlow['screen'] = {
-        ...(flowScreen ?? started.screen),
-        listen(listener) {
-          const listening = {};
-          flowScreenListeners.add(listening);
-          const stop = (flowScreen ?? started.screen).listen(listener);
-          return () => {
-            flowScreenListeners.delete(listening);
-            stop();
-          };
-        },
+      return {
+        ...started,
+        screen: flowScreen ?? started.screen,
+        dispose: leaveFlowsRunning ? () => undefined : started.dispose,
       };
-      return { ...started, screen, dispose: leaveFlowsRunning ? () => undefined : started.dispose };
     },
     grants: createSiteGrantStore({ idb: createMemorySiteGrantsIdb() }),
     groups: {
@@ -181,8 +170,8 @@ function createWindowParts({
     auth,
     flows,
     deliveries,
-    /** How many listeners the window flows' screens hold for the window. */
-    countFlowScreenListeners: (): number => flowScreenListeners.size,
+    /** How many listeners the window flows' own screens hold. */
+    countFlowScreenListeners: (): number => flows.reduce((count, flow) => count + flow.screen.lc, 0),
     closed: closed.promise,
     /** Every message the opener got, ready included. */
     readPosted: () => opener.posted.map(({ message }) => message),
@@ -197,11 +186,11 @@ function createWindowParts({
 /** What the window showed of `window`, each view with the page or route it names, from now on. */
 function watchWindow({ site, screen, dispose }: SiteWindow) {
   const shown: ShownView[] = [];
-  function record(): void {
-    shown.push(getShownView(screen.get()));
-  }
-  record();
-  onTestFinished(screen.listen(record));
+  onTestFinished(
+    screen.subscribe(next => {
+      shown.push(getShownView(next));
+    }),
+  );
   return {
     site,
     screen,

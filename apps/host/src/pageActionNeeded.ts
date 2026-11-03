@@ -11,8 +11,3 @@ export const pageActionNeeded: ReadableAtom<boolean> = computed(
   [topbarState.store, chatPanelState.store],
   (topbar, panel) => isActionNeeded(topbar, chatPanelState.getTotalUnread(panel)),
 );
-
-/** Returns whether the page waits on the user, a prompt or unread chat, so the capsule leads with the action dot. */
-export function isPageActionNeeded(): boolean {
-  return pageActionNeeded.get();
-}

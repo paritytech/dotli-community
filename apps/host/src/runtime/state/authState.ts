@@ -6,7 +6,6 @@ import { registerStoreStateReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 const INITIAL_AUTH: DotliAuthState = { tag: 'Restoring' };
-const INITIAL_SESSION = false;
 
 const auth = atom<DotliAuthState>(INITIAL_AUTH);
 // Every login step must notify, including a repeated LoginFailed, so no set is dropped as equal.
@@ -14,9 +13,9 @@ auth.eq = () => false;
 registerStoreStateReset(() => {
   auth.set(INITIAL_AUTH);
 });
-const session = atom<boolean>(INITIAL_SESSION);
+const session = atom<boolean>(false);
 registerStoreStateReset(() => {
-  session.set(INITIAL_SESSION);
+  session.set(false);
 });
 const store: ReadableAtom<DotliAuthState> = auth;
 const loggedInStore: ReadableAtom<boolean> = session;

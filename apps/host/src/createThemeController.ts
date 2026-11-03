@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { pageLocalStorage, type SafeStorage } from '@dotli/shared';
-import { createPersistentAtom } from '@dotli/stores-persistent';
+import { pageLocalStorage } from '@dotli/shared';
+import { createPersistentAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
 import { themeState, type ThemePreference } from './runtime/state/themeState.js';
 import { THEME_KEY } from './themeKey.js';
 
 /** The page parts the theme reads and writes. */
 type Params = {
   /** Keeps the theme the user chose for later sessions. */
-  storage: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
+  storage: PersistentAtomParams<ThemePreference>['storage'];
   /** Whether the OS prefers a light scheme, and its changes. */
   colorScheme: () => Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
   /** Carries `data-theme` and `data-theme-pref`, the page state the functional tests read. */

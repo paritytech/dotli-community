@@ -1499,10 +1499,10 @@ describe('session window flow', () => {
         );
       },
     });
-    const seen = [flow.screen.get().pairing];
+    const seen: SignInScreen['pairing'][] = [];
     onTestFinished(
-      flow.screen.listen(() => {
-        seen.push(flow.screen.get().pairing);
+      flow.screen.subscribe(screen => {
+        seen.push(screen.pairing);
       }),
     );
     // And a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery

@@ -9,10 +9,9 @@ import { registerStoreStateReset } from '@dotli/shared';
 import { atom } from 'nanostores';
 import type { Settings } from './resolveSettings.js';
 
-const INITIAL: Settings | null = null;
-const store = atom<Settings | null>(INITIAL);
+const store = atom<Settings | null>(null);
 registerStoreStateReset(() => {
-  store.set(INITIAL);
+  store.set(null);
 });
 
 /** Null until boot sets them, when each reader takes its default. */

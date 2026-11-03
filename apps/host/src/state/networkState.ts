@@ -30,23 +30,14 @@ type Params = {
   monitor?: NetworkFeed;
 };
 
-/** The network as a build-time render shows it, before any chain is in use. */
-export const INITIAL_NETWORK: NetworkState = {
-  chains: [],
-  transfer: { bytesPerSecond: null, fetched: null, total: null },
-  readAt: 0,
-  verdict: { text: 'Not in use', tone: 'quiet' },
-};
-
-export function createNetworkState({ timers = realTimers, monitor = networkMonitorState }: Params = {}) {
+/** Builds the chains, transfer and verdict as of the last read after a monitor change. */
+export function createNetworkState({
+  timers = realTimers,
+  monitor = networkMonitorState,
+}: Params = {}): ReadableAtom<NetworkState> {
   // A monitor can change many times a second, so the snapshot is rebuilt only while someone listens, for a second after
   // the last one leaves, and on a `get` after a change.
-  const store: ReadableAtom<NetworkState> = computed(monitor.version, () => readSnapshot());
-
-  return {
-    /** The chains, transfer and verdict as of the last read after a monitor change. */
-    store,
-  };
+  return computed(monitor.version, readSnapshot);
 
   function readSnapshot(): NetworkState {
     const chains = monitor.getNetworkStatus();

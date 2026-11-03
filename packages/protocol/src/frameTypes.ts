@@ -101,7 +101,8 @@ export type ProtocolFrame = {
    * Says what the frame is built with. Nothing boots before it, and waits begun before the first config wait for it,
    * up to `configureMs`.
    * The same config again does nothing. A different one rebuilds a frame already asked for at once, unless a frame
-   * refused the host's wire version, which no rebuild fixes.
+   * refused the host's wire version, which no rebuild fixes. Throws only what a status listener throws, after every
+   * listener heard the change.
    */
   configure(config: ProtocolFrameConfig): void;
   /**

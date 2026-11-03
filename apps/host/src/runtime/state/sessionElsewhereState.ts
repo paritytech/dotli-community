@@ -4,11 +4,9 @@
 import { registerStoreStateReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
-const INITIAL = false;
-
-const elsewhere = atom<boolean>(INITIAL);
+const elsewhere = atom<boolean>(false);
 registerStoreStateReset(() => {
-  elsewhere.set(INITIAL);
+  elsewhere.set(false);
 });
 const store: ReadableAtom<boolean> = elsewhere;
 

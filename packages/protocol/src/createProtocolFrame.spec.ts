@@ -226,27 +226,67 @@ describe('createProtocolFrame', () => {
     expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
   });
 
-  it('As the host with an app open, I hear a version mismatch although a status listener throws on the failed frame', async () => {
+  it('As the host with an app open, I hear a version mismatch although a status listener throws on the failed frame, and no frame is rebuilt', async () => {
     // Given a frame waiting on its handshake, a status listener that throws on failed, and a mismatch listener
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
     frame.configure(FRAME_CONFIG);
     void frame.waitUntilReady().catch(() => undefined);
     await advance();
-    frame.subscribeStatus(next => {
-      if (next === 'failed') {
-        throw new Error('listener broke');
-      }
-    });
+    const statuses: ProtocolStatus[] = [];
+    onTestFinished(
+      frame.subscribeStatus(next => {
+        statuses.push(next);
+        if (next === 'failed') {
+          throw new Error('listener broke');
+        }
+      }),
+    );
     const heard: Error[] = [];
     frame.onVersionMismatch(error => heard.push(error));
 
-    // When the frame refuses the host wire version
+    // When the frame refuses the host wire version, and the keeper's longest waits pass
     dom.serveNewer();
     await dom.retryHandshake();
+    await advance(DEFAULT_FRAME_TIMEOUTS.maxRebuildMs * 3);
 
-    // Then
+    // Then the mismatch was heard and stayed final
+    expect(heard).toHaveLength(1);
     expect(heard[0]).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(statuses).toEqual(['failed']);
+    expect(frame.getStatus()).toBe('failed');
+    expect(dom.countFrames()).toBe(0);
+  });
+
+  it('As the host, I boot a frame while a status listener throws on booting, and the boot fails and rebuilds with backoff', async () => {
+    // Given a configured frame, and a status listener that throws on the first booting only
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    let throws = 1;
+    onTestFinished(
+      frame.subscribeStatus(next => {
+        if (next === 'booting' && throws > 0) {
+          throws -= 1;
+          throw new Error('listener broke');
+        }
+      }),
+    );
+
+    // When the page asks for a frame, and the keeper's first wait passes
+    const up = catchRejection(frame.waitUntilReady());
+    await advance();
+    const failure = await up;
+    const framesAfterFailure = dom.countFrames();
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+
+    // Then the first boot failed as the keeper's, and the next one built a frame
+    expect(failure.message).toBe('listener broke');
+    expect(framesAfterFailure).toBe(0);
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([{ outcome: 'error', phase: 'load', reason: 'Error' }]);
+    expect(dom.countFrames()).toBe(1);
+    expect(frame.getStatus()).toBe('booting');
   });
 
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {

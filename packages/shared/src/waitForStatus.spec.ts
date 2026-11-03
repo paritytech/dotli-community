@@ -9,14 +9,14 @@ import { waitForStatus } from './waitForStatus.js';
 type Status = 'idle' | 'booting' | 'up' | 'down';
 
 /** A status the test sets, with the `get` and `listen` a wait needs. */
-function recordingCell(initial: Status = 'idle') {
+function createStatus(initial: Status) {
   let current = initial;
   const changes = createListenerSet<Status>({
     onListenerError: error => {
       throw new Error('A wait listener threw', { cause: error });
     },
   });
-  const cell = {
+  return {
     get: () => current,
     set(next: Status) {
       current = next;
@@ -24,13 +24,12 @@ function recordingCell(initial: Status = 'idle') {
     },
     listen: changes.subscribe,
   };
-  return { cell };
 }
 
 describe('waitForStatus', () => {
   it('As a layer above, I wait on the status there is now and settle without listening', async () => {
     // Given
-    const { cell } = recordingCell('up');
+    const cell = createStatus('up');
     let listened = 0;
     const counting = {
       get: cell.get,
@@ -50,7 +49,7 @@ describe('waitForStatus', () => {
 
   it('As a layer above, I wait past the statuses my verdict leaves open and fail on the one it fails with', async () => {
     // Given
-    const { cell } = recordingCell('idle');
+    const cell = createStatus('idle');
     const down = new Error('the layer went down');
     const heard: Status[] = [];
     const wait = waitForStatus(cell, status => {
@@ -70,7 +69,7 @@ describe('waitForStatus', () => {
 
   it("As a layer above, I abort a pending wait and it fails with the signal's reason and hears no later status", async () => {
     // Given
-    const { cell } = recordingCell('idle');
+    const cell = createStatus('idle');
     const controller = new AbortController();
     const lost = new Error('the layer was lost');
     let heard = 0;
@@ -94,7 +93,7 @@ describe('waitForStatus', () => {
 
   it("As a layer above, I wait with a signal that aborted already and fail with the signal's reason", async () => {
     // Given
-    const { cell } = recordingCell('up');
+    const cell = createStatus('up');
     const lost = new Error('the layer was lost');
 
     // When

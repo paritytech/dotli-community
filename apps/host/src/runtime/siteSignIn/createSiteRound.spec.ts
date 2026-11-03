@@ -203,10 +203,10 @@ async function startRound(options: StartRoundParams = {}) {
     action,
     metric: METRIC,
   });
-  const screens: SiteScreen[] = [flow.screen.get()];
+  const screens: SiteScreen[] = [];
   onTestFinished(
-    flow.screen.listen(() => {
-      screens.push(flow.screen.get());
+    flow.screen.subscribe(screen => {
+      screens.push(screen);
     }),
   );
   return {

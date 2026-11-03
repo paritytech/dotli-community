@@ -10,9 +10,9 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
 - The models behind the views: the event store and the correlation of a call with its answer, filters, rows and detail
   formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
   the stored dock position and section. They are plain modules, tested under Node.
-- Its own components, icons, tokens and phone breakpoint. From the shared UI kit it takes only the Solid glue that reads
-  a store and mounts a root, and the pointer drag, so a store read, a broken root and a drag behave as everywhere else
-  on the page. Each icon is a Solid component that draws an `<svg>` in `currentColor`.
+- Its own components, icons, tokens and phone breakpoint. From the shared UI kit it takes only the Solid glue that
+  mounts a root, and the pointer drag, so a broken root and a drag behave as everywhere else on the page. It reads
+  stores through the Solid store binding. Each icon is a Solid component that draws an `<svg>` in `currentColor`.
 - Not owned: event capture and the bus, and the host's stores and layers. The host gives them through `DebugPanelHost`.
 
 ## Design

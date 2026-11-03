@@ -62,7 +62,7 @@ type Params = {
   /** The core's permission store. */
   registry: Pick<PermissionAuthorizations, 'getStatuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
-  product: Pick<ReadableAtom<ProductState>, 'get' | 'listen'>;
+  product: ReadableAtom<ProductState>;
   /** What a retry waits on. The page's own timers by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
@@ -111,7 +111,6 @@ const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 300;
 
 const NONE: ProductPermissionsState = { status: 'none' };
-const NO_PENDING: PendingPermissions = null;
 
 const POOL = 'product-permissions';
 
@@ -122,9 +121,9 @@ export function createProductPermissions({ registry, product, timers = realTimer
   registerStoreStateReset(() => {
     permissions.set(NONE);
   });
-  const pendingChange = atom<PendingPermissions>(NO_PENDING);
+  const pendingChange = atom<PendingPermissions>(null);
   registerStoreStateReset(() => {
-    pendingChange.set(NO_PENDING);
+    pendingChange.set(null);
   });
   const state: ReadableAtom<ProductPermissionsState> = permissions;
   const pending: ReadableAtom<PendingPermissions> = pendingChange;
@@ -202,8 +201,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
   }
 
   function beginFollowing(): () => void {
-    followProduct();
-    return product.listen(followProduct);
+    return product.subscribe(followProduct);
   }
 
   function followProduct(): void {

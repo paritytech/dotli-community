@@ -3,14 +3,8 @@
 
 // Outside Solid, since islands that hydrate apart read it. It keeps no rooms, bots or messages.
 
-import {
-  createSharedRun,
-  pageLocalStorage,
-  registerStoreStateReset,
-  isShallowEqual,
-  type SafeStorage,
-} from '@dotli/shared';
-import { createPersistentAtom } from '@dotli/stores-persistent';
+import { createSharedRun, pageLocalStorage, registerStoreStateReset, isShallowEqual } from '@dotli/shared';
+import { createPersistentAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
 import { atom, type ReadableAtom, type WritableAtom } from 'nanostores';
 import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
 import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
@@ -35,7 +29,7 @@ export type ChatPanelState = {
   topbarVisible: boolean;
 };
 
-type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
+type WidthStorage = PersistentAtomParams<number>['storage'];
 
 type Params = {
   /** The chat store whose product messages count as unread, the page's by default. */
@@ -201,8 +195,7 @@ function markFollowedRoomSeen(view: ReadableAtom<ChatView>): () => void {
       markRoomSeen(roomId);
     }
   }
-  markLandedRead();
-  return view.listen(markLandedRead);
+  return view.subscribe(markLandedRead);
 }
 
 function setComposerError(message: string | null): void {

@@ -65,6 +65,7 @@ const meta = {
   args: stage.dock,
   beforeEach: () => {
     stage = chatStage();
+    return stage.dispose;
   },
   render: () => (
     <>

@@ -13,6 +13,7 @@ import {
 } from './networkMonitorState.js';
 import { buildChainActivity } from '../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../testing/getRelayGenesis.js';
+import { recordNotified } from '../testing/recordNotified.js';
 import { createManualTimers, must, nth, type ManualTimers } from '@dotli/shared/testing';
 
 const EXTRA = `0x${'ab'.repeat(32)}`;
@@ -391,12 +392,7 @@ describe('The network monitor tracks the phase of each chain', () => {
 describe('The network monitor repaints the panel only on a change', () => {
   it('As a follower, I hear the version bump once per changed record, and not for an unchanged one', () => {
     // Given
-    const versions: number[] = [];
-    onTestFinished(
-      monitor.version.listen(value => {
-        versions.push(value);
-      }),
-    );
+    const versions = recordNotified(monitor.version);
 
     // When
     monitor.recordTransfer({ bytesPerSecond: 10 });
@@ -440,9 +436,11 @@ describe('The network monitor repaints the panel only on a change', () => {
     ({ send, sendChanged }) => {
       // Given
       let woken = 0;
-      monitor.version.listen(() => {
-        woken += 1;
-      });
+      onTestFinished(
+        monitor.version.listen(() => {
+          woken += 1;
+        }),
+      );
 
       // When
       send();

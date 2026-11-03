@@ -111,6 +111,8 @@ export type ChatStage = {
   button: ChatButtonProps;
   /** The panel element the dock handed over. */
   panelElement: () => HTMLElement | undefined;
+  /** Stops the views following the stage's state, for the story's cleanup. */
+  dispose: () => void;
 };
 
 /** A fresh chat for one story. */
@@ -121,7 +123,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
   feed.eq = isShallowEqual;
   // What the views read, following each write as the page's stores reach them through `useStore`.
   const [current, setCurrent] = createSignal(state.get());
-  state.listen(() => setCurrent(state.get()));
+  const unlisten = state.listen(() => setCurrent(state.get()));
   // Strictly rising and close to now, so the list's recency order never ties and bubbles read "just now".
   let clock = 0;
   const stamp = (): number => (clock = Math.max(Date.now(), clock + 1));
@@ -342,6 +344,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
       panel: () => panelElement,
     },
     panelElement: () => panelElement,
+    dispose: unlisten,
   };
   return stage;
 }

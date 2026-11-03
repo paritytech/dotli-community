@@ -4,11 +4,9 @@
 import { registerStoreStateReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
-const INITIAL = false;
-
-const signingOut = atom<boolean>(INITIAL);
+const signingOut = atom<boolean>(false);
 registerStoreStateReset(() => {
-  signingOut.set(INITIAL);
+  signingOut.set(false);
 });
 const store: ReadableAtom<boolean> = signingOut;
 

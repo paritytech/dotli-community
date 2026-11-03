@@ -34,8 +34,7 @@ type StartParams = {
 };
 
 export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
-  const initial: NetworkHealth = 'quiet';
-  const health = atom<NetworkHealth>(initial);
+  const health = atom<NetworkHealth>('quiet');
   const store: ReadableAtom<NetworkHealth> = health;
   let recheck: unknown = null;
   /** Lets a notify that moves no deadline leave `recheck` be. */
@@ -44,7 +43,7 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   registerStoreStateReset(() => {
     run.end();
     disarm();
-    health.set(initial);
+    health.set('quiet');
   });
 
   return {
@@ -63,9 +62,8 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   }
 
   function beginFollowing({ monitor, page }: Required<StartParams>): () => void {
-    judge();
     const unsubscribes = [
-      monitor.version.listen(judge),
+      monitor.version.subscribe(judge),
       listen({ target: page.connectivity, type: 'online', handler: judge }),
       listen({ target: page.connectivity, type: 'offline', handler: judge }),
       listen({ target: page.visibility, type: 'visibilitychange', handler: judge }),

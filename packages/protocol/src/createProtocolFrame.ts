@@ -222,18 +222,23 @@ export function createProtocolFrame<E extends FrameElement>({
    * ever longer waits.
    */
   async function keepFrame(run: AbortSignal, config: ProtocolFrameConfig): Promise<void> {
-    const kept = createFrameSlot();
-    slot = kept;
-    // Before anything that can throw, so a failure is reported as this keeper's and is not retried by each caller.
-    status.set('booting');
-    // A listener heard `booting` and changed the config already when this set ran outside a listener round. Inside
-    // one, a later change drops this boot through the slot.
-    if (run.aborted) {
+    // A retry after a listener's throw lands here too, and must not boot past the mismatch.
+    if (mismatch !== null) {
       return;
     }
+    const kept = createFrameSlot();
+    slot = kept;
     let phase: BootPhase = 'load';
     let readyAt: number | null = null;
     try {
+      // First, so a failure is reported as this keeper's and is not retried by each caller. A status listener's throw
+      // here fails this boot like any other step.
+      status.set('booting');
+      // A listener heard `booting` and changed the config already when this set ran outside a listener round. Inside
+      // one, a later change drops this boot through the slot.
+      if (run.aborted) {
+        return;
+      }
       const iframe = createIframe(config);
       kept.iframe = iframe;
       const transport = await withTimeout({

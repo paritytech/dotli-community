@@ -109,7 +109,8 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   // Not cleared on release, because the frame's chains live on whether or not this tab holds them.
   const frameWasReady = new Set<ChainRole>();
   let transfer = createIdleTransfer();
-  const versionAtom = atom(0);
+  let changes = 0;
+  const versionAtom = atom(changes);
   const version: ReadableAtom<number> = versionAtom;
   registerStoreStateReset(() => {
     known = null;
@@ -120,7 +121,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     transfer = createIdleTransfer();
     // After the clears and never back to 0, so a computed over the model rebuilds from the cleared model and cannot
     // match a version it already built at.
-    versionAtom.set(versionAtom.get() + 1);
+    notify();
   });
 
   return {
@@ -163,7 +164,8 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   };
 
   function notify(): void {
-    versionAtom.set(versionAtom.get() + 1);
+    changes += 1;
+    versionAtom.set(changes);
   }
 
   /** Seeded on first use, so a network chosen before boot is the one listed. */

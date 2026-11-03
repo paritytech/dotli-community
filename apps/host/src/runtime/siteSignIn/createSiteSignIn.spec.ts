@@ -89,10 +89,10 @@ async function startSignIn(options: Params = {}) {
       closed.resolve(undefined);
     },
   });
-  const views: SiteScreen['view'][] = [flow.screen.get().view];
+  const views: SiteScreen['view'][] = [];
   onTestFinished(
-    flow.screen.listen(() => {
-      views.push(flow.screen.get().view);
+    flow.screen.subscribe(screen => {
+      views.push(screen.view);
     }),
   );
   return {

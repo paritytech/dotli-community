@@ -516,8 +516,7 @@ export function createWindowFlow({
     const { intent } = phase;
     void runStep({ name: 'decide', run: () => decide(intent), failure: 'view' });
   }
-  const stops = [responder.state.listen(handleResponderState)];
-  handleResponderState(responder.state.get());
+  const stops = [responder.state.subscribe(handleResponderState)];
 
   // Shown only: the login's answer, not the auth state, decides how a pairing ends.
   stops.push(

@@ -17,6 +17,7 @@ import { atom } from 'nanostores';
 import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
+import { recordNotified } from '../testing/recordNotified.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
@@ -1356,12 +1357,7 @@ describe('auth controller: the sign-in window', () => {
     // Given the prompt on show and every later modal write recorded
     const { auth } = startController({ handoff: createFakeHandoff() });
     auth.set({ ...PAIRING, deeplink: '' });
-    const writes: AuthModalState[] = [];
-    onTestFinished(
-      authModalState.store.listen(() => {
-        writes.push(getAuthModalState());
-      }),
-    );
+    const writes = recordNotified(authModalState.store);
 
     // When: the core reports the pairing again, now with its deeplink
     auth.set(PAIRING);

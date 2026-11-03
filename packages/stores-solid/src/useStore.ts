@@ -34,13 +34,13 @@ type SelectBuildValueParams<Value, Selected> = {
  * The accessor lags a synchronous `set` until Solid's next flush. Handlers acting on a value just written
  * read `store.get()`.
  *
- * A store with no `init`, such as a computed, is read with an `initial` and an identity `select`.
+ * A store with no `init`, such as a computed, is read with an `initial`.
  *
  * @example
  * const slice = useStore(store, state => ({ a: state.a, b: state.b }), { equals: isShallowEqual });
- * const total = useStore(totalStore, value => value, { initial: 0 });
+ * const total = useStore(totalStore, { initial: 0 });
  */
-export function useStore<Value>(store: StoreSource<Value>): Accessor<Value>;
+export function useStore<Value>(store: StoreSource<Value>, params?: UseStoreParams<Value, Value>): Accessor<Value>;
 export function useStore<Value, Selected>(
   store: StoreSource<Value>,
   select: (value: Value) => Selected,
@@ -48,12 +48,15 @@ export function useStore<Value, Selected>(
 ): Accessor<Selected>;
 export function useStore<Value, Selected>(
   store: StoreSource<Value>,
-  select?: (value: Value) => Selected,
-  { equals, initial }: UseStoreParams<Value, Value | Selected> = {},
+  selectOrParams?: ((value: Value) => Selected) | UseStoreParams<Value, Value | Selected>,
+  selectParams: UseStoreParams<Value, Value | Selected> = {},
 ): Accessor<Value | Selected> {
   if (!getOwner()) {
     throw new Error('useStore must be called inside a component or reactive owner');
   }
+
+  const select = typeof selectOrParams === 'function' ? selectOrParams : undefined;
+  const { equals, initial } = typeof selectOrParams === 'object' ? selectOrParams : selectParams;
 
   const pick = (state: Value): Value | Selected => (select === undefined ? state : select(state));
   // The store notifies from whatever owner a producer's `set` runs under, so the write opts out of

@@ -9,7 +9,7 @@ import { createPillPlacement } from './createPillPlacement.js';
 import { topbarMorph, type TopbarMorph } from './createTopbarMorph.js';
 import { getCapsuleStatus } from './getCapsuleStatus.js';
 import { getPillBox, type PillBox } from './getPillBox.js';
-import { isPageActionNeeded, pageActionNeeded } from './isPageActionNeeded.js';
+import { pageActionNeeded } from './pageActionNeeded.js';
 import type { NetworkHealth } from './networkVerdict.js';
 import { topbarState } from './state/topbarState.js';
 
@@ -35,7 +35,7 @@ export function bindTopbarStatus(
   function render(): void {
     const status = getCapsuleStatus({
       health: health.get(),
-      action: isPageActionNeeded(),
+      action: pageActionNeeded.get(),
       online: navigator.onLine,
     });
     bar.dataset['tone'] = status.tone;

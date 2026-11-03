@@ -23,9 +23,6 @@ const INITIAL: PageContent = 'page';
 /** Builds the page's screen slot over `page`. Building one never reads the document. */
 export function createPageScreen({ page }: Params = {}) {
   const content = atom<PageContent>(INITIAL);
-  registerStoreStateReset(() => {
-    content.set(INITIAL);
-  });
   const store: ReadableAtom<PageContent> = content;
   let disposeShown: (() => void) | undefined;
 

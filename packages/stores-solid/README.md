@@ -33,8 +33,9 @@ flowchart LR
 
 ## Public API
 
-- `useStore(store)` returns an accessor of the whole value. `useStore(store, select, { equals, initial })` returns an
-  accessor of the selected value. `equals` drops a rebuilt equal selection, and `initial` stands in for the store's
-  `init` at build time. Both throw outside a component or other reactive owner.
+- `useStore(store, { equals, initial })` returns an accessor of the whole value.
+  `useStore(store, select, { equals, initial })` returns an accessor of the selected value. `equals` drops a rebuilt
+  equal value, and `initial` stands in for the store's `init` at build time. Both throw outside a component or other
+  reactive owner.
 - `StoreSource`, the shape `useStore` reads: `get`, `listen` and an optional `init`.
-- `UseStoreParams`, the options `useStore` takes with a `select`.
+- `UseStoreParams`, the options `useStore` takes.

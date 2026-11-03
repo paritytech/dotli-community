@@ -13,7 +13,7 @@ import { useNetworkPanel } from './network.js';
 export function NetworkButton(): JSX.Element {
   const panel = useNetworkPanel({
     health: networkHealthState.store,
-    network: networkState.store,
+    network: networkState,
     product: productState.store,
     settings: settingsState.store,
   });

@@ -15,6 +15,7 @@ import {
   waitForStatus,
   type StatusSource,
 } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
@@ -42,7 +43,7 @@ type Params = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
   /** What the page's core itself reported last, null while no core reported. */
-  coreReport: StatusSource<DotliAuthState | null>;
+  coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'>;
 };
 
 /** A key the core reports as `0x` hex of whole bytes. */

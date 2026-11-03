@@ -268,7 +268,8 @@ export function createAuthController({
           modal,
         });
 
-  // The store never drops a set as equal, so every step of the ordered stream reaches here.
+  // Every step reaches here while the auth writer sets at most once per listener round, so `previous` is the step
+  // before this one.
   let lastTag = auth.get().tag;
   const unlisten = auth.listen(() => {
     const state = auth.get();

@@ -185,8 +185,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       return () => undefined;
     }
     // A caller that arrives after a phase was reached hears it too.
-    tellPhase(onPhase, status.get());
-    return status.listen(next => {
+    return status.subscribe(next => {
       tellPhase(onPhase, next);
     });
   }
@@ -387,7 +386,8 @@ function tellPhase(onPhase: PhaseCallback, next: DotnsResolverStatus): void {
   if (phase === undefined) {
     return;
   }
-  // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
+  // The callback's own throw must not fail the shared build, nor leave the status behind a client already kept. A throw
+  // from a listener of a store the callback writes still reaches the build.
   try {
     onPhase(phase);
   } catch (error) {

@@ -9,8 +9,9 @@ import type { SessionResult } from './parseSessionResult.js';
 import { SIGNED_OUT_RESULT } from './roundAnswer.js';
 import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } from './listenToMessages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
+import { recordNotified } from '../../testing/recordNotified.js';
 import { getOpenerParty, type OpenerParty } from './openerRule.js';
-import { createResponder, type ResponderState } from './createResponder.js';
+import { createResponder } from './createResponder.js';
 
 type OpenWindowParams = {
   /** The window's opener, a fake one by default, or null for a window no page opened. */
@@ -69,12 +70,7 @@ function openWindow<Result = SessionResult>(options: OpenWindowParams = {}) {
     listen: messages.listen,
     onPageRestore: pageRestores.subscribe,
   });
-  const states: ResponderState[] = [];
-  onTestFinished(
-    responder.state.listen(state => {
-      states.push(state);
-    }),
-  );
+  const states = recordNotified(responder.state);
   return {
     responder,
     opener,
@@ -216,12 +212,7 @@ describe('session window responder', () => {
         }
       }),
     );
-    const heard: ResponderState[] = [];
-    onTestFinished(
-      window.responder.state.listen(state => {
-        heard.push(state);
-      }),
-    );
+    const heard = recordNotified(window.responder.state);
 
     // When the opener is vetted, which the first follower answers at once
     window.post({ data: createHello('r1'), origin: PAGE, source: opener });

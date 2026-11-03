@@ -172,25 +172,9 @@ describe('The network health store', () => {
   });
 
   it('As a user leaving the page, I stop the health store and it leaves its monitor with no listener', () => {
-    // Given: a monitor that counts who listens to it
-    const listening = new Set<unknown>();
-    const counted: HealthMonitor = {
-      getChainClocks: monitor.getChainClocks,
-      // A copy of the atom's members, so the health store may read only `get` and `listen` through it.
-      version: {
-        ...monitor.version,
-        listen(listener) {
-          listening.add(listener);
-          const unsubscribe = monitor.version.listen(listener);
-          return function unsubscribeCounted(): void {
-            listening.delete(listener);
-            unsubscribe();
-          };
-        },
-      },
-    };
-    const stop = startHealth(counted);
-    const listenersWhileRunning = listening.size;
+    // Given
+    const stop = startHealth();
+    const listenersWhileRunning = monitor.version.lc;
 
     // When
     stop();
@@ -198,7 +182,7 @@ describe('The network health store', () => {
     blockAll(100);
 
     // Then: no listener is left, and later blocks change nothing
-    expect({ listenersWhileRunning, listenersAfterStop: listening.size, health: health.store.get() }).toEqual({
+    expect({ listenersWhileRunning, listenersAfterStop: monitor.version.lc, health: health.store.get() }).toEqual({
       listenersWhileRunning: 1,
       listenersAfterStop: 0,
       health: 'quiet',
@@ -259,11 +243,11 @@ describe('The network health store', () => {
     let unsubscribes = 0;
     const counting: HealthMonitor = {
       ...monitor,
-      // A copy of the atom's members, so the health store may read only `get` and `listen` through it.
+      // A copy of the atom's members, so the health store follows it only through this `subscribe`.
       version: {
         ...monitor.version,
-        listen(listener) {
-          const unsubscribe = monitor.version.listen(listener);
+        subscribe(listener) {
+          const unsubscribe = monitor.version.subscribe(listener);
           return () => {
             unsubscribes += 1;
             unsubscribe();

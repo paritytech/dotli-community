@@ -41,7 +41,8 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
   // Requests kept and not yet answered, by call key. A paused store still takes the one reply that closes each, so it
   // holds at most as many entries as the ring holds requests.
   const unanswered = new Map<string, number>();
-  const versionAtom = atom(0);
+  let changes = 0;
+  const versionAtom = atom(changes);
   const version: ReadableAtom<number> = versionAtom;
 
   return {
@@ -252,6 +253,7 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
   }
 
   function notify(): void {
-    versionAtom.set(versionAtom.get() + 1);
+    changes += 1;
+    versionAtom.set(changes);
   }
 }

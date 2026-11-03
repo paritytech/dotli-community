@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { hashBlake2b, createDeferred, fromHex, toHex, type StatusSource } from '@dotli/shared';
-import { atom } from 'nanostores';
+import { hashBlake2b, createDeferred, fromHex, toHex } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
@@ -45,7 +45,7 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
   const changes = createChanges();
   const report = atom<DotliAuthState | null>(null);
   let waits = 0;
-  const coreReport: StatusSource<DotliAuthState | null> = {
+  const coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'> = {
     get: () => report.get(),
     listen(listener) {
       waits += 1;

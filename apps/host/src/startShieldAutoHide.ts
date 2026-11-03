@@ -3,9 +3,11 @@
 
 // The topbar folds away only once the URL pill's shield has settled, so the visitor sees how the page was checked.
 
+import type { ReadableAtom } from 'nanostores';
+
 type Params = {
-  /** Whether the visitor is signed in. Its `listen` returns the unlisten. */
-  loggedIn: { get: () => boolean; listen: (listener: () => void) => () => void };
+  /** Whether the visitor is signed in. */
+  loggedIn: ReadableAtom<boolean>;
   /** Lets the topbar fold away. */
   arm: () => void;
 };
@@ -16,8 +18,8 @@ type Params = {
  */
 export function startShieldAutoHide({ loggedIn, arm }: Params) {
   let settled = false;
-  const dispose = loggedIn.listen(() => {
-    if (loggedIn.get() && settled) {
+  const dispose = loggedIn.listen(next => {
+    if (next && settled) {
       arm();
     }
   });
