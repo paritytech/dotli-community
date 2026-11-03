@@ -10,6 +10,8 @@ type Params<T> = ListenerSetParams<T> & {
   initial: T;
 };
 
+type Change<T> = { value: T; oldValue: T };
+
 export type StatusCell<T> = ReturnType<typeof createStatusCell<T>>;
 
 /**
@@ -19,16 +21,22 @@ export type StatusCell<T> = ReturnType<typeof createStatusCell<T>>;
  * const status = createStatusCell<'idle' | 'ready'>({ initial: 'idle', onListenerError: report });
  * status.set('ready');
  */
-export function createStatusCell<T>({ initial, ...listenerSetParams }: Params<T>) {
+export function createStatusCell<T>({ initial, onListenerError }: Params<T>) {
   let value = initial;
-  const listeners = createListenerSet<T>(listenerSetParams);
+  const listeners = createListenerSet<Change<T>>({
+    onListenerError: (error, change) => {
+      onListenerError(error, change.value);
+    },
+  });
 
   return {
     get,
     /** Does nothing when `next` is the status already. */
     set,
     /** Called on each change only, in order. A listener subscribed twice is two subscriptions. */
-    subscribe: listeners.subscribe,
+    subscribe,
+    /** Like `subscribe`, and the listener hears the status it replaced too. */
+    listen,
   };
 
   function get(): T {
@@ -39,7 +47,20 @@ export function createStatusCell<T>({ initial, ...listenerSetParams }: Params<T>
     if (next === value) {
       return;
     }
+    const oldValue = value;
     value = next;
-    listeners.emit(next);
+    listeners.emit({ value: next, oldValue });
+  }
+
+  function subscribe(listener: (value: T) => void): () => void {
+    return listeners.subscribe(change => {
+      listener(change.value);
+    });
+  }
+
+  function listen(listener: (value: T, oldValue: T | undefined) => void): () => void {
+    return listeners.subscribe(change => {
+      listener(change.value, change.oldValue);
+    });
   }
 }

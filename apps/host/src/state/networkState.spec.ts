@@ -68,6 +68,23 @@ describe('network store', () => {
     });
   });
 
+  it('As a follower, I listen to the network store and hear each monitor change after start', () => {
+    // Given
+    const { store, start } = createNetworkState({ timers });
+    start({ monitor });
+    const heard: string[] = [];
+    store.listen(value => {
+      heard.push(getRelayPhase(value) ?? 'none');
+    });
+
+    // When
+    monitor.recordChainPhase('relay', 'syncing');
+    monitor.recordChainPhase('relay', 'ready');
+
+    // Then
+    expect(heard).toEqual(['syncing', 'ready']);
+  });
+
   it('As a user before the network state starts, I watch a chain come up and see no chain listed', () => {
     // Given a monitor that heard a chain, the store never started
     const { store } = createNetworkState({ timers });

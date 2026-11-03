@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createSyncStore, resetAllStoresForTests, StoreListenerError } from './createSyncStore.js';
+import { createSyncStore, StoreListenerError } from './createSyncStore.js';
+import { resetAllStoresForTests } from './storeResets.js';
 import { isShallowEqual } from './isShallowEqual.js';
 
 describe('createSyncStore', () => {
@@ -20,6 +21,57 @@ describe('createSyncStore', () => {
 
     // Then
     expect(seen).toEqual([1, 2]);
+  });
+
+  it('As a follower, I listen to a store and hear each change with its old value, and no first call', () => {
+    // Given
+    const store = createSyncStore({ name: 'test', initial: 0 });
+    const heard: [number, number | undefined][] = [];
+
+    // When
+    const unlisten = store.listen((value, oldValue) => {
+      heard.push([value, oldValue]);
+    });
+    const heardOnListen = [...heard];
+    store.set(1);
+    store.set(1);
+    store.set(2);
+    unlisten();
+    store.set(3);
+
+    // Then
+    expect(heardOnListen).toEqual([]);
+    expect(heard).toEqual([
+      [1, 0],
+      [2, 1],
+    ]);
+  });
+
+  it('As a subscriber, I subscribe one function twice and hold one subscription that my first unsubscribe removes', () => {
+    // Given
+    const store = createSyncStore({ name: 'test', initial: 0 });
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    store.subscribe(listener);
+
+    // When
+    store.set(1);
+    unsubscribe();
+    store.set(2);
+
+    // Then
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a reader, I read init and get the value the store was built with', () => {
+    // Given
+    const store = createSyncStore({ name: 'test', initial: 'built' });
+
+    // When
+    store.set('later');
+
+    // Then
+    expect(store.init).toBe('built');
   });
 
   it('As a subscriber, I unsubscribe and am no longer notified', () => {

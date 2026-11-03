@@ -55,14 +55,16 @@ listener set, the sync store, the status cell and a few formatting helpers.
 ### `@dotli/shared`
 
 - Concurrency and state: `createAsyncTaskPool`, `AsyncTaskPool`, `createLazyLoad({ load, onFirstMiss? })`,
-  `createListenerSet`, `ListenerSet`, `createSyncStore({ name, initial, equals?, onListenerError? })`, `ReadableStore`,
-  `SyncStore`, `StoreListenerError`, `registerStoreStateReset`, `isShallowEqual`,
-  `createStatusCell({ initial, onListenerError })`, `StatusCell`, `waitForStatus(cell, verdict, { signal? })` (a wait on
-  a status cell until a verdict, which settles at once on the status there is now and leaves through a signal),
-  `createStoreStatus` (a sync store read as a status, for `waitForStatus`), `toAbortError`, `createPendingReplies` (its
-  `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its
-  resolve and reject), `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by
-  the last stop or `end`).
+  `createListenerSet`, `ListenerSet`, `createSyncStore({ name, initial, equals?, onListenerError? })`, `ReadableStore`
+  (`get`, `initial`, `init`, `subscribe`, and `listen`, which hears each change with the value it replaced and has no
+  first call), `SyncStore`, `StoreListenerError`, `registerStoreStateReset`, `isShallowEqual`,
+  `createStatusCell({ initial, onListenerError })`, `StatusCell`, `waitForStatus(source, verdict, { signal? })` (a wait
+  on anything with `get` and `listen`, such as a store or a status cell, until a verdict, which settles at once on the
+  status there is now and leaves through a signal), `StatusSource`, `createStoreStatus` (a sync store read as a status,
+  for `waitForStatus`), `toAbortError`, `createPendingReplies` (its `wait(id, { meta? })`, `getMeta(id)` and
+  `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its resolve and reject),
+  `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by the last stop or
+  `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
   `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,

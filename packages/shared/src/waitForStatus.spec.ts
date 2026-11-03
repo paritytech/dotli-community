@@ -3,32 +3,40 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { createStatusCell } from './createStatusCell.js';
+import { createListenerSet } from './createListenerSet.js';
 import { waitForStatus } from './waitForStatus.js';
 
 type Status = 'idle' | 'booting' | 'up' | 'down';
 
+/** A status the test sets, with the `get` and `listen` a wait needs. */
 function recordingCell(initial: Status = 'idle') {
-  const failures: { error: unknown; value: Status }[] = [];
-  const cell = createStatusCell<Status>({
-    initial,
-    onListenerError: (error, value) => {
-      failures.push({ error, value });
+  let current = initial;
+  const changes = createListenerSet<Status>({
+    onListenerError: error => {
+      throw new Error('A wait listener threw', { cause: error });
     },
   });
-  return { cell, failures };
+  const cell = {
+    get: () => current,
+    set(next: Status) {
+      current = next;
+      changes.emit(next);
+    },
+    listen: changes.subscribe,
+  };
+  return { cell };
 }
 
 describe('waitForStatus', () => {
-  it('As a layer above, I wait on the status there is now and settle without subscribing', async () => {
+  it('As a layer above, I wait on the status there is now and settle without listening', async () => {
     // Given
     const { cell } = recordingCell('up');
-    let subscribed = 0;
+    let listened = 0;
     const counting = {
       get: cell.get,
-      subscribe: (listener: (value: Status) => void) => {
-        subscribed += 1;
-        return cell.subscribe(listener);
+      listen: (listener: (value: Status) => void) => {
+        listened += 1;
+        return cell.listen(listener);
       },
     };
 
@@ -37,7 +45,7 @@ describe('waitForStatus', () => {
 
     // Then
     await expect(wait).resolves.toBeUndefined();
-    expect(subscribed).toBe(0);
+    expect(listened).toBe(0);
   });
 
   it('As a layer above, I wait past the statuses my verdict leaves open and fail on the one it fails with', async () => {

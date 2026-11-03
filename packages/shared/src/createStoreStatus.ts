@@ -12,10 +12,11 @@ import type { ReadableStore } from './createSyncStore.js';
  * status.subscribe(value => render(value));
  */
 export function createStoreStatus<T>(
-  store: Pick<ReadableStore<T>, 'get' | 'subscribe'>,
-): Pick<StatusCell<T>, 'get' | 'subscribe'> {
+  store: Pick<ReadableStore<T>, 'get' | 'subscribe' | 'listen'>,
+): Pick<StatusCell<T>, 'get' | 'subscribe' | 'listen'> {
   return {
     get: store.get,
+    listen: store.listen,
     subscribe: listener =>
       store.subscribe(() => {
         listener(store.get());

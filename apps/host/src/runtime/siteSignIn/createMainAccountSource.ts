@@ -14,7 +14,7 @@ import {
   toHex,
   waitForStatus,
   type ReadableStore,
-  type StatusCell,
+  type StatusSource,
 } from '@dotli/shared';
 import type { CoreLease } from '../createPageCore.js';
 import type { DotliAuthState } from '../session/types.js';
@@ -95,13 +95,13 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   }
 
   /** The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. */
-  function watchLeasedReport(down: AbortSignal): Pick<StatusCell<LeasedReport>, 'get' | 'subscribe'> {
+  function watchLeasedReport(down: AbortSignal): StatusSource<LeasedReport> {
     function getReport(): LeasedReport {
       return down.aborted ? 'down' : coreReport.get();
     }
     return {
       get: getReport,
-      subscribe(listener) {
+      listen(listener) {
         function notify(): void {
           listener(getReport());
         }

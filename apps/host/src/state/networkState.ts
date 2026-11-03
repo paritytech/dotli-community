@@ -64,7 +64,13 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
 
   // A followed monitor can notify many times a second, so with nobody subscribed a change only marks the store stale,
   // and the next `get` rebuilds it.
-  const store: ReadableStore<NetworkState> = { get, initial: network.initial, subscribe };
+  const store: ReadableStore<NetworkState> = {
+    get,
+    initial: network.initial,
+    init: network.init,
+    subscribe,
+    listen,
+  };
 
   return {
     /** The chains, transfer and verdict as of the last read. Rebuilt on `get` when it went stale unwatched. */
@@ -94,6 +100,16 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
       readers.delete(reader);
       unsubscribe();
     }
+  }
+
+  function listen(listener: (value: NetworkState, oldValue: NetworkState | undefined) => void): () => void {
+    const reader = {};
+    readers.add(reader);
+    const unlisten = network.listen(listener);
+    return () => {
+      readers.delete(reader);
+      unlisten();
+    };
   }
 
   function start({ monitor = networkMonitorState }: StartParams = {}): () => void {

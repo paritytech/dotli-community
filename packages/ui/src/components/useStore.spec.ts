@@ -32,6 +32,8 @@ describe('useStore', () => {
     const counted: ReadableStore<string> = {
       get: store.get,
       initial: store.initial,
+      init: store.init,
+      listen: store.listen,
       subscribe: listener => {
         active += 1;
         const off = store.subscribe(listener);

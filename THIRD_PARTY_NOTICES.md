@@ -12,7 +12,7 @@ FSL-1.1-Apache-2.0) terms is used to build the application and is not redistribu
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (`MPL-2.0`), unmodified and with its license header.
 
-> Generated from the resolved dependency tree (908 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
+> Generated from the resolved dependency tree (909 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 
@@ -123,11 +123,11 @@ json-schema-traverse, json-stable-stringify-without-jsonify, json5, jsonc-parser
 keyv, kleur, known-css-properties, leven, levn, lint-staged, locate-path, lodash.debounce, log-symbols, loupe,
 lz-string, magic-string, magicast, math-intrinsics, mdast-util-to-hast, merge-anything, micromark-util-character,
 micromark-util-encode, micromark-util-sanitize-uri, micromark-util-symbol, micromark-util-types, mimic-function,
-min-indent, mrmime, ms, muggle-string, nanoevents, nanoid, natural-compare, neotraverse, neverthrow, nlcst-to-string,
-node-fetch-native, node-mock-http, node-releases, normalize-path, npm-run-path, object-inspect, object-keys,
-object.assign, obug, ofetch, onetime, oniguruma-parser, oniguruma-to-es, open, optionator, ora, own-keys, oxc-parser,
-oxc-resolver, p-limit, p-locate, p-queue, p-timeout, p-try, package-manager-detector, parse-json, parse-ms, parse5,
-path-browserify, path-exists, path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api,
+min-indent, mrmime, ms, muggle-string, nanoevents, nanoid, nanostores, natural-compare, neotraverse, neverthrow,
+nlcst-to-string, node-fetch-native, node-mock-http, node-releases, normalize-path, npm-run-path, object-inspect,
+object-keys, object.assign, obug, ofetch, onetime, oniguruma-parser, oniguruma-to-es, open, optionator, ora, own-keys,
+oxc-parser, oxc-resolver, p-limit, p-locate, p-queue, p-timeout, p-try, package-manager-detector, parse-json, parse-ms,
+parse5, path-browserify, path-exists, path-key, path-parse, pathe, pathval, picomatch, pngjs, polkadot-api,
 possible-typed-array-names, postcss, postcss-selector-parser, prelude-ls, prettier, prettier-plugin-astro, pretty-bytes,
 pretty-format, pretty-ms, prismjs, process-ancestry, property-information, punycode, qified, qrcode, radix3, react,
 react-dom, react-is, read-pkg, readdirp, recast, redent, reflect.getprototypeof, regenerate,

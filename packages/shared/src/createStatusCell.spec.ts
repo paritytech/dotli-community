@@ -33,4 +33,28 @@ describe('createStatusCell', () => {
     // Then
     expect(heard).toEqual([]);
   });
+
+  it('As a layer owner, I listen to the cell and hear each change with its old value, and no first call', () => {
+    // Given
+    const { cell } = recordingCell('idle');
+    const heard: [Status, Status | undefined][] = [];
+
+    // When
+    const unlisten = cell.listen((value, oldValue) => {
+      heard.push([value, oldValue]);
+    });
+    const heardOnListen = [...heard];
+    cell.set('up');
+    cell.set('up');
+    cell.set('idle');
+    unlisten();
+    cell.set('up');
+
+    // Then
+    expect(heardOnListen).toEqual([]);
+    expect(heard).toEqual([
+      ['up', 'idle'],
+      ['idle', 'up'],
+    ]);
+  });
 });

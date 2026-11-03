@@ -247,10 +247,9 @@ export function createSiteRound<Result>({
    * back-forward cache meanwhile, which sends the result it holds.
    */
   function closeOnceAnswered(): void {
-    void waitForStatus(
-      { get: responder.state, subscribe: responder.subscribe },
-      state => state.kind === 'answered',
-    ).then(close);
+    void waitForStatus({ get: responder.state, listen: responder.subscribe }, state => state.kind === 'answered').then(
+      close,
+    );
   }
 
   function fail(failure: SiteRoundFailure): void {

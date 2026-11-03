@@ -162,7 +162,7 @@ export function answerSignOut({ responder, request, enabled, read }: AnswerSignO
 /** Resolves with the responder's first vetting, or null once it can have none: no opener, or one it refused. */
 async function waitForFirstVetting(responder: Pick<Responder<unknown>, 'state' | 'subscribe'>): Promise<Vetted | null> {
   let vetting: Vetted | null | undefined;
-  await waitForStatus({ get: responder.state, subscribe: responder.subscribe }, state => {
+  await waitForStatus({ get: responder.state, listen: responder.subscribe }, state => {
     vetting = getVetting(state);
     return vetting !== undefined;
   });

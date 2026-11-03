@@ -3,16 +3,22 @@
 
 // Plain stores with no framework in them. Components read one through `useStore` in `@dotli/ui`.
 
+import { registerStoreStateReset } from './storeResets.js';
+
 export type ReadableStore<T> = {
   /** The current value. Never throws. */
   get: () => T;
   /** What a build-time render shows, as nothing writes a store then. */
   initial: T;
+  /** The value the store was built with, as a nanostores store names it. */
+  init: T | undefined;
   /**
    * Notifications are synchronous, so a listener calling another store's setter runs that nested set
    * and its listeners before the outer setter notifies its own.
    */
-  subscribe: (listener: () => void) => () => void;
+  subscribe(listener: () => void): () => void;
+  /** Like `subscribe`, without a first call. The listener hears the new value and the one it replaced. */
+  listen(listener: (value: T, oldValue: T | undefined) => void): () => void;
 };
 
 export type SyncStore<T> = ReturnType<typeof createSyncStore<T>>;
@@ -31,8 +37,6 @@ type Params<T> = {
   onListenerError?: (error: Error) => void;
 };
 
-const registry = new Set<() => void>();
-
 /**
  * A plain store that notifies its subscribers synchronously on each change.
  *
@@ -47,13 +51,16 @@ export function createSyncStore<T>({
   onListenerError = rethrowInMicrotask,
 }: Params<T>) {
   let current = initial;
-  const listeners = new Set<() => void>();
-  registry.add(reset);
+  const listeners = new Set<(value: T, oldValue: T) => void>();
+  const subscribed = new Map<() => void, () => void>();
+  registerStoreStateReset(reset);
 
   return {
     get,
     /** What a build-time render shows, as nothing writes a store then. */
     initial,
+    /** The value the store was built with. */
+    init: initial,
     /** A value equal to the current one is dropped and notifies nobody. */
     set,
     /**
@@ -61,6 +68,8 @@ export function createSyncStore<T>({
      * and its listeners before the outer setter notifies its own.
      */
     subscribe,
+    /** Like `subscribe`, under the same delivery and error rules, and its listener hears the replaced value too. */
+    listen,
     /** Tests only. */
     reset,
   };
@@ -73,12 +82,13 @@ export function createSyncStore<T>({
     if (equals(current, next)) {
       return;
     }
+    const previous = current;
     current = next;
     // Snapshot so a listener that unsubscribes (itself or another) during
     // notification neither skips nor repeats anyone in this round.
     for (const listener of [...listeners]) {
       try {
-        listener();
+        listener(next, previous);
       } catch (cause) {
         // A broken UI listener must not stop the producer's event dispatch.
         onListenerError(new StoreListenerError(name, cause));
@@ -87,9 +97,32 @@ export function createSyncStore<T>({
   }
 
   function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
+    // One wrapper per function, so a function subscribed twice is one subscription that its first unsubscribe removes.
+    let callListener = subscribed.get(listener);
+    if (callListener === undefined) {
+      callListener = () => {
+        listener();
+      };
+      subscribed.set(listener, callListener);
+    }
+    listeners.add(callListener);
     return () => {
-      listeners.delete(listener);
+      const wrapper = subscribed.get(listener);
+      if (wrapper !== undefined) {
+        listeners.delete(wrapper);
+        subscribed.delete(listener);
+      }
+    };
+  }
+
+  function listen(listener: (value: T, oldValue: T) => void): () => void {
+    // A fresh wrapper per call, so a listener given twice is two subscriptions that each unlisten alone.
+    function callListener(value: T, oldValue: T): void {
+      listener(value, oldValue);
+    }
+    listeners.add(callListener);
+    return () => {
+      listeners.delete(callListener);
     };
   }
 
@@ -106,18 +139,6 @@ export class StoreListenerError extends Error {
   constructor(store: string, cause: unknown) {
     super(`store ${store} listener failed`, { cause });
     this.store = store;
-  }
-}
-
-/** Adds module state kept beside a store to what `resetAllStoresForTests` resets. */
-export function registerStoreStateReset(reset: () => void): void {
-  registry.add(reset);
-}
-
-/** Tests only, through `@dotli/shared/testing`. */
-export function resetAllStoresForTests(): void {
-  for (const reset of registry) {
-    reset();
   }
 }
 
