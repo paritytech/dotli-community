@@ -46,6 +46,8 @@ type Params = {
   silentSandbox?: boolean;
   /** A protocol frame refused this page's wire version before the load asked, so its listener hears it at once. */
   latchedMismatch?: ProtocolVersionMismatchError;
+  /** What the product's core fails to boot with. It boots without it. */
+  coreBootError?: Error;
 };
 
 const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
@@ -196,6 +198,84 @@ describe('createProductLoader', () => {
     // Then
     await expect(loaded).rejects.toBe(screenFailure);
   });
+
+  it('As a visitor, I open a name for the first time and its wallet core boots while the name resolves', async () => {
+    // Given a name with an app published
+    const { loader, frame, names } = setupLoader({ published: { 'app.doom': 'bafy-app' } });
+
+    // When the name is loaded
+    await loader.load('doom');
+
+    // Then the core was held before the name was resolved
+    expect(frame.holdCore).toHaveBeenCalledBefore(vi.mocked(names.resolveProduct));
+  });
+
+  it('As a visitor whose wallet core cannot boot, I open a name and see the failure screen at the render, and the app is never asked to render', async () => {
+    // Given a wallet core that fails to boot and an app published
+    const cause = new Error('the wallet core did not boot');
+    const { loader, frame, failures, captured } = setupLoader({
+      published: { 'app.doom': 'bafy-app' },
+      coreBootError: cause,
+    });
+
+    // When the name is loaded
+    await loader.load('doom');
+
+    // Then only the render handoff is reported, the failure screen shows, and the app is not rendered
+    expect(captured.map(context => context.step)).toEqual(['render_handoff']);
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(frame.render).not.toHaveBeenCalled();
+  });
+
+  it.each<{ outcome: string; params: Params; steps: string[] }>([
+    {
+      outcome: 'fails to resolve',
+      params: { resolveError: new Error('Asset Hub went quiet') },
+      steps: ['name_resolve'],
+    },
+    { outcome: 'has nothing published', params: {}, steps: [] },
+    {
+      outcome: 'has a cached copy that no longer passes',
+      params: { cached: { cid: 'bafy-cached', manifests: { root: '{"$v":2}', app: null } } },
+      steps: ['cached_launch_gate'],
+    },
+  ])(
+    'As a visitor whose wallet core cannot boot, I open a name that $outcome and see only that outcome reported',
+    async ({ params, steps }) => {
+      // Given a wallet core that fails to boot and a name that ends one of three ways
+      const { loader, failures, captured } = setupLoader({
+        ...params,
+        coreBootError: new Error('the wallet core did not boot'),
+      });
+
+      // When the name is loaded
+      await loader.load('doom');
+
+      // Then only that outcome is reported
+      expect(captured.map(context => context.step)).toEqual(steps);
+      expect(failures).toHaveLength(steps.length);
+    },
+  );
+
+  it.each<{ outcome: string; params: Params }>([
+    { outcome: 'renders from the network', params: { published: { 'app.doom': 'bafy-app' } } },
+    { outcome: 'renders from the cache', params: { cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } } },
+    { outcome: 'has nothing published', params: {} },
+    { outcome: 'fails to resolve', params: { resolveError: new Error('Asset Hub went quiet') } },
+  ])(
+    'As a visitor, I open a name that $outcome and the core held for it is let go once the load ends',
+    async ({ params }) => {
+      // Given a name that ends one of four ways
+      const { loader, frame, releaseCore } = setupLoader(params);
+
+      // When the name is loaded
+      await loader.load('doom');
+
+      // Then the held core is released once and was held once
+      expect(releaseCore).toHaveBeenCalledTimes(1);
+      expect(frame.holdCore).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('As a visitor, I see the sandbox report the content loaded and my journey ends', async () => {
     // Given
@@ -438,6 +518,7 @@ function setupLoader(params: Params = {}) {
   const mismatchListeners = new Set<(error: ProtocolVersionMismatchError) => void>();
   const sandboxListeners = new Set<() => void>();
   const published = params.published ?? {};
+  const releaseCore = vi.fn();
   const names: NameSource = {
     resolveProduct: vi.fn((label: string, { onPhase }: Parameters<NameSource['resolveProduct']>[1] = {}) => {
       onPhase?.('asset-hub-syncing');
@@ -450,6 +531,11 @@ function setupLoader(params: Params = {}) {
   };
   const frame = {
     setPageProduct: vi.fn(),
+    holdCore: vi.fn<LoaderFrame['holdCore']>(() =>
+      params.coreBootError !== undefined
+        ? Promise.reject(params.coreBootError)
+        : Promise.resolve({ release: releaseCore }),
+    ),
     render: vi.fn<LoaderFrame['render']>(() => Promise.resolve()),
     halt: vi.fn(),
     onContentDone(callback) {
@@ -523,6 +609,8 @@ function setupLoader(params: Params = {}) {
     timers,
     names,
     frame,
+    /** The release of the core lease the frame handed the load. */
+    releaseCore,
     cidCache,
     failures,
     stored,

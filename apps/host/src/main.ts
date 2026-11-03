@@ -80,6 +80,17 @@ type Shell = {
   productFrame: ProductFrame;
 };
 
+/** A CID cache read started before the shell was up, for the name the page opens. */
+type EarlyCidRead = { label: string; read: ReturnType<LoaderCidCache['get']> };
+
+type OpenProductParams = {
+  route: Extract<ShellRoute, { kind: 'product' }>;
+  shell: Shell;
+  cidRead: EarlyCidRead | null;
+};
+
+type CreatePageCidCacheParams = { names: NameSource; cidRead: EarlyCidRead | null };
+
 /** Built on the host pool's Asset Hub connection, since the resolver cannot import the pool. */
 async function loadRpcResolver(): Promise<RpcResolver> {
   const [resolveModule, bridge] = await Promise.all([loadResolve(), loadBridge()]);
@@ -90,7 +101,10 @@ async function loadRpcResolver(): Promise<RpcResolver> {
   });
 }
 
-/** Starts the debug tools, the sandbox channel, the settings and the bridge. */
+/**
+ * Starts the debug tools, the sandbox channel, the settings and the bridge. It sets the page's network before its
+ * first await, and the shared settings read after that never change it.
+ */
 async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${formatElapsed(PAGE_START)})`);
 
@@ -196,7 +210,8 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   }
 }
 
-async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product' }>, shell: Shell): Promise<void> {
+async function openProduct({ route, shell, cidRead }: OpenProductParams): Promise<void> {
+  const { label, base } = route;
   const { settings, bridgeModule } = shell.startup;
   const protocol = getProtocolClient();
   bootTracker.setStep('resolve_setup');
@@ -221,6 +236,7 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
     base,
     frame: {
       setPageProduct: bridgeModule.setPageProduct,
+      holdCore: bridgeModule.acquirePageCore,
       render: product => shell.productFrame.render(product),
       halt() {
         shell.productFrame.halt();
@@ -229,7 +245,7 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
       onContentProgress: listener => relay.onProgress(listener),
       onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
     },
-    cidCache: createPageCidCache(names),
+    cidCache: createPageCidCache({ names, cidRead }),
     recents: { record: recentLabels.record },
     failureScreen: loadFailureScreen,
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
@@ -238,14 +254,23 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
 }
 
 /**
- * The page's CID cache for the active network, checked with `names`, the source the load itself reads. Its writes and
- * its check against the network wait until the page is idle, so they never hold a render back.
+ * The page's CID cache for the active network, checked with `names`, the source the load itself reads. Its first read
+ * for the early read's name is that read. Its writes and its check against the network wait until the page is idle,
+ * so they never hold a render back.
  */
-function createPageCidCache(names: NameSource): LoaderCidCache {
+function createPageCidCache({ names, cidRead }: CreatePageCidCacheParams): LoaderCidCache {
+  let early = cidRead;
   const set = ({ label, cid, manifests }: CachedCopy): Promise<void> =>
     cidCache.set({ label, network: getNetwork(), cid, manifests });
   return {
-    get: label => cidCache.get(label, getNetwork()),
+    get(label) {
+      if (early?.label === label) {
+        const { read } = early;
+        early = null;
+        return read;
+      }
+      return cidCache.get(label, getNetwork());
+    },
     storeLater(copy) {
       runWhenIdle(() => {
         void set(copy);
@@ -319,7 +344,12 @@ async function main(): Promise<void> {
   if (route.kind === 'preview' || route.kind === 'localhost') {
     urlPillState.showLocalhost(route.host);
   }
-  const shell = await startShell(route, getShellPageRole(route, framed));
+  const booting = startShell(route, getShellPageRole(route, framed));
+  // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
+  // even when the shell fails to start.
+  const cidRead: EarlyCidRead | null =
+    route.kind === 'product' ? { label: route.label, read: cidCache.get(route.label, getNetwork()) } : null;
+  const shell = await booting;
   switch (route.kind) {
     case 'preview':
       await openLocalTarget(route, shell);
@@ -330,7 +360,7 @@ async function main(): Promise<void> {
       return;
     case 'product':
       announceRoute(route, shell.flowId);
-      await openProduct(route, shell);
+      await openProduct({ route, shell, cidRead });
       return;
     case 'landing':
       announceRoute(route, shell.flowId);

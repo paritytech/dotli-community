@@ -26,7 +26,7 @@ import { isSiteGrantForgotten, pageRole } from './pageRole.js';
 import { coreStorage, signInFlag, type SessionRead } from './session/createCoreStorage.js';
 import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
 import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
-import { LANDING_PRODUCT } from './createPageCore.js';
+import { LANDING_PRODUCT, type CoreLease } from './createPageCore.js';
 import { getWindowAsks } from './hostCallbacks/getWindowAsks.js';
 import { listenForSessionFlagChange, sessionPresence } from './session/createPagePresence.js';
 import { listenForSiteWalletChange } from './session/listenForLocalWalletChange.js';
@@ -259,6 +259,15 @@ const sessionLease = createSessionLease({
  */
 export function startSessionLease(): () => void {
   return sessionLease.start();
+}
+
+/**
+ * Leases the core of the page's product, dialing it when none serves that product, so it boots before the product
+ * renders. Rejects with the boot's error, or `CoreRedialError` when a replacement could not boot. Throws before
+ * `initBridge`.
+ */
+export function acquirePageCore(): Promise<CoreLease> {
+  return bridge.core.acquire();
 }
 
 /** The main store's restore and a core of its own, for the sign-out window. */
