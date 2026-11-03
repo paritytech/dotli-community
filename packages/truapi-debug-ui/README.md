@@ -30,9 +30,11 @@ flowchart LR
 - The models take their inputs as parameters and import no Solid, so they are tested under Node. Each is one function or
   factory in a module of its own. Keys are stable, so a view updates a box in place as traffic streams in.
 - The stateful models are factories that return plain objects, and their types come from the factories. The event store
-  takes its clock as a parameter, defaulting to the page clock, and stamps each TrUAPI message with it at insert. The
-  stored dock and section are each one object with `read` and `write` over a storage the caller may replace, and the
-  panel uses their page instances.
+  takes its clock as a parameter, defaulting to the page clock, and stamps each TrUAPI message with it at insert. It
+  publishes a count of its changes as a readable atom that only grows, and the panel re-reads the ring at most once a
+  frame, when the count has moved. The stored dock and section are each a persistent atom over a storage the caller may
+  replace. Each reads its key once when built, and going back to the default removes the key. Their page instances are
+  built on first use, so loading the models reads no storage. The panel reads them as stores and writes them with `set`.
 - `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching (opening the page's
   phrase view and signing out), diagnostics, the archive loader (the host picks gateway or blocks), content insets, a
   dock inset callback, and leaving debug mode, which the host does on Hide. The panel imports no host module.

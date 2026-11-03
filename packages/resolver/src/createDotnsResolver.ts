@@ -7,9 +7,10 @@
 
 import { createClient, DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
+import { atom } from 'nanostores';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { m, reportListener, spans as S } from '@dotli/metrics';
-import { CHAIN_HALTED_ERROR_DATA, createAsyncTaskPool, createStatusCell, log, toHex, withTimeout } from '@dotli/shared';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { CHAIN_HALTED_ERROR_DATA, createAsyncTaskPool, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
 import { ContenthashDecodeError } from './contenthashDecodeError.js';
@@ -100,11 +101,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     retryIf: isChainHalt,
   });
 
-  // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
-  const status = createStatusCell<DotnsResolverStatus>({
-    initial: 'idle',
-    onListenerError: reportListener('resolve', 'resolver.status'),
-  });
+  const status = atom<DotnsResolverStatus>('idle');
 
   let hub: ChainClient | null = null;
   let peopleClient: ChainClient | null = null;
@@ -382,11 +379,22 @@ function isChainHalt(error: unknown): boolean {
   return error instanceof DisjointError || error instanceof ApiStoppedError;
 }
 
-/** Tells `onPhase` the phase a client status stands for, if it stands for one. */
+/** Tells `onPhase` the phase a client status stands for, if it stands for one, and reports a throw from it. */
 function tellPhase(onPhase: PhaseCallback, next: DotnsResolverStatus): void {
   const phase = PHASES[next];
-  if (phase !== undefined) {
+  if (phase === undefined) {
+    return;
+  }
+  // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
+  try {
     onPhase(phase);
+  } catch (error) {
+    reportDefect(error, {
+      flow: 'resolve',
+      step: 'phase_callback',
+      metric: S.RESOLVE_PHASE_CALLBACK,
+      message: '[dot.li resolve] phase callback threw',
+    });
   }
 }
 

@@ -5,7 +5,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
-import { createDeferred, createSyncStore, realTimers, type Timers } from '@dotli/shared';
+import { createDeferred, realTimers, type Timers } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
 import { bindReports } from '../testing/bindReports.js';
@@ -290,8 +291,10 @@ function matchAttached(attached: (HTMLIFrameElement | undefined)[], hosts: FakeI
 
 /** A product page whose topbar login runs on `fakes`, as the shell starts it. */
 function createTopbarLogin({ fakes }: CreateTopbarLoginParams): () => Promise<void> {
+  const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
+  auth.eq = () => false;
   const commands = createCoreAuthCommands({
-    auth: createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' }, equals: () => false }),
+    auth,
     core: fakes.core,
     session: { reportLoginFailure: vi.fn() },
     walletMode: () => 'app',

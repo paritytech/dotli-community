@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createDeferred, toError } from '@dotli/shared';
 import { catchRejection, createManualTimers, readOutcome, recordLog, type ManualTimers } from '@dotli/shared/testing';
@@ -268,6 +268,62 @@ describe('createProtocolFrame', () => {
       { outcome: 'error', phase: 'ready', reason: 'ProtocolInitFailedError' },
     ]);
     expect(dom.countFrames()).toBe(1);
+    expect(frame.getStatus()).toBe('booting');
+  });
+
+  it('As the host, a frame status listener throws while the frame is dropped, and the frame is still cleaned up', async () => {
+    // Given a listening frame, and a status listener that throws when the frame goes idle
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.getTransport();
+    await dom.listen();
+    const dropped = dom.getIframe();
+    frame.subscribeStatus(next => {
+      if (next === 'idle') {
+        throw new Error('listener broke');
+      }
+    });
+
+    // When a config change drops the frame
+    let thrown: unknown = null;
+    try {
+      frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    } catch (error) {
+      thrown = error;
+    }
+    await advance();
+
+    // Then the change failed with the listener's throw, the dropped iframe is gone, and the frame is rebuilt
+    expect(toError(thrown).message).toBe('listener broke');
+    expect(dropped.isConnected).toBe(false);
+    expect(dom.countFrames()).toBe(1);
+    expect(new URL(dom.getIframe().src).searchParams.get('mode')).toBe('rpc');
+  });
+
+  it('As the host, a frame status listener throws when the frame listens, and the frame is dropped and rebuilt', async () => {
+    // Given a booting frame, its transport, and a status listener that throws when the frame listens
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    const loaded = frame.getTransport();
+    const booted = dom.getIframe();
+    frame.subscribeStatus(next => {
+      if (next === 'listening') {
+        throw new Error('listener broke');
+      }
+    });
+
+    // When the frame listens, and the rebuild wait passes
+    await dom.listen();
+    const closedWith = await readOutcome((await loaded).whenConnected());
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+
+    // Then the first frame is gone with the listener's throw, and a new frame boots
+    expect(booted.isConnected).toBe(false);
+    expect(closedWith).toBe('listener broke');
+    expect(dom.countFrames()).toBe(1);
+    expect(dom.getIframe()).not.toBe(booted);
     expect(frame.getStatus()).toBe('booting');
   });
 
@@ -872,10 +928,10 @@ describe('protocol status', () => {
     ]);
   });
 
-  it('As a dotli integrator, I request from a status listener after a config change and see the statuses in order', async () => {
-    // Given
-    void host.client.frame.ensureReady();
-    await host.bringUp();
+  it('As a dotli integrator, I request from a status listener after a config change, a listener after it hears the status there is on its turn, and a later ready waiter waits on the rebuilt frame', async () => {
+    // Given a boot request queued ahead of the rebuilding listener, a second listener, and a ready waiter after both
+    const booting = catchRejection(host.client.frame.ensureReady());
+    await host.listen();
     const heard: ProtocolStatus[][] = [[], []];
     let request: Promise<void> | null = null;
     host.client.frame.subscribeStatus(next => {
@@ -885,6 +941,7 @@ describe('protocol status', () => {
       }
     });
     host.client.frame.subscribeStatus(next => heard[1]?.push(next));
+    const later = host.client.frame.ensureReady();
 
     // When
     host.client.frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -894,8 +951,10 @@ describe('protocol status', () => {
     // Then
     expect(framesAfterChange).toBe(1);
     expect(heard[0]).toEqual(['idle', 'booting', 'listening', 'ready']);
-    expect(heard[1]).toEqual(['idle', 'booting', 'listening', 'ready']);
+    expect(heard[1]).toEqual(['booting', 'booting', 'listening', 'ready']);
     await expect(request).resolves.toBeUndefined();
+    expect((await booting).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
+    await expect(later).resolves.toBeUndefined();
   });
 
   it('As a dotli integrator, I request from an idle listener during a config change and the frame keeps one keeper', async () => {
@@ -1053,41 +1112,7 @@ describe('protocol status', () => {
     expect(host.client.frame.getStatus()).toBe('ready');
   });
 
-  it('As a dotli integrator, I see a status listener that throws reported and counted, while the next listener still hears the change', async () => {
-    // Given a first listener that throws on every change, and a reporting pipeline that records captures and counts
-    const captures: { step: string; tags: Record<string, string> | undefined }[] = [];
-    onTestFinished(
-      bindCaptureSink({
-        exception: (_error, context) => {
-          captures.push({ step: context.step, tags: context.tags });
-        },
-        expected: () => undefined,
-      }),
-    );
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    host.client.frame.subscribeStatus(() => {
-      throw new Error('listener broke');
-    });
-    const heard: ProtocolStatus[] = [];
-    host.client.frame.subscribeStatus(next => heard.push(next));
-
-    // When
-    void host.client.frame.ensureReady();
-    await host.listen();
-
-    // Then the next listener heard each change, and each throw was captured once and counted once
-    expect(heard).toEqual(['booting', 'listening']);
-    expect(captures).toEqual([
-      { step: 'listener', tags: { owner: 'protocol.status' } },
-      { step: 'listener', tags: { owner: 'protocol.status' } },
-    ]);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'Error', owner: 'protocol.status' },
-      { outcome: 'error', reason: 'Error', owner: 'protocol.status' },
-    ]);
-  });
-
-  it('As a dotli integrator, I unsubscribe a listener from another listener and it hears nothing after that', async () => {
+  it('As a dotli integrator, I unsubscribe a listener from another listener and it hears nothing after that, not even the change of that round', async () => {
     // Given
     void host.client.frame.ensureReady();
     const status = await host.bringUp();
@@ -1105,7 +1130,7 @@ describe('protocol status', () => {
     status.fail(new ProtocolFatalError('boom'));
     await advance();
 
-    // Then
-    expect(heard).toEqual(['failed']);
+    // Then the change it was due to hear when it was unsubscribed is dropped too
+    expect(heard).toEqual([]);
   });
 });

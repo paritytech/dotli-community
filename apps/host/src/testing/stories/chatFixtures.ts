@@ -7,7 +7,8 @@
 
 import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
-import { createSyncStore, isShallowEqual, type SyncStore } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
+import { atom, type WritableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import { chatUnreadLabel } from '../../components/chat/unread.js';
 import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
@@ -78,7 +79,7 @@ export type Published = {
 };
 
 export type ChatStage = {
-  state: SyncStore<StageState>;
+  state: WritableAtom<StageState>;
   update(patch: Partial<StageState>): void;
   rooms: ChatRoom[];
   bots: ChatBot[];
@@ -114,16 +115,10 @@ export type ChatStage = {
 
 /** A fresh chat for one story. */
 export function chatStage(initial: Partial<StageState> = {}): ChatStage {
-  const state = createSyncStore<StageState>({
-    name: 'story_chat_state',
-    initial: { ...INITIAL, ...initial },
-    equals: isShallowEqual,
-  });
-  const feed = createSyncStore<FeedState>({
-    name: 'story_chat_feed',
-    initial: { contacts: null, contactsFailed: false, messages: null, messagesFailed: false },
-    equals: isShallowEqual,
-  });
+  const state = atom<StageState>({ ...INITIAL, ...initial });
+  state.eq = isShallowEqual;
+  const feed = atom<FeedState>({ contacts: null, contactsFailed: false, messages: null, messagesFailed: false });
+  feed.eq = isShallowEqual;
   // What the views read, following each write as the page's stores reach them through `useStore`.
   const [current, setCurrent] = createSignal(state.get());
   state.listen(() => setCurrent(state.get()));

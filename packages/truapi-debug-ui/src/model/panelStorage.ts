@@ -4,4 +4,4 @@
 import type { SafeStorage } from '@dotli/shared';
 
 /** Where the panel keeps its choices. `localStorage` is one. */
-export type PanelStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
+export type PanelStorage = Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;

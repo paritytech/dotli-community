@@ -8,7 +8,8 @@
 
 import { withActiveTld } from '@dotli/config';
 import { reportDefect, spans as S } from '@dotli/metrics';
-import { getErrorMessage, log, type ReadableStore, registerStoreStateReset } from '@dotli/shared';
+import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { AuthCommands } from './createAuthCommands.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn, type InPagePhrase } from './createInPageSignIn.js';
@@ -36,7 +37,7 @@ type Params = {
    * the bridge chunk fails to load.
    */
   commands: () => Promise<AuthCommands>;
-  auth: ReadableStore<DotliAuthState>;
+  auth: ReadableAtom<DotliAuthState>;
   /** The sign-in window, or null for a page that pairs in place. */
   handoff: SessionHandoff | null;
   /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */

@@ -1,12 +1,11 @@
 # `@dotli/shared`
 
 Small, framework-free helpers that every other package may use: logging, error serialization, the async task pool, the
-listener set, the sync store, the status cell and a few formatting helpers.
+listener set, the test reset of stores and a few formatting helpers.
 
 ## Responsibility
 
-- Owns the primitives other layers build on: `createAsyncTaskPool`, `createListenerSet`, `createSyncStore`,
-  `createStatusCell`, `log`.
+- Owns the primitives other layers build on: `createAsyncTaskPool`, `createListenerSet`, `log`.
 - Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
   that never throws, event listening with its own stop, the IndexedDB callbacks as promises and the wipe of an origin's
   stores.
@@ -20,8 +19,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
   their task idempotent instead of hand-rolling in-flight flags.
 - A module that waits takes `Timers`, the page's own by default, which read the globals at each call. A spec passes
   `createManualTimers()` and moves time itself, so it fakes no globals.
-- The sync store imports no Solid. Notifications are synchronous, and every store registers a reset so tests can restore
-  all of them at once. It stays off Solid so boot-path code does not ship Solid's core.
+- A store, or module state kept beside one, registers a reset, so tests can restore all of them at once.
 - A listener set delivers a value to every listener in order. A value emitted during delivery waits for the round in
   progress, and a listener that throws is reported through a callback while the others still hear the value. Each owner
   passes its own report.
@@ -39,7 +37,6 @@ listener set, the sync store, the status cell and a few formatting helpers.
   report hook.
 - A shared run begins with its first join and ends with its last stop or an `end`. A stop left over from an ended run
   does nothing, so a reset never ends a later run.
-- A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - A timeout counts only time the page runs. A timer that fires seconds after it was due means the page was frozen, as a
   backgrounded phone tab is, and the work with it, so the wait starts its budget again. A caller's signal ends the wait
   at once and leaves the work running.
@@ -55,15 +52,12 @@ listener set, the sync store, the status cell and a few formatting helpers.
 ### `@dotli/shared`
 
 - Concurrency and state: `createAsyncTaskPool`, `AsyncTaskPool`, `createLazyLoad({ load, onFirstMiss? })`,
-  `createListenerSet`, `ListenerSet`, `createSyncStore({ name, initial, equals?, onListenerError? })`, `ReadableStore`
-  (`get`, `init`, and `listen`, which hears each change with the value it replaced and has no first call), `SyncStore`,
-  `StoreListenerError`, `registerStoreStateReset`, `isShallowEqual`, `createStatusCell({ initial, onListenerError })`,
-  `StatusCell`, `waitForStatus(source, verdict, { signal? })` (a wait on anything with `get` and `listen`, such as a
-  store or a status cell, until a verdict, which settles at once on the status there is now and leaves through a
-  signal), `StatusSource`, `toAbortError`, `createPendingReplies` (its `wait(id, { meta? })`, `getMeta(id)` and
-  `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its resolve and reject),
-  `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by the last stop or
-  `end`).
+  `createListenerSet`, `ListenerSet`, `registerStoreStateReset`, `isShallowEqual`,
+  `waitForStatus(source, verdict, { signal? })` (a wait on anything with `get` and `listen`, such as a store, until a
+  verdict, which settles at once on the status there is now and leaves through a signal), `StatusSource`,
+  `toAbortError`, `createPendingReplies` (its `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`,
+  `createDeferred()` (a promise with its resolve and reject), `createSharedRun({ begin })` (one run shared by every
+  `join`, each with its own stop, ended by the last stop or `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
   `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,

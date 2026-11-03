@@ -10,7 +10,8 @@
 
 import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dockStorage, type DockPosition } from './model/createDockStorage.js';
+import { useStore } from '@dotli/stores-solid';
+import { getDockStorage, type DockPosition } from './model/createDockStorage.js';
 import type { EventStore } from './model/createEventStore.js';
 import { getCorrelationKey } from './model/getCorrelationKey.js';
 import { findFirstNewIndex } from './model/findFirstNewIndex.js';
@@ -18,7 +19,7 @@ import type { EventSeq, StoredEvent } from './model/storedEvent.js';
 import { buildExport, type ExportMeta } from './model/buildExport.js';
 import { createInitialFilterState, type FilterState } from './model/filterState.js';
 import { getPanelDockInset } from './model/getPanelDockInset.js';
-import { sectionStorage, type PanelSection } from './model/createSectionStorage.js';
+import { getSectionStorage, type PanelSection } from './model/createSectionStorage.js';
 
 import type { ResolutionRecorder } from './model/createResolutionRecorder.js';
 import { Diagnostics } from './Diagnostics.js';
@@ -107,6 +108,8 @@ export function Panel(props: {
   const work = usePanelWork();
   const host = untrack(() => props.host);
   const { matchesFilters } = work;
+  const dockStorage = getDockStorage();
+  const sectionStorage = getSectionStorage();
 
   let panelElement: HTMLDivElement | undefined;
   let listElement: HTMLDivElement | undefined;
@@ -118,20 +121,20 @@ export function Panel(props: {
     events: store.list().slice(),
     dropped: store.dropped(),
     products: sortProducts(store.productIds()),
-    version: store.version(),
+    version: store.version.get(),
     takenAt: Date.now(),
   });
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(createInitialFilterState());
-  const [section, setSection] = createSignal<PanelSection>(sectionStorage.read());
+  const section = useStore(sectionStorage);
   const [view, setView] = createSignal<PanelView>('list');
   const [resolutionCleared, setResolutionCleared] = createSignal(0);
   const eventsShown = (): boolean => section() === 'truapi';
   const listShown = (): boolean => eventsShown() && view() === 'list';
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [collapsed, setCollapsed] = createSignal(untrack(() => props.startCollapsed));
-  const [dock, setDock] = createSignal<DockPosition>(dockStorage.read());
+  const dock = useStore(dockStorage);
   const narrowViewport = window.matchMedia(NARROW_QUERY);
   const [narrow, setNarrow] = createSignal(narrowViewport.matches);
   const placement = createMemo<DockPosition>(() => (narrow() ? 'bottom' : dock()));
@@ -188,27 +191,27 @@ export function Panel(props: {
   }
 
   function refreshSnapshot(): void {
-    if (store.version() !== untrack(snapshot).version) {
+    if (store.version.get() !== untrack(snapshot).version) {
       setSnapshot(takeSnapshot());
     }
   }
 
   let frame: number | null = null;
-  const unsubscribeStore = store.subscribe(() => {
+  const unlistenStore = store.version.listen(() => {
     if (frame !== null) {
       return;
     }
     frame = requestAnimationFrame(() => {
       frame = null;
       // A collapsed panel shows nothing of the log, and expanding takes a snapshot.
-      if (store.version() === snapshot().version || collapsed()) {
+      if (store.version.get() === snapshot().version || collapsed()) {
         return;
       }
       commit(() => setSnapshot(takeSnapshot()));
     });
   });
   onCleanup(() => {
-    unsubscribeStore();
+    unlistenStore();
     if (frame !== null) {
       cancelAnimationFrame(frame);
     }
@@ -230,7 +233,7 @@ export function Panel(props: {
   });
 
   /** Each orientation starts from its CSS defaults, so inline resize and split sizes are cleared. */
-  function applyDockLayout(persist: boolean): void {
+  function applyDockLayout(): void {
     const panel = panelElement;
     if (panel === undefined) {
       return;
@@ -248,17 +251,14 @@ export function Panel(props: {
         panel.style.top = '';
         break;
     }
-    if (persist) {
-      dockStorage.write(dock());
-    }
     refit();
   }
   onSettled(() => {
-    applyDockLayout(false);
+    applyDockLayout();
   });
   function handleViewportChange(event: MediaQueryListEvent): void {
     flush(() => setNarrow(event.matches));
-    applyDockLayout(false);
+    applyDockLayout();
   }
   narrowViewport.addEventListener('change', handleViewportChange);
   onCleanup(() => {
@@ -329,18 +329,17 @@ export function Panel(props: {
     restorePanelHeight(panel, expandedHeight);
   }
   function selectSection(next: PanelSection): void {
-    if (next !== section()) {
-      sectionStorage.write(next);
-    }
     if (collapsed()) {
       setCollapsedTo(false, {
         update() {
-          setSection(next);
+          sectionStorage.set(next);
           refreshDetail();
         },
       });
     } else if (next !== section()) {
-      show(() => setSection(next));
+      show(() => {
+        sectionStorage.set(next);
+      });
     }
   }
   function selectView(next: PanelView): void {
@@ -400,8 +399,10 @@ export function Panel(props: {
             host.leaveDebugMode();
           }}
           onToggleDock={() => {
-            flush(() => setDock(getOtherDock(dock())));
-            applyDockLayout(true);
+            flush(() => {
+              dockStorage.set(getOtherDock(dock()));
+            });
+            applyDockLayout();
           }}
           onToggleCollapse={() => {
             setCollapsedTo(!collapsed());

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { closeWhenOpen, useRevealWhileOpen } from './useRevealWhileOpen.js';
 
 /** The island's reveal under a fresh owner, following `open` as the modal's state writes it. */
@@ -76,7 +76,7 @@ describe('AuthModal island binding', () => {
 
   it('As a user, closing an open sign-in closes it, and a close after the controller closed it does nothing', () => {
     // Given
-    const modal = createSyncStore({ name: 'auth-modal-binding-test', initial: { open: true } });
+    const modal = atom({ open: true });
     const close = vi.fn();
     const onClose = closeWhenOpen(modal, close);
 

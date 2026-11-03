@@ -12,7 +12,7 @@ import { createCoreRuntimeBoot, type CoreRuntimeBootParams } from './createCoreR
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import { createPhoneRequestTracker } from './createPhoneRequestTracker.js';
 import type { BootLocalWalletCore } from './localWalletCore.js';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import type { WalletModeState } from './state/walletModeState.js';
 import { createWalletBoot, type LocalWalletBoot } from './createWalletBoot.js';
 
@@ -197,7 +197,7 @@ describe('core runtime boot', () => {
 
   it('As a user in the sign-in window, I open it over a stored wallet and it boots a pairing core', async () => {
     // Given the window's wallet boot over a stored local wallet
-    const mode = createSyncStore<WalletModeState>({ name: 'walletMode', initial: { mode: 'app', failure: null } });
+    const mode = atom<WalletModeState>({ mode: 'app', failure: null });
     const walletBoot = createWalletBoot({
       reconcile: () =>
         Promise.resolve({
@@ -206,7 +206,9 @@ describe('core runtime boot', () => {
           wallet: WALLET,
           dead: null,
         }),
-      report: mode.set,
+      report: value => {
+        mode.set(value);
+      },
       flag: { renew: () => undefined },
       role: 'signin-window',
     });

@@ -5,7 +5,8 @@
 // that loads needs none of it, so the boot carries no Solid.
 
 import { reportExpected, spans as S } from '@dotli/metrics';
-import { createLazyLoad, type ReadableStore } from '@dotli/shared';
+import { createLazyLoad } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { PageUiModule } from './lazy.js';
 
@@ -13,7 +14,7 @@ type Params = {
   /** Loads the page UI chunk. Rejects when the chunk cannot load. */
   load: () => Promise<PageUiModule>;
   /** Toasts queue here before the UI is up, and show once it mounts. */
-  toasts: ReadableStore<{ readonly items: readonly unknown[] }>;
+  toasts: ReadableAtom<{ readonly items: readonly unknown[] }>;
   /** Says why the page stopped, with a Reload, when the UI itself cannot load. Never throws. */
   showFallback: (text: string) => void;
   /** Takes that screen away once a later load brings the UI up. Safe when it is not shown. Never throws. */

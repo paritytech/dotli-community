@@ -30,14 +30,19 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
       /**
        * Resolves once the frame is ready, booting one if none was asked for yet. Rejects with the error the boot it
        * waits on failed with, such as a `ProtocolInitFailedError`, a `ProtocolVersionMismatchError` or an `Error` with a
-       * `PROTOCOL_ERRORS` text, and with an `Error` of the `FRAME_RESET` text when a config change drops the frame.
+       * `PROTOCOL_ERRORS` text, and with an `Error` of the `FRAME_RESET` text when a config change drops the frame,
+       * unless a status listener queued ahead of it has already asked for the rebuilt frame, and then it waits on that
+       * frame.
        */
       async ensureReady(): Promise<void> {
         await frame.waitUntilReady();
       },
       /** The frame's status now. Never throws. */
       getStatus: (): ProtocolStatus => frame.getStatus(),
-      /** Called on each change only. Does not start a frame. Returns the unsubscribe. */
+      /**
+       * Called on each change only, with the status there is when its turn comes, so within one round of listeners it
+       * can hear the same status twice and miss one. Does not start a frame. Returns the unsubscribe.
+       */
       subscribeStatus: (listener: (status: ProtocolStatus) => void) => frame.subscribeStatus(listener),
       /**
        * Hears once that a frame refused this page's wire version, at once if one already did. The frame stays down for
@@ -49,8 +54,9 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
        * Says what the frame is built with. Nothing boots before it, and requests made before the first config wait for
        * it up to a bound, so callers need not order themselves around the host's boot. The same config again does
        * nothing. A different one rebuilds a frame already asked for at once: its requests and ready waiters are
-       * rejected and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress, only this
-       * tab's port cycles. Never throws.
+       * rejected, except a ready waiter queued behind a status listener that already asked for the rebuilt frame, which
+       * waits on that frame, and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress,
+       * only this tab's port cycles. Never throws.
        */
       configure: (config: ProtocolFrameConfig): void => {
         frame.configure(config);

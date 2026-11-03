@@ -3,7 +3,8 @@
 
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { getErrorMessage, formatSize, type ReadableStore } from '@dotli/shared';
+import { getErrorMessage, formatSize } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import { getImageType } from './getImageType.js';
 import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
@@ -40,7 +41,7 @@ const pageObjectUrls: ObjectUrls = {
 export function ArchiveView(props: {
   active: boolean;
   load: ArchiveLoader;
-  product: ReadableStore<HostProduct>;
+  product: ReadableAtom<HostProduct>;
   /** Without them, the browser's own object URLs. */
   objectUrls?: ObjectUrls | undefined;
 }): JSX.Element {

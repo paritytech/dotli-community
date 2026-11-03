@@ -4,7 +4,7 @@
 // The topbar's status bound to the page's chat, sign-in and product state.
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../src/runtime/chat/createChatConnections.js';
 import { createChatStore } from '../../src/runtime/chat/createChatStore.js';
@@ -27,7 +27,7 @@ describe('bindTopbarStatus', () => {
     const product = toProductId('chatty');
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });
-    const unbind = bindTopbarStatus(bar, createSyncStore<NetworkHealth>({ name: 'test_health', initial: 'ok' }));
+    const unbind = bindTopbarStatus(bar, atom<NetworkHealth>('ok'));
     onTestFinished(() => {
       unbind();
       stopChat();

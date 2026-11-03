@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { SiteList, SiteListScreen } from '../runtime/siteSignIn/createSiteList.js';
 import type { SiteRound, SiteScreen } from '../runtime/siteSignIn/createSiteRound.js';
@@ -177,7 +177,7 @@ registerStoreStateReset(() => {
   siteListIntents = null;
 });
 
-function showScreen(source: ReadableStore<WindowScreen>): () => void {
+function showScreen(source: ReadableAtom<WindowScreen>): () => void {
   sessionWindow.set(source.get());
   return source.listen(() => {
     sessionWindow.set(source.get());

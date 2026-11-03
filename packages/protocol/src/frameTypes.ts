@@ -92,7 +92,10 @@ export type ProtocolFrameParams<E extends FrameElement> = {
 export type ProtocolFrame = {
   /** Where the frame stands now. */
   getStatus(): ProtocolStatus;
-  /** Called on each change only. Does not start a frame. Returns the unsubscribe. */
+  /**
+   * Called on each change only, with the status there is when its turn comes, so within one round of listeners it can
+   * hear the same status twice and miss one. Does not start a frame. Returns the unsubscribe.
+   */
   subscribeStatus(listener: (status: ProtocolStatus) => void): () => void;
   /**
    * Says what the frame is built with. Nothing boots before it, and waits begun before the first config wait for it,
@@ -114,7 +117,8 @@ export type ProtocolFrame = {
    * The transport of the ready frame, booting one if none was asked for yet, once it is configured. A call while the
    * frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot under way
    * join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so no caller is
-   * left to its own timeout.
+   * left to its own timeout. A status listener queued ahead of it that asks for the rebuilt frame on the change keeps it
+   * waiting on that frame instead.
    */
   waitUntilReady(): Promise<ProtocolTransport>;
   /**

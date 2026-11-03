@@ -8,7 +8,6 @@ import {
   pageLocalStorage,
   registerStoreStateReset,
   isShallowEqual,
-  type ReadableStore,
   type SafeStorage,
 } from '@dotli/shared';
 import { createPersistentAtom } from '@dotli/stores-persistent';
@@ -190,7 +189,7 @@ function markRoomSeen(roomId: string): void {
   update({ unreadByRoom: rest });
 }
 
-function markFollowedRoomSeen(view: ReadableStore<ChatView>): () => void {
+function markFollowedRoomSeen(view: ReadableAtom<ChatView>): () => void {
   let shown: ChatView['messages'] = null;
   function markLandedRead(): void {
     const { messages, roomId } = view.get();

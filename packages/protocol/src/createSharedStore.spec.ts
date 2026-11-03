@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { atom } from 'nanostores';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { createStatusCell } from '@dotli/shared';
 import { createManualTimers, recordLog } from '@dotli/shared/testing';
 import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
@@ -87,16 +87,15 @@ describe('createSharedStore', () => {
     expect(read).toEqual(['connecting', 'available']);
   });
 
-  it('As a returning user, I see my shared store stay down until the new frame listens when a frame status listener rebuilds the frame as it listens', () => {
+  it('As a returning user, I see my shared store read connecting until the new frame listens when a frame status listener rebuilds the frame as it listens, and hear only that it is available', () => {
     // Given a frame that publishes its status as the real one does, a listener first in line that rebuilds the frame
     // the first time it listens, and a shared store built after that listener
-    const cell = createStatusCell<ProtocolStatus>({
-      initial: 'idle',
-      onListenerError: error => {
-        throw error;
-      },
-    });
-    const frame: ProtocolFrame = { ...createFakeFrame().frame, getStatus: cell.get, subscribeStatus: cell.listen };
+    const cell = atom<ProtocolStatus>('idle');
+    const frame: ProtocolFrame = {
+      ...createFakeFrame().frame,
+      getStatus: () => cell.get(),
+      subscribeStatus: listener => cell.listen(listener),
+    };
     let rebuilt = false;
     cell.listen(next => {
       if (next === 'listening' && !rebuilt) {
@@ -113,15 +112,15 @@ describe('createSharedStore', () => {
     cell.set('booting');
     cell.set('listening');
 
-    // Then the store reads down while the new frame boots, not still connecting
-    expect(store.status.getStatus()).toBe('unavailable');
+    // Then the store never heard the first frame listen, so it reads connecting while the new frame boots
+    expect(store.status.getStatus()).toBe('connecting');
 
     // When the new frame listens
     cell.set('listening');
 
-    // Then the store is available again
+    // Then the store is available, the one change its listener heard
     expect(store.status.getStatus()).toBe('available');
-    expect(statuses).toEqual(['unavailable', 'available']);
+    expect(statuses).toEqual(['available']);
   });
 
   it("As a returning user, I hear another tab's shared auth write, and my subscription waits only for a listening frame", async () => {

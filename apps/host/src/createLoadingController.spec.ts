@@ -16,7 +16,7 @@ import {
   type SandboxFailedStep,
   type SandboxOutcome,
 } from './createLoadingController.js';
-import { createSyncStore, type SyncStore } from '@dotli/shared';
+import { atom, type WritableAtom } from 'nanostores';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { PageContent } from '@dotli/ui';
 import { loadingState, type StepPart } from './state/loadingState.js';
@@ -25,7 +25,7 @@ import { rethrow } from './testing/rethrow.js';
 /** A controller over a page of its own, disposed with its timers when the case ends. */
 type Stand = {
   controller: LoadingController;
-  pageContent: SyncStore<PageContent>;
+  pageContent: WritableAtom<PageContent>;
   /** Hears the sandbox as the host wires it, through the channel that checks the origin. Returns the stop. */
   listenForSandbox: () => () => void;
   /** Posts a loading status to the page from the sandbox's origin. */
@@ -683,7 +683,7 @@ function setupController({ reducedMotion = false }: Params = {}): Stand {
   vi.useFakeTimers();
   resetAllStoresForTests();
   const page = new EventTarget();
-  const pageContent = createSyncStore<PageContent>({ name: 'page-content-spec', initial: 'page' });
+  const pageContent = atom<PageContent>('page');
   const frameTimers = new Map<number, ReturnType<typeof setTimeout>>();
   let lastFrame = 0;
   let sandboxChannel: StartedSandboxChannel | null = null;

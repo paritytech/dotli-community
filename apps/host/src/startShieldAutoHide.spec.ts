@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { startShieldAutoHide } from './startShieldAutoHide.js';
 
 /** The auto-hide over a login store, counting how often it let the topbar fold. */
@@ -63,7 +63,7 @@ describe('startShieldAutoHide', () => {
 
 /** Starts the auto-hide over a login store, disposed when the case ends. */
 function startCountedAutoHide(): CountedAutoHide {
-  const login = createSyncStore({ name: 'shield-autohide-spec-login', initial: false });
+  const login = atom(false);
   let arms = 0;
   const autoHide = startShieldAutoHide({
     loggedIn: login,

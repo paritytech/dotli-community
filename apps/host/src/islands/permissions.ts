@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
 import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
@@ -22,10 +22,10 @@ export type ReadPermissions =
 export type PermissionsBinding = {
   /** In menu order. */
   permissions: readonly MenuPermission[];
-  product: ReadableStore<ShownProduct>;
-  state: ReadableStore<ReadPermissions>;
+  product: ReadableAtom<ShownProduct>;
+  state: ReadableAtom<ReadPermissions>;
   /** The panel change not yet settled. */
-  pending: ReadableStore<PendingPermissions>;
+  pending: ReadableAtom<PendingPermissions>;
   refresh: () => Promise<void>;
   change: (label: string, targets: PermissionTargets) => Promise<ChangeOutcome>;
 };

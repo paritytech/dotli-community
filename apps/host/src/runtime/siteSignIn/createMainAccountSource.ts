@@ -13,7 +13,6 @@ import {
   noop,
   toHex,
   waitForStatus,
-  type ReadableStore,
   type StatusSource,
 } from '@dotli/shared';
 import type { CoreLease } from '../createPageCore.js';
@@ -43,7 +42,7 @@ type Params = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
   /** What the page's core itself reported last, null while no core reported. */
-  coreReport: ReadableStore<DotliAuthState | null>;
+  coreReport: StatusSource<DotliAuthState | null>;
 };
 
 /** A key the core reports as `0x` hex of whole bytes. */

@@ -4,6 +4,7 @@
 // The shared store in the protocol frame on `<BASE_DOMAIN>/p/`: auth, mode preferences and the local wallet,
 // one for every subdomain where the browser lets an embedded frame reach it, and one per top-level origin in Safari.
 
+import { atom } from 'nanostores';
 import type { SiteId } from '@dotli/config';
 import { reportListener } from '@dotli/metrics';
 import { createListenerSet, realTimers, type Timers } from '@dotli/shared';
@@ -62,11 +63,8 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
   const sharedAuthListeners = createListenerSet<SharedAuthChange>({
     onListenerError: reportListener('protocol', 'protocol.shared_auth'),
   });
-  const statusListeners = createListenerSet<SharedStoreStatus>({
-    onListenerError: reportListener('protocol', 'protocol.shared_store_status'),
-  });
-  // Latched from each status the frame publishes, since a listener ahead of this store's own can move the frame on
-  // before this store reads it.
+  // Latched from the status heard at each delivery, across rounds, since a listener ahead of this store's own can move
+  // the frame on before this store reads it.
   let settledOnce = hasSettled(frame.getStatus());
 
   // Read from the frame's status on each call, so a frame status listener that runs before this store's own hears
@@ -96,14 +94,11 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
     timers,
   });
 
-  let announced = readStatus();
+  // The status last announced, which its listeners hear change.
+  const announced = atom<SharedStoreStatus>(readStatus());
   frame.subscribeStatus(next => {
     settledOnce ||= hasSettled(next);
-    const store = readStatus();
-    if (store !== announced) {
-      announced = store;
-      statusListeners.emit(store);
-    }
+    announced.set(readStatus());
   });
 
   return {
@@ -111,8 +106,14 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
     status: {
       /** The store's status now, read from the frame's. Never throws. */
       getStatus: readStatus,
-      /** Called on each change only. Does not start a frame. Returns the unsubscribe. */
-      subscribeStatus: (listener: (status: SharedStoreStatus) => void) => statusListeners.subscribe(listener),
+      /**
+       * Called on each change only, with the status there is when its turn comes, so within one round of listeners it
+       * can hear the same status twice and miss one. Does not start a frame. Returns the unsubscribe.
+       */
+      subscribeStatus: (listener: (status: SharedStoreStatus) => void) =>
+        announced.listen(next => {
+          listener(next);
+        }),
     },
     /** The auth store, shared by the sites on the same root domain. Each call reaches the frame. */
     auth: {

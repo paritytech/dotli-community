@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { bindReports } from '../testing/bindReports.js';
 import type { WalletModeState } from './state/walletModeState.js';
 import type { PageRole } from './pageRole.js';
@@ -52,10 +52,12 @@ function createBootHarness({ answer, role = 'page' }: CreateBootHarnessParams) {
   const { captures, counted } = bindReports();
   const reconcile = vi.fn((_reader: PresenceReader) => Promise.resolve(answer()));
   const flag = { renew: vi.fn() };
-  const mode = createSyncStore<WalletModeState>({ name: 'walletMode', initial: { mode: 'app', failure: null } });
+  const mode = atom<WalletModeState>({ mode: 'app', failure: null });
   const walletBoot = createWalletBoot({
     reconcile,
-    report: mode.set,
+    report: value => {
+      mode.set(value);
+    },
     flag,
     role,
   });

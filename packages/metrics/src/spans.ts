@@ -54,6 +54,9 @@ export const spans = {
    */
   RESOLVE_FAILURE_SCREEN: 'resolve.failure_screen',
 
+  /** Count. A caller's phase callback threw while the resolver told it a phase. Tagged `outcome` (error) and `reason`. */
+  RESOLVE_PHASE_CALLBACK: 'resolve.phase_callback',
+
   /** A cache read. Tag `outcome` (`hit, miss`) and `surface` (`cid_cache, block_cache`). */
   CACHE_READ: 'cache.read',
 
@@ -278,6 +281,12 @@ export const spans = {
    * core.
    */
   WALLET_CORE_REDIAL: 'wallet.core_redial',
+
+  /**
+   * Count. Telling a pairing core that the stored session changed threw, so the core may miss a login from another tab.
+   * Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PAGE_CORE_SESSION_FOLLOW: 'page_core.session_follow',
 
   /**
    * One `acquire` the session lease made of the page core. Tagged `outcome` (ok or error) and, on error, `reason`: `boot`

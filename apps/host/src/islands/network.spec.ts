@@ -5,19 +5,20 @@ import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom, computed } from 'nanostores';
 import type { Backend } from '@dotli/config';
-import { createSyncStore, type ReadableStore } from '@dotli/shared';
+import type { StoreSource } from '@dotli/stores-solid';
 import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import { INITIAL_NETWORK } from '../state/networkState.js';
 import { useNetworkPanel } from './network.js';
 
 /** `store`, counting the readers subscribed to it. */
-function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; readers: { count: number } } {
+function countingStore<T>(store: StoreSource<T>): { store: StoreSource<T>; readers: { count: number } } {
   const readers = { count: 0 };
   return {
     readers,
     store: {
-      ...store,
+      get: () => store.get(),
+      init: store.init,
       listen: listener => {
         readers.count += 1;
         const unsubscribe = store.listen(listener);
@@ -33,10 +34,10 @@ function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; r
 /** The page's stores, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
   const stores = {
-    health: createSyncStore<NetworkHealth>({ name: 'network-test-health', initial: 'quiet' }),
+    health: atom<NetworkHealth>('quiet'),
     network: atom<NetworkView>(INITIAL_NETWORK),
-    product: createSyncStore<{ status: string }>({ name: 'network-test-product', initial: { status: 'idle' } }),
-    settings: createSyncStore<{ backend: Backend } | null>({ name: 'network-test-settings', initial: null }),
+    product: atom<{ status: string }>({ status: 'idle' }),
+    settings: atom<{ backend: Backend } | null>(null),
   };
   // A computed, which has no `init`
   const { store: network, readers } = countingStore(computed(stores.network, value => value));

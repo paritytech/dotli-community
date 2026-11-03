@@ -51,6 +51,9 @@ flowchart TB
   the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a
   request while it is down boots one at once. Boot is deduped with a task pool. It is configured with the backend, and
   names it in its URL in the frame's own words, which a host page of an earlier release still sends.
+- The frame's status and the shared store's are each held in one nanostores atom. A status listener hears each change
+  after it subscribed, with the status there is when its turn comes, and a listener that throws fails the step that
+  moved the status, so each listener catches its own failures.
 - The facades are the host's parts written against the transport: name resolution, remote chains, the shared store and
   telemetry. The client factory builds them and returns one object of entities: `frame`, `sharedStore`, `sharedAuth`,
   `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains`, each with verb members. The page's instance is

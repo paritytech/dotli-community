@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createMemo } from 'solid-js';
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { DotliAuthState } from '../runtime/session/types.js';
 import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
 import { useStore } from '@dotli/stores-solid';
 import type { Account } from '../components/account/account.js';
 
 export type AccountStores = {
-  auth: ReadableStore<DotliAuthState>;
-  loggedIn: ReadableStore<boolean>;
-  walletMode: ReadableStore<{ mode: 'app' | 'local' }>;
-  signingOut: ReadableStore<boolean>;
-  elsewhere: ReadableStore<boolean>;
+  auth: ReadableAtom<DotliAuthState>;
+  loggedIn: ReadableAtom<boolean>;
+  walletMode: ReadableAtom<{ mode: 'app' | 'local' }>;
+  signingOut: ReadableAtom<boolean>;
+  elsewhere: ReadableAtom<boolean>;
 };
 
 /** The account as the views read it, for an island's own lifetime. */

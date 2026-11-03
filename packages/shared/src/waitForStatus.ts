@@ -4,7 +4,7 @@
 import { noop } from './noop.js';
 import { raceAbort, type Settle } from './raceAbort.js';
 
-/** Anything with a current value and a listener for the changes after it, such as a store or a status cell. */
+/** Anything with a current value and a listener for the changes after it, such as a store. */
 export type StatusSource<T> = {
   get: () => T;
   /** The listener hears each change after the call, never the current value. Returns its unsubscribe. */

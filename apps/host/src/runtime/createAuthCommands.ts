@@ -4,7 +4,8 @@
 // The page's login, logout and cancel over one queue, so overlapping calls never reach the core twice. A login answers
 // every call made in its round, and a logout runs its end in the order it was asked for.
 
-import { createAsyncTaskPool, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { DotliAuthState } from './session/types.js';
 import type { TruapiSessionUiState } from './session/parseUiStateCache.js';
 import type { LogoutOutcome } from './createPageSignOut.js';
@@ -49,7 +50,7 @@ export type AuthCommands = {
 
 type Params = {
   /** The page's auth state, which tells a login of a user already signed in. */
-  auth: ReadableStore<DotliAuthState>;
+  auth: ReadableAtom<DotliAuthState>;
   /**
    * One login to its end, answering how it ended and reporting its own failures. Rejects when the core paired but its
    * session could not be stored.

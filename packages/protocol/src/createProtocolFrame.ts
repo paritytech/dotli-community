@@ -5,11 +5,11 @@
 // the layers above the transport to the frame there is now. Each iframe gets its own provider and transport, so a
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
+import { atom } from 'nanostores';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
-  createStatusCell,
   createDeferred,
   log,
   realTimers,
@@ -66,10 +66,7 @@ export function createProtocolFrame<E extends FrameElement>({
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...timeoutOverrides };
   const wire = createWireReport({ side: 'host', count });
 
-  const status = createStatusCell<ProtocolStatus>({
-    initial: 'idle',
-    onListenerError: reportListener('protocol', 'protocol.status'),
-  });
+  const status = atom<ProtocolStatus>('idle');
   const lostListeners = createListenerSet<Error>({
     onListenerError: reportListener('protocol', 'protocol.frame_lost'),
   });
@@ -98,8 +95,6 @@ export function createProtocolFrame<E extends FrameElement>({
     timers,
   });
 
-  const setStatus = status.set;
-
   /**
    * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down. The
    * transport posts nothing as it closes, so the frame lets go of what it served once its iframe goes.
@@ -111,10 +106,14 @@ export function createProtocolFrame<E extends FrameElement>({
     losses += 1;
     lost?.loss.abort(error);
     lost?.loaded.reject(error);
-    setStatus(next);
-    lost?.transport?.dispose(error);
-    lost?.iframe?.remove();
-    lostListeners.emit(error);
+    // A status listener that throws fails the drop for its writer, and the frame is let go of all the same.
+    try {
+      status.set(next);
+    } finally {
+      lost?.transport?.dispose(error);
+      lost?.iframe?.remove();
+      lostListeners.emit(error);
+    }
   }
 
   /** The transport to the slot's iframe, which has loaded. */
@@ -146,7 +145,7 @@ export function createProtocolFrame<E extends FrameElement>({
       listeners: {
         receive: () => {
           if (slot === kept) {
-            setStatus('ready');
+            status.set('ready');
           }
         },
         // A dropped frame's own status ends with its loss, which was counted when it was dropped.
@@ -226,7 +225,7 @@ export function createProtocolFrame<E extends FrameElement>({
     const kept = createFrameSlot();
     slot = kept;
     // Before anything that can throw, so a failure is reported as this keeper's and is not retried by each caller.
-    setStatus('booting');
+    status.set('booting');
     // A listener may have changed the config on `booting`, which dropped this boot and leaves nothing to mount for.
     if (run.aborted) {
       return;
@@ -245,7 +244,7 @@ export function createProtocolFrame<E extends FrameElement>({
       phase = 'listen';
       await transport.whenConnected();
       if (slot === kept && status.get() === 'booting') {
-        setStatus('listening');
+        status.set('listening');
       }
       phase = 'ready';
       const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
@@ -404,10 +403,13 @@ export function createProtocolFrame<E extends FrameElement>({
     const reason = new Error(PROTOCOL_ERRORS.FRAME_RESET);
     keeper?.abort(reason);
     keeper = null;
-    loseFrame(reason, 'idle');
     // A listener that heard `idle` may have asked for the frame already, and a second keeper would orphan one. It
-    // may also have configured again, so the frame is built with the latest config.
-    askForFrame(frameConfig);
+    // may also have configured again, so the frame is built with the latest config, even when a listener threw.
+    try {
+      loseFrame(reason, 'idle');
+    } finally {
+      askForFrame(frameConfig);
+    }
   }
 
   function onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void {
@@ -424,8 +426,12 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   return {
-    getStatus: status.get,
-    subscribeStatus: status.listen,
+    getStatus: () => status.get(),
+    // Each subscription its own listener, so one given twice is two subscriptions, and it hears the status alone.
+    subscribeStatus: (listener: (next: ProtocolStatus) => void) =>
+      status.listen(next => {
+        listener(next);
+      }),
     configure,
     getTransport,
     waitUntilReady,

@@ -7,7 +7,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createSyncStore, createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/shared';
+import { createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -110,7 +110,7 @@ function createWindowParts({
     cancelLogin: () => undefined,
   };
   const closed = createDeferred<undefined>();
-  const auth = createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED });
+  const auth = atom<DotliAuthState>(CONNECTED);
   const flows: WindowFlow[] = [];
   // What each window flow was told to do once it stored a sign-in.
   const deliveries: SiteWindowFlowDeliver[] = [];

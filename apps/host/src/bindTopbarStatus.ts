@@ -4,7 +4,7 @@
 // Publishes the pill's box as root properties, because the popovers that drop from it are portalled to
 // <body> and cannot see it.
 
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { createPillPlacement } from './createPillPlacement.js';
 import { topbarMorph, type TopbarMorph } from './createTopbarMorph.js';
 import { getCapsuleStatus } from './getCapsuleStatus.js';
@@ -24,7 +24,7 @@ type Params = {
  */
 export function bindTopbarStatus(
   bar: HTMLElement,
-  health: ReadableStore<NetworkHealth>,
+  health: ReadableAtom<NetworkHealth>,
   { morph = topbarMorph }: Params = {},
 ): () => void {
   const offline = bar.querySelector('#topbar-offline');

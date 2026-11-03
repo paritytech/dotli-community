@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Backend } from '@dotli/config';
-import type { ReadableStore } from '@dotli/shared';
-import { useStore } from '@dotli/stores-solid';
+import { useStore, type StoreSource } from '@dotli/stores-solid';
 import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
 import { INITIAL_NETWORK } from '../state/networkState.js';
 
 export type NetworkStores = {
-  health: ReadableStore<NetworkHealth>;
-  network: ReadableStore<NetworkView>;
-  product: ReadableStore<{ status: string }>;
-  settings: ReadableStore<{ backend: Backend } | null>;
+  health: StoreSource<NetworkHealth>;
+  network: StoreSource<NetworkView>;
+  product: StoreSource<{ status: string }>;
+  settings: StoreSource<{ backend: Backend } | null>;
 };
 
 /** The network button's props, for an island's own lifetime. */

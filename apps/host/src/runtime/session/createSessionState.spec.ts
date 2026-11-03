@@ -8,7 +8,7 @@ import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
 import { createCoreStorage, type HostCoreStorage } from './createCoreStorage.js';
 import { createNonOwnerSignInFlag } from './signInFlag.js';
 import { createSessionState, type PairingPresentation, type SessionState } from './createSessionState.js';
-import { createSyncStore, type SyncStore } from '@dotli/shared';
+import { atom, type WritableAtom } from 'nanostores';
 import { createChanges } from '../../testing/changes.js';
 import type { LocalWalletBoot } from '../createWalletBoot.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
@@ -50,7 +50,7 @@ let shared: FakeSharedSessionStore;
 let coreStorage: HostCoreStorage;
 let wallet: LocalWalletBoot | null;
 let localWallet: boolean;
-let auth: SyncStore<DotliAuthState>;
+let auth: WritableAtom<DotliAuthState>;
 let session: SessionState;
 let presence: FakeSessionPresence;
 /** The flag as the load's restore read it. */
@@ -106,13 +106,14 @@ describe('session state', () => {
     elsewhere = false;
     role = 'page';
     // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
-    auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Restoring' }, equals: () => false });
+    auth = atom<DotliAuthState>({ tag: 'Restoring' });
+    auth.eq = () => false;
     reloadPage();
   });
 
   /** The page loading again over the same store: its auth state is Restoring and its restore reads once more. */
   function reloadPage(): void {
-    auth.reset();
+    auth.set({ tag: 'Restoring' });
     // Reads the session once per load and keeps the answer.
     let loadRead: ReturnType<HostCoreStorage['readSession']> | undefined;
     session = createSessionState({

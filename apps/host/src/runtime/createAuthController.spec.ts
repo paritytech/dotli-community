@@ -12,7 +12,8 @@ import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '.
 import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
 import { authState } from './state/authState.js';
-import { createSyncStore, createDeferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
@@ -132,11 +133,8 @@ function startController({
   inPagePhrase = rejectNoPhrase,
   elsewhere = () => false,
 }: StartControllerParams = {}) {
-  const auth = createSyncStore<DotliAuthState>({
-    name: 'auth-test',
-    initial: { tag: 'Restoring' },
-    equals: () => false,
-  });
+  const auth = atom<DotliAuthState>({ tag: 'Restoring' });
+  auth.eq = () => false;
   const changes = createChanges();
   onTestFinished(authModalState.store.listen(changes.notify));
   const recorded = recordCommands({ changes });

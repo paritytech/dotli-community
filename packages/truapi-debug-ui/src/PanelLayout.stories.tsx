@@ -17,6 +17,7 @@ import {
   setUpDebugPanel,
 } from './testing/stories/debugPanelFixtures.js';
 import { debugPanelStory } from './testing/stories/debugPanelStory.js';
+import { getDockStorage } from './model/createDockStorage.js';
 
 const meta = {
   ...debugPanelStory,
@@ -34,9 +35,9 @@ function getBox(element: Element): DOMRect {
   return element.getBoundingClientRect();
 }
 
-/** A dock stored by an earlier visit, then the panel mounted. */
+/** A dock picked on an earlier mount, then the panel mounted. */
 function mountDocked(dock: 'right' | 'bottom', options: { topbar?: boolean; startCollapsed?: boolean } = {}): void {
-  localStorage.setItem('truapi-debug:dock', dock);
+  getDockStorage().set(dock);
   if (options.topbar === true) {
     getDebugPanel().host.topbarPresent.set(true);
   }
@@ -79,7 +80,8 @@ export const DockToggle: Story = {
       await expect(getPart('td-body-splitter')).toHaveAttribute('data-orientation', 'vertical');
       await expect(dock).toHaveAttribute('title', 'Dock to right');
       await expect(dock).toHaveAttribute('aria-label', 'Dock to right');
-      await expect(localStorage.getItem('truapi-debug:dock')).toBe('bottom');
+      // The bottom dock is the default, so remembering it removes the key.
+      await expect(localStorage.getItem('truapi-debug:dock')).toBeNull();
       await expect(getBox(getPanel()).bottom).toBeCloseTo(window.innerHeight, 0);
     });
   },

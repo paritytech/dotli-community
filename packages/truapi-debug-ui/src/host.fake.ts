@@ -3,17 +3,17 @@
 
 // A host for the debug panel with no page behind it. Its stores start as a fresh page's, and a test sets them.
 
-import { createSyncStore, type ReadableStore, type SyncStore } from '@dotli/shared';
+import { atom, type ReadableAtom, type WritableAtom } from 'nanostores';
 import type { DebugPanelHost, DiagnosticsRow, DockInset, HostAuth, HostProduct, HostWalletMode } from './host.js';
 
 export type FakeDebugPanelHost = {
   host: DebugPanelHost;
-  product: SyncStore<HostProduct>;
-  auth: SyncStore<HostAuth>;
-  walletMode: SyncStore<HostWalletMode>;
-  topbarPresent: SyncStore<boolean>;
+  product: WritableAtom<HostProduct>;
+  auth: WritableAtom<HostAuth>;
+  walletMode: WritableAtom<HostWalletMode>;
+  topbarPresent: WritableAtom<boolean>;
   /** The last room the panel took from the product frame. */
-  dockInset: ReadableStore<DockInset>;
+  dockInset: ReadableAtom<DockInset>;
   /** Every room the panel reported, oldest first. */
   dockReports: readonly DockInset[];
   /** How often the panel asked to leave debug mode. */
@@ -27,14 +27,11 @@ const ROWS: DiagnosticsRow[] = [
 
 /** `parts` replace the host's own, such as a recording wallet switch. */
 export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDebugPanelHost {
-  const product = createSyncStore<HostProduct>({ name: 'fakeHostProduct', initial: { status: 'none' } });
-  const auth = createSyncStore<HostAuth>({ name: 'fakeHostAuth', initial: { tag: 'Restoring' } });
-  const walletMode = createSyncStore<HostWalletMode>({
-    name: 'fakeHostWalletMode',
-    initial: { mode: 'app', failure: null },
-  });
-  const topbarPresent = createSyncStore({ name: 'fakeHostTopbarPresent', initial: false });
-  const dockInset = createSyncStore<DockInset>({ name: 'fakeHostDockInset', initial: { right: 0, bottom: 0 } });
+  const product = atom<HostProduct>({ status: 'none' });
+  const auth = atom<HostAuth>({ tag: 'Restoring' });
+  const walletMode = atom<HostWalletMode>({ mode: 'app', failure: null });
+  const topbarPresent = atom(false);
+  const dockInset = atom<DockInset>({ right: 0, bottom: 0 });
   const dockReports: DockInset[] = [];
   let leaves = 0;
   const host: DebugPanelHost = {
@@ -51,7 +48,7 @@ export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDeb
     },
     archive: () => Promise.resolve({}),
     contentInsets: { top: '0px', bottom: '0px' },
-    topbarPresent: topbarPresent.get,
+    topbarPresent: () => topbarPresent.get(),
     reportDockInset,
     leaveDebugMode,
     ...parts,

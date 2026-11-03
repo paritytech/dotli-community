@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createRoot, flush } from 'solid-js';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { SavedSettings } from '../components/settings/settings.js';
@@ -33,11 +33,8 @@ afterEach(() => {
  * through `intent`.
  */
 function mount({ intent = createSettingsIntent() }: Params = {}) {
-  const settings = createSyncStore<SavedSettings | null>({ name: 'settings-test-settings', initial: null });
-  const theme = createSyncStore<{ preference: ThemePreference }>({
-    name: 'settings-test-theme',
-    initial: { preference: 'system' },
-  });
+  const settings = atom<SavedSettings | null>(null);
+  const theme = atom<{ preference: ThemePreference }>({ preference: 'system' });
   const { panel, dispose } = createRoot(d => ({
     panel: useSettingsPanel({
       settings,

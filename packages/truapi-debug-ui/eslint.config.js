@@ -33,6 +33,7 @@ export default defineConfig([
         '@dotli/truapi-debug',
         '@dotli/config',
         '@dotli/shared',
+        '@dotli/stores-persistent',
         '@dotli/stores-solid',
         '@dotli/metrics',
         '@dotli/content',
@@ -40,7 +41,7 @@ export default defineConfig([
         '@config/eslint',
         '@config/vite',
       ],
-      'The debug panel reads the host through its port and the debug bus, the network config, and archive types and the encryption check from content. It takes no runtime, chain or storage package, and of the ui package only mountRoot and createDrags.',
+      'The debug panel reads the host through its port and the debug bus, the network config, and archive types and the encryption check from content, and keeps its dock and tab in persistent atoms. It takes no runtime, chain or storage package, and of the ui package only mountRoot and createDrags.',
     ),
   ]),
 ]);

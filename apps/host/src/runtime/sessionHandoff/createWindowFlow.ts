@@ -11,7 +11,7 @@
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, log, isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool, log, isShallowEqual, registerStoreStateReset } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type {
@@ -48,7 +48,7 @@ export type WindowFlowParams = {
   responder: Pick<Responder<unknown>, 'state'>;
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
   signIns: SignInFlag;
-  auth: ReadableStore<DotliAuthState>;
+  auth: ReadableAtom<DotliAuthState>;
   commands: AuthCommands;
   store: Pick<HostCoreStorage, 'readSession' | 'readUiCache' | 'writeUiCache'>;
   wallet: {

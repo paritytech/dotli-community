@@ -5,7 +5,8 @@
 
 import { getActiveTldSuffix } from '@dotli/config';
 import type { SandboxChannel } from '@dotli/sandbox-wire';
-import { realTimers, type ReadableStore, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { pageScreen, prefersReducedMotion, type PageContent } from '@dotli/ui';
 import { pagePoll, type Poll } from './pagePoll.js';
 import { readPageClock } from './readPageClock.js';
@@ -47,7 +48,7 @@ type Params = {
   /** The animation frames the explanation is typed on. */
   frames: LoadingFrames;
   /** What fills the page. A full-page screen takes the loading screen down with the page. */
-  pageContent: ReadableStore<PageContent>;
+  pageContent: ReadableAtom<PageContent>;
   /** The clock and timers the stall watch, the stage messages and the fade run on. The page's own by default. */
   timers?: Pick<Timers, 'now' | 'setTimeout' | 'clearTimeout'>;
   /** The tick the bar crawls on. The page's interval by default. */

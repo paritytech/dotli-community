@@ -7,7 +7,8 @@
 // frame hands out its transport once its iframe loads, since a call starts the handshake. So calls made while it boots
 // wait as they would on a real frame.
 
-import { createStatusCell, realTimers, waitForStatus, type Timers } from '@dotli/shared';
+import { atom } from 'nanostores';
+import { realTimers, waitForStatus, type Timers } from '@dotli/shared';
 import { createTransport } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
@@ -41,13 +42,8 @@ export function createFakeFrame({
   status: initial = 'ready',
   timers = realTimers,
 }: Params = {}) {
-  // A listener's throw fails the test that set the status.
-  const status = createStatusCell<ProtocolStatus>({
-    initial,
-    onListenerError: error => {
-      throw error;
-    },
-  });
+  // A listener's throw fails the test that set the status, since the atom throws it to the writer.
+  const status = atom<ProtocolStatus>(initial);
   let lostWith: Error = new Error('lost');
   let builds = 0;
   let current: Built | null = null;
@@ -133,8 +129,11 @@ export function createFakeFrame({
   bringUp(status.get());
 
   const frame: ProtocolFrame = {
-    getStatus: status.get,
-    subscribeStatus: status.listen,
+    getStatus: () => status.get(),
+    subscribeStatus: listener =>
+      status.listen(next => {
+        listener(next);
+      }),
     configure: () => undefined,
     getTransport: () => waitForHost(['listening', 'ready']),
     waitUntilReady: () => waitForHost(['ready']),

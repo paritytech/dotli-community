@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { createDeferred, createSyncStore } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { createAuthCommands, type LoginOutcome } from './createAuthCommands.js';
 import type { DotliAuthState } from './session/types.js';
 
@@ -35,7 +36,8 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
  * gives that answer too, without a state, as the core ends a pairing it was told to drop.
  */
 function createQueueHarness({ initial, logoutSignsOut = false, cancelEndsLogin = false }: Params) {
-  const auth = createSyncStore<DotliAuthState>({ name: 'auth-test', initial, equals: () => false });
+  const auth = atom<DotliAuthState>(initial);
+  auth.eq = () => false;
   const calls: Calls = { logins: [], signals: [], logouts: 0, cancels: 0 };
   const answer = createDeferred<LoginOutcome>();
   const commands = createAuthCommands({

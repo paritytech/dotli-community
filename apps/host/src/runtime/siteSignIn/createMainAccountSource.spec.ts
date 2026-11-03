@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { hashBlake2b, createDeferred, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
+import { hashBlake2b, createDeferred, fromHex, toHex, type StatusSource } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
@@ -42,11 +43,10 @@ const CONNECTED: DotliAuthState = {
 /** A main-account source over a core whose leases the test counts and takes down, and a core report the test sets. */
 function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve() }: Params = {}) {
   const changes = createChanges();
-  const report = createSyncStore<DotliAuthState | null>({ name: 'testCoreReport', initial: null });
+  const report = atom<DotliAuthState | null>(null);
   let waits = 0;
-  const coreReport: ReadableStore<DotliAuthState | null> = {
-    get: report.get,
-    init: report.init,
+  const coreReport: StatusSource<DotliAuthState | null> = {
+    get: () => report.get(),
     listen(listener) {
       waits += 1;
       changes.notify();
