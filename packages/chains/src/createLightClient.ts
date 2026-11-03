@@ -8,7 +8,7 @@ import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-p
 import type { JsonRpcProvider } from 'polkadot-api';
 import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
 import { m, reportListener, spans } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, getErrorMessage, log } from '@dotli/shared';
+import { createAsyncTaskPool, createListenerSet, getErrorMessage, log, markHandled } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb, type SmoldotDb } from './createSmoldotDb.js';
@@ -111,6 +111,9 @@ export function createLightClient({
     onListenerError: reportListener('protocol', 'light_client'),
   });
   const dbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+  // The read needs no engine, so it overlaps the wasm compile. A blob is megabytes, so an entry lives only until its
+  // chain's resume.
+  const earlyReads = new Map<string, Promise<string | null>>();
   let fatal: string | null = null;
   let engine: LightClientEngine | null = null;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -146,7 +149,7 @@ export function createLightClient({
       : {
           async load(genesisHash: string) {
             try {
-              const blob = await db.load(genesisHash);
+              const blob = await readStored(db, genesisHash);
               markDb(genesisHash, blob !== null ? 'hit' : 'miss');
               return blob;
             } catch (error) {
@@ -180,6 +183,41 @@ export function createLightClient({
       log.event('Light client ready', { flow: 'protocol' });
       return next;
     });
+  }
+
+  function readEarly(genesisHash: string): void {
+    if (db === null) {
+      return;
+    }
+    // Once the engine is up there is nothing to overlap, and a chain it already added reads nothing.
+    if (engine !== null) {
+      return;
+    }
+    if (earlyReads.has(genesisHash)) {
+      return;
+    }
+    earlyReads.set(genesisHash, markHandled(db.load(genesisHash)));
+  }
+
+  function readStored(store: SmoldotDb, genesisHash: string): Promise<string | null> {
+    const early = earlyReads.get(genesisHash);
+    if (early === undefined) {
+      return store.load(genesisHash);
+    }
+    earlyReads.delete(genesisHash);
+    return early;
+  }
+
+  async function prepareChain(key: string): Promise<LightClientEngine> {
+    readEarly(key);
+    try {
+      const live = await ensureEngine();
+      // Must run before the chain is added: only a chain's first add consumes a blob.
+      await resumeFromStore(live, key);
+      return live;
+    } finally {
+      earlyReads.delete(key);
+    }
   }
 
   function isChainSupported(genesisHash: string): boolean {
@@ -221,9 +259,7 @@ export function createLightClient({
         // A failure before connecting is the light client's, one after it is this chain's.
         let connected = false;
         try {
-          const live = await ensureEngine();
-          // Must precede `connect`: only a chain's first add consumes a blob.
-          await resumeFromStore(live, key);
+          const live = await prepareChain(key);
           const candidate = await live.connect(key);
           if (state.closed) {
             candidate.close();
