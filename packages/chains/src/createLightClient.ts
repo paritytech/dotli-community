@@ -186,14 +186,8 @@ export function createLightClient({
   }
 
   function readEarly(genesisHash: string): void {
-    if (db === null) {
-      return;
-    }
     // Once the engine is up there is nothing to overlap, and a chain it already added reads nothing.
-    if (engine !== null) {
-      return;
-    }
-    if (earlyReads.has(genesisHash)) {
+    if (db === null || engine !== null || earlyReads.has(genesisHash)) {
       return;
     }
     earlyReads.set(genesisHash, markHandled(db.load(genesisHash)));

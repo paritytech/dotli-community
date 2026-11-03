@@ -19,7 +19,6 @@ const meta = {
   beforeEach: () => {
     prepareQr.mockClear();
     drawQr.mockClear();
-    drawQr.mockImplementation(() => Promise.resolve());
   },
 } satisfies Meta<typeof PairingQr>;
 

@@ -9,7 +9,7 @@
 
 import type { ProductAccountId } from '@parity/truapi';
 import { spans as S } from '@dotli/metrics';
-import { markHandled, toHex } from '@dotli/shared';
+import { markHandled, noop, toHex } from '@dotli/shared';
 import type { MainAccount } from './createMainAccountSource.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import { SiteChainError, type SiteChain, type SiteChainSession, type SiteDecodedCall } from './createSiteChain.js';
@@ -126,7 +126,7 @@ export function getSiteTransactionAction({
         () => {
           if (early === opening) {
             early = null;
-            void opening.then(closeChain, () => undefined);
+            void opening.then(closeChain, noop);
           }
         },
         { once: true },

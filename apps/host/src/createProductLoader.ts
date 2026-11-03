@@ -17,6 +17,7 @@ import {
   getErrorMessage,
   log,
   markHandled,
+  noop,
   createRandomId,
   realTimers,
   serializeError,
@@ -552,15 +553,11 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     performance.mark('dotli:main:end');
     failLoad(error);
   } finally {
-    // This lease exists to cover the wait before the render, so the load lets it go when it ends.
-    void coreHold.then(
-      lease => {
-        lease.release();
-      },
-      () => {
-        /* A core that failed to boot let this lease go itself. */
-      },
-    );
+    // This lease covers the wait before the render, so the load lets it go when it ends. A core that failed to boot let
+    // it go itself.
+    void coreHold.then(lease => {
+      lease.release();
+    }, noop);
   }
 }
 

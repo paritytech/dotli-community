@@ -82,36 +82,29 @@ const SITE_LIST_URL = `${ROOT_ORIGIN}/s/manage`;
 const MAIN_STORE_URL = `${ROOT_ORIGIN}/__dotli-e2e/main-store.html`;
 
 /**
- * The features kept off at launch, storage partitioning among them. Chromium reads only the last `--disable-features`
- * switch, so this list replaces the one the launcher passes and has to carry the rest of it.
- */
-const LAUNCH_DISABLED_FEATURES: readonly string[] = [
-  'AvoidUnnecessaryBeforeUnloadCheckSync',
-  'DestroyProfileOnBrowserClose',
-  'DialMediaRouteProvider',
-  'GlobalMediaControls',
-  'HttpsUpgrades',
-  'LensOverlay',
-  'MediaRouter',
-  'PaintHolding',
-  'ThirdPartyStoragePartitioning',
-  'BlockOriginHeaderModificationOnRedirect',
-  'AvoidCorsURLLoaderRestartOnRedirect',
-  'Translate',
-  'AutoDeElevate',
-  'OptimizationHints',
-  'NetworkTimeServiceQuerying',
-  'AimEnabled',
-  'msForceBrowserSignIn',
-  'msEdgeUpdateLaunchServicesPreferredVersion',
-];
-
-/**
- * Launch arguments that leave storage partitioning on. Chromium reads only the last `--disable-features` switch, so the
- * list carries the launcher's other features.
+ * Launch arguments that leave storage partitioning on. Chromium reads only the last `--disable-features` switch, so this
+ * one replaces the launcher's and carries the rest of its features, all but `ThirdPartyStoragePartitioning`.
  */
 const PARTITIONED_STORAGE_ARGS: readonly string[] = [
-  `--disable-features=${LAUNCH_DISABLED_FEATURES.filter(feature => feature !== 'ThirdPartyStoragePartitioning').join(',')}`,
+  `--disable-features=${[
+    'AvoidUnnecessaryBeforeUnloadCheckSync',
+    'DestroyProfileOnBrowserClose',
+    'DialMediaRouteProvider',
+    'GlobalMediaControls',
+    'HttpsUpgrades',
+    'LensOverlay',
+    'MediaRouter',
+    'PaintHolding',
+    'BlockOriginHeaderModificationOnRedirect',
+    'AvoidCorsURLLoaderRestartOnRedirect',
+    'Translate',
+    'AutoDeElevate',
+    'OptimizationHints',
+    'NetworkTimeServiceQuerying',
+    'AimEnabled',
+    'msForceBrowserSignIn',
+    'msEdgeUpdateLaunchServicesPreferredVersion',
+  ].join(',')}`,
 ];
 
 test.setTimeout(TIMEOUT_MS * 4);
@@ -242,16 +235,17 @@ async function storeInMainStore(context: BrowserContext): Promise<void> {
 }
 
 /**
- * A browser whose product frames keep their own copy of the storage, as Safari keeps one per product, with a context on
- * the gateway backend and the debug panel off. The caller closes the browser.
+ * A browser launched with `args` on top of the suite's, with a context on the gateway backend and the debug panel off.
+ * The caller closes the browser.
  */
-async function launchPartitioned(
+async function launchWith(
   playwright: PlaywrightWorkerArgs['playwright'],
   launchOptions: LaunchOptions,
+  args: readonly string[],
 ): Promise<{ browser: Browser; context: BrowserContext }> {
   const browser = await playwright.chromium.launch({
     ...launchOptions,
-    args: [...(launchOptions.args ?? []), ...PARTITIONED_STORAGE_ARGS],
+    args: [...(launchOptions.args ?? []), ...args],
   });
   try {
     const context = await browser.newContext();
@@ -405,7 +399,7 @@ test.describe('Signing in through the window', () => {
   }) => {
     // Given a product that loaded signed out, and a paired sign-in stored since in the main store by a page on the root
     // origin, which the product's copy does not share, as in Safari
-    const { browser, context } = await launchPartitioned(playwright, launchOptions);
+    const { browser, context } = await launchWith(playwright, launchOptions, PARTITIONED_STORAGE_ARGS);
     try {
       const page = await context.newPage();
       await openProduct(page);
@@ -438,7 +432,7 @@ test.describe('Signing in through the window', () => {
   }) => {
     // Given the flag set over an empty copy, as a product in Safari finds it after a sign-in on another product, and a
     // paired sign-in stored since in the main store, which the product's copy does not share
-    const { browser, context } = await launchPartitioned(playwright, launchOptions);
+    const { browser, context } = await launchWith(playwright, launchOptions, PARTITIONED_STORAGE_ARGS);
     try {
       await setSessionFlag(request);
       const page = await context.newPage();
@@ -518,14 +512,8 @@ test.describe('Signing in through the window fails', () => {
     launchOptions,
   }) => {
     // Given: a browser that opens no window, as one that blocks pop-ups
-    const browser = await playwright.chromium.launch({
-      ...launchOptions,
-      args: [...(launchOptions.args ?? []), '--block-new-web-contents'],
-    });
+    const { browser, context } = await launchWith(playwright, launchOptions, ['--block-new-web-contents']);
     try {
-      const context = await browser.newContext();
-      await seedSettings(context, { backend: 'rpc-gateway' });
-      await disableTruapiDebugPanel(context);
       const page = await context.newPage();
       await openProduct(page);
 
