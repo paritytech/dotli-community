@@ -3,6 +3,7 @@
 
 // The protocol frame's contract, and the status, config, timeouts and page parts it is built with.
 
+import type { ReadableAtom } from 'nanostores';
 import type { Backend, Network } from '@dotli/config';
 import type { m } from '@dotli/metrics';
 import type { Timers } from '@dotli/shared';
@@ -90,19 +91,20 @@ export type ProtocolFrameParams<E extends FrameElement> = {
 
 /** The protocol frame as the layers above it use it. */
 export type ProtocolFrame = {
-  /** Where the frame stands now. */
-  getStatus(): ProtocolStatus;
   /**
-   * Called on each change only, with the status there is when its turn comes, so within one round of listeners it can
-   * hear the same status twice and miss one. Does not start a frame. Returns the unsubscribe.
+   * Where the frame stands. A listener hears each change only, with the status there is when its turn comes, so within
+   * one round of listeners it can hear the same status twice and miss one. Listening starts no frame.
+   * The frame catches a listener's throw where it sets the status, reports it under `protocol.status` and goes on.
+   * nanostores runs every listener queued in that round, of every store set in it, and rethrows only the last throw, so
+   * that one is reported, whatever store its listener follows. A set made inside another store's listener round is
+   * delivered in that round, so its listeners' throws reach that round's writer instead.
    */
-  subscribeStatus(listener: (status: ProtocolStatus) => void): () => void;
+  readonly status: ReadableAtom<ProtocolStatus>;
   /**
    * Says what the frame is built with. Nothing boots before it, and waits begun before the first config wait for it,
    * up to `configureMs`.
    * The same config again does nothing. A different one rebuilds a frame already asked for at once, unless a frame
-   * refused the host's wire version, which no rebuild fixes. Throws only what a status listener throws, after every
-   * listener heard the change.
+   * refused the host's wire version, which no rebuild fixes. Never throws.
    */
   configure(config: ProtocolFrameConfig): void;
   /**

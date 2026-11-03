@@ -17,7 +17,7 @@ export { createRandomId } from './createRandomId.js';
 export type { ListableStorage, SafeStorage } from './createSafeStorage.js';
 export { createSafeStorage } from './createSafeStorage.js';
 export { createSharedRun } from './createSharedRun.js';
-export { registerStoreStateReset } from './storeResets.js';
+export { registerAtomReset, registerStoreStateReset } from './storeResets.js';
 export { deleteIdb } from './deleteIdb.js';
 export { describeGatewayUnreachable } from './describeGatewayUnreachable.js';
 export { formatDuration } from './formatDuration.js';

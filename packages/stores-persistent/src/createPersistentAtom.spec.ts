@@ -16,8 +16,28 @@ function decodeNumber(raw: string): number | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
+function encodeNumber(value: number): string {
+  return JSON.stringify(value);
+}
+
 function openBlocked(): Storage {
   throw new DOMException('The operation is insecure.', 'SecurityError');
+}
+
+function createCountingStorage(backing: Storage) {
+  const storage = createSafeStorage(() => backing);
+  let reads = 0;
+  return {
+    storage: {
+      getItem(key: string) {
+        reads += 1;
+        return storage.getItem(key);
+      },
+      setItem: storage.setItem,
+      removeItem: storage.removeItem,
+    },
+    countReads: () => reads,
+  };
 }
 
 describe('createPersistentAtom', () => {
@@ -27,7 +47,13 @@ describe('createPersistentAtom', () => {
     const storage = createSafeStorage(() => backing);
 
     // When
-    const count = createPersistentAtom({ key: 'count', storage, initial: 0, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
 
     // Then
     expect(count.get()).toBe(7);
@@ -38,7 +64,13 @@ describe('createPersistentAtom', () => {
     const storage = createSafeStorage(() => createMemoryStorage());
 
     // When
-    const count = createPersistentAtom({ key: 'count', storage, initial: 3, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 3,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
 
     // Then
     expect(count.get()).toBe(3);
@@ -52,23 +84,16 @@ describe('createPersistentAtom', () => {
     const storage = createSafeStorage(() => createMemoryStorage({ entries: { count: stored } }));
 
     // When
-    const count = createPersistentAtom({ key: 'count', storage, initial: 3, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 3,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
 
     // Then
     expect(count.get()).toBe(3);
-  });
-
-  it('As a writer, I set a value and it is stored as JSON', () => {
-    // Given
-    const backing = createMemoryStorage();
-    const storage = createSafeStorage(() => backing);
-    const count = createPersistentAtom({ key: 'count', storage, initial: 0, decode: decodeNumber });
-
-    // When
-    count.set(9);
-
-    // Then
-    expect(backing.getItem('count')).toBe('9');
   });
 
   it('As a writer with my own encode, I set a value and it is stored encoded by it', () => {
@@ -94,7 +119,13 @@ describe('createPersistentAtom', () => {
     // Given
     const backing = createMemoryStorage({ entries: { count: '7' } });
     const storage = createSafeStorage(() => backing);
-    const count = createPersistentAtom({ key: 'count', storage, initial: 0, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
 
     // When
     count.set(0);
@@ -106,7 +137,13 @@ describe('createPersistentAtom', () => {
   it('As a page whose storage throws on every call, I read the initial value, and set and get still work in memory', () => {
     // Given
     const storage = createSafeStorage(openBlocked);
-    const count = createPersistentAtom({ key: 'count', storage, initial: 3, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 3,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
 
     // When
     const first = count.get();
@@ -116,16 +153,114 @@ describe('createPersistentAtom', () => {
     expect([first, count.get()]).toEqual([3, 5]);
   });
 
-  it('As a page, another tab writes the key and I keep my value until reload', () => {
+  it('As a page, another tab writes the key after my first read and I keep my value until reload', () => {
     // Given
     const backing = createMemoryStorage({ entries: { count: '7' } });
     const storage = createSafeStorage(() => backing);
-    const count = createPersistentAtom({ key: 'count', storage, initial: 0, decode: decodeNumber });
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
+    count.get();
 
     // When
     backing.setItem('count', '99');
 
     // Then
     expect(count.get()).toBe(7);
+  });
+
+  it('As a page, another tab writes the key before my first read and I read its value', () => {
+    // Given
+    const backing = createMemoryStorage({ entries: { count: '7' } });
+    const storage = createSafeStorage(() => backing);
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
+
+    // When
+    backing.setItem('count', '99');
+
+    // Then
+    expect(count.get()).toBe(99);
+  });
+
+  it('As a page that builds a persistent atom at import, I read no storage until something reads it', () => {
+    // Given
+    const { storage, countReads } = createCountingStorage(createMemoryStorage({ entries: { count: '7' } }));
+
+    // When
+    createPersistentAtom({ key: 'count', storage, initial: 0, decode: decodeNumber, encode: encodeNumber });
+
+    // Then
+    expect(countReads()).toBe(0);
+  });
+
+  it('As a page, I read a persistent atom twice and its storage once', () => {
+    // Given
+    const { storage, countReads } = createCountingStorage(createMemoryStorage({ entries: { count: '7' } }));
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
+
+    // When
+    const values = [count.get(), count.get()];
+
+    // Then
+    expect([values, countReads()]).toEqual([[7, 7], 1]);
+  });
+
+  it('As a writer who sets before anything read, I keep my value over the stored one, and setting the initial value then removes the key', () => {
+    // Given
+    const backing = createMemoryStorage({ entries: { count: '7' } });
+    const { storage, countReads } = createCountingStorage(backing);
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
+
+    // When
+    count.set(9);
+    const afterSet = [count.get(), backing.getItem('count'), countReads()];
+    count.set(0);
+
+    // Then
+    expect([afterSet, backing.getItem('count')]).toEqual([[9, '9', 1], null]);
+  });
+
+  it("As a page, a persistent atom's stored value read on first start writes nothing back", () => {
+    // Given
+    const backing = createMemoryStorage({ entries: { count: '7.0' } });
+    const storage = createSafeStorage(() => backing);
+    const count = createPersistentAtom({
+      key: 'count',
+      storage,
+      initial: 0,
+      decode: decodeNumber,
+      encode: encodeNumber,
+    });
+    const heard: number[] = [];
+
+    // When
+    count.listen(value => {
+      heard.push(value);
+    });
+
+    // Then
+    expect([count.get(), backing.getItem('count'), heard]).toEqual([7, '7.0', []]);
   });
 });

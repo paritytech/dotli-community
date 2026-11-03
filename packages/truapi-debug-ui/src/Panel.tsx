@@ -11,7 +11,7 @@
 import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { useStore } from '@dotli/stores-solid';
-import { getDockStorage, type DockPosition } from './model/createDockStorage.js';
+import { dockStorage, type DockPosition } from './model/createDockStorage.js';
 import type { EventStore } from './model/createEventStore.js';
 import { getCorrelationKey } from './model/getCorrelationKey.js';
 import { findFirstNewIndex } from './model/findFirstNewIndex.js';
@@ -19,7 +19,7 @@ import type { EventSeq, StoredEvent } from './model/storedEvent.js';
 import { buildExport, type ExportMeta } from './model/buildExport.js';
 import { createInitialFilterState, type FilterState } from './model/filterState.js';
 import { getPanelDockInset } from './model/getPanelDockInset.js';
-import { getSectionStorage, type PanelSection } from './model/createSectionStorage.js';
+import { sectionStorage, type PanelSection } from './model/createSectionStorage.js';
 
 import type { ResolutionRecorder } from './model/createResolutionRecorder.js';
 import { Diagnostics } from './Diagnostics.js';
@@ -108,8 +108,6 @@ export function Panel(props: {
   const work = usePanelWork();
   const host = untrack(() => props.host);
   const { matchesFilters } = work;
-  const dockStorage = getDockStorage();
-  const sectionStorage = getSectionStorage();
 
   let panelElement: HTMLDivElement | undefined;
   let listElement: HTMLDivElement | undefined;

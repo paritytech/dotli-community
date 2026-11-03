@@ -3,13 +3,11 @@
 
 // Imports no Solid, so the spec runs under Node.
 
-import { pageLocalStorage } from '@dotli/shared';
+import { pageLocalStorage, registerAtomReset } from '@dotli/shared';
 import { createPersistentAtom } from '@dotli/stores-persistent';
 import type { PanelStorage } from './panelStorage.js';
 
 export type DockPosition = 'bottom' | 'right';
-
-type DockStorage = ReturnType<typeof createDockStorage>;
 
 type Params = {
   /** Where the dock is kept. */
@@ -30,19 +28,13 @@ export function createDockStorage({ storage = pageLocalStorage }: Params = {}) {
     storage,
     initial: 'bottom',
     decode: decodeDock,
-    // The key holds the bare name, not JSON, so a dock stored by an earlier build still reads.
-    encode: value => value,
+    encode: String,
   });
 }
 
-// Built on first use, so importing the module reads no storage.
-let page: DockStorage | undefined;
-
-/** The page's dock, in the page's local storage, the same atom on every call. Never throws. */
-export function getDockStorage(): DockStorage {
-  page ??= createDockStorage();
-  return page;
-}
+/** The page's dock, in the page's local storage. It reads its key on first start. */
+export const dockStorage = createDockStorage();
+registerAtomReset(dockStorage);
 
 function decodeDock(raw: string): DockPosition | undefined {
   return DOCK_POSITIONS.find(dock => dock === raw);

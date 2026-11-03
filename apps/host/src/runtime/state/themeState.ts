@@ -1,8 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
-import { atom, type ReadableAtom } from 'nanostores';
+import { isShallowEqual, pageLocalStorage, registerAtomReset } from '@dotli/shared';
+import { createPersistentAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
+import { atom, computed, type ReadableAtom } from 'nanostores';
+import { THEME_KEY } from '../../themeKey.js';
 
 /** The theme the user chose, where System follows the OS. */
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -15,29 +17,61 @@ export type ThemeState = {
   resolved: 'light' | 'dark';
 };
 
-const INITIAL: ThemeState = { preference: 'system', resolved: 'dark' };
+type ColorScheme = ThemeState['resolved'];
 
-const theme = atom<ThemeState>(INITIAL);
-theme.eq = isShallowEqual;
-registerStoreStateReset(() => {
-  theme.set(INITIAL);
-});
-const store: ReadableAtom<ThemeState> = theme;
-
-/** The page's theme preference and the theme it resolves to. */
-export const themeState = {
-  /** The current theme. A `set` equal to it notifies nobody. */
-  store,
-  /** Returns the current theme. Never throws. */
-  get,
-  /** Publishes the next theme, dropping one equal to the current. Never throws. */
-  set,
+type Params = {
+  /** Keeps the theme the user chose for later sessions. */
+  storage: PersistentAtomParams<ThemePreference>['storage'];
 };
 
-function get(): ThemeState {
-  return theme.get();
+export type ThemeStore = ReturnType<typeof createThemeState>;
+
+/**
+ * Builds the theme over the choice kept in `storage` and the OS scheme last shown to it. The choice is System when
+ * nothing stored parses, and choosing System removes it. The OS scheme is dark until shown, as the prerender is.
+ */
+export function createThemeState({ storage }: Params) {
+  const preference = createPersistentAtom<ThemePreference>({
+    key: THEME_KEY,
+    storage,
+    initial: 'system',
+    decode: decodeThemePreference,
+    // The key holds the bare name, not JSON, so a choice stored by an earlier build still reads.
+    encode: String,
+  });
+  registerAtomReset(preference);
+  const systemScheme = atom<ColorScheme>('dark');
+  registerAtomReset(systemScheme);
+
+  const theme = computed([preference, systemScheme], resolveTheme);
+  theme.eq = isShallowEqual;
+  const store: ReadableAtom<ThemeState> = theme;
+
+  function selectPreference(chosen: ThemePreference): void {
+    preference.set(chosen);
+  }
+
+  function showSystemScheme(scheme: ColorScheme): void {
+    systemScheme.set(scheme);
+  }
+
+  return {
+    /** The current theme. A change of the OS scheme under a chosen theme notifies nobody. */
+    store,
+    /** Keeps and shows `chosen`. Never throws. */
+    selectPreference,
+    /** Shows the OS scheme that System resolves to. Never throws. */
+    showSystemScheme,
+  };
 }
 
-function set(next: ThemeState): void {
-  theme.set(next);
+/** The page's theme, over its localStorage. */
+export const themeState: ThemeStore = createThemeState({ storage: pageLocalStorage });
+
+function resolveTheme(preference: ThemePreference, scheme: ColorScheme): ThemeState {
+  return { preference, resolved: preference === 'system' ? scheme : preference };
+}
+
+function decodeThemePreference(raw: string): ThemePreference | undefined {
+  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : undefined;
 }

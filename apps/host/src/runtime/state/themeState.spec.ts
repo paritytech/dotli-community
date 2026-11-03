@@ -1,20 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { themeState } from './themeState.js';
-import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { createMemoryStorage } from '@dotli/shared/testing';
+import { createThemeState } from './themeState.js';
 
-describe('theme store', () => {
-  afterEach(() => {
-    resetStores();
-  });
-
+describe('theme state', () => {
   it('As a user opening the prerendered page, I read the theme and get system/dark without a matchMedia read', () => {
     // Given a prerendered page as it opens
+    const { store } = createThemeState({ storage: createMemoryStorage() });
 
     // When
-    const theme = themeState.get();
+    const theme = store.get();
 
     // Then
     expect(theme).toEqual({ preference: 'system', resolved: 'dark' });
@@ -22,19 +19,50 @@ describe('theme store', () => {
 
   it('As a user, I pick the same theme twice and it is announced once', () => {
     // Given
+    const { store, selectPreference } = createThemeState({ storage: createMemoryStorage() });
     let heard = 0;
     onTestFinished(
-      themeState.store.listen(() => {
+      store.listen(() => {
         heard += 1;
       }),
     );
 
     // When
-    themeState.set({ preference: 'light', resolved: 'light' });
-    themeState.set({ preference: 'light', resolved: 'light' });
+    selectPreference('light');
+    selectPreference('light');
 
     // Then
     expect(heard).toBe(1);
-    expect(themeState.get()).toEqual({ preference: 'light', resolved: 'light' });
+    expect(store.get()).toEqual({ preference: 'light', resolved: 'light' });
+  });
+
+  it('As a user with Light chosen, I see the OS turn light and nobody is told', () => {
+    // Given Light chosen on a dark OS
+    const { store, selectPreference, showSystemScheme } = createThemeState({ storage: createMemoryStorage() });
+    selectPreference('light');
+    let heard = 0;
+    onTestFinished(
+      store.listen(() => {
+        heard += 1;
+      }),
+    );
+
+    // When the OS turns light
+    showSystemScheme('light');
+
+    // Then
+    expect(heard).toBe(0);
+    expect(store.get()).toEqual({ preference: 'light', resolved: 'light' });
+  });
+
+  it('As a returning user, I read the theme I chose in an earlier visit', () => {
+    // Given Dark chosen in an earlier visit
+    const { store } = createThemeState({ storage: createMemoryStorage({ entries: { 'dotli-theme': 'dark' } }) });
+
+    // When
+    const theme = store.get();
+
+    // Then
+    expect(theme).toEqual({ preference: 'dark', resolved: 'dark' });
   });
 });

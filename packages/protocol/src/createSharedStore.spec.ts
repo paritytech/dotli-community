@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
-import { atom } from 'nanostores';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { atom, STORE_UNMOUNT_DELAY } from 'nanostores';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createManualTimers, recordLog } from '@dotli/shared/testing';
@@ -46,8 +46,8 @@ describe('createSharedStore', () => {
     const fake = createFakeFrame({ status: 'idle' });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame }) });
     const statuses: SharedStoreStatus[] = [];
-    store.status.subscribeStatus(status => statuses.push(status));
-    const atStart = store.status.getStatus();
+    store.status.listen(status => statuses.push(status));
+    const atStart = store.status.get();
 
     // When: the first frame boots and listens, dies, is rebuilt, and is rebuilt again on purpose.
     for (const status of [
@@ -74,8 +74,8 @@ describe('createSharedStore', () => {
     const fake = createFakeFrame({ status: 'idle' });
     let store: ReturnType<typeof createSharedStore> | null = null;
     const read: (SharedStoreStatus | undefined)[] = [];
-    fake.frame.subscribeStatus(() => {
-      read.push(store?.status.getStatus());
+    fake.frame.status.listen(() => {
+      read.push(store?.status.get());
     });
     store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame }) });
 
@@ -93,8 +93,7 @@ describe('createSharedStore', () => {
     const cell = atom<ProtocolStatus>('idle');
     const frame: ProtocolFrame = {
       ...createFakeFrame().frame,
-      getStatus: () => cell.get(),
-      subscribeStatus: listener => cell.listen(listener),
+      status: cell,
     };
     let rebuilt = false;
     cell.listen(next => {
@@ -106,21 +105,41 @@ describe('createSharedStore', () => {
     });
     const store = createSharedStore({ frame, rpc: createFrameRpc({ frame }) });
     const statuses: SharedStoreStatus[] = [];
-    store.status.subscribeStatus(status => statuses.push(status));
+    store.status.listen(status => statuses.push(status));
 
     // When the first frame listens and is rebuilt at once
     cell.set('booting');
     cell.set('listening');
 
     // Then the store never heard the first frame listen, so it reads connecting while the new frame boots
-    expect(store.status.getStatus()).toBe('connecting');
+    expect(store.status.get()).toBe('connecting');
 
     // When the new frame listens
     cell.set('listening');
 
     // Then the store is available, the one change its listener heard
-    expect(store.status.getStatus()).toBe('available');
+    expect(store.status.get()).toBe('available');
     expect(statuses).toEqual(['available']);
+  });
+
+  it('As a dotli integrator, I read the shared store with nobody listening while its frame settles and boots again, and read it unavailable', () => {
+    // Given a store read once with nobody listening while its frame boots, left until its status unmounts
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const fake = createFakeFrame({ status: 'booting' });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame }) });
+    store.status.get();
+    // nanostores' unmount timer has no seam, and `cleanStores` would clear the cache this case pins.
+    vi.advanceTimersByTime(STORE_UNMOUNT_DELAY);
+
+    // When the frame listens and boots again, with nobody listening
+    fake.setStatus('listening');
+    fake.setStatus('booting');
+
+    // Then
+    expect(store.status.get()).toBe('unavailable');
   });
 
   it("As a returning user, I hear another tab's shared auth write, and my subscription waits only for a listening frame", async () => {

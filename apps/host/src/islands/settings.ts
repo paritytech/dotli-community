@@ -36,7 +36,9 @@ export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {
     onOpenChange: setOpen,
     settings: useStore(binding.settings),
     version: binding.version,
-    theme: useStore(binding.theme, theme => theme.preference),
+    theme: useStore(binding.theme, theme => theme.preference, {
+      initial: { preference: 'system' } as const,
+    }),
     onTheme: binding.selectTheme,
     onApply: binding.apply,
     debugMode: binding.debugMode,

@@ -52,7 +52,7 @@ listener set, the test reset of stores and a few formatting helpers.
 ### `@dotli/shared`
 
 - Concurrency and state: `createAsyncTaskPool`, `AsyncTaskPool`, `createLazyLoad({ load, onFirstMiss? })`,
-  `createListenerSet`, `ListenerSet`, `registerStoreStateReset`, `isShallowEqual`,
+  `createListenerSet`, `ListenerSet`, `registerStoreStateReset`, `registerAtomReset`, `isShallowEqual`,
   `waitForStatus(source, verdict, { signal? })` (a wait on anything with `get` and `listen`, such as a store, until a
   verdict, which settles at once on the status there is now and leaves through a signal), `StatusSource`,
   `toAbortError`, `createPendingReplies` (its `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`,

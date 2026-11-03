@@ -1,15 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { pageLocalStorage } from '@dotli/shared';
-import { createPersistentAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
-import { themeState, type ThemePreference } from './runtime/state/themeState.js';
-import { THEME_KEY } from './themeKey.js';
+import { themeState, type ThemePreference, type ThemeStore } from './runtime/state/themeState.js';
 
 /** The page parts the theme reads and writes. */
 type Params = {
-  /** Keeps the theme the user chose for later sessions. */
-  storage: PersistentAtomParams<ThemePreference>['storage'];
+  /** The theme the user chose and the OS scheme it resolves System against. */
+  theme: Pick<ThemeStore, 'store' | 'selectPreference' | 'showSystemScheme'>;
   /** Whether the OS prefers a light scheme, and its changes. */
   colorScheme: () => Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
   /** Carries `data-theme` and `data-theme-pref`, the page state the functional tests read. */
@@ -18,48 +15,32 @@ type Params = {
 
 export type ThemeController = ReturnType<typeof createThemeController>;
 
-// Built on first use, since the stored choice is read when its atom is built and a prerender loads this module too.
-let page: ThemeController | undefined;
-
-/**
- * Builds the theme over the choice kept in `storage`, the OS colour scheme and `root`. The choice is System when
- * nothing stored parses, and choosing System removes it. Never throws.
- */
-export function createThemeController({ storage, colorScheme, root }: Params) {
-  const preference = createPersistentAtom<ThemePreference>({
-    key: THEME_KEY,
-    storage,
-    initial: 'system',
-    decode: decodeThemePreference,
-    // The key holds the bare name, not JSON, so a choice stored by an earlier build still reads.
-    encode: value => value,
-  });
-
-  function resolveTheme(chosen: ThemePreference): 'light' | 'dark' {
-    if (chosen !== 'system') {
-      return chosen;
-    }
-    return colorScheme().matches ? 'light' : 'dark';
+/** Builds the theme controller, which shows the OS colour scheme to `theme` and writes the theme on `root`. */
+export function createThemeController({ theme, colorScheme, root }: Params) {
+  // The OS is asked on every apply, so a choice made before any start still resolves System against it.
+  function showSystemScheme(): void {
+    theme.showSystemScheme(colorScheme().matches ? 'light' : 'dark');
   }
 
-  function applyThemePref(chosen: ThemePreference): void {
-    const resolved = resolveTheme(chosen);
+  function writeRoot(): void {
+    const { preference, resolved } = theme.store.get();
     const element = root();
-    element.setAttribute('data-theme-pref', chosen);
+    element.setAttribute('data-theme-pref', preference);
     element.setAttribute('data-theme', resolved);
-    // The product follows the theme through this store.
-    themeState.set({ preference: chosen, resolved });
+  }
+
+  function applyTheme(): void {
+    showSystemScheme();
+    writeRoot();
   }
 
   function startTheme(): () => void {
-    applyThemePref(preference.get());
+    applyTheme();
 
     const systemScheme = colorScheme();
     // One listener per start, so each start's stop removes only its own.
     function followSystemTheme(): void {
-      if (preference.get() === 'system') {
-        applyThemePref('system');
-      }
+      applyTheme();
     }
     function unfollowSystemTheme(): void {
       systemScheme.removeEventListener('change', followSystemTheme);
@@ -69,8 +50,10 @@ export function createThemeController({ storage, colorScheme, root }: Params) {
   }
 
   function selectThemePref(chosen: ThemePreference): void {
-    preference.set(chosen);
-    applyThemePref(chosen);
+    // The scheme goes first, so a listener of the theme never hears System resolved against a stale one.
+    showSystemScheme();
+    theme.selectPreference(chosen);
+    writeRoot();
   }
 
   return {
@@ -79,34 +62,14 @@ export function createThemeController({ storage, colorScheme, root }: Params) {
      * `colorScheme` or `root` does.
      */
     startTheme,
-    /** Stores and applies `chosen`. Throws only as `root` does. */
+    /** Stores and applies `chosen`. Throws only as `colorScheme` or `root` does. */
     selectThemePref,
   };
 }
 
-/** The page's theme, over its localStorage, the OS colour scheme and the document's root element. */
-export const pageTheme: ThemeController = {
-  startTheme: startPageTheme,
-  selectThemePref: selectPageThemePref,
-};
-
-function startPageTheme(): () => void {
-  return getPageTheme().startTheme();
-}
-
-function selectPageThemePref(preference: ThemePreference): void {
-  getPageTheme().selectThemePref(preference);
-}
-
-function getPageTheme(): ThemeController {
-  page ??= createThemeController({
-    storage: pageLocalStorage,
-    colorScheme: () => window.matchMedia('(prefers-color-scheme: light)'),
-    root: () => document.documentElement,
-  });
-  return page;
-}
-
-function decodeThemePreference(raw: string): ThemePreference | undefined {
-  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : undefined;
-}
+/** The page's theme, over its theme state, the OS colour scheme and the document's root element. */
+export const pageTheme: ThemeController = createThemeController({
+  theme: themeState,
+  colorScheme: () => window.matchMedia('(prefers-color-scheme: light)'),
+  root: () => document.documentElement,
+});

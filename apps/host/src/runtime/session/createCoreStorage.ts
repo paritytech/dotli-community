@@ -439,8 +439,8 @@ function createSiteSharedSessionStore(): SharedSessionStore {
           listener(change.value.key);
         }
       }),
-    getStatus: () => getProtocolClient().sharedStore.getStatus(),
-    subscribeStatus: listener => getProtocolClient().sharedStore.subscribeStatus(listener),
+    getStatus: () => getProtocolClient().sharedStore.status.get(),
+    subscribeStatus: listener => getProtocolClient().sharedStore.status.listen(listener),
   };
 }
 

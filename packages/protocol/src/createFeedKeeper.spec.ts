@@ -35,8 +35,7 @@ describe('createFeedKeeper', () => {
   /** The frame, ready with `current` as its transport unless a test says otherwise. */
   function createFrame(transport = (): Promise<Transport> => Promise.resolve(current)): FeedFrame<Transport> {
     return {
-      getStatus: () => status.get(),
-      subscribeStatus: listener => status.listen(listener),
+      status,
       getTransport: transport,
     };
   }

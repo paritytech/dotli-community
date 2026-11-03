@@ -17,7 +17,7 @@ import {
   setUpDebugPanel,
 } from './testing/stories/debugPanelFixtures.js';
 import { debugPanelStory } from './testing/stories/debugPanelStory.js';
-import { getDockStorage } from './model/createDockStorage.js';
+import { dockStorage } from './model/createDockStorage.js';
 
 const meta = {
   ...debugPanelStory,
@@ -37,7 +37,7 @@ function getBox(element: Element): DOMRect {
 
 /** A dock picked on an earlier mount, then the panel mounted. */
 function mountDocked(dock: 'right' | 'bottom', options: { topbar?: boolean; startCollapsed?: boolean } = {}): void {
-  getDockStorage().set(dock);
+  dockStorage.set(dock);
   if (options.topbar === true) {
     getDebugPanel().host.topbarPresent.set(true);
   }

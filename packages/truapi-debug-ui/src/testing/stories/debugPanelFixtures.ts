@@ -11,8 +11,8 @@ import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost } from '../../host.fake.js';
 import type { KeyedSignals } from '../../createKeyedSignals.js';
 import { setupTruapiDebugPanel } from '../../truapiDebugPanel.js';
-import { getDockStorage } from '../../model/createDockStorage.js';
-import { getSectionStorage } from '../../model/createSectionStorage.js';
+import { dockStorage } from '../../model/createDockStorage.js';
+import { sectionStorage } from '../../model/createSectionStorage.js';
 import { NARROW_QUERY, PANEL_ID } from '../../Panel.js';
 import type { PanelEffects } from '../../panelEffects.js';
 import { panelWork, type PanelWork } from '../../panelWork.js';
@@ -111,9 +111,10 @@ export function setUpDebugPanel(context: { parameters: { debugPanel?: DebugPanel
 
 /** Puts the panel's dock and tab back to their defaults, which removes their keys. */
 function resetStoredChoices(): void {
-  // The page atoms read storage once and outlive a story, so clearing the keys alone would carry a choice over.
-  getDockStorage().set('bottom');
-  getSectionStorage().set('truapi');
+  // Resets the panel's own two choices alone, not every store a story's host fakes hold. The page atoms outlive a
+  // story, so clearing the keys alone would carry a choice over.
+  dockStorage.set('bottom');
+  sectionStorage.set('truapi');
 }
 
 /** The mounted panel. Throws when it is not mounted. */
