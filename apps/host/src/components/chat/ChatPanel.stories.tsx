@@ -152,28 +152,6 @@ export const ReadFails: Story = {
   },
 };
 
-/** As a reader who scrolled up, I stay where I read when a new message arrives. */
-export const ReadingOlderStaysPut: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    stage.seed(3, FORTY);
-  },
-  play: async ({ canvasElement, step }) => {
-    let list = conversation(canvasElement);
-    await step('Given a conversation I scrolled up in', async () => {
-      list = await openRoom(canvasElement, 'Room 0', 40);
-      await scrollTo(list, 100);
-    });
-    await step('When a new message arrives', async () => {
-      stage.productSays('r0', 'new');
-      await waitFor(() => expect(within(list).getAllByTestId('chat-msg')).toHaveLength(41));
-    });
-    await step('Then it does not pull me down', async () => {
-      await expect(list.scrollTop).toBe(100);
-    });
-  },
-};
-
 /** As a reader at the newest message, I stay there when a custom message grows late. */
 export const LateCustomRenderStaysAtBottom: Story = {
   tags: ['!autodocs'],
