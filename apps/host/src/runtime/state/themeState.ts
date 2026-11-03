@@ -3,7 +3,7 @@
 
 import { isShallowEqual, pageLocalStorage, registerAtomReset } from '@dotli/shared';
 import { createPersistentAtom, type PersistentAtomParams } from '@dotli/stores-persistent';
-import { atom, computed, type ReadableAtom } from 'nanostores';
+import { atom, computed } from 'nanostores';
 import { THEME_KEY } from '../../themeKey.js';
 
 /** The theme the user chose, where System follows the OS. */
@@ -36,7 +36,6 @@ export function createThemeState({ storage }: Params) {
     storage,
     initial: 'system',
     decode: decodeThemePreference,
-    // The key holds the bare name, not JSON, so a choice stored by an earlier build still reads.
     encode: String,
   });
   registerAtomReset(preference);
@@ -45,7 +44,6 @@ export function createThemeState({ storage }: Params) {
 
   const theme = computed([preference, systemScheme], resolveTheme);
   theme.eq = isShallowEqual;
-  const store: ReadableAtom<ThemeState> = theme;
 
   function selectPreference(chosen: ThemePreference): void {
     preference.set(chosen);
@@ -57,7 +55,7 @@ export function createThemeState({ storage }: Params) {
 
   return {
     /** The current theme. A change of the OS scheme under a chosen theme notifies nobody. */
-    store,
+    store: theme,
     /** Keeps and shows `chosen`. Never throws. */
     selectPreference,
     /** Shows the OS scheme that System resolves to. Never throws. */

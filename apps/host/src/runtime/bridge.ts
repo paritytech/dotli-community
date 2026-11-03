@@ -297,7 +297,7 @@ export function startSessionState(): () => void {
 
       return unsubscribe;
     },
-    isSignedIn: () => authState.get().tag === 'Connected',
+    isSignedIn: () => authState.store.get().tag === 'Connected',
     signOuts,
     reconcile: () => reconcilePage('visible'),
     readPageWalletVersion: async () =>

@@ -8,7 +8,7 @@
 // it takes.
 
 import { m, spans as S } from '@dotli/metrics';
-import { createDeferred, listen, log, registerStoreStateReset } from '@dotli/shared';
+import { createDeferred, listen, log } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { OpenerParty, Party, SessionOpenerVerdict } from './openerRule.js';
 import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
@@ -90,11 +90,7 @@ type AnswerParams<Result> = {
 
 /** The window's side of `round`, which says ready to its opener at once when it has one. */
 export function createResponder<Result>({ opener, judge, round, listen, onPageRestore }: Params): Responder<Result> {
-  const initial: ResponderState = { kind: opener === null ? 'no-opener' : 'connecting' };
-  const store = atom<ResponderState>(initial);
-  registerStoreStateReset(() => {
-    store.set(initial);
-  });
+  const store = atom<ResponderState>({ kind: opener === null ? 'no-opener' : 'connecting' });
   // The first origin vetted, which the window answers alone, since the opener tab may move to another site while the
   // window sits in the back-forward cache.
   let pinned: { origin: string; party: Party } | null = null;

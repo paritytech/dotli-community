@@ -141,7 +141,7 @@ describe('createProductLoader', () => {
     // Then
     expect(frame.render).not.toHaveBeenCalled();
     expect(failures.map(failure => failure.error.kind)).toEqual(['manifest-unsupported-version']);
-    expect(productState.get().status).toBe('error');
+    expect(productState.store.get().status).toBe('error');
     expect(revalidated).toEqual([['doom', 'bafy-cached', false]]);
     expect(captured[0]?.step).toBe('cached_launch_gate');
     expect(captured[0]?.tags).toMatchObject({ smoldotdb_hub_cache: 'n/a' });
@@ -158,7 +158,7 @@ describe('createProductLoader', () => {
 
     // Then
     expect(document.querySelector('[data-testid="error-page-domain"]')?.textContent).toContain('doom');
-    expect(productState.get().status).toBe('error');
+    expect(productState.store.get().status).toBe('error');
     expect(nextAttempt.attemptNumber).toBe(1);
     expect(readResolution()).toMatchObject({ outcome: 'no_content' });
     expect(frame.render).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe('createProductLoader', () => {
     });
     expect(readResolution()).toMatchObject({ outcome: 'error' });
     expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom', backend: 'smoldot-direct' })]);
-    expect(productState.get().status).toBe('error');
+    expect(productState.store.get().status).toBe('error');
   });
 
   it('As a visitor whose failure screen itself fails, I open a name and the load rejects with that failure', async () => {

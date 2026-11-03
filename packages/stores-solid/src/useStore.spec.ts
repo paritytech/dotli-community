@@ -227,7 +227,7 @@ describe('useStore', () => {
 });
 
 describe('selectBuildValue', () => {
-  it('As an island reading an atom, my build-time value is the selected init', () => {
+  it('As an island reading an atom, I render at build time and show the selected init', () => {
     // Given an atom built with a value
     const store = atom({ a: 1, b: 2 });
 
@@ -249,7 +249,7 @@ describe('selectBuildValue', () => {
     { label: 'a falsy value', store: atom<number | null>(7), select: count => count, initial: 0, expected: 0 },
     { label: 'null', store: atom<number | null>(7), select: count => count ?? -1, initial: null, expected: -1 },
   ])(
-    'As an island that passes $label as initial, my build-time value uses it',
+    'As an island that passes $label as initial, I render at build time and show it',
     ({ store, select, initial, expected }) => {
       // Given a store whose init, when it has one, differs from the initial
 

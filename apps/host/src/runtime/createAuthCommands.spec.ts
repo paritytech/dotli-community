@@ -37,7 +37,6 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
  */
 function createQueueHarness({ initial, logoutSignsOut = false, cancelEndsLogin = false }: Params) {
   const auth = atom<DotliAuthState>(initial);
-  auth.eq = () => false;
   const calls: Calls = { logins: [], signals: [], logouts: 0, cancels: 0 };
   const answer = createDeferred<LoginOutcome>();
   const commands = createAuthCommands({

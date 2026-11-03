@@ -5,7 +5,7 @@
 // resumes from what was left.
 
 import { reportListener } from '@dotli/metrics';
-import { isShallowEqual, realTimers, registerStoreStateReset, type Timers } from '@dotli/shared';
+import { isShallowEqual, realTimers, registerStoreStateReset, registerAtomReset, type Timers } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { StatusTone } from '../statusTone.js';
 import type { Component } from 'solid-js';
@@ -77,9 +77,7 @@ const reportDismissError = reportListener('ui', 'toast.dismiss');
 export function createToasts({ page, timers = realTimers }: Params = {}) {
   const state = atom<ToastsState>(INITIAL);
   state.eq = isShallowEqual;
-  registerStoreStateReset(() => {
-    state.set(INITIAL);
-  });
+  registerAtomReset(state);
   const store: ReadableAtom<ToastsState> = state;
   const countdowns = new Map<number, Countdown>();
   let nextId = 0;

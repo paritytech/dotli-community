@@ -1,13 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { registerStoreStateReset } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 const elsewhere = atom<boolean>(false);
-registerStoreStateReset(() => {
-  elsewhere.set(false);
-});
+registerAtomReset(elsewhere);
 const store: ReadableAtom<boolean> = elsewhere;
 
 /** Whether a sign-in exists on the site that this page does not hold. */

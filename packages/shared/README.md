@@ -52,12 +52,13 @@ listener set, the test reset of stores and a few formatting helpers.
 ### `@dotli/shared`
 
 - Concurrency and state: `createAsyncTaskPool`, `AsyncTaskPool`, `createLazyLoad({ load, onFirstMiss? })`,
-  `createListenerSet`, `ListenerSet`, `registerStoreStateReset`, `registerAtomReset`, `isShallowEqual`,
-  `waitForStatus(source, verdict, { signal? })` (a wait on anything with `get` and `listen`, such as a store, until a
-  verdict, which settles at once on the status there is now and leaves through a signal), `StatusSource`,
-  `toAbortError`, `createPendingReplies` (its `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`,
-  `createDeferred()` (a promise with its resolve and reject), `createSharedRun({ begin })` (one run shared by every
-  `join`, each with its own stop, ended by the last stop or `end`).
+  `createListenerSet`, `ListenerSet`, `registerStoreStateReset`, `registerAtomReset(store)` (resets an atom-shaped
+  store, one with `init` and `set`, to its `init`), `isShallowEqual`, `waitForStatus(source, verdict, { signal? })` (a
+  wait on anything with `get` and `listen`, such as a store, until a verdict, which settles at once on the status there
+  is now and leaves through a signal), `StatusSource`, `toAbortError`, `createPendingReplies` (its
+  `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its
+  resolve and reject), `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by
+  the last stop or `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
   `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,

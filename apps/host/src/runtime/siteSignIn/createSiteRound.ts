@@ -10,14 +10,7 @@
 
 import { m, type MetricOutcome } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import {
-  createAsyncTaskPool,
-  createDeferred,
-  log,
-  isShallowEqual,
-  registerStoreStateReset,
-  waitForStatus,
-} from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, log, isShallowEqual, waitForStatus } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { SessionRoute } from '../sessionHandoff/sessionRoute.js';
@@ -161,9 +154,6 @@ export function createSiteRound<Result>({
   const working: SiteActionScreen = { view: 'site-signing', origin, route };
   const screen = atom<SiteScreen>(working);
   screen.eq = isShallowEqual;
-  registerStoreStateReset(() => {
-    screen.set(working);
-  });
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   // Aborted as the round's last word goes out, so nothing after it posts or changes the main store.

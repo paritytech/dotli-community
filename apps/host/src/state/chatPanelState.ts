@@ -7,6 +7,7 @@ import {
   createSharedRun,
   pageLocalStorage,
   registerStoreStateReset,
+  registerAtomReset,
   isShallowEqual,
   type SafeStorage,
 } from '@dotli/shared';
@@ -48,7 +49,7 @@ const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
 const DEFAULT_PANEL_WIDTH = 360;
 
-const INITIAL: ChatPanelState = {
+const panel = atom<ChatPanelState>({
   label: null,
   runtimeProductId: null,
   available: false,
@@ -60,14 +61,10 @@ const INITIAL: ChatPanelState = {
   focusComposer: false,
   width: DEFAULT_PANEL_WIDTH,
   topbarVisible: true,
-};
-
-// A drag past the clamp and repeated product or topbar events rebuild an equal state.
-const panel = atom<ChatPanelState>(INITIAL);
-panel.eq = isShallowEqual;
-registerStoreStateReset(() => {
-  panel.set(INITIAL);
 });
+// A drag past the clamp and repeated product or topbar events rebuild an equal state.
+panel.eq = isShallowEqual;
+registerAtomReset(panel);
 const store: ReadableAtom<ChatPanelState> = panel;
 
 let widthStorage: WidthStorage = pageLocalStorage;
@@ -257,13 +254,13 @@ function beginFollowing({ chat, storage }: Required<Params>): () => void {
 
 function followSessionAndTopbar(): void {
   update({
-    loggedIn: authState.isLoggedIn(),
+    loggedIn: authState.loggedInStore.get(),
     topbarVisible: topbarState.get().visible,
   });
 }
 
 function followProduct(): void {
-  const product = productState.get();
+  const product = productState.store.get();
   if (product.status === 'error') {
     update({ label: null, runtimeProductId: null, available: false });
     return;

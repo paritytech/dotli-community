@@ -284,9 +284,10 @@ describe('createProtocolFrame', () => {
     const loaded = frame.getTransport();
     await advance();
     await dom.listen();
+    const transport = await frame.getTransport();
 
     // Then the boot went on to a listening frame, and the listener's throw was reported once
-    await expect(loaded).resolves.toBe(await frame.getTransport());
+    await expect(loaded).resolves.toBe(transport);
     expect(frame.status.get()).toBe('listening');
     expect(dom.countFrames()).toBe(1);
     expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([]);
@@ -369,7 +370,7 @@ describe('createProtocolFrame', () => {
     expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
   });
 
-  it('As the host, a status listener throws as the frame listens, and the throw is reported and the frame stays up', async () => {
+  it('As the host, I let a frame listen while a status listener throws on it, and the throw is reported and the frame stays up', async () => {
     // Given a booting frame, its transport, and a status listener that throws when the frame listens
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -401,7 +402,7 @@ describe('createProtocolFrame', () => {
     expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
   });
 
-  it('As the host, two status listeners throw on one change and the frame reports one throw and goes on', async () => {
+  it('As the host, I change a frame status that two listeners throw on, and the frame reports one throw and goes on', async () => {
     // Given a configured frame, and two status listeners that throw on booting
     const errors: unknown[] = [];
     const captured = recordCaptures({ onFinished: onTestFinished, errors });

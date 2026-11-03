@@ -8,7 +8,7 @@
 // has the site's call.
 
 import { atom, type ReadableAtom } from 'nanostores';
-import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
 import type { SiteGrantStore } from '@dotli/storage';
 import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindowState.js';
 import type { Responder } from '../sessionHandoff/createResponder.js';
@@ -119,9 +119,6 @@ export async function openSiteTransaction({
 function openSiteWindow({ origin, responder, createWindowFlow, route, createRound }: OpenSiteWindowParams) {
   // The window flow's screen, while a flow the site started has not stored its sign-in.
   const flowScreen = atom<SignInScreen | null>(null);
-  registerStoreStateReset(() => {
-    flowScreen.set(null);
-  });
   const stops: (() => void)[] = [];
   // Aborts on dispose, after which the round starts no flow, as nothing would release it.
   const lifetime = new AbortController();
@@ -153,12 +150,8 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     stops.push(stopFollowing, flow.dispose);
   });
 
-  const initial: SignInScreen | SiteWindowScreen = { view: 'site-signing', origin, route };
-  const screen = atom<SignInScreen | SiteWindowScreen>(initial);
+  const screen = atom<SignInScreen | SiteWindowScreen>({ view: 'site-signing', origin, route });
   screen.eq = isShallowEqual;
-  registerStoreStateReset(() => {
-    screen.set(initial);
-  });
 
   // Until the window flow shows a view, the window keeps what it showed.
   function showCurrent(): void {

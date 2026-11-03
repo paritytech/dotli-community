@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { isShallowEqual, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 /** `gone` is terminal: no phase follows it. */
@@ -27,7 +27,7 @@ export type LoadingState = {
   phase: LoadingScreenPhase;
 };
 
-const INITIAL: LoadingState = {
+const loading = atom<LoadingState>({
   progress: 0,
   step: ['Reaching out'],
   explanation: '',
@@ -35,14 +35,10 @@ const INITIAL: LoadingState = {
   srText: '',
   warning: null,
   phase: 'active',
-};
-
-const loading = atom<LoadingState>(INITIAL);
+});
 // A write can come every frame, and an unchanged frame notifies nobody.
 loading.eq = isShallowEqual;
-registerStoreStateReset(() => {
-  loading.set(INITIAL);
-});
+registerAtomReset(loading);
 const store: ReadableAtom<LoadingState> = loading;
 
 /** The loading screen's progress, step line, explanation and phase. */

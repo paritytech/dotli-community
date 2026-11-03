@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { createThemeState, type ThemeStore } from './runtime/state/themeState.js';
+import { createThemeState, type ThemeState, type ThemeStore } from './runtime/state/themeState.js';
 import { createThemeController, type ThemeController } from './createThemeController.js';
 import type { SafeStorage } from '@dotli/shared';
 import { createMemoryStorage } from '@dotli/shared/testing';
@@ -240,15 +240,16 @@ describe('theme controller', () => {
     expect(root.get('data-theme')).toBe('light');
   });
 
-  it('As a visitor on the prerendered page, I load the theme controller and the store keeps its default until startTheme runs', () => {
-    // Given a light OS, which nothing has asked yet
-    const { root, loadController } = setupThemePage({ scheme: 'light' });
+  it('As a returning visitor on the prerendered page, I load the theme controller and the store reads my stored choice while the root waits for startTheme', () => {
+    // Given Light chosen in an earlier visit, on a light OS, which nothing has asked yet
+    const { local, root, loadController } = setupThemePage({ scheme: 'light' });
+    local.setItem('dotli-theme', 'light');
 
     // When
     const { store } = loadController();
 
     // Then
-    expect(store.get()).toEqual({ preference: 'system', resolved: 'dark' });
+    expect(store.get()).toEqual({ preference: 'light', resolved: 'light' });
     expect(root.has('data-theme')).toBe(false);
   });
 
@@ -257,7 +258,7 @@ describe('theme controller', () => {
     const { local, loadController } = setupThemePage({ scheme: 'light' });
     local.setItem('dotli-theme', 'dark');
     const { selectThemePref, store } = loadController();
-    const heard: ReturnType<typeof store.get>[] = [];
+    const heard: ThemeState[] = [];
     onTestFinished(
       store.listen(theme => {
         heard.push(theme);

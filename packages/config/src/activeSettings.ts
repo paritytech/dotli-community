@@ -5,14 +5,12 @@
 // frame and the sandbox set the network their URL names. Readers that render subscribe, as an island can settle before
 // boot sets them. A settings change reloads the page, so nothing sets them after boot.
 
-import { registerStoreStateReset } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
 import { atom } from 'nanostores';
 import type { Settings } from './resolveSettings.js';
 
 const store = atom<Settings | null>(null);
-registerStoreStateReset(() => {
-  store.set(null);
-});
+registerAtomReset(store);
 
 /** Null until boot sets them, when each reader takes its default. */
 export function activeSettings(): Settings | null {

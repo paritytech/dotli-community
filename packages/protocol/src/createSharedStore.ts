@@ -100,8 +100,9 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
   return {
     /**
      * Whether the shared store can answer. A listener hears each change only, with the status there is when its turn
-     * comes, so within one round of listeners it can hear the same status twice and miss one. Listening starts no
-     * frame.
+     * comes, so within one round of listeners it can hear the same status twice and miss one. A listener's throw is
+     * reported under `protocol.status`, and delivery goes on, when the frame's own change drains the round. A change
+     * made inside another store's listener round reaches that round's writer instead. Listening starts no frame.
      */
     status,
     /** The auth store, shared by the sites on the same root domain. Each call reaches the frame. */

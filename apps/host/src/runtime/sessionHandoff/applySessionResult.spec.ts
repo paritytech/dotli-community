@@ -44,13 +44,17 @@ function createPage(stored: Params = {}) {
     }),
   });
   const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
-  auth.eq = () => false;
   const session = createSessionState({
     store: storage,
     async restore() {
       return { local: null, session: await storage.readSession(), wallet: { status: 'none' }, presence: 'present' };
     },
-    auth,
+    auth: {
+      store: auth,
+      set: next => {
+        auth.set(next);
+      },
+    },
     setElsewhere: () => undefined,
     isLocalWallet: () => false,
     isResumeOffered: () => true,

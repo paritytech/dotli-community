@@ -12,7 +12,7 @@ import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '.
 import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
 import { authState } from './state/authState.js';
-import { createDeferred } from '@dotli/shared';
+import { createDeferred, createListenerSet } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
@@ -124,7 +124,7 @@ function createFakePhrase({ outcome = 'reloading' }: CreateFakePhraseParams = {}
   return { phrase, used };
 }
 
-/** A controller over its own auth store, whose commands only record what they are asked. */
+/** A controller over its own auth store and steps, whose commands only record what they are asked. */
 function startController({
   coordinator = createBlockingModalCoordinator(),
   commands,
@@ -135,7 +135,18 @@ function startController({
   elsewhere = () => false,
 }: StartControllerParams = {}) {
   const auth = atom<DotliAuthState>({ tag: 'Restoring' });
-  auth.eq = () => false;
+  const steps = createListenerSet<DotliAuthState>({
+    onListenerError: error => {
+      throw new Error('An auth step listener threw', { cause: error });
+    },
+  });
+
+  // A repeated step reaches the steps, though the store drops it as equal.
+  function setAuthStep(next: DotliAuthState): void {
+    auth.set(next);
+    steps.emit(next);
+  }
+
   const changes = createChanges();
   onTestFinished(authModalState.store.listen(changes.notify));
   const recorded = recordCommands({ changes });
@@ -143,6 +154,7 @@ function startController({
     coordinator,
     commands: commands ?? (() => Promise.resolve(recorded.commands)),
     auth,
+    subscribeAuthSteps: steps.subscribe,
     handoff,
     applyResult,
     walletMode: () => walletMode,
@@ -155,8 +167,8 @@ function startController({
   return {
     /** The controller under test. */
     controller,
-    /** The auth store it follows, which the test sets as the core would. */
-    auth,
+    /** The auth state it follows, which the test sets as the core would. */
+    auth: { set: setAuthStep },
     /** The coordinator its modal leases come from. */
     coordinator,
     /** What the controller asked of the bridge chunk's commands. */

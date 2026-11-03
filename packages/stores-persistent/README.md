@@ -30,6 +30,6 @@ flowchart LR
 
 - `createPersistentAtom({ key, storage, initial, decode, encode })` returns a writable atom whose `init` is `initial`.
   It reads the storage once, on the first read, listen or set. `decode` returns `undefined` for text that no longer
-  parses, and `encode` turns a value into the stored text. It never throws when the storage, `decode` and `encode` never
-  throw.
+  parses, and `encode` turns a value into the stored text. It does not follow another tab's write after that read. It
+  never throws when the storage, `decode` and `encode` never throw.
 - `PersistentAtomParams`, the options `createPersistentAtom` takes.

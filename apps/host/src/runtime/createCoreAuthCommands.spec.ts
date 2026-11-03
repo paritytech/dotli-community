@@ -40,7 +40,6 @@ function createHarness({
   const { captures, counted } = bindReports();
   const fakes = createFakePageCore();
   const auth = atom<DotliAuthState>(initial);
-  auth.eq = () => false;
   const session = { reportLoginFailure: vi.fn() };
   // A pairing's session is stored by default, so a login completes once the core reports it.
   const storedSession = createFakeStoredSession({ blob: stored });

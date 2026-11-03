@@ -11,7 +11,7 @@
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, log, isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { createAsyncTaskPool, log, isShallowEqual } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type {
@@ -151,9 +151,6 @@ export function createWindowFlow({
   const initial = getResponderScreen(responder.state.get(), { pairing: getPairingView(SPINNER, auth.get()) });
   const screen = atom<SignInScreen>(initial);
   screen.eq = isShallowEqual;
-  registerStoreStateReset(() => {
-    screen.set(initial);
-  });
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   let phase: Phase = { kind: 'waiting' };

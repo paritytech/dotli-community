@@ -4,7 +4,7 @@
 // The page's wallet mode. A switch reloads the page. A boot whose wallet read failed runs as `app` until a later read
 // finds the wallet.
 
-import { registerStoreStateReset } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 export type WalletMode = 'app' | 'local';
@@ -15,12 +15,8 @@ export type WalletModeState = {
   failure: string | null;
 };
 
-const INITIAL: WalletModeState = { mode: 'app', failure: null };
-
-const walletMode = atom<WalletModeState>(INITIAL);
-registerStoreStateReset(() => {
-  walletMode.set(INITIAL);
-});
+const walletMode = atom<WalletModeState>({ mode: 'app', failure: null });
+registerAtomReset(walletMode);
 const store: ReadableAtom<WalletModeState> = walletMode;
 
 /** The page's wallet mode, and why local mode could not start. */

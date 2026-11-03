@@ -46,7 +46,6 @@ describe('createPersistentAtom', () => {
     const backing = createMemoryStorage({ entries: { count: '7' } });
     const storage = createSafeStorage(() => backing);
 
-    // When
     const count = createPersistentAtom({
       key: 'count',
       storage,
@@ -55,15 +54,17 @@ describe('createPersistentAtom', () => {
       encode: encodeNumber,
     });
 
+    // When
+    const value = count.get();
+
     // Then
-    expect(count.get()).toBe(7);
+    expect(value).toBe(7);
   });
 
   it('As a page with nothing stored, I read the initial value', () => {
     // Given
     const storage = createSafeStorage(() => createMemoryStorage());
 
-    // When
     const count = createPersistentAtom({
       key: 'count',
       storage,
@@ -72,8 +73,11 @@ describe('createPersistentAtom', () => {
       encode: encodeNumber,
     });
 
+    // When
+    const value = count.get();
+
     // Then
-    expect(count.get()).toBe(3);
+    expect(value).toBe(3);
   });
 
   it.each([
@@ -81,9 +85,9 @@ describe('createPersistentAtom', () => {
     { stored: 'seven', shape: 'is not JSON' },
   ])('As a page whose stored value $shape, I read the initial value', ({ stored }) => {
     // Given
-    const storage = createSafeStorage(() => createMemoryStorage({ entries: { count: stored } }));
+    const backing = createMemoryStorage({ entries: { count: stored } });
+    const storage = createSafeStorage(() => backing);
 
-    // When
     const count = createPersistentAtom({
       key: 'count',
       storage,
@@ -92,11 +96,14 @@ describe('createPersistentAtom', () => {
       encode: encodeNumber,
     });
 
+    // When
+    const value = count.get();
+
     // Then
-    expect(count.get()).toBe(3);
+    expect([value, backing.getItem('count')]).toEqual([3, stored]);
   });
 
-  it('As a writer with my own encode, I set a value and it is stored encoded by it', () => {
+  it('As a writer, I set a value and it is stored through my encode', () => {
     // Given
     const backing = createMemoryStorage();
     const storage = createSafeStorage(() => backing);
@@ -153,7 +160,7 @@ describe('createPersistentAtom', () => {
     expect([first, count.get()]).toEqual([3, 5]);
   });
 
-  it('As a page, another tab writes the key after my first read and I keep my value until reload', () => {
+  it('As a page, I read the key before another tab writes it and keep my value until reload', () => {
     // Given
     const backing = createMemoryStorage({ entries: { count: '7' } });
     const storage = createSafeStorage(() => backing);
@@ -168,12 +175,13 @@ describe('createPersistentAtom', () => {
 
     // When
     backing.setItem('count', '99');
+    const value = count.get();
 
     // Then
-    expect(count.get()).toBe(7);
+    expect(value).toBe(7);
   });
 
-  it('As a page, another tab writes the key before my first read and I read its value', () => {
+  it("As a page, I read the key after another tab wrote it before my first read and see that tab's value", () => {
     // Given
     const backing = createMemoryStorage({ entries: { count: '7' } });
     const storage = createSafeStorage(() => backing);
@@ -187,9 +195,10 @@ describe('createPersistentAtom', () => {
 
     // When
     backing.setItem('count', '99');
+    const value = count.get();
 
     // Then
-    expect(count.get()).toBe(99);
+    expect(value).toBe(99);
   });
 
   it('As a page that builds a persistent atom at import, I read no storage until something reads it', () => {
@@ -242,7 +251,7 @@ describe('createPersistentAtom', () => {
     expect([afterSet, backing.getItem('count')]).toEqual([[9, '9', 1], null]);
   });
 
-  it("As a page, a persistent atom's stored value read on first start writes nothing back", () => {
+  it('As a page, I start a persistent atom and the value it reads writes nothing back', () => {
     // Given
     const backing = createMemoryStorage({ entries: { count: '7.0' } });
     const storage = createSafeStorage(() => backing);

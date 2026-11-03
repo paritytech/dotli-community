@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { registerStoreStateReset } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { ManifestFacts } from '../formatAppVersion.js';
 
@@ -26,29 +26,19 @@ type Params = {
   details?: ProductDetails;
 };
 
-const INITIAL: ProductState = { status: 'none', loadId: 0 };
-
-const product = atom<ProductState>(INITIAL);
-registerStoreStateReset(() => {
-  product.set(INITIAL);
-});
+const product = atom<ProductState>({ status: 'none', loadId: 0 });
+registerAtomReset(product);
 const store: ReadableAtom<ProductState> = product;
 
 /** The product on show, or how its last load ended. */
 export const productState = {
   /** The product on show. Every load notifies, a reload of the same product included. */
   store,
-  /** Returns the product on show. Never throws. */
-  get,
   /** Records a render that put the product on screen, its first or a reload. Never throws. */
   setLoaded,
   /** Records a load that ended without the product on screen. Never throws. */
   setError,
 };
-
-function get(): ProductState {
-  return product.get();
-}
 
 function setLoaded({ label, productId, details = {} }: Params): void {
   product.set({ status: 'loaded', loadId: product.get().loadId + 1, label, productId, ...details });

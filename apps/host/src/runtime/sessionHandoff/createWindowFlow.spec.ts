@@ -97,9 +97,7 @@ function openWindow(options: OpenWindowParams = {}) {
     sayHello();
   }
   const presence = createFakeSessionPresence({ state: 'present' });
-  // Notifies on every set, as the page's auth state does.
   const auth = atom<DotliAuthState>(options.auth ?? { tag: 'Disconnected' });
-  auth.eq = () => false;
   options.beforeFlow?.(auth);
   const main = {
     session: options.stored?.session ?? null,

@@ -39,7 +39,9 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
       },
       /**
        * Where the frame stands. A listener hears each change only, with the status there is when its turn comes, so
-       * within one round of listeners it can hear the same status twice and miss one. Listening starts no frame.
+       * within one round of listeners it can hear the same status twice and miss one. A listener's throw is reported under
+       * `protocol.status`, and delivery goes on, when the frame's own change drains the round. A change made inside
+       * another store's listener round reaches that round's writer instead. Listening starts no frame.
        */
       status: frame.status,
       /**
@@ -60,7 +62,11 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
         frame.configure(config);
       },
     },
-    /** Whether the shared store can answer, as its `status` atom. Listening starts no frame. */
+    /**
+     * Whether the shared store can answer, as its `status` atom. A listener's throw is reported under
+     * `protocol.status`, and delivery goes on, when the frame's own change drains the round. A change made inside
+     * another store's listener round reaches that round's writer instead. Listening starts no frame.
+     */
     sharedStore: { status },
     /** The auth store, shared by the sites on the same root domain. */
     sharedAuth: auth,

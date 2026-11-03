@@ -9,7 +9,7 @@ export const PHONE_QUERY = '(max-width: 560px)';
 /** Asks the viewport about a media query. `null` at build time, where the answer is always "wide". */
 type MatchMedia = ((query: string) => EventTarget & Pick<MediaQueryList, 'matches'>) | null;
 
-type Options = {
+type Params = {
   matchMedia?: MatchMedia;
 };
 
@@ -17,7 +17,7 @@ type Options = {
  * Whether the viewport is phone sized now, asked of the media query on each call. A window `resize` runs before the
  * query fires `change`, so a resize handler reads the new answer here. `false` at build time. Never throws.
  */
-export function isPhoneViewport({ matchMedia = getPageMatchMedia() }: Options = {}): boolean {
+export function isPhoneViewport({ matchMedia = getPageMatchMedia() }: Params = {}): boolean {
   return matchMedia?.(PHONE_QUERY).matches ?? false;
 }
 
@@ -27,7 +27,7 @@ export function isPhoneViewport({ matchMedia = getPageMatchMedia() }: Options = 
  */
 export function watchPhoneViewport(
   onChange: (phone: boolean) => void,
-  { matchMedia = getPageMatchMedia() }: Options = {},
+  { matchMedia = getPageMatchMedia() }: Params = {},
 ): () => void {
   if (matchMedia === null) {
     return () => undefined;

@@ -97,8 +97,8 @@ export function createProtocolFrame<E extends FrameElement>({
   });
 
   /**
-   * Sets the status, which every write of it goes through. A listener's throw is a defect in its subscriber, so it is
-   * reported once every listener heard the change, and the step that moved the status goes on. Never throws.
+   * Sets the status. A listener's throw is a defect in its subscriber, so it is reported once every listener heard the
+   * change, and the step that moved the status goes on. Never throws.
    */
   function setStatus(next: ProtocolStatus): void {
     try {

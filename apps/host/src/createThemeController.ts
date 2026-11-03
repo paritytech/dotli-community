@@ -18,7 +18,7 @@ export type ThemeController = ReturnType<typeof createThemeController>;
 /** Builds the theme controller, which shows the OS colour scheme to `theme` and writes the theme on `root`. */
 export function createThemeController({ theme, colorScheme, root }: Params) {
   // The OS is asked on every apply, so a choice made before any start still resolves System against it.
-  function showSystemScheme(): void {
+  function askSystemScheme(): void {
     theme.showSystemScheme(colorScheme().matches ? 'light' : 'dark');
   }
 
@@ -30,7 +30,7 @@ export function createThemeController({ theme, colorScheme, root }: Params) {
   }
 
   function applyTheme(): void {
-    showSystemScheme();
+    askSystemScheme();
     writeRoot();
   }
 
@@ -51,7 +51,7 @@ export function createThemeController({ theme, colorScheme, root }: Params) {
 
   function selectThemePref(chosen: ThemePreference): void {
     // The scheme goes first, so a listener of the theme never hears System resolved against a stale one.
-    showSystemScheme();
+    askSystemScheme();
     theme.selectPreference(chosen);
     writeRoot();
   }

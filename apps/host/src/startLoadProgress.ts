@@ -589,7 +589,7 @@ function createByteTotalsReporter({ flowId, timers, debugBus }: CreateByteTotals
     debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
   }
   const stopOnLoad = productState.store.listen(() => {
-    if (productState.get().status !== 'loaded') {
+    if (productState.store.get().status !== 'loaded') {
       return;
     }
     stopOnLoad();

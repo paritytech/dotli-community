@@ -219,7 +219,7 @@ export function createTopbarAutoHide({
     const page = getPage();
 
     const unlisten = productState.store.listen(() => {
-      if (productState.get().status === 'error') {
+      if (productState.store.get().status === 'error') {
         setContentShown(false);
       }
     });

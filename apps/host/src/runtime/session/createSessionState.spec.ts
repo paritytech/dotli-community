@@ -101,7 +101,6 @@ describe('session state', () => {
     role = 'page';
     // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
     auth = atom<DotliAuthState>(RESTORING);
-    auth.eq = () => false;
     reloadPage();
   });
 
@@ -113,7 +112,12 @@ describe('session state', () => {
     session = createSessionState({
       store: coreStorage,
       restore,
-      auth,
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
       setElsewhere,
       isLocalWallet: () => localWallet,
       isResumeOffered: () => isResumeOffered(role),

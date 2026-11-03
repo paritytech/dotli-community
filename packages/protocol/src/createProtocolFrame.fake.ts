@@ -36,13 +36,13 @@ type Built = {
  * Up and ready unless `status` says otherwise, or the test moves it. A `waitUntilReady` or `getTransport` on an idle or
  * failed frame builds one and starts it booting, as the frame does. A `getTransport` waits for the test to set
  * `listening` or `ready`, and a `waitUntilReady` for `ready`. Each fails when the frame is then lost or goes idle.
+ * Unlike the frame, a status listener's throw reaches the test through the call that moved the status.
  */
 export function createFakeFrame({
   serve = () => undefined,
   status: initial = 'ready',
   timers = realTimers,
 }: Params = {}) {
-  // A listener's throw fails the test that set the status, since the atom throws it to the writer.
   const status = atom<ProtocolStatus>(initial);
   let lostWith: Error = new Error('lost');
   let builds = 0;

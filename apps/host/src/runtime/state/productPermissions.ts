@@ -12,7 +12,7 @@ import {
   createListenerSet,
   createSharedRun,
   realTimers,
-  registerStoreStateReset,
+  registerAtomReset,
   type Timers,
 } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
@@ -118,13 +118,9 @@ const POOL = 'product-permissions';
 export function createProductPermissions({ registry, product, timers = realTimers }: Params) {
   const permissions = atom<ProductPermissionsState>(NONE);
   permissions.eq = isSameState;
-  registerStoreStateReset(() => {
-    permissions.set(NONE);
-  });
+  registerAtomReset(permissions);
   const pendingChange = atom<PendingPermissions>(null);
-  registerStoreStateReset(() => {
-    pendingChange.set(null);
-  });
+  registerAtomReset(pendingChange);
   const state: ReadableAtom<ProductPermissionsState> = permissions;
   const pending: ReadableAtom<PendingPermissions> = pendingChange;
 

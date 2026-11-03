@@ -8,7 +8,6 @@
  * the navigation ends the window's page.
  */
 
-import { registerStoreStateReset } from '@dotli/shared';
 import { atom } from 'nanostores';
 import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import {
@@ -66,11 +65,7 @@ export function createRedirectResponder({
   navigate,
   failed,
 }: Params) {
-  const initial: ResponderState = { kind: 'vetted', origin, party: 'third' };
-  const store = atom<ResponderState>(initial);
-  registerStoreStateReset(() => {
-    store.set(initial);
-  });
+  const store = atom<ResponderState>({ kind: 'vetted', origin, party: 'third' });
   let delivery: RedirectDelivery = 'none';
 
   /**

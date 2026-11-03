@@ -1,59 +1,62 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { reportListener } from '@dotli/metrics';
 import type { DotliAuthState } from '../session/types.js';
-import { registerStoreStateReset } from '@dotli/shared';
+import { createListenerSet, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
-const INITIAL_AUTH: DotliAuthState = { tag: 'Restoring' };
-
-const auth = atom<DotliAuthState>(INITIAL_AUTH);
-// Every login step must notify, including a repeated LoginFailed, so no set is dropped as equal.
-auth.eq = () => false;
-registerStoreStateReset(() => {
-  auth.set(INITIAL_AUTH);
-});
+const auth = atom<DotliAuthState>({ tag: 'Restoring' });
+registerAtomReset(auth);
 const session = atom<boolean>(false);
-registerStoreStateReset(() => {
-  session.set(false);
-});
+registerAtomReset(session);
 const store: ReadableAtom<DotliAuthState> = auth;
 const loggedInStore: ReadableAtom<boolean> = session;
+const steps = createListenerSet<DotliAuthState>({ onListenerError: reportListener('wallet', 'auth_state.step') });
 
 /** The page's auth step, and whether the user is logged in. */
 export const authState = {
-  /** The current auth step. It notifies on every `set`, an equal step included. */
+  /** The current auth step. It notifies on a change. */
   store,
-  /** Returns the current auth step. Never throws. */
-  get,
   /**
-   * Publishes the next auth step and notifies every listener, even when it equals the current one. A second set inside
-   * one store listener round is heard as that later step twice, so set at most once per round. Never throws.
+   * Publishes the next auth step to the store, which notifies on a change, then to every step listener, an equal step
+   * included. Throws what a store listener threw, once every step listener heard the step.
    */
   set,
   /**
+   * Hears every step set after it subscribed, an equal one included, in the order the steps were set. A step set from
+   * inside a store listener that runs while an outer `set` still delivers, such as one of `store` or `loggedInStore`,
+   * is heard before that outer step, since the outer step reaches the step listeners only once the store's listeners
+   * ran. A step set from inside any store's listener round is heard at once, before the store's listeners run, so
+   * `loggedInStore` may not have folded it yet. A listener that throws is reported, and the others still hear the
+   * step. Returns the unsubscribe.
+   */
+  subscribeSteps,
+  /**
    * Whether the user is logged in: from `Connected` until `Disconnected` or `Unreachable`. The login steps in between
-   * leave it as it was, so a logged-in user who pairs again stays logged in. It already matches the step an auth
+   * leave it as it was, so a logged-in user who pairs again stays logged in. It already matches the step an auth `store`
    * listener hears.
    */
   loggedInStore,
-  /** Returns whether the user is logged in now. Never throws. */
-  isLoggedIn,
 };
+
+/** The page's auth state object, as `authState` builds it. */
+export type AuthState = typeof authState;
 
 // Listening from import, before any other auth listener, so every other listener sees the session already.
 auth.listen(followSession);
 
-function get(): DotliAuthState {
-  return auth.get();
-}
-
 function set(next: DotliAuthState): void {
-  auth.set(next);
+  // A store listener that throws must not keep the step from the step listeners.
+  try {
+    auth.set(next);
+  } finally {
+    steps.emit(next);
+  }
 }
 
-function isLoggedIn(): boolean {
-  return session.get();
+function subscribeSteps(listener: (step: DotliAuthState) => void): () => void {
+  return steps.subscribe(listener);
 }
 
 function followSession(): void {

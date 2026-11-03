@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { isShallowEqual, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 export type TopbarState = {
@@ -22,19 +22,15 @@ type Params = {
   active: boolean;
 };
 
-const INITIAL: TopbarState = {
+const topbar = atom<TopbarState>({
   present: false,
   visible: true,
   autoHide: false,
   blockingModalActive: false,
   blockingModalsWaiting: 0,
-};
-
-const topbar = atom<TopbarState>(INITIAL);
-topbar.eq = isShallowEqual;
-registerStoreStateReset(() => {
-  topbar.set(INITIAL);
 });
+topbar.eq = isShallowEqual;
+registerAtomReset(topbar);
 const store: ReadableAtom<TopbarState> = topbar;
 
 /** The topbar's presence, visibility, auto-hide and blocking prompts. */

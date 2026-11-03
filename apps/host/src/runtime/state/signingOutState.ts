@@ -1,13 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { registerStoreStateReset } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 const signingOut = atom<boolean>(false);
-registerStoreStateReset(() => {
-  signingOut.set(false);
-});
+registerAtomReset(signingOut);
 const store: ReadableAtom<boolean> = signingOut;
 
 /** Whether the page's sign-out is waiting. */

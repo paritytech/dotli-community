@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { isShallowEqual, registerStoreStateReset, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 
 /**
@@ -58,9 +58,7 @@ const INITIAL: AuthModalState = {
 
 const authModal = atom<AuthModalState>(INITIAL);
 authModal.eq = isSameAuthModal;
-registerStoreStateReset(() => {
-  authModal.set(INITIAL);
-});
+registerAtomReset(authModal);
 const store: ReadableAtom<AuthModalState> = authModal;
 
 // The modal hydrates as an island of its own, so the control focus returns to is handed over here, not passed in.
