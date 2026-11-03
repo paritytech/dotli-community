@@ -188,6 +188,8 @@ above the linter: semantics, data flow and naming.
 - **major** (AGENTS.md § Code style, Tests:): A sleep, `waitForTimeout` or other fixed delay instead of waiting on a
   signal.
 - **major** (AGENTS.md § Code style, Tests:): A committed test that exercises a third-party SDK's own setup.
+- **major** (AGENTS.md § Code style, Tests:): A functional test of a flow that Safari's storage partition shapes, run on
+  Chromium's default shared storage or kept apart from the main store only by the order of its steps.
 - **minor** (AGENTS.md § Code style, Tests:): A test not named as a user story, `As a <role>, I <action> and <outcome>`,
   the role with an optional `who …` clause.
 - **minor** (AGENTS.md § Code style, Tests:): A test body without `// Given`, `// When` and `// Then`, or descriptive

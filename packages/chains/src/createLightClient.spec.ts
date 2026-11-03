@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
+import { bindLogSink, createDeferred, type LogLevel } from '@dotli/shared';
 import {
   createLightClient,
   createLightClientDeps,
@@ -107,10 +107,20 @@ type FakeEngine = {
   start: Mock<(options: StartEngineParams) => Promise<LightClientEngine>>;
   connections: FakeConnection[];
   connect: (genesisHash: string) => Promise<FakeConnection>;
+  /** Reads the chain from the store the engine was handed, as the crate does for a chain it does not hold. */
+  loadDatabase: (genesisHash: string) => Promise<boolean>;
+  /** Holds the next start once it recorded its options, until the returned release runs. */
+  holdStart: () => () => void;
   options: StartEngineParams | null;
 };
 
 function createFakeEngine(): FakeEngine {
+  let held: Promise<undefined> | null = null;
+  const started: LightClientEngine = {
+    loadDatabase: genesisHash => fake.loadDatabase(genesisHash),
+    connect: genesisHash => fake.connect(genesisHash),
+    lifecycle: () => ({ next: () => Promise.resolve(undefined), close: () => undefined }),
+  };
   const fake: FakeEngine = {
     connections: [],
     connect: () => {
@@ -118,15 +128,30 @@ function createFakeEngine(): FakeEngine {
       fake.connections.push(connection);
       return Promise.resolve(connection);
     },
+    loadDatabase: async genesisHash => {
+      const store = fake.options?.store ?? null;
+      if (store === null) {
+        return false;
+      }
+      return (await store.load(genesisHash)) !== null;
+    },
+    holdStart: () => {
+      const gate = createDeferred<undefined>();
+      held = gate.promise;
+      return () => {
+        gate.resolve(undefined);
+      };
+    },
     options: null,
     start: vi.fn<(options: StartEngineParams) => Promise<LightClientEngine>>(options => {
       fake.options = options;
       notifyChanged();
-      return Promise.resolve({
-        loadDatabase: () => Promise.resolve(false),
-        connect: genesisHash => fake.connect(genesisHash),
-        lifecycle: () => ({ next: () => Promise.resolve(undefined), close: () => undefined }),
-      });
+      const gate = held;
+      held = null;
+      if (gate === null) {
+        return Promise.resolve(started);
+      }
+      return gate.then(() => started);
     }),
   };
   return fake;
@@ -458,6 +483,170 @@ describe('createLightClient', () => {
       // Then
       await expect(read).rejects.toBe(outage);
       expect([...client.status().db]).toEqual([['bulletin', 'unavailable']]);
+    });
+
+    it('As the protocol frame, I open a chain while the light client starts and its stored database is read before the start ends, once', async () => {
+      // Given a start held open and a store that holds the relay
+      const release = engine.holdStart();
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+      const chainHooks = createMockHooks();
+
+      // When the relay opens
+      open(chainHooks, relay);
+
+      // Then its database is read while the engine still starts
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(load).toHaveBeenCalledWith(relay);
+
+      // When the start ends and the relay connects
+      release();
+      await chainHooks.reported('connected');
+
+      // Then the engine took that read as a hit, with no second read
+      expect(load).toHaveBeenCalledTimes(1);
+      expect([...client.status().db]).toEqual([['relay', 'hit']]);
+    });
+
+    it('As the protocol frame, I open the relay and a parachain while the light client starts and the engine reading the relay for the parachain leaves one read and one change per chain', async () => {
+      // Given a start held open, a store that holds both chains, and an engine that reads the relay first for a parachain
+      // and a chain it already holds not again
+      const release = engine.holdStart();
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+      const changes: LightClientChange[] = [];
+      client.subscribe(change => changes.push(change));
+      const assethub = services.assethub.genesis;
+      const held = new Set<string>();
+      async function read(genesisHash: string): Promise<boolean> {
+        const store = engine.options?.store ?? null;
+        if (store === null || held.has(genesisHash)) {
+          return held.has(genesisHash);
+        }
+        held.add(genesisHash);
+        return (await store.load(genesisHash)) !== null;
+      }
+      engine.loadDatabase = async genesisHash => {
+        if (genesisHash === assethub) {
+          await read(relay);
+        }
+        return read(genesisHash);
+      };
+      const relayHooks = createMockHooks();
+      const assethubHooks = createMockHooks();
+
+      // When both open, the start ends and both connect
+      open(relayHooks, relay);
+      open(assethubHooks, assethub);
+      release();
+      await Promise.all([relayHooks.reported('connected'), assethubHooks.reported('connected')]);
+
+      // Then each chain was read once and each has one change
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(load).toHaveBeenCalledWith(relay);
+      expect(load).toHaveBeenCalledWith(assethub);
+      expect(changes).toEqual([
+        { kind: 'db', chain: 'relay', outcome: 'hit' },
+        { kind: 'db', chain: 'assethub', outcome: 'hit' },
+      ]);
+    });
+
+    it('As the protocol frame, I open one chain twice while the light client starts and its stored database is read once before the start ends', () => {
+      // Given a start held open and a store that holds the relay
+      engine.holdStart();
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+
+      // When
+      open(createMockHooks(), relay);
+      open(createMockHooks(), relay);
+
+      // Then
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('As the protocol frame, I reopen a chain the engine already holds and its stored database is not read again', async () => {
+      // Given the relay connected once, and an engine that now holds its database and reads nothing for it
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+      const first = createMockHooks();
+      open(first, relay);
+      await first.reported('connected');
+      engine.loadDatabase = () => Promise.resolve(true);
+      const second = createMockHooks();
+
+      // When
+      open(second, relay);
+      await second.reported('connected');
+
+      // Then
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('As the protocol frame, I open a chain while the light client starts and a store that cannot answer leaves it cold and unavailable', async () => {
+      // Given a start held open, a store that fails and the relay opened
+      const release = engine.holdStart();
+      const outage = new Error('IndexedDB blocked');
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.reject(outage));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+      const chainHooks = createMockHooks();
+      open(chainHooks, relay);
+
+      // When
+      release();
+      await chainHooks.reported('connected');
+
+      // Then
+      expect(chainHooks.onHalt).not.toHaveBeenCalled();
+      expect([...client.status().db]).toEqual([['relay', 'unavailable']]);
+      const warnings = logs.filter(
+        line =>
+          line.level === 'warn' && line.message.startsWith(`[dot.li provider] warm start unavailable for ${relay}`),
+      );
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.args?.[1]).toBe(outage);
+    });
+
+    it('As the protocol frame, I open a chain after a failed start and its stored database is read afresh', async () => {
+      // Given a failed start of the relay, with a store that holds it
+      engine.start.mockRejectedValueOnce(new Error('wasm fetch failed'));
+      const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
+      client = createLightClient(createDeps(engine, { db: createStore(load) }));
+      const changes: LightClientChange[] = [];
+      client.subscribe(change => changes.push(change));
+      const failed = createMockHooks();
+      open(failed, relay);
+      await failed.halted();
+      const retried = createMockHooks();
+
+      // When
+      open(retried, relay);
+      await retried.reported('connected');
+
+      // Then
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(changes).toEqual([
+        { kind: 'fatal', message: `chain ${relay} connection failed: wasm fetch failed` },
+        { kind: 'db', chain: 'relay', outcome: 'hit' },
+      ]);
+    });
+
+    it('As the protocol frame, I open a chain while the light client fails to start and a store that cannot answer leaves no unhandled failure', async () => {
+      // Given a start that fails and a store that fails, read through a plain function since a mock marks the
+      // rejections it returns handled
+      engine.start.mockRejectedValueOnce(new Error('wasm fetch failed'));
+      client = createLightClient(
+        createDeps(engine, { db: createStore(() => Promise.reject(new Error('IndexedDB blocked'))) }),
+      );
+      const chainHooks = createMockHooks();
+
+      // When
+      open(chainHooks, relay);
+      await chainHooks.halted();
+
+      // Then the chain halts as before, and the guard is that Vitest fails the run on an unhandled rejection
+      expect([...client.status().db]).toEqual([]);
+      expect(client.status().fatal).toBe(`chain ${relay} connection failed: wasm fetch failed`);
     });
 
     it('As the protocol frame on a browser without IndexedDB, I start the engine with no store', async () => {

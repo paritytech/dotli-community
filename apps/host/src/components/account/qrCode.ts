@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { markHandled } from '@dotli/shared';
 import { loadQrCode } from '../../lazy.js';
 import { wholeModuleSide } from './qrSize.js';
 
@@ -24,7 +25,7 @@ export type DrawQr = (
   signal?: AbortSignal,
 ) => Promise<void>;
 
-/** Fetches the `qrcode` chunk with the first code shown, so a visit that never signs in never loads it. */
+/** Draws `payload` as a QR code with the lazily loaded `qrcode` chunk. */
 export const drawQrCode: DrawQr = async (canvas, payload, options, signal) => {
   const QRCode = await loadQrCode();
   if (signal?.aborted === true) {
@@ -37,3 +38,11 @@ export const drawQrCode: DrawQr = async (canvas, payload, options, signal) => {
   canvas.style.removeProperty('width');
   canvas.style.removeProperty('height');
 };
+
+/**
+ * Starts the `qrcode` chunk while the pairing deeplink is made, so the code draws as soon as it comes. A failed load is
+ * not reported here, since the drawing imports again and reports its own failure.
+ */
+export function prepareQrCode(load: () => Promise<unknown> = loadQrCode): void {
+  void markHandled(load());
+}

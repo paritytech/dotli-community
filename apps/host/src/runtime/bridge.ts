@@ -8,7 +8,7 @@ import type { ProductAccountId } from '@parity/truapi';
 import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn } from '@dotli/shared';
+import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../createHostPrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
@@ -26,7 +26,7 @@ import { isSiteGrantForgotten, pageRole } from './pageRole.js';
 import { coreStorage, signInFlag, type SessionRead } from './session/createCoreStorage.js';
 import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
 import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
-import { LANDING_PRODUCT } from './createPageCore.js';
+import { LANDING_PRODUCT, type CoreLease } from './createPageCore.js';
 import { getWindowAsks } from './hostCallbacks/getWindowAsks.js';
 import { listenForSessionFlagChange, sessionPresence } from './session/createPagePresence.js';
 import { listenForSiteWalletChange } from './session/listenForLocalWalletChange.js';
@@ -70,9 +70,8 @@ const hostRuntime = createLazyLoad({
   },
 });
 // Preloaded so it is ready when the first product renders.
-void hostRuntime().catch(() => {
-  // The render or the core boot that asks next loads it again and reports its own failure.
-});
+// The render or the core boot that asks next loads it again and reports its own failure.
+void markHandled(hostRuntime());
 
 // Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
 // the page.
@@ -259,6 +258,15 @@ const sessionLease = createSessionLease({
  */
 export function startSessionLease(): () => void {
   return sessionLease.start();
+}
+
+/**
+ * Leases the core of the page's product, dialing it when none serves that product, so it boots before the product
+ * renders. Rejects with the boot's error, or `CoreRedialError` when a replacement could not boot. Throws before
+ * `initBridge`.
+ */
+export function acquirePageCore(): Promise<CoreLease> {
+  return bridge.core.acquire();
 }
 
 /** The main store's restore and a core of its own, for the sign-out window. */

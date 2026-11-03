@@ -35,6 +35,8 @@ listener set, the test reset of stores and a few formatting helpers.
 - A lazy load runs one load at a time and keeps what it loaded for every later caller. A failed load rejects the caller
   that ran it and is not kept, so the next caller loads again, and only the first failure is passed to the caller's
   report hook.
+- A promise started early is marked handled, so its failure waits for the caller that awaits it, or for a later caller
+  that loads again.
 - A shared run begins with its first join and ends with its last stop or an `end`. A stop left over from an ended run
   does nothing, so a reset never ends a later run.
 - A timeout counts only time the page runs. A timer that fires seconds after it was due means the page was frozen, as a
@@ -57,8 +59,9 @@ listener set, the test reset of stores and a few formatting helpers.
   wait on anything with `get` and `listen`, such as a store, until a verdict, which settles at once on the status there
   is now and leaves through a signal), `StatusSource`, `toAbortError`, `createPendingReplies` (its
   `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its
-  resolve and reject), `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by
-  the last stop or `end`).
+  resolve and reject), `markHandled(promise)` (the same promise, its rejection marked handled),
+  `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by the last stop or
+  `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
   `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,

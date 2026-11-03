@@ -1,14 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A site's transaction, the action a site's round runs on the sign route. It decodes the site's call for the review,
-// and once the user confirms, has the phone sign it as the product account the site names. The account's key is read
-// from the phone only after Confirm. The site gets the signed transaction to send itself, and the window never sends
-// it. Nothing of the main account reaches the site.
+// A site's transaction, the action a site's round runs on the sign route. It opens Asset Hub as the round starts,
+// before the user's grant, decodes the site's call for the review, and once the user confirms, has the phone sign it
+// as the product account the site names. Nothing reaches the phone before Confirm, so the account's key is read from
+// the phone only after it. The site gets the signed transaction to send itself, and the window never sends it.
+// Nothing of the main account reaches the site.
 
 import type { ProductAccountId } from '@parity/truapi';
 import { spans as S } from '@dotli/metrics';
-import { toHex } from '@dotli/shared';
+import { markHandled, noop, toHex } from '@dotli/shared';
 import type { MainAccount } from './createMainAccountSource.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import { SiteChainError, type SiteChain, type SiteChainSession, type SiteDecodedCall } from './createSiteChain.js';
@@ -84,6 +85,8 @@ export function getSiteTransactionAction({
   // The named account's key once read for a main account, which a Retry within the round for that main account uses
   // rather than asking the phone again. Another main account derives another key.
   let readKey: { owner: string; key: Uint8Array } | null = null;
+  // The session the round opened as it started, which the first run takes. A later run, as on Try again, opens its own.
+  let early: Promise<SiteChainSession> | null = null;
 
   async function readSiteKey(main: MainAccount, asking: () => void): Promise<Uint8Array> {
     if (readKey?.owner === main.owner) {
@@ -111,8 +114,28 @@ export function getSiteTransactionAction({
   return {
     route: 'sign',
     outcome: () => 'signed',
+    prepare(signal) {
+      if (early !== null || signal.aborted) {
+        return;
+      }
+      // The run that takes it rethrows a failed open and the round reports it. A round that ends first never fails on it.
+      const opening = markHandled(openChain(chain, genesis));
+      early = opening;
+      signal.addEventListener(
+        'abort',
+        () => {
+          if (early === opening) {
+            early = null;
+            void opening.then(closeChain, noop);
+          }
+        },
+        { once: true },
+      );
+    },
     async run({ main, show, confirmed, signal }) {
-      const session = await openChain(chain, genesis);
+      const opening = early ?? openChain(chain, genesis);
+      early = null;
+      const session = await opening;
       let closed = false;
       // Once only, since a round that ends closes the session at once and the run closes it again as it ends.
       function closeOnce(): void {

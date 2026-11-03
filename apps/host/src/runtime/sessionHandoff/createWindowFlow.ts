@@ -233,8 +233,9 @@ export function createWindowFlow({
   }
 
   async function readSession(): Promise<SessionResult['session']> {
-    const blob = await readBlob();
-    return blob === null ? null : { blob, uiState: await store.readUiCache() };
+    // The cache read never rejects, so only a failed blob read fails the step.
+    const [blob, uiState] = await Promise.all([readBlob(), store.readUiCache()]);
+    return blob === null ? null : { blob, uiState };
   }
 
   /** A wallet that cannot be read is reported and taken as none, so the window still offers a session or pairs. */

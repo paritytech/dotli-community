@@ -147,6 +147,9 @@ Tests:
   tests business logic. A test that needs a DOM tests an integration layer, so give the logic a seam.
 - A component is tested by a play function in its Storybook story, which runs in a real browser.
 - Functional tests may mock the DOM and run under happy-dom.
+- A functional test of a flow that Safari's storage partition shapes, such as a product's copy of the session or the
+  sign-in window, runs on partitioned storage. It never relies on Chromium's default shared third-party storage, or on
+  the order of its steps, to keep a product's copy apart from the main store.
 - Name tests as user stories: `As a <role>, I <action> and <outcome>`, where the role may carry a `who …` clause.
 - Separate bodies with `// Given`, `// When`, `// Then`.
 - The call under test sits in When, and Then only asserts.

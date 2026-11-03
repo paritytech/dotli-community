@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type * as PolkadotApi from 'polkadot-api';
 import type { TxCreator } from 'polkadot-api';
-import { createSiteChain, SiteChainError, type SiteChainParams } from './createSiteChain.js';
+import { createSiteChain, SiteChainError, type SiteChainParams, type SiteDecodedCall } from './createSiteChain.js';
 
 type Params = {
   /** Runs each decode with the decode's signal, rejecting by default. */
@@ -28,6 +28,23 @@ const PROVIDER = (() => undefined) as unknown as JsonRpcProvider;
 /** Fillers for a test that builds no transaction. */
 function rejectFillers(): Promise<never> {
   return Promise.reject(new Error('The test builds no transaction'));
+}
+
+/** Fillers that hand the creator back unchanged. */
+function createFakeFillers() {
+  const unchanged = (creator: TxCreator): TxCreator => creator;
+  // The fake is a partial filler module, enough for the build under test.
+  return { withNonce: () => unchanged, withCommonExtensions: unchanged } as unknown as Awaited<
+    ReturnType<SiteChainParams['loadFillers']>
+  >;
+}
+
+/** A decoded call whose transaction builds into `signed`. */
+function createFakeCall(signed: Uint8Array): SiteDecodedCall {
+  return {
+    display: { name: 'Balances.transfer_keep_alive', args: [] },
+    transaction: { create: () => Promise.resolve(signed) },
+  };
 }
 
 /** A chain client module that records each decode and each client it destroys. */
@@ -84,7 +101,8 @@ describe('site chain', () => {
     // Given a chain on the window's network
     const provider = vi.fn(() => PROVIDER);
     const loadApi = vi.fn(() => Promise.reject(new Error('The chain client must not load')));
-    const chain = createSiteChain({ genesis: () => GENESIS, provider, loadApi, loadFillers: rejectFillers });
+    const loadFillers = vi.fn(rejectFillers);
+    const chain = createSiteChain({ genesis: () => GENESIS, provider, loadApi, loadFillers });
 
     // When the window opens another network's Asset Hub
     const opening = chain.open(`0x${'cd'.repeat(32)}`);
@@ -94,17 +112,14 @@ describe('site chain', () => {
     await expect(opening).rejects.toMatchObject({ kind: 'mismatch' });
     expect(provider).not.toHaveBeenCalled();
     expect(loadApi).not.toHaveBeenCalled();
+    expect(loadFillers).not.toHaveBeenCalled();
   });
 
   it('As a user whose backend has no provider for the chain, I sign a transaction and the chain is unreachable', async () => {
     // Given a chain whose provider is missing
     const loadApi = vi.fn(() => Promise.reject(new Error('The chain client must not load')));
-    const chain = createSiteChain({
-      genesis: () => GENESIS,
-      provider: () => null,
-      loadApi,
-      loadFillers: rejectFillers,
-    });
+    const loadFillers = vi.fn(rejectFillers);
+    const chain = createSiteChain({ genesis: () => GENESIS, provider: () => null, loadApi, loadFillers });
 
     // When the window opens it
     const opening = chain.open(GENESIS);
@@ -113,6 +128,7 @@ describe('site chain', () => {
     await expect(opening).rejects.toBeInstanceOf(SiteChainError);
     await expect(opening).rejects.toMatchObject({ kind: 'unreachable' });
     expect(loadApi).not.toHaveBeenCalled();
+    expect(loadFillers).not.toHaveBeenCalled();
   });
 
   it('As a user whose chain client cannot be created, I sign a transaction and the chain is unreachable', async () => {
@@ -178,6 +194,74 @@ describe('site chain', () => {
     // Then the decode rejects as unreachable
     await expect(decoding).rejects.toBeInstanceOf(SiteChainError);
     await expect(decoding).rejects.toMatchObject({ kind: 'unreachable' });
+  });
+
+  it("As a user on a site's transaction, I open Asset Hub and the fillers start loading before any build", async () => {
+    // Given fillers that load
+    const fillers = createFakeFillers();
+    const loadFillers = vi.fn(() => Promise.resolve(fillers));
+    const api = createFakeApi({});
+    const chain = createSiteChain({
+      genesis: () => GENESIS,
+      provider: () => PROVIDER,
+      loadApi: api.loadApi,
+      loadFillers,
+    });
+
+    // When the window opens Asset Hub
+    await chain.open(GENESIS);
+
+    // Then the fillers were asked for once, with no build
+    expect(loadFillers).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user whose fillers failed to load while Asset Hub opened, I build and the build loads them again', async () => {
+    // Given fillers whose first load misses its chunk, and a decoded call
+    const loadFillers = vi
+      .fn<SiteChainParams['loadFillers']>()
+      .mockRejectedValueOnce(new Error('The chunk is missing'))
+      .mockResolvedValue(createFakeFillers());
+    const signed = Uint8Array.of(0x45);
+    const api = createFakeApi({});
+    const session = await createSiteChain({
+      genesis: () => GENESIS,
+      provider: () => PROVIDER,
+      loadApi: api.loadApi,
+      loadFillers,
+    }).open(GENESIS);
+    const call = createFakeCall(signed);
+    const creator: TxCreator = () => Promise.reject(new Error('The fake transaction signs nothing'));
+
+    // When the session builds the call
+    const built = await session.create({ call, creator, publicKey: SITE_KEY });
+
+    // Then the build resolved with the transaction's bytes, after loading the fillers again
+    expect(built).toBe(signed);
+    expect(loadFillers).toHaveBeenCalledTimes(2);
+  });
+
+  it("As a user whose fillers fail to load twice, I build and the build fails with its own load's error", async () => {
+    // Given fillers whose first load rejects with error A and second with error B, and a decoded call
+    const errorB = new Error('The second load failed');
+    const loadFillers = vi
+      .fn<SiteChainParams['loadFillers']>()
+      .mockRejectedValueOnce(new Error('The first load failed'))
+      .mockRejectedValueOnce(errorB);
+    const api = createFakeApi({});
+    const session = await createSiteChain({
+      genesis: () => GENESIS,
+      provider: () => PROVIDER,
+      loadApi: api.loadApi,
+      loadFillers,
+    }).open(GENESIS);
+    const call = createFakeCall(Uint8Array.of(0x45));
+    const creator: TxCreator = () => Promise.reject(new Error('The fake transaction signs nothing'));
+
+    // When the session builds the call
+    const building = session.create({ call, creator, publicKey: SITE_KEY });
+
+    // Then the build rejects with the second load's error
+    await expect(building).rejects.toBe(errorB);
   });
 
   it('As a site, I send a call and the window builds it into a signed transaction and sends nothing', async () => {

@@ -2,13 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A product signs in and out through the sign-in window on the root origin, while the landing page pairs on the page
-// itself and never opens the window. Chromium shares the frame's storage across `*.localhost`, so every page's
-// copy is the main store here: a stale copy is made by deleting the signed-in flag under a stored sign-in, and the
-// window's Continue is reached from the opener fixture page, since a signed-in dotli page never opens the window. The
-// recovery phrase signs in, as pairing needs a phone, and the window takes it only as the debug panel asks for it: at
-// the phrase intent in the window's request.
+// itself and never opens the window. Chromium shares the frame's storage across `*.localhost` by default, so every
+// page's copy is the main store here: a stale copy is made by deleting the signed-in flag under a stored sign-in, and
+// the window's Continue is reached from the opener fixture page, since a signed-in dotli page never opens the window.
+// The tests that resume a sign-in on a product run on partitioned storage instead, as Safari keeps one copy per
+// product, so the main store reaches that copy only through the window. The recovery phrase signs in, as pairing needs
+// a phone, and the window takes it only as the debug panel asks for it: at the phrase intent in the window's request.
 
-import { expect, type APIRequestContext, type Frame, type Page } from '@playwright/test';
+import {
+  expect,
+  type APIRequestContext,
+  type Browser,
+  type BrowserContext,
+  type Frame,
+  type LaunchOptions,
+  type Page,
+  type PlaywrightWorkerArgs,
+} from '@playwright/test';
 import { DOMAIN, NETWORK, PORT, TIMEOUT_MS } from '../env.js';
 import { getProductFrame } from '../productFrame.js';
 import { createRequestUrl } from '../../src/runtime/sessionHandoff/sessionRoute.js';
@@ -68,6 +78,34 @@ const STORED_SESSION_BLOB = `0x${SESSION_VERSION}${STORED_PUBLIC_KEY.slice(2)}${
 const STORED_ACCOUNT = { connected: true, publicKey: STORED_PUBLIC_KEY, liteUsername: STORED_LITE_USERNAME };
 /** The site list, which reads the grants on the root origin. */
 const SITE_LIST_URL = `${ROOT_ORIGIN}/s/manage`;
+/** A blank document on the root origin, served by the test, which boots nothing. */
+const MAIN_STORE_URL = `${ROOT_ORIGIN}/__dotli-e2e/main-store.html`;
+
+/**
+ * Launch arguments that leave storage partitioning on. Chromium reads only the last `--disable-features` switch, so this
+ * one replaces the launcher's and carries the rest of its features, all but `ThirdPartyStoragePartitioning`.
+ */
+const PARTITIONED_STORAGE_ARGS: readonly string[] = [
+  `--disable-features=${[
+    'AvoidUnnecessaryBeforeUnloadCheckSync',
+    'DestroyProfileOnBrowserClose',
+    'DialMediaRouteProvider',
+    'GlobalMediaControls',
+    'HttpsUpgrades',
+    'LensOverlay',
+    'MediaRouter',
+    'PaintHolding',
+    'BlockOriginHeaderModificationOnRedirect',
+    'AvoidCorsURLLoaderRestartOnRedirect',
+    'Translate',
+    'AutoDeElevate',
+    'OptimizationHints',
+    'NetworkTimeServiceQuerying',
+    'AimEnabled',
+    'msForceBrowserSignIn',
+    'msEdgeUpdateLaunchServicesPreferredVersion',
+  ].join(',')}`,
+];
 
 test.setTimeout(TIMEOUT_MS * 4);
 
@@ -182,6 +220,43 @@ async function storePairedSignIn(target: Frame): Promise<void> {
     },
     [STORED_SESSION_KEY, STORED_UI_STATE_KEY, STORED_ACCOUNT, STORED_SESSION_BLOB] as const,
   );
+}
+
+/**
+ * A paired sign-in written through a blank document on the root origin. It boots nothing, so it writes the root
+ * origin's first-party storage, the main store, and nothing else.
+ */
+async function storeInMainStore(context: BrowserContext): Promise<void> {
+  const root = await context.newPage();
+  await root.route(MAIN_STORE_URL, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html>' }));
+  await root.goto(MAIN_STORE_URL);
+  await storePairedSignIn(root.mainFrame());
+  await root.close();
+}
+
+/**
+ * A browser launched with `args` on top of the suite's, with a context on the gateway backend and the debug panel off.
+ * The caller closes the browser.
+ */
+async function launchWith(
+  playwright: PlaywrightWorkerArgs['playwright'],
+  launchOptions: LaunchOptions,
+  args: readonly string[],
+): Promise<{ browser: Browser; context: BrowserContext }> {
+  const browser = await playwright.chromium.launch({
+    ...launchOptions,
+    args: [...(launchOptions.args ?? []), ...args],
+  });
+  try {
+    const context = await browser.newContext();
+    await seedSettings(context, { backend: 'rpc-gateway' });
+    await disableTruapiDebugPanel(context);
+    return { browser, context };
+  } catch (error) {
+    // A close that rejects must not replace the seeding error.
+    await browser.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 test.describe('Signing in on the landing page', () => {
@@ -317,47 +392,67 @@ test.describe('Signing in through the window', () => {
     await expect(openerOutcome(opener)).toHaveAttribute('data-session', 'false');
   });
 
-  test('As a user on a product, I continue with a paired account and see it at once', async ({ page, request }) => {
-    // Given a product that loaded signed out, and a paired sign-in stored since by another page, written here through
-    // the protocol frame, whose document is on the root origin
-    await openProduct(page);
-    const protocolFrame = await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS);
-    await storePairedSignIn(protocolFrame);
-    await setSessionFlag(request);
-    await markDocument(page);
+  test('As a user on a product, I continue with a paired account and see it at once', async ({
+    playwright,
+    launchOptions,
+    request,
+  }) => {
+    // Given a product that loaded signed out, and a paired sign-in stored since in the main store by a page on the root
+    // origin, which the product's copy does not share, as in Safari
+    const { browser, context } = await launchWith(playwright, launchOptions, PARTITIONED_STORAGE_ARGS);
+    try {
+      const page = await context.newPage();
+      await openProduct(page);
+      const protocolFrame = await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS);
+      await storeInMainStore(context);
+      expect(await protocolFrame.evaluate(key => localStorage.getItem(key), STORED_SESSION_KEY)).toBeNull();
+      await setSessionFlag(request);
+      await markDocument(page);
 
-    // When the user opens the window and presses Continue
-    const window = await openSessionWindow(page, () => signInButton(page).click());
-    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'continue', { timeout: TIMEOUT_MS });
-    await Promise.all([untilClosed(window), window.getByTestId('session-window-continue-button').click()]);
+      // When the user opens the window and presses Continue
+      const window = await openSessionWindow(page, () => signInButton(page).click());
+      await expect(sessionWindow(window)).toHaveAttribute('data-view', 'continue', { timeout: TIMEOUT_MS });
+      await Promise.all([untilClosed(window), window.getByTestId('session-window-continue-button').click()]);
 
-    // Then the account shows with no reload, and the core kept the stored session
-    await expect(page.getByTestId('user-badge')).toBeVisible({ timeout: TIMEOUT_MS });
-    await expect(page.locator('html')).toHaveAttribute('data-test-no-reload', '1');
-    expect(await protocolFrame.evaluate(key => localStorage.getItem(key), STORED_SESSION_KEY)).toBe(
-      STORED_SESSION_BLOB,
-    );
+      // Then the account shows with no reload, and the core kept the stored session
+      await expect(page.getByTestId('user-badge')).toBeVisible({ timeout: TIMEOUT_MS });
+      await expect(page.locator('html')).toHaveAttribute('data-test-no-reload', '1');
+      expect(await protocolFrame.evaluate(key => localStorage.getItem(key), STORED_SESSION_KEY)).toBe(
+        STORED_SESSION_BLOB,
+      );
+    } finally {
+      await browser.close();
+    }
   });
 
   test('As a user on a product whose sign-in made elsewhere waits, I press Continue session and see my account at once', async ({
-    page,
+    playwright,
+    launchOptions,
     request,
   }) => {
     // Given the flag set over an empty copy, as a product in Safari finds it after a sign-in on another product, and a
-    // paired sign-in stored since in the main store, which this page did not hear of
-    await setSessionFlag(request);
-    await page.goto(PRODUCT_URL);
-    await expect(continueButton(page)).toBeVisible({ timeout: TIMEOUT_MS });
-    await storePairedSignIn(await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS));
-    await markDocument(page);
+    // paired sign-in stored since in the main store, which the product's copy does not share
+    const { browser, context } = await launchWith(playwright, launchOptions, PARTITIONED_STORAGE_ARGS);
+    try {
+      await setSessionFlag(request);
+      const page = await context.newPage();
+      await page.goto(PRODUCT_URL);
+      await expect(continueButton(page)).toBeVisible({ timeout: TIMEOUT_MS });
+      const protocolFrame = await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS);
+      await storeInMainStore(context);
+      expect(await protocolFrame.evaluate(key => localStorage.getItem(key), STORED_SESSION_KEY)).toBeNull();
+      await markDocument(page);
 
-    // When the window opens, it sends the stored sign-in and closes with no Continue to press
-    const window = await openSessionWindow(page, () => continueButton(page).click());
-    await untilClosed(window);
+      // When the window opens, it sends the stored sign-in and closes with no Continue to press
+      const window = await openSessionWindow(page, () => continueButton(page).click());
+      await untilClosed(window);
 
-    // Then the account shows with no reload
-    await expect(page.getByTestId('user-badge')).toBeVisible({ timeout: TIMEOUT_MS });
-    await expect(page.locator('html')).toHaveAttribute('data-test-no-reload', '1');
+      // Then the account shows with no reload
+      await expect(page.getByTestId('user-badge')).toBeVisible({ timeout: TIMEOUT_MS });
+      await expect(page.locator('html')).toHaveAttribute('data-test-no-reload', '1');
+    } finally {
+      await browser.close();
+    }
   });
 
   test('As a user on a product who reloads the sign-in window, I still sign in through it', async ({ page }) => {
@@ -417,14 +512,8 @@ test.describe('Signing in through the window fails', () => {
     launchOptions,
   }) => {
     // Given: a browser that opens no window, as one that blocks pop-ups
-    const browser = await playwright.chromium.launch({
-      ...launchOptions,
-      args: [...(launchOptions.args ?? []), '--block-new-web-contents'],
-    });
+    const { browser, context } = await launchWith(playwright, launchOptions, ['--block-new-web-contents']);
     try {
-      const context = await browser.newContext();
-      await seedSettings(context, { backend: 'rpc-gateway' });
-      await disableTruapiDebugPanel(context);
       const page = await context.newPage();
       await openProduct(page);
 

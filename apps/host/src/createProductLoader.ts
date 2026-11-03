@@ -16,6 +16,8 @@ import {
   formatElapsed,
   getErrorMessage,
   log,
+  markHandled,
+  noop,
   createRandomId,
   realTimers,
   serializeError,
@@ -37,6 +39,7 @@ import { watchSandbox } from './watchSandbox.js';
 import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
 import { startResolutionTrace, type CidCacheResult } from './startResolutionTrace.js';
+import type { CoreLease } from './runtime/createPageCore.js';
 import type { ProductFrame } from './runtime/createProductFrame.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
@@ -54,6 +57,11 @@ export type LoaderFrame = {
    * Throws when the page's core is not set up yet.
    */
   setPageProduct: (product: { label: string }) => void;
+  /**
+   * Leases the page product's core, so it boots while the load reads the name. Rejects when the core cannot boot, with the boot's error or
+   * `CoreRedialError` for a replacement that could not boot. Throws when the page's core is not set up yet.
+   */
+  holdCore: () => Promise<Pick<CoreLease, 'release'>>;
   /** Mounts the product's sandbox on this content. Settles once the sandbox owns the download. */
   render: ProductFrame['render'];
   /** Takes the product down for good under the failure screen, which nothing the frame does later clears. */
@@ -334,6 +342,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   async function render(cid: string, manifests: ProductManifests): Promise<boolean> {
     progress.enterContentFetch();
     enterStep('render_handoff');
+    await coreHold;
     settleOnContent();
     const sandbox = watchSandbox(frame.onSandboxHeard, { timers });
     await frame.render({ mode: 'subdomain', label, cid, base: options.base, chat, ...getManifestFacts(manifests) });
@@ -433,11 +442,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = readClock();
     performance.mark('dotli:resolve:start');
-    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded.
-    const manifestsRead = names.readManifests(label);
-    manifestsRead.catch(() => {
-      /* Awaited below. A CID failure first must not leave this unhandled. */
-    });
+    // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded. A CID
+    // failure first leaves its failure to the load's outcome.
+    const manifestsRead = markHandled(names.readManifests(label));
     const cid = await resolveName();
 
     // Nothing to launch whatever the manifests say, so it does not wait on them.
@@ -532,6 +539,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     return cid;
   }
 
+  // The core boots while the name resolves. The render awaits it and reports its failure, and a load that ends earlier
+  // reports its own outcome instead.
+  const coreHold = markHandled(frame.holdCore());
   try {
     const cached = await readCachedCopy();
     if (cached !== null) {
@@ -542,6 +552,12 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   } catch (error) {
     performance.mark('dotli:main:end');
     failLoad(error);
+  } finally {
+    // This lease covers the wait before the render, so the load lets it go when it ends. A core that failed to boot let
+    // it go itself.
+    void coreHold.then(lease => {
+      lease.release();
+    }, noop);
   }
 }
 

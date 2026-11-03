@@ -10,7 +10,7 @@
 
 import { m, type MetricOutcome } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, createDeferred, log, isShallowEqual, waitForStatus } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, log, isShallowEqual, markHandled, waitForStatus } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { SessionRoute } from '../sessionHandoff/sessionRoute.js';
@@ -82,6 +82,12 @@ export type SiteAction<Result> = {
     confirmed: () => Promise<void>;
     signal: AbortSignal;
   }): Promise<Result>;
+  /**
+   * Starts what the action needs before the user's grant, such as opening its chain. Called once as the round starts.
+   * `signal` aborts once the round ends, and the action lets go of what it started and `run` never took. Never throws,
+   * and starts nothing that reaches the phone or the site.
+   */
+  prepare?(signal: AbortSignal): void;
 };
 
 export type SiteRoundParams<Result> = {
@@ -316,13 +322,13 @@ export function createSiteRound<Result>({
       : grant.group?.registrable === group.registrable && grant.group.token === group.token;
   }
 
-  /** The grant the site's token names, when it answers the request. A store that cannot be read knows none. */
-  async function lookUpGrant(): Promise<SiteGrant | null> {
-    if (request.siteToken === null) {
-      return null;
-    }
+  /**
+   * The grant the site's token names, when it answers the request. `reading` is the read started before the group was
+   * judged. A store that cannot be read knows none.
+   */
+  async function lookUpGrant(reading: Promise<SiteGrant | null>): Promise<SiteGrant | null> {
     try {
-      const grant = await grants.read(request.siteToken);
+      const grant = await reading;
       return grant !== null && isAnsweringGrant(grant) ? grant : null;
     } catch (error) {
       reportGrantMiss(error, 'grant_read');
@@ -459,10 +465,13 @@ export function createSiteRound<Result>({
   }
 
   async function start(): Promise<void> {
+    action.prepare?.(ended.signal);
+    // lookUpGrant reports a failed read once the group is judged. A refused group never reports it.
+    const reading = markHandled(request.siteToken === null ? Promise.resolve(null) : grants.read(request.siteToken));
     if (request.groupToken !== null) {
       group = await judgeGroup(request.groupToken);
     }
-    known = await lookUpGrant();
+    known = await lookUpGrant(reading);
     if (known === null) {
       showConsent();
     } else {

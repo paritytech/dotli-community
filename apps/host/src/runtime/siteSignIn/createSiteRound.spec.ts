@@ -77,6 +77,8 @@ type StartRoundParams = {
   windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
+  /** The action's `prepare`, which the action lacks by default. */
+  prepare?: (signal: AbortSignal) => void;
 };
 
 const SHOP = 'https://shop.my-site.com';
@@ -91,6 +93,22 @@ const RESULT: FakeResult = { done: 'the action ran' };
 function createGroupGrant(registrable: string, fields: Partial<SiteGrant> = {}): SiteGrant {
   const origin = fields.origin ?? SITE_ORIGIN;
   return createGrant({ origin, group: { registrable, token: GROUP_TOKEN, origins: [origin] }, ...fields });
+}
+
+/**
+ * Registrable domains judged as {@link SITE_GROUPS} judges them, once `judged` resolves. `judging` resolves as the
+ * round first asks.
+ */
+function createHeldGroups(judged: Promise<void>) {
+  const judging = createDeferred<undefined>();
+  const groups: SiteGroups = {
+    async registrable(hostname) {
+      judging.resolve(undefined);
+      await judged;
+      return SITE_GROUPS.registrable(hostname);
+    },
+  };
+  return { groups, judging: judging.promise };
 }
 
 /**
@@ -113,6 +131,7 @@ async function startRound(options: StartRoundParams = {}) {
   }
   let saving = 0;
   let forgotten = 0;
+  let reads = 0;
   // The signal of each read of the main account.
   const mainReads: AbortSignal[] = [];
   /** Counts a save, then holds it at the gate and fails it when the test says so. */
@@ -139,7 +158,12 @@ async function startRound(options: StartRoundParams = {}) {
       forgotten += 1;
       changes.notify();
     },
-    ...(options.readFails === true ? { read: () => Promise.reject(new Error('The grants database is closed')) } : {}),
+    read(token) {
+      reads += 1;
+      return options.readFails === true
+        ? Promise.reject(new Error('The grants database is closed'))
+        : stored.read(token);
+    },
   };
   const readMain = options.mainAccount ?? (() => Promise.resolve(MAIN_ACCOUNT));
   const failures = [...(options.failures ?? [])];
@@ -166,6 +190,7 @@ async function startRound(options: StartRoundParams = {}) {
       }
       return done.promise;
     },
+    ...(options.prepare === undefined ? {} : { prepare: options.prepare }),
   };
   let windowFlowFails = options.windowFlowFails === true;
   const windowFlows: { stored: () => void; close: () => void }[] = [];
@@ -214,6 +239,8 @@ async function startRound(options: StartRoundParams = {}) {
     posts,
     stored,
     runs,
+    /** How many grant reads the round started. */
+    countReads: () => reads,
     mainReads,
     screens,
     readViews: () => screens.map(shown => shown.view),
@@ -518,6 +545,31 @@ describe('site round', () => {
     expect(round.windowFlows).toHaveLength(0);
     expect(await round.stored.list()).toEqual([]);
     expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'declined' }]);
+  });
+
+  it('As a site, I start a round and the window prepares its action at once with a signal that aborts once the round ends', async () => {
+    // Given an action that records its prepare and keeps its signal, a round started up to its consent view, and
+    // whether the signal was aborted there
+    const events: string[] = [];
+    const signals: AbortSignal[] = [];
+    const round = await startRound({
+      prepare(signal) {
+        events.push('prepare');
+        signals.push(signal);
+      },
+    });
+    await round.waitForView('consent');
+    events.push('consent');
+    const abortedAtConsent = signals.map(signal => signal.aborted);
+
+    // When the user declines
+    round.flow.decline();
+    await round.closed;
+
+    // Then the action prepared once before the consent showed, with a signal that stayed live until the round ended
+    expect(events).toEqual(['prepare', 'consent']);
+    expect(abortedAtConsent).toEqual([false]);
+    expect(signals.map(signal => signal.aborted)).toEqual([true]);
   });
 
   it('As a user who cancels on the consent view, I tell the site and close the window', async () => {
@@ -962,6 +1014,42 @@ describe('site round of a group', () => {
       expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
     },
   );
+
+  it('As a site of a group, I start a round and the window reads my grant while it judges my group', async () => {
+    // Given a grant of the group under the site's token, and a judgement of the group the test holds
+    const judged = createDeferred<undefined>();
+    const held = createHeldGroups(judged.promise);
+
+    // When the round starts and begins to judge the group
+    const round = await startRound({
+      siteToken: SITE_TOKEN,
+      groupToken: GROUP_TOKEN,
+      grants: [createGroupGrant('my-site.com')],
+      groups: held.groups,
+    });
+    await held.judging;
+
+    // Then the grant was read while the judgement is still held
+    expect(round.countReads()).toBe(1);
+  });
+
+  it('As a site whose group is refused, I start a round while the grants store fails and only the refusal is counted', async () => {
+    // Given a site on a public suffix that sends a token and a group token, and a grants store whose read fails
+    const round = await startRound({
+      origin: 'https://github.io',
+      siteToken: SITE_TOKEN,
+      groupToken: GROUP_TOKEN,
+      readFails: true,
+    });
+
+    // When the round judges the request and closes
+    await round.closed;
+
+    // Then the site was refused as a bad request, and only the refusal was counted, with nothing reported
+    expect(round.posts).toEqual([{ type: 'dotli:s:refused', reason: 'bad_request' }]);
+    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
+    expect(round.errors).toEqual([]);
+  });
 
   it('As a site of a group whose window cannot load the suffix list, I am refused with bad_request and the failure is reported', async () => {
     // Given a window whose Public Suffix List does not load

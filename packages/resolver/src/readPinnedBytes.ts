@@ -38,10 +38,17 @@ export async function readPinnedBytes({
     return decoded.data;
   }
   const slotsNeeded = Math.ceil(decoded.length / 32);
+  const reads = Array.from({ length: slotsNeeded }, (_, index) =>
+    api.readSlot(contractAddress, addToSlot(decoded.dataSlot, index), { atHash: pin.hash, trieId: pin.trieId }),
+  );
+  // Every read settles before the walk, so the lowest failing slot decides the error and the pin outlives every read.
+  const settled = await Promise.allSettled(reads);
   const result = new Uint8Array(decoded.length);
-  for (let index = 0; index < slotsNeeded; index++) {
-    const slotKey = addToSlot(decoded.dataSlot, index);
-    const slotData = await api.readSlot(contractAddress, slotKey, { atHash: pin.hash, trieId: pin.trieId });
+  for (const [index, slot] of settled.entries()) {
+    if (slot.status === 'rejected') {
+      throw slot.reason;
+    }
+    const slotData = slot.value;
     // Zero-padding the gap would yield a corrupt contenthash that reads as "name not found".
     if (slotData === null) {
       throw new PartialStorageReadError({

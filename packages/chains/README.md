@@ -24,7 +24,8 @@ flowchart LR
 ```
 
 - One light client runs per context. It takes its storage and hooks through `LightClientDeps` and publishes its state as
-  `LightClientStatus`. Finalized database blobs are kept per genesis hash so a repeat visit skips the checkpoint sync.
+  `LightClientStatus`. Finalized database blobs are kept per genesis hash so a repeat visit skips the checkpoint sync. A
+  chain opened while the light client starts reads its blob while the engine loads.
 - Sync reporting turns the provider's lifecycle snapshots into the milestones and peer details the loading screen and
   the network panel show.
 - Gateway providers reconnect their WebSocket and replay subscriptions. They never import smoldot. They report status

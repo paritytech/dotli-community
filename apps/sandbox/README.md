@@ -23,8 +23,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   handoff and the runner's wait for the host take their timers as a param too, defaulting to the page's own.
 - A runner performs the load once, and again on each retry the visitor asks for, up to a limit. Every failure is
   reported and shown. It refuses to run as a top-level page.
-- One load fetches and verifies the content, hands an archive to the service worker and writes the page. It never
-  throws, so the caller learns which step failed.
+- One load fetches and verifies the content while the service worker registers, and waits for the worker before it goes
+  on. It then hands an archive to the service worker and writes the page. It never throws, so the caller learns which
+  step failed.
 - Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way. The
   sandbox tells the host it is starting as soon as its params check out, since the host fails a sandbox that stays
   silent.

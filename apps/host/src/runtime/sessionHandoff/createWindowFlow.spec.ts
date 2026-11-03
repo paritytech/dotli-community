@@ -36,6 +36,8 @@ type OpenWindowParams = {
   /** Whether a page opened the window, false for a window no page opened. */
   opener?: boolean;
   stored?: Stored;
+  /** Holds the store's session read: it resolves `started` when called, then waits for `release`. */
+  heldSessionRead?: { started: ReturnType<typeof createDeferred<undefined>>; release: Promise<undefined> };
   auth?: DotliAuthState;
   /** Runs with the window's auth state before the flow is built, so what it registers is heard before the flow. */
   beforeFlow?: (auth: WritableAtom<DotliAuthState>) => void;
@@ -155,10 +157,13 @@ function openWindow(options: OpenWindowParams = {}) {
     auth,
     commands,
     store: {
-      readSession: () =>
-        Promise.resolve(
-          failures.read === null ? { status: 'ok', blob: main.session } : { status: 'failed', error: failures.read },
-        ),
+      async readSession() {
+        options.heldSessionRead?.started.resolve(undefined);
+        await options.heldSessionRead?.release;
+        return failures.read === null
+          ? { status: 'ok', blob: main.session }
+          : { status: 'failed', error: failures.read };
+      },
       readUiCache() {
         reads.uiCache += 1;
         return Promise.resolve(main.uiState);
@@ -1309,6 +1314,27 @@ describe('session window flow', () => {
     // Then the account was read once and sent with the session
     expect(reads.uiCache).toBe(1);
     expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+  });
+
+  it('As a user with a stored session, I open the sign-in window and it reads my cached account while it reads my session', async () => {
+    // Given a stored session and account, and a session read the test holds
+    const started = createDeferred<undefined>();
+    const release = createDeferred<undefined>();
+    onTestFinished(() => {
+      release.resolve(undefined);
+    });
+    const { flow, vet, reads } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE },
+      heldSessionRead: { started, release: release.promise },
+    });
+
+    // When the opener is vetted and the session read has started
+    vet();
+    await started.promise;
+
+    // Then the account was already asked for, while the session read is still held
+    expect(reads.uiCache).toBe(1);
+    expect(flow.screen.get().view).not.toBe('continue');
   });
 
   it('As a user in the sign-in window whose store took another sign-in before Continue, I press Continue and that one is sent with its own account', async () => {

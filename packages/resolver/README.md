@@ -20,7 +20,8 @@ every caller checks a name against.
   latest phase twice and miss an earlier one. A callback's own throw is reported and the build goes on. A throw from a
   listener of a store the callback writes reaches the build, so such a listener catches its own errors.
 - Contract reads go straight to Revive storage slots with no runtime call. Multi-slot reads pin one block and the
-  contract's trie id, so bytes are never torn across blocks. Slot math and contenthash decoding sit in their own part.
+  contract's trie id, so bytes are never torn across blocks. Slot math and contenthash decoding sit in their own part. A
+  multi-slot read asks for its data slots at once. Each follow runs a bounded number of storage operations at a time.
 - Manifest records are read as text and checked by handwritten validators, kept apart so the eager path does not pull
   the chain-storage code.
 - A read on a halted chain is retried on the rebuilt chain a bounded number of times. The resolver knows the halt by the
