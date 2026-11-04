@@ -20,7 +20,7 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@polkadot-api/json-rpc-provider": "^0.2.0"
+    "@polkadot-api/json-rpc-provider": "0.2.0"
   },
   "dependencies": {
     "@dotli/chains": "*",

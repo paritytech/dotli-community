@@ -19,12 +19,12 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@solidjs/web": "2.0.0-rc.20",
-    "@vitest/browser-playwright": "^5.0.5",
-    "playwright": "^1.64.1",
-    "solid-js": "2.0.0-rc.20",
-    "storybook": "^10.6.5",
-    "storybook-solidjs-vite": "^10.7.4",
+    "@solidjs/web": "2.0.0-rc.21",
+    "@vitest/browser-playwright": "5.1.0",
+    "playwright": "1.64.1",
+    "solid-js": "2.0.0-rc.21",
+    "storybook": "10.6.5",
+    "storybook-solidjs-vite": "10.7.4",
     "vite-plugin-solid": "3.0.0-next.27"
   }
 }
