@@ -16,6 +16,10 @@ shows a screen that tells the user to open Polkadot App.
 
 The browser floor is ES2022 and Safari 17.4. Shipped code uses no runtime API newer than that.
 
+A product's metadata, its author included, is read as the product-manifest RFC's "Resolving a product"
+(paritytech/host-rust-core, `docs/rfcs/product-manifest.md`) says, while the product resolves, and is cached with its
+manifests.
+
 ## Glossary
 
 - **Host**: the top-level shell build. Owns the topbar, session and bridge.
@@ -72,6 +76,8 @@ General:
 
 - Don't disable rules without a one-line reason.
 - Prefer the framework's own mechanism (Astro, Solid 2, Vite) over hand-written machinery.
+- A feature off the critical path that already loads lazily gets the simplest correct read. Don't trade simplicity or
+  the spec for a load-time saving nobody asked for.
 - Fix races and duplicate resources structurally (one refcounted owner), not with flags or delays.
 - Build dotli as a plain website that loads fast. Special build, startup or packaging machinery belongs only where a
   plain website can't cover the need: the sandbox, product isolation, iframe messaging and chain connections.
@@ -103,6 +109,8 @@ TypeScript:
 UI:
 
 - Astro for static markup. Solid islands only for interactive controls, one module per island.
+- Chrome a page shows from first paint is in the server-rendered HTML, and its island upgrades it in place. Never swap
+  one element for another at hydration.
 - App state is a nanostores store. A component renders one through `useStore` from `@dotli/stores-solid`, never by
   copying it into a Solid signal or store where `useStore` would do.
 - Colors only from tokens in `packages/ui/src/global.css`. dotli chrome is dark only.
