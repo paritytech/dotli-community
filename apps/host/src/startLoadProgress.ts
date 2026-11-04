@@ -74,7 +74,7 @@ type Params = {
   debugBus?: DebugBus;
 };
 
-type FollowDirectChainsParams = {
+type FollowLightClientChainsParams = {
   events: LoadEvents;
   trace: LoadTrace;
   flowId: string;
@@ -85,18 +85,18 @@ type FollowDirectChainsParams = {
   debugBus: DebugBus;
 };
 
-type CreateStallWarningsParams = Pick<FollowDirectChainsParams, 'trace' | 'loading' | 'timers' | 'readClock'> & {
+type CreateStallWarningsParams = Pick<FollowLightClientChainsParams, 'trace' | 'loading' | 'timers' | 'readClock'> & {
   /** Returns the load's latest download rate in bytes per second, or null before the first. Never throws. */
   readBytesPerSecond: () => number | null;
 };
 
-type CreateChainReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers' | 'debugBus'>;
+type CreateChainReporterParams = Pick<FollowLightClientChainsParams, 'flowId' | 'timers' | 'debugBus'>;
 
-type CreateThroughputMeterParams = Pick<FollowDirectChainsParams, 'readClock'>;
+type CreateThroughputMeterParams = Pick<FollowLightClientChainsParams, 'readClock'>;
 
-type CreateByteTotalsReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers' | 'debugBus'>;
+type CreateByteTotalsReporterParams = Pick<FollowLightClientChainsParams, 'flowId' | 'timers' | 'debugBus'>;
 
-type FollowContentProgressParams = Pick<FollowDirectChainsParams, 'events' | 'loading'>;
+type FollowContentProgressParams = Pick<FollowLightClientChainsParams, 'events' | 'loading'>;
 
 // Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
 const CHAIN_WARP_DEBUG_MS = 1000;
@@ -178,10 +178,10 @@ export function startLoadProgress({
     }),
   ];
 
-  // Typed lifecycle milestones from the protocol iframe drive the bar in direct mode. The other backends forward
-  // none, so only the resolver's phases move it.
-  if (backend === 'smoldot-direct') {
-    releases.push(followDirectChains({ events, trace, flowId, loading, timers, readClock, debugBus }));
+  // The light client's lifecycle milestones drive the bar, wherever it runs. A gateway has no chains to follow, so
+  // only the resolver's phases move it.
+  if (!gateway) {
+    releases.push(followLightClientChains({ events, trace, flowId, loading, timers, readClock, debugBus }));
   }
 
   function resolvePhase(phase: ResolvePhase): void {
@@ -251,7 +251,7 @@ function getSmoldotPhases(startLabel: string, countsContentBytes: boolean): Load
 }
 
 /** Returns the function that stops following, which clears the warnings' timers. Throws only as `events` does. */
-function followDirectChains({
+function followLightClientChains({
   events,
   trace,
   flowId,
@@ -259,7 +259,7 @@ function followDirectChains({
   timers,
   readClock,
   debugBus,
-}: FollowDirectChainsParams): () => void {
+}: FollowLightClientChainsParams): () => void {
   const throughput = createThroughputMeter({ readClock });
   const warnings = createStallWarnings({
     trace,
