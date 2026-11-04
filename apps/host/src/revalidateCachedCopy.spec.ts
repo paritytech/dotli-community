@@ -75,7 +75,7 @@ describe('revalidateCachedCopy', () => {
     await reloaded;
 
     // Then
-    expect(written).toEqual([{ label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null } }]);
+    expect(written).toEqual([{ label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null, owner: null } }]);
     expect(notices.map(notice => notice.label)).toEqual(['New version available']);
     expect(reload).toHaveBeenCalledTimes(1);
   });
@@ -93,10 +93,12 @@ describe('revalidateCachedCopy', () => {
     expect(rig.reload).not.toHaveBeenCalled();
 
     // When
-    await reading.finish({ root: { kind: 'empty' }, app: { kind: 'empty' } });
+    await reading.finish({ root: { kind: 'empty' }, app: { kind: 'empty' }, owner: null });
 
     // Then
-    expect(rig.written).toEqual([{ label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null } }]);
+    expect(rig.written).toEqual([
+      { label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null, owner: null } },
+    ]);
     expect(rig.reload).toHaveBeenCalledOnce();
   });
 
@@ -229,6 +231,7 @@ function createPublishedNameSource({ published }: CreatePublishedNameSourceParam
     remote: {
       resolveDotName: name =>
         published instanceof Error ? Promise.reject(published) : Promise.resolve(published[name] ?? null),
+      resolveOwner: () => Promise.resolve(null),
       resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
       resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
     },

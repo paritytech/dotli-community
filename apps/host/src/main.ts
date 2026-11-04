@@ -14,7 +14,10 @@ import { PAGE_START } from './pageStart.js';
 import { bootTracker } from './createBootTracker.js';
 import { pageLoading } from './createLoadingController.js';
 import { urlPillState } from './state/urlPillState.js';
+import { productCardState } from './state/productCardState.js';
+import { createProductAuthor } from './createProductAuthor.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
+import { productState } from './runtime/state/productState.js';
 import { authState } from './runtime/state/authState.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/createProductFrame.js';
@@ -42,6 +45,7 @@ import { createProductLoader, type CachedCopy, type LoaderCidCache } from './cre
 import { startSandboxContent } from './startSandboxContent.js';
 import { startShieldAutoHide } from './startShieldAutoHide.js';
 import { createNameSource, type NameSource, type RpcResolver } from './createNameSource.js';
+import type { H160Address } from './h160Address.js';
 import { revalidateCachedCopy } from './revalidateCachedCopy.js';
 import { markAndReload } from './createContinuation.js';
 import { loadFailureScreen } from './loadFailureScreen.js';
@@ -220,11 +224,18 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
     backend: settings.backend,
     remote: {
       resolveDotName: protocol.resolve.resolveDotName,
+      resolveOwner: protocol.resolve.resolveOwner,
       resolveRootManifest: protocol.resolve.resolveRootManifest,
       resolveExecutableManifest: protocol.resolve.resolveExecutableManifest,
     },
     loadRpc: loadRpcResolver,
   });
+  const author = createProductAuthor({
+    readOwner: readLoadedOwner,
+    readAccount: address => bridgeModule.readOriginalAccount(address),
+    readUsernames: account => bridgeModule.readPeopleUsernames(account),
+  });
+  productCardState.setAuthorSource(() => author.load());
   const loader = createProductLoader({
     backend: settings.backend,
     skipCidCache: settings.cache.skipCidCache,
@@ -249,6 +260,12 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
   await loader.load(label);
+}
+
+/** The loaded product's owner, null while no product is loaded or when its owner is not known. */
+function readLoadedOwner(): H160Address | null {
+  const product = productState.store.get();
+  return product.status === 'loaded' ? (product.owner ?? null) : null;
 }
 
 /**

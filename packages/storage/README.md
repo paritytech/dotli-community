@@ -28,8 +28,9 @@ user signed in to and scheduled notifications.
   does not hash-check. Bookkeeping sits apart from the bytes so touch and prune skip them. A read takes no write lock,
   so reads run side by side. It marks its block used afterwards, in one bookkeeping write with the reads around it, and
   a prune writes those marks before it ranks blocks.
-- The CID cache maps a label to its CID and raw manifest text for instant repeat visits. A hit is validated by today's
-  validator. A read that fails is reported and reads as a miss.
+- The CID cache maps a label to its CID, raw manifest text and the product's owner for instant repeat visits. A hit is
+  validated by today's validator. An entry without an owner field reads as a miss, and so does a read that fails, which
+  is reported.
 - The local wallet stores root entropy encrypted under a key this origin can use but not export. A load also gives the
   record's version, its IV, which every save draws fresh and an identity update keeps. A forget that names a version
   reads and deletes in one transaction, so a wallet saved since, even from the same phrase, stays.

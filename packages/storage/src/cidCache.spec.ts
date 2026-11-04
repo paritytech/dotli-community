@@ -19,7 +19,8 @@ beforeEach(() => {
 
 const PASEO = 'paseo-next-v2';
 
-const NO_MANIFESTS = { root: null, app: null };
+const NO_MANIFESTS = { root: null, app: null, owner: null };
+const OWNER = `0x${'ab'.repeat(20)}`;
 const ROOT = '{"$v":1,"displayName":"DOOM","description":"","icon":{"cid":"bafk","format":"png"}}';
 const APP = '{"$v":1,"kind":"app","appVersion":[0,1,9]}';
 
@@ -64,15 +65,20 @@ describe('CID IndexedDB round-trip', () => {
     expect(cached).toEqual({ cid: 'bafy123', manifests: NO_MANIFESTS });
   });
 
-  it('As the resolver, I cache a CID with its manifests and read both back', async () => {
+  it('As the resolver, I cache a CID with its manifests and owner and read them back', async () => {
     // Given
-    await cache.set({ label: 'doom', network: PASEO, cid: 'bafy-doom', manifests: { root: ROOT, app: APP } });
+    await cache.set({
+      label: 'doom',
+      network: PASEO,
+      cid: 'bafy-doom',
+      manifests: { root: ROOT, app: APP, owner: OWNER },
+    });
 
     // When
     const cached = await cache.get('doom', PASEO);
 
     // Then
-    expect(cached).toEqual({ cid: 'bafy-doom', manifests: { root: ROOT, app: APP } });
+    expect(cached).toEqual({ cid: 'bafy-doom', manifests: { root: ROOT, app: APP, owner: OWNER } });
   });
 
   it.each([
@@ -81,9 +87,18 @@ describe('CID IndexedDB round-trip', () => {
       store: () => putRawEntry({ label: 'doom', cid: 'bafy-doom', timestamp: Date.now() }),
     },
     {
+      entry: 'an entry cached without its owner',
+      store: () => cache.set({ label: 'doom', network: PASEO, cid: 'bafy-doom', manifests: { root: ROOT, app: APP } }),
+    },
+    {
       entry: 'an entry cached on another network',
       store: () =>
-        cache.set({ label: 'doom', network: 'previewnet', cid: 'bafy-doom', manifests: { root: ROOT, app: APP } }),
+        cache.set({
+          label: 'doom',
+          network: 'previewnet',
+          cid: 'bafy-doom',
+          manifests: { root: ROOT, app: APP, owner: OWNER },
+        }),
     },
     {
       entry: 'a label never cached',

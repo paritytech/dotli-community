@@ -54,8 +54,10 @@ import { walletSwitch } from './createWalletSwitch.js';
 // Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
 export { walletSwitch } from './createWalletSwitch.js';
 
-// The pool behind these leases already ships in this chunk, so other callers take them from here.
+// The pool behind these leases and the reads over them already ships in this chunk, so callers take them from here.
 export { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
+export { readOriginalAccount } from './readOriginalAccount.js';
+export { readPeopleUsernames } from './readPeopleUsernames.js';
 
 // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
 export { wireDescriber } from './createWireDescriber.js';

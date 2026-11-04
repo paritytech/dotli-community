@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Label to CID cache, so a repeat visit renders at once while smoldot revalidates.
-// Manifest records ride along as raw text, so a hit is validated by today's validator without a chain read.
+// Manifest records ride along as raw text, so a hit is validated by today's validator without a chain read. The
+// product's dotNS owner rides along too, so a repeat visit reads nothing.
 
 import type { Network } from '@dotli/config';
 import { createCacheReporter } from './createCacheReporter.js';
@@ -17,6 +18,11 @@ const STORE = 'cids';
 export type CachedManifests = {
   root: string | null;
   app: string | null;
+  /**
+   * The product's dotNS owner address, `null` for a name with none. Absent when the owner was not read, so the entry
+   * reads as a miss.
+   */
+  owner?: string | null;
 };
 
 type CidEntry = {
@@ -24,7 +30,7 @@ type CidEntry = {
   /** Absent on older entries, which read as a miss. The same name can differ per network. */
   network?: Network;
   cid: string;
-  /** Absent on older entries, which read as a miss. */
+  /** Absent on older entries, which read as a miss, as does one whose manifests have no owner field. */
   manifests?: CachedManifests;
   timestamp: number;
 };
@@ -64,7 +70,7 @@ export function createCidCache({ idb = pageIdb }: Params = {}) {
       const entry = unsafe_readStoredRecord<CidEntry | undefined>(
         await waitForIdbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(label)),
       );
-      return entry?.manifests === undefined || entry.network !== network
+      return entry?.manifests?.owner === undefined || entry.network !== network
         ? null
         : { cid: entry.cid, manifests: entry.manifests };
     } finally {

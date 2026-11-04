@@ -10,6 +10,7 @@ import { applyProductBranding } from './applyProductBranding.js';
 /** The tab, as far as branding writes it: the icon formats it was given. */
 type Tab = {
   favicons: string[];
+  hrefs: string[];
   setFavicon: (href: string, format: string) => void;
 };
 
@@ -23,6 +24,7 @@ describe('applyProductBranding', () => {
   it('As a visitor, I open an app with a PNG icon and see it as the favicon', async () => {
     // Given
     const tab = createTab();
+    const shown: string[] = [];
     const fetchBlock = vi.fn(() => Promise.resolve(new Uint8Array([137, 80, 78, 71])));
 
     // When
@@ -31,11 +33,32 @@ describe('applyProductBranding', () => {
       manifests: { root: createRootManifest('png'), app: APP },
       fetchBlock,
       setFavicon: tab.setFavicon,
+      showIcon: href => shown.push(href),
     });
 
-    // Then
+    // Then the card is shown the same icon as the tab
     expect(fetchBlock).toHaveBeenCalledWith('bafy-icon', expect.any(AbortSignal));
     expect(tab.favicons).toEqual(['image/png']);
+    expect(shown).toEqual(tab.hrefs);
+    expect(shown).toHaveLength(1);
+  });
+
+  it("As a visitor, I see no icon in the card when the product's icon fails to load", async () => {
+    // Given a tab and a card, and an icon fetch that fails
+    const tab = createTab();
+    const shown: string[] = [];
+
+    // When the product's icon is applied
+    await applyProductBranding({
+      label: 'doom',
+      manifests: { root: createRootManifest('png'), app: APP },
+      fetchBlock: () => Promise.reject(new TypeError('Failed to fetch')),
+      setFavicon: tab.setFavicon,
+      showIcon: href => shown.push(href),
+    });
+
+    // Then the card is shown no icon
+    expect(shown).toEqual([]);
   });
 
   it('As a visitor, I open an app whose icon is in a format the host does not show and keep the default icon', async () => {
@@ -137,9 +160,12 @@ function createRootManifest(format: string): ManifestResult<RootManifest> {
 /** Builds a tab that records the icon formats it is given. */
 function createTab(): Tab {
   const favicons: string[] = [];
+  const hrefs: string[] = [];
   return {
     favicons,
-    setFavicon(_href, format) {
+    hrefs,
+    setFavicon(href, format) {
+      hrefs.push(href);
       favicons.push(`image/${format}`);
     },
   };
