@@ -10,7 +10,7 @@
   max-height: min(85dvh, var(--content-height));
   overflow: hidden;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: var(--chrome-top);
+  background: var(--chrome-surface);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-sheet);
