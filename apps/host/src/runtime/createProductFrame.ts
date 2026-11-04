@@ -5,7 +5,7 @@
 // still connecting, and the product on screen stays up until its replacement has connected. Only the app subdomain
 // joins the TrUAPI channel, so any nested iframe it loads is opaque to the host.
 
-import { createMessagePortProvider, type WireProvider as Provider } from '@parity/truapi';
+import { createMessagePortProvider, type ProductId, type WireProvider as Provider } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { getSandboxLabel } from '@dotli/resolver';
@@ -134,6 +134,8 @@ type PipeProvidersParams = {
 
 type MountedHost = {
   iframe: HTMLIFrameElement;
+  /** The id the core parsed for the product, which its connection runs under. */
+  productId: ProductId;
   /** Whether the product declares chat, as its connection was opened. */
   chat: boolean;
   /** Runs `run` once the product's pending permission answer has reached it. */
@@ -427,7 +429,7 @@ export function createProductFrame({
 
     stopSetup();
     view.showTitle(toTitledProduct(product));
-    productState.setLoaded(toLoadedProduct(product, host.chat));
+    productState.setLoaded(toLoadedProduct(product, host));
     debugBus.emit({
       layer: 'render',
       event: 'iframe_ready',
@@ -511,6 +513,7 @@ export function createProductFrame({
       });
       return {
         iframe: host.iframe,
+        productId: connection.productId,
         chat: chatCapable,
         runAfterPermissionResponse: responses.runAfterResponse,
         // The frame's lifetime runs on, so a device grant still waiting for its answer when the frame gives up still
@@ -863,21 +866,24 @@ function registerProductChat({ provider, productId }: CoreConnection): () => voi
 }
 
 /**
- * What the page records of `product` once it is on screen, with whether its connection serves chat. The runtime
- * product id, so chat data is keyed like storage when the debug path overrides it.
+ * What the page records of `product` once it is on `host`, with whether its connection serves chat. The id the core
+ * parsed, so chat data is keyed as the core keys it.
  */
-function toLoadedProduct(product: FrameProduct, chat: boolean): Parameters<typeof productState.setLoaded>[0] {
+function toLoadedProduct(
+  product: FrameProduct,
+  { productId, chat }: MountedHost,
+): Parameters<typeof productState.setLoaded>[0] {
   switch (product.mode) {
     case 'iframe':
       return {
         label: product.label,
-        productId: getFrameProductId(product),
+        productId,
         details: { chat },
       };
     case 'subdomain':
       return {
         label: product.label,
-        productId: getFrameProductId(product),
+        productId,
         details: {
           cid: product.cid,
           chat,

@@ -11,17 +11,17 @@ import {
   isShallowEqual,
   type SafeStorage,
 } from '@dotli/shared';
+import type { ProductId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
 import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
-import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { topbarState } from './topbarState.js';
 
 export type ChatPanelState = {
   label: string | null;
-  /** Differs from the label-derived id when the localhost debug path sets an override. */
-  runtimeProductId: string | null;
+  /** The id the core parsed for the loaded product, which keys its chat. */
+  runtimeProductId: ProductId | null;
   available: boolean;
   loggedIn: boolean;
   open: boolean;
@@ -130,11 +130,8 @@ registerStoreStateReset(() => {
   panelElement = undefined;
 });
 
-function getCurrentProductId(state: ChatPanelState = panel.get()): string | null {
-  if (state.runtimeProductId !== null) {
-    return state.runtimeProductId;
-  }
-  return state.label === null ? null : toProductId(state.label);
+function getCurrentProductId(state: ChatPanelState = panel.get()): ProductId | null {
+  return state.runtimeProductId;
 }
 
 /** Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. */

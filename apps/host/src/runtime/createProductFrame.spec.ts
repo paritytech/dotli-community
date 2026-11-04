@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
@@ -575,6 +576,19 @@ describe('product frame renders', () => {
       expect.objectContaining({ executionKind: 'App' }),
     );
     expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'quiet', chat: false });
+  });
+
+  it('As a dApp user, I open a product and the page records the id its core parsed, so its chat is keyed as the core keys it', async () => {
+    // Given a core that parses the asked id into another spelling
+    const fakes = createHarness({
+      fakes: createFakePageCore({ parseProductId: () => asProductId('canonical.paseo') }),
+    });
+
+    // When
+    await fakes.settle(buildSubdomainProduct('chatty', { chat: true }), 0);
+
+    // Then
+    expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'chatty', productId: 'canonical.paseo' });
   });
 
   it('As a dApp user, I open my product and the tab names it by its published name from the first render, and the page knows its versions', async () => {

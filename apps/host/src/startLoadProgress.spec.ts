@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type { Backend } from '@dotli/config';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -292,7 +293,7 @@ describe('startLoadProgress', () => {
     netBytes.send({ received: 200 });
 
     // When
-    productState.setLoaded({ label: 'doom', productId: 'doom.dot' });
+    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot') });
     await timers.advance(5_000);
     netBytes.send({ received: 300 });
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { vi } from 'vitest';
-import { asProductId } from '@parity/truapi';
+import { asProductId, type ProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
@@ -39,8 +39,13 @@ type CreateFakeRuntimeParams = {
   changes: Changes;
 };
 
+type CreateFakePageCoreParams = {
+  /** How a core parses the id it is asked for. As asked by default. */
+  parseProductId?: (asked: string) => ProductId;
+};
+
 /** The real page core over fake Polkadot App runtimes. A redial gets one attempt, so a failed one fails at once. */
-export function createFakePageCore() {
+export function createFakePageCore({ parseProductId = asProductId }: CreateFakePageCoreParams = {}) {
   const runtimes: FakeCoreRuntime[] = [];
   const connections: ReturnType<typeof createDeferred<FakeCoreProvider>>[] = [];
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
@@ -82,8 +87,7 @@ export function createFakePageCore() {
     return Promise.resolve({
       // The fake has the members the page core calls, not the full runtime interface.
       runtime: runtime as unknown as WorkerPairingHostRuntime,
-      // The id the core would parse, taken as asked.
-      productId: asProductId(product.productId ?? toProductId(product.label)),
+      productId: parseProductId(product.productId ?? toProductId(product.label)),
       local,
       isStale: () => Promise.resolve(!local && walletFound),
     });

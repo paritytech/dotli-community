@@ -6,6 +6,7 @@
 // these pin the wiring. The views are tested by the chat story plays.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
@@ -21,7 +22,7 @@ import { chatPanelState } from '../../src/state/chatPanelState.js';
 import { appears, byId, byTestId } from '@dotli/ui/testing';
 
 const LABEL = 'chatty';
-const PRODUCT = toProductId(LABEL);
+const PRODUCT = asProductId(toProductId(LABEL));
 
 let chat: ChatStore;
 let stopState: () => void = () => undefined;

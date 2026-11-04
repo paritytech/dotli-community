@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ProductId } from '@parity/truapi';
 import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { ManifestFacts } from '../formatAppVersion.js';
@@ -16,12 +17,13 @@ export type ProductDetails = {
 /** `loadId` moves on every load, so a reload of the product already on show still notifies subscribers. */
 export type ProductState =
   | { status: 'none'; loadId: number }
-  | ({ status: 'loaded'; loadId: number; label: string; productId: string } & ProductDetails)
+  | ({ status: 'loaded'; loadId: number; label: string; productId: ProductId } & ProductDetails)
   | { status: 'error'; loadId: number };
 
 type Params = {
   label: string;
-  productId: string;
+  /** The id the core parsed for the product. */
+  productId: ProductId;
   /** None by default. */
   details?: ProductDetails;
 };

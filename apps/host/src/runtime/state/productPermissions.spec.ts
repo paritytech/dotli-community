@@ -3,6 +3,7 @@
 
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPermissionAuthorizations, type PermissionAuthorizations } from '../createPermissionAuthorizations.js';
@@ -75,7 +76,7 @@ describe('product permissions store', () => {
     const readAgain = core.nextRead();
 
     // When the same product loads again
-    productState.setLoaded({ label: LABEL, productId: `${LABEL}.dot` });
+    productState.setLoaded({ label: LABEL, productId: asProductId(`${LABEL}.dot`) });
     await readAgain;
 
     // Then
@@ -99,10 +100,10 @@ describe('product permissions store', () => {
     const first = createFakeCore('first', { Camera: 'Authorized' });
     createFakeCore('second');
     first.holdReads = true;
-    productState.setLoaded({ label: 'first', productId: 'first.dot' });
+    productState.setLoaded({ label: 'first', productId: asProductId('first.dot') });
 
     // When the product changes before the first read answers
-    productState.setLoaded({ label: 'second', productId: 'second.dot' });
+    productState.setLoaded({ label: 'second', productId: asProductId('second.dot') });
     for (const answer of first.heldReads.splice(0)) {
       answer();
     }
@@ -692,7 +693,7 @@ describe('product permissions store', () => {
 
     // When the first caller stops and a product loads
     stopFirst();
-    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
     const shown = permissions.state.get();
     await permissions.refresh();
 
@@ -712,7 +713,7 @@ describe('product permissions store', () => {
 
     // When the old stop is called again and a product loads
     stopEarlier();
-    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
     const shown = permissions.state.get();
     await permissions.refresh();
 
@@ -733,7 +734,7 @@ describe('product permissions store', () => {
     stopFirst();
     stopSecond();
     const before = permissions.state.get();
-    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
     const shown = permissions.state.get();
     await permissions.refresh();
 
@@ -754,7 +755,7 @@ describe('product permissions store, as the permissions popover reads it', () =>
 
     // When the app changes, its read held, and the write is released
     other.holdReads = true;
-    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
     write.resolve(undefined);
     await outcome;
 
@@ -777,11 +778,11 @@ describe('product permissions store, as the permissions popover reads it', () =>
     // Given
     createFakeCore('first', { Camera: 'Authorized' });
     createFakeCore('other');
-    productState.setLoaded({ label: 'first', productId: 'first.dot' });
+    productState.setLoaded({ label: 'first', productId: asProductId('first.dot') });
     await permissions.refresh();
 
     // When
-    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
 
     // Then nothing shows until the new app's read lands
     expect(permissions.state.get()).toEqual({ status: 'reading', label: 'other' });
@@ -882,7 +883,7 @@ function recordChanges(): PermissionsChange[] {
 }
 
 async function loadProduct(label = LABEL): Promise<void> {
-  productState.setLoaded({ label, productId: `${label}.dot` });
+  productState.setLoaded({ label, productId: asProductId(`${label}.dot`) });
   await permissions.refresh();
 }
 

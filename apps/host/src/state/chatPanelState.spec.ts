@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { createRecordingConnection } from '../runtime/chat/createChatConnections.fake.js';
 import { createMemoryChatRepo } from '../runtime/chat/createChatStore.fake.js';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
@@ -21,7 +22,7 @@ let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
 function showProduct(label: string): void {
-  productState.setLoaded({ label, productId: toProductId(label), details: { chat: true } });
+  productState.setLoaded({ label, productId: asProductId(toProductId(label)), details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 }
 
@@ -48,9 +49,13 @@ afterEach(() => {
 describe('chat panel state', () => {
   it('As a user, I load a product and log in and see the chat button only for a chat-capable product while logged in', () => {
     // When a product that declares no chat loads, then loads again declaring chat, then I log in
-    productState.setLoaded({ label: 'first-app', productId: toProductId('first-app') });
+    productState.setLoaded({ label: 'first-app', productId: asProductId(toProductId('first-app')) });
     const withoutChat = chatPanelState.isButtonVisible();
-    productState.setLoaded({ label: 'first-app', productId: toProductId('first-app'), details: { chat: true } });
+    productState.setLoaded({
+      label: 'first-app',
+      productId: asProductId(toProductId('first-app')),
+      details: { chat: true },
+    });
     const loggedOut = chatPanelState.isButtonVisible();
     authState.set({ tag: 'Connected', session: { connected: true } });
 
@@ -140,7 +145,7 @@ describe('chat panel state', () => {
     chatPanelState.setComposerError('oops');
 
     // When
-    productState.setLoaded({ label: 'next', productId: 'next.dot' });
+    productState.setLoaded({ label: 'next', productId: asProductId('next.dot') });
 
     // Then
     expect(chatPanelState.store.get()).toMatchObject({ activeRoomId: null, unreadByRoom: {}, composerError: null });
@@ -154,7 +159,7 @@ describe('chat panel state', () => {
     chatPanelState.openRoom('a');
 
     // When
-    productState.setLoaded({ label: 'app', productId: toProductId('app'), details: { chat: true } });
+    productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')), details: { chat: true } });
 
     // Then
     expect(chatPanelState.store.get().activeRoomId).toBe('a');
@@ -163,7 +168,7 @@ describe('chat panel state', () => {
   it('As a user whose product loaded before the chat panel state started, I wait for it to start and see the panel follow that product', () => {
     // Given
     remove();
-    productState.setLoaded({ label: 'early', productId: 'early.dot' });
+    productState.setLoaded({ label: 'early', productId: asProductId('early.dot') });
 
     // When
     remove = chatPanelState.start({ storage: local });
@@ -240,7 +245,7 @@ describe('chat panel state', () => {
     onTestFinished(
       topbarState.store.listen(() => {
         seen.push({ topbarVisible: chatPanelState.store.get().topbarVisible });
-        productState.setLoaded({ label: 'app', productId: toProductId('app'), details: { chat: true } });
+        productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')), details: { chat: true } });
       }),
     );
     onTestFinished(
@@ -273,7 +278,7 @@ describe('chat panel state', () => {
 
   it('As a user, I drag the panel past its clamp, clear no error and keep the topbar, and the panel redraws only for a new width', () => {
     // Given
-    productState.setLoaded({ label: 'app', productId: 'app.dot', details: { chat: true } });
+    productState.setLoaded({ label: 'app', productId: asProductId('app.dot'), details: { chat: true } });
     chatPanelState.setWidth(10_000);
     const notified = recordNotified(chatPanelState.store);
 

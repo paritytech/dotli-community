@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { productState } from './productState.js';
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
@@ -24,7 +25,7 @@ describe('product store', () => {
     // Given a page as it opens, with no product loaded
 
     // When
-    productState.setLoaded({ label: 'myapp', productId: 'myapp.dot', details: { cid: 'bafyroot' } });
+    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot'), details: { cid: 'bafyroot' } });
 
     // Then
     expect(productState.store.get()).toEqual({
@@ -38,7 +39,7 @@ describe('product store', () => {
 
   it('As a user, I reload the same product and every load is announced', () => {
     // Given
-    productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
+    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
     const seen: number[] = [];
     onTestFinished(
       productState.store.listen(() => {
@@ -47,9 +48,9 @@ describe('product store', () => {
     );
 
     // When
-    productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
+    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
     productState.setError();
-    productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
+    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
 
     // Then
     expect(seen).toEqual([2, 3, 4]);
@@ -58,7 +59,7 @@ describe('product store', () => {
 
   it('As a user, I hit a failed load and no product is left on show', () => {
     // Given
-    productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
+    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
 
     // When
     productState.setError();

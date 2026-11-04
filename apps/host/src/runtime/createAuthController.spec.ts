@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { withActiveTld } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
@@ -1708,7 +1709,7 @@ describe('auth controller on the page stores', () => {
       const { commands, calls } = recordCommands({ changes });
       authControl.init(buildInitParams(commands));
       authState.set({ tag: 'Disconnected' });
-      productState.setLoaded({ label: 'localhost:3000', productId: 'localhost:3000' });
+      productState.setLoaded({ label: 'localhost:3000', productId: asProductId('localhost:3000') });
 
       // When the topbar signs in
       authControl.startLogin();
@@ -1724,7 +1725,7 @@ describe('auth controller on the page stores', () => {
       const { commands } = recordCommands({ changes: createChanges() });
       authControl.init(buildInitParams(commands));
       authState.set({ tag: 'Disconnected' });
-      productState.setLoaded({ label: 'localhost:3000', productId: 'localhost:3000' });
+      productState.setLoaded({ label: 'localhost:3000', productId: asProductId('localhost:3000') });
 
       // When the login fails
       authState.set({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });

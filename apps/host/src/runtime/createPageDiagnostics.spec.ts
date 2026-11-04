@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createPageDiagnostics, type PageDiagnosticsParams } from './createPageDiagnostics.js';
@@ -110,7 +111,7 @@ describe('createPageDiagnostics', () => {
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     productState.setLoaded({
       label: 'doom',
-      productId: 'doom.dot',
+      productId: asProductId('doom.dot'),
       details: { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] },
     });
     const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });

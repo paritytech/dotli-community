@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections } from './runtime/chat/createChatConnections.js';
 import { createChatStore } from './runtime/chat/createChatStore.js';
@@ -21,7 +22,7 @@ describe('pageActionNeeded', () => {
     // Given a loaded chat product, logged in, with the panel closed
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     onTestFinished(chatPanelState.start({ chat, storage: createMemoryStorage() }));
-    const product = toProductId('chatty');
+    const product = asProductId(toProductId('chatty'));
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });
 

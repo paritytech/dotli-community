@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
@@ -15,7 +16,7 @@ import { chatPanelState } from '../state/chatPanelState.js';
 import { useChatDock } from './chat.js';
 
 const LABEL = 'chatty';
-const PRODUCT = toProductId(LABEL);
+const PRODUCT = asProductId(toProductId(LABEL));
 
 let chat: ChatStore;
 let local: Storage;
