@@ -6,6 +6,7 @@
 // so a control pressed there hands the open sheet over to its own.
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { TopbarActions } from '../islands/TopbarActions.jsx';
+import { ProductButton } from '../islands/ProductButton.jsx';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
 import s from './Topbar.module.css';
@@ -19,6 +20,7 @@ import s from './Topbar.module.css';
   </span>
   <div class={s['row']}>
     <TopbarLogo />
+    <ProductButton client:media="(max-width: 560px)" />
     <UrlPill />
     <TopbarActions client:load />
   </div>

@@ -481,7 +481,7 @@ test.describe('Shell UI smoke', () => {
     expect(sandbox['cross-origin-embedder-policy']).toBe('credentialless');
   });
 
-  test('As a user on a light client, I hover the shield while my product downloads and read that it was verified', async ({
+  test("As a user on a light client, I see that my product's connection is secure while it downloads", async ({
     page,
   }) => {
     // Given: the content never arrives, so the bar stays unfolded over the loading screen
@@ -492,15 +492,26 @@ test.describe('Shell UI smoke', () => {
       blocks: { [block.cid]: block.hex },
       modes: { [block.cid]: 'hold' },
     });
+
+    // When the product page opens
     await page.goto(PRODUCT_URL);
-    const shield = page.getByRole('button', { name: 'Site verification' });
-    await expect(shield).toHaveAttribute('data-state', 'verified', { timeout: 15_000 });
 
-    // When
-    await shield.hover();
+    // Then the shield reads a secure connection while the content still loads
+    await expect(page.getByRole('img', { name: 'Secure connection' })).toHaveAttribute('data-state', 'verified', {
+      timeout: 15_000,
+    });
+  });
 
-    // Then
-    await expect(page.getByTestId('verification-tooltip-row-verified')).toBeVisible();
+  test('As a phone user, I get my product page with the product button already in its HTML', async ({ page }) => {
+    // Given: the static page alone, so no script can have added the button
+
+    // When the product page is fetched with no browser
+    const response = await page.request.get(PRODUCT_URL);
+    const html = await response.text();
+
+    // Then its HTML already holds the product button
+    expect(html).toContain('id="product-button"');
+    expect(html).toContain('data-product-button');
   });
 
   test('As a visitor signing in on the landing page, I see a QR code on the page that carries the pairing link', async ({
