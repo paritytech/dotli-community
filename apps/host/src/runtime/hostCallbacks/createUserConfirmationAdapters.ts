@@ -24,6 +24,7 @@ import type {
   LegacyAccountTxPayload,
   ProductAccountId,
   ProductAccountTxPayload,
+  ProductId,
   RawPayload,
   RingLocationJunction,
 } from '@parity/truapi';
@@ -94,7 +95,7 @@ type ShowConfirmationModalParams = HandleConfirmationReviewParams & {
 
 type PrependCallingProductParams = {
   fields: ConfirmationField[];
-  callingProductId: string | undefined;
+  callingProductId: ProductId | undefined;
   account: ProductAccountId;
 };
 
