@@ -506,12 +506,6 @@ function getCoreLocalStorageKey(key: CoreStorageKey): string {
     // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productLabel}`;
-    case 'FundingSessions':
-      return `${CORE_LOCAL_STORAGE_PREFIX}funding-sessions`;
-    case 'FundingSessionsUnreadable':
-      return `${CORE_LOCAL_STORAGE_PREFIX}funding-sessions-unreadable`;
-    case 'FundingSessionPack':
-      return `${CORE_LOCAL_STORAGE_PREFIX}funding-session-pack`;
   }
 }
 
@@ -531,9 +525,6 @@ function isSecretMaterialSlot(key: CoreStorageKey): boolean {
     case 'ProductSubtree':
     case 'SsoResponderRequestLedger':
     case 'ProductManifest':
-    case 'FundingSessions':
-    case 'FundingSessionsUnreadable':
-    case 'FundingSessionPack':
       return false;
   }
 }
