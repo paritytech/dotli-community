@@ -34,6 +34,21 @@ describe('NETWORK_NAME_TO_SERVICES_CONFIG', () => {
     expect(resolver).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 
+  it.each(Object.entries(NETWORK_NAME_TO_SERVICES_CONFIG))(
+    'As a resolver on %s, I read dotNS ownership at slots of the right shape',
+    (_network, config) => {
+      // When the network's dotNS slots are read
+      const slots = config.dotns.STORAGE_SLOTS;
+
+      // Then each slot index is a non-negative integer and each hashed slot is 32 bytes of hex
+      expect(Number.isInteger(slots.REGISTRY_PROTOCOL_REGISTRY)).toBe(true);
+      expect(slots.REGISTRY_PROTOCOL_REGISTRY).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(slots.PROTOCOL_REGISTRY_ADDRESSES)).toBe(true);
+      expect(slots.PROTOCOL_REGISTRY_ADDRESSES).toBeGreaterThanOrEqual(0);
+      expect(slots.REGISTRAR_OWNERS).toMatch(/^0x[0-9a-f]{64}$/);
+    },
+  );
+
   it('As a dotli maintainer, I give every network a bare lowercase TLD and the truapi core accepts it', () => {
     // When
     const tlds = Object.entries(NETWORK_NAME_TO_SERVICES_CONFIG).map(([name, config]) => ({

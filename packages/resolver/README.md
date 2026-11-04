@@ -5,7 +5,8 @@ every caller checks a name against.
 
 ## Responsibility
 
-- Owns dotNS reads: Registry and ContentResolver storage, contenthash decoding and manifest records.
+- Owns dotNS reads: Registry and ContentResolver storage, contenthash decoding, manifest records and a name's owner,
+  which is the record's owner for a subname and else the holder of the name's token in the Registrar.
 - Owns the wait for a chain to sync before a read, and the errors a resolution fails with.
 - Owns the dotNS naming rules: which hosts are products under the active network's TLD, what a valid label and name are,
   the one DNS label a product's sandbox origin is named by, and the manifest kinds a product publishes.

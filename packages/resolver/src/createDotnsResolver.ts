@@ -19,8 +19,8 @@ import { decodeIpfsContenthashResult } from './decodeIpfsContenthashResult.js';
 import type { ExecutableKind } from './manifestTypes.js';
 import { NetworkSyncTimeoutError } from './networkSyncTimeoutError.js';
 import { readExecutableManifest } from './readExecutableManifest.js';
-import { readMappingAddress } from './readMappingAddress.js';
 import { readMappingBytes } from './readMappingBytes.js';
+import { readNameOwner } from './readNameOwner.js';
 import { readRootManifest } from './readRootManifest.js';
 import { computeNamehash } from './storageSlots.js';
 import type { PhaseCallback, ResolvePhase } from './types.js';
@@ -283,16 +283,6 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     }
   }
 
-  function readOwner(api: Api, label: string): Promise<string | null> {
-    const node = computeNamehash(`${label}.${dotns.TLD}`);
-    return readMappingAddress({
-      api,
-      contractAddress: dotns.DOTNS_REGISTRY,
-      mappingKey: node,
-      mappingSlot: dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
-    });
-  }
-
   async function buildPeople(connect: () => JsonRpcProvider): Promise<void> {
     const initStart = performance.now();
     const client = open(connect());
@@ -332,7 +322,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
      * for any other reason or the chain keeps halting.
      */
     resolveOwner: (label: string, options: ResolveOptions = {}): Promise<string | null> =>
-      read(options, api => readOwner(api, label)),
+      read(options, api => readNameOwner({ api, dotns, label })),
     /**
      * Reads the manifest a label publishes for `kind`, as a result the caller branches on. Rejects with
      * `PartialStorageReadError` when the read stops partway, `NetworkSyncTimeoutError` when Asset Hub does not sync

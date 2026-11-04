@@ -72,6 +72,31 @@ describe('computeMappingSlot', () => {
       expect(slot).toBe(expected);
     },
   );
+
+  // Pinned from an independent keccak256(key ++ baseSlot), and read live as the Registrar's holder of browse.paseo.
+  it('As the resolver reading dotNS storage, I compute the mapping slot of a key under a 32-byte base slot as keccak256 of the key and that slot', () => {
+    // Given a 32-byte name id and a 32-byte base slot
+    const nameId = '0x1850561ffded63ac23dac8fd5e793fca1f349729ed6ade91c45f44a9f7b6b781';
+    const baseSlot = '0x80bb2b638cc20bc4d0a60d66940f3ab4a00c1d7b313497ca82fb0b4ab0079302';
+
+    // When the mapping slot is computed
+    const slot = computeMappingSlot(nameId, baseSlot);
+
+    // Then the slot matches the pinned keccak256 value
+    expect(slot).toBe('0x4d1417a373d6fab66ca8f84f8d0eb0be405b448ffefd17d78d8d6df67f8653c5');
+  });
+
+  it('As the resolver reading dotNS storage, I refuse a hex base slot that is not 32 bytes and the error names it', () => {
+    // Given a base slot of one byte
+    const nameId = '0x1850561ffded63ac23dac8fd5e793fca1f349729ed6ade91c45f44a9f7b6b781';
+    const baseSlot = '0x00';
+
+    // When the mapping slot is computed
+    const compute = () => computeMappingSlot(nameId, baseSlot);
+
+    // Then the computation throws and names the base slot
+    expect(compute).toThrow('0x00');
+  });
 });
 
 describe('computeBytesDataSlot', () => {
