@@ -17,6 +17,8 @@ rule, flag it and propose a row.
 
 ## Layering
 
+- **major** (AGENTS.md § Project): A product's metadata or author read another way than the product-manifest RFC's
+  "Resolving a product", or not cached with its manifests.
 - **blocking** (AGENTS.md § Architecture): A module writes another layer's state, or a layer reads state as a command
   instead of taking intent from above.
 - **major** (AGENTS.md § Architecture): A page on an origin it shares with another layer's stores clears the origin and

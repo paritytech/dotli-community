@@ -35,6 +35,7 @@ import {
   type FakeCoreProvider,
   type FakePageCore,
 } from './createPageCore.fake.js';
+import { parseH160Address } from '../h160Address.js';
 import { createFakeIframe, createFakeProductFrameView } from './createProductFrame.fake.js';
 import { createFakeStoredSession } from './session/createCoreStorage.fake.js';
 
@@ -594,7 +595,13 @@ describe('product frame renders', () => {
   it('As a dApp user, I open my product and the tab names it by its published name from the first render, and the page knows its versions', async () => {
     // Given
     const fakes = createHarness();
-    const facts: ManifestFacts = { displayName: 'DOOM', manifestVersion: 1, appVersion: [1, 2, 3] };
+    const facts: ManifestFacts = {
+      displayName: 'DOOM',
+      description: 'Shoot demons.',
+      manifestVersion: 1,
+      appVersion: [1, 2, 3],
+      owner: parseH160Address('0x1111111111111111111111111111111111111111'),
+    };
 
     // When
     await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), ...facts }, 0);

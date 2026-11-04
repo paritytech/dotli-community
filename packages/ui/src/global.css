@@ -73,6 +73,8 @@
   --chrome-top: rgba(44, 46, 52, 0.97);
   --chrome-bottom: rgba(18, 19, 23, 0.98);
   --chrome-glass: linear-gradient(180deg, var(--chrome-top) 0%, var(--chrome-bottom) 100%);
+  /* The glass at its 25% stop, flat, for floating surfaces and sheets. */
+  --chrome-surface: color-mix(in srgb, var(--chrome-top) 75%, var(--chrome-bottom));
   --chrome-blur: blur(32px) saturate(150%);
   --chrome-solid: #282a30;
   --chrome-well: rgba(0, 0, 0, 0.3);

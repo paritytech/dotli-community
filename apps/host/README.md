@@ -9,7 +9,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   (`<label>.<domain>`) or, on the bare host, by the first path segment (`<domain>/<name>`), and gets only the path after
   it. A subname such as `pr16.my-app` opens by path only, since a wildcard certificate covers one label.
 - Take a `.dot` label to a product on screen, or to the screen that says why not.
-- Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views.
+- Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views. The product
+  card opens from the URL pill and, on a phone, from the product button. On a phone the logo slot of a product page is
+  the product button from first paint, with the Polkadot mark until the product's icon loads.
 - Own the domain building blocks the chrome composes: account, chat, permission, appearance, signing and chain views and
   their icons. Each takes props, reads no store and reports the user's intent through a callback, so the flow that
   composes it owns the data.
@@ -54,17 +56,22 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
   signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
   reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
-  state (topbar, URL pill, chat panel, network) lives with the page. Each runtime state is one entity object: its
-  read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the chat panel,
-  the loading screen, the settings snapshot, the topbar state and the URL pill are entity objects the same way, and the
-  topbar's floating surfaces register with one registry object. The first three keep what their islands cannot be handed
-  at hydration (the control focus returns to, the window's intents, the panel's element) as private slots behind their
-  members. The chat store and the product connections it reaches the product through are each a factory with the page's
-  instance beside it, and the store stamps messages with the clock it is given. The network monitor, the network state
-  and the network health are factories the same way, and measure block arrival, read times and rechecks on the timers
-  they are given. The chat panel and the network health each follow their sources once however many callers start them,
-  and stop with the last caller's stop. The network state is derived from the monitor and rebuilds only while something
-  reads it and for a second after.
+  state (topbar, URL pill, product card, chat panel, network) lives with the page. Each runtime state is one entity
+  object: its read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the
+  chat panel, the loading screen, the settings snapshot, the topbar state, the URL pill and the product card are entity
+  objects the same way, and the topbar's floating surfaces register with one registry object. The first three keep what
+  their islands cannot be handed at hydration (the control focus returns to, the window's intents, the panel's element)
+  as private slots behind their members, and the product card keeps the author read the page hands it as a private slot
+  the same way, since the islands that load the author hydrate apart from the page that builds the read. The chat store
+  and the product connections it reaches the product through are each a factory with the page's instance beside it, and
+  the store stamps messages with the clock it is given. The network monitor, the network state and the network health
+  are factories the same way, and measure block arrival, read times and rechecks on the timers they are given. The chat
+  panel and the network health each follow their sources once however many callers start them, and stop with the last
+  caller's stop. The network state is derived from the monitor and rebuilds only while something reads it and for a
+  second after.
+- The product page hands the product card its author read, whose dotNS owner is read with the manifests and cached with
+  them, so the card's first opening reads only the account Asset Hub maps the owner to and that account's People
+  username. The product's icon shows in the tab and the card.
 - The shell's own module state is entities the same way, each a factory with the page's instance beside it: the boot
   tracker that says where a boot failure happened, the product frame layout that writes the frame's geometry through the
   writer it is given, the bar's morph that what is laid out against the bar waits out, the reload reason over the
@@ -209,10 +216,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,
-  the panel bodies (chat, account, chains, permissions, settings), the violation panel, the debug panel and its wire
-  describer, the recovery phrase form, the local wallet and workbox, the host runtime and its worker, the chain client
-  and the QR encoder. The small pieces of a product load (branding, the cache check, the failure screen, the
-  verification tooltip) are plain imports.
+  the panel bodies (chat, account, chains, permissions, settings), the product card, the violation panel, the debug
+  panel and its wire describer, the recovery phrase form, the local wallet and workbox, the host runtime and its worker,
+  the chain client and the QR encoder. The small pieces of a product load (branding, the cache check, the failure
+  screen) are plain imports.
 - The host runtime, the wire describer, the block verifier and the gateway resolver each load once and serve every
   caller after. A failed load is forgotten, so the next caller, a sign-in Retry for one, loads it again without a page
   reload. The describer and the verifier report only their first miss. The verifier starts loading as soon as a

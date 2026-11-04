@@ -14,6 +14,7 @@ import type * as LocalWalletCoreNamespace from './runtime/localWalletCore.js';
 import type * as PermissionsContentNamespace from './components/permissions/PermissionsContent.js';
 import type * as PhraseScreenNamespace from './components/account/PhraseScreen.js';
 import type * as PolkadotApiNamespace from 'polkadot-api';
+import type * as ProductCardNamespace from './components/productCard/ProductCard.js';
 import type * as QrCodeNamespace from 'qrcode';
 import type * as RecoveryPhraseNamespace from './runtime/recoveryPhrase.js';
 import type * as SettingsContentNamespace from './components/settings/SettingsContent.js';
@@ -64,6 +65,10 @@ export function loadAccountContent(): Promise<typeof AccountContentNamespace> {
 /** The chains view. Rejects when its chunk fails to load. */
 export function loadChainsContent(): Promise<typeof ChainsContentNamespace> {
   return import('./components/chains/ChainsContent.js');
+}
+/** The product card. Rejects when its chunk fails to load. */
+export function loadProductCard(): Promise<typeof ProductCardNamespace> {
+  return import('./components/productCard/ProductCard.js');
 }
 /** The permissions view. Rejects when its chunk fails to load. */
 export function loadPermissionsContent(): Promise<typeof PermissionsContentNamespace> {

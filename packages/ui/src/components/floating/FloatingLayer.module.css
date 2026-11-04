@@ -15,7 +15,7 @@
   box-sizing: border-box;
   border: 0;
   border-radius: var(--r-pop);
-  background: var(--chrome-glass);
+  background: var(--chrome-surface);
   -webkit-backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-pop);
   color: var(--chrome-text);

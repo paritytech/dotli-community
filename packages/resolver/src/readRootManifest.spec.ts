@@ -15,7 +15,16 @@ const DOTNS = {
   STORAGE_SLOTS: { TEXT_RECORDS: 3 },
 } as unknown as DotnsContracts;
 
-const DOTNS_WITHOUT_TEXT_RECORDS: DotnsContracts = { ...DOTNS, STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0 } };
+const DOTNS_WITHOUT_TEXT_RECORDS: DotnsContracts = {
+  ...DOTNS,
+  STORAGE_SLOTS: {
+    REGISTRY_RECORDS: 0,
+    CONTENTHASH: 0,
+    REGISTRY_PROTOCOL_REGISTRY: 1,
+    PROTOCOL_REGISTRY_ADDRESSES: 0,
+    REGISTRAR_OWNERS: `0x${'00'.repeat(32)}`,
+  },
+};
 
 const ROOT = JSON.stringify({ $v: 1, displayName: 'DOOM', description: 'Doom', icon: { cid: 'bafk', format: 'png' } });
 /**

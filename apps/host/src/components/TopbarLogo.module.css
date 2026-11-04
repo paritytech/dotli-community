@@ -49,6 +49,10 @@
   }
 }
 @media (max-width: 560px) {
+  /* The product button takes the logo's place on a phone. */
+  :global(:root:has([data-product-button])) .home {
+    display: none;
+  }
   .home {
     justify-content: center;
     width: var(--h-control);

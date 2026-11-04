@@ -20,6 +20,8 @@ above the linter: semantics, data flow and naming.
 
 ## Code shape
 
+- **major** (AGENTS.md § Code style, General:): Optimisation machinery, extra reads or a departure from the spec added
+  to a lazily loaded feature off the critical path, where the simplest correct read would do.
 - **major** (docs/code/style.md § A factory returns a plain object): A class for a stateful unit, other than an `Error`
   subclass, a data structure, or a measured hot path kept private behind a factory.
 - **major** (docs/code/style.md § The public type comes from the implementation): A hand-written type that restates a
@@ -129,6 +131,8 @@ above the linter: semantics, data flow and naming.
 
 ## UI and styles
 
+- **major** (AGENTS.md § Code style, UI:): Chrome a page shows from first paint that is missing from the
+  server-rendered HTML, or an element an island swaps for another at hydration.
 - **major** (AGENTS.md § Code style, General:): Hand-written machinery where Astro, Solid 2 or Vite has its own
   mechanism, or parts of an old mechanism kept beside the framework's after a migration.
 - **major** (AGENTS.md § Code style, General:): JavaScript shipped as a string, such as a serialised function or an

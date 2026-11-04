@@ -901,10 +901,18 @@ function toTitledProduct(product: FrameProduct): TitledProduct {
 }
 
 /** The facts a product carries, without the keys it lacks. */
-function pickManifestFacts({ displayName, manifestVersion, appVersion }: ManifestFacts): ManifestFacts {
+function pickManifestFacts({
+  displayName,
+  description,
+  manifestVersion,
+  appVersion,
+  owner,
+}: ManifestFacts): ManifestFacts {
   return {
     ...(displayName !== undefined ? { displayName } : {}),
+    ...(description !== undefined ? { description } : {}),
     ...(manifestVersion !== undefined ? { manifestVersion } : {}),
     ...(appVersion !== undefined ? { appVersion } : {}),
+    ...(owner !== undefined ? { owner } : {}),
   };
 }

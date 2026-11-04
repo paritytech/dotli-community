@@ -313,6 +313,14 @@ export const spans = {
   PRODUCT_ICON: 'product.icon',
 
   /**
+   * Count. A read behind the product card's author failed, so the card shows less of the author. Expected. Tagged
+   * `outcome` (error) and `reason`, the read that failed: `owner` (counted while the product resolves), `cached-owner`
+   * (a cached owner that is no address, counted when the cached copy is read), and `account` or `username` (counted
+   * when the card opens).
+   */
+  PRODUCT_AUTHOR: 'product.author',
+
+  /**
    * A frame on the topbar login's own connection that the login skipped and survived. Tagged `outcome` (error) and
    * `reason` (`undecodable_frame`, a frame that did not decode, counted once per login).
    */

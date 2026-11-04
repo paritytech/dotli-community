@@ -1,0 +1,132 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+.image {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+}
+.mark {
+  color: var(--text-strong);
+}
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.name {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.domain {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+.author {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1_5);
+  min-width: 0;
+}
+.label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  line-height: var(--lh-tight);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.username {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.address {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  line-height: var(--lh-tight);
+}
+.divider {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.connection {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.connection[data-state='verified'] {
+  color: var(--chrome-ok);
+}
+.connection[data-state='trusted'] {
+  color: var(--chrome-warn);
+}
+.glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.connectionLabel {
+  color: var(--text);
+  font-size: var(--fs-small);
+  line-height: var(--lh-tight);
+}

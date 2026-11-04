@@ -7,6 +7,7 @@ import { reportExpected, spans as S } from '@dotli/metrics';
 import { log, realTimers, type Timers } from '@dotli/shared';
 import { withActiveTld } from '@dotli/config';
 import type { ProductManifests } from './cachedManifest.js';
+import { productCardState } from './state/productCardState.js';
 
 type Params = {
   /** The product's label, named in the report of a failed icon. */
@@ -17,6 +18,8 @@ type Params = {
   fetchBlock: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
   /** Shows the icon in the tab. The page's `<link rel=icon>` by default. */
   setFavicon?: (href: string, format: 'jpeg' | 'png') => void;
+  /** Shows the icon in the product card. The page's product card state by default. */
+  showIcon?: (href: string) => void;
   /** The timers the icon's budget runs on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
@@ -25,12 +28,16 @@ const resolveLog = log.createChild({ flow: 'resolve' });
 
 const ICON_FETCH_BUDGET_MS = 10_000;
 
-/** Shows the product's icon in the tab. Cosmetic: never rejects, and an icon that fails leaves the tab as it was. */
+/**
+ * Shows the product's icon in the tab and the product card. Cosmetic: never rejects, and an icon that fails leaves the
+ * tab and the card as they were.
+ */
 export async function applyProductBranding({
   label,
   manifests,
   fetchBlock,
   setFavicon = setPageFavicon,
+  showIcon = productCardState.setIcon,
   timers = realTimers,
 }: Params): Promise<void> {
   const rootResult = manifests.root;
@@ -50,7 +57,9 @@ export async function applyProductBranding({
   try {
     const bytes = await fetchBlock(rootResult.value.icon.cid, iconAborter.signal);
     const blob = new Blob([new Uint8Array(bytes)], { type: `image/${format}` });
-    setFavicon(URL.createObjectURL(blob), format);
+    const href = URL.createObjectURL(blob);
+    setFavicon(href, format);
+    showIcon(href);
   } catch (error: unknown) {
     // Cosmetic: a failure must not affect the app, so the tab keeps its icon.
     resolveLog.warn(`[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`, error);

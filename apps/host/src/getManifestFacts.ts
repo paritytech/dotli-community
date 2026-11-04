@@ -5,9 +5,16 @@ import type { ManifestFacts } from './runtime/formatAppVersion.js';
 import type { ProductManifests } from './cachedManifest.js';
 
 /** What the manifests publish that the page shows, without the keys they lack. */
-export function getManifestFacts({ root, app }: ProductManifests): ManifestFacts {
+export function getManifestFacts({ root, app, owner }: ProductManifests): ManifestFacts {
   return {
-    ...(root.kind === 'ok' ? { displayName: root.value.displayName, manifestVersion: root.value.$v } : {}),
+    ...(root.kind === 'ok'
+      ? {
+          displayName: root.value.displayName,
+          description: root.value.description,
+          manifestVersion: root.value.$v,
+        }
+      : {}),
     ...(app.kind === 'ok' && app.value.kind === 'app' ? { appVersion: app.value.appVersion } : {}),
+    ...(owner ? { owner } : {}),
   };
 }

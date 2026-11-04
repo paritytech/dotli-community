@@ -5,6 +5,12 @@ export type DotnsStorageSlots = {
   readonly REGISTRY_RECORDS: number;
   readonly CONTENTHASH: number;
   readonly TEXT_RECORDS?: number;
+  /** Registry storage slot of the protocol registry's address. */
+  readonly REGISTRY_PROTOCOL_REGISTRY: number;
+  /** Protocol registry mapping slot of its address book, keyed by a bytes32 name. */
+  readonly PROTOCOL_REGISTRY_ADDRESSES: number;
+  /** Registrar mapping base slot of the ERC-721 token holders, keyed by the node as a uint256. */
+  readonly REGISTRAR_OWNERS: `0x${string}`;
 };
 
 export type DotnsContracts = {

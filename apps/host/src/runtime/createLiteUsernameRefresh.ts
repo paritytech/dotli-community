@@ -4,12 +4,12 @@
 // The lite username the network holds for the local wallet's identity account, read until the network answers once
 // per page and cached in the shared wallet record so the next boot activates with it.
 
-import { getActiveServicesConfig } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
 import type { LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../lazy.js';
-import { getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
+import { parsePolkadotAccount } from './polkadotAccount.js';
+import { readPeopleUsernames } from './readPeopleUsernames.js';
 import { siteWallet } from './session/siteWallet.js';
 import { reportLocalWalletFailure, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
@@ -97,34 +97,10 @@ export const liteUsernameRefresh: LiteUsernameRefresh = createLiteUsernameRefres
   reportFailure: reportLocalWalletFailure,
 });
 
-function isConsumer(value: unknown): value is { lite_username: Uint8Array } {
-  return (
-    typeof value === 'object' && value !== null && 'lite_username' in value && value.lite_username instanceof Uint8Array
-  );
-}
-
 async function readFromPeople(identityAccountId: string): Promise<string | null> {
-  const provider = getHostChainProvider(getActiveServicesConfig().people.genesis);
-  if (provider === null) {
-    throw new Error('People is not reachable on this chain backend');
-  }
   const polkadotApi = await loadPolkadotApi();
-  const client = polkadotApi.createClient(provider);
-  try {
-    const account = polkadotApi.AccountId().dec(fromHex(identityAccountId));
-    const consumers = client.getUnsafeApi().query['Resources']?.['Consumers'];
-    if (consumers === undefined) {
-      throw new Error('People has no Resources.Consumers storage');
-    }
-    const consumer: unknown = await consumers.getValue(account);
-    if (consumer === undefined) {
-      return null;
-    }
-    if (!isConsumer(consumer)) {
-      throw new Error('Resources.Consumers entry has no lite_username');
-    }
-    return polkadotApi.Binary.toText(consumer.lite_username);
-  } finally {
-    client.destroy();
-  }
+  const usernames = await readPeopleUsernames(
+    parsePolkadotAccount(polkadotApi.AccountId().dec(fromHex(identityAccountId))),
+  );
+  return usernames?.lite ?? null;
 }
