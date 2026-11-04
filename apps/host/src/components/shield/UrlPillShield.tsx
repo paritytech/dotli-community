@@ -43,7 +43,7 @@ export function UrlPillShield(props: UrlPillShieldProps): JSX.Element {
       }}
     >
       <Show when={props.shield() !== undefined}>
-        <VerificationShield state={() => props.shield() ?? null} />
+        <VerificationShield state={() => props.shield() ?? null} icon={() => props.card()?.icon ?? null} />
       </Show>
       <Show when={props.card()}>
         {card => (

@@ -81,3 +81,45 @@ export const Pending: Story = {
     });
   },
 };
+
+// Inline, so the story loads no image from the network.
+const ICON =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="#e6007a"/></svg>',
+  );
+
+/**
+ * As a visitor of a product with an icon, I see the icon in the shield's place, marked with a warning shield once the
+ * product is only trusted.
+ */
+export const ProductIcon: Story = {
+  render: () => (
+    <TopbarFrame center>
+      <VerificationShield state={storyShieldState} icon={() => ICON} />
+    </TopbarFrame>
+  ),
+  play: async ({ step }) => {
+    await step('As a visitor, a verified product shows its icon with no warning', async () => {
+      // Given a product verified by the light client, with an icon
+
+      // When the shield shows
+      const shield = within(document.body).getByRole('img', { name: 'Secure connection' });
+
+      // Then the icon takes the glyph's place and the warning badge is hidden
+      await expect(within(shield).getByTestId('url-pill-icon')).toBeVisible();
+      await expect(within(shield).queryByTestId('verification-shield-icon')).toBeNull();
+      await expect(within(shield).getByTestId('url-pill-trusted-badge')).not.toBeVisible();
+    });
+    await step('As a visitor, a trusted product marks its icon with the warning shield', async () => {
+      // Given a product with an icon
+
+      // When the host falls back to an external RPC provider
+      setShield('trusted');
+
+      // Then the warning badge shows on the icon
+      const shield = await waitFor(() => within(document.body).getByRole('img', { name: 'Trusted connection' }));
+      await expect(within(shield).getByTestId('url-pill-trusted-badge')).toBeVisible();
+    });
+  },
+};

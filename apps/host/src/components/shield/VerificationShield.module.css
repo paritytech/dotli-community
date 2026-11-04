@@ -2,15 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .shield {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-sizing: border-box;
-  width: 26px;
-  height: 26px;
-  /* Pulled into the address's end padding, so its glyph sits where the text ends on the other side. */
-  margin: 0 0 0 -6px;
   color: var(--chrome-idle);
   transition: color var(--dur);
 }
@@ -36,5 +32,25 @@
   display: none;
 }
 .shield[data-state='trusted'] .trusted-glyph {
+  display: block;
+}
+.product-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-hair);
+  object-fit: cover;
+}
+/* Only a trusted product marks its icon. The solid fill keeps the shield readable over any icon. */
+.badge {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  display: none;
+  width: 12px;
+  height: 12px;
+  fill: var(--chrome-solid);
+}
+.shield[data-state='trusted'] .badge {
   display: block;
 }
