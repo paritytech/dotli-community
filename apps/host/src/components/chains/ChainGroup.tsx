@@ -158,7 +158,9 @@ export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | nul
   return (
     <Stack class={s['group']} testId="chains-group">
       <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
-        <span data-testid="chains-group-name">{props.chain.label}</span>
+        <span class={s['name']} data-testid="chains-group-name">
+          {props.chain.label}
+        </span>
         <Show
           when={!unused() || !props.chain.reachable}
           fallback={
