@@ -20,10 +20,10 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@solidjs/vite-plugin": "3.0.0-next.55",
-    "fake-indexeddb": "^6.2.7",
-    "storybook": "^10.6.5",
-    "storybook-solidjs-vite": "^10.7.4"
+    "@solidjs/vite-plugin": "3.0.0-next.56",
+    "fake-indexeddb": "6.2.7",
+    "storybook": "10.6.5",
+    "storybook-solidjs-vite": "10.7.4"
   },
   "dependencies": {
     "@dotli/config": "*",
@@ -32,8 +32,8 @@
     "@dotli/sandbox-wire": "*",
     "@dotli/shared": "*",
     "@dotli/ui": "*",
-    "@solidjs/web": "2.0.0-rc.20",
+    "@solidjs/web": "2.0.0-rc.21",
     "nanostores": "1.5.5",
-    "solid-js": "2.0.0-rc.20"
+    "solid-js": "2.0.0-rc.21"
   }
 }
