@@ -1,39 +1,37 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, type Accessor } from 'solid-js';
+import type { Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Tooltip } from '@dotli/ui';
 import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
 import type { ShieldState } from '../../state/urlPillState.js';
-import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verificationShieldIds.js';
-import { VerificationContent } from './VerificationContent.js';
+import { CONNECTION_LABELS } from './connectionLabels.js';
+import { VERIFICATION_SHIELD_ID } from './verificationShieldIds.js';
 import s from './VerificationShield.module.css';
 
 /**
- * The URL pill's shield and its explainer tooltip, which stays an anchored tooltip on a phone.
- * Until the host knows how the product was loaded (`state` null), the verified glyph shows and the explainer is empty.
+ * The URL pill's shield, a glyph named by how the product was loaded.
+ * Until the host knows (`state` null), the verified glyph shows and assistive tech skips it.
  */
 export function VerificationShield(props: { state: Accessor<ShieldState | null> }): JSX.Element {
-  const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const label = (): string | undefined => {
+    const state = props.state();
+    return state === null ? undefined : CONNECTION_LABELS[state];
+  };
 
   return (
-    <div class={s['wrap']}>
-      <button
-        ref={setButton}
-        type="button"
-        id={VERIFICATION_SHIELD_ID}
-        class={s['shield']}
-        aria-label="Site verification"
-        data-state={props.state() ?? undefined}
-      >
-        <VerifiedShieldIcon class={[s['glyph'], s['verifiedGlyph']]} testId="verification-shield-icon" />
-        <TrustedShieldIcon class={[s['glyph'], s['trustedGlyph']]} testId="verification-shield-icon" />
-      </button>
-      <Tooltip id={VERIFICATION_TOOLTIP_ID} trigger={button()} class={s['tooltip']}>
-        <VerificationContent state={props.state} />
-      </Tooltip>
-    </div>
+    <span
+      id={VERIFICATION_SHIELD_ID}
+      class={s['shield']}
+      data-testid="verification-shield"
+      data-state={props.state() ?? undefined}
+      role={label() === undefined ? undefined : 'img'}
+      aria-label={label()}
+      aria-hidden={label() === undefined ? 'true' : undefined}
+    >
+      <VerifiedShieldIcon class={[s['glyph'], s['verifiedGlyph']]} testId="verification-shield-icon" />
+      <TrustedShieldIcon class={[s['glyph'], s['trustedGlyph']]} testId="verification-shield-icon" />
+    </span>
   );
 }

@@ -1,0 +1,16 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Leaves the pill's layout as if the shield were its own child. */
+.anchor {
+  display: contents;
+}
+
+/* Drops from the bar's bottom like every topbar surface, not from the pill's. An anchored area from the horizontal
+   axis alone spans the whole height, so `top` is set from the viewport. */
+.card {
+  width: var(--w-pop-md);
+  position-area: span-right;
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
+  margin-top: 0;
+}

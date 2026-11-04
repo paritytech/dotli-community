@@ -7,18 +7,26 @@ import type { JSX } from '@solidjs/web';
 import { LayerTracker, RootBoundary } from '@dotli/ui';
 import { useStore } from '@dotli/stores-solid';
 import { UrlPillShield as Shield } from '../components/shield/UrlPillShield.js';
+import { productCardState } from '../state/productCardState.js';
+import { productCardView } from '../state/productCardView.js';
 import { topbarSurfaces } from '../state/topbarSurfaces.js';
 import { urlPillState } from '../state/urlPillState.js';
 
 /**
- * The URL pill's verification shield, bound to the url-pill store that bindUrlPill renders the rest of the pill from.
- * The shield's tooltip keeps the auto-hiding bar up while open.
+ * The URL pill's verification shield and its product card. Opening the card starts the author read, and the open card
+ * keeps the auto-hiding bar up.
  */
 export function UrlPillShield(): JSX.Element {
   return (
     <RootBoundary root="island:UrlPillShield">
       <LayerTracker value={topbarSurfaces.register}>
-        <Shield shield={useStore(urlPillState.store, urlPillState.getPillShield)} />
+        <Shield
+          shield={useStore(urlPillState.store, urlPillState.getPillShield)}
+          card={useStore(productCardView, { initial: null })}
+          onCardShow={() => {
+            void productCardState.loadAuthor();
+          }}
+        />
       </LayerTracker>
     </RootBoundary>
   );
