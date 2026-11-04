@@ -5,7 +5,7 @@
 // consumed "Allow once" gone and prompt the user again.
 
 import type { Notifications } from '@parity/truapi-host';
-import type { HostPushNotificationRequest, HostPushNotificationResponse } from '@parity/truapi';
+import type { HostPushNotificationRequest, HostPushNotificationResponse, ProductId } from '@parity/truapi';
 import { log } from '@dotli/shared';
 import type { ScheduledNotifications } from '../createScheduledNotifications.js';
 import { ERRORS } from '../errors.js';
@@ -18,8 +18,13 @@ export type NotificationScheduler = Pick<ScheduledNotifications, 'schedule' | 'c
 export type Notify = HostPrompts['notify'];
 
 type Params = {
-  /** The product the notifications come from. */
+  /** The product the notifications come from, which titles them. */
   label: string;
+  /**
+   * The id the notifications are kept under, the full one with its network, so a label on two networks keeps two
+   * queues. Throws until the core has parsed it.
+   */
+  getProductId: () => ProductId;
   /** Where a notification waits until it is due. */
   scheduler: NotificationScheduler;
   /** Shows a due notification on the page. */
@@ -28,19 +33,25 @@ type Params = {
 
 /**
  * Schedules the product's push notifications and shows a due one at once. A push rejects when the product has reached
- * its schedule limit.
+ * its schedule limit. A push or cancel rejects before the core has parsed the product's id, and touches nothing.
  */
-export function createNotificationAdapters({ label, scheduler, notify }: Params): Required<Notifications> {
+export function createNotificationAdapters({
+  label,
+  getProductId,
+  scheduler,
+  notify,
+}: Params): Required<Notifications> {
   async function pushNotification({
     text,
     deeplink,
     scheduledAt,
   }: HostPushNotificationRequest): Promise<HostPushNotificationResponse> {
+    const productId = getProductId();
     // The text and deeplink are the user's content, so they stay out of the log.
     log.event('push notification', { flow: 'notifications', scheduled: scheduledAt !== undefined });
 
     const result = await scheduler.schedule({
-      productId: label,
+      productId,
       title: label,
       text,
       deeplink: deeplink ?? null,
@@ -57,7 +68,7 @@ export function createNotificationAdapters({ label, scheduler, notify }: Params)
   }
 
   async function cancelNotification(id: number): Promise<void> {
-    await scheduler.cancel(label, id);
+    await scheduler.cancel(getProductId(), id);
   }
 
   return { pushNotification, cancelNotification };

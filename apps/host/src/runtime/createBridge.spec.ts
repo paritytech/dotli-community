@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { isSandboxOrigin } from '@dotli/config';
 import { catchError, catchRejection } from '@dotli/shared/testing';
@@ -14,6 +15,7 @@ import {
 } from './createBlockingModalCoordinator.js';
 import { createBridge, type Bridge } from './createBridge.js';
 import type { CoreRuntimeRequest } from './createCoreRuntimeBoot.js';
+import { toProductId } from './createTruapiRuntimeConfig.js';
 import { createFakeProvider } from './createPageCore.fake.js';
 import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
 import { createFakeIframe, createFakeProductFrameView } from './createProductFrame.fake.js';
@@ -49,6 +51,7 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
       return Promise.resolve({
         // The fake holds only the runtime members the bridge calls.
         runtime: runtime as unknown as WorkerPairingHostRuntime,
+        productId: asProductId(request.product.productId ?? toProductId(request.product.label)),
         local: false,
         isStale: () => Promise.resolve(false),
       });

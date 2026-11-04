@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
@@ -28,7 +29,7 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 type PromptButton = 'Deny' | 'Allow' | 'Always allow' | 'Allow once';
 
 const PRODUCT: ProductContext = {
-  productId: 'myapp.paseo',
+  productId: asProductId('myapp.paseo'),
   executionKind: 'App',
 };
 

@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
@@ -118,7 +119,7 @@ describe('core storage', () => {
       key: {
         tag: 'PermissionAuthorization',
         value: {
-          productId: 'My App',
+          scope: 'My App',
           request: { tag: 'Device', value: 'OpenUrl' },
         },
       },
@@ -132,7 +133,7 @@ describe('core storage', () => {
       key: {
         tag: 'PermissionAuthorization',
         value: {
-          productId: 'myapp',
+          scope: 'myapp',
           request: {
             tag: 'Remote',
             value: {
@@ -159,7 +160,7 @@ describe('core storage', () => {
     },
     {
       label: 'a product auto-signing key, and it is stored encrypted in an opaque slot',
-      key: { tag: 'AutoSigningKey', value: { productId: 'truapi-playground.dot' } },
+      key: { tag: 'AutoSigningKey', value: { productId: asProductId('truapi-playground.dot') } },
       bytes: [5, 6, 7, 8],
       slot: /^dotli:core:auto-signing:[0-9a-f]+$/,
       hidden: ['truapi-playground.dot'],
@@ -206,14 +207,14 @@ describe('core storage', () => {
       tag: 'ProductSubtree',
       value: {
         sessionId: 'session-1',
-        productId: 'truapi-playground.dot',
+        productId: asProductId('truapi-playground.dot'),
       },
     } satisfies CoreStorageKey;
     const otherSession = {
       tag: 'ProductSubtree',
       value: {
         sessionId: 'session-2',
-        productId: 'truapi-playground.dot',
+        productId: asProductId('truapi-playground.dot'),
       },
     } satisfies CoreStorageKey;
 

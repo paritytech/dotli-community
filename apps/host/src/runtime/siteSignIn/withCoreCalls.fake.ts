@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createFakeProvider, type FakeCoreProvider } from '../createPageCore.fake.js';
 
@@ -15,7 +16,7 @@ export function createFakeCoreLease({ provider = createFakeProvider() }: Params 
   const connection = {
     // The fake is a partial provider, enough for the calls under test.
     provider: provider as unknown as TrUApiProductProvider,
-    productId: 'dotli-product',
+    productId: asProductId('dotli-product'),
     close: vi.fn(),
   };
   const lease = { connect: vi.fn(() => Promise.resolve(connection)), release: vi.fn() };

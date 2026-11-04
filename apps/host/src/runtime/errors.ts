@@ -15,6 +15,7 @@ export const ERRORS = {
   UNSERVED_REQUEST: 'This host does not serve the request',
   PERMISSION_PROMPT_RATE_LIMITED: 'Permission prompt rate limited',
   SCHEDULE_LIMIT_REACHED: 'ScheduleLimitReached',
+  PRODUCT_ID_NOT_READY: 'Product identity is not initialized',
   STORAGE_READ_FAILED: 'Failed to read from storage',
   STORAGE_WRITE_FAILED: 'Failed to write to storage',
   STORAGE_CLEAR_FAILED: 'Failed to clear storage',

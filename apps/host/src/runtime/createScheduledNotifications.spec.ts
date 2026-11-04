@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type { ScheduledNotificationRecord } from '@dotli/storage';
 import { createDeferred } from '@dotli/shared';
 import { catchError, createFakePage, createManualTimers } from '@dotli/shared/testing';
@@ -26,15 +27,15 @@ type CreateRecordStoreParams = {
   records: ScheduledNotificationRecord[];
 };
 
-const DUE: ScheduledNotificationRecord = {
+const DUE = {
   hostId: 1,
   perProductId: 1,
-  productId: 'acme.dot',
+  productId: asProductId('acme.dot'),
   title: 'Acme',
   text: 'x',
   deeplink: null,
   scheduledAt: 0,
-};
+} satisfies ScheduledNotificationRecord;
 
 /** A page and clock for the poller, with a fake Sentry and capture sink bound for this test. */
 function createPollerHarness() {
@@ -451,7 +452,7 @@ describe('scheduled notifications disposed', () => {
     notifications.dispose();
 
     // When the notification is cancelled
-    const removed = await notifications.cancel('acme.dot', 1);
+    const removed = await notifications.cancel(asProductId('acme.dot'), 1);
 
     // Then the store removed it
     expect(removed).toBe(true);

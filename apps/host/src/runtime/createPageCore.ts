@@ -5,7 +5,8 @@
 // delay, so a lease taken soon after keeps it. A faulted one is never handed out again, and one that goes down while it
 // is the page's core is replaced at once when it is held. One nobody holds just goes, and the next request dials.
 
-import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
+import type { ProductId } from '@parity/truapi';
+import type { ExecutableKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import {
@@ -35,7 +36,7 @@ export type PageProduct = {
 /** Close it through `close`, never the provider, or the core is marked faulted. */
 export type CoreConnection = {
   provider: TrUApiProductProvider;
-  productId: string;
+  productId: ProductId;
   /** Closes the connection without taking the core down. Throws when the provider's own dispose throws. */
   close(): void;
 };
@@ -91,7 +92,7 @@ type DialParams = {
 
 type ConnectParams = {
   /** What the product runs as. An app by default. */
-  executionKind?: ProductExecutionKind | undefined;
+  executionKind?: ExecutableKind | undefined;
 };
 
 export type PageCore = ReturnType<typeof createPageCore>;
@@ -332,10 +333,9 @@ export function createPageCore({
 
   async function connect(
     core: Core,
-    runtime: WorkerPairingHostRuntime,
+    { runtime, productId }: BootedCoreRuntime,
     { executionKind = 'App' }: ConnectParams = {},
   ): Promise<CoreConnection> {
-    const productId = getProductId(core.product);
     let provider: TrUApiProductProvider;
     try {
       provider = await runtime.createProvider({ productId, executionKind });
@@ -457,10 +457,9 @@ export function createPageCore({
         release();
         throw error;
       }
-      const { runtime } = booted;
       return {
-        runtime,
-        connect: params => connect(core, runtime, params),
+        runtime: booted.runtime,
+        connect: params => connect(core, booted, params),
         subscribeDown(listener) {
           if (released) {
             return () => undefined;

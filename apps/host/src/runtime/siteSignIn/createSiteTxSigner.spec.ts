@@ -13,6 +13,7 @@ import {
   type HostCreateTransactionError,
   type ProductAccountId,
   type ProductAccountTxPayload,
+  asProductId,
 } from '@parity/truapi';
 import { SIGNING_CREATE_TRANSACTION as CREATE } from '@parity/truapi/wire-table';
 import { must } from '@dotli/shared/testing';
@@ -28,9 +29,12 @@ type CreateRefusal = {
 };
 type CreateAnswer = { ok: `0x${string}` } | CreateRefusal;
 
-const ACCOUNT: ProductAccountId = { dotNsIdentifier: 'myapp.dot', derivationIndex: { tag: 'Index', value: 0 } };
+const ACCOUNT: ProductAccountId = {
+  dotNsIdentifier: asProductId('myapp.dot'),
+  derivationIndex: { tag: 'Index', value: 0 },
+};
 const RAW_ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: 'myapp.dot',
+  dotNsIdentifier: asProductId('myapp.dot'),
   derivationIndex: { tag: 'Raw', value: `0x${'7'.repeat(64)}` },
 };
 const GENESIS = `0x${'11'.repeat(32)}`;

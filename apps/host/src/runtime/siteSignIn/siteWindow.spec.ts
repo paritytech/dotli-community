@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProductAccountId } from '@parity/truapi';
+import { asProductId, type ProductAccountId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
@@ -55,7 +55,7 @@ const ORIGIN = 'https://my-site.com';
 const NETWORK_NAME = 'paseo-next-v2';
 const SERVICES = NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK_NAME];
 const ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: `myapp.${SERVICES.dotns.TLD}`,
+  dotNsIdentifier: asProductId(`myapp.${SERVICES.dotns.TLD}`),
   derivationIndex: { tag: 'Index', value: 0 },
 };
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');

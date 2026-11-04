@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProductAccountId } from '@parity/truapi';
+import { asProductId, type ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { TxCreator } from 'polkadot-api';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
@@ -88,7 +88,7 @@ const SELF = 'https://dot.li';
 const NETWORK_NAME = 'paseo-next-v2';
 const SERVICES = NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK_NAME];
 const ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: `myapp.${SERVICES.dotns.TLD}`,
+  dotNsIdentifier: asProductId(`myapp.${SERVICES.dotns.TLD}`),
   derivationIndex: { tag: 'Index', value: 0 },
 };
 const SITE_KEY = new Uint8Array(32).fill(0x22);

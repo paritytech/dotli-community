@@ -79,6 +79,25 @@ describe('schedule', () => {
     expect(bravo).toEqual({ ok: true, id: 1 });
   });
 
+  it('As a dapp with the same label on two networks, I schedule and cancel on one and the other keeps its own ids and queue', async () => {
+    // Given the same label on two networks, each with one immediate id allocated
+    const request = { title: 'Acme', text: 'queued', deeplink: null, scheduledAt: getTimeFromNow(60_000) };
+    await queue.allocateId('acme.dot');
+    await queue.allocateId('acme.paseo');
+
+    // When each schedules one, and the first cancels its own
+    const onDot = await queue.schedule({ ...request, productId: 'acme.dot' });
+    const onPaseo = await queue.schedule({ ...request, productId: 'acme.paseo' });
+    const cancelled = await queue.cancel('acme.dot', 2);
+
+    // Then each counted its own ids, and only the cancelled network lost its notification
+    expect(onDot).toEqual({ ok: true, id: 2 });
+    expect(onPaseo).toEqual({ ok: true, id: 2 });
+    expect(cancelled).toBe(true);
+    expect(await listRecordsOf('acme.dot')).toEqual([]);
+    expect((await listRecordsOf('acme.paseo')).map(record => record.perProductId)).toEqual([2]);
+  });
+
   it('As a dapp, I hit ScheduleLimitReached on the 21st pending notification for one product', async () => {
     // Given a product already at the per-product cap of 20
     for (let index = 0; index < 20; index += 1) {

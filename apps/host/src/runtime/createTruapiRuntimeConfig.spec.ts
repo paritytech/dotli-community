@@ -28,28 +28,12 @@ describe('toProductId', () => {
 });
 
 describe('createTruapiRuntimeConfig', () => {
-  it('As a dotli integrator, I build the config for a local preview with an explicit product id and get that id', () => {
-    // Given a local preview's label and an explicit product id
-    const label = 'localhost:3000';
-    const productId = 'truapi-playground.dot';
+  it('As a dotli integrator, I build the host config and get the full host runtime contract for the WASM core, naming no product', () => {
+    // When the config is built
+    const config = createTruapiRuntimeConfig();
 
-    // When the config is built for them
-    const config = createTruapiRuntimeConfig(label, { productId });
-
-    // Then it carries the explicit id
-    expect(config.productId).toBe('truapi-playground.dot');
-  });
-
-  it('As a dotli integrator, I build the config for a label and get the full host runtime contract for the WASM core', () => {
-    // Given a label and no explicit product id
-    const label = 'acme';
-
-    // When the config is built for it
-    const config = createTruapiRuntimeConfig(label);
-
-    // Then it carries the full host runtime contract
+    // Then it carries the full host runtime contract, since the core parses the product id itself
     expect(config).toEqual({
-      productId: 'acme.paseo',
       host: {
         name: 'Polkadot Web',
         icon: undefined,

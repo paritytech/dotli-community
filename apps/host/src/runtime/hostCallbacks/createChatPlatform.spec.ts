@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createAsyncTaskPool, type AsyncTaskPool } from '@dotli/shared';
@@ -10,8 +11,8 @@ import { createChatStore } from '../chat/createChatStore.js';
 import { createMemoryChatRepo } from '../chat/createChatStore.fake.js';
 import { yielded } from '../../testing/fixtures.js';
 
-const PRODUCT: ProductContext = { productId: 'chatty.dot', executionKind: 'Worker' };
-const OTHER: ProductContext = { productId: 'other.dot', executionKind: 'Worker' };
+const PRODUCT: ProductContext = { productId: asProductId('chatty.dot'), executionKind: 'Worker' };
+const OTHER: ProductContext = { productId: asProductId('other.dot'), executionKind: 'Worker' };
 
 describe('chat platform', () => {
   it('As a product developer, I create rooms and my room list stream hears only mine', async () => {

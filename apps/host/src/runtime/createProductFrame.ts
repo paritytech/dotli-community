@@ -709,12 +709,13 @@ function buildFrameUrl(product: FrameProduct, location: PageLocation): URL {
   }
 }
 
+/** The product id `product` asks the core for. */
 function getFrameProductId(product: FrameProduct): string {
   switch (product.mode) {
     case 'iframe':
-      return product.productId ?? product.label;
+      return product.productId ?? toProductId(product.label);
     case 'subdomain':
-      return product.label;
+      return toProductId(product.label);
   }
 }
 
@@ -870,13 +871,13 @@ function toLoadedProduct(product: FrameProduct, chat: boolean): Parameters<typeo
     case 'iframe':
       return {
         label: product.label,
-        productId: product.productId ?? toProductId(product.label),
+        productId: getFrameProductId(product),
         details: { chat },
       };
     case 'subdomain':
       return {
         label: product.label,
-        productId: toProductId(product.label),
+        productId: getFrameProductId(product),
         details: {
           cid: product.cid,
           chat,

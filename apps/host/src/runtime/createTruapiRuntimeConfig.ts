@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getActiveServicesConfig, withActiveTld } from '@dotli/config';
-import type { ProductRuntimeConfig } from '@parity/truapi-host';
-
-type Params = {
-  /** The product id the core runs under, `label`'s own when left out. */
-  productId?: string | undefined;
-};
+import type { WebWorkerHostConfig } from '@parity/truapi-host/web';
 
 type GetPlatformTypeParams = {
   /** The browser's user agent string, the page's when left out. */
@@ -18,15 +13,11 @@ type GetPlatformTypeParams = {
 declare const __DOTLI_VERSION__: string | undefined;
 
 /**
- * The runtime config a product's core boots with, for `label` under `productId`. Never throws. The window origin
- * deliberately plays no part in `productId`.
+ * The host config a product's core boots with. Never throws. It names no product, since the core parses the product id
+ * itself once it is up.
  */
-export function createTruapiRuntimeConfig(
-  label: string,
-  { productId = toProductId(label) }: Params = {},
-): ProductRuntimeConfig {
-  const config: ProductRuntimeConfig = {
-    productId,
+export function createTruapiRuntimeConfig(): WebWorkerHostConfig {
+  const config: WebWorkerHostConfig = {
     host: {
       name: 'Polkadot Web',
       ...(typeof __DOTLI_VERSION__ === 'string' ? { version: __DOTLI_VERSION__ } : {}),
@@ -55,7 +46,10 @@ export function getDotliVersion(): string {
   return typeof __DOTLI_VERSION__ === 'string' ? __DOTLI_VERSION__ : '0.0.0';
 }
 
-/** The product id of `label`: a local label as it is, any other under the active TLD. Never throws. */
+/**
+ * The product id `label` asks for: a local label as it is, any other under the active TLD. Never throws. The core
+ * parses it into the id the product runs under. The window origin deliberately plays no part in it.
+ */
 export function toProductId(label: string): string {
   return label.startsWith('localhost:') ? label : withActiveTld(label);
 }

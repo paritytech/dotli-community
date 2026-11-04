@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
-import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
+import type { BootedCoreRuntime, CoreRuntimeRequest } from './createCoreRuntimeBoot.js';
 import { createPageCore } from './createPageCore.js';
+import { toProductId } from './createTruapiRuntimeConfig.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -48,14 +50,14 @@ export function createFakePageCore() {
   let walletFound = false;
   let holding = false;
   const core = createPageCore({
-    bootRuntime() {
+    bootRuntime(request) {
       if (!holding) {
-        return boot();
+        return boot(request);
       }
       const held = createDeferred<undefined>();
       heldBoots.push(held);
       changes.notify();
-      return held.promise.then(boot);
+      return held.promise.then(() => boot(request));
     },
     subscribeStoredSession(listener) {
       storeListeners.add(listener);
@@ -68,7 +70,7 @@ export function createFakePageCore() {
     destroyDelay: 0,
   });
 
-  function boot(): Promise<BootedCoreRuntime> {
+  function boot({ product }: CoreRuntimeRequest): Promise<BootedCoreRuntime> {
     const runtime = createFakeRuntime({ connections, changes });
     const failure = nextBoots.shift()?.(runtime);
     if (failure !== undefined) {
@@ -80,6 +82,8 @@ export function createFakePageCore() {
     return Promise.resolve({
       // The fake has the members the page core calls, not the full runtime interface.
       runtime: runtime as unknown as WorkerPairingHostRuntime,
+      // The id the core would parse, taken as asked.
+      productId: asProductId(product.productId ?? toProductId(product.label)),
       local,
       isStale: () => Promise.resolve(!local && walletFound),
     });

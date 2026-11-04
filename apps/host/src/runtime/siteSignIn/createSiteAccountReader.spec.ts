@@ -12,6 +12,7 @@ import {
   type HostAccountGetError,
   type HostAccountGetRequest,
   type ProductAccountId,
+  asProductId,
 } from '@parity/truapi';
 import { ACCOUNT_GET_ACCOUNT } from '@parity/truapi/wire-table';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
@@ -27,7 +28,7 @@ type AccountAnswer = { ok: Uint8Array } | { error: CallErrorValue<HostAccountGet
 
 /** The account the site names, of a product other than the core's own. */
 const ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`,
+  dotNsIdentifier: asProductId(`myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`),
   derivationIndex: { tag: 'Index', value: 3 },
 };
 const SITE_KEY = fromHex('0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d');

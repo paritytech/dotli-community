@@ -505,7 +505,7 @@ function getCoreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
     // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
-      return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productLabel}`;
     case 'FundingSessions':
       return `${CORE_LOCAL_STORAGE_PREFIX}funding-sessions`;
     case 'FundingSessionsUnreadable':

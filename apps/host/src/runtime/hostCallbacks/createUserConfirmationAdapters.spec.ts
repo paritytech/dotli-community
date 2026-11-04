@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import type { UserConfirmation } from '@parity/truapi-host';
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry, recordCaptures, type RecordingSentry } from '@dotli/metrics/testing';
@@ -77,7 +78,10 @@ type CreatePairedPhoneParams = {
   tracker?: PhoneRequestTracker;
 };
 
-const PRODUCT_ACCOUNT = { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index' as const, value: 0 } };
+const PRODUCT_ACCOUNT = {
+  dotNsIdentifier: asProductId('product.dot'),
+  derivationIndex: { tag: 'Index' as const, value: 0 },
+};
 
 const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
 const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
@@ -85,7 +89,7 @@ const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
 const DRAIN_REVIEW: UserConfirmationReview = {
   tag: 'NftPurseDrain',
   value: {
-    callingProductId: 'truapi-playground.dot',
+    callingProductId: asProductId('truapi-playground.dot'),
     fromPurse: 1,
     owner: { tag: 'Root' },
     itemCount: 2,
@@ -187,10 +191,10 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'SignVrf',
         value: {
-          callingProductId: 'truapi-playground.dot',
+          callingProductId: asProductId('truapi-playground.dot'),
           request: {
             account: {
-              dotNsIdentifier: 'other-product.dot',
+              dotNsIdentifier: asProductId('other-product.dot'),
               derivationIndex: { tag: 'Index', value: 4 },
             },
             transcriptLabel: '0x706f703a61697264726f70',
@@ -224,7 +228,7 @@ describe('user confirmation modal', () => {
           value: {
             payload: {
               signer: {
-                dotNsIdentifier: 'truapi-playground.dot',
+                dotNsIdentifier: asProductId('truapi-playground.dot'),
                 derivationIndex: { tag: 'Index', value: 3 },
               },
               genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
@@ -256,7 +260,7 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'ResourceAllocation',
         value: {
-          callingProductId: 'localhost:3000',
+          callingProductId: asProductId('localhost:3000'),
           resources: [{ tag: 'StatementStoreAllowance' }, { tag: 'AutoSigning' }],
         },
       },
@@ -280,9 +284,9 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'AccountAlias',
         value: {
-          callingProductId: 'truapi-playground.dot',
+          callingProductId: asProductId('truapi-playground.dot'),
           context: {
-            productId: 'truapix-playground.dot',
+            productId: asProductId('truapix-playground.dot'),
             suffix: { tag: 'Index', value: 0 },
           },
           ringLocation: {
@@ -311,9 +315,9 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'CreateProof',
         value: {
-          callingProductId: 'truapi-playground.dot',
+          callingProductId: asProductId('truapi-playground.dot'),
           context: {
-            productId: 'truapix-playground.dot',
+            productId: asProductId('truapix-playground.dot'),
             suffix: { tag: 'Index', value: 0 },
           },
           ringLocation: {
@@ -344,8 +348,8 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'AccountAccess',
         value: {
-          requestingProductId: 'truapi-playground.dot',
-          targetProductId: 'other-product.dot',
+          requestingProductId: asProductId('truapi-playground.dot'),
+          targetProductId: asProductId('other-product.dot'),
         },
       },
       title: 'Account Access',
@@ -365,7 +369,7 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'IdentityDisclosure',
         value: {
-          productId: 'truapi-playground.dot',
+          productId: asProductId('truapi-playground.dot'),
         },
       },
       title: 'Identity Disclosure',
@@ -386,7 +390,7 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'ProductSubtree',
         value: {
-          productId: 'truapi-playground.dot',
+          productId: asProductId('truapi-playground.dot'),
         },
       },
       title: 'Product Account',
@@ -433,7 +437,7 @@ describe('user confirmation modal', () => {
           value: {
             request: {
               account: {
-                dotNsIdentifier: 'truapi-playground.dot',
+                dotNsIdentifier: asProductId('truapi-playground.dot'),
                 derivationIndex: { tag: 'Index', value: 2 },
               },
               payload: {
@@ -473,7 +477,7 @@ describe('user confirmation modal', () => {
           value: {
             request: {
               account: {
-                dotNsIdentifier: 'truapi-playground.dot',
+                dotNsIdentifier: asProductId('truapi-playground.dot'),
                 derivationIndex: { tag: 'Index', value: 0 },
               },
               payload: { tag: 'Bytes', value: { bytes: '0x0304' } },
@@ -499,10 +503,10 @@ describe('user confirmation modal', () => {
         value: {
           tag: 'Product',
           value: {
-            callingProductId: 'truapi-playground.dot',
+            callingProductId: asProductId('truapi-playground.dot'),
             request: {
               account: {
-                dotNsIdentifier: 'other-product.dot',
+                dotNsIdentifier: asProductId('other-product.dot'),
                 derivationIndex: { tag: 'Index', value: 1 },
               },
               payload: { tag: 'Bytes', value: { bytes: '0x0304' } },
@@ -550,7 +554,7 @@ describe('user confirmation modal', () => {
     const review: UserConfirmationReview = {
       tag: 'IdentityDisclosure',
       value: {
-        productId: 'truapi-playground.dot',
+        productId: asProductId('truapi-playground.dot'),
       },
     };
 
@@ -595,8 +599,8 @@ describe('user confirmation modal', () => {
         void createPageAdapters().confirmPermission({
           tag: 'AccountAccess',
           value: {
-            requestingProductId: 'truapi-playground.dot',
-            targetProductId: 'other-product.dot',
+            requestingProductId: asProductId('truapi-playground.dot'),
+            targetProductId: asProductId('other-product.dot'),
           },
         });
       },
@@ -612,8 +616,8 @@ describe('user confirmation modal', () => {
         void createPageAdapters().confirmUserAction({
           tag: 'AccountAccess',
           value: {
-            requestingProductId: 'truapi-playground.dot',
-            targetProductId: 'other-product.dot',
+            requestingProductId: asProductId('truapi-playground.dot'),
+            targetProductId: asProductId('other-product.dot'),
           },
         });
       },
@@ -658,8 +662,8 @@ describe('user confirmation modal', () => {
     const decision = createPageAdapters().confirmPermission({
       tag: 'AccountAccess',
       value: {
-        requestingProductId: 'truapi-playground.dot',
-        targetProductId: 'other-product.dot',
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
       },
     });
     await waitForModal();
@@ -675,7 +679,7 @@ describe('user confirmation modal', () => {
     // Given
     const decision = createPageAdapters().confirmPermission({
       tag: 'IdentityDisclosure',
-      value: { productId: 'truapi-playground.dot' },
+      value: { productId: asProductId('truapi-playground.dot') },
     });
     await waitForModal();
 
@@ -689,7 +693,7 @@ describe('user confirmation modal', () => {
   it.each<{ label: string; review: PermissionReview; close: () => void; error: string }>([
     {
       label: 'dismiss an identity disclosure permission and no decision',
-      review: { tag: 'IdentityDisclosure', value: { productId: 'truapi-playground.dot' } },
+      review: { tag: 'IdentityDisclosure', value: { productId: asProductId('truapi-playground.dot') } },
       close: dismissModal,
       error: 'User dismissed identity disclosure dialog',
     },
@@ -698,8 +702,8 @@ describe('user confirmation modal', () => {
       review: {
         tag: 'AccountAccess',
         value: {
-          requestingProductId: 'truapi-playground.dot',
-          targetProductId: 'other-product.dot',
+          requestingProductId: asProductId('truapi-playground.dot'),
+          targetProductId: asProductId('other-product.dot'),
         },
       },
       close: dismissModal,
@@ -722,8 +726,8 @@ describe('user confirmation modal', () => {
     const confirmation = createPageAdapters().confirmUserAction({
       tag: 'AccountAccess',
       value: {
-        requestingProductId: 'truapi-playground.dot',
-        targetProductId: 'other-product.dot',
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
       },
     });
     await waitForModal();
@@ -1029,7 +1033,7 @@ describe('waiting on the phone', () => {
     const confirmation = createPageAdapters({ phoneRequests: tracker }).confirmUserAction({
       tag: 'SignVrf',
       value: {
-        callingProductId: 'product.dot',
+        callingProductId: asProductId('product.dot'),
         // An item with none of its fields, so the request does not encode.
         request: { account: PRODUCT_ACCOUNT, transcriptLabel: '0xaa', items: [{} as never] },
       },
@@ -1070,7 +1074,7 @@ describe('waiting on the phone', () => {
     );
     const confirmation = confirmUserAction({
       tag: 'ResourceAllocation',
-      value: { callingProductId: 'product.dot', resources },
+      value: { callingProductId: asProductId('product.dot'), resources },
     });
     await waitForModal();
 
@@ -1104,7 +1108,10 @@ describe('waiting on the phone', () => {
     tap.fromProduct(
       encodePhoneRequestFrame({ requestId: 'a', method: 'requestResourceAllocation', body: { resources } }),
     );
-    void confirmUserAction({ tag: 'ResourceAllocation', value: { callingProductId: 'product.dot', resources } });
+    void confirmUserAction({
+      tag: 'ResourceAllocation',
+      value: { callingProductId: asProductId('product.dot'), resources },
+    });
     await waitForModal();
 
     // When
@@ -1124,13 +1131,16 @@ describe('waiting on the phone', () => {
         requestId: 'a',
         method: 'getAccount',
         body: {
-          productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+          productAccountId: {
+            dotNsIdentifier: asProductId('other-product.dot'),
+            derivationIndex: { tag: 'Index', value: 0 },
+          },
         },
       }),
     );
     const decision = confirmPermission({
       tag: 'AccountAccess',
-      value: { requestingProductId: 'product.dot', targetProductId: 'other-product.dot' },
+      value: { requestingProductId: asProductId('product.dot'), targetProductId: asProductId('other-product.dot') },
     });
     await waitForModal();
 
@@ -1242,7 +1252,10 @@ function buildSignRequest(nonce: `0x${string}`) {
 function buildSignReview(nonce: `0x${string}`): UserConfirmationReview {
   return {
     tag: 'SignPayload',
-    value: { tag: 'Product', value: { callingProductId: 'product.dot', request: buildSignRequest(nonce) } },
+    value: {
+      tag: 'Product',
+      value: { callingProductId: asProductId('product.dot'), request: buildSignRequest(nonce) },
+    },
   };
 }
 

@@ -4,6 +4,7 @@
 // Any tab on the product origin fires a past-due record. The atomic IDB delete claims it, while the
 // Web Lock only avoids redundant work. A hidden tab lags by an offset so a visible sibling wins the lock.
 
+import type { ProductId } from '@parity/truapi';
 import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
 import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import {
@@ -27,7 +28,7 @@ type InitParams = {
 };
 
 type ScheduleRequest = {
-  productId: string;
+  productId: ProductId;
   title: string;
   text: string;
   deeplink: string | null;
@@ -342,7 +343,7 @@ export function createScheduledNotifications({
     return { ok: true, id: result.id, immediate: false };
   }
 
-  async function cancel(productId: string, perProductId: number): Promise<boolean> {
+  async function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
     const removed = await store.cancel(productId, perProductId);
     if (removed) {
       broadcastChannel?.postMessage({ kind: 'cancelled' } satisfies WakeMessage);

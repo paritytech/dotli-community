@@ -4,6 +4,7 @@
 // Boots the TrUAPI runtime behind one page core: a signing host on the local wallet when the page has one, else the
 // pairing host that waits for Polkadot App.
 
+import type { ProductId } from '@parity/truapi';
 import type {
   createWebWorkerPairingHostRuntime,
   WebWorkerHostCallbacks,
@@ -15,7 +16,8 @@ import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { PageProduct } from './createPageCore.js';
 import type { PhoneRequestTracker } from './createPhoneRequestTracker.js';
-import { createTruapiRuntimeConfig } from './createTruapiRuntimeConfig.js';
+import { createTruapiRuntimeConfig, toProductId } from './createTruapiRuntimeConfig.js';
+import { ERRORS } from './errors.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 
 export type CoreRuntimeRequest = {
@@ -39,6 +41,8 @@ export type CoreRuntimeRequest = {
 
 export type BootedCoreRuntime = {
   runtime: WorkerPairingHostRuntime;
+  /** The product id the core parsed from the one the product asks for, which every connection runs under. */
+  productId: ProductId;
   /** A local wallet core holds its session in memory, so it has no pairing and no stored session to follow. */
   local: boolean;
   /**
@@ -80,12 +84,19 @@ export function createCoreRuntimeBoot({
     isInService,
     sessionInMemory = false,
   }: CoreRuntimeRequest): Promise<BootedCoreRuntime> {
-    const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, {
-      productId: product.productId,
-    });
+    const hostConfig = createTruapiRuntimeConfig();
+    // Set once the core parsed it, which needs the booted core, while the callbacks are built before the boot.
+    let productId: ProductId | undefined;
+    function getProductId(): ProductId {
+      if (productId === undefined) {
+        throw new Error(ERRORS.PRODUCT_ID_NOT_READY);
+      }
+      return productId;
+    }
     const createCoreCallbacks = (local: boolean): WebWorkerHostCallbacks =>
       createCallbacks({
         label: product.label,
+        getProductId,
         pairingLabel: product.pairing?.label,
         pairingDotSuffix: product.pairing?.dotSuffix,
         pairingHostGlobal: product.pairing?.hostGlobal,
@@ -109,16 +120,31 @@ export function createCoreRuntimeBoot({
         wallet,
         isLive,
       });
+      productId = await parseProductId(runtime, product);
       log.event('wallet core booted', { flow: 'wallet', local: true });
       // A local wallet is forgotten only by a switch, which reloads the page.
-      return { runtime, local: true, isStale: () => Promise.resolve(false) };
+      return { runtime, productId, local: true, isStale: () => Promise.resolve(false) };
     }
     const runtime = await createWebWorkerPairingHostRuntime(new HostWorker(), createCoreCallbacks(false), {
       hostConfig,
     });
+    productId = await parseProductId(runtime, product);
     log.event('wallet core booted', { flow: 'wallet' });
-    return { runtime, local: false, isStale: async () => (await readWallet()) !== null };
+    return { runtime, productId, local: false, isStale: async () => (await readWallet()) !== null };
   }
 
   return bootCoreRuntime;
+}
+
+/**
+ * Resolves with the id the core parses from the one `product` asks for, so the core alone owns the id's rules. Rejects
+ * when the core refuses it, having disposed the runtime, which nobody else holds yet.
+ */
+async function parseProductId(runtime: WorkerPairingHostRuntime, product: PageProduct): Promise<ProductId> {
+  try {
+    return await runtime.parseProductId(product.productId ?? toProductId(product.label));
+  } catch (error) {
+    runtime.dispose();
+    throw new Error('The core refused the product id', { cause: error });
+  }
 }

@@ -4,6 +4,7 @@
 // Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
 // Product storage keys are opaque because the core owns product namespacing.
 
+import type { ProductId } from '@parity/truapi';
 import type { Permissions, RequiredHostCallbacks, UserConfirmation } from '@parity/truapi-host';
 import { createNavigateTo } from './createNavigateTo.js';
 import { createNotificationAdapters, type NotificationScheduler } from './createNotificationAdapters.js';
@@ -26,6 +27,8 @@ import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 export type CoreCallbacksParams = {
   /** The product the core serves. */
   label: string;
+  /** The id the core parsed for the product. Throws until the core has parsed it. */
+  getProductId: () => ProductId;
   /** The label the pairing shows, the product's own by default. */
   pairingLabel?: string | undefined;
   /** Whether the pairing label takes the active TLD suffix. `false` shows it as given. */
@@ -65,6 +68,7 @@ type Params = CoreCallbacksParams & {
 /** Builds every callback one core requires, with the permission and confirmation callbacks taken from `createAsks`. */
 export function createHostCallbacks({
   label,
+  getProductId,
   pairingLabel,
   pairingDotSuffix,
   pairingHostGlobal,
@@ -79,7 +83,12 @@ export function createHostCallbacks({
   const { permissions, userConfirmation } = createAsks({ label, blockingModalScope, phoneRequests });
   return {
     navigation: { navigateTo: createNavigateTo() },
-    notifications: createNotificationAdapters({ label, scheduler: notifications, notify: prompts.notify }),
+    notifications: createNotificationAdapters({
+      label,
+      getProductId,
+      scheduler: notifications,
+      notify: prompts.notify,
+    }),
     permissions,
     features: {
       featureSupported: createFeatureSupported(),

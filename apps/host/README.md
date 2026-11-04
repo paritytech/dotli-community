@@ -45,9 +45,12 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   a third the screen for each of the window's own views.
 - The TrUAPI side lives in its own folder. The bridge is its own chunk, which every page loads in parallel with its
   boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. One
-  runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. A core that
-  goes stale is rebuilt without being asked. A core outlives its last lease by a few seconds, so a lease taken soon
-  after keeps the same core. The signing worker and the local wallet core load on demand.
+  runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. Once up, the
+  core parses the product id the page asks for, and that parsed id is the one its connections and the product's
+  notifications run under, so the id's rules live in the core alone. A notification is kept under the full id, its
+  network included, and titled with the label. A core that goes stale is rebuilt without being asked. A core outlives
+  its last lease by a few seconds, so a lease taken soon after keeps the same core. The signing worker and the local
+  wallet core load on demand.
 - The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
   signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
   reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own

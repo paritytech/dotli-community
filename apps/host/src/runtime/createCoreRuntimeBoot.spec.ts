@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import { asProductId } from '@parity/truapi';
 import type {
   CreateWebWorkerPairingHostRuntimeOptions,
   WebWorkerHostCallbacks,
@@ -15,6 +16,9 @@ import type { BootLocalWalletCore } from './localWalletCore.js';
 import { atom } from 'nanostores';
 import type { WalletModeState } from './state/walletModeState.js';
 import { createWalletBoot, type LocalWalletBoot } from './createWalletBoot.js';
+import { ERRORS } from './errors.js';
+import { createDeferred } from '@dotli/shared';
+import { catchRejection } from '@dotli/shared/testing';
 
 type Params = {
   /** What each wallet read answers, in order, the last one repeating. None by default, which reads no wallet. */
@@ -28,10 +32,6 @@ const WALLET: LocalWalletBoot = {
   version: Uint8Array.of(1),
 };
 
-// Opaque stand-ins the boot only passes through, so no member of the runtime is ever read.
-const RUNTIME = {} as WorkerPairingHostRuntime;
-const LOCAL_RUNTIME = {} as WorkerPairingHostRuntime;
-
 const request = {
   product: { label: 'doom' },
   blockingModalScope: createBlockingModalCoordinator().createScope(),
@@ -44,15 +44,27 @@ class FakeHostWorker {
   readonly role = 'pairing';
 }
 
+/** A runtime whose only members the boot reads are its id parser, which takes an id as given, and its dispose. */
+function createFakeRuntime() {
+  const fake = {
+    parseProductId: vi.fn((value: string) => Promise.resolve(asProductId(value))),
+    dispose: vi.fn(),
+  };
+  // The fake has the members the boot calls, not the full runtime interface.
+  return { ...fake, runtime: fake as unknown as WorkerPairingHostRuntime };
+}
+
 function createHarness({ reads = [] }: Params = {}) {
   // A copy, since each read but the last takes its answer off the front.
   const pending = [...reads];
+  const pairing = createFakeRuntime();
+  const local = createFakeRuntime();
   const create = vi.fn(
     (_worker: Worker, _callbacks: WebWorkerHostCallbacks, _options: CreateWebWorkerPairingHostRuntimeOptions) =>
-      Promise.resolve(RUNTIME),
+      Promise.resolve(pairing.runtime),
   );
   const callbackOptions: CoreCallbacksParams[] = [];
-  const bootLocalWalletCore = vi.fn<BootLocalWalletCore>(() => Promise.resolve(LOCAL_RUNTIME));
+  const bootLocalWalletCore = vi.fn<BootLocalWalletCore>(() => Promise.resolve(local.runtime));
   const params: CoreRuntimeBootParams = {
     readWallet: () => Promise.resolve(pending.length > 1 ? (pending.shift() ?? null) : (pending[0] ?? null)),
     loadHostRuntime: () =>
@@ -77,20 +89,24 @@ function createHarness({ reads = [] }: Params = {}) {
     callbackOptions,
     /** The local wallet core's boot. */
     bootLocalWalletCore,
+    /** The runtime a pairing boot gets. */
+    pairing,
+    /** The runtime a local wallet boot gets. */
+    local,
   };
 }
 
 describe('core runtime boot', () => {
   it('As a Polkadot App user, I boot the pairing host on the web worker and it keeps my paired session', async () => {
     // Given a boot with no stored wallet
-    const { params, create, callbackOptions, bootLocalWalletCore } = createHarness({ reads: [null] });
+    const { params, create, callbackOptions, bootLocalWalletCore, pairing } = createHarness({ reads: [null] });
     const boot = createCoreRuntimeBoot(params);
 
     // When a core boots
     const booted = await boot(request);
 
     // Then the pairing runtime boots on the host worker with a stored session
-    expect(booted).toMatchObject({ runtime: RUNTIME, local: false });
+    expect(booted).toMatchObject({ runtime: pairing.runtime, local: false });
     expect(create.mock.calls[0]?.[0]).toBeInstanceOf(FakeHostWorker);
     expect(create.mock.calls[0]?.[2].role).toBeUndefined();
     expect(callbackOptions).toEqual([expect.objectContaining({ label: 'doom', sessionInMemory: false })]);
@@ -111,26 +127,26 @@ describe('core runtime boot', () => {
 
   it('As a user in the sign-out window, I open it and it boots a pairing core whose session stays in memory', async () => {
     // Given a boot with no stored wallet
-    const { params, callbackOptions } = createHarness({ reads: [null] });
+    const { params, callbackOptions, pairing } = createHarness({ reads: [null] });
 
     // When a core boots with its session in memory
     const booted = await createCoreRuntimeBoot(params)({ ...request, sessionInMemory: true });
 
     // Then a pairing core boots with the in-memory session option
-    expect(booted).toMatchObject({ runtime: RUNTIME, local: false });
+    expect(booted).toMatchObject({ runtime: pairing.runtime, local: false });
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
   });
 
   it('As a local wallet user, I boot a signing core and its storage leaves my paired session alone', async () => {
     // Given a boot over a stored wallet
-    const { params, create, callbackOptions, bootLocalWalletCore } = createHarness({ reads: [WALLET] });
+    const { params, create, callbackOptions, bootLocalWalletCore, local } = createHarness({ reads: [WALLET] });
     const boot = createCoreRuntimeBoot(params);
 
     // When a core boots
     const booted = await boot(request);
 
     // Then the local wallet core boots with the wallet and an in-memory session
-    expect(booted).toMatchObject({ runtime: LOCAL_RUNTIME, local: true });
+    expect(booted).toMatchObject({ runtime: local.runtime, local: true });
     const [localBoot] = bootLocalWalletCore.mock.calls[0] ?? [];
     expect(localBoot?.create).toBe(create);
     expect(localBoot?.hostConfig).not.toHaveProperty('productId');
@@ -194,6 +210,83 @@ describe('core runtime boot', () => {
     expect(booted.local).toBe(local);
     expect(answer).toBe(stale);
   });
+
+  it.each([
+    { user: 'a Polkadot App user', read: null, runtime: 'pairing' },
+    { user: 'a local wallet user', read: WALLET, runtime: 'local' },
+  ] as const)(
+    'As $user, I open a product and my core runs under the id it parsed, which my callbacks read',
+    async ({ read, runtime }) => {
+      // Given a core that parses the id it is asked for into its canonical form
+      const fakes = createHarness({ reads: [read] });
+      fakes[runtime].parseProductId.mockResolvedValue(asProductId('canonical.paseo'));
+
+      // When a core boots for the product
+      const booted = await createCoreRuntimeBoot(fakes.params)(request);
+
+      // Then it parsed the label's id, and the result and the callbacks carry the parsed one
+      expect(fakes[runtime].parseProductId).toHaveBeenCalledWith('doom.paseo');
+      expect(booted.productId).toBe('canonical.paseo');
+      expect(fakes.callbackOptions[0]?.getProductId()).toBe('canonical.paseo');
+    },
+  );
+
+  it('As a developer, I open a local preview under an explicit product id and the core parses that id', async () => {
+    // Given a boot with no stored wallet
+    const { params, pairing } = createHarness({ reads: [null] });
+
+    // When a core boots for a local preview with an explicit product id
+    const booted = await createCoreRuntimeBoot(params)({
+      ...request,
+      product: { label: 'localhost:3000', productId: 'truapi-playground.dot' },
+    });
+
+    // Then the core parsed the explicit id, not the label's
+    expect(pairing.parseProductId).toHaveBeenCalledWith('truapi-playground.dot');
+    expect(booted.productId).toBe('truapi-playground.dot');
+  });
+
+  it('As a product, I call a callback before my core parsed my id and it throws', async () => {
+    // Given a core whose id parse has not answered yet
+    const { params, pairing, callbackOptions } = createHarness({ reads: [null] });
+    const asked = createDeferred<undefined>();
+    const parsed = createDeferred<ReturnType<typeof asProductId>>();
+    pairing.parseProductId.mockImplementation(() => {
+      asked.resolve(undefined);
+      return parsed.promise;
+    });
+    const booting = createCoreRuntimeBoot(params)(request);
+    await asked.promise;
+
+    // When the callbacks read the id
+    const read = (): unknown => callbackOptions[0]?.getProductId();
+
+    // Then it is not ready yet, and once parsed it is
+    expect(read).toThrow(ERRORS.PRODUCT_ID_NOT_READY);
+    parsed.resolve(asProductId('doom.paseo'));
+    await booting;
+    expect(read()).toBe('doom.paseo');
+  });
+
+  it.each([
+    { user: 'a Polkadot App user', read: null, runtime: 'pairing' },
+    { user: 'a local wallet user', read: WALLET, runtime: 'local' },
+  ] as const)(
+    'As $user, I open a product whose id the core refuses and the boot fails with the runtime disposed',
+    async ({ read, runtime }) => {
+      // Given a core that refuses the id
+      const fakes = createHarness({ reads: [read] });
+      const refusal = new Error('invalid product ID');
+      fakes[runtime].parseProductId.mockRejectedValue(refusal);
+
+      // When a core boots for the product
+      const error = await catchRejection(createCoreRuntimeBoot(fakes.params)(request));
+
+      // Then the boot rejects with the refusal as its cause, and the runtime nobody holds is disposed
+      expect(error).toMatchObject({ cause: refusal });
+      expect(fakes[runtime].dispose).toHaveBeenCalledOnce();
+    },
+  );
 
   it('As a user in the sign-in window, I open it over a stored wallet and it boots a pairing core', async () => {
     // Given the window's wallet boot over a stored local wallet

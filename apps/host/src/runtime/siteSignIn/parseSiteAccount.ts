@@ -8,7 +8,7 @@
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { isValidDotName } from '@dotli/resolver';
-import type { ProductAccountId } from '@parity/truapi';
+import { asProductId, type ProductAccountId } from '@parity/truapi';
 
 const NUMBER_INDEX = /^(0|[1-9][0-9]{0,9})$/;
 const RAW_INDEX = /^0x[0-9a-fA-F]{64}$/;
@@ -27,11 +27,13 @@ export function parseSiteAccount(value: unknown, network: Network): ProductAccou
   if (!product.endsWith(suffix) || !isValidDotName(product.slice(0, -suffix.length))) {
     return null;
   }
+  // Checked against the network's TLD above, and the core refuses an id it cannot parse.
+  const dotNsIdentifier = asProductId(product);
   if (isRawIndex(index)) {
-    return { dotNsIdentifier: product, derivationIndex: { tag: 'Raw', value: index } };
+    return { dotNsIdentifier, derivationIndex: { tag: 'Raw', value: index } };
   }
   if (NUMBER_INDEX.test(index) && Number(index) <= MAX_NUMBER_INDEX) {
-    return { dotNsIdentifier: product, derivationIndex: { tag: 'Index', value: Number(index) } };
+    return { dotNsIdentifier, derivationIndex: { tag: 'Index', value: Number(index) } };
   }
   return null;
 }

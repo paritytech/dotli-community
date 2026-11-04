@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ContactHandle, HostSignPayloadData } from '@parity/truapi';
+import { asProductId, type ContactHandle, type HostSignPayloadData } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import { describe, expect, it, vi } from 'vitest';
 import type { PhoneMethod } from './phoneMethods.js';
@@ -25,7 +25,7 @@ const SIGN_PAYLOAD_REVIEW: UserConfirmationReview = {
   value: {
     tag: 'Product',
     value: {
-      callingProductId: 'product.dot',
+      callingProductId: asProductId('product.dot'),
       request: { account: buildAccount('product.dot'), payload: buildSignPayloadData('0x06') },
     },
   },
@@ -96,7 +96,7 @@ const ROWS: Row[] = [
   },
   {
     name: 'sign-vrf review',
-    review: { tag: 'SignVrf', value: { callingProductId: 'product.dot', request: buildVrf('0xaa') } },
+    review: { tag: 'SignVrf', value: { callingProductId: asProductId('product.dot'), request: buildVrf('0xaa') } },
     matching: [buildRequest('signVrf', buildVrf('0xaa'))],
     differing: buildRequest('signVrf', buildVrf('0xbb')),
   },
@@ -104,20 +104,23 @@ const ROWS: Row[] = [
     name: 'resource allocation review',
     review: {
       tag: 'ResourceAllocation',
-      value: { callingProductId: 'product.dot', resources: [buildAllowance(1)] },
+      value: { callingProductId: asProductId('product.dot'), resources: [buildAllowance(1)] },
     },
     matching: [buildRequest('requestResourceAllocation', { resources: [buildAllowance(1)] })],
     differing: buildRequest('requestResourceAllocation', { resources: [buildAllowance(2)] }),
   },
   {
     name: 'product subtree review',
-    review: { tag: 'ProductSubtree', value: { productId: 'product.dot' } },
+    review: { tag: 'ProductSubtree', value: { productId: asProductId('product.dot') } },
     matching: [buildRequest('getAccount', { productAccountId: buildAccount('product.dot') })],
     differing: buildRequest('getAccount', { productAccountId: buildAccount('other.dot') }),
   },
   {
     name: 'account access review',
-    review: { tag: 'AccountAccess', value: { requestingProductId: 'product.dot', targetProductId: 'target.dot' } },
+    review: {
+      tag: 'AccountAccess',
+      value: { requestingProductId: asProductId('product.dot'), targetProductId: asProductId('target.dot') },
+    },
     matching: [buildRequest('getAccount', { productAccountId: buildAccount('target.dot') })],
     differing: buildRequest('getAccount', { productAccountId: buildAccount('product.dot') }),
   },
@@ -153,7 +156,10 @@ describe('phone review match', () => {
 
   it('As a Polkadot App user, I review an identity disclosure and it never waits on the phone', () => {
     // Given
-    const review: UserConfirmationReview = { tag: 'IdentityDisclosure', value: { productId: 'product.dot' } };
+    const review: UserConfirmationReview = {
+      tag: 'IdentityDisclosure',
+      value: { productId: asProductId('product.dot') },
+    };
 
     // When
     const match = matchPhoneReview(review);
@@ -184,11 +190,11 @@ describe('phone review match against the core rewrites', () => {
     // Given
     const vrfMatch = matchPhoneReview({
       tag: 'SignVrf',
-      value: { callingProductId: 'product.dot', request: buildVrf('0xaa') },
+      value: { callingProductId: asProductId('product.dot'), request: buildVrf('0xaa') },
     });
     const accessMatch = matchPhoneReview({
       tag: 'AccountAccess',
-      value: { requestingProductId: 'a.dot', targetProductId: 'target.dot' },
+      value: { requestingProductId: asProductId('a.dot'), targetProductId: asProductId('target.dot') },
     });
 
     // When
@@ -207,7 +213,7 @@ describe('phone review match against the core rewrites', () => {
     const review: UserConfirmationReview = {
       tag: 'SignVrf',
       // A request the codec cannot encode, which no typed value can be.
-      value: { callingProductId: 'p.dot', request: {} as never },
+      value: { callingProductId: asProductId('p.dot'), request: {} as never },
     };
     const reportEncodeFailure = vi.fn();
 
@@ -225,7 +231,7 @@ describe('phone review match against the core rewrites', () => {
     const reportEncodeFailure = vi.fn();
     const match = matchPhoneReview(
       // A request the codec cannot encode, which no typed value can be.
-      { tag: 'SignVrf', value: { callingProductId: 'p.dot', request: {} as never } },
+      { tag: 'SignVrf', value: { callingProductId: asProductId('p.dot'), request: {} as never } },
       { reportEncodeFailure },
     );
     const reportsBeforeMatch = reportEncodeFailure.mock.calls.length;
@@ -245,7 +251,7 @@ function buildRequest(method: PhoneMethod, body: unknown): PhoneRequest {
 }
 
 function buildAccount(id: string) {
-  return { dotNsIdentifier: id, derivationIndex: { tag: 'Index' as const, value: 0 } };
+  return { dotNsIdentifier: asProductId(id), derivationIndex: { tag: 'Index' as const, value: 0 } };
 }
 
 function buildSignPayloadData(nonce: Hex): HostSignPayloadData {

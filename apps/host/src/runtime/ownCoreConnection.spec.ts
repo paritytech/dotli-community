@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { debugBus, type DebugBusEvent } from '@dotli/truapi-debug';
@@ -27,7 +28,7 @@ function connectOver(provider: FakeCoreProvider): { connection: CoreConnection; 
   const close = vi.fn<() => void>();
   return {
     // The fake has the wire and permission members only, not the full provider interface.
-    connection: { provider: provider as unknown as TrUApiProductProvider, productId: 'doom.dot', close },
+    connection: { provider: provider as unknown as TrUApiProductProvider, productId: asProductId('doom.dot'), close },
     close,
   };
 }

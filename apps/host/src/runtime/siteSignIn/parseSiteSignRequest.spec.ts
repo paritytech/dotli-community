@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
-import type { ProductAccountId } from '@parity/truapi';
+import { asProductId, type ProductAccountId } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
 import type { SessionRequest } from '../sessionHandoff/readSessionRequest.js';
 import { parseSiteCall, parseSiteSignRequest, type SiteSignRequest } from './parseSiteSignRequest.js';
@@ -10,7 +10,10 @@ import { createSiteToken } from '../../testing/createSiteToken.js';
 
 const PASEO_HUB = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].assethub.genesis;
 const PRODUCT = `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`;
-const ACCOUNT: ProductAccountId = { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } };
+const ACCOUNT: ProductAccountId = {
+  dotNsIdentifier: asProductId(PRODUCT),
+  derivationIndex: { tag: 'Index', value: 0 },
+};
 const PREVIEW_HUB = NETWORK_NAME_TO_SERVICES_CONFIG.previewnet.assethub.genesis;
 /** What a request with no call, token or group token reads as. */
 const READ: SiteSignRequest = {

@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
@@ -22,7 +23,7 @@ import type { PromptPermissionStores } from './createPromptPermission.js';
 type PermissionAsk = HostPrompts['askPermission'];
 
 const PRODUCT: ProductContext = {
-  productId: 'myapp.paseo',
+  productId: asProductId('myapp.paseo'),
   executionKind: 'App',
 };
 
@@ -46,6 +47,7 @@ describe('blocking modal queue across host callbacks', () => {
     const page = createFakePrompts();
     const callbacks = createHostCallbacks({
       label: 'localhost:3000',
+      getProductId: () => PRODUCT.productId,
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: scope,
       ...buildPromptAsks(page.prompts),
@@ -56,8 +58,8 @@ describe('blocking modal queue across host callbacks', () => {
     const accountAccess = callbacks.userConfirmation.confirmUserAction({
       tag: 'AccountAccess',
       value: {
-        requestingProductId: 'truapi-playground.dot',
-        targetProductId: 'other-product.dot',
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
       },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, 'Camera');
@@ -96,6 +98,7 @@ describe('blocking modal queue across host callbacks', () => {
     const tap = phoneRequests.connect();
     const callbacks = createHostCallbacks({
       label: 'localhost:3000',
+      getProductId: () => PRODUCT.productId,
       blockingModalScope: scope,
       ...buildPromptAsks(page.prompts),
       notifications: scheduler,
@@ -106,13 +109,19 @@ describe('blocking modal queue across host callbacks', () => {
         requestId: 'a',
         method: 'getAccount',
         body: {
-          productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+          productAccountId: {
+            dotNsIdentifier: asProductId('other-product.dot'),
+            derivationIndex: { tag: 'Index', value: 0 },
+          },
         },
       }),
     );
     const accountAccess = callbacks.userConfirmation.confirmUserAction({
       tag: 'AccountAccess',
-      value: { requestingProductId: 'truapi-playground.dot', targetProductId: 'other-product.dot' },
+      value: {
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
+      },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, 'Camera');
     await page.waitForPrompt({
@@ -144,6 +153,7 @@ describe('session window asks across host callbacks', () => {
     const askPermission = vi.fn<PermissionAsk>(page.prompts.askPermission);
     const callbacks = createHostCallbacks({
       label: 'localhost:3000',
+      getProductId: () => PRODUCT.productId,
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       prompts: { ...page.prompts, askPermission },
@@ -155,7 +165,10 @@ describe('session window asks across host callbacks', () => {
     const camera = await callbacks.permissions.devicePermission(PRODUCT, 'Camera');
     const confirmed = await callbacks.userConfirmation.confirmUserAction({
       tag: 'AccountAccess',
-      value: { requestingProductId: 'truapi-playground.dot', targetProductId: 'other-product.dot' },
+      value: {
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
+      },
     });
 
     // Then both are allowed and no page prompt was asked
@@ -175,6 +188,7 @@ describe('notifications across host callbacks', () => {
     const ask = vi.fn<PermissionAsk>(() => Promise.resolve('granted'));
     const { notifications } = createHostCallbacks({
       label: 'myapp',
+      getProductId: () => PRODUCT.productId,
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: { schedule, cancel: () => Promise.resolve(true) },
@@ -204,6 +218,7 @@ describe('prompt rate limiting across host callbacks', () => {
     // registered, so every prompt reaches the "ask" path and the limiter.
     const { permissions } = createHostCallbacks({
       label: 'myapp',
+      getProductId: () => PRODUCT.productId,
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
@@ -225,6 +240,7 @@ describe('prompt rate limiting across host callbacks', () => {
     // Given one callback surface, whose prompts and notifications share its one limiter
     const { permissions, notifications } = createHostCallbacks({
       label: 'myapp',
+      getProductId: () => PRODUCT.productId,
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,

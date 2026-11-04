@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asProductId } from '@parity/truapi';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
@@ -166,7 +167,7 @@ describe('round dispatch', () => {
         kind: 'third-sign',
         request: {
           round: 'r1',
-          account: { dotNsIdentifier: `myapp.${TLD}`, derivationIndex: { tag: 'Index', value: 0 } },
+          account: { dotNsIdentifier: asProductId(`myapp.${TLD}`), derivationIndex: { tag: 'Index', value: 0 } },
           siteToken: null,
           groupToken: null,
           chain: PASEO_HUB,
