@@ -385,6 +385,15 @@ A finding the reviewer leaves untagged is major. The controller never lowers a t
      implement.
    - **Rethink**: the rethought plan starts a new pass count.
 
+**Check every revision.** A pass reviews the plan it was given, never the revision that follows it, and revisions are
+where new defects enter. A fix for a minor finding can break a command as surely as any other. So after every revision,
+minor fixes and the owner's Fix at the cap included, and before the next pass or the approval request:
+
+- Run the names check on the revised plan, and fix every "Not found" line the plan's text does not explain.
+- Run once each check command the revision added or changed, such as a test, lint, typecheck or format command, in the
+  current checkout. A failure the plan predicts, such as a test a later task makes pass, is expected. Fix the plan when
+  one fails for any other reason.
+
 A plan the owner sends back at the approval gate, a rethought plan and an amendment each start a new pass count too. A
 pass over an amendment's changed sections counts like any other.
 
@@ -660,6 +669,8 @@ You are skipping the process when you see any of these.
 - **A brief that retypes a plan task or a review's findings, or a seat whose final message carries its whole report.**
   Paths and finding IDs travel, text stays in its file.
 - **A plan review pass dispatched without a names check of the plan as it stands, or a pass that repeats its lookups.**
+- **A plan revision, minor fixes included, that goes to the next pass or to approval with a changed check command never
+  run.**
 - **A brief without the Architecture gate, or an implementer brief without the bans in words.**
 - **A per-task review, or a batch review before the batch's last task committed.**
 - **A batch of one task that adds no logic of its own.** It joins a neighbouring batch.
