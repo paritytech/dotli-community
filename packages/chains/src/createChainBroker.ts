@@ -6,22 +6,21 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { reportListener } from '@dotli/metrics';
-import { combineErrors, getErrorMessage, isRecord } from '@dotli/shared';
+import { reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { getErrorMessage, isRecord, runEvery } from '@dotli/shared';
 import {
+  buildFollowEvent,
   buildJsonRpcResult,
   cloneWithRewrittenFirstParam,
   DEFAULT_WIRE_MODE,
   describeResponse,
   encodeForWire,
   getEventType,
-  getOwnerMethod,
   getReleaseResult,
   isRequestMessage,
   isResponseMessage,
   isSubscriptionEnd,
   isSubscriptionMessage,
-  normalizeUnpinHashes,
   parseInboundMessage,
   readdressSubscription,
   RELEASE_METHODS,
@@ -44,8 +43,7 @@ import { createJsonRpcError } from './createJsonRpcError.js';
 import { createLocalTokenIds } from './createLocalTokenIds.js';
 import { createOwnedTokens } from './createOwnedTokens.js';
 import { createPendingRequests } from './createPendingRequests.js';
-import { createSharedFollows } from './createSharedFollows.js';
-import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_UNFOLLOW, CHAIN_HEAD_UNPIN } from './jsonRpcMethods.js';
+import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_UNFOLLOW } from './jsonRpcMethods.js';
 import { readStrings } from './readStrings.js';
 
 /** Many JSON-RPC sessions over one upstream connection, with ids and subscription tokens rewritten per session. */
@@ -90,6 +88,9 @@ type UnparseableUpstreamParams = {
 // A session's handler that throws on the halt is a defect in its owner, reported while the other sessions still hear it.
 const reportHaltListener = reportListener('protocol', 'chain_halt');
 
+// The error code a node answers a follow with when the connection already holds as many follows as it allows.
+const FOLLOW_LIMIT_ERROR_CODE = -32800;
+
 /** Builds a broker that serves many JSON-RPC sessions over `provider`, opening it only with the first session. */
 export function createChainBroker({ provider, warn = createBrokerWarner() }: Params) {
   let upstream: JsonRpcConnection | null = null;
@@ -101,17 +102,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     localTokenIds,
     addSessionToken,
     deleteSessionToken,
-    sendRelease,
-    log: logBrokerTraffic,
-  });
-  const sharedFollows = createSharedFollows({
-    localTokenIds,
-    pending,
-    earlySubscriptions,
-    getSession,
-    addSessionToken,
-    deleteSessionToken,
-    sendToSession,
     sendRelease,
     log: logBrokerTraffic,
   });
@@ -148,23 +138,15 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function disconnectAll(): void {
-    const errors: unknown[] = [];
-    for (const sessionId of [...sessions.keys()]) {
-      try {
-        disconnectSession(sessionId);
-      } catch (error) {
-        errors.push(error);
-      }
-    }
-    try {
-      disconnectUpstream();
-    } catch (error) {
-      errors.push(error);
-    }
-    if (errors.length === 0) {
-      return;
-    }
-    throw combineErrors(errors, 'chain broker: closing every session and the upstream failed');
+    runEvery(
+      [
+        ...[...sessions.keys()].map(sessionId => () => {
+          disconnectSession(sessionId);
+        }),
+        disconnectUpstream,
+      ],
+      'chain broker: closing every session and the upstream failed',
+    );
   }
 
   function halt(error?: unknown): void {
@@ -188,10 +170,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     disconnectUpstream();
   }
 
-  function getSession(sessionId: string): Session | undefined {
-    return sessions.get(sessionId);
-  }
-
   function addSessionToken({ sessionId, token }: SessionTokenParams): void {
     sessions.get(sessionId)?.ownedTokens.add(token);
   }
@@ -209,24 +187,46 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     upstream?.send(message as UpstreamJsonRpcRequest);
   }
 
-  /** Forwards a session's request, owned by the session when it expects an answer. */
+  /**
+   * Forwards a session's request, owned by the session when it expects an answer. A follow or an unfollow sent without
+   * an id is still tracked, so the follows the node holds stay counted. Such a follow's answer is unfollowed at once.
+   */
   function forwardForSession({ session, request, method, upstreamToken }: ForwardForSessionParams): void {
-    if (request.id === undefined) {
-      sendUpstream(request);
+    if (request.id !== undefined) {
+      pending.track({
+        owner: { kind: 'session', sessionId: session.id, clientId: request.id, method, upstreamToken },
+        request,
+      });
       return;
     }
-    pending.track({
-      owner: { kind: 'session', sessionId: session.id, clientId: request.id, method, upstreamToken },
-      request,
-    });
+    if (method === CHAIN_HEAD_FOLLOW) {
+      pending.track({ owner: { kind: 'orphan', method }, request });
+      return;
+    }
+    if (method === CHAIN_HEAD_UNFOLLOW && upstreamToken !== undefined) {
+      pending.track({ owner: { kind: 'release', method, upstreamToken }, request });
+      return;
+    }
+    sendUpstream(request);
   }
 
   /** A release the broker sends itself, for something no session holds anymore. */
-  function sendRelease({ method, upstreamToken, params = [] }: SendReleaseParams): void {
+  function sendRelease({ method, upstreamToken }: SendReleaseParams): void {
     pending.track({
       owner: { kind: 'release', method, upstreamToken },
-      request: { jsonrpc: '2.0', method, params: [upstreamToken, ...params] },
+      request: { jsonrpc: '2.0', method, params: [upstreamToken] },
     });
+  }
+
+  function countFollows(): number {
+    let inFlight = 0;
+    for (const owner of pending.listOwners()) {
+      const method = owner.method;
+      if (method === CHAIN_HEAD_FOLLOW || method === CHAIN_HEAD_UNFOLLOW) {
+        inFlight += 1;
+      }
+    }
+    return ownedTokens.countUpstream(CHAIN_HEAD_UNFOLLOW) + inFlight;
   }
 
   function answerHaltedSession(session: Session): void {
@@ -235,7 +235,11 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
         sendToSession(session, createJsonRpcError(owner.clientId, createChainHaltedError()));
       }
     }
-    sharedFollows.haltSession(session);
+    for (const localToken of session.ownedTokens) {
+      if (ownedTokens.find(localToken)?.releaseMethod === CHAIN_HEAD_UNFOLLOW) {
+        sendToSession(session, buildFollowEvent(localToken, { event: 'stop' }));
+      }
+    }
   }
 
   function ensureUpstream(): void {
@@ -279,22 +283,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     }
 
     logBrokerTraffic(`to upstream [${sessionId}] method=${parsed.method} id=${String(parsed.id)}`);
-
-    if (parsed.method === CHAIN_HEAD_FOLLOW) {
-      sharedFollows.follow(session, parsed);
-      return;
-    }
-
-    if (parsed.method === CHAIN_HEAD_UNFOLLOW) {
-      handleLocalUnfollowRequest(session, parsed);
-      return;
-    }
-
-    if (parsed.method === CHAIN_HEAD_UNPIN) {
-      handleLocalUnpinRequest(session, parsed);
-      return;
-    }
-
     routeGenericRequest(session, parsed);
   }
 
@@ -348,29 +336,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     });
   }
 
-  /** Ref-counted unpin, forwarded only once no session holds the block. Replies success locally at once. */
-  function handleLocalUnpinRequest(session: Session, request: JsonRpcRequest): void {
-    const params = Array.isArray(request.params) ? request.params : [];
-    const token = typeof params[0] === 'string' ? params[0] : null;
-    const localFollow = token !== null ? sharedFollows.findLocalFollow(token) : undefined;
-
-    // Not this session's follow token, so it passes through unchanged.
-    if (!localFollow || token === null || localFollow.sessionId !== session.id) {
-      routeGenericRequest(session, request);
-      return;
-    }
-
-    const unpinned = sharedFollows.unpin({ localToken: token, hashes: normalizeUnpinHashes(params[1]) });
-    if (!unpinned) {
-      sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
-      return;
-    }
-
-    if (request.id !== undefined) {
-      sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
-    }
-  }
-
   function rewriteOwnedToken(session: Session, request: JsonRpcRequest): JsonRpcRequest | null {
     if (!Array.isArray(request.params) || request.params.length === 0) {
       return request;
@@ -379,14 +344,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     const firstParam: unknown = request.params[0];
     if (typeof firstParam !== 'string') {
       return request;
-    }
-
-    const localFollow = sharedFollows.findLocalFollow(firstParam);
-    if (localFollow) {
-      if (localFollow.sessionId !== session.id || localFollow.upstreamToken === null) {
-        return null;
-      }
-      return cloneWithRewrittenFirstParam(request, localFollow.upstreamToken);
     }
 
     const owned = ownedTokens.find(firstParam);
@@ -482,16 +439,16 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       return;
     }
     logBrokerTraffic(
-      `Upstream answer for ${owner.kind === 'session' ? owner.sessionId : owner.kind}, method=${getOwnerMethod(owner)} ${describeResponse(response)}`,
+      `Upstream answer for ${owner.kind === 'session' ? owner.sessionId : owner.kind}, method=${owner.method} ${describeResponse(response)}`,
     );
+    if (owner.method === CHAIN_HEAD_FOLLOW && 'error' in response) {
+      reportRefusedFollow(response.error);
+    }
     answerOwner(owner, response);
   }
 
   function answerOwner(owner: RequestOwner, response: JsonRpcResponse): void {
     switch (owner.kind) {
-      case 'follow':
-        sharedFollows.answer(owner.follow, response);
-        return;
       case 'orphan':
         answerOrphan(owner.method, response);
         return;
@@ -531,13 +488,14 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   /**
-   * The answer to a request whose session left while it was in flight. A subscription it opened would run upstream
-   * for the broker's life, so it is released at once, unless a session still holds the same upstream subscription.
+   * The answer to a request no session waits on, as its session left while it was in flight or it was a follow sent
+   * without an id. A subscription it opened would run upstream for the broker's life, so it is released at once,
+   * unless a session still holds the same upstream subscription.
    */
   function answerOrphan(method: string, response: JsonRpcResponse): void {
     const releaseMethod = TOKEN_METHODS.get(method);
     if (releaseMethod === undefined || typeof response.result !== 'string') {
-      logBrokerTraffic(`Dropped the answer to ${method} for a session that left`);
+      logBrokerTraffic(`Dropped the answer to ${method}, which no session waits on`);
       return;
     }
     const upstreamToken = response.result;
@@ -559,11 +517,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     const upstreamToken = message.params?.subscription;
     if (typeof upstreamToken !== 'string') {
       warn('subscription_bad_token', `from upstream: subscription with non-string token`);
-      return;
-    }
-
-    if (sharedFollows.hasUpstreamToken(upstreamToken)) {
-      sharedFollows.handleEvent({ upstreamToken, message });
       return;
     }
 
@@ -640,8 +593,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     for (const localToken of [...session.ownedTokens]) {
       ownedTokens.release(localToken, true);
     }
-
-    sharedFollows.releaseSession(sessionId);
   }
 
   function disconnectUpstream(): void {
@@ -652,38 +603,9 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       pending.clear();
       ownedTokens.clear();
       earlySubscriptions.clear();
-      sharedFollows.clear();
     } finally {
       closing?.disconnect();
     }
-  }
-
-  function handleLocalUnfollowRequest(session: Session, request: JsonRpcRequest): void {
-    const token = Array.isArray(request.params) && typeof request.params[0] === 'string' ? request.params[0] : null;
-    if (token === null) {
-      sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
-      return;
-    }
-
-    const localFollow = sharedFollows.findLocalFollow(token);
-    if (localFollow) {
-      if (localFollow.sessionId !== session.id) {
-        sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
-        return;
-      }
-      sharedFollows.release(token);
-      if (request.id !== undefined) {
-        sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
-      }
-      return;
-    }
-
-    const rewritten = rewriteOwnedToken(session, request);
-    if (rewritten === null) {
-      sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
-      return;
-    }
-    forwardForSession({ session, request: rewritten, method: request.method });
   }
 
   return {
@@ -704,5 +626,18 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
      * session's throwing handler is reported, never thrown, so every session hears the halt.
      */
     halt,
+    /**
+     * The follows the node may count on this connection now, as follow tokens sessions hold (each upstream token
+     * once), follow requests in flight, and unfollows in flight from a session or the broker. Never throws.
+     */
+    countFollows,
+    /** Whether a session of this broker holds `localToken`. Never throws. */
+    hasToken: ownedTokens.has,
   };
+}
+
+/** Counts a follow the node refused, telling its follow limit apart from any other refusal. */
+function reportRefusedFollow(error: unknown): void {
+  const reason = isRecord(error) && error['code'] === FOLLOW_LIMIT_ERROR_CODE ? 'limit' : 'refused';
+  reportExpected(error, { flow: 'protocol', step: 'chain_follow', metric: S.CHAIN_FOLLOW_REFUSED, reason });
 }

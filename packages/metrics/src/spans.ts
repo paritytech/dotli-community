@@ -17,6 +17,12 @@ export const spans = {
    */
   SMOLDOT_ACTIVE: 'smoldot.active',
 
+  /**
+   * A light-client connection refused at the light client's connection cap, which halts its chain.
+   * Tagged `outcome` (error) and `reason` (`cap`).
+   */
+  SMOLDOT_CONNECTION_CAP: 'smoldot.connection_cap',
+
   /** Mode detection plus engine start. */
   PROTOCOL_INIT: 'protocol.init',
 
@@ -29,11 +35,24 @@ export const spans = {
   PROTOCOL_SESSION_TUNING: 'protocol.session_tuning',
 
   /**
-   * Count. A held chain whose teardown threw as the pool closed it, or whose pause or resume threw, told apart by the
-   * `step` tag (`chain_pool_close`, `chain_pool_pause`, `chain_pool_resume`). Tagged `outcome` (error) and
-   * `reason` (the error's name).
+   * Count. A held chain whose teardown threw as the pool closed it, whose pause or resume threw, or whose empty extra
+   * lane threw as it closed, told apart by the `step` tag (`chain_pool_close`, `chain_pool_pause`, `chain_pool_resume`,
+   * `chain_lane_close`). Tagged `outcome` (error) and `reason` (the error's name).
    */
   CHAIN_POOL_CLOSE: 'chain_pool.close',
+
+  /**
+   * Count. A chain's lane that could not be built, a consumer's session that could not open on another lane, or the
+   * network panel's follow that could not open, told apart by the `step` tag (`chain_lane_build`, `chain_lane_session`,
+   * `chain_pool_watch_follow`). Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  CHAIN_LANE_OPEN: 'chain_pool.lane_open',
+
+  /**
+   * Count. A `chainHead_v1_follow` the node refused. Tagged `outcome` (error) and `reason` (`limit` for error code
+   * `-32800`, `refused` for any other).
+   */
+  CHAIN_FOLLOW_REFUSED: 'chain_broker.follow_refused',
 
   RESOLVE_STORAGE_READ: 'resolve.storage_read',
 

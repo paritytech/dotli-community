@@ -11,8 +11,9 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import type { ChainTransportHooks } from './transportHooks.js';
-import { bindLogSink } from '@dotli/shared';
+import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_HEADER } from './jsonRpcMethods.js';
+import { RPC_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
+import { bindLogSink, isRecord } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
 import { encodeHeaderHex } from './testing/encodeHeaderHex.js';
@@ -26,13 +27,20 @@ type TransportRecord = {
   opened: number;
 };
 
-/** A pool factory that records every transport it builds, per chain. */
-function createTransports(supported: (genesisHash: string) => boolean = () => true): {
-  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+type TransportsParams = {
+  /** Whether the factory reaches a chain. Every chain by default. */
+  supported?: (genesisHash: string) => boolean;
+  /** The follow limit each transport states. */
+  followLimit?: number;
+};
+
+/** A pool factory that records every transport it builds, one per connection. */
+function createTransports({ supported = () => true, followLimit = Infinity }: TransportsParams = {}): {
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
   built: TransportRecord[];
 } {
   const built: TransportRecord[] = [];
-  function createTransport(genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider | null {
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
     if (!supported(genesisHash)) {
       return null;
     }
@@ -48,7 +56,7 @@ function createTransports(supported: (genesisHash: string) => boolean = () => tr
       opened: 0,
     };
     built.push(record);
-    return (onMessage): JsonRpcConnection => {
+    const provider: JsonRpcProvider = (onMessage): JsonRpcConnection => {
       listener = onMessage;
       record.opened += 1;
       return {
@@ -58,29 +66,31 @@ function createTransports(supported: (genesisHash: string) => boolean = () => tr
         disconnect: record.disconnect,
       };
     };
+    return { provider, followLimit };
   }
   return { createTransport, built };
 }
 
 /** Builds transports as `createTransports` does, except that `failing`'s transport throws on every open after its first. */
 function createReopenFailingTransports(failing: string): {
-  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
   built: TransportRecord[];
 } {
   const { createTransport: createBase, built } = createTransports();
-  function createTransport(genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider | null {
-    const provider = createBase(genesisHash, hooks);
-    if (provider === null || genesisHash !== failing) {
-      return provider;
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+    const base = createBase(genesisHash, hooks);
+    if (base === null || genesisHash !== failing) {
+      return base;
     }
     let opens = 0;
-    return onMessage => {
+    const provider: JsonRpcProvider = onMessage => {
       opens += 1;
       if (opens > 1) {
         throw new Error('reopen failed');
       }
-      return provider(onMessage);
+      return base.provider(onMessage);
     };
+    return { provider, followLimit: base.followLimit };
   }
   return { createTransport, built };
 }
@@ -95,6 +105,11 @@ function lease(
   }: { onMessage?: (message: JsonRpcMessage) => void; onHalt?: (error?: unknown) => void } = {},
 ): JsonRpcConnection {
   return must(pool.getLocalProvider(genesisHash), `provider for ${genesisHash}`)(onMessage, onHalt);
+}
+
+/** The requests of `method` a connection sent the node, in order. */
+function listMethod(record: TransportRecord, method: string): JsonRpcRequest[] {
+  return record.sent.filter(message => message.method === method);
 }
 
 describe('createChainPool', () => {
@@ -119,6 +134,41 @@ describe('createChainPool', () => {
     // Then
     expect(built.map(record => record.genesisHash)).toEqual(['0xaa', '0xbb']);
     expect(built.map(record => record.opened)).toEqual([1, 1]);
+  });
+
+  it('As a dotli integrator on an RPC chain, my fifth follow opens a second connection and my calls on it go there', () => {
+    // Given five leases on a chain whose transport takes four follows per connection
+    const { createTransport, built } = createTransports({ followLimit: RPC_FOLLOW_LIMIT });
+    const pool = createChainPool({ createTransport });
+    const firstFour = Array.from({ length: RPC_FOLLOW_LIMIT }, () => lease(pool, '0xaa'));
+    const replies: JsonRpcMessage[] = [];
+    const fifth = lease(pool, '0xaa', {
+      onMessage: message => {
+        replies.push(message);
+      },
+    });
+
+    // When each lease follows, the node answers the fifth follow, and the fifth lease asks for a header on it
+    for (const connection of [...firstFour, fifth]) {
+      connection.send({ jsonrpc: '2.0', id: 1, method: CHAIN_HEAD_FOLLOW, params: [true] });
+    }
+    const second = must(built[1], 'second connection');
+    const follow = must(listMethod(second, CHAIN_HEAD_FOLLOW)[0], 'fifth follow');
+    second.emit({ jsonrpc: '2.0', id: must(follow.id, 'follow id'), result: 'up-5' });
+    const answer: unknown = replies.find(reply => 'id' in reply && reply.id === 1 && 'result' in reply);
+    fifth.send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: CHAIN_HEAD_HEADER,
+      params: [isRecord(answer) ? answer['result'] : undefined, '0xb1'],
+    });
+
+    // Then the fifth follow opened a second connection, and the header went out on it only
+    expect(built.map(record => record.genesisHash)).toEqual(['0xaa', '0xaa']);
+    expect(built.map(record => listMethod(record, CHAIN_HEAD_FOLLOW).length)).toEqual([4, 1]);
+    expect(
+      built.map(record => listMethod(record, CHAIN_HEAD_HEADER).map((request): unknown => request.params)),
+    ).toEqual([[], [['up-5', '0xb1']]]);
   });
 
   it('As a dotli integrator, I release the last lease and the chain closes destroyDelay later, unless a new lease arrives first', async () => {
@@ -284,7 +334,7 @@ describe('createChainPool', () => {
 
   it('As a dotli integrator, I ask for a chain the factory cannot reach and nothing is built', () => {
     // Given
-    const { createTransport, built } = createTransports(genesisHash => genesisHash !== '0xbb');
+    const { createTransport, built } = createTransports({ supported: genesisHash => genesisHash !== '0xbb' });
     const pool = createChainPool({ createTransport });
 
     // When
@@ -315,7 +365,7 @@ describe('createChainPool', () => {
 
     // Then
     // An asymmetric matcher is typed any.
-    expect(duplicate).toMatchObject({ message: expect.stringContaining('Duplicate broker session') as string });
+    expect(duplicate).toMatchObject({ message: expect.stringContaining('Duplicate 0xaa… consumer') as string });
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
   });
@@ -748,24 +798,28 @@ describe('createChainPool watch', () => {
     expect(seen.best).toEqual([['0xaa', 8]]);
   });
 
-  it('As the network panel opening after a consumer follows with the runtime, I join its follow and get its best block', () => {
+  it('As the network panel opening after a consumer follows with the runtime, I follow on my own and get the best block', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
     const connection = lease(pool, '0xaa');
     const transport = must(built[0], 'transport');
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
-    const event = answerFollow(transport, 'up-1');
-    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    event({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
+    const consumerEvent = answerFollow(transport, 'up-1');
+    consumerEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    consumerEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
     const seen = createRecorder();
 
     // When
     pool.watch(seen.watcher);
+    const panelEvent = answerFollow(transport, 'up-2');
+    panelEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    panelEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
     answerHeader(transport, 7);
 
     // Then
-    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+    expect(transport.sent.filter(isFollow)).toHaveLength(2);
+    expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_header', params: ['up-2', '0xf0'] });
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
     expect(seen.best).toEqual([['0xaa', 7]]);
   });
@@ -794,7 +848,7 @@ describe('createChainPool watch', () => {
     expect(transport.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('As a consumer following with the runtime, I share the network panel follow rather than open another', () => {
+  it("As a consumer following with the runtime while the network panel watches, I get a follow of my own beside the panel's", () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -810,9 +864,10 @@ describe('createChainPool watch', () => {
 
     // When
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    answerFollow(transport, 'up-2');
 
     // Then
-    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+    expect(transport.sent.filter(isFollow).map((message): unknown => message.params)).toEqual([[true], [true]]);
     expect(replies.some(reply => 'id' in reply && reply.id === 1 && 'result' in reply)).toBe(true);
   });
 
@@ -866,6 +921,92 @@ describe('createChainPool watch', () => {
     // Then
     expect(seen.activity).toEqual([]);
   });
+
+  it('As the network panel, I watch a chain that cannot open a connection for my follow, and get my unwatch while that chain halts and the next is followed', () => {
+    // Given 0xaa's one connection full of its leases' follows, no second connection to it, and 0xbb held
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    let builds = 0;
+    const { createTransport, built } = createTransports({
+      followLimit: RPC_FOLLOW_LIMIT,
+      supported: genesisHash => {
+        if (genesisHash !== '0xaa') {
+          return true;
+        }
+        builds += 1;
+        return builds === 1;
+      },
+    });
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const halts: unknown[] = [];
+    for (let index = 0; index < RPC_FOLLOW_LIMIT; index += 1) {
+      const connection = lease(pool, '0xaa', {
+        onHalt: error => {
+          halts.push(error);
+        },
+      });
+      connection.send({ jsonrpc: '2.0', id: index, method: CHAIN_HEAD_FOLLOW, params: [true] });
+    }
+    lease(pool, '0xbb');
+
+    // When the network panel watches
+    const unwatch = pool.watch(createRecorder().watcher);
+
+    // Then the watch returns its unwatch, 0xaa's lane is reported and the chain halts every lease, and 0xbb is followed
+    expect(unwatch).toBeTypeOf('function');
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_lane_build' }]);
+    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(halts).toHaveLength(RPC_FOLLOW_LIMIT);
+    const other = must(
+      built.find(record => record.genesisHash === '0xbb'),
+      '0xbb transport',
+    );
+    expect(listMethod(other, CHAIN_HEAD_FOLLOW)).toHaveLength(1);
+  });
+
+  it('As the network panel, I watch a chain whose new connection throws as it opens, and get my unwatch with the chain still live', () => {
+    // Given 0xaa's one connection full of its leases' follows, and a second connection whose provider throws on opening
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport: createBase, built } = createTransports({ followLimit: RPC_FOLLOW_LIMIT });
+    let builds = 0;
+    function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+      const base = createBase(genesisHash, hooks);
+      builds += 1;
+      if (base === null || builds === 1) {
+        return base;
+      }
+      return {
+        ...base,
+        provider: () => {
+          throw new Error('open failed');
+        },
+      };
+    }
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const halts: unknown[] = [];
+    for (let index = 0; index < RPC_FOLLOW_LIMIT; index += 1) {
+      const connection = lease(pool, '0xaa', {
+        onHalt: error => {
+          halts.push(error);
+        },
+      });
+      connection.send({ jsonrpc: '2.0', id: index, method: CHAIN_HEAD_FOLLOW, params: [true] });
+    }
+
+    // When the network panel watches
+    const unwatch = pool.watch(createRecorder().watcher);
+
+    // Then the watch returns its unwatch, the failure is reported once, and no lease halted
+    expect(unwatch).toBeTypeOf('function');
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_watch_follow' }]);
+    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(halts).toEqual([]);
+    expect(built).toHaveLength(2);
+  });
 });
 
 describe('createChainPool pausing', () => {
@@ -909,12 +1050,13 @@ describe('createChainPool pausing', () => {
 
   it('As a dotli page on a transport that connects at once, I resume and read the chain as connected', () => {
     // Given
-    function createTransport(_genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider {
-      return () => {
+    function createTransport(_genesisHash: string, hooks: ChainTransportHooks): ChainTransport {
+      const provider: JsonRpcProvider = () => {
         hooks.onStatus('connecting');
         hooks.onStatus('connected');
         return { send: () => undefined, disconnect: () => undefined };
       };
+      return { provider, followLimit: Infinity };
     }
     const pool = createChainPool({ createTransport });
     lease(pool, '0xaa');

@@ -4,7 +4,7 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { catchError, createManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainTransportHooks } from '@dotli/chains';
+import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
 import { observeChains } from './observeChains.js';
 
 type Built = {
@@ -23,7 +23,7 @@ function createPool(destroyDelay: number, unsupported: readonly string[] = []) {
     built,
   };
 
-  function createTransport(genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider | null {
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
     if (unsupported.includes(genesisHash)) {
       return null;
     }
@@ -35,12 +35,13 @@ function createPool(destroyDelay: number, unsupported: readonly string[] = []) {
       },
     };
     built.push(record);
-    return (): JsonRpcConnection => ({
+    const provider: JsonRpcProvider = (): JsonRpcConnection => ({
       send() {
         /* requests are not under test */
       },
       disconnect: record.disconnect,
     });
+    return { provider, followLimit: Infinity };
   }
 }
 

@@ -1,16 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  getOwnerMethod,
-  RELEASE_METHODS,
-  TOKEN_METHODS,
-  type JsonRpcRequest,
-  type RequestOwner,
-} from './brokerMessages.js';
-
-/** The broker's requests in flight upstream, each with the one owner its answer goes to. */
-export type PendingRequests = ReturnType<typeof createPendingRequests>;
+import { RELEASE_METHODS, TOKEN_METHODS, type JsonRpcRequest, type RequestOwner } from './brokerMessages.js';
 
 type Params = {
   /** Posts a message upstream. */
@@ -56,15 +47,12 @@ export function createPendingRequests({ sendUpstream }: Params) {
 
   function isReleasing(upstreamToken: string): boolean {
     return [...pending.values()].some(
-      owner =>
-        owner.kind !== 'follow' &&
-        owner.upstreamToken === upstreamToken &&
-        (owner.kind === 'release' || RELEASE_METHODS.has(owner.method)),
+      owner => owner.upstreamToken === upstreamToken && (owner.kind === 'release' || RELEASE_METHODS.has(owner.method)),
     );
   }
 
   function hasSubscriptionRequest(): boolean {
-    return [...pending.values()].some(owner => owner.kind === 'follow' || TOKEN_METHODS.has(getOwnerMethod(owner)));
+    return [...pending.values()].some(owner => TOKEN_METHODS.has(owner.method));
   }
 
   function orphanSession(sessionId: string): void {

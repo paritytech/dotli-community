@@ -29,7 +29,7 @@ type MapTokenParams = {
 };
 
 /**
- * The upstream subscriptions sessions own, such as transaction watches and statement subscriptions, each under a local
+ * The upstream subscriptions sessions own, such as follows, transaction watches and statement subscriptions, each under a local
  * token of its own. Several sessions can own one upstream subscription, and it is released upstream with its last
  * owner.
  */
@@ -38,7 +38,7 @@ export function createOwnedTokens({ localTokenIds, addSessionToken, deleteSessio
   const upstreamToOwned = new Map<string, Set<string>>();
 
   function mapToken({ sessionId, upstreamToken, releaseMethod, method }: MapTokenParams): string {
-    const localToken = localTokenIds.takeNext({ prefix: 'token', sessionId });
+    const localToken = localTokenIds.takeNext({ sessionId });
     localToOwned.set(localToken, { sessionId, localToken, upstreamToken, releaseMethod });
     let localTokens = upstreamToOwned.get(upstreamToken);
     if (localTokens === undefined) {
@@ -61,6 +61,17 @@ export function createOwnedTokens({ localTokenIds, addSessionToken, deleteSessio
 
   function listLocalTokens(upstreamToken: string): string[] {
     return [...(upstreamToOwned.get(upstreamToken) ?? [])];
+  }
+
+  function countUpstream(releaseMethod: string): number {
+    let count = 0;
+    for (const localTokens of upstreamToOwned.values()) {
+      const [first] = localTokens;
+      if (first !== undefined && localToOwned.get(first)?.releaseMethod === releaseMethod) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   function release(localToken: string, notifyUpstream: boolean): { lastOwner: boolean } | null {
@@ -102,6 +113,8 @@ export function createOwnedTokens({ localTokenIds, addSessionToken, deleteSessio
     has,
     /** The local tokens that own `upstreamToken`, as a copy. Empty for a token nobody owns. */
     listLocalTokens,
+    /** The number of upstream subscriptions whose release is `releaseMethod`, each counted once however many own it. */
+    countUpstream,
     /**
      * Ends `localToken`'s ownership. Returns null for a token no session owns, or else whether it was the last owner of
      * its upstream subscription. The last owner's release goes upstream only when `notifyUpstream` is set.

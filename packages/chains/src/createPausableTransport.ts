@@ -14,7 +14,7 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from '@polkadot-api/json-rpc-provider';
-import { combineErrors } from '@dotli/shared';
+import { runEvery } from '@dotli/shared';
 import { createJsonRpcError } from './createJsonRpcError.js';
 import {
   CHAIN_HEAD_FOLLOW,
@@ -329,21 +329,6 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
     if (!closed) {
       onMessage(message);
     }
-  }
-}
-
-/** Runs every step, even past one that throws, and then throws the one `Error`, or an AggregateError otherwise. */
-function runEvery(steps: readonly (() => void)[], message: string): void {
-  const errors: unknown[] = [];
-  for (const step of steps) {
-    try {
-      step();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw combineErrors(errors, message);
   }
 }
 

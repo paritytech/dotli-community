@@ -5,31 +5,31 @@ import { describe, expect, it } from 'vitest';
 import { createLocalTokenIds } from './createLocalTokenIds.js';
 
 describe('createLocalTokenIds', () => {
-  it('As a session, I get a local token that names its kind, its number in base 36 and my session', () => {
+  it('As a session, I get a local token that names its number in base 36 and my session', () => {
     // Given
     const localTokenIds = createLocalTokenIds();
 
     // When
-    const token = localTokenIds.takeNext({ prefix: 'token', sessionId: 'local:0' });
+    const token = localTokenIds.takeNext({ sessionId: 'local:0' });
 
     // Then
     expect(token).toBe('token:0:local:0');
   });
 
-  it('As the broker, I number owned tokens and follows with one counter, so no two of them are the same', () => {
+  it('As the broker, I number owned tokens with one counter, so no two of them are the same', () => {
     // Given
     const localTokenIds = createLocalTokenIds();
 
     // When
     const tokens = [
-      localTokenIds.takeNext({ prefix: 'token', sessionId: 'a' }),
-      localTokenIds.takeNext({ prefix: 'follow', sessionId: 'a' }),
-      localTokenIds.takeNext({ prefix: 'token', sessionId: 'b' }),
-      localTokenIds.takeNext({ prefix: 'follow', sessionId: 'b' }),
+      localTokenIds.takeNext({ sessionId: 'a' }),
+      localTokenIds.takeNext({ sessionId: 'a' }),
+      localTokenIds.takeNext({ sessionId: 'b' }),
+      localTokenIds.takeNext({ sessionId: 'b' }),
     ];
 
     // Then
-    expect(tokens).toEqual(['token:0:a', 'follow:1:a', 'token:2:b', 'follow:3:b']);
+    expect(tokens).toEqual(['token:0:a', 'token:1:a', 'token:2:b', 'token:3:b']);
   });
 
   it('As the broker, I keep counting past every single base 36 digit, and the count never starts over', () => {
@@ -37,11 +37,11 @@ describe('createLocalTokenIds', () => {
     const localTokenIds = createLocalTokenIds();
 
     // When
-    const tokens = Array.from({ length: 38 }, () => localTokenIds.takeNext({ prefix: 'follow', sessionId: 's' }));
+    const tokens = Array.from({ length: 38 }, () => localTokenIds.takeNext({ sessionId: 's' }));
 
     // Then
-    expect(tokens.slice(9, 11)).toEqual(['follow:9:s', 'follow:a:s']);
-    expect(tokens.slice(35)).toEqual(['follow:z:s', 'follow:10:s', 'follow:11:s']);
+    expect(tokens.slice(9, 11)).toEqual(['token:9:s', 'token:a:s']);
+    expect(tokens.slice(35)).toEqual(['token:z:s', 'token:10:s', 'token:11:s']);
     expect(new Set(tokens).size).toBe(38);
   });
 });

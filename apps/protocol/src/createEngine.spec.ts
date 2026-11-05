@@ -3,13 +3,8 @@
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { catchError, must } from '@dotli/shared/testing';
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-  JsonRpcProvider,
-  JsonRpcRequest,
-} from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainTransportHooks } from '@dotli/chains';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import { getBudget, protocolSchema, type RemoteFailure } from '@dotli/protocol';
 import {
@@ -64,7 +59,7 @@ function createTransports() {
     built,
   };
 
-  function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider {
+  function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport {
     let listener: ((message: JsonRpcMessage) => void) | null = null;
     const record: TransportRecord = {
       genesisHash,
@@ -76,7 +71,7 @@ function createTransports() {
       disconnect: vi.fn<() => void>(),
     };
     built.push(record);
-    return connect;
+    return { provider: connect, followLimit: Infinity };
 
     function connect(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
       listener = onMessage;
