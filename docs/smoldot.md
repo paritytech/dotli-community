@@ -51,7 +51,7 @@ The light client adds a chain from its genesis hash alone, through truapi-provid
 
 `BUILTIN_NETWORK_SERVICES` lives in `packages/config/src/networkServices.ts`, and `getChainRoleForGenesis` maps a genesis hash back to its role.
 
-There is exactly one Asset Hub chain in the chain pool `startLightClientService` opens, shared by the resolver and every dApp session through the pool's `ChainBroker`. The broker opens a single follow that is never removed mid-read. The resolver reads through a local broker session (`requireBrokerLocalProvider` over the pool's `getLocalProvider`), and dApp connections attach as remote sessions on the same follow. This replaced the earlier resolver/product chain split. In that split the resolver's chain was released once the CID was cached, so the first dApp connection releasing that follow mid-read produced the `ChainHead disjointed` load failure.
+There is exactly one Asset Hub chain in the chain pool `startLightClientService` opens, used by the resolver and every dApp session through the pool. The resolver and each dApp session hold follows of their own on the pool's Asset Hub lanes, so one session leaving never ends another's follow. The resolver reads through a local broker session (`requireBrokerLocalProvider` over the pool's `getLocalProvider`), and dApp connections attach as remote sessions. This replaced the earlier resolver/product chain split. In that split the resolver's chain was released once the CID was cached, so the first dApp connection releasing that follow mid-read produced the `ChainHead disjointed` load failure.
 
 `getActiveSupportedGenesisHashes()` contains the active network's relay, Asset
 Hub, Bulletin, and People chains. `isChainSupported` in
@@ -101,7 +101,7 @@ Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's 
 
 ## Failure modes
 
-- **Light client fatal.** A failed engine start, or a chain that fails before it connects, marks the light client fatal (`markFatal`). `subscribe` hears it as a `fatal` change, and `status()` keeps it, since it never clears. In direct mode the frame fails its boot with a `ProtocolFatalError`. In the SharedWorker `startProtocolWorker` ends every port's status with one. The host client rejects every pending request with it. Recovery requires a new frame.
+- **Light client fatal.** A failed engine start, or a chain that fails before it connects, marks the light client fatal (`markFatal`). `subscribe` hears it as a `fatal` change, and `status()` keeps it, since it never clears. In direct mode the frame fails its boot with a `ProtocolFatalError`. In the SharedWorker `startProtocolWorker` ends every port's status with one. The host client rejects every pending request with it. Recovery requires a new frame. A connect past truapi-provider's connection cap halts only its chain and is not fatal.
 - **CPU long-task warnings.** Smoldot's WASM warns when a single Rust `poll()` blocks the thread for at least 150ms (smoldot upstream `wasm-node/rust/src/platform.rs:167`). Format: `` The task named `add-chain-N` has occupied the CPU for an unreasonable amount of time (Xms). `` The `N` suffix comes from the spawned task name. How the counter is scoped (per-client vs. process-global) has not been verified, so do not infer correlations from `N` alone.
 - **Chain halts.** smoldot never reconnects underneath its consumers. A chain whose read fails after it connected, or whose stream ends unasked, halts: its provider reports `disconnected` and then the halt through `ChainTransportHooks`.
 
@@ -134,4 +134,4 @@ RPC Gateway serves a chain only if it has `rpcs` endpoints and is listed in
 
 ## Related
 
-- [Resolution design](resolution-design.md). Cold-start latency distribution and the shared Asset Hub follow via the broker.
+- [Resolution design](resolution-design.md). Cold-start latency distribution.

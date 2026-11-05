@@ -80,7 +80,8 @@ In simple terms:
 
 - **The host page** has its own pool. Products' chain calls (through the
   TrUAPI core), name resolution in `rpc-gateway` and the settings probe all
-  lease from it, so the host page holds one connection per chain.
+  lease from it, so the host page holds one pool entry per chain. The entry's
+  lanes may open more than one connection to it.
 - **The network panel** leases nothing. `ChainPool.watch` reports each
   chain's leases, status, follow and best-block numbers. A chain someone holds
   is followed for the panel, so its blocks keep coming when its holder does
@@ -100,8 +101,8 @@ In simple terms:
   engine scope. The iframe opens one scope for its tab. In
   `smoldot-shared-worker` the worker opens one per port, which is one tab's
   iframe, with no worker-wide cap: its pool shares the chains between tabs.
-  Through the host pool a tab holds at most one connection per chain, plus
-  bitswap's.
+  Through the host pool a tab holds one pool entry per chain, whose lanes may
+  open more than one connection, plus bitswap's.
 
 Which transport a pool builds depends on the backend:
 
@@ -124,27 +125,42 @@ wakes, and its next message makes the worker serve its port again.
 
 ```mermaid
 flowchart TB
-  L1["lease: local:0<br/>(e.g. resolver)"] --> B
-  L2["lease: remote:origin id<br/>(e.g. an app's connection)"] --> B
-  L3["lease: remote:origin id"] --> B
+  L1["lease: local:0<br/>(e.g. resolver)"] --> R
+  L2["lease: remote:origin id<br/>(e.g. an app's connection)"] --> R
+  L3["lease: remote:origin id"] --> R
   subgraph Entry["One entry per chain (genesis hash)"]
-    B["Chain broker<br/>rewrites ids and tokens,<br/>shares chainHead follows"]
-    G["Watch guard<br/>ends transaction watches<br/>with 'dropped' on disconnect"]
-    T["Transport<br/>(RPC socket or smoldot chain)"]
-    B --> G --> T
+    R["Lane router (one per lease)<br/>picks a lane for each request and follow"]
+    subgraph Lane0["Lane 0"]
+      B0["Chain broker<br/>rewrites ids and tokens"] --> G0["Watch guard<br/>ends transaction watches<br/>with 'dropped' on disconnect"] --> T0["Transport<br/>(RPC socket or smoldot chain)"]
+    end
+    subgraph LaneN["Lane 1, 2, ... (when follows overflow)"]
+      BN["Chain broker"] --> GN["Watch guard"] --> TN["Transport"]
+    end
+    R --> B0
+    R --> BN
   end
-  T -- "status: connecting / connected / disconnected" --> P["Pool status"]
-  T -- "halt" --> P
+  Lane0 -- "status: connecting / connected / disconnected, halt" --> P["Pool status<br/>(the lanes combine each lane's status)"]
+  LaneN -- "status, halt" --> P
 ```
 
-- **Entry**: one per chain, built on the first lease. It holds the transport,
-  a watch guard and a broker.
+- **Entry**: one per chain, built on the first lease. It holds the chain's
+  lanes.
 - **Broker** (`createChainBroker`): many sessions share one transport. It rewrites
   every request id and subscription token so sessions cannot see or answer
-  each other's traffic, and shares one `chainHead_v1_follow` between them.
-- **Lease**: a broker session. Local leases are named `local:N`; remote ones
-  `remote:<origin> <connectionId>`, so ids from different sites never collide
-  and one site cannot reach another's connection.
+  each other's traffic. Each session's `chainHead_v1_follow` is its own
+  upstream follow.
+- **Lanes**: a lane is one connection with its own broker, watch guard and
+  transport. A chain's node limits its follows: 4 per RPC socket, 2 per
+  light-client connection, and none for the frame link. Each consumer has a
+  home lane for every request that names no follow. A follow goes to a lane
+  with room under the limit, and an overflow follow opens a new lane. The
+  follow's later calls go to the same lane. Lane 0 lasts as long as the
+  chain, and every extra lane closes once it is empty.
+- **Lease**: a consumer of the chain's lanes, with a home session on one lane
+  and a session on another lane for each follow that overflows there. Local
+  leases are named `local:N`; remote ones `remote:<origin> <connectionId>`, so
+  ids from different sites never collide and one site cannot reach another's
+  connection.
 - **Refcount**: the pool counts leases. When the last one is returned, the
   destroy delay starts; a new lease cancels it.
 - **Watch guard**: transaction watches cannot be safely replayed, so on a
@@ -154,12 +170,11 @@ flowchart TB
   past its destroy delay. A new watcher first hears every chain held now.
 - **Watch follow**: while the pool is watched, each held chain carries one
   extra broker session, `watch:N`, that follows with the runtime, as
-  polkadot-api does, so a product's follow shares it upstream. It is not a
-  lease. It numbers each best block from its `chainHead_v1_header`, unpins a
-  block once finalization passes it, follows again after a `stop`, and is
-  closed when the last lease is returned, before the watchers hear the chain
-  has no consumers. The frame and SharedWorker pools are never watched, so
-  they send nothing extra. With `VITE_APP_DEBUG`, the pool logs every lease, release,
+  polkadot-api does. It is not a lease. It numbers each best block from its
+  `chainHead_v1_header`, unpins a block once finalization passes it, follows
+  again after a `stop`, and is closed when the last lease is returned, before
+  the watchers hear the chain has no consumers. The frame and SharedWorker
+  pools are never watched, so they send nothing extra. With `VITE_APP_DEBUG`, the pool logs every lease, release,
   open and close under `[dot.li chain-pool]`, naming each lease's holder
   (`truapi-core`, `resolver`, `host`, `sync-observer`, `remote:<id>`).
 
@@ -379,7 +394,8 @@ sequenceDiagram
 
 - A fatal is only raised when the light client **cannot connect a chain**. A
   crashed light client shows up that way: every chain halts, consumers
-  reconnect, and the first reconnect fails.
+  reconnect, and the first reconnect fails. A connect past truapi-provider's
+  connection cap halts only its chain and is not fatal.
 - In the SharedWorker a fatal **ends the worker**: it tells every port why,
   then closes. A tab that connects before the close lands gets the same error.
   A closing SharedWorker is never matched by name, so the next connect, from a
