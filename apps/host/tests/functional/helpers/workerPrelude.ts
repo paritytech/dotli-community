@@ -23,16 +23,20 @@ export async function prependToWorker(context: BrowserContext, pattern: string, 
   const chain = [prelude];
   byPattern.set(pattern, chain);
   await context.route(pattern, async route => {
-    // A fetch the closing page cut short has no script to patch, so the request goes on as it was.
-    const response = await route.fetch().catch(() => null);
-    if (response === null) {
+    // A fetch the closing page cut short, during the request or while its body is read, has no script to patch, so
+    // the request goes on as it was.
+    const fetched = await route
+      .fetch()
+      .then(async response => ({ response, script: await response.text() }))
+      .catch(() => null);
+    if (fetched === null) {
       await route.continue();
       return;
     }
     await route.fulfill({
-      response,
-      body: chain.join('\n') + (await response.text()),
-      headers: { ...response.headers(), 'content-type': 'application/javascript' },
+      response: fetched.response,
+      body: chain.join('\n') + fetched.script,
+      headers: { ...fetched.response.headers(), 'content-type': 'application/javascript' },
     });
   });
 }
