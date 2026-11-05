@@ -32,7 +32,10 @@ and no finding parked as a follow-up (.claude/skills/architecture/SKILL.md § Re
      step 5b.
 
 **Cost of a run.** The time of a run is model turns. Read the diff once. Open a file beyond the diff only to settle a
-finding. Check named paths, symbols and exports in a few batched commands, never one lookup per name.
+finding. Check named paths and exports in a few batched commands, never one lookup per name. Answer a symbol question
+(its users, its definition, its type) with LSP: load it with `ToolSearch` (`select:LSP`) before the first lookup, and
+send independent LSP calls in one turn. Grep only plain text, config and non-TypeScript files, or after an LSP call
+fails, and name that failure in the report.
 
 2. **Recover the intent, the frame first, then the scope.** Two different yardsticks, and the plan gives you only the
    second.

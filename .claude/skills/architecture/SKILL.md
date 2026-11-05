@@ -293,9 +293,9 @@ Brainstorming and planning both carry it:
 
 ### Plan review
 
-Dispatch each pass as a fresh subagent. Its inputs are the plan path, the approved design path and the criteria below.
-Never review the plan yourself: you know what you meant, so you read the gaps as filled. That blindness is the reason
-for the gate.
+Dispatch each pass as a fresh subagent. Its inputs are the plan path, the approved design path, the criteria below and
+the symbol lookups that "Briefs" sets. Never review the plan yourself: you know what you meant, so you read the gaps as
+filled. That blindness is the reason for the gate.
 
 Passes run one at a time, each on the plan as the previous one left it. A parallel pass would audit text that is being
 rewritten.
@@ -355,8 +355,9 @@ verify:
   at the wrong file.
 - Each "Defined by the plan" line and each "as the plan says" line is a name the check took from the plan. The pass
   confirms that a task adds it, or that the package exports it.
-- It looks up only what the check does not cover, such as a package export, a script in `package.json` or a command's
-  flags, in a few batched commands.
+- It looks up only what the check does not cover. A symbol question, such as who uses a name, where it is defined or
+  what its type is, goes to LSP as "Briefs" sets. A package export, a script in `package.json` or a command's flags go
+  in a few batched commands.
 
 A pass returns "no gaps" or findings. The brief asks for a severity on each finding and gives these definitions:
 
@@ -420,6 +421,16 @@ the plan, is its controller.
 Every implementer and batch reviewer brief states the Architecture gate outright. It also carries the dotli context:
 placement is fixed, the vocabulary holds, code follows `docs/code/style.md`, and tests follow their owner docs. A batch
 reviewer checks the code against (docs/claude/code-checklist.md § Code shape).
+
+Every brief of a subagent that reads code, plan-review passes and `reviewer` runs included, states how it looks up
+symbols. LSP is a deferred tool, and a subagent that is not told to load it greps instead:
+
+- Load LSP with `ToolSearch` (`select:LSP`) before the first lookup.
+- Answer a symbol question with LSP: `findReferences` for who uses a symbol, `workspaceSymbol` or `goToDefinition` for
+  where it is defined, `hover` for its type. Grep matches comments, strings and lookalike names, and misses re-exports.
+- Send independent LSP calls in one turn, so a lookup per symbol costs no extra turns.
+- Grep only plain text, config, Markdown and non-TypeScript files, or after an LSP call fails. The report names the
+  failure, so a broken language server surfaces instead of hiding behind the fallback.
 
 Every implementer brief also carries these bans in words, in one file per stage that each brief names:
 
