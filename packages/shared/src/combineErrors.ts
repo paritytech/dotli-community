@@ -4,19 +4,6 @@
 /**
  * Returns the one error when exactly one `Error` failed, and an `AggregateError` of all of them otherwise. Callers
  * pass at least one error. Never throws.
- *
- * @example
- * const errors: unknown[] = [];
- * for (const step of steps) {
- *   try {
- *     step();
- *   } catch (error) {
- *     errors.push(error);
- *   }
- * }
- * if (errors.length > 0) {
- *   throw combineErrors(errors, 'closing every step failed');
- * }
  */
 export function combineErrors(errors: readonly unknown[], message: string): Error {
   const [only] = errors;
