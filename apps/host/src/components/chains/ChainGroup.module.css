@@ -23,8 +23,9 @@
   overflow: hidden;
   text-align: left;
 }
-/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. */
-.group-label[data-state='unused'],
+/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. Its "Not in use" chip
+   stays at full strength, as faded muted text falls below readable contrast. */
+.group-label[data-state='unused'] .name,
 .cell[data-state='unused'] {
   opacity: 0.5;
 }
