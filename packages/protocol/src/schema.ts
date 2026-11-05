@@ -85,7 +85,7 @@ const localWalletRead = Enum({
 export type LocalWalletRead = CodecType<typeof localWalletRead>;
 
 export const protocolSchema = defineSchema({
-  version: 5,
+  version: 6,
   hello: resolutionHello,
   sections: {
     frame: {
@@ -100,6 +100,8 @@ export const protocolSchema = defineSchema({
         receive: telemetryEventCodec,
         interrupt: Result(_void, callError(_void)),
       }),
+      // The host page sends it to its frame, and a frame in SharedWorker mode forwards it to the worker.
+      pause: request({ request: Struct({ paused: bool }), response: _void }),
     },
     resolve: {
       owner: request({ request: label, response: nullableString, error: remoteFailure }),

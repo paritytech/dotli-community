@@ -212,6 +212,7 @@ const cases: Cases = {
       ],
       interrupts: [ok()],
     }),
+    pause: createRequestCase(frame.pause, { request: { paused: true }, responses: [ok()] }),
   },
   resolve: {
     owner: createRequestCase(resolve.owner, {

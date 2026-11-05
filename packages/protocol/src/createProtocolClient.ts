@@ -4,6 +4,7 @@
 // The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
 import { realTimers } from '@dotli/shared';
+import { createFramePauseSender } from './createFramePauseSender.js';
 import { createFrameRpc } from './createFrameRpc.js';
 import { createFrameTelemetry } from './createFrameTelemetry.js';
 import { createProtocolFrame } from './createProtocolFrame.js';
@@ -24,6 +25,7 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
   const timers = params.timers ?? realTimers;
   const rpc = createFrameRpc({ frame, timers });
   const { status, auth, mode, wallet } = createSharedStore({ frame, rpc, timers });
+  const pause = createFramePauseSender({ frame, rpc });
   return {
     /** The protocol frame's lifecycle: its config, readiness and status. */
     frame: {
@@ -60,6 +62,10 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
        */
       configure: (config: ProtocolFrameConfig): void => {
         frame.configure(config);
+      },
+      /** Sends `paused` to the frame now if it is ready, and `true` to each later frame once it is ready. Never throws. */
+      setPaused: (paused: boolean): void => {
+        pause.setPaused(paused);
       },
     },
     /**

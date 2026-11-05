@@ -143,6 +143,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   const syncListeners = new Set<(event: ChainSyncEvent) => void>();
   const disconnects: Mock<() => void>[] = [];
   const chains: string[] = [];
+  const opened: string[] = [];
   const syncReporting: { chains: readonly string[]; openBefore: number }[] = [];
   let fatal: string | null = null;
   let resolverParams: ResolverParams | null = null;
@@ -160,7 +161,10 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
         }
       });
       disconnects.push(disconnect);
-      return (): JsonRpcConnection => ({ send: () => undefined, disconnect });
+      return (): JsonRpcConnection => {
+        opened.push(genesisHash);
+        return { send: () => undefined, disconnect };
+      };
     },
     isChainSupported: () => true,
     status: () => ({ fatal, db: new Map(db) }),
@@ -232,6 +236,8 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
     disconnects,
     /** The genesis hash of each chain the worker opened, in order. */
     chains,
+    /** The genesis hash of each connection the worker opened, in order, a resume's included. */
+    opened,
     /** What the worker built its name resolver on. Throws before the worker built it. */
     readResolverParams: (): ResolverParams => must(resolverParams, 'resolver params'),
     /** Each sync reporting call, with how many chains were already open when it came. */
@@ -497,11 +503,15 @@ async function bootWorker(
   }
 }
 
-/** A worker lifecycle on its own, with a heartbeat and timers the test moves and a worker global that records its close. */
+/**
+ * A worker lifecycle on its own, with a heartbeat and timers the test moves, a worker global that records its close,
+ * and a record of each change in whether every tab asks for a pause.
+ */
 function startLifecycle() {
   const heartbeat = createTestTicker();
   const timers = createManualTimers();
   const close = vi.fn<() => void>();
+  const everyTabPaused: boolean[] = [];
   const lifecycle = createWorkerLifecycle({
     scope: { close },
     status: createFrameStatus(),
@@ -509,8 +519,11 @@ function startLifecycle() {
     startHeartbeat: heartbeat.startTicker,
     timers,
     initialFailure: null,
+    onEveryTabPausedChange: paused => {
+      everyTabPaused.push(paused);
+    },
   });
-  return { lifecycle, heartbeat, timers, close };
+  return { lifecycle, heartbeat, timers, close, everyTabPaused };
 }
 
 /** A session `lifecycle` admitted, on the worker's end of a fresh port pair, whose tab never speaks. */
@@ -1531,6 +1544,27 @@ describe('protocol SharedWorker', () => {
     // Then nothing threw
     expect(thrown).toBeUndefined();
   });
+
+  it('As the shared worker, I close my chains once my only tab asks for a pause, and open them again when it resumes', async () => {
+    // Given a synced worker serving one tab, and the connections its chains opened
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+    const tab = worker.connect();
+    const opened = [...light.opened];
+
+    // When the tab asks for a pause
+    await tab.transport.request(frame.pause, { paused: true });
+
+    // Then each of those connections was disconnected
+    expect(opened.length).toBeGreaterThan(0);
+    expect(light.disconnects.map(disconnect => disconnect.mock.calls.length)).toEqual(opened.map(() => 1));
+
+    // When the tab asks to resume
+    await tab.transport.request(frame.pause, { paused: false });
+
+    // Then each of those connections was opened a second time
+    expect([...light.opened].sort()).toEqual([...opened, ...opened].sort());
+  });
 });
 
 describe('worker lifecycle', () => {
@@ -1561,5 +1595,100 @@ describe('worker lifecycle', () => {
 
     // Then no beat runs
     expect(heartbeat.countRunning()).toBe(0);
+  });
+
+  it('As the shared worker, I hear that every tab asks for a pause once my last tab does', () => {
+    // Given a lifecycle serving two tabs, the first of which asks for a pause
+    const { lifecycle, everyTabPaused } = startLifecycle();
+    const first = openSession(lifecycle);
+    const second = openSession(lifecycle);
+    lifecycle.markPaused(first, true);
+    const heardBeforeLast = [...everyTabPaused];
+
+    // When the second tab asks for a pause too
+    lifecycle.markPaused(second, true);
+
+    // Then only the last ask was heard, as every tab paused
+    expect(heardBeforeLast).toEqual([]);
+    expect(everyTabPaused).toEqual([true]);
+    expect(lifecycle.isEveryTabPaused()).toBe(true);
+  });
+
+  it('As the shared worker, I hear the pause end when a paused tab resumes or a new tab connects', () => {
+    // Given a lifecycle serving two tabs that both ask for a pause
+    const { lifecycle, everyTabPaused } = startLifecycle();
+    const first = openSession(lifecycle);
+    const second = openSession(lifecycle);
+    lifecycle.markPaused(first, true);
+    lifecycle.markPaused(second, true);
+
+    // When the first tab resumes, asks for a pause again, and a new tab then connects
+    lifecycle.markPaused(first, false);
+    lifecycle.markPaused(first, true);
+    openSession(lifecycle);
+
+    // Then each change was heard once, in order, and the pause ended with the new tab
+    expect(everyTabPaused).toEqual([true, false, true, false]);
+    expect(lifecycle.isEveryTabPaused()).toBe(false);
+  });
+
+  it("As the shared worker, I hear every tab paused once my only unpaused tab's port closes", () => {
+    // Given a lifecycle serving a paused tab and an unpaused one
+    const { lifecycle, everyTabPaused } = startLifecycle();
+    const paused = openSession(lifecycle);
+    const unpaused = openSession(lifecycle);
+    lifecycle.markPaused(paused, true);
+
+    // When the unpaused tab's port closes
+    lifecycle.closePort(unpaused);
+
+    // Then every tab left asks for a pause
+    expect(everyTabPaused).toEqual([true]);
+  });
+
+  it('As the shared worker, I hear every tab paused once the heartbeat releases my only unpaused tab', () => {
+    // Given a lifecycle serving a paused tab and an unpaused one
+    const { lifecycle, heartbeat, everyTabPaused } = startLifecycle();
+    const paused = openSession(lifecycle);
+    openSession(lifecycle);
+    lifecycle.markPaused(paused, true);
+
+    // When the heartbeat runs past the beats it allows, while only the paused tab speaks
+    for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
+      lifecycle.markAlive(paused);
+      heartbeat.tick();
+    }
+
+    // Then the release of the silent tab left every tab paused
+    expect(everyTabPaused).toEqual([true]);
+  });
+
+  it('As the shared worker whose last paused tab left, I hear the pause end when a new tab connects', () => {
+    // Given a lifecycle whose only tab asked for a pause and left
+    const { lifecycle, everyTabPaused } = startLifecycle();
+    const session = openSession(lifecycle);
+    lifecycle.markPaused(session, true);
+    lifecycle.closePort(session);
+
+    // When a new tab connects
+    openSession(lifecycle);
+
+    // Then the pause ended
+    expect(everyTabPaused).toEqual([true, false]);
+    expect(lifecycle.isEveryTabPaused()).toBe(false);
+  });
+
+  it('As the shared worker whose last tab left, I keep my pause state', () => {
+    // Given a lifecycle serving one tab that asks for a pause
+    const { lifecycle, everyTabPaused } = startLifecycle();
+    const session = openSession(lifecycle);
+    lifecycle.markPaused(session, true);
+
+    // When its port closes
+    lifecycle.closePort(session);
+
+    // Then nothing more was heard, and the pause holds
+    expect(everyTabPaused).toEqual([true]);
+    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 });

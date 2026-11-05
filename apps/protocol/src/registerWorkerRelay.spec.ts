@@ -188,6 +188,24 @@ describe('the worker relay', () => {
     expect(contexts.get('resolve.owner')).toEqual(LINK_CONTEXT);
   });
 
+  it("As a tab on the shared worker, my host's pause reaches the worker", async () => {
+    // Given a worker that records each pause it hears
+    const paused: boolean[] = [];
+    const { host } = linkHops(worker => {
+      worker.handleRequest(frame.pause, ({ paused: isPaused }) => {
+        paused.push(isPaused);
+        return ok();
+      });
+    });
+
+    // When the host pauses its network
+    const answer = await host.request(frame.pause, { paused: true });
+
+    // Then the worker heard the pause and its answer reached the host
+    expect(paused).toEqual([true]);
+    expect(answer).toEqual(ok());
+  });
+
   it('As the host in shared-worker mode, I read manifests and the worker answers me through the iframe', async () => {
     // Given a worker that serves both manifest reads
     const executableAnswer: ExecutableAnswer['value'] = {

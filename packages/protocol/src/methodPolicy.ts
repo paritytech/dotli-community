@@ -48,6 +48,7 @@ const POLICIES = {
   // A smoldot panic rejects it through the frame's status, and the user can abandon it from "Change settings".
   'frame.warmup': definePolicy('warmup', { trailed: true, budgetMs: null }),
   'frame.telemetry': definePolicy('telemetry'),
+  'frame.pause': definePolicy('framePause', { timed: false }),
   'resolve.owner': definePolicy('resolveOwner', RESOLVE_STEP_OPTIONS),
   'resolve.executableManifest': definePolicy('resolveExecutableManifest', RESOLVE_STEP_OPTIONS),
   'resolve.rootManifest': definePolicy('resolveRootManifest', RESOLVE_STEP_OPTIONS),

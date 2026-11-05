@@ -123,6 +123,7 @@ export function startProtocolWorker({
     startHeartbeat,
     timers,
     initialFailure: networkInitFailure === null ? null : new ProtocolInitFailedError(networkInitFailure),
+    onEveryTabPausedChange: applyEveryTabPaused,
   });
   // Only this worker can meter the light client every tab shares, so every tab hears its total from one meter.
   const subscribeNetBytes =
@@ -135,6 +136,17 @@ export function startProtocolWorker({
     // A tab that subscribes once the chains are synced paid no sync cost, so the reads before it are hits.
     hasJoinedSynced: () => lifecycle.getPhase().name === 'ready',
   });
+
+  function applyEveryTabPaused(paused: boolean): void {
+    if (service === null) {
+      return;
+    }
+    if (paused) {
+      service.pool.pause();
+    } else {
+      service.pool.resume();
+    }
+  }
 
   function requireEngine(): ProtocolEngine {
     if (engine === null) {
@@ -165,6 +177,11 @@ export function startProtocolWorker({
     transport.handleSubscription(frame.beat, (_start, _context, sink) => lifecycle.addBeatSink(session, sink));
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest(frame.heartbeat, () => ok());
+    // The worker pauses only while every tab it serves asks.
+    transport.handleRequest(frame.pause, ({ paused }) => {
+      lifecycle.markPaused(session, paused);
+      return ok();
+    });
     // The engine and the tab's scope are made on first use, so each method asks for them when called. A failure is
     // logged under its call name, and reaches the tab as the call's answer.
     const reporting = withRefusalReports(transport, ({ method, error }) => {
@@ -251,6 +268,9 @@ export function startProtocolWorker({
     try {
       const started = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
       service = started;
+      if (lifecycle.isEveryTabPaused()) {
+        started.pool.pause();
+      }
       const { dotns } = started;
       engine = createEngine({
         pool: started.pool,
