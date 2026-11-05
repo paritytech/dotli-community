@@ -17,7 +17,7 @@ pool that shares one connection per chain among its consumers.
 
 ```mermaid
 flowchart LR
-  consumer --> pool[chain pool] --> broker[broker session] --> guard[watch guard] --> transport
+  consumer --> pool[chain pool] --> broker[broker session] --> guard[watch guard] --> pausing[pausing wrapper] --> transport
   transport --> lc["light client: smoldot, saved database"] --> peers
   transport --> gw["gateway provider: WebSocket, replay"] --> rpc[trusted RPC node]
   lc -. lifecycle snapshots .-> sync[sync reporting]
@@ -34,6 +34,11 @@ flowchart LR
   broker session. An entry closes after its last lease is released, and at once when its transport halts. A chain whose
   teardown fails is reported, and the pool still closes the others. A watcher sees each held chain's activity and best
   block.
+- The pool pauses and resumes its chains at once, keeping every lease. A pausing wrapper under the watch guard closes a
+  chain's connection on a pause and opens it again on a resume, while the sessions above stay connected. A chain built
+  while paused starts closed. A resume leaves a chain that only waits out its destroy delay closed until a lease takes
+  it. A chain that fails to pause or resume is reported and halted, and the pool goes on with the others. A lease that
+  finds its chain failing to reopen gets a chain built in its place.
 - The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
   which gets the answer: a session, a shared follow, a release the broker sent itself, or a session that left, whose
   answered subscription is released at once. Events the node still sends for a subscription that is being released, by

@@ -29,8 +29,9 @@ export const spans = {
   PROTOCOL_SESSION_TUNING: 'protocol.session_tuning',
 
   /**
-   * Count. A held chain whose teardown threw as the pool closed it. Tagged `outcome` (error) and `reason` (the error's
-   * name).
+   * Count. A held chain whose teardown threw as the pool closed it, or whose pause or resume threw, told apart by the
+   * `step` tag (`chain_pool_close`, `chain_pool_pause`, `chain_pool_resume`). Tagged `outcome` (error) and
+   * `reason` (the error's name).
    */
   CHAIN_POOL_CLOSE: 'chain_pool.close',
 
@@ -183,6 +184,11 @@ export const spans = {
    * worker lets go of its port. Tagged `outcome` (error) and `reason` (the error's name).
    */
   PROTOCOL_WORKER_HEARTBEAT: 'protocol.worker_heartbeat',
+
+  /**
+   * A pause the host could not send to its frame. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PROTOCOL_FRAME_PAUSE: 'protocol.frame_pause',
 
   /**
    * A shared auth or wallet change the protocol frame could not post to the other tabs, tagged `outcome` (error) and
