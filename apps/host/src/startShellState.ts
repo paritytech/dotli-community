@@ -10,10 +10,13 @@ import { chatPanelState } from './state/chatPanelState.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { networkHealthState } from './state/networkHealthState.js';
 import { pageTheme } from './createThemeController.js';
+import { networkPause } from './runtime/createNetworkPause.js';
+import { networkMonitorState } from './state/networkMonitorState.js';
 
 /**
- * Starts the theme, network health, chat panel, product permission and topbar auto-hide state, once a page.
- * Each lasts the page's life, so their stops go unused. Throws only as one of them does.
+ * Starts the theme, network health, chat panel, product permission and topbar auto-hide state, and has the network
+ * monitor start over on each return to the page, once a page. Each lasts the page's life, so their stops go unused.
+ * Throws only as one of them does.
  */
 export function startShellState(): void {
   topbarState.setPresent();
@@ -22,4 +25,5 @@ export function startShellState(): void {
   chatPanelState.start();
   productPermissions.start();
   pageTopbarAutoHide.start();
+  networkPause.onReturn(networkMonitorState.recordReturn);
 }

@@ -26,6 +26,22 @@ function createTrackerHarness() {
   return { tracker: createPhoneRequestTracker({ reportUndecodable, decode }), reportUndecodable, decode };
 }
 
+/** A tracker whose network holds are counted, each release acting once as the real one does. */
+function createHoldHarness() {
+  const holds = { open: 0 };
+  const holdNetwork = () => {
+    let released = false;
+    holds.open += 1;
+    return () => {
+      if (!released) {
+        released = true;
+        holds.open -= 1;
+      }
+    };
+  };
+  return { tracker: createPhoneRequestTracker({ holdNetwork }), holds };
+}
+
 function isSignRaw(request: PhoneRequest): boolean {
   return request.method === 'signRaw';
 }
@@ -341,5 +357,63 @@ describe('phone request tracker', () => {
     expect(decodesBeforeAnswer).toBe(0);
     expect(decode).toHaveBeenCalledOnce();
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
+  });
+
+  it("As a user asked to approve in Polkadot App, my page's network stays awake until the app answers", () => {
+    // Given
+    const { tracker: requests, holds } = createHoldHarness();
+    const tap = requests.connect();
+
+    // When
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+    const heldWhileAsked = holds.open;
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED }));
+
+    // Then
+    expect(heldWhileAsked).toBe(1);
+    expect(holds.open).toBe(0);
+  });
+
+  it("As a user with two requests to Polkadot App, my page's network stays held until both are answered", () => {
+    // Given
+    const { tracker: requests, holds } = createHoldHarness();
+    const tap = requests.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
+
+    // When
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED }));
+    const heldAfterFirst = holds.open;
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'b', method: 'signRaw', result: REJECTED }));
+
+    // Then
+    expect(heldAfterFirst).toBe(1);
+    expect(holds.open).toBe(0);
+  });
+
+  it("As a user whose product went away mid-request, my page's hold is released", () => {
+    // Given
+    const { tracker: requests, holds } = createHoldHarness();
+    const tap = requests.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+
+    // When
+    tap.dispose();
+
+    // Then
+    expect(holds.open).toBe(0);
+  });
+
+  it('As a page whose tracker is disposed mid-request, my hold is released', () => {
+    // Given
+    const { tracker: requests, holds } = createHoldHarness();
+    const tap = requests.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+
+    // When
+    requests.dispose();
+
+    // Then
+    expect(holds.open).toBe(0);
   });
 });
