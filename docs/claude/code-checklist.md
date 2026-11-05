@@ -20,6 +20,8 @@ above the linter: semantics, data flow and naming.
 
 ## Code shape
 
+- **major** (AGENTS.md § Code style, General:): A working capability deleted only because nothing calls it yet, with no
+  owner's word in the commit or PR and no reason given.
 - **major** (AGENTS.md § Code style, General:): Optimisation machinery, extra reads or a departure from the spec added
   to a lazily loaded feature off the critical path, where the simplest correct read would do.
 - **major** (docs/code/style.md § A factory returns a plain object): A class for a stateful unit, other than an `Error`

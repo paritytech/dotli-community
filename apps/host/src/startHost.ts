@@ -14,6 +14,7 @@ import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { loadBridge, loadRecoveryPhrase } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/createBlockingModalCoordinator.js';
+import { networkPause } from './runtime/createNetworkPause.js';
 import { pendingResets } from './runtime/createPendingResets.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/sharedMode.js';
 import { authControl } from './runtime/createAuthController.js';
@@ -93,6 +94,16 @@ export async function startHost({
   // After this origin's settings are set and before the first await, so the capsule shows going offline at once and no
   // island mounts on a store not yet started.
   startShellState?.();
+  // The pause and its targets last the page's life, so their stops go unused.
+  networkPause.start();
+  networkPause.addTarget({
+    pause() {
+      getProtocolClient().frame.setPaused(true);
+    },
+    resume() {
+      getProtocolClient().frame.setPaused(false);
+    },
+  });
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
   const bridgeChunk = markHandled(loadBridge());
@@ -167,6 +178,7 @@ export async function startHost({
 
   bootTracker.setStep('bridge_load');
   const bridgeModule = await bridgeReady;
+  networkPause.addTarget(bridgeModule.hostChainPool);
 
   bootTracker.setStep('topbar');
   // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle

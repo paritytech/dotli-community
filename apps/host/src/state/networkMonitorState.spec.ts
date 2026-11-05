@@ -11,6 +11,7 @@ import {
   type ChainStatus,
   type NetworkMonitor,
 } from './networkMonitorState.js';
+import { describeLiveNetwork } from '../networkVerdict.js';
 import { buildChainActivity } from '../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../testing/getRelayGenesis.js';
 import { recordNotified } from '../testing/recordNotified.js';
@@ -568,6 +569,86 @@ describe('The network monitor judges how each chain is used', () => {
 
     // Then
     expect(getChainByKey(EXTRA)).toMatchObject({ state: 'live', alarm: true });
+  });
+});
+
+describe('The network monitor after a return', () => {
+  it('As a user back on my page, I see my chain as Connecting until its next block, not as overdue', async () => {
+    // Given
+    use(getRelayGenesis());
+    monitor.recordBestBlock(getRelayGenesis(), 100);
+    await timers.advance(120_000);
+
+    // When
+    monitor.recordReturn();
+    const back = describeLiveNetwork(monitor.getChainClocks());
+    monitor.recordBestBlock(getRelayGenesis(), 101);
+
+    // Then
+    expect(back).toEqual({ text: 'Connecting', tone: 'idle' });
+    expect(describeLiveNetwork(monitor.getChainClocks()).text).toBe('Your connection is good');
+  });
+
+  it('As a user back on my page, I see a light client syncing again as Connecting, not as Waiting', () => {
+    // Given
+    monitor.recordChainPhase('relay', 'ready');
+
+    // When
+    monitor.recordReturn();
+    monitor.recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(monitor.getChainClocks().some(chain => chain.alarm)).toBe(false);
+  });
+
+  it('As a user back on my page whose chain drops after its first block, I see it as Waiting again', () => {
+    // Given
+    use(getRelayGenesis());
+    monitor.recordChainPhase('relay', 'ready');
+    monitor.recordReturn();
+
+    // When
+    monitor.recordBestBlock(getRelayGenesis(), 100);
+    monitor.recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(getChainByKey('relay').alarm).toBe(true);
+  });
+
+  it('As a user whose light client drops back with no return, I still see it as Waiting', () => {
+    // Given
+    monitor.recordChainPhase('relay', 'ready');
+
+    // When
+    monitor.recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(getChainByKey('relay').alarm).toBe(true);
+  });
+
+  it('As a user back on my page, I see a host pool that paused and reconnects as Connecting', () => {
+    // Given
+    use(EXTRA, { following: false, status: 'connected' });
+    use(EXTRA, { following: false, status: 'disconnected' });
+
+    // When
+    monitor.recordReturn();
+    use(EXTRA, { following: false, status: 'connecting' });
+
+    // Then
+    expect(getChainByKey(EXTRA)).toMatchObject({ state: 'pending', alarm: false });
+  });
+
+  it('As a user back on my page whose connected pool chain drops later, I see it as Waiting', () => {
+    // Given
+    use(EXTRA, { following: false, status: 'connected' });
+
+    // When
+    monitor.recordReturn();
+    use(EXTRA, { following: false, status: 'connecting' });
+
+    // Then
+    expect(getChainByKey(EXTRA).alarm).toBe(true);
   });
 });
 

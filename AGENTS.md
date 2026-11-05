@@ -87,6 +87,8 @@ General:
   in the commit or PR.
 - A build value that gates code is read as a static `import.meta.env.X` at each site, never through an import, so the
   bundler drops the dead branch.
+- A cleanup never deletes a working capability, such as a pause, a retry or a cache, only because nothing calls it yet.
+  Ask the owner first. The delete's commit or PR names the capability and why it goes.
 
 Packages:
 

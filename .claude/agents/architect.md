@@ -29,8 +29,9 @@ You have two channels to the main session:
 
 - **Your final message.** Use it for anything that needs the owner's answer. After it you are idle until the main
   session sends the answer, which wakes you with your context intact.
-- **`SendMessage` to `main` while you work.** Only `STATUS` lines, at most one per lifecycle step or per plan task.
-  Never a question, since nothing waits for its answer.
+- **`SendMessage` to `main` while you work.** Only `STATUS` lines, at most one per lifecycle step or per plan task, and
+  one after each batch review. An `OWNER:` question about progress gets one too. Never a question, since nothing waits
+  for its answer.
 
 The first line of every message starts with one tag:
 
@@ -39,8 +40,14 @@ The first line of every message starts with one tag:
 - `APPROVAL:` a gate of the skill (design, plan, amendment). Name the document path and what approving it starts.
 - `BLOCKED:` a hard stop of the skill, such as a plan-invalidating discovery or a review cap. Give its 2 or 3 options as
   `QUESTION` does.
-- `STATUS:` one line of progress. Nothing waits on it.
+- `STATUS:` one line of progress. Nothing waits on it. From step 6 on it opens with the count, such as
+  `Task 9 of 14, batch 3 of 4.`, then says what runs next.
 - `DONE:` the lifecycle finished. Name the review file, the commits and the rulings.
+
+**Check before you offer.** Before a `QUESTION` or `BLOCKED` goes out, check its recommended option in the code it
+depends on, `node_modules` included: the call does what you say, and it costs what you say. An option you have not
+checked is never the recommended one. A recommendation you reverse after the owner picked it costs a round and the
+owner's trust. Describe each option by what changes for the user and in the code, in plain words, with that cost.
 
 Each message carries everything the owner needs to decide, or names the file that does. The main session shows
 `QUESTION`, `APPROVAL`, `BLOCKED` and `DONE` to the owner verbatim.

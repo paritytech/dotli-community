@@ -62,6 +62,29 @@ function createTransports(supported: (genesisHash: string) => boolean = () => tr
   return { createTransport, built };
 }
 
+/** Builds transports as `createTransports` does, except that `failing`'s transport throws on every open after its first. */
+function createReopenFailingTransports(failing: string): {
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+  built: TransportRecord[];
+} {
+  const { createTransport: createBase, built } = createTransports();
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider | null {
+    const provider = createBase(genesisHash, hooks);
+    if (provider === null || genesisHash !== failing) {
+      return provider;
+    }
+    let opens = 0;
+    return onMessage => {
+      opens += 1;
+      if (opens > 1) {
+        throw new Error('reopen failed');
+      }
+      return provider(onMessage);
+    };
+  }
+  return { createTransport, built };
+}
+
 /** Leases a chain through the pool's local provider, failing the test when the pool has no provider for it. */
 function lease(
   pool: ChainPool,
@@ -842,5 +865,256 @@ describe('createChainPool watch', () => {
 
     // Then
     expect(seen.activity).toEqual([]);
+  });
+});
+
+describe('createChainPool pausing', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('As a dotli page, I pause and my chains close at once under the same lease', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const onHalt = vi.fn();
+    lease(pool, '0xaa', { onHalt });
+
+    // When
+    pool.pause();
+
+    // Then
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(onHalt).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli page, I resume and my chain opens again', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    pool.pause();
+
+    // When
+    pool.resume();
+
+    // Then
+    expect(must(built[0], 'transport').opened).toBe(2);
+  });
+
+  it('As a dotli page on a transport that connects at once, I resume and read the chain as connected', () => {
+    // Given
+    function createTransport(_genesisHash: string, hooks: ChainTransportHooks): JsonRpcProvider {
+      return () => {
+        hooks.onStatus('connecting');
+        hooks.onStatus('connected');
+        return { send: () => undefined, disconnect: () => undefined };
+      };
+    }
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    pool.pause();
+
+    // When
+    pool.resume();
+
+    // Then
+    expect(pool.status('0xaa')).toBe('connected');
+  });
+
+  it('As a dotli page, pausing or resuming twice closes and opens my chain once', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+
+    // When
+    pool.pause();
+    pool.pause();
+
+    // Then
+    expect(transport.disconnect).toHaveBeenCalledTimes(1);
+
+    // When
+    pool.resume();
+    pool.resume();
+
+    // Then
+    expect(transport.opened).toBe(2);
+  });
+
+  it('As a dotli page watching a transaction, I pause and hear it dropped', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const received: JsonRpcMessage[] = [];
+    const connection = lease(pool, '0xaa', {
+      onMessage: message => {
+        received.push(message);
+      },
+    });
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
+    const transport = must(built[0], 'transport');
+    const upstream = must(transport.sent[0], 'upstream submit');
+    transport.emit({ jsonrpc: '2.0', id: must(upstream.id, 'upstream id'), result: 'watch-1' });
+    const ack = must(received[0], 'submit response') as { id: unknown; result: unknown };
+    received.length = 0;
+
+    // When
+    pool.pause();
+
+    // Then
+    expect(received).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: ack.result, result: { event: 'dropped' } },
+      },
+    ]);
+  });
+
+  it('As a dotli page, a chain first leased while paused opens only on resume', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    pool.pause();
+
+    // When
+    lease(pool, '0xbb');
+
+    // Then
+    expect(must(built[0], 'transport').opened).toBe(0);
+    expect(pool.status('0xbb')).toBe('disconnected');
+
+    // When
+    pool.resume();
+
+    // Then
+    expect(must(built[0], 'transport').opened).toBe(1);
+  });
+
+  it('As a dotli page, a chain I released before the resume stays closed until it is leased again', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    lease(pool, '0xaa').disconnect();
+    const transport = must(built[0], 'transport');
+
+    // When
+    pool.pause();
+    pool.resume();
+
+    // Then
+    expect(transport.opened).toBe(1);
+
+    // When
+    lease(pool, '0xaa');
+
+    // Then
+    expect(transport.opened).toBe(2);
+  });
+
+  it('As a dotli page, my chain halts while paused and the next lease builds it closed', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const onHalt = vi.fn();
+    lease(pool, '0xaa', { onHalt });
+    pool.pause();
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    lease(pool, '0xaa');
+
+    // Then
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'transport').opened).toBe(0);
+  });
+
+  it('As a dotli page, a chain that fails to close at a pause halts my lease on it while my other chain pauses', () => {
+    // Given two leased chains, the first of which throws when its transport closes
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const failingHalt = vi.fn();
+    const otherHalt = vi.fn();
+    lease(pool, '0xaa', { onHalt: failingHalt });
+    lease(pool, '0xbb', { onHalt: otherHalt });
+    must(built[0], 'transport').disconnect.mockImplementation(() => {
+      throw new Error('close failed');
+    });
+
+    // When
+    const error = catchError(() => {
+      pool.pause();
+    });
+
+    // Then
+    expect(error).toBeUndefined();
+    expect(must(built[1], 'transport').disconnect).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xbb')).toBe('disconnected');
+    expect(otherHalt).not.toHaveBeenCalled();
+    expect(failingHalt).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_pause' }]);
+  });
+
+  it('As a dotli page, a chain that fails to reopen at a resume halts my lease on it while my other chain opens', () => {
+    // Given two leased chains, the first of which throws when its transport reopens
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport, built } = createReopenFailingTransports('0xaa');
+    const pool = createChainPool({ createTransport });
+    const failingHalt = vi.fn();
+    const otherHalt = vi.fn();
+    lease(pool, '0xaa', { onHalt: failingHalt });
+    lease(pool, '0xbb', { onHalt: otherHalt });
+    pool.pause();
+
+    // When
+    const error = catchError(() => {
+      pool.resume();
+    });
+
+    // Then
+    expect(error).toBeUndefined();
+    expect(must(built[1], 'transport').opened).toBe(2);
+    expect(otherHalt).not.toHaveBeenCalled();
+    expect(failingHalt).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_resume' }]);
+  });
+
+  it('As a dotli page, I lease a chain that fails to reopen after the resume and get a chain built in its place', () => {
+    // Given a chain released before the pause, whose transport throws when it reopens
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport, built } = createReopenFailingTransports('0xaa');
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    lease(pool, '0xaa').disconnect();
+    pool.pause();
+    pool.resume();
+    const onHalt = vi.fn();
+
+    // When
+    const error = catchError(() => {
+      lease(pool, '0xaa', { onHalt });
+    });
+
+    // Then
+    expect(error).toBeUndefined();
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'transport').opened).toBe(1);
+    expect(pool.status('0xaa')).toBe('connecting');
+    expect(onHalt).not.toHaveBeenCalled();
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_resume' }]);
   });
 });

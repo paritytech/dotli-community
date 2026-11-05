@@ -6,6 +6,7 @@
 import { getKeys, isRecord } from '@dotli/shared';
 import { decodeWireMessage, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import { compact } from '@parity/truapi/scale';
+import { networkPause, type NetworkPause } from './createNetworkPause.js';
 import { PHONE_METHODS, type PhoneMethod } from './phoneMethods.js';
 import { decodePhoneOutcome, type PhoneOutcome } from './phoneOutcome.js';
 import { reportUndecodablePhoneFrame } from './phoneReport.js';
@@ -33,6 +34,8 @@ type Params = {
   reportUndecodable?: typeof reportUndecodablePhoneFrame;
   /** Decodes a tracked frame in full. Every other frame is only peeked at. */
   decode?: typeof decodeWireMessage;
+  /** Keeps the network awake while a product's request to Polkadot App is in flight. */
+  holdNetwork?: NetworkPause['hold'];
 };
 
 type FrameHeader = {
@@ -48,6 +51,8 @@ type Tracked = {
   request: PhoneRequest;
   /** Set once claimed, and settles the claim. */
   settle: ((outcome: PhoneOutcome) => void) | undefined;
+  /** Releases this request's network hold. Acts once. */
+  release: () => void;
 };
 
 const METHOD_AT = new Map<number, PhoneMethod>(
@@ -70,6 +75,7 @@ const COMPACT_PREFIX_BYTES = [1, 2, 4] as const;
 export function createPhoneRequestTracker({
   reportUndecodable = reportUndecodablePhoneFrame,
   decode = decodeWireMessage,
+  holdNetwork = networkPause.hold,
 }: Params = {}) {
   const taps = new Set<Map<string, Tracked>>();
   let sequence = 0;
@@ -79,6 +85,7 @@ export function createPhoneRequestTracker({
     const ended = [...inflight.values()];
     inflight.clear();
     for (const tracked of ended) {
+      tracked.release();
       tracked.settle?.({ kind: 'gone' });
     }
   }
@@ -115,7 +122,12 @@ export function createPhoneRequestTracker({
       const method = header.method;
       try {
         const body = unwrapV1(PHONE_METHODS[method].request.dec(readPayload(message)));
-        inflight.set(requestId, { sequence: sequence++, request: { method, body }, settle: undefined });
+        inflight.set(requestId, {
+          sequence: sequence++,
+          request: { method, body },
+          settle: undefined,
+          release: holdNetwork(),
+        });
       } catch (error) {
         reportUndecodable({ method, error, leg: 'request' });
       }
@@ -135,6 +147,7 @@ export function createPhoneRequestTracker({
         return;
       }
       inflight.delete(header.requestId);
+      tracked.release();
       if (tracked.settle === undefined) {
         return;
       }

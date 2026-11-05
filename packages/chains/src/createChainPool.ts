@@ -4,7 +4,7 @@
 // One connection per chain, shared by every consumer in this JS context. Each lease is a broker
 // session. An entry closes `destroyDelay` after its last lease is released, and at once when its
 // transport halts. While someone watches the pool, each held chain also carries the watchers' own follow, which is a
-// session but not a lease.
+// session but not a lease. A pause closes every chain's connection under the same leases, and a resume opens it again.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
@@ -12,6 +12,7 @@ import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
 import { createChainBroker, type ChainBroker } from './createChainBroker.js';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
+import { createPausableTransport, type PausableTransport } from './createPausableTransport.js';
 import { createWatchGuard, type WatchGuard } from './createWatchGuard.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
@@ -83,11 +84,22 @@ export type ChainPool = {
    * to close.
    */
   disconnectAll(): void;
+  /**
+   * Closes every chain's connection at once and keeps every lease. A chain built while paused starts closed. A call
+   * while paused does nothing. Never throws, and reports a chain that fails to pause and halts it.
+   */
+  pause(): void;
+  /**
+   * Opens every closed chain a lease holds again. A chain that only waits out its destroy delay stays closed until a
+   * lease takes it. A call while not paused does nothing. Never throws, and reports a chain that fails to resume and
+   * halts it.
+   */
+  resume(): void;
 };
 
 type Entry = {
   readonly key: string;
-  readonly transport: JsonRpcProvider;
+  readonly pausable: PausableTransport;
   readonly guard: WatchGuard;
   readonly broker: ChainBroker;
   leases: number;
@@ -104,6 +116,15 @@ type LeaseParams<Connection> = {
   connection: Connection;
   /** Names the lease in debug logs. */
   holder: string;
+};
+
+type HaltOnFailureParams = {
+  /** The chain the step runs on. */
+  entry: Entry;
+  /** Names the step in the report. */
+  action: 'pause' | 'resume';
+  /** The chain's part of the pause or resume. */
+  step: (entry: Entry) => void;
 };
 
 /** What the pool tells its watchers, one listener per watcher. */
@@ -129,6 +150,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
   const statuses = new Map<string, ConnectionStatus>();
   const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
   let sessionCounter = 0;
+  let paused = false;
   const watchers = createListenerSet<WatchEvent>({ onListenerError: reportListener('protocol', 'chain_pool.watch') });
 
   function getActivity(entry: Entry): ChainActivity {
@@ -187,6 +209,43 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     }
   }
 
+  /** Gives a chain's new status to its guard, the pool's statuses and the watchers, and nothing once the chain is closed. */
+  function applyStatus(entry: Entry, status: ConnectionStatus): void {
+    if (!entry.live) {
+      return;
+    }
+    entry.guard.onStatus(status);
+    setStatus(entry.key, status);
+    report(entry);
+  }
+
+  function pauseEntry(entry: Entry): void {
+    entry.pausable.pause();
+    // A consumer may release the last lease while it hears the pause, which closes the entry.
+    applyStatus(entry, 'disconnected');
+  }
+
+  function resumeEntry(entry: Entry): void {
+    if (entry.pausable.isPaused()) {
+      entry.pausable.resume();
+    }
+  }
+
+  /** Runs `step` on one chain, and halts the chain when it throws so its leases recover. */
+  function haltOnFailure({ entry, action, step }: HaltOnFailureParams): void {
+    try {
+      step(entry);
+    } catch (error) {
+      reportDefect(error, {
+        flow: 'protocol',
+        step: `chain_pool_${action}`,
+        metric: S.CHAIN_POOL_CLOSE,
+        message: `${POOL_TAG} ${action} of ${getShortKey(entry.key)} failed:`,
+      });
+      destroy(entry, { error });
+    }
+  }
+
   /** The watchers' own follow on a held chain, which reports to them while the entry lives. */
   function openFollow(entry: Entry): { disconnect: () => void } {
     // Names the chain, so the follow's debug log says which one refused it.
@@ -238,12 +297,9 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     let entry: Entry | null = null;
     const hooks: ChainTransportHooks = {
       onStatus: status => {
-        if (entry?.live !== true) {
-          return;
+        if (entry !== null) {
+          applyStatus(entry, status);
         }
-        entry.guard.onStatus(status);
-        setStatus(key, status);
-        report(entry);
       },
       onHalt: error => {
         if (entry?.live === true) {
@@ -255,12 +311,16 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     if (transport === null) {
       return null;
     }
-    const guard = createWatchGuard({ transport });
+    const pausable = createPausableTransport({ transport });
+    if (paused) {
+      pausable.pause();
+    }
+    const guard = createWatchGuard({ transport: pausable.provider });
     const warn = warners.get(key) ?? createBrokerWarner();
     warners.set(key, warn);
     const created: Entry = {
       key,
-      transport,
+      pausable,
       guard,
       broker: createChainBroker({ provider: guard.provider, warn }),
       leases: 0,
@@ -272,7 +332,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     log.debug(`${POOL_TAG} ${getShortKey(key)} opening`);
     entry = created;
     entries.set(key, created);
-    setStatus(key, 'connecting');
+    setStatus(key, pausable.isPaused() ? 'disconnected' : 'connecting');
     report(created);
     return created;
   }
@@ -280,11 +340,18 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
   function acquire(genesisHash: string): Entry | null {
     const key = genesisHash.toLowerCase();
     const entry = entries.get(key) ?? build(key);
-    if (entry !== null && entry.destroyTimer !== null) {
+    if (entry === null) {
+      return null;
+    }
+    if (!paused) {
+      haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+    }
+    if (entry.destroyTimer !== null) {
       clearTimeout(entry.destroyTimer);
       entry.destroyTimer = null;
     }
-    return entry;
+    // A chain that failed to reopen is halted, so the lease takes the chain built in its place.
+    return entry.live ? entry : (entries.get(key) ?? build(key));
   }
 
   function idle(entry: Entry): void {
@@ -407,6 +474,34 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       for (const entry of [...entries.values()]) {
         destroy(entry, null);
       }
+    },
+
+    pause() {
+      if (paused) {
+        return;
+      }
+      paused = true;
+      const live = [...entries.values()];
+      for (const entry of live) {
+        haltOnFailure({ entry, action: 'pause', step: pauseEntry });
+      }
+      log.event(`${POOL_TAG} paused`, { flow: 'protocol', chains: live.length });
+    },
+
+    resume() {
+      if (!paused) {
+        return;
+      }
+      paused = false;
+      const live = [...entries.values()];
+      // Each transport reports its own status as it opens, some inside this call, so none is set here.
+      for (const entry of live) {
+        // A consumer's delivery in this loop may have closed the chain.
+        if (entry.live && entry.leases > 0) {
+          haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+        }
+      }
+      log.event(`${POOL_TAG} resumed`, { flow: 'protocol', chains: live.length });
     },
 
     status(genesisHash) {

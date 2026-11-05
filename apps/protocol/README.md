@@ -91,6 +91,10 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never fires the
   event, the heartbeat release frees the tab's connections once it misses its beats, and holds its port as it holds a
   frozen tab's.
+- The host pauses the network with `frame.pause`. A frame in direct or gateway mode pauses its own chain pool on it. In
+  shared-worker mode each tab's frame forwards it to the worker, which pauses its chains while every tab it serves asks
+  for a pause, and resumes them once one tab resumes or a new tab connects. A pause keeps every chain's leases, and a
+  resume reopens the chains they hold. When the last tab leaves, the worker keeps the state it had.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. The ready wait is the link's one deadline, and its handshake has none of its own, so a worker that never answers
   counts as a ready timeout. A heartbeat it cannot send is captured, logged and counted, and the link stops answering,

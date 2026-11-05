@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The worker's ports and its close. A port is served, released or forgotten here, and a dead worker closes here once
-// every port heard why. Releasing a port, hearing one and closing the worker call each other, so one unit owns them.
+// The worker's ports, its close and whether every served tab asks for a pause. A port is served, released or forgotten
+// here, and a dead worker closes here once every port heard why. Releasing a port, hearing one and closing the worker
+// call each other, so one unit owns them.
 
 import { reportDefect, spans as S } from '@dotli/metrics';
 import {
@@ -53,6 +54,8 @@ type SessionRecord = {
   statuses: Set<FrameStatusSink>;
   /** Stops hearing the port close. */
   unwatch: () => void;
+  /** Whether the tab asks the worker to pause its network. */
+  paused: boolean;
 };
 
 /**
@@ -77,6 +80,8 @@ type Params = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'> | undefined;
   /** A failure the worker starts with, which every port hears on subscribe. */
   initialFailure: Error | null;
+  /** Hears each change in whether every served tab asks for a pause. Never throws. */
+  onEveryTabPausedChange: (paused: boolean) => void;
 };
 
 type AdmitParams = {
@@ -107,7 +112,10 @@ type ReleasedPort = {
 const HEARTBEAT_INTERVAL_MS = 20_000;
 export const HEARTBEAT_MISSED_BEATS = 3;
 
-/** Owns the worker's port sessions and its close, and starts the heartbeat that beats each port. */
+/**
+ * Owns the worker's port sessions and its close, tells whether every served tab asks for a pause, and starts the
+ * heartbeat that beats each port.
+ */
 export function createWorkerLifecycle({
   scope,
   status,
@@ -115,6 +123,7 @@ export function createWorkerLifecycle({
   startHeartbeat = createIntervalTicker(HEARTBEAT_INTERVAL_MS),
   timers = realTimers,
   initialFailure,
+  onEveryTabPausedChange,
 }: Params) {
   const sessions = new Set<SessionRecord>();
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
@@ -132,6 +141,8 @@ export function createWorkerLifecycle({
   // Ports that connected and have not yet subscribed to their status.
   const unheard = new Set<SessionRecord>();
   let phase: Phase = { name: 'syncing' };
+  // Kept as it was while no tab is served, so the last tab leaving changes nothing on the network.
+  let everyTabPaused = false;
 
   if (initialFailure !== null) {
     phase = { name: 'failed', error: initialFailure };
@@ -157,10 +168,12 @@ export function createWorkerLifecycle({
         beats: new Set(),
         statuses: new Set(),
         unwatch,
+        paused: false,
       };
       reached = true;
       sessions.add(session);
       unheard.add(session);
+      updateEveryTabPaused();
       serve(session);
       logWorkerEvent('Port connected', { ports: sessions.size, engine: phase.name });
       if (closing === 'on_connect') {
@@ -174,6 +187,19 @@ export function createWorkerLifecycle({
     markAlive(session: SessionRecord): void {
       session.missed = 0;
     },
+    /**
+     * Notes whether the port's tab asks for a pause, and tells `onEveryTabPausedChange` when that changes whether every
+     * served tab asks for one. Safe to repeat. Never throws.
+     */
+    markPaused(session: SessionRecord, paused: boolean): void {
+      session.paused = paused;
+      updateEveryTabPaused();
+    },
+    /**
+     * Whether every served tab asks for a pause, or, with none served, whether every tab did when the last one left.
+     * False before any tab asks. Never throws.
+     */
+    isEveryTabPaused: (): boolean => everyTabPaused,
     /** Returns the session's engine scope, opened through `open` on first use. Throws what `open` throws. */
     getScope(session: SessionRecord, open: () => EngineScope): EngineScope {
       session.scope ??= open();
@@ -247,6 +273,7 @@ export function createWorkerLifecycle({
     session.scope?.close();
     holdReleased(session);
     hear(session);
+    updateEveryTabPaused();
   }
 
   /**
@@ -289,6 +316,20 @@ export function createWorkerLifecycle({
     session.port.close();
     hear(session);
     logWorkerEvent('Port closed', { ports: sessions.size });
+    updateEveryTabPaused();
+  }
+
+  /** Recomputes whether every served tab asks for a pause, and tells `onEveryTabPausedChange` when it changed. */
+  function updateEveryTabPaused(): void {
+    if (sessions.size === 0) {
+      return;
+    }
+    const next = [...sessions].every(s => s.paused);
+    if (next === everyTabPaused) {
+      return;
+    }
+    everyTabPaused = next;
+    onEveryTabPausedChange(next);
   }
 
   /** The port subscribed to its status, or is gone, so a close can no longer leave it waiting for why. */

@@ -172,9 +172,8 @@ flowchart TB
   R["withSubscriptionReplay<br/>re-sends subscriptions after a reconnect,<br/>keeps the consumer's subscription id"]
   W["ws-middleware<br/>rpc_methods probe, legacy RPC fallback,<br/>numeric ids, chainHead fixes"]
   C["withOwnMessages<br/>hands ws-middleware a copy of each request"]
-  P["Pause controller<br/>pause closes the socket, resume reopens it"]
   S["getWsProvider<br/>heartbeat 120 s, endpoint rotation,<br/>closes the socket it abandons"]
-  R --> W --> C --> P --> S
+  R --> W --> C --> S
 ```
 
 - The **heartbeat** treats a socket that says nothing for 120 s as dead and
@@ -196,6 +195,65 @@ connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
 reports `disconnected`, then halts with a `ChainHaltError` that carries the
 reason, `'chain'` or `'frame'`.
+
+## Pausing a hidden page
+
+A hidden page has no use for its network. `createNetworkPause`
+(`apps/host/src/runtime/createNetworkPause.ts`) follows the document's
+visibility. It waits a grace of 60 s after the page hides, then pauses. A
+return to the page resumes at once. A wake from a sleep, which it finds by a
+late tick, resumes nothing, since a visible page was never paused. It only
+starts the network monitor's judgement over. A hold keeps the page awake: a
+page load and a product's request to Polkadot App each take one, and the pause
+waits for the last release.
+
+```mermaid
+flowchart TB
+  subgraph Host["Host page"]
+    V["document visibility"] --> NP["createNetworkPause"]
+    H["page load, a product's request to Polkadot App"] -->|"hold"| NP
+    NP -->|"pause, resume"| HP["host chain pool"]
+    NP -->|"frame.pause"| F
+  end
+  subgraph Frame["Protocol iframe"]
+    F["serveFramePause or the worker relay"]
+    F -->|"smoldot-direct, rpc-gateway"| FP["iframe chain pool"]
+  end
+  subgraph Worker["SharedWorker"]
+    W["worker lifecycle: paused per tab"] -->|"every tab paused"| WP["worker chain pool"]
+  end
+  F -->|"smoldot-shared-worker"| W
+```
+
+What a pause closes depends on the transport:
+
+- **RPC socket**: the socket closes, and a resume opens it again. The
+  subscription replay layer subscribes again under the consumer's ids.
+- **Light client chain**: the chain is removed from the light client, and a
+  resume adds it again and syncs it again. Only the iframe's pool in
+  `smoldot-direct` and the worker's pool hold one.
+- **Remote connection to the frame**: the host pool's connection on the
+  smoldot backends closes. The frame keeps its leases and its light client.
+
+Leases stay through a pause. Nobody is told the chain halted, and holders keep
+their sessions. What the pause ends, such as a stop, a failed `chainHead`
+call or a release, is answered before the pause returns. The rest, such as an
+unanswered follow, is sent again on resume and answered then. A chain built
+while paused starts closed. A resume opens again each chain a lease holds, and
+a chain that only waits out its destroy delay stays closed until a lease takes
+it.
+
+The host asks the frame to follow with `frame.pause` (`createFramePauseSender`).
+In `smoldot-direct` and `rpc-gateway` the frame (`serveFramePause`) pauses its
+own pool. In `smoldot-shared-worker` it relays the pause to the worker, which
+keeps one flag per tab and pauses its pool only while every tab is paused. A
+tab that closes drops its flag.
+
+On the product page, the network monitor starts each chain's judgement over on
+each return to the page, so a chain that was quiet while paused is not read as
+stalled. The watched chains in
+`smoldot-direct` are retaken by `observeChains` after 1 s once any halt drops
+them, including one from a chain that fails to reopen at a resume.
 
 ## What happens when…
 
@@ -423,14 +481,16 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Protocol engine, a scope per tab | `apps/protocol/src/createEngine.ts` |
 | Watched chains | `apps/protocol/src/observeChains.ts` (`observeChains`) |
 | SharedWorker ports and heartbeat | `apps/protocol/src/createWorkerLifecycle.ts` |
+| Pausable transport | `packages/chains/src/createPausableTransport.ts` |
+| The page's network pause | `apps/host/src/runtime/createNetworkPause.ts` |
+| The host's `frame.pause` sender | `packages/protocol/src/createFramePauseSender.ts` |
+| The frame's `frame.pause` server | `apps/protocol/src/serveFramePause.ts` |
 
 ## Known limits
 
 - `@parity/truapi-host` ignores the end of a chain connection's response
   stream, so the host never ends one on a halt: a core connection outlives its
   lease, and its next request takes a new one. Only `close()` ends it.
-- The watched chains in `smoldot-direct` do not take a new lease after a halt;
-  the loading bar loses that chain's progress until something else opens it.
 - In `rpc-gateway`, bitswap (the product icon, the debug panel's archive) still
   asks the iframe's rpc mode for Bulletin, which opens a socket of its own.
 - After a halt on the smoldot backends, a product's statement subscriptions

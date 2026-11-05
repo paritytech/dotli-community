@@ -245,7 +245,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   one, in the functional suite. The bridge chunk is where the page's real dialogs, notifications and frame layout are
   wired in.
 - The network monitor opens no chain. The bridge reports who holds each host chain and its best blocks to it, and the
-  load progress reports phases, peers and transfer.
+  load progress reports phases, peers and transfer. On the product page it starts each chain's judgement over on each
+  return to the page.
+- The page pauses its network after a grace while it is hidden, unless a page load or a product's request to Polkadot
+  App holds it awake, through `createNetworkPause`. The page's chain pool and the protocol frame are its targets.
 - The recently visited names live in the store every subdomain shares, reached through the runtime's shared channel,
   with a per-origin mirror for when that store is unreachable.
 - Whether a product declares chat is read from its worker manifest alongside its name and travels on the product the

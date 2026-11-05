@@ -220,6 +220,10 @@ its own downstream: step 5 reviews the plan, and `reviewer` reviews the code. A 
 an unmade decision spreads into everything built from it. No implementation code is written until the owner approves the
 design.
 
+Before presenting it, check every mechanism the design relies on in the code that provides it, `node_modules` included:
+the seam exists, the call or library does what the design says, and its cost is what the design says. A design the owner
+approved and the plan then finds unworkable sends the owner back through the same decision.
+
 ## Step 5: Plan
 
 Invoke `superpowers:writing-plans` to turn the approved design into the plan. Override two of its defaults:
@@ -276,7 +280,8 @@ Brainstorming and planning both carry it:
 - **A Context entry per task.** Planning already found what each task needs to read, so write it down. Under the task's
   files, a `**Context:**` block lists:
   - **Read**: each file the implementer MUST read, the symbols in it that matter, and why. Name symbols, not line
-    numbers, since earlier tasks shift lines.
+    numbers, since earlier tasks shift lines. Never "read the package", which makes every implementer rebuild what
+    planning already knew.
   - **Precedent**: an existing module, fake or spec that shows the pattern to follow, when one exists.
   - **Rules**: the sections that bind the task, as `(<doc> § <heading>)`. Never "follow AGENTS.md".
   - **Skip** (MAY): code that looks related and is not, with one line on why.
@@ -465,12 +470,11 @@ Batches replace the per-task review of `superpowers:subagent-driven-development`
   review stays readable. A task whose interface later tasks build on SHOULD close its batch, so its review clears before
   they start.
 - Fill each batch up to that limit. Batches run one after another, so every review and fix round sits on the critical
-  path, and a batch of one pays that cost for a single task. A task that adds no logic of its own, such as moving
-  callers to a settled interface, a rename, removing dead code or a docs update, MUST join a neighbouring batch, even
-  one of another responsibility. A batch of one task is right only when the task closes its batch and the task before it
-  closed the previous one.
-- Batches run one after another. Inside a batch, tasks that touch disjoint files run in parallel, which that skill never
-  does by default. Commits are made one at a time.
+  path, and a batch of one pays that cost for a single task. Inside a batch, tasks that touch disjoint files run in
+  parallel, which that skill never does by default. Commits are made one at a time. A task that adds no logic of its
+  own, such as moving callers to a settled interface, a rename, removing dead code or a docs update, MUST join a
+  neighbouring batch, even one of another responsibility. A batch of one task is right only when the task closes its
+  batch and the task before it closed the previous one.
 - After the last task of a batch commits, one fresh reviewer gets that skill's task reviewer template, the plan path and
   the headings of the batch's tasks, the report path of each, and the global constraints. It also gets one review
   package, from the head before the batch's first task to the head after its last. The brief names by hash any commit in
@@ -510,8 +514,8 @@ On a hard stop:
    that only corrects details, such as a renamed symbol, a corrected path or an added test, gets a pass over the changed
    sections.
 5. The owner approves the amendment after its review clears, so the owner approves the text that gets implemented.
-6. Resume `superpowers:subagent-driven-development` from the affected task. A fix made only for a reviewer-run finding,
-   an amendment included, skips the batch review, since the next reviewer run covers it.
+6. Resume `superpowers:subagent-driven-development` from the affected task. "Review batches" says when its batch review
+   is skipped.
 
 ## Reviewing and fixing
 
@@ -591,31 +595,37 @@ Every subagent this lifecycle dispatches is fresh: `Agent` with a named type, su
 starts empty and knows only its brief and the `CLAUDE.md` files every session loads. No seat is a fork. A fork starts
 with this agent's whole context, so even a short question re-sends all of it on every turn.
 
-| Seat                                                                                        | Kind                                                                                                                   | Model                                                                    | Inputs                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Steps 1 to 5: a side investigation, such as call sites of a symbol or how a module recovers | Fresh `Explore` to locate code, fresh `general-purpose` to read how it behaves, or inline                              | Its own default for `Explore`, the session's for `general-purpose`       | One question, the paths to start from, and the answer format                                                                                           |
-| `document-review` of the design or the plan                                                 | Inline                                                                                                                 |                                                                          | None                                                                                                                                                   |
-| Step 5: a plan review pass                                                                  | Fresh                                                                                                                  | The session's                                                            | The plan path, the design path, the names check file, the seven criteria, the severities. From pass 2, the previous pass's plan copy and findings file |
-| Step 6: an implementer                                                                      | Fresh                                                                                                                  | The task's `Model` tag                                                   | The plan path and the task's heading, the file of bans, and what earlier tasks found, as "Briefs" sets                                                 |
-| Step 6: a fix round                                                                         | Resume the implementer of the finding's task in rounds 1 to 3. Fresh in rounds 4 and 5, and for a finding across tasks | A resumed implementer keeps its model. A fresh one runs on the session's | The review file and the IDs of the open findings, and for a fresh one the plan path and the headings of the tasks they point at                        |
-| Step 6: a batch review or re-review                                                         | Fresh                                                                                                                  | The session's                                                            | The plan path and the headings of the batch's tasks, the report path of each, the review package path, the global constraints                          |
-| Step 6: a question the controller needs answered to rule on a conflict                      | Inline or fresh `Explore`                                                                                              | Its own default                                                          | One question                                                                                                                                           |
-| Step 7: the `reviewer` skill                                                                | Fresh                                                                                                                  | The session's                                                            | The branch and the plan path                                                                                                                           |
-| Step 8: a fix of blocking or major findings                                                 | Fresh                                                                                                                  | The session's                                                            | The review file and the IDs of the findings                                                                                                            |
-| Step 8: a minor sweep                                                                       | Fresh                                                                                                                  | `sonnet`                                                                 | The review file and the IDs of the findings                                                                                                            |
-| Step 8: a scoped re-review                                                                  | Fresh                                                                                                                  | The session's                                                            | The review file and the IDs of the findings the fix answers, the fix's commit range, and whether the fix was a minor sweep                             |
-| Step 9: rule extraction                                                                     | Inline                                                                                                                 |                                                                          | None                                                                                                                                                   |
+Each seat, with its model and inputs. "Session" means passing no `model`, so the seat runs on this agent's model. Every
+review seat stays on it, since a review needs judgment. `sonnet` is only for work whose scope is fully defined.
 
-"The session's" model means passing no `model`, so the seat runs on this agent's model. Every review seat stays on it,
-since a review needs judgment. `sonnet` is only for work whose scope is fully defined.
+- **Steps 1 to 5, a side investigation**, such as call sites of a symbol or how a module recovers: a fresh `Explore` on
+  its own default to locate code, a fresh `general-purpose` on session to read how it behaves, or inline. Inputs: one
+  question, the paths to start from and the answer format.
+- **`document-review` of the design or the plan, and step 9 rule extraction**: inline.
+- **Step 5, a plan review pass**: session. Inputs: the plan path, the design path, the names check file, the seven
+  criteria and the severities. From pass 2 also the previous pass's plan copy and findings file.
+- **Step 6, an implementer**: the task's `Model` tag. Inputs as "Briefs" sets: the plan path and the task's heading, the
+  file of bans, and what earlier tasks found.
+- **Step 6, a fix round**: rounds 1 to 3 resume the implementer of the finding's task, which keeps its model. Rounds 4
+  and 5, and a finding across tasks, go to a fresh one on session. Inputs: the review file and the IDs of the open
+  findings, and for a fresh one the plan path and the headings of the tasks they point at.
+- **Step 6, a batch review or re-review**: session. Inputs: the plan path and the headings of the batch's tasks, the
+  report path of each, the review package path and the global constraints.
+- **Step 6, a question the controller needs answered to rule on a conflict**: inline, or a fresh `Explore` on its own
+  default. Input: one question.
+- **Step 7, the `reviewer` skill**: session. Inputs: the branch and the plan path.
+- **Step 8, a fix of blocking or major findings** on session, or **a minor sweep** on `sonnet`. Inputs: the review file
+  and the IDs of the findings.
+- **Step 8, a scoped re-review**: session. Inputs: the review file, the IDs of the findings the fix answers, the fix's
+  commit range, and whether the fix was a minor sweep.
 
 **Fresh rules.**
 
-- The brief carries paths, the seat's template and the inputs the table names, never this agent's verdicts. "I think it
-  is fine", an answer to one of the seat's own criteria, or a hint about what to ignore anchors the seat on the author's
-  reading.
-- Every fresh dispatch takes its model from the table, which overrides `superpowers:subagent-driven-development` § Model
-  Selection.
+- The brief carries paths, the seat's template and the inputs listed for the seat, never this agent's verdicts. "I think
+  it is fine", an answer to one of the seat's own criteria, or a hint about what to ignore anchors the seat on the
+  author's reading.
+- Every fresh dispatch takes its model from its seat, never another, which overrides
+  `superpowers:subagent-driven-development` § Model Selection.
 - A seat writes its full report or findings to the file its brief names, and its final message is at most 10 lines: its
   status, its finding counts by severity and that path. The controller opens the file only to rule on what it says, and
   hands the next seat the path, not the text. A report in the final message stays in the controller's context for the
@@ -626,72 +636,25 @@ No seat dispatches a subagent. Only the controller dispatches.
 
 ### Without superpowers
 
-Superpowers is a declared project dependency (`.claude/settings.json` `enabledPlugins`), so this fallback is rarely
-needed. The dependency is declared for that reason, not because the gates are optional. If a teammate or CI runs without
-the plugin, run the same substeps inline:
-
-1. Clarify with the owner one question at a time.
-2. Write `docs/_plans/<topic>-design.md`, run `document-review` on it, and stop for approval.
-3. Write `docs/_plans/<topic>-plan.md` and run `document-review` on it.
-4. Implement it batch by batch with a fresh implementer per task, applying the same dotli context.
-
-The plan review, the batch reviews and step 7 run on `Agent`, not on superpowers, so they apply either way. Without the
-task reviewer template, a batch review is briefed with the plan path, the headings of the batch's tasks and the
-Architecture gate.
+Superpowers is a declared project dependency (`.claude/settings.json` `enabledPlugins`), and the gates do not depend on
+it. Without the plugin, run the substeps inline: clarify with the owner one question at a time, write the design and run
+`document-review` on it, stop for approval, write the plan and run `document-review` on it, then implement it batch by
+batch with a fresh implementer per task and the same dotli context. The plan review, the batch reviews and step 7 run on
+`Agent`, so they apply either way. A batch review without the task reviewer template is briefed with the plan path, the
+headings of the batch's tasks and the Architecture gate.
 
 ## Red flags
 
-You are skipping the process when you see any of these.
+Every rule above binds on its own. These are the moves and thoughts that slip past them.
 
 - **Code before an approved design, or a plan written after the code.** The plan is a contract you build to, not a
   summary of what you built. It lands in `docs/_plans/` before the first implementation edit.
 - **Re-implementing clarify, design or plan prose inside this skill.** Superpowers owns that process.
 - **Restating a list or definition that a doc owns** (the trivial criteria, the peer files, the placement rules, the
   import rules). Cite the doc. Copied lists drift silently when the doc changes.
-- **A delegated skill that re-picks the package, invents a file or writes to docs/superpowers/.**
-- **A plan handed to implementation without a clean review pass.** A pass with blocking or major findings counts only
-  once the fixed plan clears one. Reviewing it yourself does not count.
-- **Several plan review passes at once.** Pass, fix, pass.
 - **Running past a cap**: a fourth plan pass, a sixth fix round on a batch, a fifth `reviewer` run. Past the cap, the
   owner decides.
-- **Another plan pass after minor findings only.** Apply them, and the gate is clear.
-- **A later plan pass that audits the whole plan again.** It reviews the revision and the previous pass's findings.
-- **`document-review` used as the plan review, or the reverse.**
-- **A design presented for approval straight out of brainstorming.** Run `document-review` first. Approval is an owner
-  decision, not a quality check.
-- **A plan that only makes sense to someone who was in this conversation.** Name every file, symbol, public surface and
-  command.
-- **A plan that paraphrases a design value, names one file for several responsibilities or skips a failure path.** Each
-  costs a full implement, review and fix cycle later.
-- **A plan snippet in a shape `docs/code/style.md` rules out, or an implementer brief that never names the doc.**
-  Implementers copy plan code, so one wrong shape lands in every task built from it.
-- **A task without a Context entry, or one that says "read the package".** Every implementer then rebuilds what planning
-  already knew.
-- **A plan that quietly solves a different problem than the approved design.** Light steering is recorded in the plan.
-  Anything that changes what gets built stops for the owner.
-- **Stopping the agent at the plan gate, or handing the plan to a new session or agent.** The agent that wrote the plan
-  runs step 6. Its context is the reason it exists.
-- **One agent running more than one stage of a roadmap.** Each stage gets its own agent (see "A staged change").
-- **A fork for any seat.** A side question goes to a fresh `Explore`.
-- **A task that rewrites more than four files by hand, or a brief that bans scripts for a repeated rewrite.**
-- **A dispatch on a model the seat table does not name**, such as a review on `sonnet`, or a task on it whose tag is not
-  `sonnet`.
-- **A fresh brief that carries this agent's verdict.** Paths and the seat's inputs, nothing more.
-- **A brief that retypes a plan task or a review's findings, or a seat whose final message carries its whole report.**
-  Paths and finding IDs travel, text stays in its file.
-- **A plan review pass dispatched without a names check of the plan as it stands, or a pass that repeats its lookups.**
-- **A plan revision, minor fixes included, that goes to the next pass or to approval with a changed check command never
-  run.**
-- **A brief without the Architecture gate, or an implementer brief without the bans in words.**
-- **A per-task review, or a batch review before the batch's last task committed.**
-- **A batch of one task that adds no logic of its own.** It joins a neighbouring batch.
-- **Improvising around a plan-invalidating discovery, or a ruling that adds a file, package or public surface or changes
-  a requirement.** That is an amendment.
 - **Amending the plan for a plain code bug.** A step 7 finding amends the plan only when its fix goes beyond a ruling.
-- **Finishing without running `reviewer`.** The generic superpowers final review does not replace it.
-- **A full `reviewer` run after a fix that needed no amendment.** The fix gets a scoped re-review.
-- **Parking a finding as a follow-up, or asking the owner whether to fix a minor one.** Only the owner accepts an open
-  finding, and only at a cap.
 - **Treating the one-sentence frame as an estimate.** The cost is the braid it sits in. Measure the radius with
   `findReferences` before brainstorming.
 - **"It's only a small diff."** Diff size is the easy axis and says nothing about braid (docs/abstract/simple-vs-easy.md
@@ -701,9 +664,7 @@ You are skipping the process when you see any of these.
   the count. It belongs in front of the owner before the first edit.
 - **Discovering the real radius at file 60.** It was measurable in seconds at file 0. Late discovery is a hard stop and
   an amendment.
-- **Complying with a request that breaks a convention without naming the convention.**
 - **Typing a path in `apps/`, `packages/` or `config/` without having read `docs/code/placement.md`.**
-- **Inventing a package or a file because nothing fits.** That is the signal to stop and ask.
 - **"It's obvious where this goes"** on a change across several files or with a new abstraction. Frame and place it
   anyway. Placements that feel obvious are where layer leaks start.
 

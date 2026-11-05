@@ -149,6 +149,12 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     recordTransfer,
     /** Records a known chain's phase. An unchanged phase is dropped. Never throws. */
     recordChainPhase,
+    /**
+     * Records a return to the page, from hiding or from a sleep. Every chain's judgement starts over: its block clock
+     * stops. A light client's alarm waits for its first block after the return, a pool's for its next `connected`, and a
+     * pool still connected keeps its alarm. The bars stay. Never throws.
+     */
+    recordReturn,
     /** Returns the transfer as last merged. Never throws. */
     getTransfer,
     /**
@@ -215,6 +221,25 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     }
     state.latest = blockNumber;
     state.lastAt = now;
+    rearmAlarms(state);
+    notify();
+  }
+
+  /** A block proves the chain is up again, so a later drop is a regression worth an alarm. */
+  function rearmAlarms(state: ChainState): void {
+    if (state.role !== null && phases.get(state.role) === 'ready') {
+      frameWasReady.add(state.role);
+    }
+  }
+
+  function recordReturn(): void {
+    for (const state of listChains()) {
+      state.lastAt = null;
+      if (state.status !== 'connected') {
+        state.poolWasConnected = false;
+      }
+    }
+    frameWasReady.clear();
     notify();
   }
 

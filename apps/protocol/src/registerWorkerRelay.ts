@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Over the iframe's link to the protocol SharedWorker, the iframe forwards its chain and name calls to the worker as
-// their message bytes, so the host hears the worker's answers, values and ends as the worker posted them. Nothing is
-// added on the way: no deadline goes to the worker, and no chain or name payload is decoded in the iframe.
+// Over the iframe's link to the protocol SharedWorker, the iframe forwards its chain and name calls, and the host's
+// pause, to the worker as their message bytes, so the host hears the worker's answers, values and ends as the worker
+// posted them. Nothing is added on the way: no deadline goes to the worker, and no chain or name payload is decoded in
+// the iframe.
 
 import {
   createEndListeners,
@@ -31,15 +32,15 @@ type Params = {
 };
 
 /**
- * Forwards the chain and name calls of `serving` to `worker`, and feeds `boot` the worker's telemetry. When the worker
- * stops serving this tab, `boot` ends the status with the worker's own end, and the calls the worker still holds fail,
- * since it will answer nothing more.
+ * Forwards the chain and name calls and the host's pause from `serving` to `worker`, and feeds `boot` the worker's
+ * telemetry. When the worker stops serving this tab, `boot` ends the status with the worker's own end, and the calls
+ * the worker still holds fail, since it will answer nothing more.
  *
  * Returns a stop that stops forwarding and removes the status listener, leaving the calls already forwarded to run to
  * their end. The telemetry stays served, since `boot.serveTelemetry` cannot be undone. The stop is safe to call twice.
  */
 export function registerWorkerRelay({ serving, worker, workerStatus, boot }: Params): () => void {
-  const stopForwarding = serving.forward(ENGINE_METHODS, worker);
+  const stopForwarding = serving.forward([...ENGINE_METHODS, protocolSchema.sections.frame.pause], worker);
   // Before the status can end, so no telemetry subscription waits for a source when it does.
   boot.serveTelemetry(relaySubscription(worker, protocolSchema.sections.frame.telemetry));
   const stopListening = workerStatus.onEnd(end => {

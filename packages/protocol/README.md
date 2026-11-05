@@ -27,9 +27,10 @@ flowchart TB
 - The protocol schema is where the wire types come from. It groups the methods into sections: the frame, name
   resolution, the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and
   its payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
-  iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
-  its method fails to compile. Its value codecs are composed from scale-ts: a string union is an enum of empty variants,
-  an optional field is an `Option`, a whole number of any size is a compact, and a record crosses as entries.
+  iframe toward the SharedWorker. The frame section carries the host's network pause, which a frame in SharedWorker mode
+  forwards to the worker. Each payload is typed by its method, so a payload, answer or value that does not fit its
+  method fails to compile. Its value codecs are composed from scale-ts: a string union is an enum of empty variants, an
+  optional field is an `Option`, a whole number of any size is a compact, and a record crosses as entries.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
@@ -59,8 +60,10 @@ flowchart TB
   shared store's status, the frame reports that throw under `protocol.status` and goes on.
 - The facades are the host's parts written against the transport: name resolution, remote chains, the shared store and
   telemetry. The client factory builds them and returns one object of entities: `frame`, `sharedStore`, `sharedAuth`,
-  `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains`, each with verb members. The page's instance is
-  `getProtocolClient()`, built on first use, and callers reach every request through it.
+  `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains`, each with verb members. The `frame` entity sends
+  the host's network pause to the ready frame, and to each later frame once it is ready while the pause lasts, without
+  booting one. The page's instance is `getProtocolClient()`, built on first use, and callers reach every request through
+  it.
 - A request has a budget per method. No deadline crosses the wire, so the frame sizes its own work from the same
   budgets. A shared store request's budget runs from the call. A chain or resolve request's runs once the frame is
   ready, since it also waits for the light client. A request that outlives its budget is given up on the host and its

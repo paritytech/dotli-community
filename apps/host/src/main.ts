@@ -13,6 +13,9 @@ import { reportBootFailure } from './reportBootFailure.js';
 import { PAGE_START } from './pageStart.js';
 import { bootTracker } from './createBootTracker.js';
 import { pageLoading } from './createLoadingController.js';
+import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
+import { loadingState } from './state/loadingState.js';
+import { networkPause } from './runtime/createNetworkPause.js';
 import { urlPillState } from './state/urlPillState.js';
 import { productCardState } from './state/productCardState.js';
 import { createProductAuthor } from './createProductAuthor.js';
@@ -355,6 +358,8 @@ async function main(): Promise<void> {
     return;
   }
   performance.mark('dotli:main:start');
+  // The load ends the hold itself once the loading screen is gone, so the stop goes unused.
+  holdNetworkWhileLoading({ pause: networkPause, loading: loadingState.store });
   // From the URL alone, before any await, so the URL bar paints with the page.
   if (route.kind === 'preview' || route.kind === 'localhost') {
     urlPillState.showLocalhost(route.host);
