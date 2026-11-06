@@ -184,7 +184,8 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
     try {
       lease = await acquireUntilEnded(signal);
     } catch (error) {
-      if (hasEnded()) {
+      // A boot failure the wait heard before the round ended is still a failure, so only the round's own end answers.
+      if (hasEnded() && error === signal.reason) {
         return false;
       }
       throw error;

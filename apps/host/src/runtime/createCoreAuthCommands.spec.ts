@@ -454,4 +454,31 @@ describe('topbar login over the page core', () => {
     expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, { flow: 'wallet', step: 'login' });
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
+
+  it('As an operator, I see a boot failure that lands in the same turn as the user closing the sign-in still reported', async () => {
+    // Given: a login waiting for a cold wallet core to boot, whose user closes the sign-in as the boot's failure arrives
+    const fakes = createHarness();
+    fakes.holdBoots();
+    const acquire = fakes.core.acquire.bind(fakes.core);
+    vi.spyOn(fakes.core, 'acquire').mockImplementationOnce(() => {
+      const lease = acquire();
+      // Hooked a microtask late, so the close lands after the login heard the failure and before it acts on it.
+      queueMicrotask(() => {
+        lease.catch(() => {
+          fakes.commands.cancelLogin();
+        });
+      });
+      return lease;
+    });
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+
+    // When the boot fails
+    const failure = new Error('worker fatal error: boot');
+    nth(fakes.heldBoots, 0).reject(failure);
+    await done;
+
+    // Then the failure is reported once as a login failure
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, { flow: 'wallet', step: 'login' });
+  });
 });
