@@ -23,10 +23,11 @@ flowchart LR
   verify -- "no, or cannot check" --> refuse[refuse]
 ```
 
-- The client keeps one Bulletin connection to the protocol frame, redialled after a halt. Retryable errors go through
-  `createAsyncTaskPool` within a total time budget. A "block not found" answer is retried a few times because it only
-  means the connected peers lacked the block. Other errors are terminal. A second request for the same CID waits on the
-  first.
+- The client keeps one Bulletin connection to the protocol frame while a fetch runs, and closes it after the last one
+  settles. A close that fails is reported, and the next fetch dials anew. A halt drops the connection, and the next
+  attempt redials. Retryable errors go through `createAsyncTaskPool` within a total time budget. A "block not found"
+  answer is retried a few times because it only means the connected peers lacked the block. Other errors are terminal. A
+  second request for the same CID waits on the first.
 - The page has one client, built on first use over the protocol frame's remote chain provider.
 - The relay listens on the host's sandbox channel. It takes the cache and the client as its params and tags each block
   with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses its storage on

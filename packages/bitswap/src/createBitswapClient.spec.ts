@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { RemoteChainHalt } from '@dotli/chains';
@@ -22,19 +23,32 @@ type Dial = {
   onHalt: (reason: RemoteChainHalt) => void;
   /** The ids sent on this connection, in order. */
   sent: number[];
+  /** How many times the client disconnected this connection. */
+  disconnected: number;
+};
+
+type FakeChainOptions = {
+  /** The reply once `replies` ran out. A DONT_HAVE by default. */
+  tail?: Reply;
+  /** The dials, by index, whose `disconnect` throws. */
+  throwingDisconnects?: number[];
 };
 
 /**
  * Stands in for the protocol frame's Bulletin connection. Each `bitswap_v1_get` is answered with the next of `replies`,
  * then with `tail`, unless the reply is `silent`. Every dial opens a new connection.
  */
-function createFakeChain(replies: Reply[] = [], tail: Reply = { code: -32810 }) {
+function createFakeChain(
+  replies: Reply[] = [],
+  { tail = { code: -32810 }, throwingDisconnects = [] }: FakeChainOptions = {},
+) {
   const dials: Dial[] = [];
   const gaps: number[] = [];
   let answered = 0;
   let last: number | null = null;
   const provider: RemoteChainProvider = (onMessage, onHalt) => {
-    const dial: Dial = { onMessage, onHalt: onHalt ?? (() => undefined), sent: [] };
+    const dial: Dial = { onMessage, onHalt: onHalt ?? (() => undefined), sent: [], disconnected: 0 };
+    const throwsOnDisconnect = throwingDisconnects.includes(dials.length);
     dials.push(dial);
     return {
       send: request => {
@@ -59,7 +73,12 @@ function createFakeChain(replies: Reply[] = [], tail: Reply = { code: -32810 }) 
           );
         });
       },
-      disconnect: () => undefined,
+      disconnect: () => {
+        dial.disconnected += 1;
+        if (throwsOnDisconnect) {
+          throw new Error('Bulletin connection would not close');
+        }
+      },
     };
   };
   return {
@@ -191,7 +210,7 @@ describe('createBitswapClient retry policy', () => {
 
   it('As a user, I see a fetch from a chain that keeps answering busy stop at the three-minute budget', async () => {
     // Given every answer is "no peers at all"
-    const chain = createFakeChain([], { code: -32812 });
+    const chain = createFakeChain([], { tail: { code: -32812 } });
 
     // When
     const block = createClient(chain.provider).get('bafyBusy');
@@ -236,7 +255,7 @@ describe('createBitswapClient retry policy', () => {
 describe('createBitswapClient aborts', () => {
   it('As a user, I navigate away and the fetch stops mid-call instead of finishing the budget', async () => {
     // Given a chain that never replies, so the call is waiting on the wire
-    const chain = createFakeChain([], 'silent');
+    const chain = createFakeChain([], { tail: 'silent' });
     const aborter = new AbortController();
     const block = createClient(chain.provider).get('bafyInFlight', aborter.signal);
     // Marks the rejection handled while the timers advance.
@@ -256,7 +275,7 @@ describe('createBitswapClient aborts', () => {
 
   it('As a user, I navigate away and the fetch stops mid-backoff too', async () => {
     // Given a retry that is waiting between attempts
-    const chain = createFakeChain([], { code: -32812 });
+    const chain = createFakeChain([], { tail: { code: -32812 } });
     const aborter = new AbortController();
     const block = createClient(chain.provider).get('bafyBackoff', aborter.signal);
     // Marks the rejection handled while the timers advance.
@@ -291,7 +310,7 @@ describe('createBitswapClient aborts', () => {
   it('As a user, I keep a long-lived subscription and it gathers no abort listeners', async () => {
     // Given a chain that never answers, so every attempt ends on its per-call timeout, and a signal that outlives the
     // call as a subscription's does
-    const chain = createFakeChain([], 'silent');
+    const chain = createFakeChain([], { tail: 'silent' });
     const signal = new CountingSignal();
 
     // When the call spends its whole budget on per-call timeouts
@@ -333,7 +352,7 @@ describe('createBitswapClient when the connection cannot send', () => {
 describe('createBitswapClient after a halt', () => {
   it('As a dotli user, I still load content after the Bulletin chain halts', async () => {
     // Given a request in flight on a connection that then halts
-    const chain = createFakeChain(['silent'], { hex: '0xabcd' });
+    const chain = createFakeChain(['silent'], { tail: { hex: '0xabcd' } });
     const block = createClient(chain.provider).get('bafyHalt');
     await timers.advance(100);
 
@@ -355,7 +374,7 @@ describe('createBitswapClient after a halt', () => {
 
   it('As a dotli user, I see a request in flight when the protocol frame dies fail at once', async () => {
     // Given a request in flight on a connection that never replies
-    const chain = createFakeChain(['silent'], { hex: '0xabcd' });
+    const chain = createFakeChain(['silent'], { tail: { hex: '0xabcd' } });
     const client = createClient(chain.provider);
     const block = client.get('bafyFrame');
     // Holds the rejection across the timer moves.
@@ -417,7 +436,7 @@ describe('createBitswapClient after a halt', () => {
 
   it('As a dotli user, I keep the new Bulletin connection working through a late halt from the replaced one', async () => {
     // Given a fetch that redialled after its chain halted, with a request in flight on the new connection
-    const chain = createFakeChain([], 'silent');
+    const chain = createFakeChain([], { tail: 'silent' });
     const client = createClient(chain.provider);
     const fetching = client.get('bafyReplaced');
     let settled = false;
@@ -451,12 +470,14 @@ describe('createBitswapClient after a halt', () => {
     // When the next fetch is made
     const next = client.get('bafyReplaced');
     await timers.advance(100);
-    current.onMessage({ jsonrpc: '2.0', id: getSentId(current, 1), result: '0xef' });
+    const reopened = getDial(chain.dials, 2);
+    reopened.onMessage({ jsonrpc: '2.0', id: getSentId(reopened, 0), result: '0xef' });
     const nextBytes = await next;
 
-    // Then it uses the new connection without dialling
+    // Then the new connection closed once the first fetch settled, and the next fetch dials anew and is served there
+    expect(current.disconnected).toBe(1);
     expect(nextBytes).toEqual(new Uint8Array([0xef]));
-    expect(chain.dials).toHaveLength(2);
+    expect(chain.dials).toHaveLength(3);
   });
 });
 
@@ -464,7 +485,7 @@ describe('createBitswapClient redial', () => {
   it('As a dotli user, I redial after a halt and the Bulletin provider is asked for again and used', async () => {
     // Given a client whose provider getter hands out a different chain on each read
     const before = createFakeChain(['silent']);
-    const after = createFakeChain([], { hex: '0xabcd' });
+    const after = createFakeChain([], { tail: { hex: '0xabcd' } });
     const providers = [before.provider, after.provider];
     let reads = 0;
     const client = createBitswapClient({
@@ -489,7 +510,7 @@ describe('createBitswapClient redial', () => {
 describe('createBitswapClient for one block asked twice', () => {
   it('As a user, I ask for a block while another fetch of it fails and it is fetched on its own within its own budget', async () => {
     // Given a chain that always answers busy, and a first fetch started a minute before the second asks
-    const chain = createFakeChain([], { code: -32812 });
+    const chain = createFakeChain([], { tail: { code: -32812 } });
     const client = createClient(chain.provider);
     let firstSettledAt = -1;
     let secondSettledAt = -1;
@@ -522,7 +543,7 @@ describe('createBitswapClient for one block asked twice', () => {
 
   it('As a user, I see a block whose budget ran out behind another fetch fail without a fetch of its own', async () => {
     // Given two callers asking at once on a chain that always answers busy
-    const chain = createFakeChain([], { code: -32812 });
+    const chain = createFakeChain([], { tail: { code: -32812 } });
     const client = createClient(chain.provider);
     const first = client.get('bafySpent');
     const second = client.get('bafySpent');
@@ -552,7 +573,7 @@ describe('createBitswapClient for one block asked twice', () => {
 
   it('As a user, I ask for the same block from two parts of the page at once and it is fetched once', async () => {
     // Given a chain that answers after a DONT_HAVE, so the first fetch is still running when the second asks
-    const chain = createFakeChain([{ code: -32810 }], { hex: '0xabcd' });
+    const chain = createFakeChain([{ code: -32810 }], { tail: { hex: '0xabcd' } });
     const client = createClient(chain.provider);
 
     // When
@@ -570,7 +591,7 @@ describe('createBitswapClient for one block asked twice', () => {
 
   it('As a user, I give up on a block in one part of the page and it is still fetched for the other', async () => {
     // Given a first fetch held on the wire, and a second waiting for it
-    const chain = createFakeChain(['silent'], { hex: '0xabcd' });
+    const chain = createFakeChain(['silent'], { tail: { hex: '0xabcd' } });
     const client = createClient(chain.provider);
     const aborter = new AbortController();
     const abandoned = client.get('bafyHalfWanted', aborter.signal);
@@ -605,5 +626,97 @@ describe('createBitswapClient for one block asked twice', () => {
     // Then nothing was kept past the first fetch
     await expect(second).resolves.toEqual(new Uint8Array([0x02]));
     expect(chain.sent()).toBe(2);
+  });
+});
+
+describe('createBitswapClient connection lifetime', () => {
+  it('As a page, my Bulletin connection closes once my last fetch settles', async () => {
+    // Given
+    const chain = createFakeChain([{ hex: '0x01' }]);
+    const client = createClient(chain.provider);
+
+    // When
+    const block = client.get('bafyOnce');
+    await timers.advance(10);
+    await block;
+
+    // Then
+    expect(chain.dials).toHaveLength(1);
+    expect(getDial(chain.dials, 0).disconnected).toBe(1);
+  });
+
+  it('As a page, my Bulletin connection stays open while another fetch still runs', async () => {
+    // Given one fetch that is answered and one the chain never answers
+    const chain = createFakeChain([{ hex: '0x01' }, 'silent']);
+    const client = createClient(chain.provider);
+    const answered = client.get('bafyAnswered');
+    void client.get('bafyWaiting');
+
+    // When
+    await timers.advance(10);
+    await answered;
+
+    // Then
+    expect(chain.dials).toHaveLength(1);
+    expect(getDial(chain.dials, 0).disconnected).toBe(0);
+  });
+
+  it('As a page, my Bulletin connection stays open across a retry wait', async () => {
+    // Given a block the peers lack at first
+    const chain = createFakeChain([{ code: -32810 }, { hex: '0x01' }]);
+    const client = createClient(chain.provider);
+
+    // When the fetch waits between its attempts, and then resolves
+    const block = client.get('bafyRetry');
+    await timers.advance(100);
+    const disconnectedDuringWait = getDial(chain.dials, 0).disconnected;
+    await timers.advance(1_000);
+    await block;
+
+    // Then one connection served both attempts, and closed only after the fetch resolved
+    expect(disconnectedDuringWait).toBe(0);
+    expect(chain.sent()).toBe(2);
+    expect(chain.dials).toHaveLength(1);
+    expect(getDial(chain.dials, 0).disconnected).toBe(1);
+  });
+
+  it('As a page, I fetch after the connection closed and it dials again', async () => {
+    // Given a fetch that ended and closed its connection
+    const chain = createFakeChain([{ hex: '0x01' }, { hex: '0x02' }]);
+    const client = createClient(chain.provider);
+    const first = client.get('bafyFirst');
+    await timers.advance(10);
+    await first;
+
+    // When
+    const second = client.get('bafySecond');
+    await timers.advance(10);
+
+    // Then
+    await expect(second).resolves.toEqual(new Uint8Array([0x02]));
+    expect(chain.dials).toHaveLength(2);
+  });
+
+  it('As a page, I still get my block when closing the connection throws, and the failure is reported', async () => {
+    // Given a connection whose close throws
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const chain = createFakeChain([{ hex: '0x01' }, { hex: '0x02' }], { throwingDisconnects: [0] });
+    const client = createClient(chain.provider);
+
+    // When
+    const first = client.get('bafyFirst');
+    await timers.advance(10);
+    const firstBytes = await first;
+    const second = client.get('bafySecond');
+    await timers.advance(10);
+    const secondBytes = await second;
+
+    // Then the fetch kept its bytes, the failed close was reported, and the next fetch dialled anew
+    expect(firstBytes).toEqual(new Uint8Array([0x01]));
+    expect(captured).toEqual([{ flow: 'content', step: 'bitswap_release', tags: undefined }]);
+    expect(sentry.counted('content.bitswap_release')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(secondBytes).toEqual(new Uint8Array([0x02]));
+    expect(chain.dials).toHaveLength(2);
   });
 });

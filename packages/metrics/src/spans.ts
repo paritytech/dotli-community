@@ -97,6 +97,9 @@ export const spans = {
   /** A bitswap relay step that failed. Tag `outcome` (`error`), `reason` (the error name) and `step` (`verify, cache_read, cache_delete, cache_write`). */
   CONTENT_BLOCK_RELAY: 'content.block_relay',
 
+  /** A Bulletin connection the bitswap client failed to close after its last fetch. Tag `outcome` (`error`) and `reason` (the error name). */
+  CONTENT_BITSWAP_RELEASE: 'content.bitswap_release',
+
   /** Bytes. */
   CONTENT_SIZE: 'content.size',
 
