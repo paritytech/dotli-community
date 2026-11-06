@@ -91,11 +91,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   starts. It reads the protocol frame's telemetry through the client it is given, the page's own by default. The page
   gives it the host's bitswap client from the bridge to fetch the product's icon. The journey and the failure sightings
   read the session storage they are given.
-- Every reload that tells the next boot why goes through one step. The topbar's binding, the service worker's update
-  offer, the main-thread monitor, the loading screen, the load progress, the bar's auto-hide on the shield, the sandbox
-  watch and the resolution trace each hand back the cleanup of what they listen to and the timers they hold. The trace
-  releases its own once it ends, and the sandbox watch once the sandbox speaks. A load that fails stops waiting for the
-  sandbox's outcome on its content and stops hearing a refused wire version. The page keeps the rest for its life.
+- Every reload that tells the next boot why goes through one step. The topbar's binding, the main-thread monitor, the
+  loading screen, the load progress, the bar's auto-hide on the shield, the sandbox watch and the resolution trace each
+  hand back the cleanup of what they listen to and the timers they hold. The trace releases its own once it ends, and
+  the sandbox watch once the sandbox speaks. A load that fails stops waiting for the sandbox's outcome on its content
+  and stops hearing a refused wire version. The page keeps the rest for its life.
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
   the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
   The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
@@ -219,9 +219,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,
   the panel bodies (chat, account, chains, permissions, settings), the product card, the violation panel, the debug
-  panel and its wire describer, the recovery phrase form, the local wallet and workbox, the host runtime and its worker,
-  the chain client and the QR encoder. The small pieces of a product load (branding, the cache check, the failure
-  screen) are plain imports.
+  panel and its wire describer, the recovery phrase form, the local wallet, the host runtime and its worker, the chain
+  client and the QR encoder. The small pieces of a product load (branding, the cache check, the failure screen) are
+  plain imports.
 - The host runtime, the wire describer, the block verifier and the gateway resolver each load once and serve every
   caller after. A failed load is forgotten, so the next caller, a sign-in Retry for one, loads it again without a page
   reload. The describer and the verifier report only their first miss. The verifier starts loading as soon as a
@@ -261,8 +261,7 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   and the overlays each have a stand-in that releases the sign-in lease or refuses pending prompts. One that fails
   before page start listens, such as an island that loads with the page, reaches the console alone.
 - The Astro config adds the PWA service worker, the signing worker, the dev SPA fallback and a Sentry release upload,
-  all from the shared Vite tooling. The shell asks for a new release as soon as its worker registers and offers one the
-  moment the browser finds it. A Reload pressed while the release downloads applies it once downloaded.
+  all from the shared Vite tooling.
 
 ```mermaid
 flowchart LR

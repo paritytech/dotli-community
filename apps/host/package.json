@@ -74,7 +74,6 @@
     "neverthrow": "8.2.0",
     "polkadot-api": "3.3.0",
     "qrcode": "1.5.4",
-    "solid-js": "2.0.0-rc.21",
-    "workbox-window": "7.4.1"
+    "solid-js": "2.0.0-rc.21"
   }
 }
