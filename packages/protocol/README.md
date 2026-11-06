@@ -109,6 +109,9 @@ were.
   subscription ends with it, so a remote chain connection hears that the frame stopped. The transport posts nothing as
   it closes, so the frame lets go of what it served as its iframe goes. The frame is then rebuilt.
 - A call made while the frame is down waits for the next transport.
+- A shared store call that times out on its budget makes the host ask that frame once whether it still answers
+  (`frame.heartbeat`, within the handshake's 5 s). A frame that does not answer is dropped and rebuilt as a lost frame,
+  and any answer, a refusal from an earlier release included, keeps it.
 - The wallet save carries the identity, and the store and the wallet gained their compare-and-clear calls, which moved
   the wire to a new version on purpose. A cached older shell then meets the reload screen instead of saving a wallet the
   frame would read back without it.
