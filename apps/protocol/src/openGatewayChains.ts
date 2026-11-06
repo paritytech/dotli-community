@@ -3,14 +3,17 @@
 
 // Gateway mode's chains: the core set over trusted RPC nodes, behind the one pool every engine scope shares.
 
-import { createChainPool, createCoreRpcChainProvider, isCoreRpcChainSupported } from '@dotli/chains';
+import { createChainPool, createCoreRpcChainProvider, isCoreRpcChainSupported, RPC_FOLLOW_LIMIT } from '@dotli/chains';
 import type { EngineParams } from './createEngine.js';
 
 /** The core set, Bulletin included. An unused chain's socket closes a minute after its last connection. */
 export function openGatewayChains(): Pick<EngineParams, 'pool' | 'isChainSupported'> {
   return {
     pool: createChainPool({
-      createTransport: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, { hooks }),
+      createTransport: (genesisHash, hooks) => {
+        const provider = createCoreRpcChainProvider(genesisHash, { hooks });
+        return provider === null ? null : { provider, followLimit: RPC_FOLLOW_LIMIT };
+      },
       destroyDelay: 60_000,
     }),
     isChainSupported: isCoreRpcChainSupported,

@@ -1,19 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// One connection per chain, shared by every consumer in this JS context. Each lease is a broker
-// session. An entry closes `destroyDelay` after its last lease is released, and at once when its
-// transport halts. While someone watches the pool, each held chain also carries the watchers' own follow, which is a
-// session but not a lease. A pause closes every chain's connection under the same leases, and a resume opens it again.
+// Each chain's lanes, shared by every consumer in this JS context. Each lease is a consumer of the chain's lanes, which
+// spread the chain's follows over as many connections as its transport's follow limit needs. An entry closes
+// `destroyDelay` after its last lease is released, and at once when any lane's transport halts. While someone watches
+// the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A pause closes
+// every lane's connection under the same leases, and a resume opens them again.
 
-import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
+import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
-import { createChainBroker, type ChainBroker } from './createChainBroker.js';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
-import { createPausableTransport, type PausableTransport } from './createPausableTransport.js';
-import { createWatchGuard, type WatchGuard } from './createWatchGuard.js';
+import { createChainLanes, type ChainLanes } from './createChainLanes.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 
@@ -46,7 +45,7 @@ export type ChainPoolWatcher = {
 
 type Params = {
   /** Build a chain's transport, or `null` when this context cannot reach it. */
-  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
   /** How long a chain outlives its last lease, in ms. `Infinity` keeps it. */
   destroyDelay?: number;
 };
@@ -76,7 +75,8 @@ export type ChainPool = {
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
   /**
    * Reports each chain's leases, status, follow and best blocks. The chains held now are replayed first. A chain
-   * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept.
+   * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept. Never
+   * throws.
    */
   watch(watcher: ChainPoolWatcher): () => void;
   /**
@@ -99,9 +99,7 @@ export type ChainPool = {
 
 type Entry = {
   readonly key: string;
-  readonly pausable: PausableTransport;
-  readonly guard: WatchGuard;
-  readonly broker: ChainBroker;
+  readonly lanes: ChainLanes;
   leases: number;
   destroyTimer: ReturnType<typeof setTimeout> | null;
   live: boolean;
@@ -119,12 +117,10 @@ type LeaseParams<Connection> = {
 };
 
 type HaltOnFailureParams = {
-  /** The chain the step runs on. */
+  /** The chain to pause or resume. */
   entry: Entry;
-  /** Names the step in the report. */
+  /** What to do to its lanes, which also names the step in the report. */
   action: 'pause' | 'resume';
-  /** The chain's part of the pause or resume. */
-  step: (entry: Entry) => void;
 };
 
 /** What the pool tells its watchers, one listener per watcher. */
@@ -137,7 +133,7 @@ const DEFAULT_DESTROY_DELAY_MS = 60_000;
 const POOL_TAG = '[dot.li chain-pool]';
 
 /**
- * A pool that shares one transport per chain among its leases, and closes it `destroyDelay` after the last one.
+ * A pool that shares each chain's lanes among its leases, and closes them `destroyDelay` after the last one.
  *
  * @example
  * const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: 10_000 });
@@ -181,23 +177,23 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     }
     entry.live = false;
     log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
-    // The broker drops it with the other sessions.
+    // The lanes drop it with the other consumers.
     entry.watchFollow = null;
     if (entry.destroyTimer !== null) {
       clearTimeout(entry.destroyTimer);
       entry.destroyTimer = null;
     }
     entries.delete(entry.key);
-    // Before the broker call: a halt handler may lease the chain again, and
+    // Before the lanes call: a halt handler may lease the chain again, and
     // the rebuilt entry's status must not be overwritten afterwards.
     setStatus(entry.key, 'disconnected');
     report(entry);
     // The entry is already gone, so one chain's failure must not keep the others open.
     try {
       if (halt === null) {
-        entry.broker.disconnectAll();
+        entry.lanes.disconnectAll();
       } else {
-        entry.broker.halt(halt.error);
+        entry.lanes.halt(halt.error);
       }
     } catch (error) {
       reportDefect(error, {
@@ -209,32 +205,19 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     }
   }
 
-  /** Gives a chain's new status to its guard, the pool's statuses and the watchers, and nothing once the chain is closed. */
+  /** Gives a chain's new status to the pool's statuses and the watchers, and nothing once the chain is closed. */
   function applyStatus(entry: Entry, status: ConnectionStatus): void {
     if (!entry.live) {
       return;
     }
-    entry.guard.onStatus(status);
     setStatus(entry.key, status);
     report(entry);
   }
 
-  function pauseEntry(entry: Entry): void {
-    entry.pausable.pause();
-    // A consumer may release the last lease while it hears the pause, which closes the entry.
-    applyStatus(entry, 'disconnected');
-  }
-
-  function resumeEntry(entry: Entry): void {
-    if (entry.pausable.isPaused()) {
-      entry.pausable.resume();
-    }
-  }
-
-  /** Runs `step` on one chain, and halts the chain when it throws so its leases recover. */
-  function haltOnFailure({ entry, action, step }: HaltOnFailureParams): void {
+  /** Pauses or resumes one chain's lanes, and halts the chain when that throws so its leases recover. */
+  function haltOnFailure({ entry, action }: HaltOnFailureParams): void {
     try {
-      step(entry);
+      entry.lanes[action]();
     } catch (error) {
       reportDefect(error, {
         flow: 'protocol',
@@ -253,7 +236,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     sessionCounter += 1;
     const follow = openWatchFollow({
       sessionId,
-      connect: onMessage => entry.broker.connect({ sessionId, onMessage, wireMode: 'object' }),
+      connect: onMessage => entry.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
       live: () => entry.live,
       onFollowing: following => {
         if (entry.live && entry.following !== following) {
@@ -276,12 +259,31 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     };
   }
 
+  /**
+   * Opens the watchers' follow. A failure leaves the chain without one, and the next sync tries again. Never throws.
+   */
+  function startWatchFollow(entry: Entry): void {
+    try {
+      entry.watchFollow = openFollow(entry);
+    } catch (error) {
+      // The follow has no caller to throw to. A halted chain tells its leases itself, so only a live chain is reported.
+      if (entry.live) {
+        reportDefect(error, {
+          flow: 'protocol',
+          step: 'chain_pool_watch_follow',
+          metric: S.CHAIN_LANE_OPEN,
+          message: `${POOL_TAG} ${getShortKey(entry.key)} the network panel's follow could not open:`,
+        });
+      }
+    }
+  }
+
   /** The watchers' follow runs exactly while the chain is held and watched. */
   function syncWatchFollow(entry: Entry): void {
     const wanted = entry.live && watchers.size > 0 && entry.leases > 0;
     if (wanted && entry.watchFollow === null) {
       log.debug(`${POOL_TAG} ${getShortKey(entry.key)} held, the network panel follows it`);
-      entry.watchFollow = openFollow(entry);
+      startWatchFollow(entry);
     } else if (!wanted && entry.watchFollow !== null) {
       const watchFollow = entry.watchFollow;
       entry.watchFollow = null;
@@ -293,9 +295,14 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
   }
 
   function build(key: string): Entry | null {
-    // Null until the transport exists, so a hook that fires earlier has nothing to report on.
+    // Null until the lanes exist, so a hook that fires earlier has nothing to report on.
     let entry: Entry | null = null;
-    const hooks: ChainTransportHooks = {
+    const warn = warners.get(key) ?? createBrokerWarner();
+    const lanes = createChainLanes({
+      label: getShortKey(key),
+      createTransport: hooks => createTransport(key, hooks),
+      warn,
+      paused,
       onStatus: status => {
         if (entry !== null) {
           applyStatus(entry, status);
@@ -306,23 +313,14 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
           destroy(entry, { error });
         }
       },
-    };
-    const transport = createTransport(key, hooks);
-    if (transport === null) {
+    });
+    if (lanes === null) {
       return null;
     }
-    const pausable = createPausableTransport({ transport });
-    if (paused) {
-      pausable.pause();
-    }
-    const guard = createWatchGuard({ transport: pausable.provider });
-    const warn = warners.get(key) ?? createBrokerWarner();
     warners.set(key, warn);
     const created: Entry = {
       key,
-      pausable,
-      guard,
-      broker: createChainBroker({ provider: guard.provider, warn }),
+      lanes,
       leases: 0,
       destroyTimer: null,
       live: true,
@@ -332,7 +330,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     log.debug(`${POOL_TAG} ${getShortKey(key)} opening`);
     entry = created;
     entries.set(key, created);
-    setStatus(key, pausable.isPaused() ? 'disconnected' : 'connecting');
+    setStatus(key, lanes.status());
     report(created);
     return created;
   }
@@ -344,7 +342,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       return null;
     }
     if (!paused) {
-      haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+      haltOnFailure({ entry, action: 'resume' });
     }
     if (entry.destroyTimer !== null) {
       clearTimeout(entry.destroyTimer);
@@ -415,7 +413,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
         // Prefixed so no remote id can collide with a local lease's `local:N`.
         return lease({
           entry,
-          connection: entry.broker.connect({
+          connection: entry.lanes.connect({
             sessionId: `remote:${connectionId}`,
             // On the string wire the broker sends JSON text, which it types as `unknown`.
             onMessage: onMessage as (message: unknown) => void,
@@ -454,7 +452,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
           // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
           return lease({
             entry: current,
-            connection: current.broker.connect({
+            connection: current.lanes.connect({
               sessionId,
               onMessage: onMessage as (message: unknown) => void,
               wireMode: 'object',
@@ -483,7 +481,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       paused = true;
       const live = [...entries.values()];
       for (const entry of live) {
-        haltOnFailure({ entry, action: 'pause', step: pauseEntry });
+        haltOnFailure({ entry, action: 'pause' });
       }
       log.event(`${POOL_TAG} paused`, { flow: 'protocol', chains: live.length });
     },
@@ -498,7 +496,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       for (const entry of live) {
         // A consumer's delivery in this loop may have closed the chain.
         if (entry.live && entry.leases > 0) {
-          haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+          haltOnFailure({ entry, action: 'resume' });
         }
       }
       log.event(`${POOL_TAG} resumed`, { flow: 'protocol', chains: live.length });

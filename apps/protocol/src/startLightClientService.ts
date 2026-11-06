@@ -7,7 +7,7 @@
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import type { ChainRole, FixedServicesConfig } from '@dotli/config/fixed';
-import { createChainPool, requireBrokerLocalProvider } from '@dotli/chains';
+import { createChainPool, LIGHT_CLIENT_FOLLOW_LIMIT, requireBrokerLocalProvider } from '@dotli/chains';
 import { reportExpected, spans as S } from '@dotli/metrics';
 
 import { observeChains } from './observeChains.js';
@@ -35,13 +35,18 @@ export function startLightClientService({ lightClient, resolver, services }: Par
   // Before the first chain opens, or that connection carries no lifecycle watch.
   resolver.enableSyncReporting(REPORTED_CHAINS);
   // Releasing a smoldot chain makes the light client drop it and re-sync later.
-  const pool = createChainPool({ createTransport: lightClient.createChainProvider, destroyDelay: Infinity });
+  const pool = createChainPool({
+    createTransport: (genesisHash, hooks) => {
+      const provider = lightClient.createChainProvider(genesisHash, hooks);
+      return provider === null ? null : { provider, followLimit: LIGHT_CLIENT_FOLLOW_LIMIT };
+    },
+    destroyDelay: Infinity,
+  });
   // The relay carries the warp progress but papi never dials it. Bulletin opened lazily by the first `bitswap_v1_get`
   // has no peers yet and fails it, so it finds peers while the name resolves.
   const releaseChains = observeChains({ pool, genesisHashes: [services.relay.genesis, services.bulletin.genesis] });
-  // Through the broker's follows, since a second follow on one smoldot chain shares its one response queue, so the
-  // broker would drop its events and reads would hang. A separate resolver chain would also be released by the first
-  // dApp connection mid-read (`ChainHead disjointed`).
+  // The resolver reads through leases on the same pool as every dApp, so a dApp leaving never ends the resolver's
+  // follow. A separate resolver chain would be released by the first dApp connection mid-read (`ChainHead disjointed`).
   const dotns = resolver.createDotnsResolver({
     assetHub: () =>
       requireBrokerLocalProvider({ manager: pool, genesisHash: services.assethub.genesis, label: 'Asset Hub' }),

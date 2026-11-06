@@ -10,12 +10,15 @@ import { bindLogSink, createDeferred, type LogLevel } from '@dotli/shared';
 import {
   createLightClient,
   createLightClientDeps,
+  LightClientCapError,
+  withConnectionCapError,
   type LightClient,
   type LightClientChange,
   type LightClientDeps,
   type LightClientEngine,
   type StartEngineParams,
 } from './createLightClient.js';
+import type { ChainSyncReporter } from './createChainSyncReporter.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
 import type { ChainTransportHooks } from './transportHooks.js';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
@@ -46,6 +49,8 @@ function waitUntil(met: () => boolean): Promise<void> {
 /** A truapi-provider connection whose response stream the test drives. */
 type FakeConnection = {
   send: (raw: string) => void;
+  /** Every frame the light client sent on this connection. */
+  sent: string[];
   close: () => void;
   nextResponse: () => Promise<string | undefined>;
   /** The read the light client awaits now, so a test can wait until it was handled. */
@@ -54,6 +59,8 @@ type FakeConnection = {
   end: () => void;
   /** Fail the next read, as a broken response stream would. */
   break: (error: Error) => void;
+  /** Deliver one response frame, as the node's answer would. */
+  respond: (raw: string) => void;
 };
 
 function createConnection(): FakeConnection {
@@ -69,7 +76,10 @@ function createConnection(): FakeConnection {
     queued.push(value);
   }
   const connection: FakeConnection = {
-    send: () => undefined,
+    send: raw => {
+      connection.sent.push(raw);
+    },
+    sent: [],
     close: () => {
       push(undefined);
     },
@@ -97,6 +107,9 @@ function createConnection(): FakeConnection {
     },
     break: (error: Error) => {
       push(error);
+    },
+    respond: raw => {
+      push(raw);
     },
   };
   return connection;
@@ -194,6 +207,36 @@ function createMockHooks(): MockHooks {
   };
 }
 
+/** A sync reporter's attach that counts its calls and hands back a tap that intercepts nothing. */
+function createCountingAttach(): Mock<ChainSyncReporter['attachChainSync']> {
+  return vi.fn<ChainSyncReporter['attachChainSync']>(() => ({ intercept: () => false, stop: () => undefined }));
+}
+
+/** A sync tap as the test sees it: the send it was handed and every frame its connection let it intercept. */
+type RecordedTap = {
+  send: (message: string) => void;
+  intercepted: unknown[];
+};
+
+/** A sync reporter's attach that records each tap it attaches, whose intercept claims every frame. */
+function createRecordingAttach(): { attachChainSync: ChainSyncReporter['attachChainSync']; taps: RecordedTap[] } {
+  const taps: RecordedTap[] = [];
+  return {
+    taps,
+    attachChainSync: ({ send }) => {
+      const tap: RecordedTap = { send, intercepted: [] };
+      taps.push(tap);
+      return {
+        intercept: parsed => {
+          tap.intercepted.push(parsed);
+          return true;
+        },
+        stop: () => undefined,
+      };
+    },
+  };
+}
+
 function createDeps(engine: FakeEngine, extra: Partial<LightClientDeps> = {}): LightClientDeps {
   return { db: null, logLevel: 'off', gauge: null, start: engine.start, ...extra };
 }
@@ -240,6 +283,68 @@ describe('createLightClient', () => {
     expect(chainHooks.onStatus).toHaveBeenCalledWith('connecting');
     await chainHooks.reported('connected');
     expect(chainHooks.onHalt).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, I open two connections to one chain and only the first reports its sync', async () => {
+    // Given a light client whose sync reporter counts the taps it attaches
+    const attachChainSync = createCountingAttach();
+    client = createLightClient(createDeps(engine, { attachChainSync }));
+    const first = createMockHooks();
+    const second = createMockHooks();
+
+    // When two connections of one chain open and connect
+    open(first);
+    open(second);
+    await Promise.all([first.reported('connected'), second.reported('connected')]);
+
+    // Then only the first connection attached a sync tap
+    expect(attachChainSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a dotli integrator, I close the connection that reports a chain's sync and the chain's other open connection reports it, with no connection opened", async () => {
+    // Given two connections of one chain, the first reporting its sync
+    const { attachChainSync, taps } = createRecordingAttach();
+    client = createLightClient(createDeps(engine, { attachChainSync }));
+    const first = createMockHooks();
+    const second = createMockHooks();
+    const reporting = open(first);
+    open(second);
+    await Promise.all([first.reported('connected'), second.reported('connected')]);
+    const remaining = engine.connections[1];
+
+    // When the first closes, then the tap now attached sends and the second connection answers it
+    reporting.disconnect();
+    taps[1]?.send('peers request');
+    const read = remaining?.lastRead;
+    remaining?.respond('{"jsonrpc":"2.0","id":"peers","result":[]}');
+    await read;
+
+    // Then the second connection carries the new tap's request and its answer reaches that tap, with no third opened
+    expect(taps).toHaveLength(2);
+    expect(engine.connections).toHaveLength(2);
+    expect(remaining?.sent).toEqual(['peers request']);
+    expect(taps[1]?.intercepted).toEqual([{ jsonrpc: '2.0', id: 'peers', result: [] }]);
+  });
+
+  it("As a dotli integrator, I see the connection that reports a chain's sync end its stream and the chain's other open connection reports it, with no connection opened", async () => {
+    // Given two connections of one chain, the first reporting its sync
+    const { attachChainSync, taps } = createRecordingAttach();
+    client = createLightClient(createDeps(engine, { attachChainSync }));
+    const first = createMockHooks();
+    const second = createMockHooks();
+    open(first);
+    open(second);
+    await Promise.all([first.reported('connected'), second.reported('connected')]);
+
+    // When the first connection's stream ends, then the tap now attached sends
+    engine.connections[0]?.end();
+    await first.halted();
+    taps[1]?.send('peers request');
+
+    // Then the new tap sends on the second connection, with no third opened
+    expect(taps).toHaveLength(2);
+    expect(engine.connections).toHaveLength(2);
+    expect(engine.connections[1]?.sent).toEqual(['peers request']);
   });
 
   it('As a dotli integrator, I open two chains at once and they share one light client start', async () => {
@@ -380,6 +485,28 @@ describe('createLightClient', () => {
     const message = `chain ${people} connection failed: catalog has no such chain`;
     expect(changes).toEqual([{ kind: 'fatal', message }]);
     expect(client.status().fatal).toBe(message);
+  });
+
+  it("As a dotli integrator, I open a connection past the light client's cap and only that chain halts", async () => {
+    // Given an engine that refuses the people chain at its cap and opens any other chain
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const cap = new LightClientCapError(people, new Error('the light client already holds 32 connections'));
+    const connect = engine.connect;
+    engine.connect = genesisHash => (genesisHash === people ? Promise.reject(cap) : connect(genesisHash));
+    const refused = createMockHooks();
+    const other = createMockHooks();
+
+    // When a connection of the people chain opens, and then one of another chain
+    open(refused);
+    await refused.halted();
+    open(other, services.assethub.genesis);
+    await other.reported('connected');
+
+    // Then only the people chain halted, the cap is counted, and the other chain opened
+    expect(refused.onHalt).toHaveBeenCalledWith(cap);
+    expect(other.onHalt).not.toHaveBeenCalled();
+    expect(client.status().fatal).toBeNull();
+    expect(metrics.counted('smoldot.connection_cap')).toEqual([{ outcome: 'error', reason: 'cap' }]);
   });
 
   it('As a dotli user on a light client, I open a chain after a failed start and the light client starts again', async () => {
@@ -792,5 +919,40 @@ describe('isChainSupported', () => {
 
     // Then
     expect(supported).toBe(false);
+  });
+});
+
+describe('withConnectionCapError', () => {
+  function createEngineRejecting(error: Error): LightClientEngine {
+    return {
+      loadDatabase: () => Promise.resolve(false),
+      connect: () => Promise.reject(error),
+      lifecycle: () => ({ next: () => Promise.resolve(undefined), close: () => undefined }),
+    };
+  }
+
+  it("As a dotli integrator, I see the wasm's connection cap text become a typed cap error that keeps the original", async () => {
+    // Given an engine whose connect rejects with the wasm's cap text
+    const original = new Error('the light client already holds 32 connections');
+    const engine = withConnectionCapError(createEngineRejecting(original));
+
+    // When a chain connects
+    const rejection = await engine.connect('0xaa').catch((error: unknown) => error);
+
+    // Then the rejection is a cap error caused by the original
+    expect(rejection).toBeInstanceOf(LightClientCapError);
+    expect((rejection as LightClientCapError).cause).toBe(original);
+  });
+
+  it('As a dotli integrator, I see any other connect failure pass through unchanged', async () => {
+    // Given an engine whose connect rejects for another reason
+    const original = new Error('catalog has no such chain');
+    const engine = withConnectionCapError(createEngineRejecting(original));
+
+    // When a chain connects
+    const rejection = await engine.connect('0xaa').catch((error: unknown) => error);
+
+    // Then the same error comes back
+    expect(rejection).toBe(original);
   });
 });

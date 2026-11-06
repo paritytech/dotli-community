@@ -7,7 +7,6 @@
 // (the CID cache, the failure screen) is passed in. The page's own state is imported.
 
 import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
-import { fetchBitswapBlock } from '@dotli/bitswap';
 import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
@@ -152,9 +151,9 @@ type Params = {
   now?: () => number;
   /**
    * Reads one block of the product's content for its icon, abandoned when the signal aborts. Rejects when the read
-   * fails. The page's block client by default.
+   * fails.
    */
-  fetchBlock?: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
+  fetchBlock: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
   /** The protocol frame's reports on its light client. The page's protocol client's by default, read as a load starts. */
   telemetry?: LoaderTelemetry;
   /** Where the load's debug events go. The page's bus by default. */
@@ -192,7 +191,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     startedAt,
     timers = realTimers,
     now: readClock = readPageClock,
-    fetchBlock = fetchBitswapBlock,
+    fetchBlock,
     telemetry = getProtocolClient().telemetry,
     debugBus = pageDebugBus,
   } = options;

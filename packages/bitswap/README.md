@@ -1,11 +1,12 @@
 # `@dotli/bitswap`
 
-Fetches single blocks from the Bulletin Chain through the light client, and relays a sandbox frame's block requests to
-the host.
+Fetches single blocks from the Bulletin Chain over a connection its caller gives it, and relays a sandbox frame's block
+requests to the host.
 
 ## Responsibility
 
-- Owns the `bitswap_v1_get` client: one connection, retries and same-CID request sharing.
+- Owns the `bitswap_v1_get` client over a Bulletin connection its caller gives it, with retries and same-CID request
+  sharing.
 - Owns the host side relay that serves sandbox block requests and reports content progress.
 - Owns the per-block check on the Bitswap path: every block it serves, from the cache or the network, has been hashed
   against its CID by the verifier it is given, and a block that cannot be checked is refused.
@@ -17,17 +18,17 @@ the host.
 flowchart LR
   sandbox -- postMessage --> relay --> cache{"block cache hit?"}
   cache -- yes --> verify{"hash matches CID?"}
-  cache -- no --> client --> frame[protocol frame] --> lc[light client] --> peers[Bulletin peers]
+  cache -- no --> client --> conn["Bulletin connection from the caller"]
   client --> verify
   verify -- yes --> reply
   verify -- "no, or cannot check" --> refuse[refuse]
 ```
 
-- The client keeps one Bulletin connection to the protocol frame, redialled after a halt. Retryable errors go through
-  `createAsyncTaskPool` within a total time budget. A "block not found" answer is retried a few times because it only
-  means the connected peers lacked the block. Other errors are terminal. A second request for the same CID waits on the
-  first.
-- The page has one client, built on first use over the protocol frame's remote chain provider.
+- The client keeps one Bulletin connection from its caller while a fetch runs, and closes it after the last one settles.
+  A close that fails is reported, and the next fetch dials anew. A halt drops the connection, and the next attempt
+  redials. Retryable errors go through `createAsyncTaskPool` within a total time budget. A "block not found" answer is
+  retried a few times because it only means the connected peers lacked the block. Other errors are terminal. A second
+  request for the same CID waits on the first.
 - The relay listens on the host's sandbox channel. It takes the cache and the client as its params and tags each block
   with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses its storage on
   reload.
@@ -45,5 +46,5 @@ flowchart LR
 
 ### `@dotli/bitswap`
 
-- Client: `fetchBitswapBlock(cid, signal?)`, which fetches one block on the page's client.
+- Client: `createBitswapClient(params)` and `BitswapClient`, a client over the Bulletin provider the caller passes.
 - Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `BlockCache`, `BlockOrigin`, `ContentProgress`.

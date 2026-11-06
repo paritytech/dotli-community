@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The network panel's own chainHead follow on a chain someone holds, so its blocks keep coming while no consumer
-// follows it. With the runtime, as polkadot-api asks, so a consumer's follow shares it upstream. Each best block is
-// numbered from its header, and a block stays pinned until finalization passes it.
+// follows it. It is a follow of its own, beside any consumer's, with the runtime as polkadot-api asks. Each best
+// block is numbered from its header, and a block stays pinned until finalization passes it.
 
 import { isRecord, log } from '@dotli/shared';
 import { decodeHeaderNumber } from './decodeHeaderNumber.js';
@@ -50,7 +50,7 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onBestBlock, 
   const headerIds = new Set<string>();
   let closed = false;
 
-  // The broker can answer inside `send`, when it shares a follow already established, so callers note the id first.
+  // The broker can answer inside `send`, so callers note the id first.
   function send({ method, params, noteId }: SendParams): void {
     const id = `${sessionId}:${requests.toString(36)}`;
     requests += 1;

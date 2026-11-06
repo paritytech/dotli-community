@@ -29,4 +29,5 @@ export { getHaltReason } from './getHaltReason.js';
 export { loadProvider } from './lazy.js';
 export type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 export { requireBrokerLocalProvider } from './requireBrokerLocalProvider.js';
-export type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
+export type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
+export { LIGHT_CLIENT_FOLLOW_LIMIT, RPC_FOLLOW_LIMIT } from './transportHooks.js';

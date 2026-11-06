@@ -1,16 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Fetches blocks with `bitswap_v1_get` over one Bulletin connection to the protocol frame, redialled after a halt.
+// Fetches blocks with `bitswap_v1_get` over one Bulletin connection, held while a fetch runs and closed after the last.
 
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { TIMEOUTS } from '@dotli/config';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
   CHAIN_HALTED_ERROR_DATA,
   createAsyncTaskPool,
   createPendingReplies,
+  createSharedRun,
   fromHex,
   log,
   setErrorName,
@@ -23,7 +25,7 @@ import {
 import { BITSWAP_ERRORS, errorCode, withCode } from './errors.js';
 
 type Params = {
-  /** The Bulletin chain's provider, read at each dial, or null when the protocol frame does not serve Bulletin. */
+  /** The Bulletin chain's provider, read at each dial, or null when the caller has no connection for Bulletin. */
   provider: () => RemoteChainProvider | null;
   /** The clock and timers the budget, the per-call timeout and the retry waits run on. */
   timers?: Timers;
@@ -102,6 +104,8 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     retryDelay: (_retry, error) => (error instanceof RetryLater ? error.delayMs : 0),
     timers,
   });
+  // Every fetch holds the connection from its call until it settles, retry waits included.
+  const holding = createSharedRun({ begin: () => release });
 
   function dial(): JsonRpcConnection {
     if (connection !== null) {
@@ -155,6 +159,25 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     );
     connection = opened;
     return opened;
+  }
+
+  function release(): void {
+    const held = connection;
+    if (held === null) {
+      return;
+    }
+    // Cleared first, so the closed connection's halt finds itself replaced.
+    connection = null;
+    try {
+      held.disconnect();
+    } catch (error) {
+      reportDefect(error, {
+        flow: 'content',
+        step: 'bitswap_release',
+        metric: S.CONTENT_BITSWAP_RELEASE,
+        message: '[dot.li bitswap] closing the Bulletin connection failed:',
+      });
+    }
   }
 
   function sendOnce({ cid, timeoutMs, signal }: SendOnceParams): Promise<Uint8Array> {
@@ -261,6 +284,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     get(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
       // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
       const deadline = timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
+      const stop = holding.join();
       const entry = shared.get(cid) ?? { holders: 0, bytes: null };
       shared.set(cid, entry);
       entry.holders += 1;
@@ -286,6 +310,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           if (entry.holders === 0) {
             shared.delete(cid);
           }
+          stop();
         });
     },
   };

@@ -388,6 +388,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     /**
      * The tap must see every response, in order, before polkadot-api does.
      * Returns `null` for a chain nobody asked to report, so it costs neither a watch nor a per-response check.
+     * Never throws: a refused lifecycle watch returns a tap that does nothing, and a failed peers send is logged.
      */
     attachChainSync,
   };

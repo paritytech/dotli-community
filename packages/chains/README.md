@@ -1,15 +1,15 @@
 # `@dotli/chains`
 
 Connects to the chains dotli reads: the in-browser light client, the gateway providers over trusted RPC nodes, and the
-pool that shares one connection per chain among its consumers.
+pool that shares each chain's connections among its consumers.
 
 ## Responsibility
 
 - Owns the light client built on smoldot, its saved database and its sync reporting.
 - Owns the gateway mode chain providers over trusted RPC nodes.
 - Owns the byte meter that counts the chains' inbound traffic.
-- Owns the chain pool, its JSON-RPC broker and the watch guard, and the error a halted chain answers with. The marker
-  that error carries is a shared wire constant.
+- Owns the chain pool, its lanes, its JSON-RPC broker and the watch guard, and the error a halted chain answers with.
+  The marker that error carries is a shared wire constant.
 - Does not own what is read over a chain, names or blocks. Does not own the connections the host reaches through the
   protocol frame.
 
@@ -17,7 +17,10 @@ pool that shares one connection per chain among its consumers.
 
 ```mermaid
 flowchart LR
-  consumer --> pool[chain pool] --> broker[broker session] --> guard[watch guard] --> pausing[pausing wrapper] --> transport
+  subgraph lane[per lane]
+    broker[broker session] --> guard[watch guard] --> pausing[pausing wrapper] --> transport
+  end
+  consumer --> pool[chain pool] --> lanes[chain lanes] --> router[lane router] --> broker
   transport --> lc["light client: smoldot, saved database"] --> peers
   transport --> gw["gateway provider: WebSocket, replay"] --> rpc[trusted RPC node]
   lc -. lifecycle snapshots .-> sync[sync reporting]
@@ -30,24 +33,28 @@ flowchart LR
   the network panel show.
 - Gateway providers reconnect their WebSocket and replay subscriptions. They never import smoldot. They report status
   and halt through shared `ChainTransportHooks`.
-- The chain pool holds one connection per chain in a JS context, over whichever transport it is given. Each lease is a
-  broker session. An entry closes after its last lease is released, and at once when its transport halts. A chain whose
+- The chain pool holds each chain's connections in a JS context, over whichever transport it is given. Each lease is a
+  consumer of the chain. An entry closes after its last lease is released, and at once when it halts. A chain whose
   teardown fails is reported, and the pool still closes the others. A watcher sees each held chain's activity and best
   block.
-- The pool pauses and resumes its chains at once, keeping every lease. A pausing wrapper under the watch guard closes a
-  chain's connection on a pause and opens it again on a resume, while the sessions above stay connected. A chain built
-  while paused starts closed. A resume leaves a chain that only waits out its destroy delay closed until a lease takes
-  it. A chain that fails to pause or resume is reported and halted, and the pool goes on with the others. A lease that
-  finds its chain failing to reopen gets a chain built in its place.
+- Each chain's leases spread over lanes, each its own connection from the chain's transport. A consumer has a home lane
+  for every request that names no follow. A follow goes to a lane with room under the transport's follow limit, and the
+  follow's later calls go after it. Lane 0 lasts as long as the chain, and every other lane closes once empty. A halt of
+  any lane halts the chain.
+- The pool pauses and resumes its chains at once, keeping every lease. A pausing wrapper under each lane's watch guard
+  closes its connection on a pause and opens it again on a resume, while the sessions above stay connected. A chain
+  built while paused starts closed. A resume leaves a chain that only waits out its destroy delay closed until a lease
+  takes it. A chain that fails to pause or resume is reported and halted, and the pool goes on with the others. A lease
+  that finds its chain failing to reopen gets a chain built in its place.
 - The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
-  which gets the answer: a session, a shared follow, a release the broker sent itself, or a session that left, whose
-  answered subscription is released at once. Events the node still sends for a subscription that is being released, by
-  the broker itself or by the last session that held it, are dropped quietly. A follow the node refuses is answered to
-  every session waiting on it, and the next follow asks afresh. The watch guard ends transaction watches that a
-  disconnect drops, so a replay never resubmits them.
-- Identical follows share one upstream follow. Its snapshot keeps the newest finalized block, every unfinalized block
-  above it, forks included, and the best block, so a session that joins late is replayed from it. A block is unpinned
-  upstream only once no session and no snapshot holds it.
+  which gets the answer: a session, a release the broker sent itself, or a session that left, whose answered
+  subscription is released at once. Events the node still sends for a subscription that is being released, by the broker
+  itself or by the last session that held it, are dropped quietly. A follow the node refuses is answered to its session.
+  The broker counts the follows its node may hold and knows the tokens it issued, so the chain's lanes can keep each
+  connection under its follow limit. The watch guard ends transaction watches that a disconnect drops, so a replay never
+  resubmits them.
+- Each session's follow is its own upstream follow, owned by its session like any subscription, so its events, unpins
+  and unfollow go to and from the node for that session alone.
 - A request a halted chain leaves unanswered gets a marked error, and a typed error says whether the chain or the whole
   frame stopped. The halt modules import nothing that loads the pool, so an eager client takes them without the broker.
 - The byte meter wraps the socket constructors of its own global scope, a page or a worker, since resource timing misses
@@ -69,7 +76,8 @@ flowchart LR
 - Gateway chains: `createCoreRpcChainProvider`, `getConnectedAssetHubRpcEndpoint`, `isCoreRpcChainSupported`,
   `ChainTransportHooks`, `ConnectionStatus`.
 - Chain pool: `createChainPool`, `ChainPool`, `ChainPoolWatcher`, `LeaseProvider`, `ChainActivity`,
-  `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`.
+  `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`, `ChainTransport`, `RPC_FOLLOW_LIMIT`,
+  `LIGHT_CLIENT_FOLLOW_LIMIT`.
 - Chain halt: `ChainHaltError`, `createChainHaltedError`, `getHaltReason`, `RemoteChainHalt`, and `createJsonRpcError`,
   the error answer every chain transport sends.
 - Lazy loader: `loadProvider`.

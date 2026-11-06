@@ -4,9 +4,6 @@
 import type { SubscriptionMessage } from './brokerMessages.js';
 import type { BrokerWarner } from './createBrokerWarner.js';
 
-/** Upstream events that came before the answer naming their subscription, held until it does. */
-export type EarlySubscriptions = ReturnType<typeof createEarlySubscriptions>;
-
 type Params = {
   /** Warns once a cap drops events. */
   warn: BrokerWarner;
