@@ -25,7 +25,7 @@ import {
 import { BITSWAP_ERRORS, errorCode, withCode } from './errors.js';
 
 type Params = {
-  /** The Bulletin chain's provider, read at each dial, or null when the protocol frame does not serve Bulletin. */
+  /** The Bulletin chain's provider, read at each dial, or null when the caller has no connection for Bulletin. */
   provider: () => RemoteChainProvider | null;
   /** The clock and timers the budget, the per-call timeout and the retry waits run on. */
   timers?: Timers;

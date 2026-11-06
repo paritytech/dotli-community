@@ -35,7 +35,7 @@ type FakeChainOptions = {
 };
 
 /**
- * Stands in for the protocol frame's Bulletin connection. Each `bitswap_v1_get` is answered with the next of `replies`,
+ * Stands in for the caller's Bulletin connection. Each `bitswap_v1_get` is answered with the next of `replies`,
  * then with `tail`, unless the reply is `silent`. Every dial opens a new connection.
  */
 function createFakeChain(
@@ -757,7 +757,7 @@ describe('createBitswapClient connection lifetime', () => {
   });
 
   it('As a page, my Bulletin connection closes only after both callers of one block settle', async () => {
-    // Given two callers of one block, the first of which gives up while the second still waits on the wire
+    // Given two callers of one block, both waiting on the wire
     const chain = createFakeChain(['silent', 'silent']);
     const client = createClient(chain.provider);
     const aborter = new AbortController();
@@ -766,12 +766,12 @@ describe('createBitswapClient connection lifetime', () => {
     const abandonedOutcome = Promise.allSettled([abandoned]);
     const wanted = client.get('bafyShared');
     await timers.advance(100);
+
+    // When the first caller gives up, and the second is then answered
     aborter.abort();
     await abandonedOutcome;
     await timers.advance(100);
     const disconnectedWhileWaiting = getDial(chain.dials, 0).disconnected;
-
-    // When the second caller is answered
     const dial = getDial(chain.dials, 0);
     dial.onMessage({ jsonrpc: '2.0', id: getSentId(dial, 1), result: '0xabcd' });
     const bytes = await wanted;
