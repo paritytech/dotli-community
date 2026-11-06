@@ -384,11 +384,7 @@ async function main(): Promise<void> {
       return;
     case 'landing':
       announceRoute(route, shell.flowId);
-      await leaveForLanding({
-        location: window.location,
-        localRoot: LOCAL_ROOT,
-        workers: async () => ('serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations() : []),
-      });
+      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
       return;
   }
 }
