@@ -4,7 +4,7 @@
 import type { SharedStoreStatus } from '@dotli/protocol';
 import { createDeferred } from '@dotli/shared';
 import { atom } from 'nanostores';
-import type { HostCoreStorage, SharedSessionStore } from './createCoreStorage.js';
+import type { HostCoreStorage, SessionRead, SharedSessionStore } from './createCoreStorage.js';
 
 /** An in-memory shared auth store with the protocol frame's failure modes. */
 export type FakeSharedSessionStore = {
@@ -36,12 +36,14 @@ export type FakeSharedSessionStore = {
   statusListenerCount(): number;
 } & SharedSessionStore;
 
-/** The page's copy as a login waits on it: a session a core stores, or a write of it that fails. */
+/** The page's copy as a login waits on it: a session a core stores, a write of it that fails, or reads that fail. */
 export type FakeStoredSession = {
-  /** A core storing `blob`, which tells every listener. */
+  /** A core storing `blob`, which tells every listener and lets reads answer again. */
   store(blob: string): void;
   /** A core's write of its session failing. */
   failWrite(error: Error): void;
+  /** Every read answering failed with `error` until the next `store`. */
+  failReads(error: unknown): void;
 } & Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession' | 'subscribeSessionWriteFailures'>;
 
 type CreateFakeSharedSessionStoreParams = {
@@ -160,10 +162,11 @@ export function createFakeSharedSessionStore({
 /** The page's copy holding `blob`. Never rejects. */
 export function createFakeStoredSession({ blob = null }: CreateFakeStoredSessionParams = {}): FakeStoredSession {
   let stored = blob;
+  let failedRead: SessionRead | null = null;
   const changes = new Set<() => void>();
   const failures = new Set<(error: unknown) => void>();
   return {
-    readSession: () => Promise.resolve({ status: 'ok', blob: stored }),
+    readSession: () => Promise.resolve(failedRead ?? { status: 'ok', blob: stored }),
     subscribeStoredSession(listener) {
       changes.add(listener);
       return () => changes.delete(listener);
@@ -174,6 +177,7 @@ export function createFakeStoredSession({ blob = null }: CreateFakeStoredSession
     },
     store(next) {
       stored = next;
+      failedRead = null;
       for (const listener of [...changes]) {
         listener();
       }
@@ -182,6 +186,9 @@ export function createFakeStoredSession({ blob = null }: CreateFakeStoredSession
       for (const listener of [...failures]) {
         listener(error);
       }
+    },
+    failReads(error) {
+      failedRead = { status: 'failed', error };
     },
   };
 }

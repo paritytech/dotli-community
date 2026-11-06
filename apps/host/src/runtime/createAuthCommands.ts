@@ -33,7 +33,7 @@ export type CoreLoginParams = LoginParams & {
 export type AuthCommands = {
   /**
    * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-   * already signed in. Rejects when the core paired but its session could not be stored.
+   * already signed in. Rejects when the core paired but its session could not be stored or read back.
    */
   login(params?: LoginParams): Promise<LoginOutcome>;
   /**
@@ -53,7 +53,7 @@ type Params = {
   auth: ReadableAtom<DotliAuthState>;
   /**
    * One login to its end, answering how it ended and reporting its own failures. Rejects when the core paired but its
-   * session could not be stored.
+   * session could not be stored or read back.
    */
   login: (params: CoreLoginParams) => Promise<LoginOutcome>;
   /** Stops the pairing under way on the core. Never throws. */
@@ -89,7 +89,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
   return {
     /**
      * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-     * already signed in. Rejects when the core paired but its session could not be stored.
+     * already signed in. Rejects when the core paired but its session could not be stored or read back.
      */
     login({ reason }: LoginParams = {}): Promise<LoginOutcome> {
       const asked = round;

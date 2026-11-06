@@ -37,8 +37,9 @@ function createHarness({
   walletMode = 'app',
   stored = '0xsession',
 }: CreateHarnessParams = {}) {
-  const { captures, counted } = bindReports();
   const fakes = createFakePageCore();
+  // A report notifies the fakes' changes, so a test can wait on one.
+  const { captures, counted } = bindReports({ onReport: fakes.changes.notify });
   const auth = atom<DotliAuthState>(initial);
   const session = { reportLoginFailure: vi.fn() };
   // A pairing's session is stored by default, so a login completes once the core reports it.
@@ -266,6 +267,23 @@ describe('topbar login over the page core', () => {
     await expect(done).rejects.toMatchObject({ cause: failure });
   });
 
+  it('As a user in the sign-in window whose paired session cannot be read back, I see my login rejected', async () => {
+    // Given a login the core answered with success over a copy whose reads fail
+    const fakes = createHarness();
+    const done = fakes.commands.login();
+    await answerConnection(fakes, 0, {
+      provider: createAnsweringProvider({ result: { kind: 'success', value: 'Success' } }),
+    });
+    const failure = new Error('frame refused the read');
+    fakes.storedSession.failReads(failure);
+
+    // When the core reports the account
+    fakes.auth.set(SIGNED_IN);
+
+    // Then the login rejects with the read's failure as its cause
+    await expect(done).rejects.toMatchObject({ message: 'The paired session could not be read back', cause: failure });
+  });
+
   it('As an operator, I see a login the user cancels left as a breadcrumb and not as an issue', async () => {
     // Given: a topbar login
     const fakes = createHarness();
@@ -386,15 +404,54 @@ describe('topbar login over the page core', () => {
     const done = fakes.commands.login();
     await fakes.changes.until(() => fakes.heldBoots.length === 1);
 
-    // When: the user closes the modal, then the core finishes booting
+    // When: the user closes the modal, then the core finishes booting and its late lease is let go
     fakes.commands.cancelLogin();
     nth(fakes.heldBoots, 0).resolve(undefined);
     await done;
+    await fakes.changes.until(() => (fakes.runtimes[0]?.dispose.mock.calls.length ?? 0) === 1);
 
     // Then: no connection was opened, nothing was reported, and the login let the core go
     expect(fakes.connections).toHaveLength(0);
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user, I close the sign-in while the wallet core still boots and can sign in again at once', async () => {
+    // Given a login waiting for a cold wallet core to boot
+    const fakes = createHarness();
+    fakes.holdBoots();
+    const first = fakes.commands.login();
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+
+    // When the user closes the modal, the first login answers, the user signs in again and the core finishes booting
+    fakes.commands.cancelLogin();
+    const outcome = await first;
+    void fakes.commands.login();
+    nth(fakes.heldBoots, 0).resolve(undefined);
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // Then the first login answered cancelled, and the second one reached the core
+    expect(outcome).toEqual({ kind: 'cancelled' });
+    expect(fakes.connections).toHaveLength(1);
+  });
+
+  it('As a user, I close the sign-in while the wallet core still boots and its late boot failure is still reported', async () => {
+    // Given a login the user closed while a cold wallet core still boots
+    const fakes = createHarness();
+    fakes.holdBoots();
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+    fakes.commands.cancelLogin();
+    await done;
+
+    // When the boot fails
+    const failure = new Error('worker fatal error: boot');
+    nth(fakes.heldBoots, 0).reject(failure);
+    await fakes.changes.until(() => fakes.captures.exception.mock.calls.length === 1);
+
+    // Then the failure is reported once as a login failure, and session state is not told
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
 });
