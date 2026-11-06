@@ -157,7 +157,6 @@ export function createProtocolFrame<E extends FrameElement>({
    * never finds the frame down with nothing held.
    */
   function holdFrame(kept: FrameSlot, error: Error): void {
-    dropHeld(new Error(PROTOCOL_ERRORS.FRAME_RESET), { lost: false });
     slot = null;
     downReason = error;
     losses += 1;
