@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A click on the account button while the saved sign-in cannot be read. The session is read again first, so the click
-// never starts a sign-in over a session that may still be signed in.
+// A sign-in asked for while the saved sign-in cannot be read. The session is read again first, so it never starts over
+// a session that may still be signed in.
 
 import { log } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';

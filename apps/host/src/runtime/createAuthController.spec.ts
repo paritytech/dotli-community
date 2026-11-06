@@ -1167,6 +1167,26 @@ describe('auth controller: the sign-in window', () => {
     expect(handoff.signIns).toEqual([]);
   });
 
+  it('As a debug panel user on a page that pairs in place, I import while the saved session cannot be reached and see the phrase view once it reads signed out', async () => {
+    // Given a page that pairs in place, whose saved session cannot be reached until it is read again
+    const { phrase } = createFakePhrase();
+    const { controller, auth, calls, changes } = startController({
+      inPagePhrase: () => Promise.resolve(phrase),
+      rereadSession() {
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    // Then the phrase view shows, and no pairing starts
+    expect(calls.logins).toEqual([]);
+  });
+
   it('As a user on a product, I press Sign in and the window opens with the waiting view', () => {
     // Given a signed-out page with a sign-in window
     const handoff = createFakeHandoff();

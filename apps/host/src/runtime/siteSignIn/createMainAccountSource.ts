@@ -155,8 +155,9 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     /**
      * The main account once the core reports a session, on a core lease the source holds from the first read. Rejects
      * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
-     * for a core that cannot boot, a core that cannot read the main session, a session without a readable key, `signal` aborting first, or the source disposed
-     * while the read is open or before it starts, which then takes no new lease.
+     * for a core that cannot boot, a core that cannot read the main session, a session without a readable key,
+     * `signal` aborting first, or the source disposed while the read is open or before it starts, which then takes no
+     * new lease.
      */
     async read(signal: AbortSignal): Promise<MainAccount> {
       const ended = AbortSignal.any([signal, lifetime.signal]);

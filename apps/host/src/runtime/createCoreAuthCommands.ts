@@ -207,7 +207,8 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
   /**
    * Resolves with a lease on the core, or with null once the round ended first, without waiting for a boot still under
    * way. A lease that arrives after the round ended is released at once, and a boot that fails after it is reported as
-   * a login failure. Rejects when the core fails to boot before the round ended.
+   * a login failure. Rejects when the core fails to boot before the round ended. The round ending is not a rejection
+   * but an answer of null, since the caller ended it on purpose and has no failure to handle.
    */
   function acquireUntilEnded(signal: AbortSignal): Promise<CoreLease | null> {
     if (signal.aborted) {

@@ -10,7 +10,7 @@ import { withActiveTld } from '@dotli/config';
 import { reportDefect, spans as S } from '@dotli/metrics';
 import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
-import type { AuthCommands } from './createAuthCommands.js';
+import type { AuthCommands, LoginParams } from './createAuthCommands.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn, type InPagePhrase } from './createInPageSignIn.js';
 import type { DotliAuthState } from './session/types.js';
@@ -259,14 +259,16 @@ export function createAuthController({
     close: closeAuthModal,
   };
 
+  function loginInPage(params?: LoginParams): void {
+    runCommand('login', loaded => loaded.login(params));
+  }
+
   const route: SignInRoute =
     handoff === null
       ? createInPageSignIn({
           inPagePhrase,
           modal,
-          login(params) {
-            runCommand('login', loaded => loaded.login(params));
-          },
+          login: loginInPage,
         })
       : createWindowSignIn({
           handoff,
@@ -295,7 +297,7 @@ export function createAuthController({
         proceed:
           handoff === null
             ? () => {
-                runCommand('login', loaded => loaded.login({ reason: params.reason }));
+                loginInPage({ reason: params.reason });
               }
             : null,
         elsewhere,
@@ -339,7 +341,9 @@ export function createAuthController({
     startLogin,
     /**
      * Opens the sign-in window at its recovery phrase view and waits for it, or with no window opens the modal at its
-     * phrase view. Also runs for a signed-in user, who replaces the local wallet. Never throws.
+     * phrase view. Also runs for a signed-in user, who replaces the local wallet. While the saved session cannot be
+     * reached, reads it again first, and then goes on, asks for a click to open the window, or says why it cannot.
+     * Never throws.
      */
     importPhrase,
     /** Whether the modal's phrase view takes `phrase`. Never throws. */
