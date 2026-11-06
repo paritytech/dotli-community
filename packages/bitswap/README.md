@@ -46,5 +46,6 @@ flowchart LR
 
 ### `@dotli/bitswap`
 
-- Client: `fetchBitswapBlock(cid, signal?)`, which fetches one block on the page's client.
+- Client: `createBitswapClient(params)` and `BitswapClient`, a client over the Bulletin connection the caller passes,
+  and `fetchBitswapBlock(cid, signal?)`, which fetches one block on the page's client.
 - Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `BlockCache`, `BlockOrigin`, `ContentProgress`.
