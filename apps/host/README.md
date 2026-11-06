@@ -98,8 +98,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
   the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
   The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
-  lease that pool, and the chain watcher watches it. A product's local storage is one factory whose page instance every
-  core shares, so a write from one runtime reaches the subscriptions of the others.
+  lease that pool, and the chain watcher watches it. The page's bitswap client leases it too, Bulletin while a fetch
+  runs. A product's local storage is one factory whose page instance every core shares, so a write from one runtime
+  reaches the subscriptions of the others.
 - The product frame, its wait for a device permission answer, the scheduled notifications and the diagnostics' finalized
   block query take the clock and timers they run on as params that default to the page's own. The scheduler takes its
   repeating poll the same way, so their specs move time themselves. The channel to the local server's shared store takes
