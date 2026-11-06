@@ -323,12 +323,25 @@ export function startSessionState(): () => void {
       sessionState.reportFlag(presence);
     },
   });
+  const stopReread = listenForPageReturn({
+    visibility: document,
+    target: window,
+    handler: () => {
+      void sessionState.retryRead();
+    },
+  });
   stopSession = stopSessionState;
   return stopSession;
 
   function stopSessionState(): void {
     stopState();
     stopWatch();
+    stopReread();
     stopSession = null;
   }
+}
+
+/** Reads the saved session again while it cannot be reached, and settles once the page shows it. Never rejects. */
+export function rereadSession(): Promise<void> {
+  return sessionState.retryRead();
 }

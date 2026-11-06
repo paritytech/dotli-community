@@ -83,13 +83,16 @@ export function createSessionState({
       authStore.set(next);
     },
   };
+  // One read at a time, so a read that started before the store changed is never the last word.
+  const savedSessionReads = createAsyncTaskPool({ poolSize: 1 });
+
   let lastReadFailed = false;
   const stopSessionReads = store.subscribeSessionReads(failed => {
     lastReadFailed = failed;
+    if (!failed && auth.store.get().tag === 'Unreachable') {
+      void retryRead();
+    }
   });
-
-  // One read at a time, so a read that started before the store changed is never the last word.
-  const savedSessionReads = createAsyncTaskPool({ poolSize: 1 });
 
   // Who speaks for the page's session: the saved copy, read here, or a core that reported, which follows the copy
   // itself. The page core says when its last core went.
@@ -182,19 +185,31 @@ export function createSessionState({
     }
   }
 
+  /** Reads the saved session and shows it. Never rejects. */
+  function readAndApply(): Promise<void> {
+    return applySavedSession(
+      async () => {
+        const read = await store.readSession();
+        return read.status === 'ok' ? read.blob : null;
+      },
+      // A sign-in elsewhere writes the cached account right after the session whose change started this read, so
+      // the read waits for the session's.
+      () => store.readUiCache(),
+    );
+  }
+
   /** Reads the saved session again and shows it, queued behind the read in flight, so the later read decides. */
   function refresh(): Promise<void> {
-    return savedSessionReads.call(() =>
-      applySavedSession(
-        async () => {
-          const read = await store.readSession();
-          return read.status === 'ok' ? read.blob : null;
-        },
-        // A sign-in elsewhere writes the cached account right after the session whose change started this read, so
-        // the read waits for the session's.
-        () => store.readUiCache(),
-      ),
-    );
+    return savedSessionReads.call(readAndApply);
+  }
+
+  function retryRead(): Promise<void> {
+    return savedSessionReads.call(async () => {
+      if (auth.store.get().tag !== 'Unreachable') {
+        return;
+      }
+      await readAndApply();
+    });
   }
 
   /** A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it. */
@@ -343,6 +358,12 @@ export function createSessionState({
      * one.
      */
     reportFlag,
+    /**
+     * Reads the saved session again while the page shows `Unreachable`, queued behind the read in flight, and settles
+     * once that read was applied. Settles without a read in any other state. Never rejects. `Unreachable` is left by a
+     * read that answers, whichever reader made it, so a core's read that answers also starts one.
+     */
+    retryRead,
     /**
      * Stops hearing the store's session reads and ends the follow `start` began, is safe to call twice and never
      * throws, and leaves a state that is not started again, while a read already queued still settles and writes the
