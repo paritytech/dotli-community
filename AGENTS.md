@@ -62,6 +62,8 @@ Tools:
   last caller. Don't hand-roll caller counts.
 - Every chain user in a JS context leases its chains from that context's chain pool. A package that cannot import the
   pool takes its connection as a parameter. It never opens one through a global client.
+- A chain consumer holds its lease only while it has work on the chain, and releases it once the work ends. The pool's
+  destroy delay keeps the chain warm between bursts.
 
 ## Packages
 
