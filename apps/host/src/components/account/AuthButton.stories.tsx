@@ -680,22 +680,24 @@ export const SigningOut: Story = {
   },
 };
 
-/** As a user whose saved sign-in cannot be reached, I see a busy reconnecting button that starts no sign-in. */
+/** As a user whose saved sign-in cannot be reached, I see an alert icon button that reads my sign-in again. */
 export const Unreachable: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     unreachable();
   },
   play: async ({ step }) => {
-    await step('When I try to click it', () => {
+    await step('When I click it', () => {
       button().click();
     });
-    await step('Then it is busy, disabled and named for the reconnect, and nothing started', async () => {
-      await expect(button()).toHaveAttribute('aria-label', 'Reconnecting to your sign-in');
-      await expect(button()).toHaveAttribute('aria-busy', 'true');
-      await expect(button()).toBeDisabled();
-      await expect(calls.signIns).toBe(0);
-      await expect(storyModalOpen()).toBe(false);
+    await step('Then it is an enabled alert icon that read my sign-in again', async () => {
+      await expect(button()).not.toBeDisabled();
+      await expect(button()).not.toHaveAttribute('aria-busy', 'true');
+      await expect(button()).toHaveAttribute('aria-label', "Can't reach your sign-in");
+      await expect(button()).toHaveAttribute('title', "Can't reach your sign-in");
+      await expect(button().querySelector('svg')).not.toBeNull();
+      await expect(button().textContent.trim()).toBe('');
+      await expect(calls.signIns).toBe(1);
     });
   },
 };
