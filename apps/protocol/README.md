@@ -42,7 +42,8 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
 - It sends nothing unsolicited: its readiness and failures reach the host on the frame status subscription, which a late
   subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is reported and the
   others still hear. It ends typed, as a fatal light client, a failed init, a released port or a version mismatch, so
-  the host tells them apart, and any other error ends it as that error's failure.
+  the host tells them apart, and any other error ends it as that error's failure. It answers the host's heartbeat at
+  once, so the host can tell a frame that still answers from one that went silent.
 - A handler answers with a result. A resolver's sync timeout and a stopped light client are typed failures the host's
   error screen tells apart, and any other failure is thrown, so it crosses as the handler's failure under its error's
   name and message. A subscription a handler cannot start ends the same way.
