@@ -57,6 +57,7 @@ export { walletSwitch } from './createWalletSwitch.js';
 // The pool behind these leases and the reads over them already ships in this chunk, so callers take them from here.
 export { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 export { hostChainPool } from './hostCallbacks/createHostChainPool.js';
+export { hostBitswapClient } from './hostCallbacks/createHostBitswapClient.js';
 export { readOriginalAccount } from './readOriginalAccount.js';
 export { readPeopleUsernames } from './readPeopleUsernames.js';
 

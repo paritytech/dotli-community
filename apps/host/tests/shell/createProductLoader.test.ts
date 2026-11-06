@@ -572,6 +572,7 @@ function setupLoader(params: Params = {}) {
     names,
     frame,
     cidCache,
+    fetchBlock: () => new Promise<Uint8Array>(() => undefined),
     recents: {
       record(label) {
         recents.push(label);

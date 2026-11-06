@@ -24,7 +24,7 @@ import { productState } from './runtime/state/productState.js';
 import { authState } from './runtime/state/authState.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/createProductFrame.js';
-import { fetchBitswapBlock, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
+import { createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { getProtocolClient } from '@dotli/protocol';
 import { blockCache as pageBlockCache, cidCache } from '@dotli/storage';
@@ -258,6 +258,7 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
       onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
     },
     cidCache: createPageCidCache({ names, cidRead }),
+    fetchBlock: (cid, signal) => bridgeModule.hostBitswapClient.get(cid, signal),
     recents: { record: recentLabels.record },
     failureScreen: loadFailureScreen,
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
@@ -319,7 +320,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
   const relay = createSandboxBlockRelay({
     channel: shell.sandboxChannel,
-    blocks: fetchBitswapBlock,
+    blocks: (cid, signal) => shell.startup.bridgeModule.hostBitswapClient.get(cid, signal),
     cache: blockCache,
     verify: createBlockVerifier({
       load: loadVerify,
