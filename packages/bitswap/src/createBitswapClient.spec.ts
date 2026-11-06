@@ -719,4 +719,67 @@ describe('createBitswapClient connection lifetime', () => {
     expect(secondBytes).toEqual(new Uint8Array([0x02]));
     expect(chain.dials).toHaveLength(2);
   });
+
+  it('As a page, my Bulletin connection closes when I give up on a fetch', async () => {
+    // Given a fetch the chain never answers
+    const chain = createFakeChain([], { tail: 'silent' });
+    const aborter = new AbortController();
+    const block = createClient(chain.provider).get('bafyAbandoned', aborter.signal);
+    // Holds the rejection across the timer moves.
+    const outcome = Promise.allSettled([block]);
+    await timers.advance(100);
+
+    // When
+    aborter.abort();
+    const [result] = await outcome;
+
+    // Then
+    expect(result).toMatchObject({ status: 'rejected', reason: { name: 'AbortError' } });
+    expect(chain.dials).toHaveLength(1);
+    expect(getDial(chain.dials, 0).disconnected).toBe(1);
+  });
+
+  it('As a page, my Bulletin connection closes when my fetch fails', async () => {
+    // Given a chain that answers with a terminal error
+    const chain = createFakeChain([{ code: -32602 }]);
+    const block = createClient(chain.provider).get('not-a-cid');
+    // Holds the rejection across the timer moves.
+    const outcome = Promise.allSettled([block]);
+
+    // When
+    await timers.advance(100);
+    const [result] = await outcome;
+
+    // Then
+    expect(result).toMatchObject({ status: 'rejected', reason: { name: 'BitswapRpcError', code: -32602 } });
+    expect(chain.dials).toHaveLength(1);
+    expect(getDial(chain.dials, 0).disconnected).toBe(1);
+  });
+
+  it('As a page, my Bulletin connection closes only after both callers of one block settle', async () => {
+    // Given two callers of one block, the first of which gives up while the second still waits on the wire
+    const chain = createFakeChain(['silent', 'silent']);
+    const client = createClient(chain.provider);
+    const aborter = new AbortController();
+    const abandoned = client.get('bafyShared', aborter.signal);
+    // Holds the rejection across the timer moves.
+    const abandonedOutcome = Promise.allSettled([abandoned]);
+    const wanted = client.get('bafyShared');
+    await timers.advance(100);
+    aborter.abort();
+    await abandonedOutcome;
+    await timers.advance(100);
+    const disconnectedWhileWaiting = getDial(chain.dials, 0).disconnected;
+
+    // When the second caller is answered
+    const dial = getDial(chain.dials, 0);
+    dial.onMessage({ jsonrpc: '2.0', id: getSentId(dial, 1), result: '0xabcd' });
+    const bytes = await wanted;
+
+    // Then the connection stayed open for the second caller and closed once it settled
+    expect(disconnectedWhileWaiting).toBe(0);
+    expect(bytes).toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.dials).toHaveLength(1);
+    expect(dial.disconnected).toBe(1);
+  });
 });
