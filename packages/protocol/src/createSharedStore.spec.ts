@@ -69,6 +69,25 @@ describe('createSharedStore', () => {
     expect(statuses).toEqual(['available', 'unavailable', 'available', 'unavailable', 'available']);
   });
 
+  it.each(['failed', 'booting'] as const)(
+    'As a returning user whose light client failed to start, I see my shared store available while the frame holds it, as the frame is %s',
+    at => {
+      // Given a store whose frame settled, and whose frame now holds the store
+      const fake = createFakeFrame({ status: 'listening' });
+      const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame }) });
+      fake.holdStore(true);
+      fake.setStatus(at);
+      const whileHeld = store.status.get();
+
+      // When the frame lets the store go
+      fake.holdStore(false);
+
+      // Then
+      expect(whileHeld).toBe('available');
+      expect(store.status.get()).toBe('unavailable');
+    },
+  );
+
   it('As a dotli integrator, I subscribe the frame status before the shared store is built and read the store available the moment the frame listens', () => {
     // Given a frame status listener registered before the shared store, which reads the store on each change
     const fake = createFakeFrame({ status: 'idle' });

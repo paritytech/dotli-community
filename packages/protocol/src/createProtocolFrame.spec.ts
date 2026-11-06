@@ -7,10 +7,11 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createDeferred, toError } from '@dotli/shared';
 import { catchRejection, createManualTimers, readOutcome, recordLog, type ManualTimers } from '@dotli/shared/testing';
-import { domain, err, ok } from '@dotli/transport';
+import { createTransport, createWindowProvider, domain, err, ok, type Sink } from '@dotli/transport';
 import { recordMessage } from '@dotli/transport/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { createProtocolClient } from './createProtocolClient.js';
+import { createFrameStatus, type FrameStatus } from './createFrameStatus.js';
 import { DEFAULT_FRAME_TIMEOUTS, createProtocolFrame } from './createProtocolFrame.js';
 import type { SharedStoreStatus } from './createSharedStore.js';
 import {
@@ -22,15 +23,17 @@ import {
   ProtocolVersionMismatchError,
 } from './errors.js';
 import type { ProtocolFrame, ProtocolFrameParams, ProtocolFrameTimeouts, ProtocolStatus } from './frameTypes.js';
-import { protocolSchema, type ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolTransport, type SharedAuthChange, type SubscriptionEnd } from './schema.js';
 import { SHARED_CORE_SESSION_KEY } from './sharedAuthKeys.js';
-import { FRAME_CONFIG } from './testing/constants.js';
+import { FRAME_CONFIG, HOST_ORIGIN } from './testing/constants.js';
 import { createFrameDom, type FrameDom } from './testing/createFrameDom.js';
 import type { FakeIframe } from './testing/fakeIframe.js';
 import { createFrameHost, type FrameHost } from './testing/createFrameHost.js';
 
 const { resolve, storage, chain } = protocolSchema.sections;
 const { heartbeat } = protocolSchema.sections.frame;
+
+type ChangeSink = Sink<SharedAuthChange, SubscriptionEnd<undefined>>;
 
 const HANDSHAKE_TIMEOUT_MS = DEFAULT_FRAME_TIMEOUTS.handshakeMs;
 /** What the frame reports when a status listener throws. */
@@ -96,6 +99,30 @@ function recordIframes(dom: FrameDom): { params: ProtocolFrameParams<FakeIframe>
       return newest;
     },
   };
+}
+
+/**
+ * Answers `iframe` as a frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is
+ * subscribed. The served frame of `createFrameDom` keeps none.
+ */
+function serveRelayingFrame(iframe: FakeIframe): { status: FrameStatus; sinks: Set<ChangeSink> } {
+  const window = iframe.window;
+  const serving = createTransport({
+    schema: protocolSchema,
+    provider: createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN }),
+    handshake: 'respond',
+    hello: { resolutionId: null },
+  });
+  const status = createFrameStatus();
+  serving.handleSubscription(protocolSchema.sections.frame.status, status.handler);
+  const sinks = new Set<ChangeSink>();
+  serving.handleSubscription(storage.authChanges, (_start, _context, sink) => {
+    sinks.add(sink);
+    return () => {
+      sinks.delete(sink);
+    };
+  });
+  return { status, sinks };
 }
 
 /** A configured frame whose light client failed to start, held for the shared store, with the iframe it holds. */
@@ -1169,6 +1196,57 @@ describe('protocol status', () => {
     expect(dead.isConnected).toBe(false);
     expect(rebuilt.isConnected).toBe(true);
     expect(frame.storeHeld.get()).toBe(false);
+  });
+
+  it('As a returning user whose light client keeps failing to start, I never see my shared store down through a rebuild', async () => {
+    // Given a client whose shared store I follow before its first frame listens
+    const dom = createFrameDom({ timers });
+    const iframes = recordIframes(dom);
+    const client = createProtocolClient(iframes.params);
+    client.frame.configure(FRAME_CONFIG);
+    const statuses: SharedStoreStatus[] = [];
+    client.sharedStore.status.listen(status => statuses.push(status));
+    void client.frame.ensureReady().catch(() => undefined);
+    const first = await dom.listen();
+
+    // When its light client fails to start, the rebuild after the backoff listens, and its light client fails too
+    first.fail(new ProtocolInitFailedError('no SharedWorker'));
+    await advance();
+    await advance(2_000);
+    const rebuilt = dom.getFrameStatus(iframes.getNewest());
+    await dom.retryHandshake();
+    rebuilt.fail(new ProtocolInitFailedError('no SharedWorker'));
+    await advance();
+
+    // Then
+    expect(statuses).toEqual(['available']);
+  });
+
+  it("As a user whose light client failed to start, my sibling tabs' auth changes reach me on the frame that replaces the held one", async () => {
+    // Given a client whose shared auth I follow, on a frame whose light client failed to start
+    const dom = createFrameDom({ timers });
+    const iframes = recordIframes(dom);
+    const client = createProtocolClient(iframes.params);
+    client.frame.configure(FRAME_CONFIG);
+    const changes: SharedAuthChange[] = [];
+    client.sharedAuth.subscribe(change => changes.push(change));
+    const first = await dom.listen();
+    first.fail(new ProtocolInitFailedError('no SharedWorker'));
+    await advance();
+    const held = dom.getIframe();
+
+    // When the rebuild after the backoff listens, and a sibling tab writes through it
+    await advance(2_000);
+    const rebuilt = serveRelayingFrame(iframes.getNewest());
+    await dom.retryHandshake();
+    for (const sink of rebuilt.sinks) {
+      sink.send({ tag: 'session', value: { siteId: SITE_ID, key: 'k', value: 'v' } });
+    }
+    await advance();
+
+    // Then
+    expect(held.isConnected).toBe(false);
+    expect(changes).toEqual([{ tag: 'session', value: { siteId: SITE_ID, key: 'k', value: 'v' } }]);
   });
 
   it('As a dotli user, I make a request while the protocol frame boots and it waits, then fails as soon as that boot fails', async () => {
