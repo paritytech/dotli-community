@@ -14,7 +14,7 @@ import type { DomainFailure, ProtocolTransport } from './schema.js';
 export type CallOutcome = 'ok' | 'error' | 'timeout';
 
 /** What requests need of the frame. */
-export type RpcFrame = Pick<ProtocolFrame, 'waitUntilReady' | 'getTransport'>;
+export type RpcFrame = Pick<ProtocolFrame, 'waitUntilReady' | 'getTransport' | 'checkAlive'>;
 
 /** Requests to the frame, each on its own budget. */
 export type FrameRpc = ReturnType<typeof createFrameRpc>;
@@ -53,7 +53,7 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
     // Ends the call on its budget. The transport drops it, and a late answer is ignored.
     const { signal, withBudget, isOwnTimeout } = startBudget({ policy, timers, signal: options.signal });
     // Set once the call is handed to a connected transport, which the frame wait may never reach.
-    const sent: { trail: CallTrail | null } = { trail: null };
+    const sent: { trail: CallTrail | null; transport: ProtocolTransport | null } = { trail: null, transport: null };
 
     function send(transport: ProtocolTransport): Promise<V> {
       // The budget ran out, or the caller left, while the frame was asked for, so nothing goes out.
@@ -61,6 +61,7 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
         throw toError(signal.reason);
       }
       sent.trail = startCallTrail(policy, now);
+      sent.transport = transport;
       return run(transport, signal);
     }
 
@@ -88,6 +89,10 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
       } else if (outcome === 'timeout') {
         // Never sent, since the frame did not come up within the budget.
         m.count(S.PROTOCOL_REQUEST, { outcome, method: policy.name, reason: getErrorName(error) ?? 'unknown' });
+      }
+      if (policy.whenListening && sent.transport !== null && outcome === 'timeout') {
+        // A shared store call waits on no light client, so one the frame let run out may mean the frame stopped.
+        frame.checkAlive(sent.transport);
       }
       throw error;
     }
@@ -129,7 +134,8 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
      * with an `Error` of the `FRAME_RESET` text when a config change drops the frame. Rejects with the error the frame
      * went down with, such as a `ProtocolFatalError` or an `Error` with a `PROTOCOL_ERRORS` text. A call is timed and
      * counted from when it goes out. One whose budget runs out before it goes out is counted as a timeout. A boot that
-     * fails is otherwise counted once, by the frame.
+     * fails is otherwise counted once, by the frame. A shared store request whose budget runs out after it went out asks
+     * the frame to check that the transport it went out on still answers.
      */
     request,
   };

@@ -173,6 +173,7 @@ export async function startHost({
         const [{ toEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);
         return { toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
       },
+      rereadSession: async () => (await bridgeReady).rereadSession(),
     });
   }
 

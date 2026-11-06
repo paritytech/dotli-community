@@ -4,6 +4,7 @@
 import { createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
+import { AlertTriangleIcon } from '@dotli/ui/icons';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionInitials } from './accountNames.js';
@@ -53,7 +54,7 @@ function authLabel(account: Account): string {
     return 'Checking sign-in';
   }
   if (account.unreachable()) {
-    return 'Reconnecting to your sign-in';
+    return "Can't reach your sign-in";
   }
   if (account.signingOut()) {
     return 'Signing out';
@@ -67,26 +68,43 @@ function authLabel(account: Account): string {
   return accountKind(account);
 }
 
+type ButtonAppearance = {
+  variant: 'primary' | 'secondary';
+  class: string;
+};
+
+/** The variant and class of the button: an icon chip while unreachable, a chip while logged in, else the sign-in pill. */
+function getButtonAppearance(account: Account, named: boolean): ButtonAppearance {
+  if (account.unreachable()) {
+    return { variant: 'secondary', class: [s['chip'], s['avatarOnly']].join(' ') };
+  }
+  if (account.loggedIn()) {
+    return { variant: 'secondary', class: [s['chip'], named ? undefined : s['avatarOnly']].join(' ').trim() };
+  }
+  return { variant: 'primary', class: s['signIn'] ?? '' };
+}
+
 /**
  * The auth button and the account popover, in the topbar and in the landing page's corner.
  *
- * A click toggles the popover only while `Connected`, and starts a sign-in in any other state, a pairing
- * under way while logged in included. It takes no clicks while the saved session is being read or cannot be
- * reached. The trigger ARIA follows the click: the Popover writes it while `Connected`, this component writes it
- * for the auth modal otherwise. Signed out while a sign-in made elsewhere waits, it reads Continue session.
+ * A click toggles the popover only while `Connected`, and starts a sign-in in any other state, a pairing under way
+ * while logged in included. It takes no clicks while the saved session is being read, and shows an alert icon button
+ * that reads it again while it cannot be reached. The trigger ARIA follows the click: the Popover writes it while
+ * `Connected`, this component writes it for the auth modal otherwise. Signed out while a sign-in made elsewhere waits, it reads Continue session.
  */
 export function AuthButton(props: AuthButtonProps): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = (): Account => props.account;
   const opensPopover = (): boolean => account().connected();
-  const busy = (): boolean => account().restoring() || account().unreachable() || account().signingOut();
+  const busy = (): boolean => account().restoring() || account().signingOut();
   // The keys live in this browser, not in Polkadot App.
   const local = (): boolean => account().loggedIn() && account().local();
   const shownName = (): string | undefined => {
     const session = props.showName === true && account().loggedIn() ? account().session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
+  const appearance = (): ButtonAppearance => getButtonAppearance(account(), shownName() !== undefined);
   const label = (): string => authLabel(account());
   // The name stays the visible text, and the title describes the sign-in a click continues.
   const title = (): string => (!busy() && resumes(account()) ? RESUME_TITLE : label());
@@ -125,17 +143,13 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         aria-haspopup={opensPopover() ? undefined : 'dialog'}
         aria-expanded={opensPopover() ? undefined : props.modalOpen() ? 'true' : 'false'}
         aria-controls={opensPopover() ? undefined : 'auth-modal-backdrop'}
-        variant={account().loggedIn() ? 'secondary' : 'primary'}
-        class={
-          account().loggedIn()
-            ? [s['chip'], shownName() === undefined ? s['avatarOnly'] : undefined].join(' ').trim()
-            : s['signIn']
-        }
+        variant={appearance().variant}
+        class={appearance().class}
       >
         <Show
           when={account().loggedIn() && account().session()}
           fallback={
-            <>
+            <Show when={!account().unreachable()} fallback={<AlertTriangleIcon class={s['signInIcon']} />}>
               <UserIcon class={s['signInIcon']} />
               <span
                 class={s['label']}
@@ -144,7 +158,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
               >
                 {resumes(account()) ? 'Continue session' : 'Sign in'}
               </span>
-            </>
+            </Show>
           }
         >
           {session => (

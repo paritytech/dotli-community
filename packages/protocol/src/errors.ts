@@ -90,6 +90,8 @@ export const PROTOCOL_ERRORS = {
   FRAME_RESET: 'Protocol frame state reset before ready signal',
   /** Nothing said how to build the frame, as on a page that never configures it. */
   FRAME_UNCONFIGURED: 'Protocol frame was never configured',
+  /** The frame did not answer the host's heartbeat in time, or its transport closed while it was asked. */
+  FRAME_UNRESPONSIVE: 'Protocol frame stopped answering',
 } as const;
 
 /** The error a transport closed with, under the protocol's own class when it is one of the transport's. */

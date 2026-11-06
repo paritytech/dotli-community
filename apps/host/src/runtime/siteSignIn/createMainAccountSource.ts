@@ -137,9 +137,10 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           case 'Disconnected':
           case 'LoginFailed':
             return new MainAccountError('signed_out', `The window's core reports the main session ${report.tag}`);
+          case 'Unreachable':
+            return new MainAccountError('unavailable', "The window's core cannot read the main session");
           case undefined:
           case 'Restoring':
-          case 'Unreachable':
           case 'Pairing':
           case 'Authenticating':
             return false;
@@ -154,8 +155,9 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     /**
      * The main account once the core reports a session, on a core lease the source holds from the first read. Rejects
      * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
-     * for a core that cannot boot, a session without a readable key, `signal` aborting first, or the source disposed
-     * while the read is open or before it starts, which then takes no new lease.
+     * for a core that cannot boot, a core that cannot read the main session, a session without a readable key,
+     * `signal` aborting first, or the source disposed while the read is open or before it starts, which then takes no
+     * new lease.
      */
     async read(signal: AbortSignal): Promise<MainAccount> {
       const ended = AbortSignal.any([signal, lifetime.signal]);

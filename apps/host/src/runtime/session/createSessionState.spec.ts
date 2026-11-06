@@ -211,6 +211,66 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Unreachable' });
   });
 
+  it('As a user whose saved session could not be read, I ask to read it again and am shown signed out once the store answers', async () => {
+    // Given
+    shared.readError = UNREACHABLE;
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Unreachable');
+    shared.readError = null;
+
+    // When
+    await session.retryRead();
+
+    // Then
+    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a user whose saved session could not be read, I ask to read it again while the store still fails and stay unreachable', async () => {
+    // Given
+    shared.readError = UNREACHABLE;
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Unreachable');
+
+    // When
+    const retried = session.retryRead();
+
+    // Then
+    await expect(retried).resolves.toBeUndefined();
+    expect(auth.get()).toEqual({ tag: 'Unreachable' });
+  });
+
+  it('As a signed-out user, I ask to read my session again and nothing is read', async () => {
+    // Given
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Disconnected');
+    const reads = shared.reads.filter(key => key === SESSION_KEY).length;
+
+    // When
+    await session.retryRead();
+
+    // Then
+    expect(shared.reads.filter(key => key === SESSION_KEY)).toHaveLength(reads);
+  });
+
+  it('As a user shown unreachable, I see a core read my session and am shown it', async () => {
+    // Given
+    const storage = coreStorage.createAdapters();
+    shared.readError = UNREACHABLE;
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+    reportFromCore({ tag: 'Disconnected' });
+    await waitForStatus(auth, state => state.tag === 'Unreachable');
+    shared.readError = null;
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+
+    // When
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+    await waitForStatus(auth, state => state.tag === 'Connected');
+
+    // Then
+    expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+  });
+
   it('As a signed-in user, I lose the shared store and stay signed in', () => {
     // Given
     onTestFinished(session.start());

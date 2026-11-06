@@ -52,6 +52,7 @@ import { readSessionTuning } from './readSessionTuning.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
 import { serveEngineScope } from './serveEngineMethods.js';
 import { serveFramePause } from './serveFramePause.js';
+import { serveHeartbeat } from './serveHeartbeat.js';
 import { serveLocalWallet } from './serveLocalWallet.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
@@ -119,6 +120,8 @@ const serving = createTransport({
 });
 serving.handleSubscription(protocolSchema.sections.frame.status, boot.handleStatus);
 serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.handleTelemetry);
+// The frame answers the heartbeat as long as its page, so the stop goes unused.
+serveHeartbeat({ serving });
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = withRefusalReports(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
@@ -134,7 +137,10 @@ serveLocalWallet({
   },
 });
 
-/** Logs `message` and fails the boot for good, so this frame never serves. Never throws. */
+/**
+ * Logs `message` and fails the boot for good, so this frame never serves the chains. The frame keeps serving the shared
+ * store and the wallet after its init failed. Never throws.
+ */
 function failInit(message: string, { cause }: Params = {}): void {
   log.error(`${FRAME_LOG_TAG} ${message}`);
   boot.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));

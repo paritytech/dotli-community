@@ -173,6 +173,36 @@ describe('createFeedKeeper', () => {
     ]);
   });
 
+  it('As the host, I keep my feed on a frame that starts listening with a transport I do not hold yet', async () => {
+    // Given a feed held on the first transport
+    createKeeper('shared_auth').follow();
+    await timers.advance(0);
+
+    // When the frame gives a second transport and starts listening
+    current = { name: 'second' };
+    status.set('listening');
+    await timers.advance(0);
+
+    // Then
+    expect(opened.map(({ transport, unsubscribed }) => [transport.name, unsubscribed])).toEqual([
+      ['first', true],
+      ['second', false],
+    ]);
+  });
+
+  it('As the host, I see my feed left as it is when the frame I hold starts listening', async () => {
+    // Given a feed held on the first transport
+    createKeeper('shared_auth').follow();
+    await timers.advance(0);
+
+    // When the frame starts listening with the same transport
+    status.set('listening');
+    await timers.advance(0);
+
+    // Then
+    expect(opened.map(({ transport, unsubscribed }) => [transport.name, unsubscribed])).toEqual([['first', false]]);
+  });
+
   it('As the host, I let go of a feed during the wait after an end, so it is not reopened and an ask still out is dropped', async () => {
     // Given a feed the frame ended, waiting to be reopened, and a frame whose next transport is still being asked for
     const asked = createDeferred<Transport>();

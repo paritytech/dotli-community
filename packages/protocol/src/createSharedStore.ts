@@ -26,7 +26,7 @@ export type LocalWalletReadResult =
 export type SharedStoreStatus = 'connecting' | 'available' | 'unavailable';
 
 type Params = {
-  frame: Pick<ProtocolFrame, 'status' | 'getTransport'>;
+  frame: Pick<ProtocolFrame, 'status' | 'getTransport' | 'storeHeld'>;
   rpc: FrameRpc;
   /** What a reopen of the auth change feed waits on. */
   timers?: Timers;
@@ -95,7 +95,7 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
   });
   // Recomputed on a read once an input changed, so a frame status listener that runs before this store's own reads
   // the store as it is.
-  const status = computed([frame.status, settled], deriveSharedStoreStatus);
+  const status = computed([frame.status, settled, frame.storeHeld], deriveSharedStoreStatus);
 
   return {
     /**
@@ -262,8 +262,14 @@ function hasSettled(status: ProtocolStatus): boolean {
   }
 }
 
-/** The store answers once a frame listens. It stays `connecting` only until the first frame listens or fails. */
-function deriveSharedStoreStatus(status: ProtocolStatus, settled: boolean): SharedStoreStatus {
+/**
+ * The store answers once a frame listens, and while a frame whose light client failed to start is held for it. It stays
+ * `connecting` only until the first frame listens or fails.
+ */
+function deriveSharedStoreStatus(status: ProtocolStatus, settled: boolean, held: boolean): SharedStoreStatus {
+  if (held) {
+    return 'available';
+  }
   switch (status) {
     case 'listening':
     case 'ready':

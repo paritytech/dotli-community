@@ -44,9 +44,11 @@ export function createFakeFrame({
   timers = realTimers,
 }: Params = {}) {
   const status = atom<ProtocolStatus>(initial);
+  const storeHeld = atom(false);
   let lostWith: Error = new Error('lost');
   let builds = 0;
   let current: Built | null = null;
+  const checks: ProtocolTransport[] = [];
 
   function build(): Built {
     builds += 1;
@@ -130,11 +132,15 @@ export function createFakeFrame({
 
   const frame: ProtocolFrame = {
     status,
+    storeHeld,
     configure: () => undefined,
     getTransport: () => waitForHost(['listening', 'ready']),
     waitUntilReady: () => waitForHost(['ready']),
     // The facades never read it, and this fake's frame speaks the host's schema.
     onVersionMismatch: () => () => undefined,
+    checkAlive: transport => {
+      checks.push(transport);
+    },
   };
 
   return {
@@ -144,8 +150,14 @@ export function createFakeFrame({
     setStatus,
     /** Drops the frame with `error`, after its status says it is down. Its transport is disposed with `error`. */
     lose,
+    /** Says whether a frame whose light client failed to start is held for the store. Builds and drops nothing. */
+    holdStore: (held: boolean): void => {
+      storeHeld.set(held);
+    },
     /** How many frames were built. */
     countBuilds: () => builds,
+    /** The transports the frame was asked to check, in order. Checks nothing. */
+    checks,
   };
 }
 

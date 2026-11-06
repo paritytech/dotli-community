@@ -12,7 +12,8 @@ type Params = {
 };
 
 /**
- * Reports a frame lost after it was ready, once, and captures it when `capture` says so. Returns whether it captured.
+ * Reports a frame lost after it was ready, or a frame held for the shared store that stopped answering, once, and
+ * captures it when `capture` says so. Returns whether it captured.
  * A tab the SharedWorker let go of while it was frozen finds its port released when it thaws, which is expected, so
  * that loss is counted and left in the trail but never captured.
  */
