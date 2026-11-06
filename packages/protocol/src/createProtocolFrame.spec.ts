@@ -682,6 +682,23 @@ describe('createProtocolFrame', () => {
     expect(frame.status.get()).toBe('ready');
   });
 
+  it('As the host whose rebuilt frame refuses my wire while my store is held, I see the held frame go and the store no longer held', async () => {
+    // Given a held frame, and the frame rebuilt after the backoff from a newer release
+    const { dom, iframes, frame, held } = await holdFailedFrame();
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+    const rebuilt = iframes.getNewest();
+
+    // When
+    dom.serveNewer(rebuilt);
+    await dom.retryHandshake();
+
+    // Then
+    expect(held.isConnected).toBe(false);
+    expect(frame.storeHeld.get()).toBe(false);
+    expect(frame.status.get()).toBe('failed');
+    await expect(frame.getTransport()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
+  });
+
   it('As the host, I meet a version mismatch and it is final', async () => {
     // Given a frame of another release, which refuses the host wire version
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });

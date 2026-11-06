@@ -366,6 +366,10 @@ export function createProtocolFrame<E extends FrameElement>({
         } else {
           loseFrame(reason, 'failed');
         }
+        // A mismatch is final, so no frame will listen to replace the held one, and every call rejects before it.
+        if (mismatch !== null) {
+          dropHeld(mismatch, { lost: false });
+        }
       }
       if (mismatch !== null || stable) {
         return;
