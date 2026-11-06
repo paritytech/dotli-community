@@ -3,6 +3,5 @@
 
 export type { BitswapClient } from './createBitswapClient.js';
 export { createBitswapClient } from './createBitswapClient.js';
-export { fetchBitswapBlock } from './fetchBitswapBlock.js';
 export type { BlockCache, BlockOrigin, ContentProgress, SandboxBlockRelay } from './createSandboxBlockRelay.js';
 export { createSandboxBlockRelay } from './createSandboxBlockRelay.js';

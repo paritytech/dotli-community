@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { fetchBitswapBlock } from '@dotli/bitswap';
 import { fetchFromIpfs } from '@dotli/content';
 import { getBackend, type Backend } from '@dotli/config';
+import { hostBitswapClient } from './createHostBitswapClient.js';
 
 /** A block as one content backend returned it. Empty data is a miss. */
 export type PreimageBlock = {
@@ -64,6 +64,6 @@ export function createBlockFetch({ backend, fetchOverBitswap, fetchFromGateway }
 /** The page's block fetch over the content backend in force. */
 export const fetchContentBlock = createBlockFetch({
   backend: getBackend,
-  fetchOverBitswap: fetchBitswapBlock,
+  fetchOverBitswap: (cid, signal) => hostBitswapClient.get(cid, signal),
   fetchFromGateway: async cid => (await fetchFromIpfs(cid)).data,
 });

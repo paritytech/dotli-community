@@ -4,11 +4,11 @@
 // The page as the debug panel reads it. Loaded only with the panel, so the diagnostics and the archive reader stay out
 // of the boot chunk.
 
-import { fetchBitswapBlock } from '@dotli/bitswap';
 import { getBackend } from '@dotli/config';
 import { readArchiveFiles } from '@dotli/content';
 import { blockCache } from '@dotli/storage';
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
+import { hostBitswapClient } from './runtime/hostCallbacks/createHostBitswapClient.js';
 import { createArchiveTransport } from './createArchiveTransport.js';
 import { productFrameLayout, type ProductFrameLayout } from './createProductFrameLayout.js';
 import { topbarState } from './state/topbarState.js';
@@ -47,5 +47,5 @@ export const debugPanelHost = createDebugPanelHost({ layout: productFrameLayout 
 
 /** As the sandbox relay serves blocks: from the block cache, else over bitswap. */
 async function relayBlock(cid: string): Promise<Uint8Array> {
-  return (await blockCache.get(cid)) ?? fetchBitswapBlock(cid);
+  return (await blockCache.get(cid)) ?? hostBitswapClient.get(cid);
 }
