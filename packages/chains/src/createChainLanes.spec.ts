@@ -449,10 +449,9 @@ describe('createChainLanes', () => {
       lanes.pause();
     });
 
-    // Then lane 1 is paused too, the chain reads paused and disconnected, the last status heard is disconnected, and lane 0's error is thrown
+    // Then lane 1 is paused too, the chain reads disconnected, the last status heard is disconnected, and lane 0's error is thrown
     expect(thrown).toBe(FAULT);
     expect(nth(built, 1).disconnects).toBe(1);
-    expect(lanes.isPaused()).toBe(true);
     expect(lanes.status()).toBe('disconnected');
     expect(statuses.at(-1)).toBe('disconnected');
   });

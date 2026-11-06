@@ -117,12 +117,10 @@ type LeaseParams<Connection> = {
 };
 
 type HaltOnFailureParams = {
-  /** The chain the step runs on. */
+  /** The chain to pause or resume. */
   entry: Entry;
-  /** Names the step in the report. */
+  /** What to do to its lanes, which also names the step in the report. */
   action: 'pause' | 'resume';
-  /** The chain's part of the pause or resume. */
-  step: (entry: Entry) => void;
 };
 
 /** What the pool tells its watchers, one listener per watcher. */
@@ -216,20 +214,10 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     report(entry);
   }
 
-  function pauseEntry(entry: Entry): void {
-    entry.lanes.pause();
-  }
-
-  function resumeEntry(entry: Entry): void {
-    if (entry.lanes.isPaused()) {
-      entry.lanes.resume();
-    }
-  }
-
-  /** Runs `step` on one chain, and halts the chain when it throws so its leases recover. */
-  function haltOnFailure({ entry, action, step }: HaltOnFailureParams): void {
+  /** Pauses or resumes one chain's lanes, and halts the chain when that throws so its leases recover. */
+  function haltOnFailure({ entry, action }: HaltOnFailureParams): void {
     try {
-      step(entry);
+      entry.lanes[action]();
     } catch (error) {
       reportDefect(error, {
         flow: 'protocol',
@@ -354,7 +342,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       return null;
     }
     if (!paused) {
-      haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+      haltOnFailure({ entry, action: 'resume' });
     }
     if (entry.destroyTimer !== null) {
       clearTimeout(entry.destroyTimer);
@@ -493,7 +481,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       paused = true;
       const live = [...entries.values()];
       for (const entry of live) {
-        haltOnFailure({ entry, action: 'pause', step: pauseEntry });
+        haltOnFailure({ entry, action: 'pause' });
       }
       log.event(`${POOL_TAG} paused`, { flow: 'protocol', chains: live.length });
     },
@@ -508,7 +496,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       for (const entry of live) {
         // A consumer's delivery in this loop may have closed the chain.
         if (entry.live && entry.leases > 0) {
-          haltOnFailure({ entry, action: 'resume', step: resumeEntry });
+          haltOnFailure({ entry, action: 'resume' });
         }
       }
       log.event(`${POOL_TAG} resumed`, { flow: 'protocol', chains: live.length });

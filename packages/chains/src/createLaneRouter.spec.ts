@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { catchError } from '@dotli/shared/testing';
 import { createLaneRouter, type LaneConnectParams, type LaneHandle } from './createLaneRouter.js';
 
 type FakeSession = {
@@ -281,12 +282,9 @@ describe('createLaneRouter', () => {
     router.send(createFollow(1));
 
     // When I disconnect
-    let thrown: unknown = null;
-    try {
+    const thrown = catchError(() => {
       router.disconnect();
-    } catch (error) {
-      thrown = error;
-    }
+    });
 
     // Then I hear home's failure, and the overflow session ended too
     expect(thrown).toBe(failure);

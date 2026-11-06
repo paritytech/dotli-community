@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { runEvery } from './runEvery.js';
+import { catchError } from './testing/catchError.js';
 
 describe('runEvery', () => {
   it('As a dotli integrator, I run every step and nothing throws when none fails', () => {
@@ -68,12 +69,3 @@ describe('runEvery', () => {
     expect(caught).toHaveProperty('message', 'running failed');
   });
 });
-
-function catchError(run: () => void): unknown {
-  try {
-    run();
-  } catch (error) {
-    return error;
-  }
-  return undefined;
-}

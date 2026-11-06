@@ -70,10 +70,8 @@ type ConnectParams = {
 type ForwardForSessionParams = {
   /** The session that sent the request, and owns its answer. */
   session: Session;
-  /** The request as it goes upstream, its tokens already rewritten. */
+  /** The request as it goes upstream, its tokens already rewritten. Its method decides how its answer is mapped. */
   request: JsonRpcRequest;
-  /** The method the session called, which decides how its answer is mapped. */
-  method: string;
   /** The upstream token a release request ends, so events for it in the meantime are dropped quietly. */
   upstreamToken?: string;
 };
@@ -191,7 +189,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
    * Forwards a session's request, owned by the session when it expects an answer. A follow or an unfollow sent without
    * an id is still tracked, so the follows the node holds stay counted. Such a follow's answer is unfollowed at once.
    */
-  function forwardForSession({ session, request, method, upstreamToken }: ForwardForSessionParams): void {
+  function forwardForSession({ session, request, upstreamToken }: ForwardForSessionParams): void {
+    const { method } = request;
     if (request.id !== undefined) {
       pending.track({
         owner: { kind: 'session', sessionId: session.id, clientId: request.id, method, upstreamToken },
@@ -301,7 +300,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       return;
     }
 
-    forwardForSession({ session, request: rewritten, method });
+    forwardForSession({ session, request: rewritten });
   }
 
   function routeOwnedReleaseRequest(session: Session, request: JsonRpcRequest): void {
@@ -331,7 +330,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     forwardForSession({
       session,
       request: cloneWithRewrittenFirstParam(request, upstreamToken),
-      method,
       upstreamToken,
     });
   }
@@ -583,7 +581,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     logBrokerTraffic(
       `disconnectSession(${sessionId}) called, pending=${String(pending.count())}, tokens=${String(session.ownedTokens.size)}`,
     );
-    logBrokerTraffic(`disconnectSession stack: ${new Error().stack?.split('\n').slice(1, 5).join(' <- ') ?? ''}`);
     session.connected = false;
     sessions.delete(sessionId);
 

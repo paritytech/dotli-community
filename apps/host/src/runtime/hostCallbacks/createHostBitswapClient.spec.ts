@@ -12,13 +12,9 @@ import { createFakeRemoteChains, type FakeRemoteChains, type RemoteConnection } 
 
 // The follow a watched pool opens shares the connection, so a request is picked by its method.
 async function answerGet(remote: RemoteConnection, hex: string): Promise<void> {
-  const id = await vi.waitFor((): JsonRpcId => {
-    const requestId = remote.sent.find(sent => sent.method === 'bitswap_v1_get')?.id;
-    if (requestId === undefined) {
-      throw new Error('no bitswap_v1_get sent yet');
-    }
-    return requestId;
-  });
+  const id = await vi.waitFor((): JsonRpcId =>
+    must(remote.sent.find(sent => sent.method === 'bitswap_v1_get')?.id, 'a bitswap_v1_get'),
+  );
   remote.emit({ jsonrpc: '2.0', id, result: hex });
 }
 

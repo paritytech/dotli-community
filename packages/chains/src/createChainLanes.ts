@@ -174,15 +174,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     if (halted || !lanes.includes(home)) {
       return null;
     }
-    if (hasRoom(home)) {
-      return createHandle(home, 'follow');
-    }
-    const roomy = lanes.find(hasRoom);
-    if (roomy !== undefined) {
-      return createHandle(roomy, 'follow');
-    }
+    const roomy = hasRoom(home) ? home : lanes.find(hasRoom);
     try {
-      return createHandle(addLane(), 'follow');
+      return createHandle(roomy ?? addLane(), 'follow');
     } catch {
       // A lane that cannot be built leaves no lane for the follow.
       return null;
@@ -334,6 +328,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
   }
 
   function resume(): void {
+    if (!paused) {
+      return;
+    }
     paused = false;
     runEvery(
       lanes.map(lane => () => {
@@ -384,16 +381,11 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     /** The combined status of the open lanes. Never throws. */
     status: getStatus,
     /**
-     * Whether the lanes are paused, a state every lane shares, since a lane is built paused while the lanes are. Never
-     * throws.
-     */
-    isPaused: () => paused,
-    /**
      * Closes every lane's connection under its sessions, and gives each lane `disconnected`. Tries every lane, then
      * throws what any threw: the one `Error`, or an AggregateError otherwise.
      */
     pause,
-    /** Opens every lane's connection again. Tries every lane, then throws as `pause` does. */
+    /** Opens every lane's connection again. A call while not paused does nothing. Tries every lane, then throws as `pause` does. */
     resume,
     /**
      * Ends every lane's sessions and closes its connection, lane 0 included. Tries every lane, then throws as `pause`
