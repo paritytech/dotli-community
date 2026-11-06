@@ -97,16 +97,7 @@ describe('rereadBeforeSignIn', () => {
     expect(modal.shown.at(-1)).toEqual({ kind: 'prompt', resume: true });
   });
 
-  it.each<{ story: string; settled: DotliAuthState }>([
-    {
-      story: 'As a user whose saved sign-in reads signed in, I click and nothing more is shown',
-      settled: { tag: 'Connected', session: { connected: true } },
-    },
-    {
-      story: 'As a user whose pairing started meanwhile, I click and nothing more is started',
-      settled: { tag: 'Pairing', deeplink: 'polkadotapp://pair', label: 'app' },
-    },
-  ])('$story', async ({ settled }) => {
+  it('As a user whose saved sign-in reads signed in, I click and nothing more is shown', async () => {
     // Given
     const modal = createFakeModal();
     const auth = atom<DotliAuthState>({ tag: 'Unreachable' });
@@ -116,7 +107,28 @@ describe('rereadBeforeSignIn', () => {
     await rereadBeforeSignIn({
       open: modal.open,
       modal,
-      rereadSession: settleAs(auth, settled),
+      rereadSession: settleAs(auth, { tag: 'Connected', session: { connected: true } }),
+      auth,
+      proceed,
+      elsewhere: () => false,
+    });
+
+    // Then
+    expect(modal.shown).toEqual([{ kind: 'spinner' }]);
+    expect(proceed).not.toHaveBeenCalled();
+  });
+
+  it('As a user whose pairing started meanwhile, I click and nothing more is started', async () => {
+    // Given
+    const modal = createFakeModal();
+    const auth = atom<DotliAuthState>({ tag: 'Unreachable' });
+    const proceed = vi.fn<() => void>();
+
+    // When
+    await rereadBeforeSignIn({
+      open: modal.open,
+      modal,
+      rereadSession: settleAs(auth, { tag: 'Pairing', deeplink: 'polkadotapp://pair', label: 'app' }),
       auth,
       proceed,
       elsewhere: () => false,
