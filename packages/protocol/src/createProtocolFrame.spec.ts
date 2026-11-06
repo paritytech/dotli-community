@@ -1246,7 +1246,7 @@ describe('protocol status', () => {
     expect(statuses).toEqual(['available']);
   });
 
-  it("As a user whose light client failed to start, my sibling tabs' auth changes reach me on the frame that replaces the held one", async () => {
+  it("As a user whose light client failed to start, I keep hearing my sibling tabs' auth changes on the frame that replaces the held one", async () => {
     // Given a client whose shared auth I follow, on a frame whose light client failed to start
     const dom = createFrameDom({ timers });
     const iframes = recordIframes(dom);

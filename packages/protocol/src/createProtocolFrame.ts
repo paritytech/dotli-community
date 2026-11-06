@@ -5,7 +5,7 @@
 // the layers above the transport to the frame there is now. Each iframe gets its own provider and transport, so a
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
-import { atom } from 'nanostores';
+import { atom, computed } from 'nanostores';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
@@ -74,7 +74,9 @@ export function createProtocolFrame<E extends FrameElement>({
   const wire = createWireReport({ side: 'host', count });
 
   const status = atom<ProtocolStatus>('idle');
-  const storeHeld = atom(false);
+  // A frame whose light client failed to start, kept to answer the shared store until a new frame listens.
+  const held = atom<FrameSlot | null>(null);
+  const storeHeld = computed(held, frame => frame !== null);
   const reportStatusListener = reportListener('protocol', 'protocol.status');
   const lostListeners = createListenerSet<Error>({
     onListenerError: reportListener('protocol', 'protocol.frame_lost'),
@@ -83,8 +85,6 @@ export function createProtocolFrame<E extends FrameElement>({
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
   // The frame being booted or kept, and nothing while the frame is down.
   let slot: FrameSlot | null = null;
-  // A frame whose light client failed to start, kept to answer the shared store until a new frame listens.
-  let held: FrameSlot | null = null;
   // Stops the keeper when the host drops the frame on purpose.
   let keeper: AbortController | null = null;
   let losses = 0;
@@ -123,12 +123,12 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   /**
-   * Sets whether a frame is held for the shared store. A listener's throw is reported under `protocol.status` once
-   * every listener heard the change, and the step that moved it goes on. Never throws.
+   * Sets the frame held for the shared store. A listener's throw is reported under `protocol.status` once every
+   * listener heard the change, and the step that moved it goes on. Never throws.
    */
-  function setStoreHeld(next: boolean): void {
+  function setHeld(next: FrameSlot | null): void {
     try {
-      storeHeld.set(next);
+      held.set(next);
     } catch (thrown: unknown) {
       reportStatusListener(thrown);
     }
@@ -160,8 +160,7 @@ export function createProtocolFrame<E extends FrameElement>({
     slot = null;
     downReason = error;
     losses += 1;
-    held = kept;
-    setStoreHeld(true);
+    setHeld(kept);
     setStatus('failed');
   }
 
@@ -171,12 +170,11 @@ export function createProtocolFrame<E extends FrameElement>({
    * a caller its calls fail finds nothing held.
    */
   function dropHeld(reason: Error, { lost }: { lost: boolean }): void {
-    const dropped = held;
+    const dropped = held.get();
     if (dropped === null) {
       return;
     }
-    held = null;
-    setStoreHeld(false);
+    setHeld(null);
     dropped.transport?.dispose(reason);
     dropped.iframe?.remove();
     if (lost && reportFrameLost({ error: reason, count, capture: !lossCapturedSinceStable })) {
@@ -189,7 +187,7 @@ export function createProtocolFrame<E extends FrameElement>({
     switch (status.get()) {
       case 'failed':
       case 'booting':
-        return held;
+        return held.get();
       case 'idle':
       case 'listening':
       case 'ready':
@@ -443,7 +441,7 @@ export function createProtocolFrame<E extends FrameElement>({
   function waitUntilReady(): Promise<ProtocolTransport> {
     return withConfig(config => {
       // A light client that failed to start fails a wait at once until the next boot, which the backoff starts.
-      if (held !== null && status.get() === 'failed') {
+      if (held.get() !== null && status.get() === 'failed') {
         return Promise.reject(downReason);
       }
       // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
@@ -543,8 +541,9 @@ export function createProtocolFrame<E extends FrameElement>({
     if (slot?.transport === transport) {
       return slot;
     }
-    if (held?.transport === transport) {
-      return held;
+    const heldFrame = held.get();
+    if (heldFrame?.transport === transport) {
+      return heldFrame;
     }
     return null;
   }
@@ -573,7 +572,7 @@ export function createProtocolFrame<E extends FrameElement>({
       if (slot === kept) {
         log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
         kept.loss.abort(createUnresponsiveError(thrown));
-      } else if (held === kept) {
+      } else if (held.get() === kept) {
         log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
         dropHeld(createUnresponsiveError(thrown), { lost: true });
       }
