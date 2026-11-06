@@ -33,6 +33,9 @@ type StartWorldParams = {
   cacheNames?: string[];
 };
 
+/** The activation calls the worker made: unregisters, deleted cache names and navigated URLs. */
+type ActivationCalls = { unregister: number; delete: string[]; navigate: (string | URL)[] };
+
 const PRECACHE = 'workbox-precache-v2-https://a.dot.li/';
 const FIRST_TAB_URL = 'https://a.dot.li/';
 const SECOND_TAB_URL = 'https://a.dot.li/browse';
@@ -145,61 +148,47 @@ describe('retireShellWorker', () => {
     expect(world.logError).toHaveBeenCalledWith(expect.any(String), failure);
   });
 
-  it('As a visitor whose browser fails to unregister the worker, I still lose the precache and the old shell', async () => {
+  it.each<[string, string, (failure: Error) => StartWorldParams, ActivationCalls]>([
+    [
+      'unregister the worker',
+      'the precache and the old shell',
+      failure => ({ unregister: () => Promise.reject(failure) }),
+      { unregister: 1, delete: [PRECACHE], navigate: [FIRST_TAB_URL, SECOND_TAB_URL] },
+    ],
+    [
+      'list its caches',
+      'the worker and the old shell',
+      failure => ({ keys: () => Promise.reject(failure) }),
+      { unregister: 1, delete: [], navigate: [FIRST_TAB_URL, SECOND_TAB_URL] },
+    ],
+    [
+      'delete the precache',
+      'the worker and the old shell',
+      failure => ({ deleteCache: () => Promise.reject(failure) }),
+      { unregister: 1, delete: [PRECACHE], navigate: [FIRST_TAB_URL, SECOND_TAB_URL] },
+    ],
+    [
+      'list its tabs',
+      'the worker and the precache',
+      failure => ({ matchAll: () => Promise.reject(failure) }),
+      { unregister: 1, delete: [PRECACHE], navigate: [] },
+    ],
+  ])('As a visitor whose browser fails to %s, I still lose %s', async (step, _kept, fail, expected) => {
     // Given
-    const failure = new Error('unregister failed');
-    const world = startWorld({ unregister: () => Promise.reject(failure) });
+    const failure = new Error(`${step} failed`);
+    const world = startWorld(fail(failure));
 
     // When
     await world.dispatch('activate');
 
     // Then
-    expect(world.deleteCache.mock.calls).toEqual([[PRECACHE]]);
-    expect(world.first.navigate).toHaveBeenCalledOnce();
-    expect(world.second.navigate).toHaveBeenCalledOnce();
+    expect({
+      unregister: world.unregister.mock.calls.length,
+      delete: world.deleteCache.mock.calls.map(([cacheName]) => cacheName),
+      navigate: [...world.first.navigate.mock.calls, ...world.second.navigate.mock.calls].map(([url]) => url),
+    }).toEqual(expected);
     expect(world.logError).toHaveBeenCalledOnce();
     expect(world.logError).toHaveBeenCalledWith(expect.any(String), failure);
-  });
-
-  it('As a visitor whose browser fails to list its caches, I still lose the worker and the old shell', async () => {
-    // Given
-    const world = startWorld({ keys: () => Promise.reject(new Error('keys failed')) });
-
-    // When
-    await world.dispatch('activate');
-
-    // Then
-    expect(world.unregister).toHaveBeenCalledOnce();
-    expect(world.first.navigate).toHaveBeenCalledOnce();
-    expect(world.second.navigate).toHaveBeenCalledOnce();
-    expect(world.logError).toHaveBeenCalledOnce();
-  });
-
-  it('As a visitor whose browser fails to delete the precache, I still lose the worker and the old shell', async () => {
-    // Given
-    const world = startWorld({ deleteCache: () => Promise.reject(new Error('delete failed')) });
-
-    // When
-    await world.dispatch('activate');
-
-    // Then
-    expect(world.unregister).toHaveBeenCalledOnce();
-    expect(world.first.navigate).toHaveBeenCalledOnce();
-    expect(world.second.navigate).toHaveBeenCalledOnce();
-    expect(world.logError).toHaveBeenCalledOnce();
-  });
-
-  it('As a visitor whose browser fails to list its tabs, I still lose the worker and the precache', async () => {
-    // Given
-    const world = startWorld({ matchAll: () => Promise.reject(new Error('matchAll failed')) });
-
-    // When
-    await world.dispatch('activate');
-
-    // Then
-    expect(world.unregister).toHaveBeenCalledOnce();
-    expect(world.deleteCache.mock.calls).toEqual([[PRECACHE]]);
-    expect(world.logError).toHaveBeenCalledOnce();
   });
 
   it('As a visitor with two old tabs, I get the second reloaded when the first fails to', async () => {
