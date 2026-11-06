@@ -254,6 +254,17 @@ describe('leaveForLanding', () => {
     expect(replace).toHaveBeenCalledWith('https://local.host:4321/?network=previewnet');
   });
 
+  it('As a visitor on the landing origin at an unknown path, I leave and am sent to the landing page', () => {
+    // Given
+    const { params, replace } = setupLanding({ origin: 'http://localhost:5173', pathname: '/unknown' });
+
+    // When
+    leaveForLanding(params);
+
+    // Then
+    expect(replace).toHaveBeenCalledWith('http://localhost:5173/?network=previewnet');
+  });
+
   it('As a visitor whose server answers the landing URL with the shell, I leave and see an error rather than a reload loop', () => {
     // Given
     const { params, replace } = setupLanding({ origin: 'http://localhost:5173' });

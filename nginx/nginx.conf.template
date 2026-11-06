@@ -61,8 +61,8 @@ server {
         try_files /landing.html =404;
     }
 
+    # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
     location = /__preview {
-        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
         expires -1;
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
@@ -74,8 +74,8 @@ server {
 
     include /etc/nginx/snippets/dotli-host-version.conf;
 
+    # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
     location / {
-        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
         expires -1;
         try_files $uri $uri/ /index.html;
     }
@@ -175,8 +175,8 @@ server {
 
     include /etc/nginx/snippets/dotli-host-version.conf;
 
+    # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
     location / {
-        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
         expires -1;
         try_files $uri /index.html;
     }

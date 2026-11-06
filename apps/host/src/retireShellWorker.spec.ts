@@ -16,7 +16,7 @@ type Listener = Parameters<Scope['addEventListener']>[1];
 /** A window client as the worker sees it. */
 type FakeClient = Awaited<ReturnType<Scope['clients']['matchAll']>>[number];
 
-type FakeWorldParams = {
+type StartWorldParams = {
   /** Takes over from the old worker. Resolves by default. */
   skipWaiting?: () => Promise<void>;
   /** Unregisters the worker's registration. Resolves by default. */
@@ -46,13 +46,29 @@ function startWorld({
   deleteCache = () => Promise.resolve(true),
   navigateFirst = () => Promise.resolve(null),
   matchAll,
-}: FakeWorldParams = {}) {
+}: StartWorldParams = {}) {
   const listeners = new Map<LifecycleType, Listener>();
-  const first = { url: FIRST_TAB_URL, navigate: vi.fn(navigateFirst) };
-  const second = { url: SECOND_TAB_URL, navigate: vi.fn((): Promise<WindowClient | null> => Promise.resolve(null)) };
+  const order: string[] = [];
+  const first = {
+    url: FIRST_TAB_URL,
+    navigate: vi.fn((url: string | URL) => {
+      order.push('navigate');
+      return navigateFirst(url);
+    }),
+  };
+  const second = {
+    url: SECOND_TAB_URL,
+    navigate: vi.fn((): Promise<WindowClient | null> => {
+      order.push('navigate');
+      return Promise.resolve(null);
+    }),
+  };
   const spies = {
     skipWaiting: vi.fn(skipWaiting),
-    unregister: vi.fn(unregister),
+    unregister: vi.fn(() => {
+      order.push('unregister');
+      return unregister();
+    }),
     keys: vi.fn(keys),
     deleteCache: vi.fn(deleteCache),
     matchAll: vi.fn(matchAll ?? ((): Promise<readonly FakeClient[]> => Promise.resolve([first, second]))),
@@ -83,7 +99,7 @@ function startWorld({
     return Promise.all(kept);
   }
 
-  return { ...spies, first, second, listenedTypes: () => [...listeners.keys()], dispatch };
+  return { ...spies, first, second, order, listenedTypes: () => [...listeners.keys()], dispatch };
 }
 
 describe('retireShellWorker', () => {
@@ -108,6 +124,7 @@ describe('retireShellWorker', () => {
 
     // Then
     expect(world.unregister).toHaveBeenCalledOnce();
+    expect(world.order).toEqual(['unregister', 'navigate', 'navigate']);
     expect(world.deleteCache.mock.calls).toEqual([[PRECACHE]]);
     expect(world.matchAll.mock.calls).toEqual([[{ type: 'window' }]]);
     expect(world.first.navigate.mock.calls).toEqual([[FIRST_TAB_URL]]);
@@ -121,10 +138,9 @@ describe('retireShellWorker', () => {
     const world = startWorld({ skipWaiting: () => Promise.reject(failure) });
 
     // When
-    const settled = world.dispatch('install');
+    await world.dispatch('install');
 
     // Then
-    await expect(settled).resolves.toBeDefined();
     expect(world.logError).toHaveBeenCalledOnce();
     expect(world.logError).toHaveBeenCalledWith(expect.any(String), failure);
   });

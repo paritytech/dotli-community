@@ -39,10 +39,13 @@ export function retireShellWorker({ scope, caches, logError = logToConsole }: Re
     event.waitUntil(retire());
   });
 
-  // Unregistering first, so a reloaded tab loads from the network with no worker in control.
   async function retire(): Promise<void> {
+    await Promise.all([deletePrecache(), unregisterThenReload()]);
+  }
+
+  // Unregistering first, so a reloaded tab loads from the network with no worker in control.
+  async function unregisterThenReload(): Promise<void> {
     await unregisterWorker();
-    await deletePrecache();
     await reloadTabs();
   }
 
