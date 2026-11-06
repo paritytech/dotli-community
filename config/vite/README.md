@@ -40,7 +40,8 @@ config and serving entries, and an app runtime takes the signing worker entry.
 - `./css-modules`: CSS-modules options with one short-name counter across every Vite environment of a build.
 - `./inline-script`: a `?inline-script` import returns a module bundled into one classic script, as text a response
   writes into a document dotli does not build.
-- `./astro-pwa`: an Astro integration that generates the manifest and service worker after the page is written.
+- `./astro-pwa`: an Astro integration that generates the web manifest and builds a service worker after the page is
+  written.
 - `./service-worker`: builds a hand-written service worker into one file at the root, with the app's own environment.
 - `./spa-fallback`: dev middleware that routes page loads to the landing page, the sign-in window or the shell and
   answers a malformed escape with 404, and the decision it makes for each request. The middleware takes the app's

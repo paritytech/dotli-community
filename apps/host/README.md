@@ -260,8 +260,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   its tree in its own error boundary. An island whose code never ran is reported and offers a reload, and the auth modal
   and the overlays each have a stand-in that releases the sign-in lease or refuses pending prompts. One that fails
   before page start listens, such as an island that loads with the page, reaches the console alone.
-- The Astro config adds the PWA service worker, the signing worker, the dev SPA fallback and a Sentry release upload,
-  all from the shared Vite tooling.
+- The Astro config adds the web manifest, a service worker that retires the one earlier releases installed, the signing
+  worker, the dev SPA fallback and a Sentry release upload, all from the shared Vite tooling.
 
 ```mermaid
 flowchart LR
@@ -295,6 +295,7 @@ sequenceDiagram
 - The shell page. Dev server on port 4001.
 - The landing page, served for the bare host's root.
 - The session window, served for the bare host's `/s/auth`, `/s/signout`, `/s/manage` and `/s/sign`.
+- The service worker that retires the one earlier releases installed, one file at the root.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   functional run needs the build the root `build:test` script makes, as CI does. It turns metrics on and gives Sentry a
