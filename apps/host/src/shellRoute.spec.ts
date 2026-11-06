@@ -18,8 +18,6 @@ type SetupLandingParams = {
   origin: string;
   /** The page's path, the root by default. */
   pathname?: string;
-  /** How many service workers the page has, none by default. */
-  workers?: number;
   /** The local root the page runs under, `localhost` by default. */
   localRoot?: string | null;
 };
@@ -28,7 +26,6 @@ type SetupLandingParams = {
 type Landing = {
   params: LeaveForLandingParams;
   replace: Mock;
-  unregister: Mock;
 };
 
 const RELEASE: ReadShellRouteParams = { localhost: false, framed: false, readLocalhostProxyUrl: undefined };
@@ -224,60 +221,61 @@ describe('getLocalTargetPath', () => {
 });
 
 describe('leaveForLanding', () => {
-  it("As a visitor caught by an old release's service worker, I am freed of it and sent to the landing page", async () => {
-    // Given
-    const { params, replace, unregister } = setupLanding({ origin: 'http://localhost:5173', workers: 2 });
-
-    // When
-    await leaveForLanding(params);
-
-    // Then
-    expect(unregister).toHaveBeenCalledTimes(2);
-    expect(replace).toHaveBeenCalledWith('http://localhost:5173/?network=previewnet');
-  });
-
-  it('As a visitor on a host that names no product, I leave and am sent to the landing page with my settings', async () => {
+  it('As a visitor on a host that names no product, I leave and am sent to the landing page with my settings', () => {
     // Given
     const { params, replace } = setupLanding({ origin: 'http://bafy.app.localhost:5173' });
 
     // When
-    await leaveForLanding(params);
+    leaveForLanding(params);
 
     // Then
     expect(replace).toHaveBeenCalledWith('http://localhost:5173/?network=previewnet');
   });
 
-  it('As a visitor on a deployed sandbox host, I leave and am sent to the landing page on the base domain', async () => {
+  it('As a visitor on a deployed sandbox host, I leave and am sent to the landing page on the base domain', () => {
     // Given
     const { params, replace } = setupLanding({ origin: `https://bafy.app.${BASE_DOMAIN}`, localRoot: null });
 
     // When
-    await leaveForLanding(params);
+    leaveForLanding(params);
 
     // Then
     expect(replace).toHaveBeenCalledWith(`https://${BASE_DOMAIN}/?network=previewnet`);
   });
 
-  it('As a developer on a local.host sandbox host, I leave and am sent to the landing page on local.host and my port', async () => {
+  it('As a developer on a local.host sandbox host, I leave and am sent to the landing page on local.host and my port', () => {
     // Given a page on a sandbox host of local.host
     const { params, replace } = setupLanding({ origin: 'https://bafy.app.local.host:4321', localRoot: 'local.host' });
 
     // When the page leaves for the landing page
-    await leaveForLanding(params);
+    leaveForLanding(params);
 
     // Then it goes to local.host on the same port
     expect(replace).toHaveBeenCalledWith('https://local.host:4321/?network=previewnet');
   });
 
-  it('As a visitor whose server answers the landing URL with the shell, I leave and see an error rather than a reload loop', async () => {
+  it('As a visitor on the landing origin at an unknown path, I leave and am sent to the landing page', () => {
+    // Given
+    const { params, replace } = setupLanding({ origin: 'http://localhost:5173', pathname: '/unknown' });
+
+    // When
+    leaveForLanding(params);
+
+    // Then
+    expect(replace).toHaveBeenCalledWith('http://localhost:5173/?network=previewnet');
+  });
+
+  it('As a visitor whose server answers the landing URL with the shell, I leave and see an error rather than a reload loop', () => {
     // Given
     const { params, replace } = setupLanding({ origin: 'http://localhost:5173' });
 
     // When
-    const outcome = await leaveForLanding(params).catch((error: unknown) => error);
+    const leave = () => {
+      leaveForLanding(params);
+    };
 
     // Then
-    expect(outcome).toEqual(
+    expect(leave).toThrow(
       new Error('leaveForLanding: http://localhost:5173/ answered with the shell, not the landing page'),
     );
     expect(replace).not.toHaveBeenCalled();
@@ -293,11 +291,10 @@ function toPreviewLocation(target: string, extra = ''): ShellLocation {
   return toLocation(`http://localhost:5173/__preview?url=${encodeURIComponent(target)}${extra}`);
 }
 
-/** Builds a page at `origin` that leaves for the landing page, with `workers` service workers to drop. */
-function setupLanding({ origin, pathname = '/', workers = 0, localRoot = 'localhost' }: SetupLandingParams): Landing {
+/** Builds a page at `origin` that leaves for the landing page. */
+function setupLanding({ origin, pathname = '/', localRoot = 'localhost' }: SetupLandingParams): Landing {
   const url = new URL(origin);
   const replace = vi.fn();
-  const unregister = vi.fn(() => Promise.resolve(true));
   return {
     params: {
       location: {
@@ -309,9 +306,7 @@ function setupLanding({ origin, pathname = '/', workers = 0, localRoot = 'localh
         replace,
       },
       localRoot,
-      workers: () => Promise.resolve(Array.from({ length: workers }, () => ({ unregister }))),
     },
     replace,
-    unregister,
   };
 }

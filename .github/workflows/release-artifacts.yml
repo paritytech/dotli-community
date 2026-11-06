@@ -178,8 +178,8 @@ jobs:
             serves localhost "$s" 'data-session-window' \
               || { echo "::error::localhost$s is not the session page"; exit 1; }
           done
-          serves browse.localhost /host-sw.js 'precache' \
-            || { echo "::error::browse.localhost/host-sw.js is not the host worker"; exit 1; }
+          serves browse.localhost /host-sw.js 'unregister' \
+            || { echo "::error::browse.localhost/host-sw.js is not the retiring host worker"; exit 1; }
           serves browse.localhost /dotli-network.js '"label":"smoke"' \
             || { echo "::error::DOTLI_NETWORK did not reach the served config"; exit 1; }
           for h in browse.localhost host.localhost x.app.localhost; do

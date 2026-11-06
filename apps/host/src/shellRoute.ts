@@ -46,8 +46,6 @@ export type LeaveForLandingParams = {
   location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
   /** The local root the shell is served under, or `null` when deployed. */
   localRoot: string | null;
-  /** The service workers registered on this origin. */
-  workers: () => Promise<readonly { unregister: () => Promise<boolean> }[]>;
 };
 
 type GetLandingOriginParams = Pick<LeaveForLandingParams['location'], 'protocol' | 'port'> &
@@ -155,19 +153,16 @@ export function getLocalTargetPath(target: LocalTarget): string {
 
 /**
  * The server answers the bare host's root with the landing page, so the shell gets a URL with no product only from a
- * service worker an older release registered there, or from a host or path that names none. Rejects rather than
- * reloads when neither applies, as a server serving the shell for the landing URL would loop, and rejects as `workers`
- * or an unregister does.
+ * host or path that names none. Throws rather than reloads when the server answered the landing URL with the shell,
+ * since that would loop.
  */
-export async function leaveForLanding({ location, localRoot, workers }: LeaveForLandingParams): Promise<void> {
+export function leaveForLanding({ location, localRoot }: LeaveForLandingParams): void {
   const { protocol, port, pathname, search } = location;
   const origin = getLandingOrigin({ protocol, port, localRoot });
-  const registrations = await workers();
-  if (registrations.length === 0 && origin === location.origin && pathname === '/') {
+  if (origin === location.origin && pathname === '/') {
     throw new Error(`leaveForLanding: ${origin}/ answered with the shell, not the landing page`);
   }
-  await Promise.all(registrations.map(registration => registration.unregister()));
-  log.event('Route: landing page elsewhere', { flow: 'boot', stale_workers: registrations.length });
+  log.event('Route: landing page elsewhere', { flow: 'boot' });
   location.replace(`${origin}/${search}`);
 }
 

@@ -7,8 +7,7 @@
 import type { SpanHandle } from './createSpanHandle.js';
 
 /** The user flow an event belongs to, so failures can be read and counted per flow from tags alone. */
-export type Flow =
-  'boot' | 'resolve' | 'content' | 'protocol' | 'wallet' | 'storage' | 'notifications' | 'pwa' | 'ui' | 'chat';
+export type Flow = 'boot' | 'resolve' | 'content' | 'protocol' | 'wallet' | 'storage' | 'notifications' | 'ui' | 'chat';
 
 export type CaptureContext = {
   /** The flow the failure belongs to. Part of the issue fingerprint. */

@@ -27,7 +27,6 @@ const dependencies = listDependencyVersions(resolve(import.meta.dirname, '../..'
 const protocolDevServer = { target: `https://localhost:${DEV_PROTOCOL_PORT}`, secure: false };
 
 export default defineConfig({
-  // Apart from the preview server's port, so a preview build's precaching service worker never serves this origin.
   server: { port: Number(DEV_HOST_PORT) },
   // Its floating bar covers the phone bar.
   devToolbar: { enabled: false },
@@ -40,11 +39,12 @@ export default defineConfig({
   build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
-    // The page registers the worker and prompts for updates itself.
+    // Builds the worker that retires the shell's precaching worker from earlier releases, and emits the web manifest.
     astroPwa({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'host-sw.ts',
       injectRegister: false,
-      registerType: 'prompt',
-      filename: 'host-sw.js',
       manifest: {
         name: 'Polkadot Web',
         short_name: 'Polkadot Web',
@@ -64,32 +64,11 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
-        // Loaded only on demand. Precaching would make every installed shell download them after each release. The
-        // worker lives on product hosts only, which never show the landing page or the sign-in window.
-        // The local wallet's signing worker, its wasm and its core module load only in local mode, and the debug
-        // panel and its wire describer only in debug mode.
-        globIgnores: [
-          '**/truapi_provider_bg*.wasm',
-          '**/truapi_verifiable_bg*.wasm',
-          'landing.html',
-          'session.html',
-          '**/truapi_signing_bg*.wasm',
-          '**/signingWorker*.js',
-          '**/localWalletCore*.js',
-          '**/truapiDebugPanel*',
-          '**/debugPanelHost*',
-          '**/debugWireDescribe*',
-        ],
-        cleanupOutdatedCaches: true,
-        // Prompted updates need the waiting SW to sit idle until the user opts in.
-        skipWaiting: false,
-        clientsClaim: false,
-        maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
-        // /__preview needs the isolation headers the shell's fallback would not carry, and host_version.json must show
-        // the file, not the shell.
-        navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
+      injectManifest: {
+        // An empty injection point skips the precache manifest, which this worker does not use.
+        injectionPoint: '',
+        rollupFormat: 'es',
+        sourcemap: false,
       },
     }),
   ],

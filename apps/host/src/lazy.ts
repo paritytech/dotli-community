@@ -21,7 +21,6 @@ import type * as SettingsContentNamespace from './components/settings/SettingsCo
 import type * as SignersCommonNamespace from '@polkadot-api/signers-common';
 import type * as ViolationPanelMountNamespace from './components/sandboxChecker/mount.js';
 import type * as WireDescriberNamespace from './runtime/debugWireDescribe.js';
-import type * as WorkboxWindowNamespace from 'workbox-window';
 
 /** The published host runtime's chunk: its web build and the constructor of its worker. */
 type HostRuntimeChunk = {
@@ -34,7 +33,6 @@ type QrCodeModule = typeof QrCodeNamespace & { default: typeof QrCodeNamespace }
 
 export type DebugPanelHostModule = typeof DebugPanelHostNamespace;
 export type ChatPanelModule = typeof ChatPanelNamespace;
-export type WorkboxWindowModule = typeof WorkboxWindowNamespace;
 export type BridgeModule = typeof BridgeNamespace;
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
 export type PhraseScreenModule = typeof PhraseScreenNamespace;
@@ -82,11 +80,6 @@ export function loadSettingsContent(): Promise<typeof SettingsContentNamespace> 
 /** Sandbox checker builds only. Rejects when its chunk fails to load. */
 export function loadViolationPanelMount(): Promise<typeof ViolationPanelMountNamespace> {
   return import('./components/sandboxChecker/mount.js');
-}
-
-/** The service worker client. Rejects when its chunk fails to load. */
-export function loadWorkboxWindow(): Promise<WorkboxWindowModule> {
-  return import('workbox-window');
 }
 
 /** The TrUAPI bridge and the dialogs it asks with. Rejects when its chunk fails to load. */

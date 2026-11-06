@@ -5,7 +5,6 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
-import { startPwa } from './startPwa.js';
 import { startPage } from './startPage.js';
 import { startHost, type HostStartup } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
@@ -385,11 +384,7 @@ async function main(): Promise<void> {
       return;
     case 'landing':
       announceRoute(route, shell.flowId);
-      await leaveForLanding({
-        location: window.location,
-        localRoot: LOCAL_ROOT,
-        workers: async () => ('serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations() : []),
-      });
+      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
       return;
   }
 }
@@ -404,9 +399,6 @@ const urlPillElement = document.getElementById('topbar-url');
 if (urlPillElement !== null) {
   bindUrlPill(urlPillElement);
 }
-
-// The update offer lasts the page's life, so its cleanup goes unused.
-startPwa();
 
 // Everything past boot catches its own failures, so this broke the shell before a load started.
 main().catch(reportBootFailure);

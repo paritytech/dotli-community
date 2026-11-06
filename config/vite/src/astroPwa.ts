@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The service worker precaches the page Astro writes after the client build, so it is generated at build done.
-// @vite-pwa/astro does the same. Switch to it once it supports Astro 7.
+// The service worker is generated at build done because vite-plugin-pwa's own build step writes no worker under
+// Astro's build. @vite-pwa/astro does the same. Switch to it once it supports Astro 7.
 
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';

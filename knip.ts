@@ -26,9 +26,16 @@ export default {
     'apps/host': {
       astro: true,
       playwright: true,
-      // The pages load these through `<script src>`. `sentryCheck.ts` is a manual CLI check. The functional suite's
-      // global setup bundles the `wire` scripts for its pages.
-      entry: ['src/main.ts', 'src/landing.ts', 'src/session.ts', 'sentryCheck.ts', 'tests/functional/wire/*.ts'],
+      // The pages load these through `<script src>`. The PWA integration builds the service worker. `sentryCheck.ts`
+      // is a manual CLI check. The functional suite's global setup bundles the `wire` scripts for its pages.
+      entry: [
+        'src/main.ts',
+        'src/landing.ts',
+        'src/session.ts',
+        'src/host-sw.ts',
+        'sentryCheck.ts',
+        'tests/functional/wire/*.ts',
+      ],
     },
     'apps/sandbox': {
       // The service worker is the PWA plugin's source, named in vite.config.ts.

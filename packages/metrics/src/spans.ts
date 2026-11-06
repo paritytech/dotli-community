@@ -249,22 +249,6 @@ export const spans = {
   SANDBOX_BITSWAP_ABORT: 'sandbox.bitswap_abort',
 
   /**
-   * Count. The shell's service worker module could not load. Tagged `outcome` (error) and `reason` (the error's name).
-   */
-  PWA_SW_LOAD: 'pwa.sw_load',
-
-  /**
-   * Count. The shell's service worker could not register. Tagged `outcome` (error) and `reason` (the error's name).
-   */
-  PWA_SW_REGISTER: 'pwa.sw_register',
-
-  /**
-   * Count. An update check of the shell's service worker failed, offline, mid-deploy or after storage was cleared.
-   * Expected, since the next check retries. Tagged `outcome` (error) and `reason` (the error's name).
-   */
-  PWA_SW_UPDATE: 'pwa.sw_update',
-
-  /**
    * Count. A step of the scheduled notifications poll failed, once per failing run of the step. Tagged `outcome`
    * (error), `reason` (the error's name) and `step` (`remove_stale, list_pending, claim`). An IndexedDB failure the
    * browser causes is expected, the rest captured.
