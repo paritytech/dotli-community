@@ -36,8 +36,8 @@ When visiting the root (`paseo.li`), a landing page is shown with:
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
 - A **login** button in the top-right corner
 
-It is its own page (`landing.html`), with no topbar and no service worker. The topbar and the offline shell belong to
-the app pages (`index.html`) on each app's subdomain.
+It is its own page (`landing.html`), with no topbar. The topbar belongs to the app pages (`index.html`) on each app's
+subdomain.
 
 ## Architecture
 
@@ -204,7 +204,7 @@ HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 
 `npm run dev` starts one dev server per origin: the shell on 4001, the sandbox (`*.app.localhost`) on 4002 and the
 protocol iframe on 4003, which the shell's dev server proxies at `/p/`. Use `npm run preview` for anything that depends
-on the production build, such as the shell's offline service worker.
+on the production build.
 
 The dev servers serve https with a locally trusted certificate from [mkcert](https://github.com/FiloSottile/mkcert),
 which the first `npm run dev` downloads and installs into the system trust store, asking for your password once. It
