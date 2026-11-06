@@ -28,6 +28,8 @@ server {
     }
 
     location = /__preview {
+        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
+        expires -1;
         set $csp_ancestors "${CSP}";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
         try_files /index.html =404;
@@ -41,6 +43,8 @@ server {
     include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
+        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
+        expires -1;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -113,6 +117,8 @@ server {
     include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
+        # Revalidated on each load, so a reload never runs a stale shell that names removed chunks.
+        expires -1;
         try_files $uri /index.html;
     }
 }
