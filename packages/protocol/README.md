@@ -50,8 +50,9 @@ flowchart TB
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
   and owns one provider and one transport per iframe. The window provider admits only bytes from that iframe's window at
   the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a
-  request while it is down boots one at once. Boot is deduped with a task pool. It is configured with the backend, and
-  names it in its URL in the frame's own words, which a host page of an earlier release still sends.
+  request while it is down boots one at once, unless a frame whose light client failed to start is held for the shared
+  store. Boot is deduped with a task pool. It is configured with the backend, and names it in its URL in the frame's own
+  words, which a host page of an earlier release still sends.
 - The frame's status is held in one nanostores atom. The frame exposes it, read-only, as its `status` member, and the
   client's `frame` entity hands on that same atom. The shared store's status is a `computed` over the frame's and a
   private atom latched once a frame settled, so a read reflects the frame's status even with nobody listening. The
@@ -108,7 +109,10 @@ were.
 - A lost frame disposes its transport with the loss as the reason. Every call in flight rejects with it and every open
   subscription ends with it, so a remote chain connection hears that the frame stopped. The transport posts nothing as
   it closes, so the frame lets go of what it served as its iframe goes. The frame is then rebuilt.
-- A call made while the frame is down waits for the next transport.
+- A call made while the frame is down waits for the next transport, unless a frame is held for the shared store, which
+  then answers a shared store call.
+- A failed init keeps the frame for the shared store until a new frame listens, while chain and name calls reject at
+  once with the init failure.
 - A shared store call that times out on its budget makes the host ask that frame once whether it still answers
   (`frame.heartbeat`, within the handshake's 5 s). A frame that does not answer is dropped and rebuilt as a lost frame,
   and any answer, a refusal from an earlier release included, keeps it.
@@ -122,10 +126,11 @@ were.
   replace the open app with its reload screen.
 - A boot that fails is counted under the frame's ready metric with the step that failed, and logged. A fatal light
   client or a failed init ends the frame status subscription with that error.
-- A frame lost after it was ready is counted once under its own frame lost metric with the error's name, and logged.
-  Only the first such loss since the last frame that stayed ready for 30 seconds is captured, so a frame that keeps
-  dying soon after ready does not flood the error tracker. A tab the SharedWorker let go of while it was frozen finds
-  its port released when it thaws, which is expected, so that loss is counted and left in the trail but not captured.
+- A frame lost after it was ready, or a held frame that stopped answering, is counted once under its own frame lost
+  metric with the error's name, and logged. Only the first such loss since the last frame that stayed ready for 30
+  seconds is captured, so a frame that keeps dying soon after ready does not flood the error tracker. A tab the
+  SharedWorker let go of while it was frozen finds its port released when it thaws, which is expected, so that loss is
+  counted and left in the trail but not captured.
 
 ### Held feeds
 

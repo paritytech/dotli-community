@@ -21,11 +21,12 @@ import {
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
+import type { ProtocolFrame, ProtocolFrameParams, ProtocolFrameTimeouts, ProtocolStatus } from './frameTypes.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { SHARED_CORE_SESSION_KEY } from './sharedAuthKeys.js';
 import { FRAME_CONFIG } from './testing/constants.js';
 import { createFrameDom, type FrameDom } from './testing/createFrameDom.js';
+import type { FakeIframe } from './testing/fakeIframe.js';
 import { createFrameHost, type FrameHost } from './testing/createFrameHost.js';
 
 const { resolve, storage, chain } = protocolSchema.sections;
@@ -72,6 +73,47 @@ async function recordReady(): Promise<ArrayBuffer[]> {
     .window.sent.flatMap(data =>
       data instanceof ArrayBuffer && recordMessage(protocolSchema, data)?.tag === 'receive' ? [data] : [],
     );
+}
+
+/** `dom`'s params, which keep the iframe the frame built last, so a test answers a frame booted beside a held one. */
+function recordIframes(dom: FrameDom): { params: ProtocolFrameParams<FakeIframe>; getNewest: () => FakeIframe } {
+  let newest: FakeIframe | null = null;
+  return {
+    params: {
+      ...dom.params,
+      document: {
+        createElement: tagName => {
+          newest = dom.params.document.createElement(tagName);
+          return newest;
+        },
+        body: dom.params.document.body,
+      },
+    },
+    getNewest: () => {
+      if (newest === null) {
+        throw new Error('no protocol iframe built');
+      }
+      return newest;
+    },
+  };
+}
+
+/** A configured frame whose light client failed to start, held for the shared store, with the iframe it holds. */
+async function holdFailedFrame(timeouts: Partial<ProtocolFrameTimeouts> = {}): Promise<{
+  dom: FrameDom;
+  iframes: ReturnType<typeof recordIframes>;
+  frame: ProtocolFrame;
+  held: FakeIframe;
+}> {
+  const dom = createFrameDom({ timers, timeouts });
+  const iframes = recordIframes(dom);
+  const frame = createProtocolFrame(iframes.params);
+  frame.configure(FRAME_CONFIG);
+  void frame.waitUntilReady().catch(() => undefined);
+  const status = await dom.listen();
+  status.fail(new ProtocolInitFailedError('no SharedWorker'));
+  await advance();
+  return { dom, iframes, frame, held: dom.getIframe() };
 }
 
 describe('protocol frame location', () => {
@@ -337,8 +379,38 @@ describe('createProtocolFrame', () => {
     expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
       { outcome: 'error', phase: 'ready', reason: 'ProtocolInitFailedError' },
     ]);
-    expect(dom.countFrames()).toBe(1);
+    expect(dom.countFrames()).toBe(2);
     expect(frame.status.get()).toBe('booting');
+  });
+
+  it('As the host, I wait for the frame and its light client fails to start, and my wait rejects with that failure', async () => {
+    // Given a ready waiter on a listening frame
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    const up = catchRejection(frame.waitUntilReady());
+    const status = await dom.listen();
+
+    // When
+    status.fail(new ProtocolInitFailedError('no SharedWorker'));
+    const failure = await up;
+
+    // Then
+    expect(failure).toBeInstanceOf(ProtocolInitFailedError);
+    expect(failure.message).toBe('no SharedWorker');
+    expect(frame.storeHeld.get()).toBe(true);
+  });
+
+  it('As a returning user, I change the frame config while the store is held and the held frame goes', async () => {
+    // Given
+    const { frame, held } = await holdFailedFrame();
+
+    // When
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+
+    // Then
+    expect(frame.storeHeld.get()).toBe(false);
+    expect(held.isConnected).toBe(false);
   });
 
   it('As the host, I drop a frame while a status listener throws, and the change returns, the throw is reported and the frame is still cleaned up', async () => {
@@ -755,6 +827,24 @@ describe('createProtocolFrame', () => {
     expect(await up).toBe('no SharedWorker');
   });
 
+  it('As a product, I ask for the chain while the store is held and fail at once with the init failure, and no frame boots before the backoff', async () => {
+    // Given
+    const { dom, frame } = await holdFailedFrame();
+
+    // When
+    const failure = await catchRejection(frame.waitUntilReady());
+    const framesAfterAsking = dom.countFrames();
+    await advance(1_999);
+    const framesBeforeBackoff = dom.countFrames();
+
+    // Then
+    expect(failure).toBeInstanceOf(ProtocolInitFailedError);
+    expect(failure.message).toBe('no SharedWorker');
+    expect(framesAfterAsking).toBe(1);
+    expect(framesBeforeBackoff).toBe(1);
+    expect(frame.status.get()).toBe('failed');
+  });
+
   it('As a host with no caller waiting, I lose the frame and it rebuilds on its own after the backoff', async () => {
     // Given
     const { dom } = await bringFrameDownWithFatal();
@@ -808,8 +898,8 @@ describe('createProtocolFrame', () => {
     expect(outcomes).toEqual(['no SharedWorker', 'resolved']);
     expect(framesAfterAsking).toBe(1);
     expect(buildsForUs).toBe(1);
-    expect(framesBeforeBackoff).toBe(0);
-    expect(dom.countFrames()).toBe(1);
+    expect(framesBeforeBackoff).toBe(1);
+    expect(dom.countFrames()).toBe(2);
     expect(builds - buildsBeforeAsking).toBe(2);
   });
 
@@ -944,6 +1034,49 @@ describe('frame liveness check', () => {
     expect(frame.status.get()).toBe('ready');
     expect(dom.getIframe()).toBe(current);
   });
+
+  it('As a returning user whose held frame stopped answering, I see it dropped', async () => {
+    // Given a held frame whose app takes the heartbeat and never answers it, and a rebuild that waits past the check
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dom, frame, held } = await holdFailedFrame({ rebuildMs: HANDSHAKE_TIMEOUT_MS * 2 });
+    dom.serve(held).handleRequest(heartbeat, () => new Promise(() => undefined));
+    const transport = await frame.getTransport();
+
+    // When
+    frame.checkAlive(transport);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(countHeartbeats(dom, held)).toBe(1);
+    expect(frame.storeHeld.get()).toBe(false);
+    expect(held.isConnected).toBe(false);
+    expect(frame.status.get()).toBe('failed');
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([
+      { outcome: 'error', reason: 'ProtocolFrameUnresponsiveError' },
+    ]);
+  });
+
+  it('As a returning user whose held frame is replaced while it is being checked, I see no frame counted as lost', async () => {
+    // Given a held frame whose app takes the heartbeat and never answers it, being checked
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dom, iframes, frame, held } = await holdFailedFrame();
+    dom.serve(held).handleRequest(heartbeat, () => new Promise(() => undefined));
+    frame.checkAlive(await frame.getTransport());
+
+    // When the frame rebuilt after the backoff listens before the check gives up, and its light client fails to start
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+    const rebuilt = iframes.getNewest();
+    const status = dom.getFrameStatus(rebuilt);
+    await dom.retryHandshake();
+    status.fail(new ProtocolInitFailedError('no SharedWorker'));
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(held.isConnected).toBe(false);
+    expect(rebuilt.isConnected).toBe(true);
+    expect(frame.storeHeld.get()).toBe(true);
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([]);
+  });
 });
 
 describe('protocol status', () => {
@@ -983,24 +1116,42 @@ describe('protocol status', () => {
     expect(host.client.frame.status.get()).toBe('ready');
   });
 
-  it('As a dotli user whose protocol frame fails its init, I see it reported failed and then rebuilt', async () => {
-    // Given
-    void host.client.frame.ensureReady().catch(() => undefined);
-    const status = await host.listen();
-    const dead = host.getIframe();
+  it('As a dotli user whose protocol frame fails its init, I keep my shared store until a new frame listens', async () => {
+    // Given a listening frame whose app answers a shared store read
+    const dom = createFrameDom({ timers });
+    const iframes = recordIframes(dom);
+    const frame = createProtocolFrame(iframes.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    const status = await dom.listen();
+    const dead = dom.getIframe();
+    dom.serve(dead).handleRequest(storage.authRead, () => Promise.resolve(ok('kept')));
 
-    // When
+    // When its light client fails to start, the rebuild after the backoff boots, and then listens
     status.fail(new ProtocolInitFailedError('no SharedWorker'));
     await advance();
-    const statusAfterFailure = host.client.frame.status.get();
+    const statusAfterFailure = frame.status.get();
+    const heldAfterFailure = frame.storeHeld.get();
+    const connectedAfterFailure = dead.isConnected;
+    const read = await (await frame.getTransport()).request(storage.authRead, { siteId: SITE_ID, key: 'k' });
     await advance(2_000);
-    await host.bringUp();
+    const statusWhileBooting = frame.status.get();
+    const heldWhileBooting = frame.storeHeld.get();
+    const rebuilt = iframes.getNewest();
+    dom.getFrameStatus(rebuilt);
+    await dom.retryHandshake();
 
     // Then
     expect(statusAfterFailure).toBe('failed');
+    expect(heldAfterFailure).toBe(true);
+    expect(connectedAfterFailure).toBe(true);
+    expect(read).toEqual(ok('kept'));
+    expect(statusWhileBooting).toBe('booting');
+    expect(heldWhileBooting).toBe(true);
+    expect(frame.status.get()).toBe('listening');
     expect(dead.isConnected).toBe(false);
-    expect(host.getIframe()).not.toBe(dead);
-    expect(host.client.frame.status.get()).toBe('ready');
+    expect(rebuilt.isConnected).toBe(true);
+    expect(frame.storeHeld.get()).toBe(false);
   });
 
   it('As a dotli user, I make a request while the protocol frame boots and it waits, then fails as soon as that boot fails', async () => {

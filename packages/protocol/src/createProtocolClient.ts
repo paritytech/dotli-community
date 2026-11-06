@@ -34,7 +34,7 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
        * waits on failed with, such as a `ProtocolInitFailedError`, a `ProtocolVersionMismatchError` or an `Error` with a
        * `PROTOCOL_ERRORS` text, and with an `Error` of the `FRAME_RESET` text when a config change drops the frame,
        * unless a status listener queued ahead of it has already asked for the rebuilt frame, and then it waits on that
-       * frame.
+       * frame. A light client that failed to start rejects it at once until the next boot.
        */
       async ensureReady(): Promise<void> {
         await frame.waitUntilReady();

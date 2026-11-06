@@ -101,6 +101,11 @@ export type ProtocolFrame = {
    */
   readonly status: ReadableAtom<ProtocolStatus>;
   /**
+   * Whether a frame whose light client failed to start is kept to answer the shared store until a new frame listens.
+   * Listening starts no frame.
+   */
+  readonly storeHeld: ReadableAtom<boolean>;
+  /**
    * Says what the frame is built with. Nothing boots before it, and waits begun before the first config wait for it,
    * up to `configureMs`.
    * The same config again does nothing. A different one rebuilds a frame already asked for at once, unless a frame
@@ -112,8 +117,9 @@ export type ProtocolFrame = {
    * has loaded, since a call starts the handshake and a frame hears none before its document loads. Rejects with the
    * loss when the frame is dropped before it loads. Calls on it wait in its queue until its handshake succeeds, and
    * fail with the loss when the frame is dropped first. Rejects with the version mismatch for good once a frame refused
-   * the host's wire. The transport itself speaks the transport library's outcomes and errors, so a failed handshake
-   * rejects its calls with the library's timeout or mismatch error.
+   * the host's wire. While a frame whose light client failed to start is held and no new frame listens, it is that
+   * frame's transport, and nothing boots. The transport itself speaks the transport library's outcomes and errors, so a
+   * failed handshake rejects its calls with the library's timeout or mismatch error.
    */
   getTransport(): Promise<ProtocolTransport>;
   /**
@@ -121,7 +127,8 @@ export type ProtocolFrame = {
    * frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot under way
    * join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so no caller is
    * left to its own timeout. A status listener queued ahead of it that asks for the rebuilt frame on the change keeps it
-   * waiting on that frame instead.
+   * waiting on that frame instead. While a frame whose light client failed to start is held and the frame is `failed`,
+   * it rejects at once with why the frame is down and boots nothing, and while the next boot runs it waits on that boot.
    */
   waitUntilReady(): Promise<ProtocolTransport>;
   /**
@@ -130,9 +137,9 @@ export type ProtocolFrame = {
    */
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
   /**
-   * Asks the frame that holds `transport` whether it still answers, while that frame is still the current one, and
-   * drops it as lost when it does not answer within `handshakeMs` or its transport closes. A resolved answer counts as
-   * alive, a refusal included. A call queued behind a check of the same transport that settled after the call was made
+   * Asks the frame that holds `transport` whether it still answers, while that frame is still the current or the held
+   * one, and drops it as lost when it does not answer within `handshakeMs` or its transport closes. A held frame
+   * dropped this way leaves the status as it is. A resolved answer counts as alive, a refusal included. A call queued behind a check of the same transport that settled after the call was made
    * does nothing. Never throws.
    */
   checkAlive(transport: ProtocolTransport): void;

@@ -21,7 +21,12 @@ import {
 } from '@dotli/shared';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 import { createWireReport } from './createWireReport.js';
-import { PROTOCOL_ERRORS, ProtocolVersionMismatchError, fromTransportError } from './errors.js';
+import {
+  PROTOCOL_ERRORS,
+  ProtocolInitFailedError,
+  ProtocolVersionMismatchError,
+  fromTransportError,
+} from './errors.js';
 import type {
   FrameElement,
   ProtocolFrame,
@@ -69,6 +74,7 @@ export function createProtocolFrame<E extends FrameElement>({
   const wire = createWireReport({ side: 'host', count });
 
   const status = atom<ProtocolStatus>('idle');
+  const storeHeld = atom(false);
   const reportStatusListener = reportListener('protocol', 'protocol.status');
   const lostListeners = createListenerSet<Error>({
     onListenerError: reportListener('protocol', 'protocol.frame_lost'),
@@ -77,6 +83,8 @@ export function createProtocolFrame<E extends FrameElement>({
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
   // The frame being booted or kept, and nothing while the frame is down.
   let slot: FrameSlot | null = null;
+  // A frame whose light client failed to start, kept to answer the shared store until a new frame listens.
+  let held: FrameSlot | null = null;
   // Stops the keeper when the host drops the frame on purpose.
   let keeper: AbortController | null = null;
   let losses = 0;
@@ -115,6 +123,18 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   /**
+   * Sets whether a frame is held for the shared store. A listener's throw is reported under `protocol.status` once every
+   * listener heard the change, and the step that moved it goes on. Never throws.
+   */
+  function setStoreHeld(next: boolean): void {
+    try {
+      storeHeld.set(next);
+    } catch (thrown: unknown) {
+      reportStatusListener(thrown);
+    }
+  }
+
+  /**
    * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down. The
    * transport posts nothing as it closes, so the frame lets go of what it served once its iframe goes.
    */
@@ -129,6 +149,52 @@ export function createProtocolFrame<E extends FrameElement>({
     lost?.transport?.dispose(error);
     lost?.iframe?.remove();
     lostListeners.emit(error);
+  }
+
+  /**
+   * Keeps a frame whose light client failed to start, so it answers the shared store until a new frame listens. Its
+   * waiters hear `error` as from a lost frame. The store is held before the status says `failed`, so a reader of both
+   * never finds the frame down with nothing held.
+   */
+  function holdFrame(kept: FrameSlot, error: Error): void {
+    slot = null;
+    downReason = error;
+    losses += 1;
+    held = kept;
+    setStoreHeld(true);
+    setStatus('failed');
+  }
+
+  /**
+   * Lets the held frame go, and its calls in flight reject with `reason`. Reports it lost when `lost` says so. Leaves the
+   * status as it is, and does nothing when no frame is held. The store is released before the transport closes, so a
+   * caller its calls fail finds nothing held.
+   */
+  function dropHeld(reason: Error, { lost }: { lost: boolean }): void {
+    const dropped = held;
+    if (dropped === null) {
+      return;
+    }
+    held = null;
+    setStoreHeld(false);
+    dropped.transport?.dispose(reason);
+    dropped.iframe?.remove();
+    if (lost && reportFrameLost({ error: reason, count, capture: !lossCapturedSinceStable })) {
+      lossCapturedSinceStable = true;
+    }
+  }
+
+  /** The held frame while it still answers the shared store, which it does until a new frame listens, or null. */
+  function getAnsweringHeld(): FrameSlot | null {
+    switch (status.get()) {
+      case 'failed':
+      case 'booting':
+        return held;
+      case 'idle':
+      case 'listening':
+      case 'ready':
+        return null;
+    }
   }
 
   /** The transport to the slot's iframe, which has loaded. */
@@ -259,8 +325,13 @@ export function createProtocolFrame<E extends FrameElement>({
       });
       phase = 'listen';
       await transport.whenConnected();
-      if (slot === kept && status.get() === 'booting') {
-        setStatus('listening');
+      if (slot === kept) {
+        // A held frame answers only while no frame listens, so a listener that asks for a transport on `listening` gets
+        // this one, and the held frame goes after.
+        if (status.get() === 'booting') {
+          setStatus('listening');
+        }
+        dropHeld(new Error(PROTOCOL_ERRORS.FRAME_RESET), { lost: false });
       }
       phase = 'ready';
       const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
@@ -290,7 +361,11 @@ export function createProtocolFrame<E extends FrameElement>({
         if (reason instanceof ProtocolVersionMismatchError) {
           mismatch = reason;
         }
-        loseFrame(reason, 'failed');
+        if (readyAt === null && reason instanceof ProtocolInitFailedError) {
+          holdFrame(kept, reason);
+        } else {
+          loseFrame(reason, 'failed');
+        }
       }
       if (mismatch !== null || stable) {
         return;
@@ -363,6 +438,10 @@ export function createProtocolFrame<E extends FrameElement>({
 
   function waitUntilReady(): Promise<ProtocolTransport> {
     return withConfig(config => {
+      // A light client that failed to start fails a wait at once until the next boot, which the backoff starts.
+      if (held !== null && status.get() === 'failed') {
+        return Promise.reject(downReason);
+      }
       // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
       // before this call is what the boot answers, so it does not fail the wait.
       const since = losses;
@@ -393,6 +472,10 @@ export function createProtocolFrame<E extends FrameElement>({
 
   function getTransport(): Promise<ProtocolTransport> {
     return withConfig(config => {
+      const answering = getAnsweringHeld();
+      if (answering !== null) {
+        return answering.loaded.promise;
+      }
       askForFrame(config);
       // A keeper opens its slot in the turn it is asked for, so none here means its boot failed at once.
       return slot === null ? Promise.reject(downReason) : slot.loaded.promise;
@@ -422,6 +505,7 @@ export function createProtocolFrame<E extends FrameElement>({
     // A listener that heard `idle` may have asked for the frame already, and a second keeper would orphan one. It
     // may also have configured again, so the frame is built with the latest config.
     loseFrame(reason, 'idle');
+    dropHeld(reason, { lost: false });
     askForFrame(frameConfig);
   }
 
@@ -442,11 +526,23 @@ export function createProtocolFrame<E extends FrameElement>({
     const settledBefore = countSettledChecks(transport);
     // The check never rejects, as it handles its own failure.
     void livenessChecks.call(async () => {
-      if (slot?.transport !== transport || countSettledChecks(transport) > settledBefore) {
+      const checked = findFrameOf(transport);
+      if (checked === null || countSettledChecks(transport) > settledBefore) {
         return;
       }
-      await askAlive(slot, transport);
+      await askAlive(checked, transport);
     });
+  }
+
+  /** The current or the held frame that holds `transport`, or null once that frame was dropped. */
+  function findFrameOf(transport: ProtocolTransport): FrameSlot | null {
+    if (slot?.transport === transport) {
+      return slot;
+    }
+    if (held?.transport === transport) {
+      return held;
+    }
+    return null;
   }
 
   function countSettledChecks(transport: ProtocolTransport): number {
@@ -470,10 +566,11 @@ export function createProtocolFrame<E extends FrameElement>({
       log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'alive' });
     } catch (thrown: unknown) {
       log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
-      // A frame dropped meanwhile was reported where it was dropped.
+      // A frame dropped or replaced meanwhile is not this check's to report.
       if (slot === kept) {
-        const reason = new Error(PROTOCOL_ERRORS.FRAME_UNRESPONSIVE, { cause: toError(thrown) });
-        kept.loss.abort(setErrorName(reason, 'ProtocolFrameUnresponsiveError'));
+        kept.loss.abort(createUnresponsiveError(thrown));
+      } else if (held === kept) {
+        dropHeld(createUnresponsiveError(thrown), { lost: true });
       }
     } finally {
       settledChecks.set(transport, countSettledChecks(transport) + 1);
@@ -482,6 +579,7 @@ export function createProtocolFrame<E extends FrameElement>({
 
   return {
     status,
+    storeHeld,
     configure,
     getTransport,
     waitUntilReady,
@@ -505,6 +603,12 @@ function createFrameSlot() {
     /** Resolves with the transport once the iframe loaded, and rejects with the loss of a frame dropped before. */
     loaded,
   };
+}
+
+/** Why a frame that did not answer the heartbeat is dropped, with what the heartbeat failed with as its cause. */
+function createUnresponsiveError(thrown: unknown): Error {
+  const reason = new Error(PROTOCOL_ERRORS.FRAME_UNRESPONSIVE, { cause: toError(thrown) });
+  return setErrorName(reason, 'ProtocolFrameUnresponsiveError');
 }
 
 function isSameFrameConfig(left: ProtocolFrameConfig, right: ProtocolFrameConfig): boolean {
