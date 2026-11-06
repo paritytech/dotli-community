@@ -88,8 +88,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   auto-hide, the product branding, the sandbox content's report and the failure screen wait and measure on the timers,
   the monotonic clock, the repeating tick and the randomness they are given, the page's own by default. The page's
   monotonic clock and its repeating tick each have one owner. The loader hands its clocks on to the parts of a load it
-  starts. It reads the protocol frame's telemetry and fetches the product's icon through the clients it is given, the
-  page's own by default. The journey and the failure sightings read the session storage they are given.
+  starts. It reads the protocol frame's telemetry through the client it is given, the page's own by default. The page
+  gives it the host's bitswap client from the bridge to fetch the product's icon. The journey and the failure sightings
+  read the session storage they are given.
 - Every reload that tells the next boot why goes through one step. The topbar's binding, the service worker's update
   offer, the main-thread monitor, the loading screen, the load progress, the bar's auto-hide on the shield, the sandbox
   watch and the resolution trace each hand back the cleanup of what they listen to and the timers they hold. The trace
