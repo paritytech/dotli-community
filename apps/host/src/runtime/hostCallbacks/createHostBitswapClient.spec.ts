@@ -39,10 +39,8 @@ describe('host bitswap client', () => {
 
     // When
     const block = client.get('bafyTest');
-    await vi.waitFor(() => {
-      expect(chains.remotes).toHaveLength(1);
-    });
-    await answerGet(must(chains.remotes[0], 'remote'), '0xabcd');
+    const remote = await vi.waitFor(() => must(chains.remotes[0], 'remote'));
+    await answerGet(remote, '0xabcd');
 
     // Then
     expect(await block).toEqual(new Uint8Array([0xab, 0xcd]));
@@ -54,15 +52,13 @@ describe('host bitswap client', () => {
     // Given
     const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain, destroyDelay: 0 });
     const reported: ChainActivity[] = [];
-    pool.watch({ onActivity: activity => reported.push(activity), onBestBlock: () => undefined });
+    onTestFinished(pool.watch({ onActivity: activity => reported.push(activity), onBestBlock: () => undefined }));
     const client = createHostBitswapClient({ pool });
 
     // When
     const block = client.get('bafyTest');
-    await vi.waitFor(() => {
-      expect(chains.remotes).toHaveLength(1);
-    });
-    await answerGet(must(chains.remotes[0], 'remote'), '0xabcd');
+    const remote = await vi.waitFor(() => must(chains.remotes[0], 'remote'));
+    await answerGet(remote, '0xabcd');
     await block;
 
     // Then

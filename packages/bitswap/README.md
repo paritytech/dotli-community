@@ -46,5 +46,5 @@ flowchart LR
 
 ### `@dotli/bitswap`
 
-- Client: `createBitswapClient(params)` and `BitswapClient`, a client over the Bulletin connection the caller passes.
+- Client: `createBitswapClient(params)` and `BitswapClient`, a client over the Bulletin provider the caller passes.
 - Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `BlockCache`, `BlockOrigin`, `ContentProgress`.

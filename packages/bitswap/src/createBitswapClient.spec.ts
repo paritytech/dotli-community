@@ -742,11 +742,11 @@ describe('createBitswapClient connection lifetime', () => {
   it('As a page, my Bulletin connection closes when my fetch fails', async () => {
     // Given a chain that answers with a terminal error
     const chain = createFakeChain([{ code: -32602 }]);
+
+    // When
     const block = createClient(chain.provider).get('not-a-cid');
     // Holds the rejection across the timer moves.
     const outcome = Promise.allSettled([block]);
-
-    // When
     await timers.advance(100);
     const [result] = await outcome;
 

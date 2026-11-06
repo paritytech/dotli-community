@@ -79,8 +79,8 @@ In simple terms:
 
 - **The host page** has its own pool. Products' chain calls (through the
   TrUAPI core), name resolution in `rpc-gateway`, the settings probe and
-  bitswap all lease from it, so the host page holds one pool entry per chain. The entry's
-  lanes may open more than one connection to it.
+  bitswap all lease from it, so the host page holds one pool entry per chain.
+  The entry's lanes may open more than one connection to it.
 - **The network panel** leases nothing. `ChainPool.watch` reports each
   chain's leases, status, follow and best-block numbers. A chain someone holds
   is followed for the panel, so its blocks keep coming when its holder does
@@ -299,7 +299,7 @@ dedupe them.
 
 ```mermaid
 sequenceDiagram
-  participant Use as Bitswap / host pool
+  participant Use as Host pool
   participant Cli as Protocol client
   participant Ctx as Iframe / worker
   participant Pool as Pool
@@ -318,6 +318,8 @@ sequenceDiagram
 - `data: 'dotli:chain-halted'` lets a client tell "the chain halted, try again"
   from a real error. Bitswap retries such a request within the same content
   fetch.
+- Bitswap's lease hears the halt from the host pool and dials again on its
+  next attempt.
 - The network panel reads the chain as "not in use" after the halt, until its
   consumer leases it again.
 - The resolver's papi clients drop themselves when their follow gets `stop`;
@@ -503,6 +505,8 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 
 ## Known limits
 
+- A bitswap release whose close throws is reported as `content.bitswap_release`
+  and leaves Bulletin counted as held in the host pool until the page closes.
 - `@parity/truapi-host` ignores the end of a chain connection's response
   stream, so the host never ends one on a halt: a core connection outlives its
   lease, and its next request takes a new one. Only `close()` ends it.
