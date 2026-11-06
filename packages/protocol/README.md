@@ -112,8 +112,8 @@ were.
   it closes, so the frame lets go of what it served as its iframe goes. The frame is then rebuilt.
 - A call made while the frame is down waits for the next transport, unless a frame is held for the shared store, which
   then answers a shared store call.
-- A failed init keeps the frame for the shared store until a new frame listens, while chain and name calls reject at
-  once with the init failure.
+- A failed init keeps the frame for the shared store until a new frame listens, the config changes or a version mismatch
+  stops the rebuilds, while chain and name calls reject at once with why the frame is down.
 - A shared store call that times out on its budget makes the host ask that frame once whether it still answers
   (`frame.heartbeat`, within the handshake's 5 s). A frame that does not answer is dropped and rebuilt as a lost frame,
   and any answer, a refusal from an earlier release included, keeps it.

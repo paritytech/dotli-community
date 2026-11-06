@@ -715,15 +715,16 @@ describe('createProtocolFrame', () => {
     await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
     const rebuilt = iframes.getNewest();
 
-    // When
+    // When the rebuilt frame refuses the wire, and the host asks for a transport
     dom.serveNewer(rebuilt);
     await dom.retryHandshake();
+    const failure = await catchRejection(frame.getTransport());
 
     // Then
     expect(held.isConnected).toBe(false);
     expect(frame.storeHeld.get()).toBe(false);
     expect(frame.status.get()).toBe('failed');
-    await expect(frame.getTransport()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(failure).toBeInstanceOf(ProtocolVersionMismatchError);
   });
 
   it('As the host, I meet a version mismatch and it is final', async () => {
@@ -1103,9 +1104,11 @@ describe('frame liveness check', () => {
   it('As a returning user whose held frame is replaced while it is being checked, I see no frame counted as lost', async () => {
     // Given a held frame whose app takes the heartbeat and never answers it, being checked
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const lines = recordLog({ onFinished: onTestFinished });
     const { dom, iframes, frame, held } = await holdFailedFrame();
     dom.serve(held).handleRequest(heartbeat, () => new Promise(() => undefined));
     frame.checkAlive(await frame.getTransport());
+    await advance();
 
     // When the frame rebuilt after the backoff listens before the check gives up, and its light client fails to start
     await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
@@ -1120,6 +1123,27 @@ describe('frame liveness check', () => {
     expect(rebuilt.isConnected).toBe(true);
     expect(frame.storeHeld.get()).toBe(true);
     expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([]);
+    expect(lines.filter(line => line.attrs?.['outcome'] === 'lost')).toEqual([]);
+  });
+
+  it('As a dotli integrator, I check the rebuilt frame while the check of the frame it replaced is pending and it is still asked', async () => {
+    // Given a ready frame whose app never answers the heartbeat, and a check of it that waits
+    const { dom, frame, transport: replaced } = await bringFrameUp();
+    dom.serve().handleRequest(heartbeat, () => new Promise(() => undefined));
+    frame.checkAlive(replaced);
+    await advance();
+
+    // When a config change rebuilds the frame, and the rebuilt frame's check queues behind the first
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    const up = frame.waitUntilReady();
+    await dom.bringUp();
+    const rebuilt = await up;
+    dom.serve().handleRequest(heartbeat, () => Promise.resolve(ok()));
+    frame.checkAlive(rebuilt);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then the rebuilt frame was asked once
+    expect(countHeartbeats(dom)).toBe(1);
   });
 });
 

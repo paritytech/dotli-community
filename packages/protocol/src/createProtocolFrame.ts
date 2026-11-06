@@ -105,7 +105,7 @@ export function createProtocolFrame<E extends FrameElement>({
     retryDelay: retry => Math.min(timeouts.rebuildMs * 2 ** retry, timeouts.maxRebuildMs),
     timers,
   });
-  // One liveness check at a time.
+  // Checks run one at a time, so a repeated check waits for the first and finds it settled.
   const livenessChecks = createAsyncTaskPool({ poolSize: 1, timers });
   // How many checks of each transport settled, so a check queued behind one that settled since asks nothing.
   const settledChecks = new WeakMap<ProtocolTransport, number>();
@@ -123,8 +123,8 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   /**
-   * Sets whether a frame is held for the shared store. A listener's throw is reported under `protocol.status` once every
-   * listener heard the change, and the step that moved it goes on. Never throws.
+   * Sets whether a frame is held for the shared store. A listener's throw is reported under `protocol.status` once
+   * every listener heard the change, and the step that moved it goes on. Never throws.
    */
   function setStoreHeld(next: boolean): void {
     try {
@@ -157,6 +157,7 @@ export function createProtocolFrame<E extends FrameElement>({
    * never finds the frame down with nothing held.
    */
   function holdFrame(kept: FrameSlot, error: Error): void {
+    dropHeld(new Error(PROTOCOL_ERRORS.FRAME_RESET), { lost: false });
     slot = null;
     downReason = error;
     losses += 1;
@@ -166,9 +167,9 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   /**
-   * Lets the held frame go, and its calls in flight reject with `reason`. Reports it lost when `lost` says so. Leaves the
-   * status as it is, and does nothing when no frame is held. The store is released before the transport closes, so a
-   * caller its calls fail finds nothing held.
+   * Lets the held frame go, and its calls in flight reject with `reason`. Reports it lost when `lost` says so. Leaves
+   * the status as it is, and does nothing when no frame is held. The store is released before the transport closes, so
+   * a caller its calls fail finds nothing held.
    */
   function dropHeld(reason: Error, { lost }: { lost: boolean }): void {
     const dropped = held;
@@ -569,11 +570,12 @@ export function createProtocolFrame<E extends FrameElement>({
       });
       log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'alive' });
     } catch (thrown: unknown) {
-      log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
-      // A frame dropped or replaced meanwhile is not this check's to report.
+      // A frame dropped or replaced meanwhile is not this check's to report, nor to log as lost.
       if (slot === kept) {
+        log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
         kept.loss.abort(createUnresponsiveError(thrown));
       } else if (held === kept) {
+        log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
         dropHeld(createUnresponsiveError(thrown), { lost: true });
       }
     } finally {

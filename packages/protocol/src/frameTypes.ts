@@ -126,9 +126,10 @@ export type ProtocolFrame = {
    * The transport of the ready frame, booting one if none was asked for yet, once it is configured. A call while the
    * frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot under way
    * join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so no caller is
-   * left to its own timeout. A status listener queued ahead of it that asks for the rebuilt frame on the change keeps it
-   * waiting on that frame instead. While a frame whose light client failed to start is held and the frame is `failed`,
-   * it rejects at once with why the frame is down and boots nothing, and while the next boot runs it waits on that boot.
+   * left to its own timeout. A status listener queued ahead of it that asks for the rebuilt frame on the change keeps
+   * it waiting on that frame instead. While a frame whose light client failed to start is held and the frame is
+   * `failed`, it rejects at once with why the frame is down and boots nothing, and while the next boot runs it waits on
+   * that boot.
    */
   waitUntilReady(): Promise<ProtocolTransport>;
   /**
@@ -139,8 +140,8 @@ export type ProtocolFrame = {
   /**
    * Asks the frame that holds `transport` whether it still answers, while that frame is still the current or the held
    * one, and drops it as lost when it does not answer within `handshakeMs` or its transport closes. A held frame
-   * dropped this way leaves the status as it is. A resolved answer counts as alive, a refusal included. A call queued behind a check of the same transport that settled after the call was made
-   * does nothing. Never throws.
+   * dropped this way leaves the status as it is. A resolved answer counts as alive, a refusal included. A call queued
+   * behind a check of the same transport that settled after the call was made does nothing. Never throws.
    */
   checkAlive(transport: ProtocolTransport): void;
 };

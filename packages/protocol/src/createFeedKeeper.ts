@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A subscription the host holds on the frame there is now, and on each frame that boots or starts listening after it,
-// for as long as it listens. The frame ends one only when it
-// fails, so an end is reported and the feed reopened on the same transport. A transport that closes under the feed
-// ends it for good, since the frame that owned it was lost and reported, and following the next one opens it again.
+// for as long as it listens. The frame ends one only when it fails, so an end is reported and the feed reopened on the
+// same transport. A transport that closes under the feed ends it for good, since the frame that owned it was lost and
+// reported, and following the next one opens it again.
 
 import { m, reportDefect, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorName, log, setErrorName, type Timers } from '@dotli/shared';
@@ -159,8 +159,9 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
 
   return {
     /**
-     * Holds the feed from now on, on the frame there is now and on each frame that boots or starts listening after it, until `stop`. An
-     * answer to an ask for a frame's transport that a later ask overtook is dropped. Returns nothing and never throws.
+     * Holds the feed from now on, on the frame there is now and on each frame that boots or starts listening after it,
+     * until `stop`. An answer to an ask for a frame's transport that a later ask overtook is dropped. Returns nothing
+     * and never throws.
      */
     follow(): void {
       wanted = true;

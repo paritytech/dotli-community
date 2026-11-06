@@ -150,7 +150,7 @@ export function createFakeFrame({
     setStatus,
     /** Drops the frame with `error`, after its status says it is down. Its transport is disposed with `error`. */
     lose,
-    /** Says whether a frame whose light client failed to start is held for the shared store. Builds and drops nothing. */
+    /** Says whether a frame whose light client failed to start is held for the store. Builds and drops nothing. */
     holdStore: (held: boolean): void => {
       storeHeld.set(held);
     },
