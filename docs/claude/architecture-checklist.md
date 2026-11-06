@@ -39,6 +39,8 @@ rule, flag it and propose a row.
   instead of `createAsyncTaskPool` from `@dotli/shared`.
 - **major** (AGENTS.md § Architecture, Tools:): A hand-rolled caller count for work several callers start and stop,
   instead of `createSharedRun` from `@dotli/shared`.
+- **major** (AGENTS.md § Architecture, Tools:): A chain connection opened outside its context's chain pool, such as a
+  package that reaches a global client for a chain instead of taking its connection as a parameter.
 - **major** (AGENTS.md § Code style, General:): Special build, startup or packaging machinery a plain website would not
   need, outside the sandbox, product isolation, iframe messaging and chain connections.
 
