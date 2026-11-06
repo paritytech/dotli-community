@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A subscription the host holds on the frame there is now, for as long as it listens. The frame ends one only when it
+// A subscription the host holds on the frame there is now, and on each frame that boots or starts listening after it,
+// for as long as it listens. The frame ends one only when it
 // fails, so an end is reported and the feed reopened on the same transport. A transport that closes under the feed
 // ends it for good, since the frame that owned it was lost and reported, and following the next one opens it again.
 
@@ -148,16 +149,17 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     );
   }
 
-  // A new frame relays nothing to a feed held on the one it replaces.
+  // A new frame relays nothing to a feed held on the one it replaces. A frame that starts listening may have replaced a
+  // held one, and a feed that already holds the transport it gets is left as it is.
   frame.status.listen(status => {
-    if (wanted && status === 'booting') {
+    if (wanted && (status === 'booting' || status === 'listening')) {
       ask();
     }
   });
 
   return {
     /**
-     * Holds the feed from now on, on the frame there is now and on each frame that boots after it, until `stop`. An
+     * Holds the feed from now on, on the frame there is now and on each frame that boots or starts listening after it, until `stop`. An
      * answer to an ask for a frame's transport that a later ask overtook is dropped. Returns nothing and never throws.
      */
     follow(): void {

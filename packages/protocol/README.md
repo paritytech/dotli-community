@@ -134,10 +134,10 @@ were.
   and reopened on the same transport.
 - The reopen waits 1 second, doubling after each end on the same frame up to 30 seconds. A feed that stayed open for 30
   seconds before it ended starts the waits over.
-- A held feed follows the frame there is now and each frame that boots after it, and an answer to an ask a later ask
-  overtook is dropped. The shared auth feed boots a frame that is down, since a listener needs one. The telemetry only
-  hears a frame there is. A transport that closes under the feed ends it on that frame with no report, since the frame's
-  loss is reported where the frame was dropped.
+- A held feed follows the frame there is now and each frame that boots or starts listening after it, and an answer to an
+  ask a later ask overtook is dropped. The shared auth feed boots a frame that is down, since a listener needs one. The
+  telemetry only hears a frame there is. A transport that closes under the feed ends it on that frame with no report,
+  since the frame's loss is reported where the frame was dropped.
 
 ### Refused messages
 
