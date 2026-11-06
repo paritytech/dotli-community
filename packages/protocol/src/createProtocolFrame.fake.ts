@@ -47,6 +47,7 @@ export function createFakeFrame({
   let lostWith: Error = new Error('lost');
   let builds = 0;
   let current: Built | null = null;
+  const checks: ProtocolTransport[] = [];
 
   function build(): Built {
     builds += 1;
@@ -135,6 +136,9 @@ export function createFakeFrame({
     waitUntilReady: () => waitForHost(['ready']),
     // The facades never read it, and this fake's frame speaks the host's schema.
     onVersionMismatch: () => () => undefined,
+    checkAlive: transport => {
+      checks.push(transport);
+    },
   };
 
   return {
@@ -146,6 +150,8 @@ export function createFakeFrame({
     lose,
     /** How many frames were built. */
     countBuilds: () => builds,
+    /** The transports the frame was asked to check, in order. Checks nothing. */
+    checks,
   };
 }
 

@@ -129,4 +129,11 @@ export type ProtocolFrame = {
    * while an app is open can come from a newer release, and only a reload fixes that. Returns the unsubscribe.
    */
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
+  /**
+   * Asks the frame that holds `transport` whether it still answers, while that frame is still the current one, and
+   * drops it as lost when it does not answer within `handshakeMs` or its transport closes. A resolved answer counts as
+   * alive, a refusal included. A call queued behind a check of the same transport that settled after the call was made
+   * does nothing. Never throws.
+   */
+  checkAlive(transport: ProtocolTransport): void;
 };

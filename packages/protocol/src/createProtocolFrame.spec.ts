@@ -29,6 +29,7 @@ import { createFrameDom, type FrameDom } from './testing/createFrameDom.js';
 import { createFrameHost, type FrameHost } from './testing/createFrameHost.js';
 
 const { resolve, storage, chain } = protocolSchema.sections;
+const { heartbeat } = protocolSchema.sections.frame;
 
 const HANDSHAKE_TIMEOUT_MS = DEFAULT_FRAME_TIMEOUTS.handshakeMs;
 /** What the frame reports when a status listener throws. */
@@ -830,6 +831,118 @@ describe('createProtocolFrame', () => {
     expect(await second).toBe('resolved');
     expect(dom.countFrames()).toBe(1);
     expect(dom.getIframe()).toBe(rebuilt);
+  });
+});
+
+describe('frame liveness check', () => {
+  /** A configured frame that came up ready, with the transport the host got for it. */
+  async function bringFrameUp(): Promise<{
+    dom: FrameDom;
+    frame: ReturnType<typeof createProtocolFrame>;
+    transport: ProtocolTransport;
+  }> {
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    const up = frame.waitUntilReady();
+    await dom.bringUp();
+    return { dom, frame, transport: await up };
+  }
+
+  /** How many heartbeats the host sent `iframe` (the current one by default). */
+  function countHeartbeats(dom: FrameDom, iframe = dom.getIframe()): number {
+    return dom.readSent(iframe).filter(message => message.tag === 'request' && message.method === 'heartbeat').length;
+  }
+
+  it('As a returning user whose ready frame stopped answering, I see it dropped after one check and rebuilt', async () => {
+    // Given a ready frame whose app takes the heartbeat and never answers it
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dom, frame, transport } = await bringFrameUp();
+    dom.serve().handleRequest(heartbeat, () => new Promise(() => undefined));
+    const stale = dom.getIframe();
+
+    // When
+    frame.checkAlive(transport);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+    const statusAfterCheck = frame.status.get();
+    const framesAfterCheck = dom.countFrames();
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+    await dom.bringUp();
+
+    // Then
+    expect(countHeartbeats(dom, stale)).toBe(1);
+    expect(statusAfterCheck).toBe('failed');
+    expect(framesAfterCheck).toBe(0);
+    expect(dom.getIframe()).not.toBe(stale);
+    expect(frame.status.get()).toBe('ready');
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([
+      { outcome: 'error', reason: 'ProtocolFrameUnresponsiveError' },
+    ]);
+  });
+
+  it('As a returning user whose frame answers the check, I keep it', async () => {
+    // Given a ready frame whose app answers the heartbeat
+    const { dom, frame, transport } = await bringFrameUp();
+    dom.serve().handleRequest(heartbeat, () => Promise.resolve(ok()));
+    const kept = dom.getIframe();
+
+    // When
+    frame.checkAlive(transport);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(countHeartbeats(dom)).toBe(1);
+    expect(frame.status.get()).toBe('ready');
+    expect(dom.getIframe()).toBe(kept);
+  });
+
+  it('As a returning user whose frame is from an earlier release, I keep it although it refuses the check', async () => {
+    // Given a ready frame whose app does not serve the heartbeat
+    const { dom, frame, transport } = await bringFrameUp();
+    const kept = dom.getIframe();
+
+    // When
+    frame.checkAlive(transport);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(countHeartbeats(dom)).toBe(1);
+    expect(frame.status.get()).toBe('ready');
+    expect(dom.getIframe()).toBe(kept);
+  });
+
+  it('As a dotli integrator, I check one frame twice before the first check settles and it is asked once', async () => {
+    // Given a ready frame whose app answers the heartbeat
+    const { dom, frame, transport } = await bringFrameUp();
+    dom.serve().handleRequest(heartbeat, () => Promise.resolve(ok()));
+
+    // When
+    frame.checkAlive(transport);
+    frame.checkAlive(transport);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(countHeartbeats(dom)).toBe(1);
+    expect(frame.status.get()).toBe('ready');
+  });
+
+  it('As a dotli integrator, I check a transport of a frame already dropped and nothing happens', async () => {
+    // Given a frame dropped by a config change, and the ready frame built in its place
+    const { dom, frame, transport: dropped } = await bringFrameUp();
+    const stale = dom.getIframe();
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    await dom.bringUp();
+    const current = dom.getIframe();
+
+    // When
+    frame.checkAlive(dropped);
+    await advance(HANDSHAKE_TIMEOUT_MS);
+
+    // Then
+    expect(countHeartbeats(dom, stale)).toBe(0);
+    expect(countHeartbeats(dom, current)).toBe(0);
+    expect(frame.status.get()).toBe('ready');
+    expect(dom.getIframe()).toBe(current);
   });
 });
 

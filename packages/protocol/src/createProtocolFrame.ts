@@ -14,6 +14,7 @@ import {
   log,
   markHandled,
   realTimers,
+  setErrorName,
   toError,
   waitForStatus,
   withTimeout,
@@ -96,6 +97,10 @@ export function createProtocolFrame<E extends FrameElement>({
     retryDelay: retry => Math.min(timeouts.rebuildMs * 2 ** retry, timeouts.maxRebuildMs),
     timers,
   });
+  // One liveness check at a time.
+  const livenessChecks = createAsyncTaskPool({ poolSize: 1, timers });
+  // How many checks of each transport settled, so a check queued behind one that settled since asks nothing.
+  const settledChecks = new WeakMap<ProtocolTransport, number>();
 
   /**
    * Sets the status. A listener's throw is a defect in its subscriber, so it is reported once every listener heard the
@@ -433,12 +438,55 @@ export function createProtocolFrame<E extends FrameElement>({
     });
   }
 
+  function checkAlive(transport: ProtocolTransport): void {
+    const settledBefore = countSettledChecks(transport);
+    // The check never rejects, as it handles its own failure.
+    void livenessChecks.call(async () => {
+      if (slot?.transport !== transport || countSettledChecks(transport) > settledBefore) {
+        return;
+      }
+      await askAlive(slot, transport);
+    });
+  }
+
+  function countSettledChecks(transport: ProtocolTransport): number {
+    return settledChecks.get(transport) ?? 0;
+  }
+
+  /** Sends the frame a heartbeat and drops it when no answer comes within `handshakeMs`. Never rejects. */
+  async function askAlive(kept: FrameSlot, transport: ProtocolTransport): Promise<void> {
+    const asking = new AbortController();
+    try {
+      await withTimeout({
+        work: transport.request(protocolSchema.sections.frame.heartbeat, undefined, { signal: asking.signal }),
+        ms: timeouts.handshakeMs,
+        timeoutError: () => {
+          const error = new Error(`The frame did not answer the heartbeat within ${String(timeouts.handshakeMs)} ms`);
+          asking.abort(error);
+          return error;
+        },
+        timers,
+      });
+      log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'alive' });
+    } catch (thrown: unknown) {
+      log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
+      // A frame dropped meanwhile was reported where it was dropped.
+      if (slot === kept) {
+        const reason = new Error(PROTOCOL_ERRORS.FRAME_UNRESPONSIVE, { cause: toError(thrown) });
+        kept.loss.abort(setErrorName(reason, 'ProtocolFrameUnresponsiveError'));
+      }
+    } finally {
+      settledChecks.set(transport, countSettledChecks(transport) + 1);
+    }
+  }
+
   return {
     status,
     configure,
     getTransport,
     waitUntilReady,
     onVersionMismatch,
+    checkAlive,
   };
 }
 
