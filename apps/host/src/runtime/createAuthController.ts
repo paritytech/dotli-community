@@ -29,6 +29,7 @@ import { walletModeState, type WalletMode } from './state/walletModeState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
 import { authModalState } from '../state/authModalState.js';
 import { getLoginFailureView, type LoginFailureKind } from './getLoginFailureView.js';
+import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
 
 type Params = {
   coordinator: BlockingModalCoordinator;
@@ -51,6 +52,8 @@ type Params = {
   inPagePhrase: () => Promise<InPagePhrase>;
   /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
   elsewhere: () => boolean;
+  /** Reads the saved session again and settles once the page shows it. Rejects when the bridge chunk fails to load. */
+  rereadSession: () => Promise<void>;
 };
 
 /** What the slot's `init` takes: the controller's params, less the page stores the slot reads itself. */
@@ -71,6 +74,7 @@ export function createAuthController({
   walletMode,
   inPagePhrase,
   elsewhere,
+  rereadSession,
 }: Params) {
   let authModalScope: BlockingModalScope | null = null;
   let releaseAuthModal: (() => void) | null = null;
@@ -283,7 +287,19 @@ export function createAuthController({
     const state = auth.get();
     // A pairing writes its session to the shared store, so one started while the store is down would be lost.
     if (state.tag === 'Unreachable') {
-      log.event('sign-in refused while the saved session is unreachable', { flow: 'wallet' });
+      void rereadBeforeSignIn({
+        open: () => openAuthModal({ reason: params.reason, label: params.label }),
+        modal,
+        rereadSession,
+        auth,
+        proceed:
+          handoff === null
+            ? () => {
+                runCommand('login', loaded => loaded.login({ reason: params.reason }));
+              }
+            : null,
+        elsewhere,
+      });
       return;
     }
     if (state.tag === 'Connected') {
@@ -294,7 +310,19 @@ export function createAuthController({
 
   function importPhrase(): void {
     if (auth.get().tag === 'Unreachable') {
-      log.event('phrase import refused while the saved session is unreachable', { flow: 'wallet' });
+      void rereadBeforeSignIn({
+        open: () => openAuthModal(),
+        modal,
+        rereadSession,
+        auth,
+        proceed:
+          handoff === null
+            ? () => {
+                route.importPhrase();
+              }
+            : null,
+        elsewhere,
+      });
       return;
     }
     route.importPhrase();
@@ -304,8 +332,9 @@ export function createAuthController({
     /**
      * Opens the sign-in window and waits for it, asking it to resume a sign-in made elsewhere when one waits, or with
      * no window opens the modal and asks the core to log in. Does nothing while a login is already on show or the user
-     * is signed in. The window opens before this returns, so a click handler reaches it with no wait between. Never
-     * throws.
+     * is signed in. The window opens before this returns, so a click handler reaches it with no wait between. While the
+     * saved session cannot be reached, reads it again first, and then signs in, asks for a click to open the window, or
+     * says why it cannot. Never throws.
      */
     startLogin,
     /**

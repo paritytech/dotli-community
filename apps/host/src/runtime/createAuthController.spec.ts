@@ -52,6 +52,8 @@ type StartControllerParams = {
   inPagePhrase?: () => Promise<InPagePhrase>;
   /** Whether a sign-in made elsewhere waits, as session state says. */
   elsewhere?: () => boolean;
+  /** Reads the saved session again, by default resolving with the auth state left as it was. */
+  rereadSession?: () => Promise<void>;
 };
 
 type CreateFakePhraseParams = {
@@ -134,6 +136,7 @@ function startController({
   walletMode = 'app',
   inPagePhrase = rejectNoPhrase,
   elsewhere = () => false,
+  rereadSession = () => Promise.resolve(),
 }: StartControllerParams = {}) {
   const auth = atom<DotliAuthState>({ tag: 'Restoring' });
   const steps = createListenerSet<DotliAuthState>({
@@ -161,6 +164,7 @@ function startController({
     walletMode: () => walletMode,
     inPagePhrase,
     elsewhere,
+    rereadSession,
   });
   onTestFinished(() => {
     controller.dispose();
@@ -356,6 +360,7 @@ function buildInitParams(commands: AuthCommands): Parameters<AuthControlSlot['in
     inPagePhrase: rejectNoPhrase,
     coordinator: createBlockingModalCoordinator(),
     commands: () => Promise.resolve(commands),
+    rereadSession: () => Promise.resolve(),
   };
 }
 
@@ -392,17 +397,59 @@ describe('auth controller: login requests', () => {
     expect(getAuthModalState().reason).toBeNull();
   });
 
-  it('As a user asking for a sign-in while the saved session cannot be reached, I get no modal and no pairing', () => {
-    // Given a page whose saved session cannot be reached
-    const { controller, auth, calls } = startController();
+  it('As a user asking for a sign-in while the saved session cannot be reached, I am shown why once it is read again and still fails', async () => {
+    // Given a page whose saved session cannot be reached, and whose re-read leaves it so
+    const { controller, auth, calls, changes } = startController();
     auth.set({ tag: 'Unreachable' });
 
     // When a sign-in is asked for
     controller.startLogin({ label: 'foo' });
+    await changes.until(() => getAuthModalState().view.kind === 'error');
 
-    // Then nothing opens and nothing pairs
-    expect(getAuthModalState().open).toBe(false);
+    // Then the modal says the saved sign-in cannot be reached, and nothing pairs
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { title: "Can't reach your saved sign-in" } });
     expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user on the landing page, I click Sign in while my saved session cannot be reached and pair once it reads signed out', async () => {
+    // Given a page that pairs in place, whose saved session cannot be reached until it is read again
+    const { controller, auth, calls, changes } = startController({
+      rereadSession() {
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin({ reason: 'Sign in to continue' });
+    await changes.until(() => calls.logins.length === 1);
+
+    // Then the core is asked once to log in, with the click's reason
+    expect(calls.logins).toEqual(['Sign in to continue']);
+  });
+
+  it('As a user on a product, I click Sign in while my saved session cannot be reached and am asked to continue once it reads signed out', async () => {
+    // Given a page with a sign-in window, whose saved session cannot be reached until it is read again
+    const handoff = createFakeHandoff();
+    const { controller, auth, changes } = startController({
+      handoff,
+      rereadSession() {
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked, and then the prompt's button
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'prompt');
+    const signInsAtPrompt = [...handoff.signIns];
+    controller.retryLogin();
+
+    // Then no window opened before the prompt, and its button opened one
+    expect(signInsAtPrompt).toEqual([]);
+    expect(handoff.signIns).toEqual(['signin']);
   });
 
   it('As a user, I click Sign in again while the QR is shown and the QR stays while the core is asked once', async () => {
@@ -1105,18 +1152,19 @@ describe('auth controller: the sign-in window', () => {
     expect(handoff.focuses).toBe(1);
   });
 
-  it('As a debug panel user, I import while the saved session cannot be reached and no window opens', () => {
-    // Given a page whose saved session cannot be reached
+  it('As a debug panel user, I import while the saved session cannot be reached and am shown why', async () => {
+    // Given a page whose saved session cannot be reached, and whose re-read leaves it so
     const handoff = createFakeHandoff();
-    const { controller, auth } = startController({ handoff });
+    const { controller, auth, changes } = startController({ handoff });
     auth.set({ tag: 'Unreachable' });
 
     // When the debug panel imports a phrase
     controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
 
-    // Then no window opens and the modal stays closed
+    // Then the modal says the saved sign-in cannot be reached, and no window opens
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { title: "Can't reach your saved sign-in" } });
     expect(handoff.signIns).toEqual([]);
-    expect(getAuthModalState().open).toBe(false);
   });
 
   it('As a user on a product, I press Sign in and the window opens with the waiting view', () => {

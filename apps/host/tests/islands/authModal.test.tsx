@@ -55,6 +55,7 @@ function mountIsland({ placement = 'topbar-end' }: Params = {}): void {
     handoff: null,
     applyResult: () => Promise.reject(new Error('This page has no sign-in window')),
     inPagePhrase: () => Promise.reject(new Error('No phrase import in this test')),
+    rereadSession: () => Promise.resolve(),
   });
   authState.set({ tag: 'Disconnected' });
   const slot = document.createElement('div');
