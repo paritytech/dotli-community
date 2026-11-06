@@ -180,9 +180,14 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
   async function requestTopbarLogin({ reason, signal, answered }: RequestTopbarLoginParams): Promise<boolean> {
     // Read after each wait, since a cancel or a logout can end the round during any of them.
     const hasEnded = (): boolean => signal.aborted;
-    const lease = await acquireUntilEnded(signal);
-    if (lease === null) {
-      return false;
+    let lease: CoreLease;
+    try {
+      lease = await acquireUntilEnded(signal);
+    } catch (error) {
+      if (hasEnded()) {
+        return false;
+      }
+      throw error;
     }
     try {
       if (hasEnded()) {
@@ -205,18 +210,18 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
   }
 
   /**
-   * Resolves with a lease on the core, or with null once the round ended first, without waiting for a boot still under
-   * way. A lease that arrives after the round ended is released at once, and a boot that fails after it is reported as
-   * a login failure. Rejects when the core fails to boot before the round ended. The round ending is not a rejection
-   * but an answer of null, since the caller ended it on purpose and has no failure to handle.
+   * Resolves with a lease on the core. Rejects with `signal.reason` once the round ended first, without waiting for a
+   * boot still under way, and with the boot's error when the core fails to boot before the round ended. A lease that
+   * arrives after the round ended is released at once, and a boot that fails after it is reported as a login failure.
    */
-  function acquireUntilEnded(signal: AbortSignal): Promise<CoreLease | null> {
+  function acquireUntilEnded(signal: AbortSignal): Promise<CoreLease> {
     if (signal.aborted) {
-      return Promise.resolve(null);
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- an abort rejects with the caller's own reason, whatever it is
+      return Promise.reject(signal.reason);
     }
-    const acquired = createDeferred<CoreLease | null>();
+    const acquired = createDeferred<CoreLease>();
     function handleAbort(): void {
-      acquired.resolve(null);
+      acquired.reject(signal.reason);
     }
     signal.addEventListener('abort', handleAbort, { once: true });
     core.acquire().then(

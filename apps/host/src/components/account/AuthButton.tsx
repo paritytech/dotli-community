@@ -74,7 +74,7 @@ type ButtonAppearance = {
 };
 
 /** The variant and class of the button: an icon chip while unreachable, a chip while logged in, else the sign-in pill. */
-function buttonAppearance(account: Account, named: boolean): ButtonAppearance {
+function getButtonAppearance(account: Account, named: boolean): ButtonAppearance {
   if (account.unreachable()) {
     return { variant: 'secondary', class: [s['chip'], s['avatarOnly']].join(' ') };
   }
@@ -104,7 +104,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
     const session = props.showName === true && account().loggedIn() ? account().session() : undefined;
     return session === undefined ? undefined : sessionDisplayName(session);
   };
-  const appearance = (): ButtonAppearance => buttonAppearance(account(), shownName() !== undefined);
+  const appearance = (): ButtonAppearance => getButtonAppearance(account(), shownName() !== undefined);
   const label = (): string => authLabel(account());
   // The name stays the visible text, and the title describes the sign-in a click continues.
   const title = (): string => (!busy() && resumes(account()) ? RESUME_TITLE : label());
