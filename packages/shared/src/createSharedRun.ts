@@ -139,8 +139,9 @@ export function createSharedRun<StartParams = void>({ begin }: Params<StartParam
       case 'ending':
         finish(runEnd);
         return;
+      // Only this call's own `begin` makes a run running, so `begin` has not returned for it twice.
       case 'running':
-        throw new Error('createSharedRun: begin returned for a run that is already running');
+        return;
     }
   }
 

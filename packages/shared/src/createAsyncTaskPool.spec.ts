@@ -369,10 +369,11 @@ describe('async task pool', () => {
     const timers = createManualTimers();
     const pool = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true, timers });
     const controller = new AbortController();
+    const order: string[] = [];
     const queuedTask = vi.fn();
-    const blocker = pool.call(() => wait(timers, 200));
+    const blocker = pool.call(() => wait(timers, 200).then(() => order.push('blocker ended')));
     const queued = rejection(pool.call(queuedTask, { signal: controller.signal }));
-    const third = pool.call(() => 'third');
+    const third = pool.call(() => order.push('third ran'));
 
     // When
     controller.abort(new Error('cancelled'));
@@ -381,8 +382,8 @@ describe('async task pool', () => {
     // Then
     expect(await queued).toEqual(new Error('cancelled'));
     expect(queuedTask).not.toHaveBeenCalled();
-    await expect(blocker).resolves.toBeUndefined();
-    await expect(third).resolves.toBe('third');
+    await Promise.all([blocker, third]);
+    expect(order).toEqual(['blocker ended', 'third ran']);
   });
 
   it('As a caller of a pool that holds slots on abort and retries, I abort a running task whose work then fails and the next task waits for it and no retry runs', async () => {

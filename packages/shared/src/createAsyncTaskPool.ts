@@ -106,7 +106,12 @@ export function createAsyncTaskPool({
           reject,
           signal,
           retry: 0,
-          phase: { kind: 'queued' },
+          phase:
+            delay > 0
+              ? delayedPhase(delay, () => {
+                  enqueue(task);
+                })
+              : { kind: 'queued' },
           onAbort: undefined,
         };
         if (signal !== undefined) {
@@ -116,7 +121,7 @@ export function createAsyncTaskPool({
           signal.addEventListener('abort', task.onAbort, { once: true });
         }
         if (delay > 0) {
-          queueAfter(task, delay);
+          tasks.add(task);
           return;
         }
         enqueue(task);
@@ -225,13 +230,14 @@ export function createAsyncTaskPool({
 
   /** Queues the task once `ms` has passed. Until then it is delayed, so `settle` holds and an abort clears it. */
   function queueAfter(task: Task, ms: number): void {
-    task.phase = {
-      kind: 'delayed',
-      timer: timers.setTimeout(() => {
-        enqueue(task);
-      }, ms),
-    };
+    task.phase = delayedPhase(ms, () => {
+      enqueue(task);
+    });
     tasks.add(task);
+  }
+
+  function delayedPhase(ms: number, onElapsed: () => void): TaskPhase {
+    return { kind: 'delayed', timer: timers.setTimeout(onElapsed, ms) };
   }
 
   /** Puts the task at the end of the queue, behind those queued while it waited, and starts what has room. */

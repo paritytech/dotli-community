@@ -301,7 +301,7 @@ describe('walkUnixFsDag', () => {
     expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
   });
 
-  it('As a visitor whose load failed on a missing block, I retry and the failed walk fetches no more blocks', async () => {
+  it('As a visitor whose load failed on a missing block, I see the failed walk fetch no more blocks', async () => {
     // Given a root linking a missing file and a folder of 40 files, over a source that records every call
     const blocks: Blocks = new Map();
     const bigLinks = Array.from({ length: 40 }, (_, i) =>
