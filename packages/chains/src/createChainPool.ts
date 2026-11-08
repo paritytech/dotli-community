@@ -393,8 +393,8 @@ export function createChainPool({
   }
 
   /**
-   * Opens the watchers' follow under `open`, stores it, then sends it. A failure is reported, and while the chain is
-   * still watched the follow waits behind the gate as a refusal does. Never throws.
+   * Opens the watchers' follow under `open`, stores it, then sends it. A failure leaves the chain without one, and the
+   * next sync tries again. Never throws.
    */
   function openWatch(entry: Entry, open: OpenEntry): void {
     const off = open.watch;
@@ -403,7 +403,6 @@ export function createChainPool({
       follow = openFollow(entry, open);
     } catch (error) {
       reportWatchFollowFailure(entry, error);
-      waitAfterFailure(entry, open);
       return;
     }
     // Opening the follow's connection may have halted the chain, or a watcher it reported to may have changed the watch
@@ -422,17 +421,7 @@ export function createChainPool({
         follow.disconnect();
       }
       reportWatchFollowFailure(entry, error);
-      waitAfterFailure(entry, open);
     }
-  }
-
-  /** Makes a follow that failed to open wait behind the gate, unless the chain closed or no one wants it. */
-  function waitAfterFailure(entry: Entry, open: OpenEntry): void {
-    if (entry.state !== open || open.watch.kind !== 'off' || !isWatchWanted(entry)) {
-      return;
-    }
-    entry.followGate.noteHalt();
-    waitToRetryWatch(entry, open);
   }
 
   /** The watchers' follow runs exactly while the chain is held and watched. */

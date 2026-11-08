@@ -272,6 +272,7 @@ describe('createChainPool', () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     // Then
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
@@ -1001,7 +1002,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(3);
   });
 
-  it('As the network panel, a follow the chain stopped and then refused is followed again after the backoff', () => {
+  it('As the network panel, I have my follow stopped by the chain and then refused, and I follow it again after the backoff', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -1018,52 +1019,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(3);
   });
 
-  it('As the network panel, my follow that throws as the retry opens it waits behind the backoff and tries again', () => {
-    // Given a first follow that was refused, the only connection's follow room taken, and a second connection whose
-    // provider throws on opening
-    onTestFinished(bindLogSink({ emit: () => undefined }));
-    recordReports({ onFinished: onTestFinished });
-    const { createTransport: createBase, built } = createTransports({ followLimit: 1 });
-    function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
-      const base = createBase(genesisHash, hooks);
-      if (base === null || built.length === 1) {
-        return base;
-      }
-      return {
-        ...base,
-        provider: () => {
-          throw new Error('open failed');
-        },
-      };
-    }
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    pool.watch(createRecorder().watcher);
-    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() });
-    const transport = must(built[0], 'transport');
-    refuseFollow(transport);
-    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() }).send({
-      jsonrpc: '2.0',
-      id: 1,
-      method: CHAIN_HEAD_FOLLOW,
-      params: [true],
-    });
-
-    // When the retry throws as it opens the follow
-    vi.advanceTimersByTime(0);
-    const afterThrow = built.length;
-    const timersLeft = vi.getTimerCount();
-    vi.advanceTimersByTime(999);
-    const beforeBackoffEnds = built.length;
-    vi.advanceTimersByTime(1);
-
-    // Then the follow waited for the backoff, and tried again when it ended
-    expect(afterThrow).toBe(2);
-    expect(timersLeft).toBe(1);
-    expect(beforeBackoffEnds).toBe(2);
-    expect(built).toHaveLength(3);
-  });
-
-  it('As the network panel, my chain released and leased again while its refused follow waits is followed only once the backoff ends', () => {
+  it('As the network panel, I see my chain released and leased again while its refused follow waits, and I follow it only once the backoff ends', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -1086,7 +1042,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(3);
   });
 
-  it('As the network panel, a refused follow on a chain released before its retry opens no follow', () => {
+  it('As the network panel, I have my follow refused on a chain released before its retry, and I open no follow', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -1105,7 +1061,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(1);
   });
 
-  it('As the network panel, my follow on a chain that halts while its retry waits is not retried on the dead chain', () => {
+  it('As the network panel, I have my refused follow wait on a chain that halts, and I do not retry it on the dead chain', () => {
     // Given a remote session, so nothing rebuilds the chain and opens a follow of its own
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -1153,7 +1109,7 @@ describe('createChainPool watch', () => {
     expect(listMethod(opened, 'chainHead_v1_follow')).toEqual([]);
   });
 
-  it('As the network panel, my chain leased, released and leased again opens its follow at once each time', () => {
+  it('As the network panel, I see my chain leased, released and leased again, and I open its follow at once each time', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -1669,9 +1625,7 @@ describe('createChainPool healing', () => {
 
     // Then
     expect(error).toBeInstanceOf(Error);
-    const cause = error instanceof Error ? error.cause : undefined;
-    expect(cause).toBeInstanceOf(Error);
-    expect(cause).toHaveProperty('message', 'gone while opening');
+    expect(error).toHaveProperty('cause', expect.objectContaining({ message: 'gone while opening' }));
     expect(onHalt).not.toHaveBeenCalled();
     expect(pool.status('0xaa')).toBe('disconnected');
     expect(built).toHaveLength(1);
