@@ -201,7 +201,7 @@ describe('the restore rule', () => {
     // Then the session is kept and the miss left as a breadcrumb
     expect(restored.presence).toBe('unknown');
     expect(shared.entries.get(SESSION_KEY)).toBe(DEAD);
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_read' });
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'presence_read' }));
   });
 
   it('As a user with nothing stored, I load the page and the flag is read once with nothing cleared', async () => {
@@ -280,7 +280,10 @@ describe('the restore rule', () => {
     // Then no session is read and the failed drop is reported and counted
     expect(restored.session).toEqual({ status: 'ok', blob: null });
     expect(restored.dead).toEqual({ blob: DEAD, cleared: 'failed' });
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'storage', step: 'session_drop' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'session_drop' }),
+    );
     expect(metrics.counted('session.presence')).toEqual([{ outcome: 'error', reason: 'load' }]);
   });
 

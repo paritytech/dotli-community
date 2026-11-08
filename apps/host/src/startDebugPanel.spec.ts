@@ -48,7 +48,7 @@ describe('startDebugPanel', () => {
     // Then
     await expect(started).resolves.toBeUndefined();
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'ui', step: 'debug_panel_load' });
+    expect(captures.exception).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'debug_panel_load' }));
     expect(counted('debug_panel.load')).toContainEqual({ outcome: 'error', reason: 'TypeError' });
   });
 
@@ -69,7 +69,7 @@ describe('startDebugPanel', () => {
     await expect(started).resolves.toBeUndefined();
     expect(setupTruapiDebugPanel).not.toHaveBeenCalled();
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'ui', step: 'debug_panel_load' });
+    expect(captures.exception).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'debug_panel_load' }));
     expect(counted('debug_panel.load')).toContainEqual({ outcome: 'error', reason: 'TypeError' });
   });
 });

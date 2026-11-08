@@ -4,10 +4,12 @@
 // The switch in place, for a page with no sign-in window. Every switch reloads, so the core boots in the new mode
 // instead of being swapped while it runs. A failed switch is reported here and leaves the page as it was.
 
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { reportLocalWalletFailure } from './walletFailure.js';
 import { signInFlag } from './session/createCoreStorage.js';
 import { siteWallet } from './session/siteWallet.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 /** `reloading` once the switch is stored for every app, `failed` after the failure was reported. */
 export type WalletSwitchOutcome = 'reloading' | 'failed';
@@ -30,7 +32,7 @@ export function createWalletSwitch({ save, reload }: Params) {
       reportLocalWalletFailure(new Error('Local wallet could not be saved', { cause: error }), 'save');
       return 'failed';
     }
-    log.event('local wallet saved', { flow: 'wallet' });
+    report.log.event('local wallet saved');
     reload();
     return 'reloading';
   }
@@ -42,7 +44,7 @@ export function createWalletSwitch({ save, reload }: Params) {
       reportLocalWalletFailure(new Error('Local wallet could not be forgotten', { cause: error }), 'forget');
       return 'failed';
     }
-    log.event('local wallet forgotten', { flow: 'wallet' });
+    report.log.event('local wallet forgotten');
     reload();
     return 'reloading';
   }

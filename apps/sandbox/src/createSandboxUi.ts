@@ -4,11 +4,16 @@
 // The sandbox's own UI loads the first time something needs it: a toast, a failure, a retry or a password. A product
 // that loads needs none of it, so the boot carries no Solid.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, spans as S } from '@dotli/metrics';
 import { createLazyLoad } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { PageUiModule } from './lazy.js';
+
+const report = createReporter({ flow: 'content' });
+
+/** A lazy chunk a caller could not load and went on without. Tagged `outcome` and `reason` (the caller's step). */
+const lazyChunkLoadMetric = defineCount<'error'>(S.LAZY_CHUNK_LOAD);
 
 type Params = {
   /** Loads the page UI chunk. Rejects when the chunk cannot load. */
@@ -37,10 +42,9 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Pa
     },
     onFirstMiss: error => {
       // A missing chunk is a deploy race, so it is counted and not captured (owner's call).
-      reportExpected(error, {
-        flow: 'content',
+      report.expected(error, {
         step: 'page_ui_load',
-        metric: S.LAZY_CHUNK_LOAD,
+        metric: lazyChunkLoadMetric,
         reason: 'page_ui_load',
         message: `${APP_LOG_TAG} the page UI failed to load`,
       });

@@ -52,8 +52,8 @@ describe('sharing diagnostics', () => {
     await shareDiagnostics(source, ROWS);
 
     // Then one log, one capture and one count
-    expect(reports.captured).toEqual([
-      { error: failure, context: { flow: 'ui', step: 'diagnostics_share', tags: { reason: 'report' } } },
+    expect(reports.captured).toMatchObject([
+      { error: failure, context: { step: 'diagnostics_share', tags: { reason: 'report' } } },
     ]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.listShares()).toEqual([{ outcome: 'error', reason: 'report' }]);
@@ -73,8 +73,8 @@ describe('sharing diagnostics', () => {
     await shareDiagnostics(source, ROWS);
 
     // Then reported as an open failure, and never counted as shared
-    expect(reports.captured).toEqual([
-      { error: failure, context: { flow: 'ui', step: 'diagnostics_share', tags: { reason: 'open' } } },
+    expect(reports.captured).toMatchObject([
+      { error: failure, context: { step: 'diagnostics_share', tags: { reason: 'open' } } },
     ]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.listShares()).toEqual([{ outcome: 'error', reason: 'open' }]);

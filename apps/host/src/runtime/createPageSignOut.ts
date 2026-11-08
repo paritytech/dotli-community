@@ -4,8 +4,8 @@
 // The page's own sign-out, in paired and in local mode. It lets the page's sign-in go and has the phone told about the
 // session the page holds.
 
-import { m, spans as S } from '@dotli/metrics';
-import { log, type AsyncTaskPool } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import type { AsyncTaskPool } from '@dotli/shared';
 import type { PageCore } from './createPageCore.js';
 import type { HostCoreStorage, SessionRead } from './session/createCoreStorage.js';
 import type { SessionPresence } from './session/types.js';
@@ -15,6 +15,19 @@ import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import type { SignInFlag } from './session/signInFlag.js';
 import { reportWalletFailure } from './walletFailure.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
+import { siteRevokeMetric } from './siteSignIn/siteRevokeMetric.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * A page's sign-out of a paired session. Tagged `outcome` (`ok` once the phone was told) and, on error, `reason`:
+ * `read` for a copy that could not be read, `end` for a session that could not be activated or ended on the ending
+ * core, so the phone was not told, `drop` for a local-mode sign-out whose paired copy could not be dropped, on a page
+ * that pairs in place or on a product whose flag is unreadable, where a copy it could not read counts too, and
+ * `no_window` for a local-mode sign-out on a page that pairs in place, which lets the paired copy go without telling
+ * the phone. A paired sign-out counts once, and a core or copy that could not let go is reported as an issue only.
+ */
+const walletLogoutMetric = defineCount<'error' | 'ok'>('wallet.logout');
 
 /**
  * How a sign-out ended for the phone: `told` once the phone heard of the session this page held, or there was none,
@@ -158,7 +171,7 @@ export function createPageSignOut({
       // The sites keep their tokens until the user revokes them. Counted apart from how the sign-out ended, which this
       // leaves unchanged.
       reportLetGoFailure(error, 'grants');
-      m.count(S.SITE_REVOKE, { outcome: 'error', reason: 'sign_out' });
+      siteRevokeMetric.count({ outcome: 'error', reason: 'sign_out' });
     }
   }
 
@@ -166,7 +179,7 @@ export function createPageSignOut({
   async function tell(blob: string): Promise<LogoutOutcome> {
     try {
       await endSession(blob);
-      m.count(S.WALLET_LOGOUT, { outcome: 'ok' });
+      walletLogoutMetric.count({ outcome: 'ok' });
       return TOLD;
     } catch (error) {
       // The phone keeps this device listed until the user removes it there.
@@ -195,8 +208,8 @@ export function createPageSignOut({
     await forgetSiteGrants();
     if (read.status === 'failed') {
       // Core storage reported the read. Nothing can tell the phone without the session.
-      log.event('logout could not read the paired session', { flow: 'wallet' });
-      m.count(S.WALLET_LOGOUT, { outcome: 'error', reason: 'read' });
+      report.log.event('logout could not read the paired session');
+      walletLogoutMetric.count({ outcome: 'error', reason: 'read' });
       return { phone: 'untold', tellAgain: signOutAgain };
     }
     return blob === null ? TOLD : tell(blob);
@@ -245,8 +258,8 @@ export function createPageSignOut({
     switch (read.status) {
       case 'failed':
         // Core storage reported the read. The copy may still hold a session nobody told the phone about.
-        log.event('local sign-out could not read the paired session', { flow: 'wallet' });
-        m.count(S.WALLET_LOGOUT, { outcome: 'error', reason: 'read' });
+        report.log.event('local sign-out could not read the paired session');
+        walletLogoutMetric.count({ outcome: 'error', reason: 'read' });
         return true;
       case 'ok': {
         const { blob } = read;
@@ -255,8 +268,8 @@ export function createPageSignOut({
         }
         try {
           await flag.clear({ drop: () => copy.dropSessionIf(blob) });
-          log.event('local sign-out let the paired session go untold, as the page pairs in place', { flow: 'wallet' });
-          m.count(S.WALLET_LOGOUT, { outcome: 'error', reason: 'no_window' });
+          report.log.event('local sign-out let the paired session go untold, as the page pairs in place');
+          walletLogoutMetric.count({ outcome: 'error', reason: 'no_window' });
         } catch (error) {
           // The wallet still goes, and its clear below leaves the flag up only while the store still holds a sign-in.
           reportSignOutFailure(error, 'drop');
@@ -289,7 +302,7 @@ export function createPageSignOut({
   }
 
   function signOut(): Promise<LogoutOutcome> {
-    log.event('logout requested', { flow: 'wallet' });
+    report.log.event('logout requested');
     if (!isLocalWallet()) {
       // Before any wait, so the read is ahead of the window's restore rule and of a visible check.
       const held = copy.readSession();
@@ -364,7 +377,7 @@ function forgetNothing(): Promise<void> {
 }
 
 function reportSignOutFailure(error: unknown, reason: SignOutFailureReason): void {
-  reportWalletFailure(error, { what: `logout ${reason}`, step: 'logout', reason, metric: S.WALLET_LOGOUT });
+  reportWalletFailure(error, { what: `logout ${reason}`, step: 'logout', reason, metric: walletLogoutMetric });
 }
 
 /** Reports a failure of the let-go as an issue only, as the sign-out counts its own outcome once. */

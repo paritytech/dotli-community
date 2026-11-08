@@ -9,12 +9,14 @@
 
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
-import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
-import { createChainLanes, type ChainLanes } from './createChainLanes.js';
+import { chainLaneOpenMetric, chainPoolCloseMetric, createChainLanes, type ChainLanes } from './createChainLanes.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
+
+const protocolReport = createReporter({ flow: 'protocol' });
 
 /** A provider whose connections also hear when their chain's transport halts. */
 export type LeaseProvider = (
@@ -147,7 +149,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
   const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
   let sessionCounter = 0;
   let paused = false;
-  const watchers = createListenerSet<WatchEvent>({ onListenerError: reportListener('protocol', 'chain_pool.watch') });
+  const watchers = createListenerSet<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
 
   function getActivity(entry: Entry): ChainActivity {
     return {
@@ -196,10 +198,9 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
         entry.lanes.halt(halt.error);
       }
     } catch (error) {
-      reportDefect(error, {
-        flow: 'protocol',
+      protocolReport.defect(error, {
         step: 'chain_pool_close',
-        metric: S.CHAIN_POOL_CLOSE,
+        metric: chainPoolCloseMetric,
         message: `${POOL_TAG} closing ${getShortKey(entry.key)} (${halt === null ? 'on release or unload' : 'on a halt'}) failed:`,
       });
     }
@@ -219,10 +220,9 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     try {
       entry.lanes[action]();
     } catch (error) {
-      reportDefect(error, {
-        flow: 'protocol',
+      protocolReport.defect(error, {
         step: `chain_pool_${action}`,
-        metric: S.CHAIN_POOL_CLOSE,
+        metric: chainPoolCloseMetric,
         message: `${POOL_TAG} ${action} of ${getShortKey(entry.key)} failed:`,
       });
       destroy(entry, { error });
@@ -268,10 +268,9 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     } catch (error) {
       // The follow has no caller to throw to. A halted chain tells its leases itself, so only a live chain is reported.
       if (entry.live) {
-        reportDefect(error, {
-          flow: 'protocol',
+        protocolReport.defect(error, {
           step: 'chain_pool_watch_follow',
-          metric: S.CHAIN_LANE_OPEN,
+          metric: chainLaneOpenMetric,
           message: `${POOL_TAG} ${getShortKey(entry.key)} the network panel's follow could not open:`,
         });
       }
@@ -483,7 +482,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       for (const entry of live) {
         haltOnFailure({ entry, action: 'pause' });
       }
-      log.event(`${POOL_TAG} paused`, { flow: 'protocol', chains: live.length });
+      protocolReport.log.event(`${POOL_TAG} paused`, { chains: live.length });
     },
 
     resume() {
@@ -499,7 +498,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
           haltOnFailure({ entry, action: 'resume' });
         }
       }
-      log.event(`${POOL_TAG} resumed`, { flow: 'protocol', chains: live.length });
+      protocolReport.log.event(`${POOL_TAG} resumed`, { chains: live.length });
     },
 
     status(genesisHash) {
@@ -511,7 +510,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       let callbacks = listeners.get(key);
       if (callbacks === undefined) {
         callbacks = createListenerSet<ConnectionStatus>({
-          onListenerError: reportListener('protocol', 'chain_pool.status'),
+          onListenerError: protocolReport.listener('chain_pool.status'),
         });
         listeners.set(key, callbacks);
       }

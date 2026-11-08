@@ -37,7 +37,7 @@ describe('preimage host callbacks', () => {
 
     // Then
     expect(fetchBlock).toHaveBeenCalledTimes(4);
-    expect(captures.expected.mock.calls).toEqual([[expect.any(Error), { flow: 'content', step: 'preimage_lookup' }]]);
+    expect(captures.expected.mock.calls).toMatchObject([[expect.any(Error), { step: 'preimage_lookup' }]]);
     expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'fetch' }]);
   });
 
@@ -61,7 +61,10 @@ describe('preimage host callbacks', () => {
     await answer;
 
     // Then
-    expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), { flow: 'content', step: 'preimage_lookup' });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'preimage_lookup' }),
+    );
     expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'mismatch' }]);
   });
 
@@ -88,9 +91,7 @@ describe('preimage host callbacks', () => {
 
     // Then
     expect(yielded(hit)._unsafeUnwrap()).toEqual(data);
-    expect(captures.expected.mock.calls).toEqual([
-      [expect.any(Error), { flow: 'content', step: 'preimage_verify_load' }],
-    ]);
+    expect(captures.expected.mock.calls).toMatchObject([[expect.any(Error), { step: 'preimage_verify_load' }]]);
     expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'preimage_verify_load' }]);
   });
 

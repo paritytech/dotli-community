@@ -3,7 +3,9 @@
 
 import { Errored, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { captureException } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
+
+const report = createReporter({ flow: 'ui' });
 
 export type RootBoundaryProps = {
   /** Tags the report, such as `island:AuthModal` or `popover:<id>`. */
@@ -26,7 +28,7 @@ export function RootBoundary(props: RootBoundaryProps): JSX.Element {
           broken = true;
           const root = untrack(() => props.root);
           const onBroken = untrack(() => props.onBroken);
-          captureException(err(), { flow: 'ui', step: 'root_render', tags: { root } });
+          report.capture(err(), { step: 'root_render', tags: { root } });
           queueMicrotask(() => {
             onBroken?.();
           });

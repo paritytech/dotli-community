@@ -8,13 +8,15 @@
 declare const self: SharedWorkerGlobalScope;
 
 import { isLocalhost, setActiveNetwork } from '@dotli/config';
-import { flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
+import { createReporter, flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
 
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
 import { startProtocolWorker } from './startProtocolWorker.js';
+
+const report = createReporter({ flow: 'protocol' });
 
 initSentry('worker');
 installGlobalErrorHandlers('worker');
@@ -35,7 +37,7 @@ byteMeter.install();
 startProtocolWorker({
   scope: self,
   network,
-  flush: () => flushTelemetry(2_000),
+  flush: () => flushTelemetry(2_000, report),
   netBytes: { read: byteMeter.readBytesReceived },
   // A worker has no session to tune it from.
   lightClient: createLightClient(createLightClientDeps(null, isLocalhost)),

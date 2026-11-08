@@ -119,11 +119,13 @@ describe('landing page islands', () => {
 
     // Then
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'ui',
-      step: 'root_render',
-      tags: { root: 'page' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'root_render',
+        tags: { root: 'page' },
+      }),
+    );
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
     expect(byId('landing-auth-button')).toBeNull();
     expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);

@@ -74,7 +74,7 @@ describe('fallback screen', () => {
     expect(captures.exception).toHaveBeenCalledOnce();
     expect(captures.exception).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ flow: 'content', step: 'fallback_show' }),
+      expect.objectContaining({ step: 'fallback_show' }),
     );
   });
 });

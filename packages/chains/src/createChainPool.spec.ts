@@ -3,8 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { catchError, must } from '@dotli/shared/testing';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -214,7 +213,7 @@ describe('createChainPool', () => {
 
   it('As a dotli integrator, I add a throwing status listener and it is reported, stops no other listener and never reaches the transport', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const errors: string[] = [];
     onTestFinished(
@@ -245,7 +244,7 @@ describe('createChainPool', () => {
     // Then
     expect(error).toBeUndefined();
     expect(seen).toEqual(['connected']);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'chain_pool.status' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
     expect(errors).toHaveLength(captured.length);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'chain_pool.status' },
@@ -388,7 +387,7 @@ describe('createChainPool', () => {
 
   it('As a dotli integrator, I disconnect all while one chain fails to close and every other chain still closes', () => {
     // Given two chains, the first of which throws when its transport closes
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const errors: string[] = [];
     onTestFinished(
@@ -417,9 +416,9 @@ describe('createChainPool', () => {
     expect(error).toBeUndefined();
     expect(built.map(record => record.disconnect.mock.calls.length)).toEqual([1, 1]);
     expect(pool.status('0xbb')).toBe('disconnected');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_close' }]);
+    expect(captured).toMatchObject([{ step: 'chain_pool_close' }]);
     expect(errors).toHaveLength(captured.length);
-    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a dotli integrator, I release a chain whose transport fails to close and the idle timer closes it without throwing', async () => {
@@ -439,7 +438,7 @@ describe('createChainPool', () => {
 
     // Then the chain is disconnected and the close failure is reported
     expect(pool.status('0xaa')).toBe('disconnected');
-    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it("As a dotli integrator, I see a chain's transport halt while it fails to close and the halt still reaches its lease", () => {
@@ -463,7 +462,7 @@ describe('createChainPool', () => {
     expect(error).toBeUndefined();
     expect(onHalt).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
-    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a dotli integrator, I watch a transaction and hear it dropped when the transport disconnects', () => {
@@ -711,7 +710,7 @@ describe('createChainPool watch', () => {
 
   it('As a dotli integrator, I add a throwing watcher and it is reported, keeping neither the others nor the pool from the change', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const errors: string[] = [];
     onTestFinished(
@@ -739,9 +738,7 @@ describe('createChainPool watch', () => {
     // Then the throwing panel is reported once for each of the two activity changes a first lease makes
     expect(seen.activity.at(-1)).toMatchObject({ consumers: 1 });
     expect(connection).toBeDefined();
-    expect(captured).toEqual(
-      Array(2).fill({ flow: 'protocol', step: 'listener', tags: { owner: 'chain_pool.watch' } }),
-    );
+    expect(captured).toMatchObject(Array(2).fill({ step: 'listener', tags: { owner: 'chain_pool.watch' } }));
     expect(errors).toHaveLength(2);
     expect(metrics.counted('listener.delivery')).toEqual(
       Array(2).fill({ outcome: 'error', reason: 'Error', owner: 'chain_pool.watch' }),
@@ -924,7 +921,7 @@ describe('createChainPool watch', () => {
 
   it('As the network panel, I watch a chain that cannot open a connection for my follow, and get my unwatch while that chain halts and the next is followed', () => {
     // Given 0xaa's one connection full of its leases' follows, no second connection to it, and 0xbb held
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     onTestFinished(bindLogSink({ emit: () => undefined }));
     let builds = 0;
@@ -955,8 +952,8 @@ describe('createChainPool watch', () => {
 
     // Then the watch returns its unwatch, 0xaa's lane is reported and the chain halts every lease, and 0xbb is followed
     expect(unwatch).toBeTypeOf('function');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_lane_build' }]);
-    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toMatchObject([{ step: 'chain_lane_build' }]);
+    expect(metrics.counted('chain_pool.lane_open')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(pool.status('0xaa')).toBe('disconnected');
     expect(halts).toHaveLength(RPC_FOLLOW_LIMIT);
     const other = must(
@@ -968,7 +965,7 @@ describe('createChainPool watch', () => {
 
   it('As the network panel, I watch a chain whose new connection throws as it opens, and get my unwatch with the chain still live', () => {
     // Given 0xaa's one connection full of its leases' follows, and a second connection whose provider throws on opening
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport: createBase, built } = createTransports({ followLimit: RPC_FOLLOW_LIMIT });
@@ -1002,8 +999,8 @@ describe('createChainPool watch', () => {
 
     // Then the watch returns its unwatch, the failure is reported once, and no lease halted
     expect(unwatch).toBeTypeOf('function');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_watch_follow' }]);
-    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toMatchObject([{ step: 'chain_pool_watch_follow' }]);
+    expect(metrics.counted('chain_pool.lane_open')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(halts).toEqual([]);
     expect(built).toHaveLength(2);
   });
@@ -1182,7 +1179,7 @@ describe('createChainPool pausing', () => {
 
   it('As a dotli page, a chain that fails to close at a pause halts my lease on it while my other chain pauses', () => {
     // Given two leased chains, the first of which throws when its transport closes
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
@@ -1206,12 +1203,12 @@ describe('createChainPool pausing', () => {
     expect(otherHalt).not.toHaveBeenCalled();
     expect(failingHalt).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_pause' }]);
+    expect(captured).toMatchObject([{ step: 'chain_pool_pause' }]);
   });
 
   it('As a dotli page, a chain that fails to reopen at a resume halts my lease on it while my other chain opens', () => {
     // Given two leased chains, the first of which throws when its transport reopens
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport, built } = createReopenFailingTransports('0xaa');
     const pool = createChainPool({ createTransport });
@@ -1232,12 +1229,12 @@ describe('createChainPool pausing', () => {
     expect(otherHalt).not.toHaveBeenCalled();
     expect(failingHalt).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_resume' }]);
+    expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
   });
 
   it('As a dotli page, I lease a chain that fails to reopen after the resume and get a chain built in its place', () => {
     // Given a chain released before the pause, whose transport throws when it reopens
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport, built } = createReopenFailingTransports('0xaa');
     const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
@@ -1257,6 +1254,6 @@ describe('createChainPool pausing', () => {
     expect(must(built[1], 'transport').opened).toBe(1);
     expect(pool.status('0xaa')).toBe('connecting');
     expect(onHalt).not.toHaveBeenCalled();
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_resume' }]);
+    expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
   });
 });

@@ -7,13 +7,12 @@
 import { getLocalRoot, hasLightClient } from '@dotli/config';
 import { CONTENT_ERRORS } from '@dotli/content';
 import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
-import { captureException, m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   getErrorMessage,
   getErrorName,
   describeGatewayUnreachable,
-  log,
   realTimers,
   setErrorName,
   type Timers,
@@ -21,6 +20,9 @@ import {
 
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
+import { appRunMetric } from './appRunMetric.js';
+
+const report = createReporter({ flow: 'content' });
 
 type ContractStep = 'contract_top_level' | 'contract_origin' | 'contract_params' | 'contract_rerender';
 
@@ -94,8 +96,6 @@ type PresentFailureParams = {
 
 const MAX_ATTEMPTS = 5;
 
-const contentLog = log.createChild({ flow: 'content' });
-
 /**
  * Resolves once the first load has settled, or at once when the contract stops the run. A failed load is shown, never
  * rejected. Throws when `href` is no URL, or when the contract check fails with anything but a contract error.
@@ -108,10 +108,9 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
   // A top-level load has no bridge for account, signing or storage calls, so it fails rather than half-works.
   if (!page.framed) {
     // A bookmark or a pasted link: the visitor's doing, not a defect.
-    reportExpected(new Error('Sandbox loaded as a top-level page'), {
-      flow: 'content',
+    report.expected(new Error('Sandbox loaded as a top-level page'), {
       step: 'contract_top_level',
-      metric: S.APP_RUN,
+      metric: appRunMetric,
       reason: 'top_level',
     });
     fail({
@@ -143,7 +142,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
     if (recoverable) {
       // A reload of this window boots without the contract params, which were stripped after the last load. The host
       // can render it again with the params it last sent, and if it does not in time, the load fails.
-      contentLog.event('Asking the host to re-render the sandbox', { reason });
+      report.log.event('Asking the host to re-render the sandbox', { reason });
       deps.askRerender();
       timers.setTimeout(() => {
         failContract({ step: 'contract_rerender', title: 'Invalid sandbox URL', reason, cause: error });
@@ -167,14 +166,12 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
       deps.notifyFailed(step);
       deps.show(title, message, { retry });
     } catch (error) {
-      reportDefect(error, {
-        flow: 'content',
+      report.defect(error, {
         step: 'failure_show',
-        metric: S.APP_RUN,
+        metric: appRunMetric,
         reason: 'show_threw',
         message: `${APP_LOG_TAG} Could not show the ${step} failure`,
         tags: { surface: 'sandbox_main', failed_step: step },
-        logger: contentLog,
       });
     }
   }
@@ -182,13 +179,12 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
   /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
   function failContract({ step, title, reason, cause }: FailContractParams): void {
     const error = setErrorName(new Error(`${title}: ${reason}`, { cause }), 'SandboxContractError');
-    captureException(error, { flow: 'content', step, tags: { surface: 'sandbox_main' } });
+    report.capture(error, { step, tags: { surface: 'sandbox_main' } });
     fail({ step, title, message: reason });
   }
 
   function presentFailure({ step, error, attempt, retry }: PresentFailureParams): void {
-    captureException(error, {
-      flow: 'content',
+    report.capture(error, {
       step,
       tags: { surface: 'sandbox_main', dependency, attempt: String(attempt) },
     });
@@ -205,8 +201,8 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
     try {
       return await deps.load({ params, attempt });
     } catch (error) {
-      contentLog.error(`${APP_LOG_TAG} The load rejected instead of returning its outcome`, error);
-      m.count(S.APP_RUN, { outcome: 'error', reason: 'load_rejected' });
+      report.log.error(`${APP_LOG_TAG} The load rejected instead of returning its outcome`, error);
+      appRunMetric.count({ outcome: 'error', reason: 'load_rejected' });
       return { outcome: 'failed', step: 'init', error };
     }
   }
@@ -218,7 +214,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
         return;
       }
       if (attempts >= maxAttempts) {
-        contentLog.warn(`${APP_LOG_TAG} Retry refused after ${String(maxAttempts)} failed attempts`);
+        report.log.warn(`${APP_LOG_TAG} Retry refused after ${String(maxAttempts)} failed attempts`);
         fail({
           step: 'retry_limit',
           title: 'Too many retry attempts',

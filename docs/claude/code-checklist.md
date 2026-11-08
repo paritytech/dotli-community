@@ -119,8 +119,8 @@ above the linter: semantics, data flow and naming.
 ## Errors and logging
 
 - **major** (AGENTS.md § Code style, TypeScript:): A `catch` that drops the error, with neither a rethrow with
-  `{ cause }` nor `captureException`, `log.error` and an outcome metric. In a context with no logger, a `catch` that
-  neither posts the failure to its pages nor calls `console.error` with a reason.
+  `{ cause }` nor the feature reporter's `report.defect` or `report.expected`. In a context with no logger, a `catch`
+  that neither posts the failure to its pages nor calls `console.error` with a reason.
 - **major** (AGENTS.md § Code style, TypeScript:): `log.warn` for progress or status. It is for real failures, and
   progress breadcrumbs use `log.event`.
 - **major** (AGENTS.md § Code style, TypeScript:): A free-standing wrapper that makes a dependency safe to call, where
@@ -131,7 +131,10 @@ above the linter: semantics, data flow and naming.
 - **major** (AGENTS.md § Code style, TypeScript:): More than one metric name for one event, or an outcome metric without
   `{ outcome, reason }`.
 - **major** (AGENTS.md § Code style, TypeScript:): An expected failure recorded as a breadcrumb alone (`recordExpected`)
-  instead of counted through `reportExpected`.
+  instead of counted through the reporter's `expected`.
+- **major** (AGENTS.md § Code style, TypeScript:): A flow named on a report call instead of in the module's reporter, a
+  metric name added to `@dotli/metrics` that one package reads, or a count with an outcome counted through `m.count`
+  instead of a metric declared with `defineCount`.
 
 ## Async and lifecycle
 
@@ -211,6 +214,8 @@ above the linter: semantics, data flow and naming.
   markers cut to bare ones.
 - **minor** (AGENTS.md § Code style, Tests:): A test whose call under test sits outside `// When`, or whose `// Then`
   does more than assert.
+- **minor** (AGENTS.md § Code style, Tests:): A spec that asserts a report's flow or matches a whole capture context
+  instead of its step.
 
 When you cite a rule, quote `file:line`, state it in one line with its doc and section, and suggest the fix in one or
 two sentences. Group findings by theme and end with the blocking, major and minor counts.

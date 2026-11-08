@@ -5,9 +5,12 @@
 // between the paired session and the local wallet from the copy alone.
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
-import { areBytesEqual, log } from '@dotli/shared';
+import { areBytesEqual } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SessionResult } from './parseSessionResult.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 type Params = {
   /** Stores the session in the page's cores. Rejects when it could not be stored. */
@@ -36,7 +39,7 @@ export async function applySessionResult(
       // Saving makes a new key and resets the identity, so a copy that already holds this wallet keeps it untouched.
       if (!isWalletHeld(await readWallet(), wallet.entropy)) {
         await saveWallet(wallet.entropy, wallet.identity);
-        log.event('local wallet from the sign-in window saved', { flow: 'wallet' });
+        report.log.event('local wallet from the sign-in window saved');
       }
     } catch (error) {
       throw new Error('The local wallet from the sign-in window could not be saved', { cause: error });
@@ -48,7 +51,7 @@ export async function applySessionResult(
     } catch (error) {
       throw new Error('The session from the sign-in window could not be stored', { cause: error });
     }
-    log.event('session from the sign-in window stored', { flow: 'wallet' });
+    report.log.event('session from the sign-in window stored');
   }
   if (wallet === null) {
     return 'applied';

@@ -8,14 +8,13 @@ import { SITE_ID } from '@dotli/config';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import { SHARED_CORE_SESSION_KEY, getProtocolClient, type SharedStoreStatus } from '@dotli/protocol';
-import { m, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
   fromHex,
   waitForIdbRequest,
   runIdbTransaction,
-  log,
   openIdb,
   toHex,
 } from '@dotli/shared';
@@ -24,6 +23,29 @@ import { pageRole } from '../pageRole.js';
 import { sessionPresence } from './createPagePresence.js';
 import { createPageSignInFlag, type SignInFlag, type StoredSignIn } from './signInFlag.js';
 import { recordPresenceWalletReadFailure, siteWallet } from './siteWallet.js';
+import { sharedSessionUiCacheMetric } from './sharedSessionUiCacheMetric.js';
+
+const storageReport = createReporter({ flow: 'storage' });
+const walletReport = createReporter({ flow: 'wallet' });
+
+/**
+ * One read of the login session shared across subdomains. Tagged `outcome` (hit, miss or error) and, on error,
+ * `reason`, because a failed read shows the login screen exactly like a missing session.
+ */
+const sharedSessionReadMetric = defineCount<'error' | 'hit' | 'miss'>('shared_session.read');
+
+/**
+ * The at-rest key of the core's secret slots. Tagged `outcome` (error) and `reason`: `ephemeral_key` when IndexedDB
+ * cannot keep it, so this session's secrets will not decrypt after a reload, or `undecryptable` for a slot dropped
+ * because it no longer decrypts.
+ */
+const coreStorageSecretMetric = defineCount<'error'>('core_storage.secret');
+
+/**
+ * A stored core value that could not be decoded, which then reads as absent. Tagged `outcome` (error) and `reason`
+ * (`corrupt`).
+ */
+const coreStorageReadMetric = defineCount<'error'>('core_storage.read');
 
 /** This site's part of the shared auth store, which every subdomain reaches through the protocol frame. */
 export type SharedSessionStore = {
@@ -96,13 +118,13 @@ const CORE_SECRET_KEY_ID = 'allowance-keys';
 export function createCoreStorage({ shared, flag, local = () => localStorage, keyDb = () => indexedDB }: Params) {
   // Writes in this tab, which the shared store's subscription does not report.
   const localChangeListeners = createListenerSet<undefined>({
-    onListenerError: reportListener('storage', 'core_storage.local_change'),
+    onListenerError: storageReport.listener('core_storage.local_change'),
   });
   const sessionReadListeners = createListenerSet<boolean>({
-    onListenerError: reportListener('storage', 'core_storage.session_read'),
+    onListenerError: storageReport.listener('core_storage.session_read'),
   });
   const sessionWriteFailures = createListenerSet<unknown>({
-    onListenerError: reportListener('storage', 'core_storage.session_write'),
+    onListenerError: storageReport.listener('core_storage.session_write'),
   });
 
   function emitLocalChange(): void {
@@ -138,17 +160,16 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     try {
       raw = await shared.read(SHARED_CORE_SESSION_KEY);
     } catch (error) {
-      reportExpected(error, {
-        flow: 'storage',
+      storageReport.expected(error, {
         step: 'session_read',
-        metric: S.SHARED_SESSION_READ,
+        metric: sharedSessionReadMetric,
         message: '[dot.li] shared auth session read failed:',
       });
       emitSessionRead(true);
       return { status: 'failed', error };
     }
     const blob = raw === '' ? null : raw;
-    m.count(S.SHARED_SESSION_READ, { outcome: blob === null ? 'miss' : 'hit' });
+    sharedSessionReadMetric.count({ outcome: blob === null ? 'miss' : 'hit' });
     emitSessionRead(false);
     return { status: 'ok', blob };
   }
@@ -173,10 +194,9 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
       secretKey ??= await loadOrCreateCoreSecretKey(keyDb).catch((error: unknown) => {
         // A browser that refuses IndexedDB, as a private window may, cannot keep the key. Secrets written now will
         // not decrypt after a reload, which is the environment's limit, not a fault.
-        reportExpected(error, {
-          flow: 'storage',
+        storageReport.expected(error, {
           step: 'core_secret_key',
-          metric: S.CORE_STORAGE_SECRET,
+          metric: coreStorageSecretMetric,
           reason: 'ephemeral_key',
           message: '[dot.li] falling back to a session-ephemeral core-secret storage key:',
         });
@@ -214,7 +234,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
       if (bytes === undefined) {
         return undefined;
       }
-      log.event('re-encrypting legacy plaintext core storage', { flow: 'wallet', slot: key.tag });
+      walletReport.log.event('re-encrypting legacy plaintext core storage', { slot: key.tag });
       local().setItem(getCoreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));
       return bytes;
     }
@@ -233,10 +253,9 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     } catch (error) {
       // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
       // ciphertext to the core as key material.
-      reportExpected(error, {
-        flow: 'storage',
+      storageReport.expected(error, {
         step: 'core_secret_decrypt',
-        metric: S.CORE_STORAGE_SECRET,
+        metric: coreStorageSecretMetric,
         reason: 'undecryptable',
         message: `[dot.li] dropping undecryptable core storage ${key.tag}:`,
       });
@@ -252,10 +271,9 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
 
   // An unreachable shared store is the environment's failure, so it is a breadcrumb rather than an issue.
   function reportUiCacheFailure(operation: 'read' | 'write' | 'clear', error: unknown): void {
-    reportExpected(error, {
-      flow: 'storage',
+    storageReport.expected(error, {
       step: 'ui_cache',
-      metric: S.SHARED_SESSION_UI_CACHE,
+      metric: sharedSessionUiCacheMetric,
       reason: operation,
       message: `[dot.li] session UI cache ${operation} failed:`,
     });
@@ -461,10 +479,9 @@ function decodeStoredBytes(raw: string, description: string): Uint8Array | undef
   try {
     return fromHex(raw);
   } catch (error) {
-    reportExpected(error, {
-      flow: 'storage',
+    storageReport.expected(error, {
       step: 'core_decode',
-      metric: S.CORE_STORAGE_READ,
+      metric: coreStorageReadMetric,
       reason: 'corrupt',
       message: `[dot.li] ignoring corrupt ${description}:`,
     });

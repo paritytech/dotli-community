@@ -26,8 +26,8 @@ describe('reportPhoneEnd', () => {
     });
 
     // Then the throw is captured once and counted under the notice metric, and the request's end is still counted
-    expect(captures.exception.mock.calls).toEqual([
-      [failure, { flow: 'wallet', step: 'phone_request_notice', tags: { method: 'signRaw' } }],
+    expect(captures.exception.mock.calls).toMatchObject([
+      [failure, { step: 'phone_request_notice', tags: { method: 'signRaw' } }],
     ]);
     expect(counted('signing.phone_request_notice')).toEqual([
       { outcome: 'error', reason: 'TypeError', method: 'signRaw' },

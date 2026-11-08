@@ -4,10 +4,11 @@
 // The screens a failed load ends on, and what their buttons do. The failure is already reported when it gets here.
 
 import { BACKEND_FACTS, hasLightClient, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
-import { log, createRandomId, realTimers, type Timers } from '@dotli/shared';
+import { createRandomId, realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
 import type { ShowErrorPage } from '@dotli/ui';
+import { createReporter } from '@dotli/metrics';
 import type { ErrorDescription } from './describeError.js';
 import {
   FAILOVER_BTN_LABELS,
@@ -16,6 +17,8 @@ import {
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
 } from './errorCopy.js';
+
+const report = createReporter({ flow: 'resolve' });
 
 export type LoadFailure = {
   /** The verdict the failure was reported under. */
@@ -64,7 +67,7 @@ type Params = {
 export function presentLoadFailure(failure: LoadFailure, params: Params): void {
   const { error, backend } = failure;
   const { timers = realTimers } = params;
-  log.event('Error page shown', { flow: 'resolve', error_kind: error.kind, recovery: error.recovery });
+  report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
   if (error.recovery === 'none') {
     params.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
     return;
@@ -89,7 +92,7 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
     params.reload();
   }
   function commitFailover(): void {
-    log.event('Transport switched after failure', { flow: 'resolve', from: backend, to: nextBackend });
+    report.log.event('Transport switched after failure', { from: backend, to: nextBackend });
     params.emit({
       layer: 'failover',
       event: 'chain_backend',

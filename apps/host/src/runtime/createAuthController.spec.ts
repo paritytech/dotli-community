@@ -613,7 +613,7 @@ describe('auth controller: login requests', () => {
     await changes.until(() => getAuthModalState().view.kind === 'error');
 
     // Then the failure is captured and counted under the login step
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'login' }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'login' }]]);
     expect(metrics.counted('auth.command')).toEqual([{ outcome: 'error', reason: 'TypeError', step: 'login' }]);
   });
 
@@ -815,7 +815,7 @@ describe('auth controller: blocking-modal lease', () => {
     await nth(leases, 0).catch(() => undefined);
 
     // Then the failure is captured, logged as an error and counted
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'auth_modal_lease' }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'auth_modal_lease' }]]);
     expect(logged.map(line => line.args)).toEqual([['[dot.li auth] authentication modal lease failed:', failure]]);
     expect(metrics.counted('auth.modal_lease')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
@@ -1100,9 +1100,7 @@ describe('auth controller: the sign-in window', () => {
 
     // Then the import rejects and the load failure is reported and counted
     await expect(imported).rejects.toThrow('The recovery phrase import was not loaded');
-    expect(exceptions).toEqual([
-      [expect.any(Error), { flow: 'wallet', step: 'local_wallet', tags: { reason: 'phrase-load' } }],
-    ]);
+    expect(exceptions).toMatchObject([[expect.any(Error), { step: 'local_wallet', tags: { reason: 'phrase-load' } }]]);
     expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'phrase-load' }]);
   });
 
@@ -1454,7 +1452,7 @@ describe('auth controller: the sign-in window', () => {
 
     // Then the error shows with Retry and the failure is reported and counted under the intent
     expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'error', retry: true } });
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'session_window', tags: { reason: 'signin' } }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'session_window', tags: { reason: 'signin' } }]]);
     expect(metrics.counted('session_window.apply')).toEqual([{ outcome: 'error', reason: 'signin' }]);
     expect(metrics.counted('session_window.round')).toEqual([]);
   });

@@ -10,8 +10,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { bindLogSink, isRecord } from '@dotli/shared';
 import { catchError, must } from '@dotli/shared/testing';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createChainBroker, type ChainBroker } from './createChainBroker.js';
 import { createChainPool } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
@@ -1484,7 +1483,7 @@ describe('createChainBroker halt', () => {
 
   it('As a dotli integrator, I halt a broker and a session whose handler throws is reported, still hears its halt and keeps no other from theirs', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const errors: string[] = [];
     onTestFinished(
@@ -1513,7 +1512,7 @@ describe('createChainBroker halt', () => {
     expect(healthy.messages).toHaveLength(1);
     expect(log).toContain('a:halt');
     expect(log).toContain('b:halt');
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'chain_halt' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'chain_halt' } }]);
     expect(errors).toHaveLength(1);
     expect(metrics.counted('listener.delivery')).toEqual([{ outcome: 'error', reason: 'Error', owner: 'chain_halt' }]);
   });
@@ -1949,7 +1948,7 @@ describe('createChainBroker follow count', () => {
     harness.emit({ jsonrpc: '2.0', id: must(second, 'second follow').id, error: { code: -32000, message: 'Refused' } });
 
     // Then each refusal is counted under its reason
-    expect(metrics.counted(S.CHAIN_FOLLOW_REFUSED)).toEqual([
+    expect(metrics.counted('chain_broker.follow_refused')).toEqual([
       { outcome: 'error', reason: 'limit' },
       { outcome: 'error', reason: 'refused' },
     ]);

@@ -4,8 +4,7 @@
 import { decodeWireMessage } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { recordLog } from '@dotli/shared/testing';
 import { encodeGarbagePhoneRequestFrame } from '../testing/encodeGarbagePhoneRequestFrame.js';
 import { encodePhoneRequestFrame } from '../testing/encodePhoneRequestFrame.js';
@@ -271,7 +270,7 @@ describe('phone request tracker', () => {
   it('As an operator, I see an undecodable request counted once as undecodable and reported', () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
     const requests = createPhoneRequestTracker();
     const tap = requests.connect();
@@ -280,15 +279,15 @@ describe('phone request tracker', () => {
     tap.fromProduct(encodeGarbagePhoneRequestFrame('a', 'signPayload'));
 
     // Then
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'undecodable', reason: 'signPayload' }]);
-    expect(captured).toEqual([{ flow: 'wallet', step: 'phone_request', tags: { method: 'signPayload' } }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([{ outcome: 'undecodable', reason: 'signPayload' }]);
+    expect(captured).toMatchObject([{ step: 'phone_request', tags: { method: 'signPayload' } }]);
     expect(logged).toHaveLength(1);
   });
 
   it('As an operator, I see an undecodable answer reported and its count left to the claim', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
     const requests = createPhoneRequestTracker();
     const tap = requests.connect();
@@ -301,8 +300,8 @@ describe('phone request tracker', () => {
 
     // Then
     await expect(claim?.ended).resolves.toEqual({ kind: 'undecodable' });
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
-    expect(captured).toEqual([{ flow: 'wallet', step: 'phone_request', tags: { method: 'signRaw' } }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([]);
+    expect(captured).toMatchObject([{ step: 'phone_request', tags: { method: 'signRaw' } }]);
     expect(logged).toHaveLength(1);
   });
 

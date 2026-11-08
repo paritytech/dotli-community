@@ -10,13 +10,15 @@ import type {
   WebWorkerHostCallbacks,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { CoreContext, PageProduct } from './createPageCore.js';
 import { createTruapiRuntimeConfig, toProductId } from './createTruapiRuntimeConfig.js';
 import { ERRORS } from './errors.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 export type BootedCoreRuntime = {
   runtime: WorkerPairingHostRuntime;
@@ -83,7 +85,7 @@ export function createCoreRuntimeBoot({
         isLive: core.isLive,
       });
       productId = await parseProductId(runtime, core.product);
-      log.event('wallet core booted', { flow: 'wallet', local: true });
+      report.log.event('wallet core booted', { local: true });
       // A local wallet is forgotten only by a switch, which reloads the page.
       return { runtime, productId, local: true, isStale: () => Promise.resolve(false) };
     }
@@ -91,7 +93,7 @@ export function createCoreRuntimeBoot({
       hostConfig,
     });
     productId = await parseProductId(runtime, core.product);
-    log.event('wallet core booted', { flow: 'wallet' });
+    report.log.event('wallet core booted');
     return { runtime, productId, local: false, isStale: async () => (await readWallet()) !== null };
   }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createChanges } from '../../testing/changes.js';
 import { CoreRedialError } from '../coreRedialError.js';
@@ -190,7 +190,7 @@ describe('session lease', () => {
     // Then one lease is taken, kept and counted
     expect(page.leases).toHaveLength(1);
     expect(page.leases[0]?.released).toBe(0);
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'ok' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'ok' }]);
   });
 
   it.each<{ label: string; blob: string | null; local: boolean; localWhenRead: boolean }>([
@@ -315,7 +315,7 @@ describe('session lease', () => {
 
     // Then the old lease is released and a second one is held
     expect(page.leases[0]?.released).toBe(1);
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
   });
 
   it('As a signed-in visitor, I open the landing page while my first core is already down and a second core lease is held', async () => {
@@ -357,10 +357,10 @@ describe('session lease', () => {
 
     // When the landing page starts the lease
     page.lease.start();
-    await page.changes.until(() => page.metrics.counted(S.WALLET_SESSION_LEASE).length === 1);
+    await page.changes.until(() => page.metrics.counted('wallet.session_lease').length === 1);
 
     // Then the failure is counted and captured once
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'error', reason: 'boot' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'error', reason: 'boot' }]);
     expect(page.captures.exception).toHaveBeenCalledTimes(1);
 
     // When the copy changes again
@@ -378,10 +378,10 @@ describe('session lease', () => {
 
     // When the landing page starts the lease
     page.lease.start();
-    await page.changes.until(() => page.metrics.counted(S.WALLET_SESSION_LEASE).length === 1);
+    await page.changes.until(() => page.metrics.counted('wallet.session_lease').length === 1);
 
     // Then the redial is counted and recorded as expected, not captured as an exception
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'error', reason: 'redial' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'error', reason: 'redial' }]);
     expect(page.captures.expected).toHaveBeenCalledTimes(1);
     expect(page.captures.exception).not.toHaveBeenCalled();
   });

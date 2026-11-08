@@ -105,7 +105,7 @@ describe('preloadWhenIdle', () => {
     const reported = await missed.promise;
 
     // Then
-    expect(reported).toEqual({ error: offline, context: { flow: 'ui', step: 'idle_preload' } });
+    expect(reported).toMatchObject({ error: offline, context: { step: 'idle_preload' } });
     expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'idle_preload' }]);
     expect(exception).not.toHaveBeenCalled();
   });

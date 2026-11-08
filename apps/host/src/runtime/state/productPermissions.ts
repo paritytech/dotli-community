@@ -5,7 +5,7 @@
 // Every write, from the panel or a prompt, goes through one path that retries and announces once, and the work runs one
 // at a time, so a read never lands over a newer write.
 
-import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   combineErrors,
   createAsyncTaskPool,
@@ -26,6 +26,21 @@ import {
 } from '../permissionPolicy.js';
 import { throwIfModalAborted } from '../throwIfModalAborted.js';
 import type { ProductState } from './productState.js';
+
+const uiReport = createReporter({ flow: 'ui' });
+const walletReport = createReporter({ flow: 'wallet' });
+
+/**
+ * One read of the loaded product's permissions. Tagged `outcome` and, on error, `reason`, as a failed one leaves the
+ * menu without statuses.
+ */
+const permissionsReadMetric = defineCount<'error' | 'ok'>('permissions.read');
+
+/**
+ * A permission change, from the panel or a prompt, counted once when it settles. Tagged `outcome` and, on error,
+ * `reason` (`write`), as a failed one leaves the permissions it names as they were.
+ */
+const permissionsChangeMetric = defineCount<'error' | 'ok'>('permissions.change');
 
 /** `statuses` follow the menu order of `ALL_PERMISSIONS`. */
 export type ProductPermissionsState =
@@ -129,7 +144,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({
-    onListenerError: reportListener('ui', 'product_permissions.change'),
+    onListenerError: uiReport.listener('product_permissions.change'),
   });
 
   // Reads and writes run one at a time, so the store only ever moves forward.
@@ -252,13 +267,12 @@ export function createProductPermissions({ registry, product, timers = realTimer
     }
     try {
       const statuses = await registry.getStatuses(label, NAMES);
-      m.count(S.PERMISSIONS_READ, { outcome: 'ok' });
+      permissionsReadMetric.count({ outcome: 'ok' });
       land(label, { status: 'read', label, statuses: NAMES.map((_, i) => statuses[i] ?? 'ask') });
     } catch (error) {
-      reportDefect(error, {
-        flow: 'wallet',
+      walletReport.defect(error, {
         step: 'permissions_read',
-        metric: S.PERMISSIONS_READ,
+        metric: permissionsReadMetric,
         message: '[dot.li] permissions read failed:',
         reason: 'read',
       });
@@ -268,10 +282,9 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   function reportFailure(errors: readonly unknown[]): void {
     const error = combineErrors(errors, 'some permissions kept their status');
-    reportDefect(error, {
-      flow: 'wallet',
+    walletReport.defect(error, {
       step: 'permissions_change',
-      metric: S.PERMISSIONS_CHANGE,
+      metric: permissionsChangeMetric,
       message: '[dot.li] permissions change failed:',
       reason: 'write',
       tags: { reason: 'write' },
@@ -342,7 +355,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       // The store shows what the core kept, not what was asked for.
       await read();
     } else {
-      m.count(S.PERMISSIONS_CHANGE, { outcome: 'ok' });
+      permissionsChangeMetric.count({ outcome: 'ok' });
     }
     return { failed, errors };
 

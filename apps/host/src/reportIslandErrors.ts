@@ -6,8 +6,10 @@
 // never ran gets its stand-in here. One that fails before boot listens, such as an island that loads with the page,
 // reaches the console alone.
 
-import { captureException } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { isRecord } from '@dotli/shared';
+
+const report = createReporter({ flow: 'ui' });
 
 type ReportIslandErrorsParams = {
   /** Where Astro dispatches `astro:hydration-error`. */
@@ -44,8 +46,7 @@ export function reportIslandErrors({
     event.preventDefault();
     const island = isIsland(event.target) ? event.target : null;
     const component = island?.getAttribute('component-export') ?? 'unknown';
-    captureException(readHydrationError(event), {
-      flow: 'ui',
+    report.capture(readHydrationError(event), {
       step: 'island_hydration',
       tags: { root: `island:${component}`, kind: 'island_hydration_error' },
     });

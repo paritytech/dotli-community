@@ -4,7 +4,7 @@
 // A product's manifests as the CID cache keeps them: the raw text of each record, read again on the way out, and the
 // product's dotNS owner beside them.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import {
   toExecutableManifestResult,
   toRootManifestResult,
@@ -14,6 +14,9 @@ import {
 } from '@dotli/resolver';
 import type { CachedManifests } from '@dotli/storage';
 import { parseH160Address, type H160Address } from './h160Address.js';
+import { productAuthorMetric } from './productAuthorMetric.js';
+
+const resolveReport = createReporter({ flow: 'resolve' });
 
 export type ProductManifests = {
   root: ManifestResult<RootManifest>;
@@ -65,5 +68,5 @@ function readCachedOwner(
 
 // Only a hand-edited store holds such an owner, and the author is not worth failing the load for.
 function reportCachedOwner(error: unknown): void {
-  reportExpected(error, { flow: 'resolve', step: 'cached_owner', metric: S.PRODUCT_AUTHOR, reason: 'cached-owner' });
+  resolveReport.expected(error, { step: 'cached_owner', metric: productAuthorMetric, reason: 'cached-owner' });
 }

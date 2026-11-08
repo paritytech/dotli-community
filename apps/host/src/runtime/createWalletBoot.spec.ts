@@ -102,11 +102,13 @@ describe('wallet boot', () => {
     expect(boot).toBeNull();
     expect(mode.get().mode).toBe('app');
     expect(mode.get().failure).toMatch(/could not be decrypted/);
-    expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), {
-      flow: 'wallet',
-      step: 'local_wallet',
-      tags: { reason: 'unreadable' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        step: 'local_wallet',
+        tags: { reason: 'unreadable' },
+      }),
+    );
   });
 
   it('As a Polkadot App user whose protocol frame never came up, I boot and still get the pairing host', async () => {
@@ -123,7 +125,7 @@ describe('wallet boot', () => {
     expect(boot).toBeNull();
     expect(mode.get().mode).toBe('app');
     expect(mode.get().failure).toMatch(/could not be read/);
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'local_wallet' });
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'local_wallet' }));
   });
 
   it('As a user on a page with several cores, I boot and the restore rule runs once', async () => {

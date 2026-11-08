@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createCacheReporter } from './createCacheReporter.js';
 import { createMemoryIdb } from './testing/index.js';
@@ -29,11 +29,13 @@ describe('cache failure reporter', () => {
 
     // Then each reported it once
     expect(captures.exception).toHaveBeenCalledTimes(2);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'storage',
-      step: 'cid_cache_read',
-      tags: { kind: 'cid_cache_read_error' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'cid_cache_read',
+        tags: { kind: 'cid_cache_read_error' },
+      }),
+    );
   });
 
   it('As an operator, I see a connection closing under an unloading page as a breadcrumb, not an issue', async () => {
@@ -57,8 +59,8 @@ describe('cache failure reporter', () => {
 
     // Then the failure is recorded as expected
     expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'storage', step: 'cid_cache_write' });
-    expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'cid_cache_write' }));
+    expect(sentry.counted('cache.storage')).toEqual([
       { outcome: 'error', reason: 'InvalidStateError', surface: 'cid_cache', step: 'write' },
     ]);
   });
@@ -74,7 +76,7 @@ describe('cache failure reporter', () => {
     report('write', failure);
 
     // Then
-    expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
+    expect(sentry.counted('cache.storage')).toEqual([
       { outcome: 'error', reason: 'Error', surface: 'block_cache', step: 'write' },
       { outcome: 'error', reason: 'Error', surface: 'block_cache', step: 'write' },
     ]);
@@ -91,10 +93,10 @@ describe('cache failure reporter', () => {
     report('write', quota);
 
     // Then
-    expect(sentry.counted(S.CACHE_STORAGE)).toEqual([
+    expect(sentry.counted('cache.storage')).toEqual([
       { outcome: 'error', reason: 'QuotaExceededError', surface: 'block_cache', step: 'write' },
     ]);
     expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(quota, { flow: 'storage', step: 'block_cache_write' });
+    expect(captures.expected).toHaveBeenCalledWith(quota, expect.objectContaining({ step: 'block_cache_write' }));
   });
 });

@@ -6,12 +6,11 @@
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
 import { atom, computed } from 'nanostores';
-import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
+import { countMetric, createReporter, getResolutionId, m } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
   createDeferred,
-  log,
   markHandled,
   realTimers,
   setErrorName,
@@ -36,10 +35,12 @@ import type {
   ProtocolStatus,
 } from './frameTypes.js';
 import { FRAME_MODES } from './getBackendOfFrameMode.js';
-import { reportBootFailure, type BootPhase } from './reportBootFailure.js';
+import { protocolIframeReadyMetric, reportBootFailure, type BootPhase } from './reportBootFailure.js';
 import { reportFrameLost } from './reportFrameLost.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscribe.js';
+
+const report = createReporter({ flow: 'protocol' });
 
 /**
  * One iframe and the transport to it, which is built once the iframe loaded. Its first call starts the handshake, and a
@@ -68,7 +69,7 @@ export function createProtocolFrame<E extends FrameElement>({
   window: messages,
   timeouts: timeoutOverrides,
   timers = realTimers,
-  count = m.count,
+  count = countMetric,
 }: ProtocolFrameParams<E>): ProtocolFrame {
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...timeoutOverrides };
   const wire = createWireReport({ side: 'host', count });
@@ -77,9 +78,9 @@ export function createProtocolFrame<E extends FrameElement>({
   // A frame whose light client failed to start, kept to answer the shared store until a new frame listens.
   const held = atom<FrameSlot | null>(null);
   const storeHeld = computed(held, frame => frame !== null);
-  const reportStatusListener = reportListener('protocol', 'protocol.status');
+  const reportStatusListener = report.listener('protocol.status');
   const lostListeners = createListenerSet<Error>({
-    onListenerError: reportListener('protocol', 'protocol.frame_lost'),
+    onListenerError: report.listener('protocol.frame_lost'),
   });
   // Why the frame is down, for a caller that asks before it is back.
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
@@ -332,7 +333,7 @@ export function createProtocolFrame<E extends FrameElement>({
         dropHeld(new Error(PROTOCOL_ERRORS.FRAME_RESET), { lost: false });
       }
       phase = 'ready';
-      const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
+      const stopReady = m.timer(protocolIframeReadyMetric.name);
       try {
         await withTimeout({
           work: waitForStatus(status, next => next === 'ready', { signal: kept.loss.signal }),
@@ -495,8 +496,7 @@ export function createProtocolFrame<E extends FrameElement>({
       return;
     }
     // Told apart from a fatal in the trail, since both drop the frame.
-    log.event('protocol frame reconfigured', {
-      flow: 'protocol',
+    report.log.event('protocol frame reconfigured', {
       backend: config.backend,
       network: config.network,
       skipWorkerCache: config.skipWorkerCache,
@@ -566,14 +566,14 @@ export function createProtocolFrame<E extends FrameElement>({
         },
         timers,
       });
-      log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'alive' });
+      report.log.event('protocol frame liveness check', { outcome: 'alive' });
     } catch (thrown: unknown) {
       // A frame dropped or replaced meanwhile is not this check's to report, nor to log as lost.
       if (slot === kept) {
-        log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
+        report.log.event('protocol frame liveness check', { outcome: 'lost' });
         kept.loss.abort(createUnresponsiveError(thrown));
       } else if (held.get() === kept) {
-        log.event('protocol frame liveness check', { flow: 'protocol', outcome: 'lost' });
+        report.log.event('protocol frame liveness check', { outcome: 'lost' });
         dropHeld(createUnresponsiveError(thrown), { lost: true });
       }
     } finally {

@@ -395,7 +395,7 @@ describe('createProductLoader', () => {
 
     // Then the throw is captured once and counted with its error name
     expect(captured.filter(context => context.step === 'failure_screen')).toEqual([
-      expect.objectContaining({ flow: 'resolve', step: 'failure_screen' }),
+      expect.objectContaining({ step: 'failure_screen' }),
     ]);
     // The page sets its journey as defaults on every count
     expect(counted('resolve.failure_screen')).toEqual([

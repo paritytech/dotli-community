@@ -6,7 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { getErrorMessage, isRecord, runEvery } from '@dotli/shared';
 import {
   buildFollowEvent,
@@ -46,6 +46,14 @@ import { createPendingRequests } from './createPendingRequests.js';
 import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_UNFOLLOW } from './jsonRpcMethods.js';
 import { readStrings } from './readStrings.js';
 
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * Count. A `chainHead_v1_follow` the node refused. Tagged `outcome` (error) and `reason` (`limit` for error code
+ * `-32800`, `refused` for any other).
+ */
+const chainFollowRefusedMetric = defineCount<'error'>('chain_broker.follow_refused');
+
 /** Many JSON-RPC sessions over one upstream connection, with ids and subscription tokens rewritten per session. */
 export type ChainBroker = ReturnType<typeof createChainBroker>;
 
@@ -84,7 +92,7 @@ type UnparseableUpstreamParams = {
 };
 
 // A session's handler that throws on the halt is a defect in its owner, reported while the other sessions still hear it.
-const reportHaltListener = reportListener('protocol', 'chain_halt');
+const reportHaltListener = report.listener('chain_halt');
 
 // The error code a node answers a follow with when the connection already holds as many follows as it allows.
 const FOLLOW_LIMIT_ERROR_CODE = -32800;
@@ -636,5 +644,5 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 /** Counts a follow the node refused, telling its follow limit apart from any other refusal. */
 function reportRefusedFollow(error: unknown): void {
   const reason = isRecord(error) && error['code'] === FOLLOW_LIMIT_ERROR_CODE ? 'limit' : 'refused';
-  reportExpected(error, { flow: 'protocol', step: 'chain_follow', metric: S.CHAIN_FOLLOW_REFUSED, reason });
+  report.expected(error, { step: 'chain_follow', metric: chainFollowRefusedMetric, reason });
 }

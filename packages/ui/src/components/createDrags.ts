@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { bodySelection, type SelectionLock } from './createSelectionLock.js';
 import { startDrag, type StartDragParams } from './startDrag.js';
+
+const report = createReporter({ flow: 'ui' });
 
 /** The drags one component runs. Its cleanup calls `stopAll`, so no hold outlives it. */
 export type Drags = ReturnType<typeof createDrags>;
@@ -13,7 +15,7 @@ type Params = {
   selection?: SelectionLock | undefined;
 };
 
-const reportDragEnd = reportListener('ui', 'drag.end');
+const reportDragEnd = report.listener('drag.end');
 
 /**
  * One owner for a component's drags. A handle that leaves the page under a held pointer loses its capture, so its

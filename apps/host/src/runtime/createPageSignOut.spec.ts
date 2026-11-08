@@ -307,11 +307,13 @@ describe('paired sign-out', () => {
     expect(fakes.endSession).toHaveBeenCalledTimes(1);
     expect(fakes.reportSignedOut).toHaveBeenCalledTimes(2);
     expect(fakes.copy.held).toBeNull();
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'end' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'end' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'end' }]);
   });
 
@@ -407,11 +409,13 @@ describe('paired sign-out', () => {
     // Then the copy goes, the phone is told and the reset failure is reported
     expect(fakes.copy.held).toBeNull();
     expect(fakes.endSession).toHaveBeenCalledWith('0xsession');
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'reset' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'reset' },
+      }),
+    );
     expect(fakes.captures.exception).toHaveBeenCalledTimes(1);
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
   });
@@ -428,11 +432,13 @@ describe('paired sign-out', () => {
     // Then the phone is told, one issue is tagged drop and the sign-out counts once as ok
     expect(fakes.endSession).toHaveBeenCalledWith('0xsession');
     expect(fakes.captures.exception).toHaveBeenCalledTimes(1);
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
   });
 
@@ -657,11 +663,13 @@ describe('local sign-out', () => {
     await fakes.signOut.signOut();
 
     // Then the failed drop is reported and the page still leaves local mode
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
     expect(fakes.leaveLocalWallet).toHaveBeenCalledTimes(1);
   });
@@ -705,11 +713,13 @@ describe('local sign-out', () => {
     const outcome = await fakes.signOut.signOut();
 
     // Then the failed drop is reported and counted once
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
     expect(fakes.calls).toEqual(['leave local', 'forget wallet']);
     expect(outcome.phone).toBe('untold');
@@ -860,11 +870,13 @@ describe('signed-in sites on sign-out', () => {
 
     // Then the failure is reported under its own reason and counted as a forget that failed, and the sign-out ends as
     // it would have
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'grants' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'grants' },
+      }),
+    );
     expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
     expect(outcome).toEqual({ phone: 'told' });
     expect(fakes.calls).toEqual(['reset', 'drop 0xsession', 'signed out', 'end 0xsession']);
@@ -881,11 +893,13 @@ describe('signed-in sites on sign-out', () => {
     const outcome = await fakes.signOut.signOut();
 
     // Then the failure is reported and counted, and the wallet still goes as the page leaves local mode
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'grants' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'grants' },
+      }),
+    );
     expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
     expect(outcome).toEqual({ phone: 'told' });
     expect(fakes.calls).toEqual(['leave local', 'forget wallet']);

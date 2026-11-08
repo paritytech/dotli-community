@@ -12,10 +12,13 @@
 // after its disconnect answers, so a window that told the phone stays open, saying the user is signed out, and the user
 // closes it. Any other window closes itself.
 
-import { m, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import type { Reconciled } from '../session/restoreRule.js';
 import { reportWalletFailure } from '../walletFailure.js';
+import { sessionWindowSignoutResultMetric } from './sessionWindowSignoutResultMetric.js';
+import { siteRevokeMetric } from '../siteSignIn/siteRevokeMetric.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 export type WindowSignOutParams = {
   /** Whether the page told the phone itself, as the window's request says. */
@@ -79,8 +82,8 @@ export async function signOutInWindow(params: WindowSignOutParams): Promise<Wind
     if (ended.outcome !== 'kept' && (await params.firstParty)) {
       await forgetSiteGrants(params);
     }
-    log.event('sign-out window done', { flow: 'wallet', outcome: ended.outcome });
-    m.count(S.SESSION_WINDOW_SIGNOUT_RESULT, {
+    report.log.event('sign-out window done', { outcome: ended.outcome });
+    sessionWindowSignoutResultMetric.count({
       outcome: ended.outcome,
       reason: params.notified ? 'notified' : 'unnotified',
     });
@@ -141,6 +144,6 @@ async function forgetSiteGrants({ forgetGrants }: Pick<WindowSignOutParams, 'for
     // The sites keep their tokens until the user revokes them. Counted apart from how the sign-out ended, which this
     // leaves unchanged.
     reportWalletFailure(error, { what: 'sign-out window grants', step: 'session_window_signout', reason: 'grants' });
-    m.count(S.SITE_REVOKE, { outcome: 'error', reason: 'sign_out' });
+    siteRevokeMetric.count({ outcome: 'error', reason: 'sign_out' });
   }
 }

@@ -4,11 +4,14 @@
 // The product card's author: the product's dotNS owner, the account Asset Hub maps it to, and the usernames People
 // holds for that account.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { H160Address } from './h160Address.js';
 import type { PolkadotAccount } from './runtime/polkadotAccount.js';
 import type { PeopleUsernames } from './runtime/readPeopleUsernames.js';
+import { productAuthorMetric } from './productAuthorMetric.js';
+
+const resolveReport = createReporter({ flow: 'resolve' });
 
 export type AuthorReadStep = 'account' | 'username';
 
@@ -134,5 +137,5 @@ function getUsername(usernames: PeopleUsernames | null | undefined): AuthorUsern
 }
 
 function reportAuthorRead(error: unknown, read: AuthorReadStep): void {
-  reportExpected(error, { flow: 'resolve', step: `product_author_${read}`, metric: S.PRODUCT_AUTHOR, reason: read });
+  resolveReport.expected(error, { step: `product_author_${read}`, metric: productAuthorMetric, reason: read });
 }

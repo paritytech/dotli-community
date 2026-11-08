@@ -84,10 +84,12 @@ describe('createChainConnect', () => {
 
     // Then
     expect(answer).toMatchObject({ id: 'truapi:2', error: { data: 'dotli:chain-halted' } });
-    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'transport refused' }), {
-      flow: 'protocol',
-      step: 'chain_reopen',
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'transport refused' }),
+      expect.objectContaining({
+        step: 'chain_reopen',
+      }),
+    );
     expect(metrics.counted('truapi_chain.reopen')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 

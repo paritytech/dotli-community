@@ -9,9 +9,9 @@
 // modal: it pairs on its core itself and shows how far the pairing got.
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
-import { spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, log, isShallowEqual } from '@dotli/shared';
+import { createAsyncTaskPool, isShallowEqual } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type {
@@ -35,6 +35,15 @@ import { parseUiStateCache, type TruapiSessionUiState } from '../session/parseUi
 import type { SignInIntent } from './parseWindowRequest.js';
 import type { Responder, ResponderState } from './createResponder.js';
 import type { SessionResult } from './parseSessionResult.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A step of the sign-in window's own flow that failed, so the window reported it and showed a failure where the
+ * view has room. Tagged `outcome` (`error`) and `reason`, the step: `decide`, `continue`, `another`, `phrase`, `back`,
+ * `pairing` and `finish`.
+ */
+const sessionWindowFlowMetric = defineCount<'error'>('session_window.flow');
 
 export type WindowFlow = ReturnType<typeof createWindowFlow>;
 
@@ -273,11 +282,11 @@ export function createWindowFlow({
   function endRound(result: SessionResult): void {
     phase = { kind: 'ended' };
     if (responder.state.get().kind === 'no-opener') {
-      log.event('sign-in window signed in with no opener', { flow: 'wallet' });
+      report.log.event('sign-in window signed in with no opener');
       show({ view: 'done-no-opener' });
       return;
     }
-    log.event('sign-in window sends its result', { flow: 'wallet' });
+    report.log.event('sign-in window sends its result');
     deliver(result);
   }
 
@@ -435,14 +444,14 @@ export function createWindowFlow({
         try {
           phraseCheck = await loadPhrase();
         } catch (error) {
-          reportLazyMiss({ flow: 'wallet', step: 'phrase_import', error });
+          reportLazyMiss({ report, step: 'phrase_import', error });
           showFailed();
           return;
         }
         show({ view: 'phrase' });
         return;
       case 'resume':
-        log.event('sign-in window resumes the stored sign-in', { flow: 'wallet' });
+        report.log.event('sign-in window resumes the stored sign-in');
         await sendStored(await readStored());
         return;
       case 'signin':
@@ -475,7 +484,7 @@ export function createWindowFlow({
       reportLocalWalletFailure(failure, 'save');
       throw failure;
     }
-    log.event('sign-in window saved a recovery phrase wallet', { flow: 'wallet' });
+    report.log.event('sign-in window saved a recovery phrase wallet');
     // A paired session stays, so the user can switch back to it.
     let session: SessionResult['session'];
     try {
@@ -545,7 +554,7 @@ export function createWindowFlow({
         name: 'another',
         view: 'continue',
         async run() {
-          log.event('sign-in window uses another account', { flow: 'wallet' });
+          report.log.event('sign-in window uses another account');
           // Tells the phone and clears the paired session. A failure is reported by the logout itself. The phone keeps
           // this browser listed until it is told, so the window goes on only once it was, or the user chooses to. Try
           // again on that failure tells the same session once more.
@@ -568,7 +577,7 @@ export function createWindowFlow({
           if (screen.get().failure !== 'phone') {
             return;
           }
-          log.event('sign-in window goes on with the phone not told', { flow: 'wallet' });
+          report.log.event('sign-in window goes on with the phone not told');
           await leaveForAnother();
         },
         failure: 'step',
@@ -713,6 +722,6 @@ function reportStepFailure(error: unknown, name: StepName): void {
     what: `session window ${name}`,
     step: STEPS,
     reason: name,
-    metric: S.SESSION_WINDOW_FLOW,
+    metric: sessionWindowFlowMetric,
   });
 }

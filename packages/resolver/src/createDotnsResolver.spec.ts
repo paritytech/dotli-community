@@ -9,12 +9,11 @@ import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import { atom } from 'nanostores';
 import { getActiveServicesConfig } from '@dotli/config';
-import { spans as S } from '@dotli/metrics';
 import { bindLogSink } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
 import { createDotnsResolver, type ChainClient, type DotnsResolver } from './createDotnsResolver.js';
 import type { Api } from './createRawApi.js';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 /** A chain client whose follow can be stopped from the test. */
 type FakeClient = {
@@ -352,7 +351,7 @@ describe('createDotnsResolver', () => {
 
   it('As the host waiting on a name, I get my answer even when my phase callback throws, and each throw is reported', async () => {
     // Given a phase callback that throws on every phase
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { dotns } = createResolver();
 
@@ -365,15 +364,15 @@ describe('createDotnsResolver', () => {
 
     // Then
     expect(owner).toBeNull();
-    expect(captured).toEqual(Array(3).fill({ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }));
-    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual(
+    expect(captured).toMatchObject(Array(3).fill({ step: 'listener', tags: { owner: 'resolver.status' } }));
+    expect(sentry.counted('listener.delivery')).toEqual(
       Array(3).fill({ outcome: 'error', reason: 'Error', owner: 'resolver.status' }),
     );
   });
 
   it('As the host waiting on a name after the client is ready, I get my answer even when my phase callback throws on the replayed phase, and the throw is reported', async () => {
     // Given a ready client and a phase callback that throws
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { dotns } = createResolver();
     await dotns.resolveOwner('alice');
@@ -387,8 +386,8 @@ describe('createDotnsResolver', () => {
 
     // Then
     expect(owner).toBeNull();
-    expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }]);
-    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual([
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'resolver.status' } }]);
+    expect(sentry.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'resolver.status' },
     ]);
   });

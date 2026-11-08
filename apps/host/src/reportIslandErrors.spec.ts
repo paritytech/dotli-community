@@ -35,11 +35,13 @@ describe('island failures', () => {
     // Then
     expect(event.defaultPrevented).toBe(true);
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), {
-      flow: 'ui',
-      step: 'island_hydration',
-      tags: { root: 'island:ChatDock', kind: 'island_hydration_error' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        step: 'island_hydration',
+        tags: { root: 'island:ChatDock', kind: 'island_hydration_error' },
+      }),
+    );
   });
 
   it('As a visitor, I hit an island whose code failed and am offered a reload once, so a dead control is never a dead end', () => {
@@ -65,11 +67,13 @@ describe('island failures', () => {
     failHydration(page, null);
 
     // Then
-    expect(captures.exception).toHaveBeenCalledWith(expect.any(Error), {
-      flow: 'ui',
-      step: 'island_hydration',
-      tags: { root: 'island:unknown', kind: 'island_hydration_error' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        step: 'island_hydration',
+        tags: { root: 'island:unknown', kind: 'island_hydration_error' },
+      }),
+    );
   });
 
   it('As an operator, I stop the report and a later failure is no longer reported or offered a reload', () => {

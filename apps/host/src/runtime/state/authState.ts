@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createListenerSet, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
+
+const report = createReporter({ flow: 'wallet' });
 
 const auth = atom<DotliAuthState>({ tag: 'Restoring' });
 registerAtomReset(auth);
@@ -13,7 +15,7 @@ const session = atom<boolean>(false);
 registerAtomReset(session);
 const store: ReadableAtom<DotliAuthState> = auth;
 const loggedInStore: ReadableAtom<boolean> = session;
-const steps = createListenerSet<DotliAuthState>({ onListenerError: reportListener('wallet', 'auth_state.step') });
+const steps = createListenerSet<DotliAuthState>({ onListenerError: report.listener('auth_state.step') });
 
 /** The page's auth step, and whether the user is logged in. */
 export const authState = {

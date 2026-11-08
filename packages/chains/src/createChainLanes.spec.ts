@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { bindLogSink, isRecord } from '@dotli/shared';
 import { catchError, must, nth } from '@dotli/shared/testing';
 import type {
@@ -399,7 +398,7 @@ describe('createChainLanes', () => {
 
   it("As an RPC chain, I report and halt when a new lane's transport cannot be built", () => {
     // Given lane 0 full, and no transport for a second lane
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport } = createTransports({ faults: { 1: 'null' } });
@@ -411,15 +410,15 @@ describe('createChainLanes', () => {
     consumer.connection.send(createFollow(2));
 
     // Then the build is reported, the chain halts naming the lane, and the follow is answered with an error
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_lane_build' }]);
-    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toMatchObject([{ step: 'chain_lane_build' }]);
+    expect(metrics.counted('chain_pool.lane_open')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(halts).toEqual([expect.objectContaining({ message: `${LABEL} lane 1 could not be built` })]);
     expect(readAnswer(consumer, 2)).toHaveProperty('error');
   });
 
   it('As an RPC chain, I report a follow whose session cannot open on a new lane, and answer it with an error', () => {
     // Given lane 0 full, and a second lane whose connection throws on opening
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport } = createTransports({ faults: { 1: 'open' } });
@@ -431,8 +430,8 @@ describe('createChainLanes', () => {
     consumer.connection.send(createFollow(2));
 
     // Then the session's failure is reported, the follow is answered with an error, and the chain does not halt
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_lane_session' }]);
-    expect(metrics.counted(S.CHAIN_LANE_OPEN)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toMatchObject([{ step: 'chain_lane_session' }]);
+    expect(metrics.counted('chain_pool.lane_open')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(readAnswer(consumer, 2)).toHaveProperty('error');
     expect(halts).toEqual([]);
   });
@@ -496,7 +495,7 @@ describe('createChainLanes', () => {
 
   it('As an RPC chain, I report and halt when closing an empty extra lane throws', () => {
     // Given lane 0 full, and a consumer homed on lane 1, whose close throws
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     onTestFinished(bindLogSink({ emit: () => undefined }));
     const { createTransport } = createTransports({ faults: { 1: 'disconnect' } });
@@ -508,8 +507,8 @@ describe('createChainLanes', () => {
     extra.connection.disconnect();
 
     // Then the close's failure is reported, and the chain halts with its error
-    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_lane_close' }]);
-    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(captured).toMatchObject([{ step: 'chain_lane_close' }]);
+    expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(halts).toEqual([FAULT]);
   });
 

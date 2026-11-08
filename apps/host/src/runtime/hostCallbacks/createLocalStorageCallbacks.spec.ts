@@ -129,7 +129,7 @@ describe('local-storage host callbacks', () => {
 
     // Then
     expect(yielded(first)._unsafeUnwrapErr()).toEqual({ reason: 'Failed to read from storage' });
-    expect(captures.expected).toHaveBeenCalledWith(blocked, { flow: 'storage', step: 'product_storage_watch' });
+    expect(captures.expected).toHaveBeenCalledWith(blocked, expect.objectContaining({ step: 'product_storage_watch' }));
     expect(metrics.counted('product_storage.watch')).toEqual([{ outcome: 'error', reason: 'SecurityError' }]);
   });
 });

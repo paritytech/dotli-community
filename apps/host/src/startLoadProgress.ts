@@ -10,7 +10,8 @@ import type { ResolvePhase } from '@dotli/resolver';
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingController, type LoadingPhase } from './createLoadingController.js';
 import type { ResolutionTrace } from './startResolutionTrace.js';
-import { log, realTimers, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { productState } from './runtime/state/productState.js';
 import { networkMonitorState, type ChainPhase } from './state/networkMonitorState.js';
 import { createChainPhaseTracker } from './createChainPhaseTracker.js';
@@ -18,6 +19,8 @@ import { getChainTelemetryName } from './getChainTelemetryName.js';
 import { readPageClock } from './readPageClock.js';
 import { describeProgressStall, describeStall, isCriticalChain, type CriticalChain } from './warnings.js';
 import { STILL_WORKING } from './stillWorking.js';
+
+const report = createReporter({ flow: 'chain' });
 
 export type ContentProgressFacts = {
   bytesFetched: number;
@@ -462,8 +465,7 @@ function createChainReporter({ flowId, timers, debugBus }: CreateChainReporterPa
     }
     const peers = peersByRole.get(role);
     if (phaseChanged) {
-      log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
-        flow: 'chain',
+      report.log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
         ...(peers === undefined ? {} : { peers }),
         ...(event.reason === undefined ? {} : { reason: event.reason }),
       });

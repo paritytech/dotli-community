@@ -4,15 +4,17 @@
 // The lite username the network holds for the local wallet's identity account, read until the network answers once
 // per page and cached in the shared wallet record so the next boot activates with it.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import type { LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../lazy.js';
 import { parsePolkadotAccount } from './polkadotAccount.js';
 import { readPeopleUsernames } from './readPeopleUsernames.js';
 import { siteWallet } from './session/siteWallet.js';
-import { reportLocalWalletFailure, type LocalWalletFailureReason } from './walletFailure.js';
+import { reportLocalWalletFailure, walletLocalActivateMetric, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 type Params = {
   /**
@@ -44,10 +46,9 @@ export function createLiteUsernameRefresh({ readLiteUsername, saveIdentity, repo
       name = await readLiteUsername(identityAccountId);
     } catch (error) {
       // People unreachable from this backend is the environment, and the cached name still serves.
-      reportExpected(error, {
-        flow: 'wallet',
+      report.expected(error, {
         step: 'lite_username_read',
-        metric: S.WALLET_LOCAL_ACTIVATE,
+        metric: walletLocalActivateMetric,
         reason: 'username-read',
         message: '[dot.li wallet] lite username read failed, keeping the cached name:',
       });

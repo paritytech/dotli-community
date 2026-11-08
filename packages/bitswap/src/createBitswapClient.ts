@@ -6,7 +6,7 @@
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { TIMEOUTS } from '@dotli/config';
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
@@ -14,7 +14,6 @@ import {
   createSharedRun,
   fromHex,
   isChainHaltedRpcError,
-  log,
   setErrorName,
   realTimers,
   serializeError,
@@ -23,6 +22,14 @@ import {
 } from '@dotli/shared';
 
 import { BITSWAP_ERRORS, errorCode, withCode } from './errors.js';
+
+const report = createReporter({ flow: 'content' });
+
+/**
+ * A Bulletin connection the bitswap client failed to close after its last fetch. Tag `outcome` (`error`) and `reason`
+ * (the error name).
+ */
+const contentBitswapReleaseMetric = defineCount<'error'>('content.bitswap_release');
 
 type Params = {
   /** The Bulletin chain's provider, read at each dial, or null when the caller has no connection for Bulletin. */
@@ -171,10 +178,9 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     try {
       held.disconnect();
     } catch (error) {
-      reportDefect(error, {
-        flow: 'content',
+      report.defect(error, {
         step: 'bitswap_release',
-        metric: S.CONTENT_BITSWAP_RELEASE,
+        metric: contentBitswapReleaseMetric,
         message: '[dot.li bitswap] closing the Bulletin connection failed:',
       });
     }
@@ -249,7 +255,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
       Math.max(1, attempts.deadline - timers.now()),
     );
     // Expected while providers are found, so a breadcrumb. The final failure goes back to the caller.
-    log.event('Bitswap retry', { flow: 'content', cid, attempt: attempts.made, code, delay_ms: delay });
+    report.log.event('Bitswap retry', { cid, attempt: attempts.made, code, delay_ms: delay });
     return new RetryLater(delay, error);
   }
 

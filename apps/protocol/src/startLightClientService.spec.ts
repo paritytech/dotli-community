@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LightClient } from '@dotli/chains';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
@@ -106,7 +106,7 @@ describe('startLightClientService', () => {
     // Then
     expect(thrown).toBeUndefined();
     expect(report).toEqual({ error: PEOPLE_FAILURE, step: 'people_warm' });
-    expect(metrics.counted(S.PROTOCOL_PEOPLE_WARM)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('protocol.people_warm')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(warnings.map(line => line.args)).toEqual([
       ['[dot.li protocol] People chain warm failed (retried on demand)', PEOPLE_FAILURE],
     ]);

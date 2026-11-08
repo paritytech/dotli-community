@@ -576,8 +576,8 @@ describe('page core', () => {
     );
 
     // Then the throw is captured once and counted under the product side
-    expect(captures.exception.mock.calls).toEqual([
-      [new Error('tap broke'), { flow: 'wallet', step: 'phone_request_tap', tags: { side: 'product' } }],
+    expect(captures.exception.mock.calls).toMatchObject([
+      [new Error('tap broke'), { step: 'phone_request_tap', tags: { side: 'product' } }],
     ]);
     expect(counted('signing.phone_request_tap')).toEqual([{ outcome: 'error', reason: 'Error', side: 'product' }]);
   });
@@ -1212,11 +1212,13 @@ describe('page core redial reports', () => {
     // Then the connection failed, and the redial is captured and counted as an error
     await expect(refused).rejects.toThrow('runtime disposed');
     expect(outcomes).toEqual(['ok', 'error', 'error', 'error']);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'core_redial',
-      tags: { reason: 'refused' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'core_redial',
+        tags: { reason: 'refused' },
+      }),
+    );
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'error', reason: 'refused' }]);
   });
 

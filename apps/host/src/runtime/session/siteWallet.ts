@@ -4,8 +4,16 @@
 // This site's local wallet, which the protocol frame keeps in the shared store under this site's id.
 
 import { SITE_ID } from '@dotli/config';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { getProtocolClient, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A wallet read made to check the page's sign-in failed. Expected. Tagged `outcome` (error) and `reason` (the
+ * error's name).
+ */
+const sessionWalletReadMetric = defineCount<'error'>('session.wallet_read');
 
 /** A wallet read, or why the frame could not answer it. */
 export type WalletRead = LocalWalletReadResult | { status: 'failed'; error: unknown };
@@ -37,7 +45,7 @@ export const siteWallet: SiteWallet = {
 
 /** Counts a failed wallet read made to check the page's sign-in as the environment's failure. Never throws. */
 export function recordPresenceWalletReadFailure(error: unknown): void {
-  reportExpected(error, { flow: 'wallet', step: 'presence_wallet_read', metric: S.SESSION_WALLET_READ });
+  report.expected(error, { step: 'presence_wallet_read', metric: sessionWalletReadMetric });
 }
 
 /** The wallet read, or the failure of a read that rejected or threw. Never rejects. */

@@ -15,7 +15,7 @@ import {
   type Backend,
 } from '@dotli/config';
 import type { SandboxBlockRelay } from '@dotli/bitswap';
-import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
@@ -56,6 +56,23 @@ import { startShieldAutoHide } from './startShieldAutoHide.js';
 import { urlPillState, type ShieldState } from './state/urlPillState.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { readPageClock } from './readPageClock.js';
+import { cacheReadMetric } from './cacheReadMetric.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const resolveReport = createReporter({ flow: 'resolve' });
+const contentReport = createReporter({ flow: 'content' });
+
+/**
+ * Count. The failure screen of a load whose product was already on screen threw. Tagged `outcome` (error) and
+ * `reason` (the error's name).
+ */
+const resolveFailureScreenMetric = defineCount<'error'>('resolve.failure_screen');
+
+/** From CID cache hit to content rendered. */
+const E2E_FAST = 'e2e.fast_path';
+
+/** CID cache miss, then resolve, fetch and render. */
+const E2E_SLOW = 'e2e.slow_path';
 
 /** What the loader reaches outside itself, one member per owner. */
 export type LoaderPorts = {
@@ -209,7 +226,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     debugBus = pageDebugBus,
   } = options;
   const attempt = beginAttempt(label);
-  log.event('Route: app', { flow: 'boot', label, attempt: attempt.attemptNumber, entry: attempt.entry });
+  bootReport.log.event('Route: app', { label, attempt: attempt.attemptNumber, entry: attempt.entry });
   // On every event, so errors and the resolution span join into journeys without a second id.
   m.setDefaults({
     journey_id: attempt.journeyId,
@@ -286,8 +303,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     const description = describeError(error, { readBackend: () => backend });
     // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
     const dependency = hasLightClient(backend) ? 'smoldot' : 'asset-hub-rpc';
-    captureException(error, {
-      flow: 'resolve',
+    resolveReport.capture(error, {
       step,
       span: trace.span,
       tags: {
@@ -324,10 +340,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     try {
       failLoad(error);
     } catch (screenError: unknown) {
-      reportDefect(screenError, {
-        flow: 'resolve',
+      resolveReport.defect(screenError, {
         step: 'failure_screen',
-        metric: S.RESOLVE_FAILURE_SCREEN,
+        metric: resolveFailureScreenMetric,
         message: `[dot.li] The failure screen for ${failure} failed:`,
       });
     }
@@ -341,12 +356,12 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       }
       pageTopbarAutoHide.setContentShown(outcome === 'loaded');
       if (outcome === 'loaded') {
-        log.event('Content loaded', { flow: 'content' });
+        contentReport.log.event('Content loaded');
         endJourney();
         trace.finish('rendered');
         return;
       }
-      log.event('Content failed', { flow: 'content', failed_step: failedStep ?? 'unknown' });
+      contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
       trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
     });
   }
@@ -417,8 +432,8 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   }
   /** Launches the copy the CID cache served, then has it checked against the network. Rejects when it is refused. */
   async function loadCached(cached: CachedEntry): Promise<void> {
-    m.count(S.CACHE_READ, { outcome: 'hit', surface: 'cid_cache' });
-    log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
+    cacheReadMetric.count({ outcome: 'hit', surface: 'cid_cache' });
+    resolveReport.log.event('CID cache hit', { cid: cached.cid });
     trace.recordNameResolved(cached.cid);
     // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
     const cachedManifests = fromCachedManifest(cached.manifests);
@@ -429,7 +444,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       cidCache.revalidateLater({ label, servedCid: cached.cid, onScreen: false });
       throw error;
     }
-    const live = await m.span(S.E2E_FAST, () => {
+    const live = await m.span(E2E_FAST, () => {
       settleShield();
       return render(cached.cid, cachedManifests);
     });
@@ -438,8 +453,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
     settleRendered(cachedManifests);
     performance.mark('dotli:main:end');
-    log.event('Sandbox mounted', {
-      flow: 'resolve',
+    resolveReport.log.event('Sandbox mounted', {
       path: 'cache',
       total_ms: Math.round(readClock() - startedAt),
     });
@@ -454,9 +468,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
    */
   async function loadCold(): Promise<void> {
     if (cidCacheResult === 'miss') {
-      m.count(S.CACHE_READ, { outcome: 'miss', surface: 'cid_cache' });
+      cacheReadMetric.count({ outcome: 'miss', surface: 'cid_cache' });
     }
-    log.event(cidCacheResult === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
+    resolveReport.log.event(cidCacheResult === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss');
 
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = readClock();
@@ -479,7 +493,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
     enterStep('manifest_read');
     const manifests = await manifestsRead;
-    log.event('Manifests read', { flow: 'resolve', root: manifests.root.kind, app: manifests.app.kind });
+    resolveReport.log.event('Manifests read', { root: manifests.root.kind, app: manifests.app.kind });
     enterStep('launch_gate');
     assertLaunchable(manifests.root, manifests.app);
 
@@ -493,13 +507,12 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
     settleRendered(manifests);
 
-    m.distribution(S.E2E_SLOW, readClock() - coldStartMs, {
+    m.distribution(E2E_SLOW, readClock() - coldStartMs, {
       unit: 'millisecond',
       attributes: { outcome: 'ok', chain_backend: backend },
     });
     performance.mark('dotli:main:end');
-    log.event('Sandbox mounted', {
-      flow: 'resolve',
+    resolveReport.log.event('Sandbox mounted', {
       path: 'cold',
       total_ms: Math.round(readClock() - startedAt),
     });
@@ -521,7 +534,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       payload: { label, source: resolveSource },
     });
 
-    log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend });
+    resolveReport.log.event('Resolving name', { name: withActiveTld(`app.${label}`), backend });
     const cid = await names.resolveProduct(label, {
       onPhase: phase => {
         progress.resolvePhase(phase);
@@ -548,8 +561,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     log.debug(
       `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(resolveStart, { now: readClock() })} (total ${formatElapsed(startedAt, { now: readClock() })}) -> ${cid ?? 'null'}`,
     );
-    log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
-      flow: 'resolve',
+    resolveReport.log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
       ms: Math.round(readClock() - resolveStart),
       ...(cid !== null ? { cid } : {}),
     });

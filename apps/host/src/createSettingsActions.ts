@@ -4,7 +4,7 @@
 // Settings persistence and the reset that applies them. Imports no Solid and loads eagerly because the host's boot
 // resets through it when a URL changes the settings, before any island has loaded.
 
-import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { pageLocalStorage } from '@dotli/shared';
 import { markAndReload, type Continuation } from './createContinuation.js';
 import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
@@ -13,6 +13,16 @@ import { blockCache, cidCache } from '@dotli/storage';
 import { pendingResets, type PendingResetTarget } from './runtime/createPendingResets.js';
 import { writeSharedSettings } from './runtime/sharedMode.js';
 import { wipeOriginState, type WipeFailure } from './wipeOriginState.js';
+
+const storageReport = createReporter({ flow: 'storage' });
+const uiReport = createReporter({ flow: 'ui' });
+
+/**
+ * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
+ * screen's backend switch. Tagged `outcome` and, on error, `reason` (the step that failed: `wipe`, `cid_cache`,
+ * `block_cache` or `pending_reset`, or the error's name for a step that threw), as the reload follows either way.
+ */
+const settingsApplyMetric = defineCount<'error' | 'ok'>('settings.apply');
 
 /** Each step reports its own failures and resolves, so a rejection here is a fault `applyAndReset` reports. */
 export type SettingsActionsParams = {
@@ -72,13 +82,12 @@ export function createSettingsActions({
     function fail(step: ApplyStep, expected?: { error: unknown; message: string }): void {
       failed.push(step);
       if (expected === undefined) {
-        m.count(S.SETTINGS_APPLY, { outcome: 'error', reason: step });
+        settingsApplyMetric.count({ outcome: 'error', reason: step });
         return;
       }
-      reportExpected(expected.error, {
-        flow: 'storage',
+      storageReport.expected(expected.error, {
         step: 'settings_apply',
-        metric: S.SETTINGS_APPLY,
+        metric: settingsApplyMetric,
         reason: step,
         message: expected.message,
       });
@@ -114,7 +123,7 @@ export function createSettingsActions({
       url.replace(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
     }
     if (failed.length === 0) {
-      m.count(S.SETTINGS_APPLY, { outcome: 'ok' });
+      settingsApplyMetric.count({ outcome: 'ok' });
     }
   }
 
@@ -127,10 +136,9 @@ export function createSettingsActions({
       await apply({ next, prior, forceFullWipe });
     } catch (error: unknown) {
       // Beside the steps that count themselves. The error's class is in the capture.
-      reportDefect(error, {
-        flow: 'ui',
+      uiReport.defect(error, {
         step: 'settings_apply',
-        metric: S.SETTINGS_APPLY,
+        metric: settingsApplyMetric,
         message: '[dot.li settings] Save & Apply failed:',
         reason: 'fault',
       });

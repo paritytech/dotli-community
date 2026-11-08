@@ -6,9 +6,11 @@
 
 import { BASE_DOMAIN } from '@dotli/config';
 import { dotNsUrl, isValidDotName } from '@dotli/resolver';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { parseDotLabel } from './parseDotLabel.js';
 import { parsePreviewTargetUrl } from './parsePreviewTargetUrl.js';
+
+const report = createReporter({ flow: 'boot' });
 
 export type ShellLocation = Pick<Location, 'hostname' | 'pathname' | 'search' | 'hash'>;
 
@@ -162,7 +164,7 @@ export function leaveForLanding({ location, localRoot }: LeaveForLandingParams):
   if (origin === location.origin && pathname === '/') {
     throw new Error(`leaveForLanding: ${origin}/ answered with the shell, not the landing page`);
   }
-  log.event('Route: landing page elsewhere', { flow: 'boot' });
+  report.log.event('Route: landing page elsewhere');
   location.replace(`${origin}/${search}`);
 }
 

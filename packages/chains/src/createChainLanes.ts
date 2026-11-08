@@ -5,7 +5,7 @@
 // the follow limit its transport states. Lane 0 lives as long as the lanes. Another lane opens when no lane has room
 // and closes once no session is on it.
 
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { runEvery } from '@dotli/shared';
 import type { BrokerConnection } from './brokerMessages.js';
 import type { BrokerWarner } from './createBrokerWarner.js';
@@ -14,6 +14,22 @@ import { createLaneRouter, type LaneConnectParams, type LaneHandle } from './cre
 import { createPausableTransport, type PausableTransport } from './createPausableTransport.js';
 import { createWatchGuard, type WatchGuard } from './createWatchGuard.js';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * Count. A chain's lane that could not be built, a consumer's session that could not open on another lane, or the
+ * network panel's follow that could not open, told apart by the `step` tag (`chain_lane_build`, `chain_lane_session`,
+ * `chain_pool_watch_follow`). Tagged `outcome` (error) and `reason` (the error's name).
+ */
+export const chainLaneOpenMetric = defineCount<'error'>('chain_pool.lane_open');
+
+/**
+ * Count. A held chain whose teardown threw as the pool closed it, whose pause or resume threw, or whose empty extra
+ * lane threw as it closed, told apart by the `step` tag (`chain_pool_close`, `chain_pool_pause`, `chain_pool_resume`,
+ * `chain_lane_close`). Tagged `outcome` (error) and `reason` (the error's name).
+ */
+export const chainPoolCloseMetric = defineCount<'error'>('chain_pool.close');
 
 /** The lanes of one chain, which keep each connection under the chain's follow limit. */
 export type ChainLanes = NonNullable<ReturnType<typeof createChainLanes>>;
@@ -122,10 +138,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
       lane = createLane(id, transport);
     } catch (cause) {
       const error = new Error(`${label} lane ${String(id)} could not be built`, { cause });
-      reportDefect(error, {
-        flow: 'protocol',
+      report.defect(error, {
         step: 'chain_lane_build',
-        metric: S.CHAIN_LANE_OPEN,
+        metric: chainLaneOpenMetric,
         message: `${LANES_TAG} building ${label} lane ${String(id)} failed:`,
       });
       reportHalt(error);
@@ -205,10 +220,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     } catch (error) {
       // A consumer's home session throws to whoever connects it. A follow's failure has no caller to throw to, so it is reported here.
       if (role === 'follow') {
-        reportDefect(error, {
-          flow: 'protocol',
+        report.defect(error, {
           step: 'chain_lane_session',
-          metric: S.CHAIN_LANE_OPEN,
+          metric: chainLaneOpenMetric,
           message: `${LANES_TAG} opening ${params.sessionId} on ${label} lane ${String(lane.id)} failed:`,
         });
       }
@@ -243,10 +257,9 @@ export function createChainLanes({ label, createTransport, warn, paused: initial
     try {
       lane.broker.disconnectAll();
     } catch (error) {
-      reportDefect(error, {
-        flow: 'protocol',
+      report.defect(error, {
         step: 'chain_lane_close',
-        metric: S.CHAIN_POOL_CLOSE,
+        metric: chainPoolCloseMetric,
         message: `${LANES_TAG} closing ${label} lane ${String(lane.id)} once empty failed:`,
       });
       reportHalt(error);

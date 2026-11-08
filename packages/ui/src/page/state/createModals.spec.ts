@@ -4,8 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createModals, type ModalHandoff, type ModalView } from './createModals.js';
 import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 type Choice = 'yes' | 'no' | 'dismissed';
 
@@ -325,7 +324,7 @@ describe('a dialog that hands its place to a second view', () => {
 
   it('As a product, I still get my answer when the handoff throws, and the failure is reported', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
     const asked = modals.open(buildView('Review'), {
@@ -342,7 +341,7 @@ describe('a dialog that hands its place to a second view', () => {
     expect(modals.store.get()).toEqual([]);
     expect(captured.map(capture => capture.step)).toEqual(['modal_handoff']);
     expect(logged).toHaveLength(1);
-    expect(sentry.counted(S.MODAL_HANDOFF)).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(sentry.counted('modal.handoff')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
 
   it('As a page whose overlays broke, I refuse every dialog and a handed-off view gets its dismiss result', () => {

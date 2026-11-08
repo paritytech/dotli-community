@@ -5,7 +5,6 @@ import { getErrorName, log } from '@dotli/shared';
 
 import { captureException, type CaptureContext } from './captureException.js';
 import { m } from './metrics.js';
-import type { MetricOutcome } from './types.js';
 
 type Params = {
   /** The outcome metric the failure is counted under. */
@@ -15,7 +14,7 @@ type Params = {
   /** Defaults to the error's class name, or `unknown` for a thrown non-error. */
   reason?: string;
   /** Defaults to `error`. */
-  outcome?: MetricOutcome;
+  outcome?: string;
   /** Extra count attributes beside `outcome` and `reason`, from a closed set. */
   attributes?: Record<string, string>;
   /** The logger that writes the line, the root `log` by default, so a child logger keeps its context. */

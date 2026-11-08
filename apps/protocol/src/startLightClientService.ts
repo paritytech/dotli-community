@@ -8,9 +8,17 @@ import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import type { ChainRole, FixedServicesConfig } from '@dotli/config/fixed';
 import { createChainPool, LIGHT_CLIENT_FOLLOW_LIMIT, requireBrokerLocalProvider } from '@dotli/chains';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 
 import { observeChains } from './observeChains.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * The People chain the protocol frame or its SharedWorker warms in the background failed to sync, so the first read of
+ * People waits on it instead. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const protocolPeopleWarmMetric = defineCount<'error'>('protocol.people_warm');
 
 export type LightClientResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
   Pick<typeof Chains.chainSync, 'enableSyncReporting'>;
@@ -71,10 +79,9 @@ export function startLightClientService({ lightClient, resolver, services }: Par
 
   function warmPeople(logTag: string): void {
     void dotns.waitForPeopleFinalized().catch((error: unknown) => {
-      reportExpected(error, {
-        flow: 'protocol',
+      report.expected(error, {
         step: 'people_warm',
-        metric: S.PROTOCOL_PEOPLE_WARM,
+        metric: protocolPeopleWarmMetric,
         message: `${logTag} People chain warm failed (retried on demand)`,
       });
     });

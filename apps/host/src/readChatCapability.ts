@@ -4,8 +4,16 @@
 // Whether the product declares `includes.chat` in its worker manifest. The product frame picks the connection's
 // execution kind from it, so the last answer is cached per label to keep warm loads off a dotNS read.
 
-import { reportDefect, spans as S } from '@dotli/metrics';
-import { log, pageLocalStorage, type SafeStorage } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { pageLocalStorage, type SafeStorage } from '@dotli/shared';
+
+const report = createReporter({ flow: 'chat' });
+
+/**
+ * Count. The worker manifest read that tells whether a product declares chat failed, so chat is off for that load.
+ * Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const chatCapabilityMetric = defineCount<'error'>('chat.capability');
 
 /** Keeps the last answer per label for the next load. */
 export type CapabilityCache = ReturnType<typeof createStorageCapabilityCache>;
@@ -21,8 +29,6 @@ type CreateStorageCapabilityCacheParams = {
 };
 
 const CACHE_PREFIX = 'dotli:chat-capable:';
-
-const chatLog = log.createChild({ flow: 'chat' });
 
 /**
  * Whether `label` declares chat: the cached answer when there is one, so it never waits on the read, else the read's.
@@ -41,12 +47,10 @@ export function readChatCapability(
       return chat;
     },
     (error: unknown) => {
-      reportDefect(error, {
-        flow: 'chat',
+      report.defect(error, {
         step: 'capability_read',
-        metric: S.CHAT_CAPABILITY,
+        metric: chatCapabilityMetric,
         message: '[dot.li chat] worker manifest unreadable, chat is off for this load:',
-        logger: chatLog,
       });
       return false;
     },

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainPool } from '@dotli/chains';
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createAsyncTaskPool, realTimers, type Timers } from '@dotli/shared';
+
+const report = createReporter({ flow: 'protocol' });
 
 type Params = {
   /** The pool whose chains are held. */
@@ -20,7 +22,7 @@ type Params = {
 const RETAKE_DELAY_MS = 1_000;
 
 // A re-take that throws is a defect in the pool. It is reported, and the other chains stay watched.
-const reportRetake = reportListener('protocol', 'sync_observer.retake');
+const reportRetake = report.listener('sync_observer.retake');
 
 /**
  * Holds an idle pool lease on each chain so its sync can be observed, and takes it again after the chain halts and the

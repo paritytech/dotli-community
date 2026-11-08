@@ -3,10 +3,17 @@
 
 // Tells the protocol frame whether the host's network is paused, so a frame in SharedWorker mode can pass it on.
 
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { FrameRpc } from './createFrameRpc.js';
 import type { ProtocolFrame } from './frameTypes.js';
 import { protocolSchema } from './schema.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A pause the host could not send to its frame. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const protocolFramePauseMetric = defineCount<'error'>('protocol.frame_pause');
 
 type Params = {
   /** The frame whose status says when a send can go. */
@@ -29,10 +36,9 @@ export function createFramePauseSender({ frame, rpc }: Params) {
       if (!isReady()) {
         return;
       }
-      reportDefect(error, {
-        flow: 'protocol',
+      report.defect(error, {
         step: 'frame_pause',
-        metric: S.PROTOCOL_FRAME_PAUSE,
+        metric: protocolFramePauseMetric,
         message: '[dot.li protocol] Frame pause send failed',
       });
     });

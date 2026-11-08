@@ -8,12 +8,11 @@
 // The round hands the main account to the action and never sends it, so nothing of the session itself, nor of a local
 // wallet, reaches the site.
 
-import { m, type MetricOutcome } from '@dotli/metrics';
+import { createReporter, type CountAttributes } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, createDeferred, log, isShallowEqual, markHandled, waitForStatus } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, isShallowEqual, markHandled, waitForStatus } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder } from '../sessionHandoff/createResponder.js';
-import type { SessionRoute } from '../sessionHandoff/sessionRoute.js';
 import type { RefusalReason } from '../sessionHandoff/sessionMessages.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
@@ -22,9 +21,9 @@ import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteGroups } from './createSiteGroups.js';
 import { reportSiteFailure, SITE_ROUND_STEP } from './reportSiteFailure.js';
 import { SiteRoundFailure, SiteRoundRefusal, SiteRoundRejected } from './siteRoundErrors.js';
+import type { SiteRoundWord, SiteRoute } from './siteRouteMetrics.js';
 
-/** The routes a site's round runs on: its sign-in and its transaction. */
-export type SiteRoute = Extract<SessionRoute, 'auth' | 'sign'>;
+const report = createReporter({ flow: 'wallet' });
 
 /** What the round needs of a site's request, whatever its route. */
 export type SiteRoundRequest = {
@@ -64,12 +63,24 @@ export type SiteScreen =
   | { view: 'window' }
   | SiteActionScreen;
 
+/** An action's metric as the round counts on it: the action's result outcomes and the round's own words. */
+type SiteMetric<Outcome extends string> = {
+  /** The metric's name, since the round's failure reporters take the metric whole. */
+  readonly name: string;
+  /** Counts one outcome of the round with its reason. Never throws. */
+  readonly count: (
+    attributes: Omit<CountAttributes<SiteRoundWord>, 'outcome'> & { outcome: Outcome | SiteRoundWord },
+  ) => void;
+};
+
 /** What a route does for the main account once the round has the user's grant. */
-export type SiteAction<Result> = {
+export type SiteAction<Result, Outcome extends string> = {
   /** The route the action runs on, which the round's views are named for. */
   route: SiteRoute;
-  /** The outcome a result counts with. */
-  outcome(result: Result): MetricOutcome;
+  /** The count every outcome of the round goes to. */
+  metric: SiteMetric<Outcome>;
+  /** The outcome `result` counts as. Never throws. */
+  outcome(result: Result): Outcome;
   /**
    * Runs the route for `main` and resolves with the site's result. It rejects with a {@link SiteRoundRefusal}, a
    * {@link SiteRoundRejected} or a {@link SiteRoundFailure} to end or fail the round. `confirmed` resolves on the user's
@@ -90,7 +101,7 @@ export type SiteAction<Result> = {
   prepare?(signal: AbortSignal): void;
 };
 
-export type SiteRoundParams<Result> = {
+export type SiteRoundParams<Result, Outcome extends string> = {
   /** The site's request the round answers. */
   request: SiteRoundRequest;
   /** The vetted opener's origin, the site the round answers. */
@@ -120,9 +131,7 @@ export type SiteRoundParams<Result> = {
   /** Closes the window. */
   close: () => void;
   /** What the route does once the round has the user's grant. */
-  action: SiteAction<Result>;
-  /** The count the round's outcomes go to. */
-  metric: string;
+  action: SiteAction<Result, Outcome>;
 };
 
 /** A site's round: its view and what the user does on it. */
@@ -141,7 +150,7 @@ type SiteGroup = {
  * Starts a site's round for `request`, which judges the site's group and looks up its grant at once. The round answers
  * the site once through `responder` and closes the window once it ends.
  */
-export function createSiteRound<Result>({
+export function createSiteRound<Result, Outcome extends string>({
   request,
   origin,
   responder,
@@ -154,9 +163,8 @@ export function createSiteRound<Result>({
   randomToken,
   close,
   action,
-  metric,
-}: SiteRoundParams<Result>) {
-  const { route } = action;
+}: SiteRoundParams<Result, Outcome>) {
+  const { route, metric } = action;
   const working: SiteActionScreen = { view: 'site-signing', origin, route };
   const screen = atom<SiteScreen>(working);
   screen.eq = isShallowEqual;
@@ -199,15 +207,29 @@ export function createSiteRound<Result>({
     return wait.promise;
   }
 
-  /** Claims the round's last word for the caller to post, counted once. False once the round ended. */
-  function endRound(outcome: MetricOutcome, reason: string): boolean {
+  /** Claims the round's last word for the caller to post. Calls `count` only when it claims it. False once ended. */
+  function endRound(count: () => void): boolean {
     if (ended.signal.aborted) {
       return false;
     }
-    m.count(metric, { outcome, reason });
+    count();
     ended.abort();
     dropConfirm('The round ended');
     return true;
+  }
+
+  /** Ends the round with its own outcome counted, unless it already ended. */
+  function endCountedRound(outcome: 'refused' | 'cancelled', reason: string): boolean {
+    return endRound(() => {
+      metric.count({ outcome, reason });
+    });
+  }
+
+  /** Ends the round with the action's result counted, unless it already ended. */
+  function endResultRound(result: Result, grant: SiteGrant | null): boolean {
+    return endRound(() => {
+      metric.count({ outcome: action.outcome(result), reason: getGrantReason(grant) });
+    });
   }
 
   function reportGrantMiss(error: unknown, reason: GrantMiss): void {
@@ -216,10 +238,10 @@ export function createSiteRound<Result>({
 
   /** Refuses the site and closes the window, unless the round already ended. */
   function refuse(reason: RefusalReason): void {
-    if (!endRound('refused', reason)) {
+    if (!endCountedRound('refused', reason)) {
       return;
     }
-    log.event('site round refused', { flow: 'wallet', reason });
+    report.log.event('site round refused', { reason });
     responder.refuse(reason);
     // The window closes at once, so it shows the site no view of the refusal.
     close();
@@ -227,7 +249,7 @@ export function createSiteRound<Result>({
 
   /** Tells the site the user left and closes the window. */
   function cancelRound(): void {
-    if (endRound('cancelled', 'page')) {
+    if (endCountedRound('cancelled', 'page')) {
       responder.cancel();
     }
     close();
@@ -235,8 +257,8 @@ export function createSiteRound<Result>({
 
   /** Ends the round for the user's rejection of the action's request on the phone. */
   function endRejected(): void {
-    log.event('site round rejected on the phone', { flow: 'wallet' });
-    if (endRound('cancelled', 'phone')) {
+    report.log.event('site round rejected on the phone');
+    if (endCountedRound('cancelled', 'phone')) {
       responder.cancel();
     }
     close();
@@ -403,9 +425,9 @@ export function createSiteRound<Result>({
       return;
     }
     const kept = await keepGrant(grant, main);
-    if (endRound(action.outcome(result), getGrantReason(grant))) {
+    if (endResultRound(result, grant)) {
       responder.send(result, { siteToken: kept?.token });
-      log.event('site round sent its result', { flow: 'wallet' });
+      report.log.event('site round sent its result');
       closeOnceAnswered();
       return;
     }

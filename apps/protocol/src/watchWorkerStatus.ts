@@ -3,7 +3,7 @@
 
 // The iframe's one `frame.status` subscription to the protocol SharedWorker, and what its end means for this tab.
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import {
   createEndListeners,
   getFailure,
@@ -15,6 +15,8 @@ import {
 import { createListenerSet } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+
+const report = createReporter({ flow: 'protocol' });
 
 /**
  * How the worker's status ended for this tab: the worker's own end, as the worker sent it, or the link's transport
@@ -34,7 +36,7 @@ type Params = {
 
 /** Subscribes to the worker's status once, and tells each listener its end until it is disposed. */
 export function watchWorkerStatus({ transport, onReady }: Params) {
-  const ends = createListenerSet<WorkerEnd>({ onListenerError: reportListener('protocol', 'protocol.worker_status') });
+  const ends = createListenerSet<WorkerEnd>({ onListenerError: report.listener('protocol.worker_status') });
   let ended: WorkerEnd | null = null;
   const unsubscribe = transport.subscribe({
     method: protocolSchema.sections.frame.status,

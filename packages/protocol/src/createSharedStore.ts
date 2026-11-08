@@ -6,13 +6,15 @@
 
 import { atom, computed } from 'nanostores';
 import type { SiteId } from '@dotli/config';
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createListenerSet, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './createFeedKeeper.js';
 import type { FrameRpc } from './createFrameRpc.js';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
 import { protocolSchema, type LocalWalletIdentity, type LocalWalletRead, type SharedAuthChange } from './schema.js';
 import { subscribe } from './subscribe.js';
+
+const report = createReporter({ flow: 'protocol' });
 
 export type SharedAuthListener = (change: SharedAuthChange) => void;
 
@@ -61,7 +63,7 @@ const { storage, wallet: walletMethods } = protocolSchema.sections;
  */
 export function createSharedStore({ frame, rpc, timers = realTimers }: Params) {
   const sharedAuthListeners = createListenerSet<SharedAuthChange>({
-    onListenerError: reportListener('protocol', 'protocol.shared_auth'),
+    onListenerError: report.listener('protocol.shared_auth'),
   });
   // The sibling tabs' auth changes, heard on the frame there is now while anyone listens. Asking for its transport
   // boots a frame that is down, as a listener needs one.

@@ -7,7 +7,7 @@
 // first origin vetted is the one the window answers, alone, for the rest of the round, and the only one whose payload
 // it takes.
 
-import { m, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createDeferred, listen, log } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { OpenerParty, Party, SessionOpenerVerdict } from './openerRule.js';
@@ -24,6 +24,16 @@ import {
   type PayloadMessage,
   type RefusalReason,
 } from './sessionMessages.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A sign-in window that refused its opener, since a page outside the opener rule tried to sign in through it.
+ * Tagged `outcome` (`refused`) and `reason`, the rule's verdict: `app` for a product origin, `foreign` for another
+ * domain, `insecure` for a wrong scheme, `port` for a wrong port, `localhost` for a local opener of a deployed window
+ * and `malformed` for an origin that is not a bare one.
+ */
+const sessionWindowRefusedMetric = defineCount<'refused'>('session_window.refused');
 
 /**
  * Where the window stands with its opener. `connecting` waits for a vetted hello, as at the start and once restored
@@ -124,11 +134,11 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
     post(createRefusedMessage(round, 'origin_not_allowed'), origin);
     // The origin is the opener's to choose, so it goes to the log line and only the verdict to the count.
     log.warn(`[dot.li] Session window refused its opener (${verdict}): ${origin}`);
-    m.count(S.SESSION_WINDOW_REFUSED, { outcome: 'refused', reason: verdict });
+    sessionWindowRefusedMetric.count({ outcome: 'refused', reason: verdict });
   }
 
   function vet({ origin, party }: { origin: string; party: Party }): void {
-    log.event('session window vetted its opener', { flow: 'wallet' });
+    report.log.event('session window vetted its opener');
     if (held !== null && (!held.beforePin || party === 'first')) {
       answer({ origin, result: held.result, siteToken: held.siteToken });
       return;
@@ -185,7 +195,7 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
     if (kind !== 'vetted' && kind !== 'connecting') {
       return;
     }
-    log.event('session window restored, saying ready again', { flow: 'wallet' });
+    report.log.event('session window restored, saying ready again');
     store.set({ kind: 'connecting' });
     sayReady();
   }

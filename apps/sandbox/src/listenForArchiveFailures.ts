@@ -1,10 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { captureException } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { isRecord } from '@dotli/shared';
 
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
+
+const report = createReporter({ flow: 'content' });
 
 /**
  * Captures each archive failure the service worker reports to the page, until the returned stop is called. Failures
@@ -37,8 +39,7 @@ function captureArchiveFailure(event: MessageEvent<unknown>): void {
   if (typeof message.name === 'string' && message.name !== '') {
     error.name = message.name;
   }
-  captureException(error, {
-    flow: 'content',
+  report.capture(error, {
     step: message.stage === 'restore' ? 'sw_restore' : 'sw_persist',
     tags: { surface: 'app_sw' },
   });

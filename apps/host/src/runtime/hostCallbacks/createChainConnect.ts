@@ -20,7 +20,7 @@ import {
   type RemoteChainHalt,
 } from '@dotli/chains';
 import { hasLightClient } from '@dotli/config';
-import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { isRecord, log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import {
@@ -31,6 +31,14 @@ import {
   type HostChainSources,
 } from './createHostChainPool.js';
 import { createRedialGate, type RedialGate } from './createRedialGate.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A new lease on a host chain after its transport halted. Tagged `outcome` and, on error, `reason`: `no_transport` when
+ * the backend no longer serves the chain, `halted` when the new lease halted at once, or the error's name.
+ */
+const truapiChainReopenMetric = defineCount<'error' | 'ok'>('truapi_chain.reopen');
 
 type Params = {
   /** The pool the connections lease. The page's host chain pool by default. */
@@ -211,18 +219,17 @@ function createConnection({ genesisHash, pool, frame }: CreateConnectionParams):
       const provider = pool.getLocalProvider(genesisHash, { holder: 'truapi-core' });
       if (provider === null) {
         // The backend no longer serves this chain, as after a switch, so the product is answered at once.
-        log.event('chain has no transport after a halt', { flow: 'protocol', genesisHash });
-        m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: 'no_transport' });
+        report.log.event('chain has no transport after a halt', { genesisHash });
+        truapiChainReopenMetric.count({ outcome: 'error', reason: 'no_transport' });
         return null;
       }
       open(provider);
-      m.count(S.TRUAPI_CHAIN_REOPEN, lease === null ? { outcome: 'error', reason: 'halted' } : { outcome: 'ok' });
+      truapiChainReopenMetric.count(lease === null ? { outcome: 'error', reason: 'halted' } : { outcome: 'ok' });
       return lease;
     } catch (error: unknown) {
-      reportDefect(error, {
-        flow: 'protocol',
+      report.defect(error, {
         step: 'chain_reopen',
-        metric: S.TRUAPI_CHAIN_REOPEN,
+        metric: truapiChainReopenMetric,
         message: `[dot.li truapi-chain] re-leasing ${genesisHash} failed:`,
       });
       return null;

@@ -5,7 +5,7 @@
 // wasm timings.
 
 import '@dotli/ui/styles.css';
-import { m, spans as S } from '@dotli/metrics';
+import { m } from '@dotli/metrics';
 import { createReloadOffer, listenForChunkFailures, modals, showNotification } from '@dotli/ui';
 import { isMobileDevice } from './isMobileDevice.js';
 import { offerDesktopApp } from './offerDesktopApp.js';
@@ -13,6 +13,9 @@ import { getPageStandIns, reportIslandErrors } from './reportIslandErrors.js';
 import { pageLocalStorage } from '@dotli/shared';
 import { markAndReload } from './createContinuation.js';
 import { authControl } from './runtime/createAuthController.js';
+
+/** Measured with a PerformanceObserver. */
+const WASM_LOAD = 'wasm.load';
 
 type Params = {
   /** False leaves out the desktop offer. */
@@ -53,7 +56,7 @@ export function startPage({ desktopOffer = true }: Params = {}): void {
       for (const entry of list.getEntries()) {
         if (entry.name.endsWith('.wasm')) {
           const name = entry.name.split('/').pop() ?? 'unknown';
-          m.distribution(S.WASM_LOAD, entry.duration, { unit: 'millisecond', attributes: { module: name } });
+          m.distribution(WASM_LOAD, entry.duration, { unit: 'millisecond', attributes: { module: name } });
         }
       }
     });

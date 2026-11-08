@@ -5,7 +5,7 @@
 
 import type { ReadableAtom } from 'nanostores';
 import type { Backend, Network } from '@dotli/config';
-import type { m } from '@dotli/metrics';
+import type { CountSink } from '@dotli/metrics';
 import type { Timers } from '@dotli/shared';
 import type { MessageTarget, WindowLike } from '@dotli/transport';
 import type { ProtocolVersionMismatchError } from './errors.js';
@@ -86,7 +86,7 @@ export type ProtocolFrameParams<E extends FrameElement> = {
   /** The clock the lifecycle waits run on. The real one when unset. */
   timers?: Timers | undefined;
   /** Counts the frame's outcomes. The shared metrics' when unset. */
-  count?: typeof m.count | undefined;
+  count?: CountSink | undefined;
 };
 
 /** The protocol frame as the layers above it use it. */

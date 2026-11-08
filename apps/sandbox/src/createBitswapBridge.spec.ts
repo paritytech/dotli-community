@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { TIMEOUTS } from '@dotli/config';
-import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { isRecord } from '@dotli/shared';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
@@ -137,7 +136,7 @@ describe('sandbox bitswap bridge', () => {
     // Then the read was aborted and the failed abort was reported
     await settled;
     expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
-    expect(sentry.counted(S.SANDBOX_BITSWAP_ABORT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(sentry.counted('sandbox.bitswap_abort')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a user, I leave the page and its abort names this frame as its requests do, since the host reads it after the frame is gone', async () => {
@@ -235,7 +234,7 @@ describe('sandbox bitswap bridge', () => {
     // Then
     await settled;
     expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
-    expect(sentry.counted(S.SANDBOX_BITSWAP_ABORT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(sentry.counted('sandbox.bitswap_abort')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a sandbox user, I get a reply after my request timed out and it is ignored while a later request is still answered', async () => {
@@ -325,7 +324,7 @@ describe('sandbox bitswap bridge', () => {
     await settled;
     expect(thrown).toBeUndefined();
     expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
-    expect(sentry.counted(S.SANDBOX_BITSWAP_ABORT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(sentry.counted('sandbox.bitswap_abort')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a sandbox that let go of its bridge twice, I see no error and the host hears one abort', async () => {

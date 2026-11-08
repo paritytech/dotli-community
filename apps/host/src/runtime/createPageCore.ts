@@ -8,7 +8,7 @@
 import type { ProductId } from '@parity/truapi';
 import type { ExecutableKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
@@ -24,6 +24,27 @@ import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot
 import { CoreRedialError } from './coreRedialError.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPhoneRequestTracker.js';
 import { toProductId } from './createTruapiRuntimeConfig.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * One redial of the page's wallet core after the core was taken out of service. Tagged `outcome` (ok, error or aborted,
+ * when a product change dropped it) and `reason`, what took the core out, as a failed one leaves the page without a
+ * core.
+ */
+const walletCoreRedialMetric = defineCount<'aborted' | 'error' | 'ok'>('wallet.core_redial');
+
+/**
+ * Count. Telling a pairing core that the stored session changed threw, so the core may miss a login from another tab.
+ * Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const pageCoreSessionFollowMetric = defineCount<'error'>('page_core.session_follow');
+
+/**
+ * Count. The phone request tap threw on a frame, so that frame went untracked. Tagged `outcome` (error), `reason`
+ * (the error's name) and `side` (`product, core`).
+ */
+const phoneRequestTapMetric = defineCount<'error'>('signing.phone_request_tap');
 
 export type PageProduct = {
   label: string;
@@ -182,8 +203,7 @@ export function createPageCore({
   }
 
   function dial(product: PageProduct, { redial }: DialParams = {}): Core {
-    log.event(redial === undefined ? 'wallet core create' : 'wallet core redial', {
-      flow: 'wallet',
+    report.log.event(redial === undefined ? 'wallet core create' : 'wallet core redial', {
       landing: product === LANDING_PRODUCT,
       ...(redial === undefined ? {} : { reason: redial }),
     });
@@ -222,7 +242,7 @@ export function createPageCore({
         // The pool can resolve a boot that was dropped in the same turn. Its runtime is already disposed.
         if (dropped.signal.aborted) {
           if (redial !== undefined) {
-            m.count(S.WALLET_CORE_REDIAL, { outcome: 'aborted', reason: redial });
+            walletCoreRedialMetric.count({ outcome: 'aborted', reason: redial });
           }
           throw dropped.signal.reason;
         }
@@ -238,10 +258,9 @@ export function createPageCore({
             try {
               booted.runtime.notifySessionStoreChanged();
             } catch (error) {
-              reportDefect(error, {
-                flow: 'wallet',
+              report.defect(error, {
                 step: 'session_follow',
-                metric: S.PAGE_CORE_SESSION_FOLLOW,
+                metric: pageCoreSessionFollowMetric,
                 message: '[dot.li page-core] telling the core the stored session changed failed:',
               });
             }
@@ -262,14 +281,14 @@ export function createPageCore({
           });
         }
         if (redial !== undefined) {
-          m.count(S.WALLET_CORE_REDIAL, { outcome: 'ok', reason: redial });
+          walletCoreRedialMetric.count({ outcome: 'ok', reason: redial });
         }
         return booted;
       },
       (error: unknown) => {
         if (dropped.signal.aborted) {
           if (redial !== undefined) {
-            m.count(S.WALLET_CORE_REDIAL, { outcome: 'aborted', reason: redial });
+            walletCoreRedialMetric.count({ outcome: 'aborted', reason: redial });
           }
           throw error;
         }
@@ -279,11 +298,10 @@ export function createPageCore({
           log.warn('[dot.li page-core] wallet core failed to boot:', error);
         } else {
           // Nobody asked for a redial, so the page core is the only one to report that it gave up.
-          reportDefect(error, {
-            flow: 'wallet',
+          report.defect(error, {
             step: 'core_redial',
             tags: { reason: redial },
-            metric: S.WALLET_CORE_REDIAL,
+            metric: walletCoreRedialMetric,
             reason: redial,
             message: '[dot.li page-core] wallet core redial failed:',
           });
@@ -302,7 +320,7 @@ export function createPageCore({
       faulted: false,
       destroyTimer: null,
       phoneRequests,
-      downListeners: createListenerSet<undefined>({ onListenerError: reportListener('wallet', 'page_core.down') }),
+      downListeners: createListenerSet<undefined>({ onListenerError: report.listener('page_core.down') }),
       dispose() {
         if (!cores.delete(core)) {
           return;
@@ -311,7 +329,7 @@ export function createPageCore({
         if (current === core) {
           current = null;
         }
-        log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
+        report.log.event('wallet core disposed', { faulted: core.faulted });
         dropped.abort(new Error('The page core was disposed'));
         unsubscribeStore?.();
         blockingModalScope.dispose();
@@ -377,11 +395,10 @@ export function createPageCore({
             break;
         }
       } catch (error) {
-        reportDefect(error, {
-          flow: 'wallet',
+        report.defect(error, {
           step: 'phone_request_tap',
           tags: { side },
-          metric: S.PHONE_REQUEST_TAP,
+          metric: phoneRequestTapMetric,
           attributes: { side },
           message: `[dot.li page-core] phone request tap failed on a frame from the ${side}:`,
         });
@@ -394,7 +411,7 @@ export function createPageCore({
     provider.subscribeClose?.(() => {
       tap.dispose();
       if (!closing) {
-        log.event('wallet core went down under a connection', { flow: 'wallet' });
+        report.log.event('wallet core went down under a connection');
         takeDown(core, 'closed');
       }
     });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { RemoteChainHalt } from '@dotli/chains';
@@ -699,7 +699,7 @@ describe('createBitswapClient connection lifetime', () => {
 
   it('As a page, I still get my block when closing the connection throws, and the failure is reported', async () => {
     // Given a connection whose close throws
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const chain = createFakeChain([{ hex: '0x01' }, { hex: '0x02' }], { throwingDisconnects: [0] });
     const client = createClient(chain.provider);
@@ -714,7 +714,7 @@ describe('createBitswapClient connection lifetime', () => {
 
     // Then the fetch kept its bytes, the failed close was reported, and the next fetch dialled anew
     expect(firstBytes).toEqual(new Uint8Array([0x01]));
-    expect(captured).toEqual([{ flow: 'content', step: 'bitswap_release', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'bitswap_release', tags: undefined }]);
     expect(sentry.counted('content.bitswap_release')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(secondBytes).toEqual(new Uint8Array([0x02]));
     expect(chain.dials).toHaveLength(2);

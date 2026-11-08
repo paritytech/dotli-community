@@ -3,7 +3,6 @@
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { SITE_ID } from '@dotli/config';
-import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { catchRejection, createManualTimers, readOutcome, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
@@ -245,10 +244,10 @@ describe('protocol iframe listening handshake', () => {
     await timers.advance(1_000);
 
     // Then
-    expect(sentry.counted(S.PROTOCOL_IFRAME_READY)).toContainEqual(
+    expect(sentry.counted('protocol.iframe_ready')).toContainEqual(
       expect.objectContaining({ outcome: 'error', reason: 'ProtocolHandshakeTimeoutError' }),
     );
-    expect(sentry.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(sentry.counted('protocol.feed_end')).toEqual([]);
   });
 
   it('As a returning user, I read my shared session and it goes out as soon as the iframe listens, before it is ready', async () => {
@@ -325,10 +324,10 @@ describe('protocol iframe listening handshake', () => {
     // Then
     expect(settledAtReset).toEqual([PROTOCOL_ERRORS.FRAME_RESET]);
     expect(settled).toEqual([PROTOCOL_ERRORS.FRAME_RESET]);
-    expect(sentry.counted(S.PROTOCOL_REQUEST)).toContainEqual(
+    expect(sentry.counted('protocol.request')).toContainEqual(
       expect.objectContaining({ outcome: 'error', method: 'authStorageRead' }),
     );
-    expect(sentry.counted(S.PROTOCOL_REQUEST)).not.toContainEqual(
+    expect(sentry.counted('protocol.request')).not.toContainEqual(
       expect.objectContaining({ outcome: 'timeout', method: 'authStorageRead' }),
     );
   });

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
@@ -118,7 +118,7 @@ describe('registerAppServiceWorker', () => {
     expect(logs.map(line => line.args)).toEqual([
       ['[dot.li app] Service worker registration failed; continuing without one:', refusal],
     ]);
-    expect(sentry.counted(S.SANDBOX_SW_REGISTER)).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(sentry.counted('sandbox.sw_register')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
 
   it('As an operator, I watch an outdated worker fail its update for no known reason and see it logged and counted by its error name', async () => {
@@ -143,7 +143,7 @@ describe('registerAppServiceWorker', () => {
 
     // Then
     expect(logs.map(line => line.args)).toEqual([['[dot.li app] Service worker update failed:', failure]]);
-    expect(sentry.counted(S.SANDBOX_SW_UPDATE)).toEqual([{ outcome: 'error', reason: 'RangeError' }]);
+    expect(sentry.counted('sandbox.sw_update')).toEqual([{ outcome: 'error', reason: 'RangeError' }]);
   });
 
   it.each([
@@ -179,7 +179,7 @@ describe('registerAppServiceWorker', () => {
       await counted.promise;
 
       // Then it is counted by its name and no exception is captured
-      expect(sentry.counted(S.SANDBOX_SW_UPDATE)).toEqual([{ outcome: 'error', reason: name }]);
+      expect(sentry.counted('sandbox.sw_update')).toEqual([{ outcome: 'error', reason: name }]);
       expect(captured).toEqual([]);
     },
   );
@@ -205,6 +205,6 @@ describe('registerAppServiceWorker', () => {
     // Then nothing is updated, and the failure is reported once
     expect(update).not.toHaveBeenCalled();
     expect(logs.map(line => line.args)).toEqual([['[dot.li app] Service worker freshness check failed:', failure]]);
-    expect(sentry.counted(S.SANDBOX_SW_UPDATE)).toEqual([{ outcome: 'error', reason: 'InvalidStateError' }]);
+    expect(sentry.counted('sandbox.sw_update')).toEqual([{ outcome: 'error', reason: 'InvalidStateError' }]);
   });
 });

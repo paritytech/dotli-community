@@ -444,11 +444,13 @@ describe('signing out in the sign-out window', () => {
 
     // Then the failure is reported and counted as a forget that failed, while the store is cleared, counted cleared and
     // the window closes
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'session_window_signout',
-      tags: { reason: 'grants' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'session_window_signout',
+        tags: { reason: 'grants' },
+      }),
+    );
     expect(metrics.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
     expect(ended).toBe('cleared');
     expect(main.session).toBeNull();

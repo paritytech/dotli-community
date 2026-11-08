@@ -42,6 +42,7 @@ import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import { debugBus, resolveDebugMode } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
+import { createReporter } from '@dotli/metrics';
 import { startShellState } from './startShellState.js';
 import { createProductLoader } from './createProductLoader.js';
 import { createPageCidCache, type EarlyCidRead } from './createPageCidCache.js';
@@ -69,6 +70,9 @@ import { pageNotifications } from './pageNotifications.js';
 import { recentLabels } from './createLazyRecentLabels.js';
 import { bindTopbar } from './bindTopbar.js';
 import { bindUrlPill } from './bindUrlPill.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const contentReport = createReporter({ flow: 'content' });
 
 /** Idle work still runs this long after it was asked for, so a busy page cannot starve it. */
 const IDLE_WORK_TIMEOUT_MS = 2_000;
@@ -175,7 +179,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   // Only debug builds read a localhost route, so the compile-time flag drops its branches from release bundles.
   const proxied = DEBUG && target.kind === 'localhost';
   bootTracker.setStep(proxied ? 'localhost_render' : 'preview_render');
-  log.event(proxied ? 'Route: localhost proxy' : 'Route: preview', { flow: 'boot', host: target.host });
+  bootReport.log.event(proxied ? 'Route: localhost proxy' : 'Route: preview', { host: target.host });
   bridge.setPageProduct({ label: target.host, productId: target.productId });
 
   pageNotifications().init({ label: target.host });
@@ -282,7 +286,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     verify: createBlockVerifier({
       load: loadVerify,
       report(step, error) {
-        reportLazyMiss({ flow: 'content', step, error });
+        reportLazyMiss({ report: contentReport, step, error });
       },
     }),
   });

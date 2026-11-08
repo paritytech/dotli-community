@@ -3,10 +3,10 @@
 
 // Reports where the sandbox's blocks came from, and trims the block cache once the sandbox is done with it.
 
-import { m, spans as S } from '@dotli/metrics';
 import type { SandboxBlockRelay } from '@dotli/bitswap';
 import { realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { cacheReadMetric } from './cacheReadMetric.js';
 
 export type SandboxContentParams = {
   /** The relay serving the sandbox's blocks. */
@@ -62,7 +62,7 @@ export function startSandboxContent({
       timestamp: timers.now(),
       payload: { hits, misses },
     });
-    m.count(S.CACHE_READ, { outcome: misses === 0 ? 'hit' : 'miss', surface: 'block_cache' });
+    cacheReadMetric.count({ outcome: misses === 0 ? 'hit' : 'miss', surface: 'block_cache' });
     runWhenIdle(prune);
   });
 }

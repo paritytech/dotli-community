@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { spans as S, type m } from '@dotli/metrics';
+import type { CountAttributes, CountMetric } from '@dotli/metrics';
 import type { CallName } from '@dotli/protocol';
 import { createRefusalReporter } from './createRefusalReporter.js';
 import type { FrameRefusal, FrameRoute } from './withRefusalReports.js';
@@ -31,12 +31,12 @@ const TABLE: Row[] = [
   {
     refusal: toRefusal('auth'),
     warned: [],
-    counted: [[S.SHARED_STORAGE_REJECTED, { store: 'auth', reason: 'validation' }]],
+    counted: [['shared_storage.rejected', { store: 'auth', reason: 'validation' }]],
   },
   {
     refusal: toRefusal('mode'),
     warned: [],
-    counted: [[S.SHARED_STORAGE_REJECTED, { store: 'mode', reason: 'validation' }]],
+    counted: [['shared_storage.rejected', { store: 'mode', reason: 'validation' }]],
   },
   { refusal: toRefusal('wallet'), warned: [['[dot.li protocol] localWalletRead failed', FAILURE]], counted: [] },
   { refusal: toRefusal('chain'), warned: [['[dot.li protocol] resolveDotName failed', FAILURE]], counted: [] },
@@ -56,8 +56,8 @@ function createRecordingSinks() {
       warned.push(args);
     },
     /** Keeps a count. Never throws. */
-    count(name: string, attributes?: Parameters<typeof m.count>[1]): void {
-      counted.push([name, attributes]);
+    count<Outcome extends string>(metric: CountMetric<Outcome>, attributes: CountAttributes<Outcome>): void {
+      counted.push([metric.name, attributes]);
     },
   };
 }

@@ -4,11 +4,15 @@
 // The sites the user signed in to, as the grants the main store keeps, and Revoke, which forgets one at once. It reads
 // only the grants, so it needs no opener, no handshake and no core.
 
-import { m, spans as S } from '@dotli/metrics';
+import { defineCount } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
 import { createAsyncTaskPool, isShallowEqual } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { reportWalletFailure } from '../walletFailure.js';
+import { siteRevokeMetric } from './siteRevokeMetric.js';
+
+/** Count. A read of the site list that failed. Tagged `outcome` `error` and `reason` `read`. */
+const siteListMetric = defineCount<'error'>('session_pages.site_list');
 
 /** What the list shows of a site: never its keys, whose grant it is nor its group token. */
 export type ListedSite = {
@@ -48,7 +52,7 @@ export function createSiteList({ grants }: Params) {
       kept = await grants.list();
     } catch (error) {
       reportListMiss(error, 'read');
-      m.count(S.SITE_LIST, { outcome: 'error', reason: 'read' });
+      siteListMetric.count({ outcome: 'error', reason: 'read' });
       screen.set({ view: 'sites-failed' });
       return;
     }
@@ -63,10 +67,10 @@ export function createSiteList({ grants }: Params) {
     }
     try {
       await grants.forget(token);
-      m.count(S.SITE_REVOKE, { outcome: 'revoked', reason: 'user' });
+      siteRevokeMetric.count({ outcome: 'revoked', reason: 'user' });
     } catch (error) {
       reportListMiss(error, 'forget');
-      m.count(S.SITE_REVOKE, { outcome: 'failed', reason: 'user' });
+      siteRevokeMetric.count({ outcome: 'failed', reason: 'user' });
     }
     await readList();
   }

@@ -10,7 +10,11 @@ import { createCacheReporter } from './createCacheReporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
 import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
-import { m, spans as S } from '@dotli/metrics';
+import { m } from '@dotli/metrics';
+
+const CACHE_READ_LATENCY = 'cache.read_latency';
+
+const CACHE_WRITE_LATENCY = 'cache.write_latency';
 
 const STORE = 'cids';
 
@@ -64,7 +68,7 @@ const reportFailure: (action: CacheAction, error: unknown) => void = createCache
 export function createCidCache({ idb = pageIdb }: Params = {}) {
   /** Resolves `null` on a miss, and rejects when the storage fails. */
   async function readCachedCid(label: string, network: Network): Promise<CachedCid | null> {
-    const stop = m.timer(S.CACHE_READ_LATENCY);
+    const stop = m.timer(CACHE_READ_LATENCY);
     try {
       const db = await idb.connect();
       const entry = unsafe_readStoredRecord<CidEntry | undefined>(
@@ -88,7 +92,7 @@ export function createCidCache({ idb = pageIdb }: Params = {}) {
   }
 
   async function set({ label, network, cid, manifests }: SetParams): Promise<void> {
-    const stop = m.timer(S.CACHE_WRITE_LATENCY);
+    const stop = m.timer(CACHE_WRITE_LATENCY);
     const entry: CidEntry = { label, network, cid, manifests, timestamp: Date.now() };
     try {
       const db = await idb.connect();
@@ -108,7 +112,7 @@ export function createCidCache({ idb = pageIdb }: Params = {}) {
   }
 
   async function clear(): Promise<boolean> {
-    const stop = m.timer(S.CACHE_WRITE_LATENCY);
+    const stop = m.timer(CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
       await runIdbTransaction({
@@ -129,7 +133,7 @@ export function createCidCache({ idb = pageIdb }: Params = {}) {
   }
 
   async function evict(label: string): Promise<boolean> {
-    const stop = m.timer(S.CACHE_WRITE_LATENCY);
+    const stop = m.timer(CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
       await runIdbTransaction({

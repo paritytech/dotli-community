@@ -4,12 +4,14 @@
 // A countdown runs only while a view shows the toasts. It pauses while the tab is hidden or the stack is expanded and
 // resumes from what was left.
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { isShallowEqual, realTimers, registerStoreStateReset, registerAtomReset, type Timers } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { StatusTone } from '../statusTone.js';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
+
+const report = createReporter({ flow: 'ui' });
 
 export type ToastAction = {
   label: string;
@@ -68,7 +70,7 @@ type Countdown = {
 
 const INITIAL: ToastsState = { items: [], expanded: false };
 
-const reportDismissError = reportListener('ui', 'toast.dismiss');
+const reportDismissError = report.listener('toast.dismiss');
 
 /**
  * Builds a toast stack whose countdowns run on `timers` and pause with `page`. Building one reads neither the page nor

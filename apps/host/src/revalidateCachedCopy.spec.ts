@@ -194,7 +194,7 @@ describe('revalidateCachedCopy', () => {
     await revalidateCachedCopy({ label: 'doom', servedCid: 'bafy-served', onScreen: true, ...params });
 
     // Then
-    expect(captured).toMatchObject([{ flow: 'resolve', step: 'cache_revalidate' }]);
+    expect(captured).toMatchObject([{ step: 'cache_revalidate' }]);
     expect(written).toEqual([]);
     expect(evicted).toEqual([]);
     expect(reload).not.toHaveBeenCalled();

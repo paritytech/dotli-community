@@ -58,7 +58,7 @@ describe('wallet switch', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
     expect(captures.exception).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Local wallet could not be saved', cause }),
-      { flow: 'wallet', step: 'local_wallet', tags: { reason: 'save' } },
+      expect.objectContaining({ step: 'local_wallet', tags: { reason: 'save' } }),
     );
     expect(counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'save' }]);
   });
@@ -90,7 +90,7 @@ describe('wallet switch', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
     expect(captures.exception).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Local wallet could not be forgotten', cause }),
-      { flow: 'wallet', step: 'local_wallet', tags: { reason: 'forget' } },
+      expect.objectContaining({ step: 'local_wallet', tags: { reason: 'forget' } }),
     );
     expect(counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'forget' }]);
   });

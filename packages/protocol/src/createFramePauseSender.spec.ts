@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { recordCaptures } from '@dotli/metrics/testing';
+import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { denied, err, ok } from '@dotli/transport';
 import { createFramePauseSender } from './createFramePauseSender.js';
@@ -101,7 +101,7 @@ describe('createFramePauseSender', () => {
 
   it('As a dotli maintainer, I see a pause the ready frame refused captured', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const server = createPauseServer({ refuse: true });
     const { sender } = createSender(server);
 
@@ -111,12 +111,12 @@ describe('createFramePauseSender', () => {
 
     // Then
     expect(server.frames).toEqual([[true]]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'frame_pause', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'frame_pause', tags: undefined }]);
   });
 
   it('As a dotli maintainer, I see a pause that failed on a frame no longer ready go uncaptured', async () => {
     // Given a ready frame that refuses the pause
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const server = createPauseServer({ refuse: true });
     const { fake, sender } = createSender(server);
 

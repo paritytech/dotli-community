@@ -6,7 +6,7 @@
 
 import type { ProductAccountId } from '@parity/truapi';
 import { getActiveServicesConfig } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
+import { m } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
@@ -57,12 +57,15 @@ import { walletModeState } from './state/walletModeState.js';
 import { pageWalletBoot } from './createWalletBoot.js';
 import { walletSwitch } from './createWalletSwitch.js';
 
+/** Dynamic import of the container chunk. */
+const BRIDGE_CHUNK_LOAD = 'bridge.chunk_load';
+
 // One load serves the frame and every core.
 const hostRuntime = createLazyLoad({
   async load() {
     const chunkLoadStart = performance.now();
     const runtime = await loadHostRuntimeChunk();
-    m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
+    m.measure(BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
     return runtime;
   },
 });

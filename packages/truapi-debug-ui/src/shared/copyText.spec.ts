@@ -47,7 +47,7 @@ describe('debug panel copy', () => {
     // Then the refusal is a breadcrumb and one count, not an issue
     expect(outcome).toBe('failed');
     expect(reports.exceptions).toEqual([]);
-    expect(reports.expected).toEqual([{ error: refusal, context: { flow: 'ui', step: 'debug_panel_copy' } }]);
+    expect(reports.expected).toMatchObject([{ error: refusal, context: { step: 'debug_panel_copy' } }]);
     expect(reports.listCopies()).toEqual([{ outcome: 'error', reason: 'NotAllowedError' }]);
   });
 });

@@ -4,10 +4,18 @@
 import type { ProductStorage } from '@parity/truapi-host';
 import type { HostLocalStorageChangeItem } from '@parity/truapi';
 import { base64 } from '@scure/base';
-import { reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createResultStream } from './createResultStream.js';
+
+const report = createReporter({ flow: 'storage' });
+
+/**
+ * A read of a product's storage for its subscription that failed. Tagged `outcome` (error) and `reason` (the error's
+ * name), as the product then hears only a read failure.
+ */
+const productStorageWatchMetric = defineCount<'error'>('product_storage.watch');
 
 /** The part of another tab's `storage` event the subscription reads. */
 type StorageChange = Pick<StorageEvent, 'key'>;
@@ -38,7 +46,7 @@ export function createLocalStorageCallbacks({
   storage = () => localStorage,
   events = () => window,
 }: LocalStorageCallbacksParams = {}) {
-  const listeners = createListenerSet<string>({ onListenerError: reportListener('storage', 'local_storage.change') });
+  const listeners = createListenerSet<string>({ onListenerError: report.listener('local_storage.change') });
 
   function notifyChanged(key: string): void {
     listeners.emit(key);
@@ -86,10 +94,9 @@ export function createLocalStorageCallbacks({
         } catch (error) {
           // The browser blocking storage is the environment, so the product hears a read failure and the page keeps
           // the cause as a breadcrumb.
-          reportExpected(error, {
-            flow: 'storage',
+          report.expected(error, {
             step: 'product_storage_watch',
-            metric: S.PRODUCT_STORAGE_WATCH,
+            metric: productStorageWatchMetric,
             message: '[dot.li] product storage read for a subscription failed:',
           });
           pushError({ reason: ERRORS.STORAGE_READ_FAILED });

@@ -4,9 +4,12 @@
 // How a page's writes and clears of a stored sign-in move the signed-in flag. A page that makes sign-ins in the main
 // store owns the flag together with that store, and any other page drops it with the session its own core drops.
 
-import { createAsyncTaskPool, log } from '@dotli/shared';
+import { createAsyncTaskPool } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { isFlagOwner, type PageRole } from '../pageRole.js';
 import type { SessionPresence } from './types.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 export type SignInFlag = {
   /** Runs a write of a sign-in. Rejects when the write rejects. */
@@ -59,7 +62,7 @@ export function createNonOwnerSignInFlag({ presence, readStoredSignIn }: Params)
         await presence.set();
         return;
       case 'unread':
-        log.event('signed-in flag left down after a drop, the copy could not be read', { flow: 'wallet' });
+        report.log.event('signed-in flag left down after a drop, the copy could not be read');
         return;
       case 'none':
         return;

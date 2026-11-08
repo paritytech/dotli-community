@@ -4,8 +4,8 @@
 // The topbar's login, logout and cancel, run on the page core. A login reports its own failures, and session state
 // hears what the core could not say for itself. A logout runs the end it is given through the commands' queue.
 
-import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
-import { createDeferred, getErrorMessage, getErrorName, log } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { createDeferred, getErrorMessage, getErrorName } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import {
   CANCELLED,
@@ -23,6 +23,15 @@ import type { HostCoreStorage } from './session/createCoreStorage.js';
 import { authViews } from './session/authViews.js';
 import type { SessionState } from './session/createSessionState.js';
 import type { DotliAuthState } from './session/types.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A login on the page core failed. Tagged `outcome` (error) and `reason`: the core's refusal tag for a
+ * `LoginRequestError`, else the error's name. A cancel, a deny and a redial the page core gave up on are expected,
+ * the rest captured.
+ */
+const walletLoginMetric = defineCount<'error'>('wallet.login');
 
 type Params = {
   /** The page's auth state, which tells how a login ended. */
@@ -47,13 +56,13 @@ type RequestTopbarLoginParams = {
 /** Returns the topbar's login, logout and cancel on the page core. Never throws. */
 export function createCoreAuthCommands({ auth, core, session, isLocalWallet, storedSession }: Params) {
   async function login({ reason, signal }: CoreLoginParams): Promise<LoginOutcome> {
-    log.event('login requested', { flow: 'wallet' });
+    report.log.event('login requested');
     // Before the request, so a failed write of the session it pairs is heard even when it comes first.
     const signIn = watchSignIn(signal);
     try {
       try {
         if (!(await requestTopbarLogin({ reason, signal, answered: signIn.answered }))) {
-          log.event('login cancelled before pairing', { flow: 'wallet' });
+          report.log.event('login cancelled before pairing');
           return CANCELLED;
         }
       } catch (error) {
@@ -69,7 +78,7 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
         return FAILED;
       }
       const outcome = await signIn.complete();
-      log.event('login completed', { flow: 'wallet', outcome: outcome.kind });
+      report.log.event('login completed', { outcome: outcome.kind });
       return outcome;
     } finally {
       signIn.stop();
@@ -253,7 +262,7 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
   }
 
   function cancelPairing(): void {
-    log.event('pairing cancelled', { flow: 'wallet' });
+    report.log.event('pairing cancelled');
     core.cancelPairing();
   }
 
@@ -270,14 +279,13 @@ function reportCoreLoginFailure(error: unknown): void {
     error instanceof CoreRedialError ||
     (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied'))
   ) {
-    reportExpected(error, { flow: 'wallet', step: 'login', metric: S.WALLET_LOGIN, reason });
+    report.expected(error, { step: 'login', metric: walletLoginMetric, reason });
     return;
   }
-  reportDefect(error, {
-    flow: 'wallet',
+  report.defect(error, {
     step: 'login',
     ...(error instanceof LoginRequestError ? { tags: { login_error: error.error.tag } } : {}),
-    metric: S.WALLET_LOGIN,
+    metric: walletLoginMetric,
     message: '[dot.li wallet] login failed:',
     reason,
   });

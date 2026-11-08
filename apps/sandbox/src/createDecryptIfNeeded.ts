@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { CONTENT_ERRORS, type ArchiveFiles } from '@dotli/content';
-import { getErrorName, log } from '@dotli/shared';
+import { getErrorName } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
+
+const report = createReporter({ flow: 'content' });
 
 export type CreateDecryptIfNeededParams = {
   /**
@@ -44,7 +47,7 @@ export function createDecryptIfNeeded({
     if (!isEncrypted(data)) {
       return null;
     }
-    log.event(`Content ${cid} is encrypted, asking for the password`, { flow: 'content' });
+    report.log.event(`Content ${cid} is encrypted, asking for the password`);
 
     let password = decryptedPasswords.get(cid);
     dismissHostLoading();
@@ -64,7 +67,7 @@ export function createDecryptIfNeeded({
         if (getErrorName(error) !== CONTENT_ERRORS.WRONG_PASSWORD) {
           throw error;
         }
-        log.event(`Wrong password on attempt ${String(attempt)}, asking again`, { flow: 'content', attempt });
+        report.log.event(`Wrong password on attempt ${String(attempt)}, asking again`, { attempt });
         shownError = 'Wrong password. Please try again.';
         password = undefined;
       }

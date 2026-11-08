@@ -4,8 +4,7 @@
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createMemoryStorage, recordLog } from '@dotli/shared/testing';
 import { SITE_ID } from '@dotli/config';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { protocolSchema } from '@dotli/protocol';
 import { err, hostFailure, ok, unsupported } from '@dotli/transport';
 import { createSharedStoreHandler, type SharedAuthChannel } from './createSharedStoreHandler.js';
@@ -251,8 +250,7 @@ describe('the shared auth store', () => {
         throw failure;
       }).channel,
     });
-    const capturedErrors: unknown[] = [];
-    const captured = recordCaptures({ onFinished: onTestFinished, errors: capturedErrors });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
 
@@ -261,12 +259,11 @@ describe('the shared auth store', () => {
 
     // Then the write is answered, and the failed broadcast is captured, logged once and counted once
     expect(written).toEqual(ok(true));
-    expect(capturedErrors).toEqual([failure]);
-    expect(captured).toEqual([{ flow: 'storage', step: 'shared_auth_broadcast', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'shared_auth_broadcast', error: failure, tags: undefined }]);
     expect(errors.map(line => line.args)).toEqual([
       ['[dot.li shared auth] Broadcast to the other tabs failed', failure],
     ]);
-    expect(metrics.counted(S.PROTOCOL_SHARED_AUTH_BROADCAST)).toEqual([{ outcome: 'error', reason: 'DataCloneError' }]);
+    expect(metrics.counted('protocol.shared_auth_broadcast')).toEqual([{ outcome: 'error', reason: 'DataCloneError' }]);
   });
 
   it('As a dotli user whose browser blocks storage, I read a key and that request fails while the handler still serves', async () => {

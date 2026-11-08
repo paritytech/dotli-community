@@ -5,10 +5,17 @@
 // write its page into this window. It never throws, and its outcome names the step that failed.
 
 import { hasLightClient } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
+import { createReporter, m } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
-import { getErrorName, log } from '@dotli/shared';
+import { getErrorName } from '@dotli/shared';
+
+const report = createReporter({ flow: 'content' });
+
+/** Whole sandbox app load. */
+const APP_TOTAL = 'app.total';
+
+const APP_SW_REGISTER = 'app.sw_register';
 
 export type SandboxParams = ReturnType<typeof validateSandboxParams>;
 
@@ -70,8 +77,6 @@ export type LoadProductDeps = {
   measureSinceStart: () => number;
 };
 
-const contentLog = log.createChild({ flow: 'content' });
-
 /**
  * Loads the product once and writes its page into this window. Never rejects: it resolves `loaded`, `torn_down` when
  * the frame goes away mid-load, or `failed` with the step that failed and its error.
@@ -80,22 +85,22 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   const { cid, resolutionId } = params;
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
-  const stopApp = m.timer(S.APP_TOTAL);
+  const stopApp = m.timer(APP_TOTAL);
   performance.mark('dotli:app:start');
-  contentLog.event('Sandbox load started', { attempt, ms: deps.measureSinceStart() });
+  report.log.event('Sandbox load started', { attempt, ms: deps.measureSinceStart() });
   let step: LoadStep = 'init';
   try {
     // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
     if (freshStart) {
-      contentLog.event('Purging sandbox-origin state for a full reset');
+      report.log.event('Purging sandbox-origin state for a full reset');
       await deps.purge();
     }
 
     step = 'sw_register';
-    const stopWorkerTimer = m.timer(S.APP_SW_REGISTER);
+    const stopWorkerTimer = m.timer(APP_SW_REGISTER);
     const workerReady = deps.registerWorker({ waitForFreshController: freshStart }).then(() => {
       stopWorkerTimer();
-      contentLog.event('Service worker ready', {
+      report.log.event('Service worker ready', {
         controlled: deps.isControlled(),
         ms: deps.measureSinceStart(),
       });
@@ -119,7 +124,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       const decryptedFiles = await deps.decrypt(result.content, cid);
       if (decryptedFiles !== null) {
         result = { type: 'archive', files: decryptedFiles };
-        contentLog.event('Content decrypted', {
+        report.log.event('Content decrypted', {
           bytes: countResultBytes(result),
           files: countResultFiles(result),
           ms: deps.measureSinceStart(),
@@ -136,7 +141,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       case 'archive': {
         step = 'sw_store';
         await deps.storeArchive(result.files);
-        contentLog.event('Archive handed to the service worker', {
+        report.log.event('Archive handed to the service worker', {
           files: countResultFiles(result),
           ms: deps.measureSinceStart(),
         });
@@ -153,7 +158,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     step = 'render';
     html = await deps.prepareHtml(html);
     const bytes = countResultBytes(result);
-    contentLog.event('Writing content into the window', { bytes, ms: deps.measureSinceStart() });
+    report.log.event('Writing content into the window', { bytes, ms: deps.measureSinceStart() });
     deps.report({
       event: 'document_written',
       flowId: resolutionId ?? cid,
@@ -163,7 +168,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     performance.mark('dotli:app:end');
     stopApp();
     deps.write(html);
-    contentLog.event('Content rendered', { ms: deps.measureSinceStart() });
+    report.log.event('Content rendered', { ms: deps.measureSinceStart() });
     return { outcome: 'loaded' };
   } catch (error) {
     // Reporting it would file an error every time a user switches product mid-load, burying the real failures.
@@ -179,16 +184,16 @@ async function fetchContent(params: SandboxParams, deps: LoadProductDeps): Promi
   const { cid, backend } = params;
   let result: FetchResult;
   if (deps.blockSource === null) {
-    contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.measureSinceStart() });
+    report.log.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.measureSinceStart() });
     deps.showStatus('Fetching via IPFS gateway...');
     result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, useGateway: true });
   } else {
     // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
-    contentLog.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.measureSinceStart() });
+    report.log.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.measureSinceStart() });
     deps.showStatus('Fetching via bitswap...');
     result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, bitswapBlockSource: deps.blockSource });
   }
-  contentLog.event(`Content fetched via ${hasLightClient(backend) ? 'bitswap' : 'gateway'}`, {
+  report.log.event(`Content fetched via ${hasLightClient(backend) ? 'bitswap' : 'gateway'}`, {
     type: result.type,
     bytes: countResultBytes(result),
     files: countResultFiles(result),

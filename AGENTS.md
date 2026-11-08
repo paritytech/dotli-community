@@ -101,12 +101,15 @@ Packages:
 
 TypeScript:
 
-- Never swallow errors. Rethrow with `{ cause }`, or `captureException` + `log.error` + an outcome metric. A context
-  with no logger or Sentry, such as a service worker, posts the failure to its pages, which report it, and calls
-  `console.error` with a one-line reason.
+- Never swallow errors. Rethrow with `{ cause }`, or report it as a defect through the feature's reporter
+  (`report.defect`), which captures it, logs it and counts its outcome. A context with no logger or Sentry, such as a
+  service worker, posts the failure to its pages, which report it, and calls `console.error` with a one-line reason.
 - One metric name per event, with `{ outcome, reason }`. No `_FAILURE` / `_TIMEOUT` constants.
+- A feature reports through its own reporter, `createReporter({ flow })` from `@dotli/metrics`, and declares its metrics
+  beside its code, a count with its outcome set through `defineCount`. `@dotli/metrics` lists only the metric names more
+  than one package reads.
 - `log.warn` only for real failures. Progress breadcrumbs use `log.event`.
-- An expected failure, one the environment causes, is reported with `reportExpected`, so it is always counted. Never a
+- An expected failure, one the environment causes, is reported with `report.expected`, so it is always counted. Never a
   breadcrumb alone.
 - A guarantee such as never rejecting belongs to the object the page builds, not to a free-standing wrapper every caller
   must remember.
@@ -172,6 +175,9 @@ Tests:
 - Select by `data-testid` or ARIA role. Never by class.
 - Never test CSS (stylesheets, computed styles, class names).
 - Wait on signals, never sleep.
+- A spec asserts the step it expects reported, and the error or tags only when its case is about them. It never asserts
+  a report's flow and never matches a whole capture context. `recordReports` from `@dotli/metrics/testing` records
+  reports for this.
 - Pass fakes through parameters. Don't mock modules, and avoid overriding globals. Shape the code so tests drive it
   through its interface.
 - An optional parameter with a production default that only tests pass is fine.

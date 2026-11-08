@@ -4,17 +4,18 @@
 // A hidden page keeps its network for a grace, so a quick look at another tab costs no reconnect. A visible page's
 // timers stop while the device sleeps, so a tick that comes late reads as a return too.
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import {
   createListenerSet,
   createSharedRun,
   listen,
-  log,
   realTimers,
   type Timers,
   type VisibilitySource,
 } from '@dotli/shared';
 import { pagePoll, type Poll } from '../pagePoll.js';
+
+const report = createReporter({ flow: 'protocol' });
 
 /** What a pause reaches: a chain pool, or the protocol frame. */
 export type PauseTarget = {
@@ -58,7 +59,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
   let stopTick: (() => void) | null = null;
   let lastTickAt = 0;
   const targets = new Set<PauseTarget>();
-  const returns = createListenerSet<undefined>({ onListenerError: reportListener('protocol', 'network_pause.return') });
+  const returns = createListenerSet<undefined>({ onListenerError: report.listener('network_pause.return') });
   const following = createSharedRun<VisibilitySource>({ begin: beginFollowing });
   const holds = createSharedRun({ begin: beginHold });
 
@@ -172,7 +173,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     state = { kind: 'pausing' };
     tellTargets('pause');
     state = { kind: 'paused' };
-    log.event('Network paused', { flow: 'protocol' });
+    report.log.event('Network paused');
     if (isNetworkWanted()) {
       wake();
     }
@@ -199,7 +200,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
       return;
     }
     tellTargets('resume');
-    log.event('Network resumed', { flow: 'protocol' });
+    report.log.event('Network resumed');
   }
 
   /**

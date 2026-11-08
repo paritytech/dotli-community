@@ -1,12 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, m, type CountSink } from '@dotli/metrics';
 import { log, serializeError } from '@dotli/shared';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A protocol frame lost after it was ready, so the host rebuilds it. Tagged `outcome` (error) and `reason` (the error's
+ * name, `ProtocolPortReleasedError` for a tab the SharedWorker let go of while it was frozen).
+ */
+const protocolFrameLostMetric = defineCount<'error'>('protocol.frame_lost');
 
 type Params = {
   error: Error;
-  count: typeof m.count;
+  count: CountSink;
   /** Whether this loss may be captured. */
   capture: boolean;
 };
@@ -20,14 +28,14 @@ type Params = {
 export function reportFrameLost({ error, count, capture }: Params): boolean {
   const reason = error.name;
   // Captured, logged and counted by hand, since the count is the injected one.
-  count(S.PROTOCOL_FRAME_LOST, { outcome: 'error', reason });
+  count(protocolFrameLostMetric, { outcome: 'error', reason });
   if (reason === 'ProtocolPortReleasedError') {
-    log.event('protocol frame released', { flow: 'protocol', reason });
+    report.log.event('protocol frame released', { reason });
     return false;
   }
   m.breadcrumb('protocol frame lost', { reason: serializeError(error) });
   if (capture) {
-    captureException(error, { flow: 'protocol', step: 'frame_lost' });
+    report.capture(error, { step: 'frame_lost' });
   }
   log.error(`[dot.li protocol] Frame lost: ${serializeError(error)}`);
   return capture;

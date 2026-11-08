@@ -15,8 +15,8 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { getDefaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Network } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { createDeferred, listen, log, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
+import { createDeferred, listen, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
@@ -44,6 +44,7 @@ import {
   type WindowFlow,
   type WindowFlowParams,
 } from './runtime/sessionHandoff/createWindowFlow.js';
+import { sessionWindowSignoutResultMetric } from './runtime/sessionHandoff/sessionWindowSignoutResultMetric.js';
 import { signOutInWindow, type WindowSignOutParams } from './runtime/sessionHandoff/signOutInWindow.js';
 import publicSuffixListUrl from './runtime/siteSignIn/public-suffix-list.dat?url';
 import { createSiteGroups } from './runtime/siteSignIn/createSiteGroups.js';
@@ -62,6 +63,10 @@ import { sessionWindowState } from './state/sessionWindowState.js';
 import { startPage } from './startPage.js';
 import { startHost, type StartHostParams } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
+import { SITE_ROUTE_METRICS } from './runtime/siteSignIn/siteRouteMetrics.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const walletReport = createReporter({ flow: 'wallet' });
 
 type OpenFlowParams = {
   responder: Responder<unknown>;
@@ -129,7 +134,7 @@ function judgeOpener(origin: string): OpenerParty {
 
 /** A request the window cannot read as dot.li's own has no round it answers, so it listens to nobody. */
 function refuseUnreadable(): void {
-  log.event('Session window refused: no readable request', { flow: 'boot' });
+  bootReport.log.event('Session window refused: no readable request');
   sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
 }
 
@@ -162,7 +167,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
       what: 'sign-out window answer',
       step: 'session_window_signout',
       reason: 'answer',
-      metric: S.SESSION_WINDOW_SIGNOUT_RESULT,
+      metric: sessionWindowSignoutResultMetric,
     });
   });
   // The sign-out runs whether or not the round is answered.
@@ -180,10 +185,10 @@ async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSig
   }).catch((error: unknown) => {
     // Counted beside the window's own results, so every window opened counts how its sign-out ended. The boot
     // failure reports its own.
-    m.count(S.SESSION_WINDOW_SIGNOUT_RESULT, { outcome: 'error', reason: notified ? 'notified' : 'unnotified' });
+    sessionWindowSignoutResultMetric.count({ outcome: 'error', reason: notified ? 'notified' : 'unnotified' });
     throw error;
   });
-  log.event('Route: sign-out window', { flow: 'boot', notified });
+  bootReport.log.event('Route: sign-out window', { notified });
   await signOutInWindow({
     notified,
     ...bridge.windowSignOut,
@@ -328,7 +333,7 @@ async function bootSignIn(taken: SessionRequest, enabled: readonly Network[]): P
     bootFlowId: createRandomId(),
     ...getWindowHostParams('signin-window', bootNetwork(taken, enabled)),
   });
-  log.event('Route: session window', { flow: 'boot' });
+  bootReport.log.event('Route: session window');
   return bridge;
 }
 
@@ -349,8 +354,8 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   });
   if (!verdict.ok) {
     const { view, reason } = verdict;
-    log.event('redirect sign-in refused', { flow: 'wallet', reason });
-    m.count(S.SITE_SIGN_IN, { outcome: 'refused', reason });
+    walletReport.log.event('redirect sign-in refused', { reason });
+    SITE_ROUTE_METRICS.auth.count({ outcome: 'refused', reason });
     sessionWindowState.setScreen(view === 'refused' ? getResponderScreen({ kind: 'refused' }) : { view });
     return;
   }
@@ -374,7 +379,7 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
         what: 'redirect answer',
         step: 'site_redirect',
         reason: 'seal',
-        metric: S.SITE_SIGN_IN,
+        metric: SITE_ROUTE_METRICS.auth,
       });
       stopShowingRound();
       sessionWindowState.setScreen({ view: 'site-unsupported' });
@@ -410,7 +415,7 @@ async function forgetUnsentGrant(token: string): Promise<void> {
       what: 'redirect unsent grant forget',
       step: 'site_redirect',
       reason: 'grant_forget',
-      metric: S.SITE_SIGN_IN,
+      metric: SITE_ROUTE_METRICS.auth,
     });
   }
 }
@@ -420,7 +425,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
   if (taken.route === 'auth') {
     const fields = readRedirectFields(taken.params);
     if (fields === 'invalid') {
-      log.event('Session window refused: invalid redirect fields', { flow: 'boot' });
+      bootReport.log.event('Session window refused: invalid redirect fields');
       sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
       return;
     }
@@ -467,7 +472,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
 
 /** Lists the sites the user signed in to, each with Revoke. */
 function manageSites(): void {
-  log.event('Route: site list', { flow: 'boot' });
+  bootReport.log.event('Route: site list');
   const list = createSiteList({ grants: siteGrants });
   sessionWindowState.setSiteListIntents(list);
   sessionWindowState.showScreen(list.screen);

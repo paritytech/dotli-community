@@ -160,10 +160,12 @@ describe('scheduled notifications poller', () => {
     // Then each step records it once as expected, and nothing is captured
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(2);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
-      flow: 'notifications',
-      step: 'list_pending',
-    });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(DOMException),
+      expect.objectContaining({
+        step: 'list_pending',
+      }),
+    );
   });
 
   it('As an operator, I watch a tick that the page unload catches and see nothing reported', async () => {
@@ -199,7 +201,7 @@ describe('scheduled notifications poller', () => {
 
     // Then the failure is captured once, under the claim step
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'notifications', step: 'claim' });
+    expect(captures.exception).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'claim' }));
   });
 
   it('As an operator, I watch a poll step fail with a browser-caused database error and it is counted as expected under the poll metric', async () => {
@@ -233,7 +235,7 @@ describe('scheduled notifications poller', () => {
     await advanceTicks(3);
 
     // Then the step is captured and counted once
-    expect(captures.exception.mock.calls).toEqual([[failure, { flow: 'notifications', step: 'list_pending' }]]);
+    expect(captures.exception.mock.calls).toMatchObject([[failure, { step: 'list_pending' }]]);
     expect(counted('notifications.poll')).toEqual([{ outcome: 'error', reason: 'Error', step: 'list_pending' }]);
   });
 

@@ -5,5 +5,5 @@
 
 export type { RecordedMetric, RecordingSentry } from './bindRecordingSentry.js';
 export { bindRecordingSentry } from './bindRecordingSentry.js';
-export type { RecordedCapture } from './recordCaptures.js';
-export { recordCaptures } from './recordCaptures.js';
+export type { RecordedReport, RecordedReports } from './recordReports.js';
+export { recordReports } from './recordReports.js';

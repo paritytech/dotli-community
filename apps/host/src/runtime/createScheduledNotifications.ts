@@ -6,7 +6,7 @@
 
 import type { ProductId } from '@parity/truapi';
 import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
-import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   log,
@@ -18,6 +18,15 @@ import {
 } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import { pagePoll, type Poll } from '../pagePoll.js';
+
+const report = createReporter({ flow: 'notifications' });
+
+/**
+ * Count. A step of the scheduled notifications poll failed, once per failing run of the step. Tagged `outcome`
+ * (error), `reason` (the error's name) and `step` (`remove_stale, list_pending, claim`). An IndexedDB failure the
+ * browser causes is expected, the rest captured.
+ */
+const notificationsPollMetric = defineCount<'error'>('notifications.poll');
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
@@ -106,13 +115,12 @@ export function createScheduledNotifications({
     }
     failing.add(step);
     if (isExpectedDbError(error)) {
-      reportExpected(error, { flow: 'notifications', step, metric: S.NOTIFICATIONS_POLL, attributes: { step } });
+      report.expected(error, { step, metric: notificationsPollMetric, attributes: { step } });
       return;
     }
-    reportDefect(error, {
-      flow: 'notifications',
+    report.defect(error, {
       step,
-      metric: S.NOTIFICATIONS_POLL,
+      metric: notificationsPollMetric,
       message: `[scheduled notifications] ${step} failed:`,
       attributes: { step },
     });

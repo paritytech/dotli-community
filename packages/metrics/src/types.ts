@@ -1,53 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** Keep dashboards in sync with this list. */
-export type MetricOutcome =
-  | 'ok'
-  | 'error'
-  | 'timeout'
-  | 'miss'
-  | 'hit'
-  | 'pending'
-  // Bitswap
-  | 'not-found'
-  | 'invalid-cid'
-  | 'aborted'
-  // Manifest reader
-  | 'empty'
-  | 'invalid'
-  | 'unsupported-version'
-  // Cache revalidation
-  | 'match'
-  | 'update'
-  | 'cleared'
-  // Protocol wire
-  | 'refused'
-  // Phone requests: the connection ended before the phone answered, a frame did not decode, or a review could not
-  // be matched
-  | 'gone'
-  | 'undecodable'
-  | 'unmatchable'
-  // Signed-in flag
-  | 'dropped'
-  | 'signed_out'
-  | 'switched'
-  | 'unreadable'
-  // Sign-in and sign-out windows
-  | 'opened'
-  | 'blocked'
-  | 'busy'
-  | 'signed_in'
-  | 'cancelled'
-  | 'told_phone'
-  | 'nothing'
-  | 'kept'
-  // A site's sign-in and transaction through the session window, and its revoke from the site list
-  | 'granted'
-  | 'signed'
-  | 'failed'
-  | 'revoked';
-
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {
   mode?: string;
@@ -55,7 +8,7 @@ export type MetricAttributes = {
   chain?: string;
   source?: string;
   env?: string;
-  outcome?: MetricOutcome;
+  outcome?: string;
   reason?: string;
   owner?: string;
 } & Record<string, string>;

@@ -4,7 +4,7 @@
 // The sign-in route of a page with the sign-in window. It signs in and out through the window, and the modal only
 // waits for it.
 
-import { spans as S } from '@dotli/metrics';
+import { defineCount } from '@dotli/metrics';
 import { getErrorMessage } from '@dotli/shared';
 import type { PairingState } from './session/types.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
@@ -12,6 +12,12 @@ import type { SessionHandoff, SignInOutcome } from './sessionHandoff/createSessi
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { AuthModalPort, SignInRoute, StartLoginParams } from './signInRoute.js';
 import { reportLocalWalletFailure, reportWalletFailure } from './walletFailure.js';
+
+/**
+ * Count. A sign-in window's result the page could not write into its copy. Tagged `outcome` (`error`) and `reason`,
+ * the round's intent (`signin, phrase, resume`).
+ */
+const sessionWindowApplyMetric = defineCount<'error'>('session_window.apply');
 
 type Params = {
   /** The page's sign-in and sign-out windows. */
@@ -101,7 +107,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
         what: 'writing the sign-in window result',
         step: 'session_window',
         reason: windowRound.intent,
-        metric: S.SESSION_WINDOW_APPLY,
+        metric: sessionWindowApplyMetric,
       });
       if (round === windowRound) {
         windowRound.open = false;

@@ -5,7 +5,6 @@
 
 import type { AllocationOutcome } from '@parity/truapi';
 import type { CallErrorValue } from '@parity/truapi/scale';
-import type { MetricOutcome } from '@dotli/metrics';
 import { isRecord } from '@dotli/shared';
 import { PHONE_METHODS, type PhoneMethod } from './phoneMethods.js';
 
@@ -18,6 +17,9 @@ export type PhoneOutcome =
   /** The answer came back but did not decode. */
   | { kind: 'undecodable' }
   | { kind: 'gone' };
+
+/** The outcomes a phone request's count is tagged with. */
+export type PhoneMetricOutcome = 'ok' | 'refused' | 'aborted' | 'error' | 'undecodable' | 'gone';
 
 type Tagged = {
   tag: string;
@@ -44,8 +46,8 @@ export function decodePhoneOutcome(method: PhoneMethod, payload: Uint8Array): Ph
   return allocations === undefined ? { kind: 'ok', method } : { kind: 'ok', method, allocations };
 }
 
-/** The shared metric vocabulary's word for how a request ended. Never throws. */
-export function getPhoneMetricOutcome(outcome: PhoneOutcome): MetricOutcome {
+/** The phone request count's word for how a request ended. Never throws. */
+export function getPhoneMetricOutcome(outcome: PhoneOutcome): PhoneMetricOutcome {
   switch (outcome.kind) {
     case 'ok':
       return 'ok';

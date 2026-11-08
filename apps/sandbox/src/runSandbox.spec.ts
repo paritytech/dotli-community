@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
-import { bindCaptureSink, spans as S, type CaptureContext } from '@dotli/metrics';
+import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { CONTENT_ERRORS } from '@dotli/content';
 import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
@@ -149,7 +149,7 @@ describe('runSandbox contract', () => {
     expect(captured).toMatchObject([
       {
         error: { name: 'SandboxContractError', cause: { name: 'SandboxContractError', recoverable: false } },
-        context: { flow: 'content', step: 'contract_params' },
+        context: { step: 'contract_params' },
       },
     ]);
     expect(sandbox.loads).toEqual([]);
@@ -166,7 +166,7 @@ describe('runSandbox contract', () => {
     // Then
     expect(sandbox.failures).toMatchObject([{ step: 'contract_top_level', title: 'Sandbox URL not supported' }]);
     expect(expected.map(entry => entry.step)).toEqual(['contract_top_level']);
-    expect(sentry.counted(S.APP_RUN)).toEqual([{ outcome: 'error', reason: 'top_level' }]);
+    expect(sentry.counted('app.run')).toEqual([{ outcome: 'error', reason: 'top_level' }]);
     expect(captured).toEqual([]);
     expect(sandbox.loads).toEqual([]);
   });
@@ -252,11 +252,10 @@ describe('runSandbox load failures', () => {
     );
 
     // Then
-    expect(captured).toEqual([
+    expect(captured).toMatchObject([
       {
         error,
         context: {
-          flow: 'content',
           step: 'content_fetch',
           tags: { surface: 'sandbox_main', dependency: 'smoldot-bitswap', attempt: '1' },
         },

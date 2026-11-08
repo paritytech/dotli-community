@@ -5,12 +5,20 @@
 // hears the phone end the session. It follows the copy, never the auth store, acts only at start, on a change of the
 // copy and when its core goes down, and never retries on a timer.
 
-import { m, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { CoreRedialError } from '../coreRedialError.js';
 import type { CoreLease } from '../createPageCore.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import type { HostCoreStorage } from './createCoreStorage.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * One `acquire` the session lease made of the page core. Tagged `outcome` (ok or error) and, on error, `reason`: `boot`
+ * for a first boot that failed and `redial` for a replacement that could not boot.
+ */
+const walletSessionLeaseMetric = defineCount<'error' | 'ok'>('wallet.session_lease');
 
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
@@ -67,7 +75,7 @@ export function createSessionLease({ copy, isLocalWallet, core }: Params) {
       reportAcquireFailure(error);
       return;
     }
-    m.count(S.WALLET_SESSION_LEASE, { outcome: 'ok' });
+    walletSessionLeaseMetric.count({ outcome: 'ok' });
     if (isStopped() || isLocalWallet()) {
       lease.release();
       return;
@@ -112,10 +120,9 @@ export function createSessionLease({ copy, isLocalWallet, core }: Params) {
 
 function reportAcquireFailure(error: unknown): void {
   if (error instanceof CoreRedialError) {
-    reportExpected(error, {
-      flow: 'wallet',
+    report.expected(error, {
       step: 'session_lease',
-      metric: S.WALLET_SESSION_LEASE,
+      metric: walletSessionLeaseMetric,
       reason: 'redial',
     });
     return;
@@ -124,6 +131,6 @@ function reportAcquireFailure(error: unknown): void {
     what: 'session lease boot',
     step: 'session_lease',
     reason: 'boot',
-    metric: S.WALLET_SESSION_LEASE,
+    metric: walletSessionLeaseMetric,
   });
 }

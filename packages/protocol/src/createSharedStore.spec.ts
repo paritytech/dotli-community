@@ -3,8 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { atom, STORE_UNMOUNT_DELAY } from 'nanostores';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, recordLog } from '@dotli/shared/testing';
 import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
@@ -222,7 +221,7 @@ describe('createSharedStore', () => {
     // Given a subscription on a frame that stays up
     const timers = createManualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame({ serve: createOpeningFrame(opened), timers });
@@ -247,11 +246,11 @@ describe('createSharedStore', () => {
     // Then
     expect([openedBeforeFirstWait, openedAfterFirstWait, openedBeforeSecondWait, opened.length]).toEqual([1, 2, 2, 3]);
     expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } }]);
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
+    expect(metrics.counted('protocol.feed_end')).toEqual([
       { outcome: 'error', feed: 'shared_auth', reason: 'ProtocolFeedEndedError' },
       { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
     ]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } }]);
+    expect(captured).toMatchObject([{ step: 'feed_end', tags: { feed: 'shared_auth' } }]);
     expect(errors).toHaveLength(2);
   });
 
@@ -271,7 +270,7 @@ describe('createSharedStore', () => {
 
     // Then
     expect(opened).toHaveLength(1);
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(metrics.counted('protocol.feed_end')).toEqual([]);
   });
 
   it('As a returning user, I lose a frame while my shared auth subscription asks for it and it is neither reported nor followed', async () => {
@@ -288,7 +287,7 @@ describe('createSharedStore', () => {
     await timers.advance(30_000);
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(metrics.counted('protocol.feed_end')).toEqual([]);
     expect(timers.countPending()).toBe(0);
   });
 

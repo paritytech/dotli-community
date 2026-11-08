@@ -11,13 +11,14 @@ import type {
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
 import { getActiveServicesConfig } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { loadSigningWorker } from '../lazy.js';
 import { liteUsernameRefresh } from './createLiteUsernameRefresh.js';
-import { reportLocalWalletFailure, type LocalWalletFailureReason } from './walletFailure.js';
+import { reportLocalWalletFailure, walletLocalActivateMetric, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 import { watchIdentityAccount } from './watchIdentityAccount.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
 
@@ -73,18 +74,18 @@ export function createLocalWalletCoreBoot({
       });
     } catch (error) {
       // The caller that asked for the core hears this and reports it, so only the count is kept here.
-      m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason: 'boot' });
+      walletLocalActivateMetric.count({ outcome: 'error', reason: 'boot' });
       throw new Error('Local wallet core failed to boot', { cause: error });
     }
     try {
       await runtime.activateLocalSession(wallet.entropy, wallet.identity?.liteUsername ?? undefined);
     } catch (error) {
       runtime.dispose();
-      m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'error', reason: 'activate' });
+      walletLocalActivateMetric.count({ outcome: 'error', reason: 'activate' });
       throw new Error('Local wallet activation failed', { cause: error });
     }
-    m.count(S.WALLET_LOCAL_ACTIVATE, { outcome: 'ok' });
-    log.event('local wallet activated', { flow: 'wallet' });
+    walletLocalActivateMetric.count({ outcome: 'ok' });
+    report.log.event('local wallet activated');
 
     // A repeated activation drops grants held only in memory, so it happens only when the name changed.
     void refreshLiteUsername(wallet, watched.identityAccountId)
@@ -93,7 +94,7 @@ export function createLocalWalletCoreBoot({
           return;
         }
         await runtime.activateLocalSession(wallet.entropy, name ?? undefined);
-        log.event('local wallet re-activated with a new username', { flow: 'wallet' });
+        report.log.event('local wallet re-activated with a new username');
       })
       .catch((error: unknown) => {
         reportFailure(error, 'reactivate');

@@ -3,8 +3,8 @@
 
 import { recordLog } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { m, spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { countMetric, type CountSink } from '@dotli/metrics';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import {
   createTransport,
   createWindowProvider,
@@ -25,7 +25,7 @@ function createRecordingSinks(): {
   warned: unknown[][];
   counted: unknown[][];
   warn: (...args: unknown[]) => void;
-  count: typeof m.count;
+  count: CountSink;
 } {
   const warned: unknown[][] = [];
   const counted: unknown[][] = [];
@@ -33,7 +33,7 @@ function createRecordingSinks(): {
     warned,
     counted,
     warn: (...args) => warned.push(args),
-    count: (name, attributes) => counted.push([name, attributes]),
+    count: (metric, attributes) => counted.push([metric.name, attributes]),
   };
 }
 
@@ -42,14 +42,14 @@ describe('the transport issues', () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const lines = recordLog({ onFinished: onTestFinished });
-    const report = createWireReport({ side: 'host', count: m.count });
+    const report = createWireReport({ side: 'host', count: countMetric });
 
     // When
     report.onIssue({ kind: 'refused', reason: 'malformed', cause: new RangeError('the data is cut short') });
     report.onNotBytes();
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_WIRE_REFUSED)).toEqual([
+    expect(metrics.counted('protocol.wire_refused')).toEqual([
       { outcome: 'refused', reason: 'malformed', side: 'host' },
       { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
@@ -69,10 +69,10 @@ describe('the transport issues', () => {
 
   it("As a dotli operator, I see a call's message the provider could not post captured, logged and counted with its method and side", () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const lines = recordLog({ onFinished: onTestFinished });
-    const report = createWireReport({ side: 'host', count: m.count });
+    const report = createWireReport({ side: 'host', count: countMetric });
 
     // When
     report.onIssue({
@@ -82,26 +82,24 @@ describe('the transport issues', () => {
     });
 
     // Then
-    expect(captured).toEqual([
-      { flow: 'protocol', step: 'serve_post', tags: { method: 'resolveOwner', side: 'host' } },
-    ]);
+    expect(captured).toMatchObject([{ step: 'serve_post', tags: { method: 'resolveOwner', side: 'host' } }]);
     expect(lines.filter(line => line.level === 'error').map(line => line.message)).toEqual([
       '[dot.li protocol] A resolveOwner message could not be posted The peer window is gone',
     ]);
-    expect(metrics.counted(S.PROTOCOL_SERVE_POST)).toEqual([{ outcome: 'error', reason: 'TypeError', side: 'host' }]);
+    expect(metrics.counted('protocol.serve_post')).toEqual([{ outcome: 'error', reason: 'TypeError', side: 'host' }]);
   });
 
   it('As a dotli operator, I see a message of no call the provider could not post captured and logged with its side alone', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const lines = recordLog({ onFinished: onTestFinished });
-    const report = createWireReport({ side: 'host', count: m.count });
+    const report = createWireReport({ side: 'host', count: countMetric });
 
     // When
     report.onIssue({ kind: 'post_failed', error: new TypeError('The peer window is gone') });
 
     // Then
-    expect(captured).toEqual([{ flow: 'protocol', step: 'serve_post', tags: { side: 'host' } }]);
+    expect(captured).toMatchObject([{ step: 'serve_post', tags: { side: 'host' } }]);
     expect(lines.filter(line => line.level === 'error').map(line => line.message)).toEqual([
       '[dot.li protocol] A message could not be posted The peer window is gone',
     ]);
@@ -109,16 +107,16 @@ describe('the transport issues', () => {
 
   it('As a dotli operator, I see a listener that threw on the transport reported as a listener of the protocol', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const report = createWireReport({ side: 'host', count: m.count });
+    const report = createWireReport({ side: 'host', count: countMetric });
 
     // When
     report.onIssue({ kind: 'listener_threw', error: new Error('listener bug') });
 
     // Then
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'protocol.transport' } }]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'protocol.transport' } }]);
+    expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'protocol.transport' },
     ]);
   });
@@ -137,7 +135,7 @@ describe('the wire report', () => {
     report.onRefusedOrigin(PRODUCT_ORIGIN);
 
     // Then each origin is counted and logged on its first refusal only
-    const refused = [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' }];
+    const refused = ['protocol.wire_refused', { outcome: 'refused', reason: 'origin', side: 'frame' }];
     expect(sinks.counted).toEqual([refused, refused]);
     expect(sinks.warned).toEqual([
       [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${STRANGER}`],
@@ -198,7 +196,7 @@ describe('the wire report', () => {
 
     // Then
     expect(sinks.counted).toEqual([
-      [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'invalid', side: 'worker' }],
+      ['protocol.wire_refused', { outcome: 'refused', reason: 'invalid', side: 'worker' }],
     ]);
   });
 });

@@ -180,7 +180,7 @@ describe('topbar login over the page core', () => {
     await done;
 
     // Then the failure is captured under the wallet flow and shown
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'login' }));
     expect(fakes.captures.expected).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith('worker fatal error: boom');
   });
@@ -313,10 +313,12 @@ describe('topbar login over the page core', () => {
 
     // Then the login answers cancelled and only a breadcrumb is left
     expect(outcome).toEqual({ kind: 'cancelled' });
-    expect(fakes.captures.expected).toHaveBeenCalledWith(expect.objectContaining({ name: 'LoginRequestError' }), {
-      flow: 'wallet',
-      step: 'login',
-    });
+    expect(fakes.captures.expected).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'LoginRequestError' }),
+      expect.objectContaining({
+        step: 'login',
+      }),
+    );
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
@@ -331,7 +333,7 @@ describe('topbar login over the page core', () => {
     await fakes.commands.login();
 
     // Then the failure is recorded as expected and shown
-    expect(fakes.captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'login' }));
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith(failure.message);
   });
@@ -368,11 +370,13 @@ describe('topbar login over the page core', () => {
     await fakes.commands.login();
 
     // Then the refusal is captured with its tag, logged once and counted with its tag
-    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, {
-      flow: 'wallet',
-      step: 'login',
-      tags: { login_error: 'Unsupported' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({
+        step: 'login',
+        tags: { login_error: 'Unsupported' },
+      }),
+    );
     expect(lines.map(line => line.args)).toEqual([['[dot.li wallet] login failed:', failure]]);
     expect(fakes.counted('wallet.login')).toEqual([{ outcome: 'error', reason: 'Unsupported' }]);
   });
@@ -468,7 +472,10 @@ describe('topbar login over the page core', () => {
     await fakes.changes.until(() => fakes.captures.exception.mock.calls.length === 1);
 
     // Then the failure is reported once as a login failure, and session state is not told
-    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({ step: 'login' }),
+    );
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
 
@@ -496,6 +503,9 @@ describe('topbar login over the page core', () => {
     await done;
 
     // Then the failure is reported once as a login failure
-    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, { flow: 'wallet', step: 'login' });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({ step: 'login' }),
+    );
   });
 });

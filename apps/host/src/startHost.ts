@@ -4,11 +4,11 @@
 // What every page runs once its own start is done: settings, the protocol iframe, the bridge and, on a page with a
 // sign-in modal, the auth controller.
 
-import { m, reportExpected, setResolutionId, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, m, setResolutionId } from '@dotli/metrics';
 import { topbarState } from './state/topbarState.js';
 import { showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
-import { log, markHandled, pageLocalStorage } from '@dotli/shared';
+import { markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -23,6 +23,18 @@ import { pageRole, isSessionShown, getSignInSurface, type PageRole } from './run
 import { readBootSettings } from './readBootSettings.js';
 import { settingsState } from './state/settingsState.js';
 import { pageSettingsActions } from './createSettingsActions.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const protocolReport = createReporter({ flow: 'protocol' });
+
+/**
+ * Count. The boot's early start of the protocol frame failed. Expected. Tagged `outcome` (error) and `reason` (the
+ * error's name).
+ */
+const protocolFramePrewarmMetric = defineCount<'error'>('protocol.frame_prewarm');
+
+/** Count. The boot's resolver warm-up failed. Expected. Tagged `outcome` (error) and `reason` (the error's name). */
+const resolveWarmupMetric = defineCount<'error'>('resolve.warmup');
 
 export type EmitDebugEvent = (event: DotliDebugEvent) => void;
 
@@ -121,8 +133,7 @@ export async function startHost({
       skipArchiveCache: settings.cache.skipArchiveCache,
     },
   });
-  log.event('Settings applied', {
-    flow: 'boot',
+  bootReport.log.event('Settings applied', {
     network: settings.network,
     backend: settings.backend,
     skip_cid_cache: settings.cache.skipCidCache,
@@ -142,12 +153,12 @@ export async function startHost({
   getProtocolClient()
     .frame.ensureReady()
     .catch((error: unknown) => {
-      reportExpected(error, { flow: 'protocol', step: 'frame_prewarm', metric: S.PROTOCOL_FRAME_PREWARM });
+      protocolReport.expected(error, { step: 'frame_prewarm', metric: protocolFramePrewarmMetric });
     });
   getProtocolClient()
     .resolve.warmup()
     .catch((error: unknown) => {
-      reportExpected(error, { flow: 'protocol', step: 'warmup', metric: S.RESOLVE_WARMUP });
+      protocolReport.expected(error, { step: 'warmup', metric: resolveWarmupMetric });
     });
   emitDotliDebugEvent({
     layer: 'boot',

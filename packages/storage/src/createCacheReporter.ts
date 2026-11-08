@@ -1,9 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { getErrorName, log } from '@dotli/shared';
-import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { getErrorName } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { isExpectedDbError } from './isExpectedDbError.js';
+
+const storageReport = createReporter({ flow: 'storage' });
+
+/**
+ * A cache's storage step that failed. Counted only on failure, tagged `outcome` (error), `reason` (the error's name),
+ * `surface` (`cid_cache, block_cache`) and `step` (`read, write, touch, delete, evict, prune, clear`).
+ */
+const cacheStorageMetric = defineCount<'error'>('cache.storage');
 
 type Params = {
   /** The cache's name, the surface of its metric and the start of its error steps. */
@@ -24,21 +32,20 @@ export function createCacheReporter({ cache, tag }: Params): (action: string, er
     const step = `${cache}_${action}`;
     const attributes = { surface: cache, step: action };
     if (isExpectedDbError(error) || isQuotaError(error)) {
-      reportExpected(error, { flow: 'storage', step, metric: S.CACHE_STORAGE, attributes });
+      storageReport.expected(error, { step, metric: cacheStorageMetric, attributes });
       return;
     }
     const message = `${tag} ${action} error:`;
     if (captured.has(action)) {
-      log.error(message, error);
-      m.count(S.CACHE_STORAGE, { ...attributes, outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      storageReport.log.error(message, error);
+      cacheStorageMetric.count({ ...attributes, outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
       return;
     }
     captured.add(action);
-    reportDefect(error, {
-      flow: 'storage',
+    storageReport.defect(error, {
       step,
       tags: { kind: `${step}_error` },
-      metric: S.CACHE_STORAGE,
+      metric: cacheStorageMetric,
       attributes,
       message,
     });

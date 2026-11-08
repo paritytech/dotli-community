@@ -6,12 +6,12 @@
 
 import type { SpanHandle } from './createSpanHandle.js';
 
-/** The user flow an event belongs to, so failures can be read and counted per flow from tags alone. */
-export type Flow = 'boot' | 'resolve' | 'content' | 'protocol' | 'wallet' | 'storage' | 'notifications' | 'ui' | 'chat';
-
 export type CaptureContext = {
-  /** The flow the failure belongs to. Part of the issue fingerprint. */
-  flow: Flow;
+  /**
+   * The flow the failure belongs to, a stable snake_case name its feature's reporter gives. Part of the issue
+   * fingerprint.
+   */
+  flow: string;
   /**
    * The failing step in snake_case (`manifest_read`). Part of the issue fingerprint, so keep it
    * stable and low-cardinality: never a label, CID or message.
@@ -51,7 +51,9 @@ export function captureException(error: unknown, context: CaptureContext): void 
   });
 }
 
-/** Record an expected, handled failure as a breadcrumb rather than an issue, to explain any later event. Never throws. */
+/**
+ * Record an expected, handled failure as a breadcrumb rather than an issue, to explain any later event. Never throws.
+ */
 export function recordExpected(error: unknown, context: Pick<CaptureContext, 'flow' | 'step'>): void {
   deliver(() => {
     sink.expected(error, context);

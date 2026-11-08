@@ -3,7 +3,7 @@
 
 // The origin wipe a full settings reset runs. It keeps what the other layers on this origin own.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   type ListableStorage,
   OriginWipeError,
@@ -18,6 +18,14 @@ import { SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX } from '@dotli/protocol'
 import { SMOLDOT_DB_NAME } from '@dotli/chains';
 import { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { THEME_KEY } from './themeKey.js';
+
+const report = createReporter({ flow: 'storage' });
+
+/**
+ * One part of an origin wipe that failed. Tagged `outcome` (error) and `reason` (indexeddb, cache_storage or
+ * service_worker).
+ */
+const originWipeMetric = defineCount<'error'>('settings.origin_wipe');
 
 export type WipeFailure = OriginWipePart;
 
@@ -51,10 +59,9 @@ export async function wipeOriginState(parts: WipeParts = getBrowserWipeParts()):
     }
     failed = [...error.failures.keys()];
     for (const [reason, cause] of error.failures) {
-      reportExpected(cause, {
-        flow: 'storage',
+      report.expected(cause, {
         step: `origin_wipe_${reason}`,
-        metric: S.ORIGIN_WIPE,
+        metric: originWipeMetric,
         reason,
         message: `[dot.li settings] ${reason} wipe failed:`,
       });

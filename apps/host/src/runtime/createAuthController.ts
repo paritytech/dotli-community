@@ -7,7 +7,7 @@
 // bridge chunk, reached through its `bridge` port.
 
 import { withActiveTld } from '@dotli/config';
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
@@ -33,6 +33,20 @@ import { authModalState } from '../state/authModalState.js';
 import { getLoginFailureView } from './getLoginFailureView.js';
 import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
 import type { toEntropy } from './recoveryPhrase.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A sign-in command threw after the bridge chunk loaded. Tagged `outcome` (error), `reason` (the error's
+ * name) and `step` (`login, logout, cancel_login`).
+ */
+const authCommandMetric = defineCount<'error'>('auth.command');
+
+/**
+ * Count. The sign-in modal's lease failed other than by its own abort. Tagged `outcome` (error) and `reason` (the
+ * error's name).
+ */
+const authModalLeaseMetric = defineCount<'error'>('auth.modal_lease');
 
 /** What the controller reaches in the bridge chunk. */
 type AuthBridge = Pick<HostBridge, 'authCommands' | 'applyWindowResult' | 'rereadSession'> & {
@@ -101,7 +115,7 @@ export function createAuthController({
     }
 
     function failCommand(error: unknown): void {
-      reportDefect(error, { flow: 'wallet', step, metric: S.AUTH_COMMAND, message, attributes: { step } });
+      report.defect(error, { step, metric: authCommandMetric, message, attributes: { step } });
       showLoginFailure(error);
     }
 
@@ -150,10 +164,9 @@ export function createAuthController({
       .catch((error: unknown) => {
         // Closing the modal disposes its lease, which rejects with an AbortError.
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          reportDefect(error, {
-            flow: 'wallet',
+          report.defect(error, {
             step: 'auth_modal_lease',
-            metric: S.AUTH_MODAL_LEASE,
+            metric: authModalLeaseMetric,
             message: '[dot.li auth] authentication modal lease failed:',
           });
         }
@@ -210,8 +223,7 @@ export function createAuthController({
     const step = authViews.getLoginStep(state);
     const kind = getFailureKind(step);
     // The tag and failure kind only: a failure's reason can carry wallet text.
-    log.event('auth state', {
-      flow: 'wallet',
+    report.log.event('auth state', {
       state: state.tag,
       ...(kind === undefined ? {} : { kind }),
     });

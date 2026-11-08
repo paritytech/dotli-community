@@ -3,11 +3,19 @@
 
 // The product's icon from its root manifest. Applied after the product renders, so it never blocks first paint.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
-import { log, realTimers, type Timers } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { realTimers, type Timers } from '@dotli/shared';
 import { withActiveTld } from '@dotli/config';
 import type { ProductManifests } from './cachedManifest.js';
 import { productCardState } from './state/productCardState.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/**
+ * Count. The product's icon could not be read within its budget, so the tab keeps its icon. Expected. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+const productIconMetric = defineCount<'error'>('product.icon');
 
 type Params = {
   /** The product's label, named in the report of a failed icon. */
@@ -23,8 +31,6 @@ type Params = {
   /** The timers the icon's budget runs on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
-
-const resolveLog = log.createChild({ flow: 'resolve' });
 
 const ICON_FETCH_BUDGET_MS = 10_000;
 
@@ -62,9 +68,11 @@ export async function applyProductBranding({
     showIcon(href);
   } catch (error: unknown) {
     // Cosmetic: a failure must not affect the app, so the tab keeps its icon.
-    resolveLog.warn(`[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`, error);
-    // Warned through the resolve logger, so the report writes no line of its own.
-    reportExpected(error, { flow: 'resolve', step: 'product_icon', metric: S.PRODUCT_ICON });
+    report.expected(error, {
+      step: 'product_icon',
+      metric: productIconMetric,
+      message: `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`,
+    });
   } finally {
     timers.clearTimeout(iconDeadline);
   }

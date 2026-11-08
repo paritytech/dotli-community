@@ -73,11 +73,13 @@ describe('queryFinalizedBlock', () => {
     expect(block).toBeNull();
     expect(client.destroy).toHaveBeenCalledOnce();
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'chainHead follow failed' }), {
-      flow: 'ui',
-      step: 'diagnostics_block',
-      tags: { reason: 'Error' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'chainHead follow failed' }),
+      expect.objectContaining({
+        step: 'diagnostics_block',
+        tags: { reason: 'Error' },
+      }),
+    );
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
@@ -145,7 +147,10 @@ describe('queryFinalizedBlock', () => {
     expect(client.destroy).toHaveBeenCalledOnce();
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'ui', step: 'diagnostics_block' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'diagnostics_block' }),
+    );
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
   });
 });

@@ -4,16 +4,19 @@
 // The page's restore on load. It applies the restore rule to the page's copy, and the wallet the rule leaves is the
 // page's wallet mode.
 
-import { m, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { createAsyncTaskPool, log } from '@dotli/shared';
-import { reportLocalWalletFailure } from './walletFailure.js';
+import { createAsyncTaskPool } from '@dotli/shared';
+import { reportLocalWalletFailure, walletLocalActivateMetric } from './walletFailure.js';
 import { getLoadReader, pageRole, isPairingOnly, isFlagShared, type PageRole } from './pageRole.js';
 import { signInFlag } from './session/createCoreStorage.js';
 import { reconcilePage, type PresenceReader, type Reconciled } from './session/restoreRule.js';
+import { sessionPresenceMetric } from './session/sessionPresenceMetric.js';
 import type { WalletRead } from './session/siteWallet.js';
 import type { SignInFlag } from './session/signInFlag.js';
 import { walletModeState, type WalletModeState } from './state/walletModeState.js';
+
+const walletReport = createReporter({ flow: 'wallet' });
 
 export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 
@@ -73,7 +76,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
 
   /** A frame that cannot answer is the environment's failure, so each pass that met it is a breadcrumb and a count. */
   function reportOutage(error: unknown): void {
-    reportExpected(error, { flow: 'wallet', step: 'local_wallet', metric: S.WALLET_LOCAL_ACTIVATE, reason: 'read' });
+    walletReport.expected(error, { step: 'local_wallet', metric: walletLocalActivateMetric, reason: 'read' });
     report({ mode: 'app', failure: UNAVAILABLE });
   }
 
@@ -91,8 +94,8 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
    */
   function settle({ presence, session, wallet }: Restored): void {
     if (presence === 'unknown' && isFlagShared(role)) {
-      log.event('signed-in flag unreadable, keeping the stored sign-in', { flow: 'wallet' });
-      m.count(S.SESSION_PRESENCE, { outcome: 'unreadable', reason: reader });
+      walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
+      sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
     }
     // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
     const signedIn = (session.status === 'ok' && session.blob !== null) || wallet.status === 'ok';
@@ -100,7 +103,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       flag.renew();
     }
     if (wallet.status === 'ok' && getLocalWallet(wallet) === null) {
-      log.event('local wallet kept as data, page pairs', { flow: 'wallet' });
+      walletReport.log.event('local wallet kept as data, page pairs');
     }
   }
 

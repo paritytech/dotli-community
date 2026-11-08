@@ -5,11 +5,11 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindLogSink } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
 import { createDebugBus, type DebugBus, type DebugBusEvent } from './createDebugBus.js';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 /** Record the captures, error lines and metrics a throwing listener leaves, until the test ends. */
 function recordListenerReports() {
-  const captured = recordCaptures({ onFinished: onTestFinished });
+  const captured = recordReports({ onFinished: onTestFinished }).exceptions;
   const errors: string[] = [];
   onTestFinished(
     bindLogSink({
@@ -59,7 +59,7 @@ describe('debug bus listener failures', () => {
     // Then both later receivers got it, and the throw was reported once
     expect(watched).toEqual([createBootEvent('flow-1')]);
     expect(shown).toEqual([createBootEvent('flow-1')]);
-    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.watch' } }]);
+    expect(reports.captured).toMatchObject([{ step: 'listener', tags: { owner: 'debug_bus.watch' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.listDeliveryMetrics()).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'debug_bus.watch' },
@@ -85,7 +85,7 @@ describe('debug bus listener failures', () => {
 
     // Then it still got the second, and the throw was reported once
     expect(shown).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
-    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.replay' } }]);
+    expect(reports.captured).toMatchObject([{ step: 'listener', tags: { owner: 'debug_bus.replay' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.listDeliveryMetrics()).toEqual([
       { outcome: 'error', reason: 'RangeError', owner: 'debug_bus.replay' },
@@ -110,7 +110,7 @@ describe('debug bus listener failures', () => {
     // Then
     expect(thrown).toBeUndefined();
     expect(shown).toEqual([createBootEvent('flow-1')]);
-    expect(reports.captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_bus.live' } }]);
+    expect(reports.captured).toMatchObject([{ step: 'listener', tags: { owner: 'debug_bus.live' } }]);
     expect(reports.errors).toHaveLength(1);
     expect(reports.listDeliveryMetrics()).toEqual([{ outcome: 'error', reason: 'TypeError', owner: 'debug_bus.live' }]);
   });

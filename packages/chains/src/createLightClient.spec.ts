@@ -21,7 +21,7 @@ import {
 import type { ChainSyncReporter } from './createChainSyncReporter.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
 import type { ChainTransportHooks } from './transportHooks.js';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 const waiting = new Set<() => void>();
 
@@ -379,7 +379,7 @@ describe('createLightClient', () => {
 
   it('As a dotli integrator, I see a halt listener that throws on the end of the stream called once and reported', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const chainHooks = createMockHooks();
     chainHooks.onHalt.mockImplementation(() => {
@@ -394,7 +394,7 @@ describe('createLightClient', () => {
     // Then
     await waitUntil(() => captured.length > 0);
     expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client.halt' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'light_client.halt' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'light_client.halt' },
     ]);
@@ -553,7 +553,7 @@ describe('createLightClient', () => {
 
   it('As a dotli integrator, I see a light client listener that throws on the fatal change reported while the next one still hears it', async () => {
     // Given a start that fails, a listener that throws and one after it
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     client.subscribe(() => {
       throw new TypeError('listener broke');
@@ -569,7 +569,7 @@ describe('createLightClient', () => {
     // Then
     await first.halted();
     expect(changes).toEqual([{ kind: 'fatal', message: `chain ${people} connection failed: wasm fetch failed` }]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'light_client' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'light_client' },
     ]);

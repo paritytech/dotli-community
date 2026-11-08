@@ -8,9 +8,9 @@
 // signed-in flag in the click's turn, and answers that window's read to whoever asks.
 
 import { getNetwork, type Network } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { getProtocolOrigin } from '@dotli/protocol';
-import { createDeferred, log, listenForPageReturn } from '@dotli/shared';
+import { createDeferred, listenForPageReturn } from '@dotli/shared';
 import { getSignInSurface, type PageRole } from '../pageRole.js';
 import { sessionPresence } from '../session/createPagePresence.js';
 import type { SessionPresence } from '../session/types.js';
@@ -19,6 +19,30 @@ import type { SignInIntent } from './parseWindowRequest.js';
 import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
 import { parseSessionResult, type SessionResult } from './parseSessionResult.js';
 import { createHelloMessage, parsePageMessage, PROTOCOL_VERSION, type PageMessage } from './sessionMessages.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A page's ask to sign in through the sign-in window. Tagged `outcome`: `opened` for a window it opened,
+ * `blocked` for one the browser refused, and `busy` for an ask while the sign-out window was still open, which opened
+ * no window. Tagged `reason`, the intent (`signin, phrase, resume`).
+ */
+const sessionWindowSigninMetric = defineCount<'blocked' | 'busy' | 'opened'>('session_window.signin');
+
+/**
+ * Count. How a sign-in round through the window ended. Tagged `outcome` and `reason`, what ended it: `signed_in` with
+ * `window` for the window's result, or with `store` for a page that heard the window store the sign-in before its
+ * result came, `refused` with `window`, `cancelled` with `closed` for a window found closed when the page came back,
+ * `page` for the page's own Cancel or a window it opened in place of the round's, or `signed_out` for a sign-out that
+ * ended it.
+ */
+const sessionWindowRoundMetric = defineCount<RoundTags['outcome']>('session_window.round');
+
+/**
+ * Count. A page's opening of the sign-out window. Tagged `outcome` (`opened, blocked`) and `reason`, whether the page
+ * told the phone itself (`notified, unnotified`).
+ */
+const sessionWindowSignoutMetric = defineCount<'blocked' | 'opened'>('session_window.signout');
 
 export type SignInOutcome =
   { kind: 'result'; result: SessionResult } | { kind: 'blocked' } | { kind: 'cancelled' } | { kind: 'refused' };
@@ -161,7 +185,7 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
       switch (message.type) {
         case 'dotli:s:ready':
           if (!message.versions.includes(PROTOCOL_VERSION)) {
-            log.event('session window speaks no known protocol version', { flow: 'wallet' });
+            report.log.event('session window speaks no known protocol version');
             take({ kind: 'refused' });
             return;
           }
@@ -204,8 +228,8 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
     signIn(intent: SignInIntent): Promise<SignInOutcome> {
       if (current?.kind === 'signout') {
         current.handle.focus();
-        log.event('sign-in window refused while signing out', { flow: 'wallet' });
-        m.count(S.SESSION_WINDOW_SIGNIN, { outcome: 'busy', reason: intent });
+        report.log.event('sign-in window refused while signing out');
+        sessionWindowSigninMetric.count({ outcome: 'busy', reason: intent });
         return Promise.resolve({ kind: 'cancelled' });
       }
       const outcome = createDeferred<SignInOutcome>();
@@ -214,18 +238,18 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
         urlFor: round => createSignInWindowUrl({ intent, network: network(), round, origin: windowOrigin }),
         settle(ended) {
           const settled: SignInOutcome = 'word' in ended ? ended.word : { kind: 'cancelled' };
-          log.event('sign-in window round ended', { flow: 'wallet', outcome: settled.kind });
-          m.count(S.SESSION_WINDOW_ROUND, getRoundTags(ended));
+          report.log.event('sign-in window round ended', { outcome: settled.kind });
+          sessionWindowRoundMetric.count(getRoundTags(ended));
           outcome.resolve(settled);
         },
         hear: hearSignIn,
       });
       if (handle === null) {
-        log.event('sign-in window blocked', { flow: 'wallet' });
-        m.count(S.SESSION_WINDOW_SIGNIN, { outcome: 'blocked', reason: intent });
+        report.log.event('sign-in window blocked');
+        sessionWindowSigninMetric.count({ outcome: 'blocked', reason: intent });
         return Promise.resolve({ kind: 'blocked' });
       }
-      m.count(S.SESSION_WINDOW_SIGNIN, { outcome: 'opened', reason: intent });
+      sessionWindowSigninMetric.count({ outcome: 'opened', reason: intent });
       return outcome.promise;
     },
     /**
@@ -250,7 +274,7 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
         // The sign-out window's result says it has read what it ends, and its refusal that it never will.
         hear: () => true,
       });
-      m.count(S.SESSION_WINDOW_SIGNOUT, {
+      sessionWindowSignoutMetric.count({
         outcome: handle === null ? 'blocked' : 'opened',
         reason: notified ? 'notified' : 'unnotified',
       });

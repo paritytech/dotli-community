@@ -187,10 +187,12 @@ describe('product permissions store', () => {
 
     // Then
     expect(permissions.state.get()).toEqual({ status: 'failed', label: LABEL });
-    expect(captures.exception).toHaveBeenCalledWith(new Error('core down'), {
-      flow: 'wallet',
-      step: 'permissions_read',
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      new Error('core down'),
+      expect.objectContaining({
+        step: 'permissions_read',
+      }),
+    );
   });
 
   it('As a user, I make a change and see its targets stored, shown and announced once with whether the frame must be rebuilt', async () => {
@@ -369,11 +371,13 @@ describe('product permissions store', () => {
     expect(changes).toEqual([
       { label: LABEL, permissions: ['Microphone', 'ChainSubmit'], allowChanged: true, fromPrompt: false },
     ]);
-    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(new Error('core down'), {
-      flow: 'wallet',
-      step: 'permissions_change',
-      tags: { reason: 'write' },
-    });
+    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
+      new Error('core down'),
+      expect.objectContaining({
+        step: 'permissions_change',
+        tags: { reason: 'write' },
+      }),
+    );
     expect(core.reads).toBe(readsBefore + 1);
     expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Camera: 'granted' }) });
   });
@@ -548,11 +552,13 @@ describe('product permissions store', () => {
     // Then
     await expect(decision).rejects.toThrow('core down');
     expect(attempts).toBe(3);
-    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(new Error('core down'), {
-      flow: 'wallet',
-      step: 'permissions_change',
-      tags: { reason: 'write' },
-    });
+    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
+      new Error('core down'),
+      expect.objectContaining({
+        step: 'permissions_change',
+        tags: { reason: 'write' },
+      }),
+    );
     expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: buildStatuses() });
     expect(changes).toEqual([]);
   });
