@@ -15,19 +15,22 @@ type Params = {
 
 /** Answers the core's asks by showing the page's prompts, and reads and records the permissions they decide. */
 export function createPromptAsks({ prompts, permissions }: Params): HostAsks {
-  return ({ label, blockingModalScope, phoneRequests }) => ({
-    permissions: createPromptPermission({
-      label,
-      ask: prompts.askPermission,
-      notify: prompts.notify,
-      permissions,
-      modalScope: blockingModalScope,
-    }),
-    userConfirmation: createUserConfirmationAdapters({
-      label,
-      prompts,
-      modalScope: blockingModalScope,
-      phoneRequests,
-    }),
-  });
+  return core => {
+    const { label } = core.product;
+    return {
+      permissions: createPromptPermission({
+        label,
+        ask: prompts.askPermission,
+        notify: prompts.notify,
+        permissions,
+        modalScope: core.blockingModalScope,
+      }),
+      userConfirmation: createUserConfirmationAdapters({
+        label,
+        prompts,
+        modalScope: core.blockingModalScope,
+        phoneRequests: core.phoneRequests,
+      }),
+    };
+  };
 }

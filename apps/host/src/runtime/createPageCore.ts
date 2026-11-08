@@ -19,7 +19,7 @@ import {
   type ListenerSet,
   type Timers,
 } from '@dotli/shared';
-import type { BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
+import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { CoreRedialError } from './coreRedialError.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPhoneRequestTracker.js';
@@ -31,6 +31,24 @@ export type PageProduct = {
   productId?: string | undefined;
   /** How pairing presents itself, when not as the product. */
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
+};
+
+/** One core's own collaborators, built when the core is dialed and handed on whole. */
+export type CoreContext = {
+  product: PageProduct;
+  /** Where the core's prompts queue, on the page's one coordinator. */
+  blockingModalScope: BlockingModalScope;
+  /** What the core's frames report phone requests to, and its confirmations claim from. */
+  phoneRequests: PhoneRequestTracker;
+  /** False once the core is gone, so a late step of its boot stands down. Never throws. */
+  isLive: () => boolean;
+  /**
+   * False once the core went down or turned stale. Leases can keep a retired core running, and only the core in
+   * service speaks for the session. Never throws.
+   */
+  isInService: () => boolean;
+  /** Keeps the core's session slot in memory, for a core that must never write the stored session or the flag. */
+  sessionInMemory: boolean;
 };
 
 /** Close it through `close`, never the provider, or the core is marked faulted. */
@@ -173,15 +191,16 @@ export function createPageCore({
     const phoneRequests = createPhoneRequests();
     const dropped = new AbortController();
     let unsubscribeStore: (() => void) | null = null;
-    const request = {
+    const context: CoreContext = {
       product,
       blockingModalScope,
       phoneRequests,
       isLive: () => cores.has(core),
       isInService: () => cores.has(core) && !core.faulted,
+      sessionInMemory: false,
     };
     async function attempt(): Promise<BootedCoreRuntime> {
-      const booted = await bootRuntime(request);
+      const booted = await bootRuntime(context);
       // The signal owns the runtime from here, so a drop at any later point disposes it exactly once.
       if (dropped.signal.aborted) {
         booted.runtime.dispose();

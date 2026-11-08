@@ -3,7 +3,7 @@
 
 // The permissions button in the topbar: its place in the bar, its More row, its popover and the panel it opens.
 
-import { createSignal, lazy, type Accessor } from 'solid-js';
+import { createSignal, lazy, omit, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LockIcon } from '@dotli/ui/icons';
 import { ActionItem, IconButton, Popover, StatusDot } from '@dotli/ui';
@@ -22,6 +22,7 @@ export type PermissionsItemProps = {
 
 /** The permissions button and its popover. Its More row carries the grants mark while the app has a grant. */
 export function PermissionsItem(props: PermissionsItemProps): JSX.Element {
+  const content = omit(props, 'hasGrants');
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <ActionItem
@@ -52,14 +53,7 @@ export function PermissionsItem(props: PermissionsItemProps): JSX.Element {
         class={s['popover']}
         preload={Permissions.preload}
       >
-        <Permissions
-          permissions={props.permissions}
-          notice={props.notice}
-          statuses={props.statuses}
-          onOpen={props.onOpen}
-          pending={props.pending}
-          onChange={props.onChange}
-        />
+        <Permissions {...content} />
       </Popover>
     </ActionItem>
   );

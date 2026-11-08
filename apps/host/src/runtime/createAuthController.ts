@@ -4,7 +4,7 @@
 // The sign-in modal's state machine, which writes the page's modal store. Imports no Solid and loads eagerly because
 // auth states arrive from boot, before any modal view mounts. The controller owns the modal and picks one sign-in route
 // per surface: the sign-in window's on a page that has one, or the page's own, which pairs in place on the core in the
-// bridge chunk, reached through `commands`.
+// bridge chunk, reached through its `bridge` port.
 
 import { withActiveTld } from '@dotli/config';
 import { reportDefect, spans as S } from '@dotli/metrics';
@@ -12,12 +12,12 @@ import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
 import type { AuthCommands, LoginParams } from './createAuthCommands.js';
+import type { HostBridge } from './bridge.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn, type InPagePhrase } from './createInPageSignIn.js';
 import { authViews, type LoginStep } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
-import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type {
   AuthModalPort,
   CloseAuthModalParams,
@@ -32,30 +32,35 @@ import { createWindowSignIn } from './createWindowSignIn.js';
 import { authModalState } from '../state/authModalState.js';
 import { getLoginFailureView } from './getLoginFailureView.js';
 import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
+import type { toEntropy } from './recoveryPhrase.js';
+
+/** What the controller reaches in the bridge chunk. */
+type AuthBridge = Pick<HostBridge, 'authCommands' | 'applyWindowResult' | 'rereadSession'> & {
+  walletSwitch: Pick<HostBridge['walletSwitch'], 'useLocalWallet'>;
+};
 
 type Params = {
   coordinator: BlockingModalCoordinator;
   /**
-   * The bridge chunk's commands. Awaited per intent, so an intent issued before the chunk loads still runs. Rejects when
-   * the bridge chunk fails to load.
+   * The bridge chunk, awaited per intent, so an intent issued before the chunk loads still runs. Rejects when the
+   * chunk fails to load.
    */
-  commands: () => Promise<AuthCommands>;
+  bridge: () => Promise<AuthBridge>;
   /** The current auth step, read for each intent. */
   auth: ReadableAtom<DotliAuthState>;
   /** Hears every auth step, an equal one included, which the controller follows until it is disposed. */
   subscribeAuthSteps: AuthState['subscribeSteps'];
   /** The sign-in window, or null for a page that pairs in place. */
   handoff: SessionHandoff | null;
-  /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */
-  applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
   /** Whether the page runs on a local wallet now. Never throws. */
   isLocalWallet: () => boolean;
-  /** Loaded the first time a page with no window asks for a phrase, so a page that never asks loads none of it. */
-  inPagePhrase: () => Promise<InPagePhrase>;
+  /**
+   * Loads the recovery phrase check, the first time a page with no window asks for a phrase. Rejects when its chunk
+   * fails to load.
+   */
+  loadRecoveryPhrase: () => Promise<{ toEntropy: typeof toEntropy }>;
   /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
   elsewhere: () => boolean;
-  /** Reads the saved session again and settles once the page shows it. Rejects when the bridge chunk fails to load. */
-  rereadSession: () => Promise<void>;
 };
 
 /** What the slot's `init` takes: the controller's params, less the page stores the slot reads itself. */
@@ -68,15 +73,13 @@ export type AuthController = ReturnType<typeof createAuthController>;
 /** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
 export function createAuthController({
   coordinator,
-  commands,
+  bridge,
   auth,
   subscribeAuthSteps,
   handoff,
-  applyResult,
   isLocalWallet,
-  inPagePhrase,
+  loadRecoveryPhrase,
   elsewhere,
-  rereadSession,
 }: Params) {
   let authModalScope: BlockingModalScope | null = null;
   let releaseAuthModal: (() => void) | null = null;
@@ -102,10 +105,10 @@ export function createAuthController({
       showLoginFailure(error);
     }
 
-    void commands().then(
+    void bridge().then(
       loaded =>
         Promise.resolve()
-          .then(() => run(loaded))
+          .then(() => run(loaded.authCommands))
           .catch(failCommand),
       failToLoad,
     );
@@ -261,16 +264,27 @@ export function createAuthController({
     runCommand('login', loaded => loaded.login(params));
   }
 
+  /** Loads the phrase check and the bridge together. Rejects when either fails to load. */
+  async function loadInPagePhrase(): Promise<InPagePhrase> {
+    const [phraseCheck, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridge()]);
+    return { toEntropy: phraseCheck.toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
+  }
+
+  /** Reads the saved session again and settles once the page shows it. Rejects when the bridge chunk fails to load. */
+  async function rereadSession(): Promise<void> {
+    await (await bridge()).rereadSession();
+  }
+
   const route: SignInRoute =
     handoff === null
       ? createInPageSignIn({
-          inPagePhrase,
+          inPagePhrase: loadInPagePhrase,
           modal,
           login: loginInPage,
         })
       : createWindowSignIn({
           handoff,
-          applyResult,
+          applyResult: async result => (await bridge()).applyWindowResult(result),
           elsewhere,
           isLocalWallet,
           modal,

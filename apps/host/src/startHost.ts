@@ -12,7 +12,7 @@ import { log, markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { loadBridge, loadRecoveryPhrase } from './lazy.js';
+import { loadHostBridge, loadRecoveryPhrase } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/createBlockingModalCoordinator.js';
 import { networkPause } from './runtime/createNetworkPause.js';
 import { pendingResets } from './runtime/createPendingResets.js';
@@ -106,7 +106,7 @@ export async function startHost({
   });
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
-  const bridgeChunk = markHandled(loadBridge());
+  const bridgeChunk = markHandled(loadHostBridge());
   const settings = await settingsBoot;
   settingsState.init();
 
@@ -159,33 +159,28 @@ export async function startHost({
 
   const blockingModalCoordinator = createBlockingModalCoordinator({ report: topbarState.reportBlockingModals });
   // The bridge chunk brings the dialogs it asks with, so they never join the boot chunk.
-  const bridgeReady = bridgeChunk.then(bridge => {
-    bridge.initBridge(blockingModalCoordinator);
-    return bridge;
+  const bridgeReady = bridgeChunk.then(loaded => {
+    loaded.initBridge(blockingModalCoordinator);
+    return loaded;
   });
   if (getSignInSurface(role) !== 'self') {
     authControl.init({
       coordinator: blockingModalCoordinator,
-      commands: async () => (await bridgeReady).authCommands,
+      bridge: () => bridgeReady,
       handoff: getPageSignInHandoff(role),
-      applyResult: async result => (await bridgeReady).applyWindowResult(result),
-      async inPagePhrase() {
-        const [{ toEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);
-        return { toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
-      },
-      rereadSession: async () => (await bridgeReady).rereadSession(),
+      loadRecoveryPhrase,
     });
   }
 
   bootTracker.setStep('bridge_load');
-  const bridgeModule = await bridgeReady;
-  networkPause.addTarget(bridgeModule.hostChainPool);
+  const bridge = await bridgeReady;
+  networkPause.addTarget(bridge.hostChainPool);
 
   bootTracker.setStep('topbar');
   // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle
   // callback. The state lasts the page's life, so its stop goes unused.
   if (isSessionShown(role)) {
-    bridgeModule.startSessionState();
+    bridge.startSessionState();
   }
   emitDotliDebugEvent({
     layer: 'boot',
@@ -199,7 +194,7 @@ export async function startHost({
     /** The settings the page runs on. */
     settings,
     /** The loaded bridge, initialised. */
-    bridgeModule,
+    bridge,
   };
 }
 

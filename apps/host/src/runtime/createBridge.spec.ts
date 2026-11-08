@@ -14,8 +14,8 @@ import {
   type BlockingModalScope,
 } from './createBlockingModalCoordinator.js';
 import { createBridge, type Bridge } from './createBridge.js';
-import type { CoreRuntimeRequest } from './createCoreRuntimeBoot.js';
 import { toProductId } from './createTruapiRuntimeConfig.js';
+import type { CoreContext } from './createPageCore.js';
 import { createFakeProvider } from './createPageCore.fake.js';
 import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
 import { createFakeIframe, createFakeProductFrameView } from './createProductFrame.fake.js';
@@ -31,18 +31,18 @@ type Params = {
 
 /**
  * The page's bridge over a fake core runtime and frame host, counting the chain watches it starts and recording each
- * boot request.
+ * boot context.
  */
 function createHarness({ bootError, activateError, firstDisconnectError }: Params = {}) {
-  const requests: CoreRuntimeRequest[] = [];
+  const contexts: CoreContext[] = [];
   const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
   // Every call on a runtime, in order, so a test can tell which came first.
   const runtimeCalls: string[] = [];
   const session = { reportCoresGone: vi.fn() };
   let watches = 0;
   const bridge: Bridge = createBridge({
-    bootRuntime: request => {
-      requests.push(request);
+    bootRuntime: context => {
+      contexts.push(context);
       if (bootError !== undefined) {
         return Promise.reject(bootError);
       }
@@ -51,7 +51,7 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
       return Promise.resolve({
         // The fake holds only the runtime members the bridge calls.
         runtime: runtime as unknown as WorkerPairingHostRuntime,
-        productId: asProductId(request.product.productId ?? toProductId(request.product.label)),
+        productId: asProductId(context.product.productId ?? toProductId(context.product.label)),
         local: false,
         isStale: () => Promise.resolve(false),
       });
@@ -67,7 +67,7 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
     },
     session,
   });
-  return { bridge, watches: () => watches, requests, runtimes, runtimeCalls, session };
+  return { bridge, watches: () => watches, contexts, runtimes, runtimeCalls, session };
 
   function createFakeRuntime() {
     return {
@@ -135,7 +135,7 @@ describe('bridge', () => {
 
   it('As a debug panel user, I see the host chains report from the first bridge init and a repeat init keeps that core with no second watch', async () => {
     // Given
-    const { bridge, watches, requests } = createHarness();
+    const { bridge, watches, contexts } = createHarness();
     const first = createRecordingCoordinator();
     const second = createRecordingCoordinator();
     bridge.initBridge(first.coordinator);
@@ -146,9 +146,9 @@ describe('bridge', () => {
 
     // Then
     expect(watches()).toBe(1);
-    expect(requests).toHaveLength(1);
+    expect(contexts).toHaveLength(1);
     expect(first.scopes).toHaveLength(1);
-    expect(requests[0]?.blockingModalScope).toBe(first.scopes[0]);
+    expect(contexts[0]?.blockingModalScope).toBe(first.scopes[0]);
     expect(second.scopes).toEqual([]);
   });
 
@@ -167,19 +167,19 @@ describe('bridge', () => {
 
   it('As a user signing out before the page core is built, I cancel and reset and no core is found or booted', async () => {
     // Given a bridge with no page core yet
-    const { bridge, requests } = createHarness();
+    const { bridge, contexts } = createHarness();
 
     // When the sign-out cancels pairing and resets the session
     bridge.core.cancelPairing();
     await bridge.core.resetSession();
 
     // Then no core was booted
-    expect(requests).toHaveLength(0);
+    expect(contexts).toHaveLength(0);
   });
 
   it('As a user signing out, I reset the core already running and no other boots', async () => {
     // Given a page whose core runs
-    const { bridge, requests, runtimeCalls } = createHarness();
+    const { bridge, contexts, runtimeCalls } = createHarness();
     bridge.initBridge(createBlockingModalCoordinator());
     const lease = await bridge.core.acquire();
     onTestFinished(() => {
@@ -190,7 +190,7 @@ describe('bridge', () => {
     await bridge.core.resetSession();
 
     // Then the running core reset its session and no other booted
-    expect(requests).toHaveLength(1);
+    expect(contexts).toHaveLength(1);
     expect(runtimeCalls).toEqual(['resetSessionState']);
   });
 
@@ -198,7 +198,7 @@ describe('bridge', () => {
     // Given two stored sessions and a built bridge
     const first = Uint8Array.from([1, 2, 3]);
     const second = Uint8Array.from([4, 5, 6]);
-    const { bridge, requests, runtimes, runtimeCalls } = createHarness();
+    const { bridge, contexts, runtimes, runtimeCalls } = createHarness();
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When both sessions are ended
@@ -206,9 +206,9 @@ describe('bridge', () => {
     await bridge.endSession(second);
 
     // Then the core never spoke for the page's session, and was not disposed under the phone's message
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.sessionInMemory).toBe(true);
-    expect(requests[0]?.isInService()).toBe(false);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.sessionInMemory).toBe(true);
+    expect(contexts[0]?.isInService()).toBe(false);
     expect(runtimeCalls).toEqual([
       'activateExternalSession',
       'disconnectSession',
@@ -221,7 +221,7 @@ describe('bridge', () => {
   it('As a user signing out whose core refuses the session, I hear it and that core goes, so the next end boots another', async () => {
     // Given a core that refuses the session
     const failure = new Error('not a session');
-    const { bridge, requests, runtimeCalls } = createHarness({ activateError: failure });
+    const { bridge, contexts, runtimeCalls } = createHarness({ activateError: failure });
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When a session is ended, then another
@@ -233,13 +233,13 @@ describe('bridge', () => {
     expect(firstError).toBe(failure);
     expect(callsAfterFirst).toEqual(['activateExternalSession', 'dispose']);
     expect(secondError).toBe(failure);
-    expect(requests).toHaveLength(2);
+    expect(contexts).toHaveLength(2);
   });
 
   it('As a user signing out whose core could not disconnect, I hear it and that core goes, so the next end boots another', async () => {
     // Given a core whose first disconnect fails
     const failure = new Error('worker fatal error: disconnect');
-    const { bridge, requests, runtimeCalls } = createHarness({ firstDisconnectError: failure });
+    const { bridge, contexts, runtimeCalls } = createHarness({ firstDisconnectError: failure });
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When one session ends with that failure and another follows
@@ -248,7 +248,7 @@ describe('bridge', () => {
 
     // Then the failed core was disposed and a second one ended the next session
     expect(firstError).toBe(failure);
-    expect(requests).toHaveLength(2);
+    expect(contexts).toHaveLength(2);
     expect(runtimeCalls).toEqual([
       'activateExternalSession',
       'disconnectSession',
@@ -260,7 +260,7 @@ describe('bridge', () => {
 
   it('As a user whose sign-out core failed to boot, I sign out again and it boots again', async () => {
     // Given a sign-out whose core failed to boot
-    const { bridge, requests } = createHarness({ bootError: new Error('worker fatal error: boot') });
+    const { bridge, contexts } = createHarness({ bootError: new Error('worker fatal error: boot') });
     bridge.initBridge(createBlockingModalCoordinator());
     const firstError = await catchRejection(bridge.endSession(Uint8Array.from([1])));
 
@@ -270,18 +270,18 @@ describe('bridge', () => {
     // Then the core boots again and fails the same way
     expect(firstError.message).toContain('worker fatal error: boot');
     await expect(again).rejects.toThrow('worker fatal error: boot');
-    expect(requests).toHaveLength(2);
+    expect(contexts).toHaveLength(2);
   });
 
   it('As a user signing out before the bridge is built, I end a session and it fails with a named error', async () => {
     // Given a bridge that was never built
-    const { bridge, requests } = createHarness();
+    const { bridge, contexts } = createHarness();
 
     // When a session is ended
     const ending = bridge.endSession(Uint8Array.from([1]));
 
     // Then it rejects with a named error and no core boots
     await expect(ending).rejects.toThrow('TrUAPI page core used before initBridge');
-    expect(requests).toHaveLength(0);
+    expect(contexts).toHaveLength(0);
   });
 });

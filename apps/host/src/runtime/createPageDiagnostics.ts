@@ -196,11 +196,11 @@ function buildBaseDiagnosticsRows({ page = readBrowserPage() }: BuildBaseDiagnos
   ];
 
   const product = productState.store.get();
-  if (product.status === 'loaded' && product.manifestVersion !== undefined) {
-    rows.push(['Manifest', `v${String(product.manifestVersion)}`]);
+  if (product.status === 'loaded' && product.facts.manifestVersion !== undefined) {
+    rows.push(['Manifest', `v${String(product.facts.manifestVersion)}`]);
   }
-  if (product.status === 'loaded' && product.appVersion !== undefined) {
-    rows.push(['App version', formatAppVersion(product.appVersion)]);
+  if (product.status === 'loaded' && product.facts.appVersion !== undefined) {
+    rows.push(['App version', formatAppVersion(product.facts.appVersion)]);
   }
 
   rows.push(['Browser', summarizeUserAgent(page.userAgent)]);

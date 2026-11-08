@@ -21,13 +21,13 @@ import { createProductAuthor } from './createProductAuthor.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { productState } from './runtime/state/productState.js';
 import { authState } from './runtime/state/authState.js';
-import { loadBridge, loadDebugPanelHost } from './lazy.js';
+import { loadHostBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/createProductFrame.js';
 import { createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { getProtocolClient } from '@dotli/protocol';
 import { blockCache as pageBlockCache, cidCache } from '@dotli/storage';
-import { runWhenIdle, showNotification } from '@dotli/ui';
+import { runWhenIdle } from '@dotli/ui';
 import { formatElapsed, log, markHandled, createRandomId } from '@dotli/shared';
 import {
   DEBUG,
@@ -43,13 +43,12 @@ import { debugBus, resolveDebugMode } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
 import { startShellState } from './startShellState.js';
-import { createProductLoader, type CachedCopy, type LoaderCidCache } from './createProductLoader.js';
+import { createProductLoader } from './createProductLoader.js';
+import { createPageCidCache, type EarlyCidRead } from './createPageCidCache.js';
 import { startSandboxContent } from './startSandboxContent.js';
 import { startShieldAutoHide } from './startShieldAutoHide.js';
-import { createNameSource, type NameSource, type RpcResolver } from './createNameSource.js';
+import { createNameSource, type RpcResolver } from './createNameSource.js';
 import type { H160Address } from './h160Address.js';
-import { revalidateCachedCopy } from './revalidateCachedCopy.js';
-import { markAndReload } from './createContinuation.js';
 import { loadFailureScreen } from './loadFailureScreen.js';
 import {
   getLocalTargetPath,
@@ -86,20 +85,15 @@ type Shell = {
   productFrame: ProductFrame;
 };
 
-/** A CID cache read started before the shell was up, for the name the page opens. */
-type EarlyCidRead = { label: string; read: ReturnType<LoaderCidCache['get']> };
-
 type OpenProductParams = {
   route: Extract<ShellRoute, { kind: 'product' }>;
   shell: Shell;
   cidRead: EarlyCidRead | null;
 };
 
-type CreatePageCidCacheParams = { names: NameSource; cidRead: EarlyCidRead | null };
-
 /** Built on the host pool's Asset Hub connection, since the resolver cannot import the pool. */
 async function loadRpcResolver(): Promise<RpcResolver> {
-  const [resolveModule, bridge] = await Promise.all([loadResolve(), loadBridge()]);
+  const [resolveModule, bridge] = await Promise.all([loadResolve(), loadHostBridge()]);
   return resolveModule.createDotnsResolver({
     assetHub: bridge.getHostAssetHubProvider,
     dotns: getActiveServicesConfig().dotns,
@@ -119,7 +113,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   if (debugMode.enabled) {
     debugBus.enableBuffering();
     // The describer reports its own failed load, and the boot reports the bridge's.
-    void markHandled(loadBridge().then(bridge => bridge.wireDescriber.preload()));
+    void markHandled(loadHostBridge().then(bridge => bridge.wireDescriber.preload()));
     void startDebugPanel({
       load: loadTruapiDebugMount,
       host: async () => (await loadDebugPanelHost()).debugPanelHost,
@@ -157,7 +151,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
       }
     },
   });
-  const productFrame = startup.bridgeModule.startProductFrame(sandboxChannel);
+  const productFrame = startup.bridge.startProductFrame(sandboxChannel);
   return { flowId, sandboxChannel, startup, productFrame };
 }
 
@@ -177,12 +171,12 @@ function announceRoute(route: Exclude<ShellRoute, { kind: 'nested' }>, flowId: s
 }
 
 async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void> {
-  const { bridgeModule } = shell.startup;
+  const { bridge } = shell.startup;
   // Only debug builds read a localhost route, so the compile-time flag drops its branches from release bundles.
   const proxied = DEBUG && target.kind === 'localhost';
   bootTracker.setStep(proxied ? 'localhost_render' : 'preview_render');
   log.event(proxied ? 'Route: localhost proxy' : 'Route: preview', { flow: 'boot', host: target.host });
-  bridgeModule.setPageProduct({ label: target.host, productId: target.productId });
+  bridge.setPageProduct({ label: target.host, productId: target.productId });
 
   pageNotifications().init({ label: target.host });
 
@@ -216,7 +210,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
 
 async function openProduct({ route, shell, cidRead }: OpenProductParams): Promise<void> {
   const { label, base } = route;
-  const { settings, bridgeModule } = shell.startup;
+  const { settings, bridge } = shell.startup;
   const protocol = getProtocolClient();
   bootTracker.setStep('resolve_setup');
 
@@ -234,8 +228,8 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
   });
   const author = createProductAuthor({
     readOwner: readLoadedOwner,
-    readAccount: address => bridgeModule.readOriginalAccount(address),
-    readUsernames: account => bridgeModule.readPeopleUsernames(account),
+    readAccount: address => bridge.readOriginalAccount(address),
+    readUsernames: account => bridge.readPeopleUsernames(account),
   });
   productCardState.setAuthorSource(() => author.load());
   const loader = createProductLoader({
@@ -245,19 +239,17 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
     startedAt: PAGE_START,
     names,
     base,
-    frame: {
-      setPageProduct: bridgeModule.setPageProduct,
-      holdCore: bridgeModule.acquirePageCore,
-      render: product => shell.productFrame.render(product),
-      halt() {
-        shell.productFrame.halt();
+    ports: {
+      product: shell.productFrame,
+      core: bridge,
+      sandbox: {
+        onContentDone: pageLoading.onSandboxDone,
+        onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
       },
-      onContentDone: pageLoading.onSandboxDone,
-      onContentProgress: listener => relay.onProgress(listener),
-      onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
+      content: relay,
     },
-    cidCache: createPageCidCache({ names, cidRead }),
-    fetchBlock: (cid, signal) => bridgeModule.hostBitswapClient.get(cid, signal),
+    cidCache: createPageCidCache({ names, cidRead, runWhenIdle: runWhenPageIdle }),
+    fetchBlock: (cid, signal) => bridge.hostBitswapClient.get(cid, signal),
     recents: { record: recentLabels.record },
     failureScreen: loadFailureScreen,
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
@@ -268,46 +260,12 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
 /** The loaded product's owner, null while no product is loaded or when its owner is not known. */
 function readLoadedOwner(): H160Address | null {
   const product = productState.store.get();
-  return product.status === 'loaded' ? (product.owner ?? null) : null;
+  return product.status === 'loaded' ? (product.facts.owner ?? null) : null;
 }
 
-/**
- * The page's CID cache for the active network, checked with `names`, the source the load itself reads. Its first read
- * for the early read's name is that read. Its writes and its check against the network wait until the page is idle,
- * so they never hold a render back.
- */
-function createPageCidCache({ names, cidRead }: CreatePageCidCacheParams): LoaderCidCache {
-  let early = cidRead;
-  const set = ({ label, cid, manifests }: CachedCopy): Promise<void> =>
-    cidCache.set({ label, network: getNetwork(), cid, manifests });
-  return {
-    get(label) {
-      if (early?.label === label) {
-        const { read } = early;
-        early = null;
-        return read;
-      }
-      return cidCache.get(label, getNetwork());
-    },
-    storeLater(copy) {
-      runWhenIdle(() => {
-        void set(copy);
-      }, IDLE_WORK_TIMEOUT_MS);
-    },
-    revalidateLater(copy) {
-      runWhenIdle(() => {
-        void revalidateCachedCopy({
-          ...copy,
-          names,
-          cache: { set, evict: cidCache.evict },
-          notify: showNotification,
-          reload() {
-            markAndReload('app_update');
-          },
-        });
-      }, IDLE_WORK_TIMEOUT_MS);
-    },
-  };
+/** Runs `callback` once the page is idle, or after the page's idle timeout. */
+function runWhenPageIdle(callback: () => void): void {
+  runWhenIdle(callback, IDLE_WORK_TIMEOUT_MS);
 }
 
 /** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
@@ -319,7 +277,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
   const relay = createSandboxBlockRelay({
     channel: shell.sandboxChannel,
-    blocks: (cid, signal) => shell.startup.bridgeModule.hostBitswapClient.get(cid, signal),
+    blocks: (cid, signal) => shell.startup.bridge.hostBitswapClient.get(cid, signal),
     cache: blockCache,
     verify: createBlockVerifier({
       load: loadVerify,
@@ -335,9 +293,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     prune() {
       void pageBlockCache.prune(BLOCK_CACHE_MAX_BYTES);
     },
-    runWhenIdle(callback) {
-      runWhenIdle(callback, IDLE_WORK_TIMEOUT_MS);
-    },
+    runWhenIdle: runWhenPageIdle,
     emit: debugBus.emit,
     flowId: shell.flowId,
   });

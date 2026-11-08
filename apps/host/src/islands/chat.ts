@@ -43,7 +43,7 @@ function useChatConversation(chat: ChatStore): ChatConversation {
   // Slices, so a width drag, a topbar toggle or the composer-focus flag never re-runs the rows.
   const label = useStore(chatPanelState.store, state => state.label);
   const displayName = useStore(productState.store, state =>
-    state.status === 'loaded' ? state.displayName : undefined,
+    state.status === 'loaded' ? state.facts.displayName : undefined,
   );
 
   function claimComposerFocus(): boolean {

@@ -19,41 +19,30 @@ import { createLocaleSubscribe } from './createLocaleSubscribe.js';
 import { createAuthStateChanged } from '../session/createAuthStateChanged.js';
 import { createChatPlatform } from './createChatPlatform.js';
 import { coreStorage } from '../session/createCoreStorage.js';
-import type { BlockingModalScope } from '../createBlockingModalCoordinator.js';
+import type { CoreContext } from '../createPageCore.js';
 import type { HostPrompts } from '../hostPrompts.js';
-import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 
-/** What one core's callbacks are built for: its label, pairing, queue scope, session and phone. */
+/** What one core's callbacks are built for. */
 export type CoreCallbacksParams = {
-  /** The product the core serves. */
-  label: string;
+  /** The core the callbacks serve. */
+  core: CoreContext;
   /** The id the core parsed for the product. Throws until the core has parsed it. */
   getProductId: () => ProductId;
-  /** The label the pairing shows, the product's own by default. */
-  pairingLabel?: string | undefined;
-  /** Whether the pairing label takes the active TLD suffix. `false` shows it as given. */
-  pairingDotSuffix?: boolean | undefined;
-  /** Whether the pairing speaks for the host, so the sign-in names no product. */
-  pairingHostGlobal?: boolean | undefined;
-  /** Where the callbacks' prompts queue, on the page's one coordinator. */
-  blockingModalScope: BlockingModalScope;
   /**
-   * Keeps the core's session away from the stored session and the signed-in flag, for a core that must never write
-   * either.
+   * Keeps the core's session away from the stored session and the signed-in flag. The boot's answer, which also holds
+   * the session in memory for a core on the local wallet, so it wins over `core.sessionInMemory`.
    */
-  sessionInMemory?: boolean | undefined;
-  /** Whether the core still speaks for the session. */
-  isInService?: (() => boolean) | undefined;
-  /** What the core's confirmations claim the phone's requests from. A local wallet core's claims nothing. */
-  phoneRequests: PhoneRequestTracker;
+  sessionInMemory: boolean;
 };
 
-/** How a core's permission and confirmation asks are answered, given the core's own label, queue scope and phone. */
-export type HostAsks = (core: {
-  label: string;
-  blockingModalScope: BlockingModalScope;
-  phoneRequests: PhoneRequestTracker;
-}) => { permissions: Permissions; userConfirmation: Required<UserConfirmation> };
+/**
+ * How a core's permission and confirmation asks are answered, given the core's own context. Never throws. The adapters
+ * it returns reject as their types state.
+ */
+export type HostAsks = (core: CoreContext) => {
+  permissions: Permissions;
+  userConfirmation: Required<UserConfirmation>;
+};
 
 /** One core's params, plus what the callbacks ask the page for. */
 type Params = CoreCallbacksParams & {
@@ -67,20 +56,15 @@ type Params = CoreCallbacksParams & {
 
 /** Builds every callback one core requires, with the permission and confirmation callbacks taken from `createAsks`. */
 export function createHostCallbacks({
-  label,
+  core,
   getProductId,
-  pairingLabel,
-  pairingDotSuffix,
-  pairingHostGlobal,
-  blockingModalScope,
   sessionInMemory,
-  isInService,
-  phoneRequests,
   prompts,
   notifications,
   createAsks,
 }: Params): RequiredHostCallbacks {
-  const { permissions, userConfirmation } = createAsks({ label, blockingModalScope, phoneRequests });
+  const { label, pairing } = core.product;
+  const { permissions, userConfirmation } = createAsks(core);
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters({
@@ -106,10 +90,10 @@ export function createHostCallbacks({
     productOperations: createProductOperations(),
     coreStorage: coreStorage.createAdapters({ sessionInMemory }),
     auth: {
-      authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
-        dotSuffix: pairingDotSuffix,
-        hostGlobal: pairingHostGlobal,
-        isInService,
+      authStateChanged: createAuthStateChanged(pairing?.label ?? label, {
+        dotSuffix: pairing?.dotSuffix,
+        hostGlobal: pairing?.hostGlobal,
+        isInService: core.isInService,
       }),
     },
     userConfirmation,

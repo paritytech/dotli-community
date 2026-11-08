@@ -34,6 +34,9 @@ export type ProductPermissionsState =
   | { status: 'read'; label: string; statuses: readonly PermissionStatus[] }
   | { status: 'failed'; label: string };
 
+/** The statuses read, in the menu order of `ALL_PERMISSIONS`, and the product they belong to. */
+export type PermissionsRead = { label: string; statuses: readonly PermissionStatus[] };
+
 /** The panel change not yet settled, whose targets the panel shows over the statuses read. */
 export type PendingPermissions = { label: string; targets: PermissionTargets } | null;
 
@@ -391,6 +394,35 @@ export function createProductPermissions({ registry, product, timers = realTimer
      */
     start,
   };
+}
+
+/** The statuses read and the product they belong to, or undefined while none are read. Never throws. */
+export function getRead(state: ProductPermissionsState): PermissionsRead | undefined {
+  switch (state.status) {
+    case 'read':
+      return state;
+    case 'none':
+    case 'reading':
+    case 'failed':
+      return undefined;
+  }
+}
+
+/** Whether the last read of the product `label`'s permissions failed. Never throws. */
+export function isUnreadable(state: ProductPermissionsState, label: string): boolean {
+  switch (state.status) {
+    case 'failed':
+      return state.label === label;
+    case 'none':
+    case 'reading':
+    case 'read':
+      return false;
+  }
+}
+
+/** Whether a permission read is granted. Never throws. */
+export function hasGrant(state: ProductPermissionsState): boolean {
+  return getRead(state)?.statuses.includes('granted') === true;
 }
 
 function isSameState(current: ProductPermissionsState, next: ProductPermissionsState): boolean {

@@ -112,7 +112,7 @@ describe('createPageDiagnostics', () => {
     productState.setLoaded({
       label: 'doom',
       productId: asProductId('doom.dot'),
-      details: { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] },
+      details: { cid: 'bafy', facts: { manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] } },
     });
     const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 

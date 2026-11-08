@@ -38,6 +38,9 @@ above the linter: semantics, data flow and naming.
   does, instead of a named function.
 - **major** (docs/code/style.md § Dependencies come in through parameters): A unit that imports a network client,
   storage, a timer, the clock or a randomness source instead of taking it through its params.
+- **major** (docs/code/style.md § Pass collaborators whole, grouped by owner): A forwarded param restated where its
+  owner's type could be referenced, one instance's collaborators threaded one by one through modules that only hand
+  them on, or a lazy chunk's capability wrapped per call site instead of reached through its facade.
 - **major** (docs/code/style.md § Inject through a framework only where the architecture defines it): A registry that
   modules fill as a side effect of being imported, or injection along a path the architecture does not define.
 - **major** (docs/code/style.md § Wrap to add behaviour): A cross-cutting concern (cache, retry, dedupe, replay) built

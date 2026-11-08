@@ -6,8 +6,8 @@ import { asProductId, type ProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
-import type { BootedCoreRuntime, CoreRuntimeRequest } from './createCoreRuntimeBoot.js';
-import { createPageCore } from './createPageCore.js';
+import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
+import { createPageCore, type CoreContext } from './createPageCore.js';
 import { toProductId } from './createTruapiRuntimeConfig.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
@@ -55,14 +55,14 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
   let walletFound = false;
   let holding = false;
   const core = createPageCore({
-    bootRuntime(request) {
+    bootRuntime(context) {
       if (!holding) {
-        return boot(request);
+        return boot(context);
       }
       const held = createDeferred<undefined>();
       heldBoots.push(held);
       changes.notify();
-      return held.promise.then(() => boot(request));
+      return held.promise.then(() => boot(context));
     },
     subscribeStoredSession(listener) {
       storeListeners.add(listener);
@@ -75,7 +75,7 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
     destroyDelay: 0,
   });
 
-  function boot({ product }: CoreRuntimeRequest): Promise<BootedCoreRuntime> {
+  function boot({ product }: CoreContext): Promise<BootedCoreRuntime> {
     const runtime = createFakeRuntime({ connections, changes });
     const failure = nextBoots.shift()?.(runtime);
     if (failure !== undefined) {

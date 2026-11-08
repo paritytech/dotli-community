@@ -6,7 +6,7 @@
 import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
 import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
-import { loadBridge, loadPolkadotApi } from '../lazy.js';
+import { loadHostBridge, loadPolkadotApi } from '../lazy.js';
 
 export type FinalizedBlockClient = {
   /** Resolves with the chain's finalized block. Rejects when the chain does not answer. */
@@ -94,6 +94,6 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
 /** The page's query, over the host's chains. The bridge and `polkadot-api` chunks load only once it is called. */
 export const queryFinalizedBlock = createFinalizedBlockQuery({
   provider: async genesisHash =>
-    isRemoteChainSupported(genesisHash) ? (await loadBridge()).getHostChainProvider(genesisHash) : null,
+    isRemoteChainSupported(genesisHash) ? (await loadHostBridge()).getHostChainProvider(genesisHash) : null,
   createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });

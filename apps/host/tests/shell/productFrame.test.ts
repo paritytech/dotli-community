@@ -117,5 +117,5 @@ function askToRecover(page: ProductFramePage): void {
 }
 
 function createSubdomainProduct(label: string): FrameProduct {
-  return { mode: 'subdomain', label, cid: 'cid', chat: Promise.resolve(false) };
+  return { mode: 'subdomain', label, cid: 'cid', chat: Promise.resolve(false), facts: {} };
 }

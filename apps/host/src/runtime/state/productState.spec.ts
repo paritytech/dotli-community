@@ -34,6 +34,7 @@ describe('product store', () => {
       label: 'myapp',
       productId: 'myapp.dot',
       cid: 'bafyroot',
+      facts: {},
     });
   });
 
@@ -54,7 +55,13 @@ describe('product store', () => {
 
     // Then
     expect(seen).toEqual([2, 3, 4]);
-    expect(productState.store.get()).toEqual({ status: 'loaded', loadId: 4, label: 'myapp', productId: 'myapp.dot' });
+    expect(productState.store.get()).toEqual({
+      status: 'loaded',
+      loadId: 4,
+      label: 'myapp',
+      productId: 'myapp.dot',
+      facts: {},
+    });
   });
 
   it('As a user, I hit a failed load and no product is left on show', () => {

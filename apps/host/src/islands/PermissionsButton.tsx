@@ -13,10 +13,7 @@ export function PermissionsButton(): JSX.Element {
   const panel = usePermissionsPanel({
     permissions: ALL_PERMISSIONS,
     product: productState.store,
-    state: productPermissions.state,
-    refresh: productPermissions.refresh,
-    pending: productPermissions.pending,
-    change: productPermissions.change,
+    store: productPermissions,
   });
   return <PermissionsItem {...panel} />;
 }

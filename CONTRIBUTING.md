@@ -54,7 +54,7 @@ for other packages' tests. Never import another package's internal modules.
 
 - Inside a package, import relative paths with the `.js` extension (`./foo.js`), as NodeNext resolution requires. ESLint
   rejects a `.ts` extension, except in files Node loads directly.
-- A module loaded on demand gets a loader in `src/lazy.ts` (`loadBridge()`, typed `BridgeModule`), so it stays a
+- A module loaded on demand gets a loader in `src/lazy.ts` (`loadHostBridge()`, typed `HostBridge`), so it stays a
   separate chunk.
 - Build-time code that Node runs (the Vite plugins) lives in `@config/vite`, one subpath per plugin
   (`@config/vite/build-info`, …), so a consumer loads only the one it imports. CSS is exported as `./styles.css`.

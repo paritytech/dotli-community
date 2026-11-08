@@ -10,14 +10,20 @@ import { createAsyncTaskPool } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { SessionState } from './session/createSessionState.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
-import { createPageCore, LANDING_PRODUCT, type PageCore, type PageProduct } from './createPageCore.js';
+import {
+  createPageCore,
+  LANDING_PRODUCT,
+  type CoreContext,
+  type PageCore,
+  type PageProduct,
+} from './createPageCore.js';
 import { createPhoneRequestTracker } from './createPhoneRequestTracker.js';
 import { createProductFrame, type ProductFrame, type ProductFrameParams } from './createProductFrame.js';
 
 export type Bridge = ReturnType<typeof createBridge>;
 
 type Params = {
-  /** Boots a core for a request. Rejects when the boot fails. */
+  /** Boots a core from its context. Rejects when the boot fails. */
   bootRuntime: BootCoreRuntime;
   /** Subscribes to each change of the stored session and returns the unsubscribe. */
   subscribeStoredSession: (listener: () => void) => () => void;
@@ -71,14 +77,15 @@ export function createBridge({
     const blockingModalScope = requireInitialised().modals.createScope();
     const phoneRequests = createPhoneRequestTracker();
     let live = true;
-    const booted = bootRuntime({
+    const context: CoreContext = {
       product: LANDING_PRODUCT,
       blockingModalScope,
       phoneRequests,
       isLive: () => live,
       isInService: () => false,
       sessionInMemory: true,
-    });
+    };
+    const booted = bootRuntime(context);
     const ending = {
       booted,
       dispose() {

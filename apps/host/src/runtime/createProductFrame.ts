@@ -25,7 +25,7 @@ import { toProductId } from './createTruapiRuntimeConfig.js';
 import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
-import type { ManifestFacts } from './formatAppVersion.js';
+import type { ProductFacts } from '../getProductFacts.js';
 
 /**
  * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
@@ -34,13 +34,14 @@ import type { ManifestFacts } from './formatAppVersion.js';
  */
 export type FrameProduct =
   | { mode: 'iframe'; label: string; url: string; productId?: string | undefined; chat: Promise<boolean> }
-  | ({
+  | {
       mode: 'subdomain';
       label: string;
       cid: string;
       base?: string | undefined;
       chat: Promise<boolean>;
-    } & ManifestFacts);
+      facts: ProductFacts;
+    };
 
 /** `lost` is a product whose core went down, was refused or turned stale, until its render on a replacement begins. */
 export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 'failed';
@@ -884,35 +885,14 @@ function toLoadedProduct(
       return {
         label: product.label,
         productId,
-        details: {
-          cid: product.cid,
-          chat,
-          ...pickManifestFacts(product),
-        },
+        details: { cid: product.cid, chat, facts: product.facts },
       };
   }
 }
 
 /** The tab's view of a product: a local or preview URL has no root manifest to name it. */
 function toTitledProduct(product: FrameProduct): TitledProduct {
-  return product.mode === 'subdomain' && product.displayName !== undefined
-    ? { mode: product.mode, label: product.label, displayName: product.displayName }
+  return product.mode === 'subdomain' && product.facts.displayName !== undefined
+    ? { mode: product.mode, label: product.label, displayName: product.facts.displayName }
     : { mode: product.mode, label: product.label };
-}
-
-/** The facts a product carries, without the keys it lacks. */
-function pickManifestFacts({
-  displayName,
-  description,
-  manifestVersion,
-  appVersion,
-  owner,
-}: ManifestFacts): ManifestFacts {
-  return {
-    ...(displayName !== undefined ? { displayName } : {}),
-    ...(description !== undefined ? { description } : {}),
-    ...(manifestVersion !== undefined ? { manifestVersion } : {}),
-    ...(appVersion !== undefined ? { appVersion } : {}),
-    ...(owner !== undefined ? { owner } : {}),
-  };
 }

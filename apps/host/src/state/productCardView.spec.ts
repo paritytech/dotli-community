@@ -21,10 +21,10 @@ describe('product card view', () => {
   it.each<[string, ProductState, UrlPillState]>([
     ['no product', { status: 'none', loadId: 0 }, PRODUCT_PILL],
     ['a failed load', { status: 'error', loadId: 1 }, PRODUCT_PILL],
-    ['a local product', { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID }, PRODUCT_PILL],
+    ['a local product', { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID, facts: {} }, PRODUCT_PILL],
     [
       'a published product on localhost',
-      { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID, cid: 'bafy' },
+      { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID, cid: 'bafy', facts: {} },
       { kind: 'localhost', host: 'localhost' },
     ],
   ])('As a visitor, I see no product card for %s', (_name, product, pill) => {
@@ -46,8 +46,7 @@ describe('product card view', () => {
       label: 'swap',
       productId: PRODUCT_ID,
       cid: 'bafy',
-      displayName: 'Swap',
-      description: 'Trade tokens.',
+      facts: { displayName: 'Swap', description: 'Trade tokens.' },
     };
 
     // When the card's view is taken
@@ -75,7 +74,7 @@ describe('product card view', () => {
       label: 'swap',
       productId: PRODUCT_ID,
       cid: 'bafy',
-      ...(description === undefined ? {} : { description }),
+      facts: description === undefined ? {} : { description },
     };
 
     // When the card's view is taken
@@ -93,6 +92,7 @@ describe('product card view', () => {
       label: 'swap',
       productId: PRODUCT_ID,
       cid: 'bafy',
+      facts: {},
     };
     const pill: UrlPillState = { ...PRODUCT_PILL, shield: null };
 

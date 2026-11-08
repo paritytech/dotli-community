@@ -4,7 +4,7 @@
 import type { ProductId } from '@parity/truapi';
 import { registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
-import type { ManifestFacts } from '../formatAppVersion.js';
+import type { ProductFacts } from '../../getProductFacts.js';
 
 /** What the page knows of the loaded product beside its label. */
 export type ProductDetails = {
@@ -12,12 +12,17 @@ export type ProductDetails = {
   cid?: string;
   /** Whether it declares chat. */
   chat?: boolean;
-} & ManifestFacts;
+  /** What its manifests publish. None by default. */
+  facts?: ProductFacts;
+};
 
 /** `loadId` moves on every load, so a reload of the product already on show still notifies subscribers. */
 export type ProductState =
   | { status: 'none'; loadId: number }
-  | ({ status: 'loaded'; loadId: number; label: string; productId: ProductId } & ProductDetails)
+  | ({ status: 'loaded'; loadId: number; label: string; productId: ProductId; facts: ProductFacts } & Omit<
+      ProductDetails,
+      'facts'
+    >)
   | { status: 'error'; loadId: number };
 
 type Params = {
@@ -43,7 +48,14 @@ export const productState = {
 };
 
 function setLoaded({ label, productId, details = {} }: Params): void {
-  product.set({ status: 'loaded', loadId: product.get().loadId + 1, label, productId, ...details });
+  product.set({
+    status: 'loaded',
+    loadId: product.get().loadId + 1,
+    label,
+    productId,
+    ...details,
+    facts: details.facts ?? {},
+  });
 }
 
 function setError(): void {

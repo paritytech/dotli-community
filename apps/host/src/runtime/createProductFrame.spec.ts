@@ -23,7 +23,7 @@ import {
   type ProductFramePage,
 } from './createProductFrame.js';
 import { productState } from './state/productState.js';
-import type { ManifestFacts } from './formatAppVersion.js';
+import type { ProductFacts } from '../getProductFacts.js';
 import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import { buildLoginResponseFrame } from '../testing/buildLoginResponseFrame.js';
@@ -283,7 +283,7 @@ function buildSubdomainProduct(
   label: string,
   { cid = 'cid', chat = false }: BuildSubdomainProductParams = {},
 ): FrameProduct {
-  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat) };
+  return { mode: 'subdomain', label, cid, chat: Promise.resolve(chat), facts: {} };
 }
 
 /** Whether the iframe of every host is the one attached at the same place, compared by identity. */
@@ -449,7 +449,7 @@ describe('product frame renders', () => {
 
     // When
     await fakes.settle(
-      { mode: 'subdomain', label: 'doom', cid: 'cid', base: '/Doom.dot', chat: Promise.resolve(false) },
+      { mode: 'subdomain', label: 'doom', cid: 'cid', base: '/Doom.dot', chat: Promise.resolve(false), facts: {} },
       0,
     );
     const url = new URL(nth(fakes.hosts, 0).options.iframeUrl);
@@ -497,6 +497,7 @@ describe('product frame renders', () => {
         cid: 'cid',
         base: '/pr16.back-me-up',
         chat: Promise.resolve(false),
+        facts: {},
       },
       0,
     );
@@ -595,7 +596,7 @@ describe('product frame renders', () => {
   it('As a dApp user, I open my product and the tab names it by its published name from the first render, and the page knows its versions', async () => {
     // Given
     const fakes = createHarness();
-    const facts: ManifestFacts = {
+    const facts: ProductFacts = {
       displayName: 'DOOM',
       description: 'Shoot demons.',
       manifestVersion: 1,
@@ -604,11 +605,11 @@ describe('product frame renders', () => {
     };
 
     // When
-    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), ...facts }, 0);
+    await fakes.settle({ mode: 'subdomain', label: 'doom', cid: 'cid', chat: Promise.resolve(false), facts }, 0);
 
     // Then
     expect(fakes.frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
-    expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'doom', ...facts });
+    expect(productState.store.get()).toMatchObject({ status: 'loaded', label: 'doom', facts });
   });
 });
 

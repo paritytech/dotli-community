@@ -11,6 +11,7 @@ import type {
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import { createCoreRuntimeBoot, type CoreRuntimeBootParams } from './createCoreRuntimeBoot.js';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
+import type { CoreContext } from './createPageCore.js';
 import { createPhoneRequestTracker } from './createPhoneRequestTracker.js';
 import type { BootLocalWalletCore } from './localWalletCore.js';
 import { atom } from 'nanostores';
@@ -32,12 +33,13 @@ const WALLET: LocalWalletBoot = {
   version: Uint8Array.of(1),
 };
 
-const request = {
+const context: CoreContext = {
   product: { label: 'doom' },
   blockingModalScope: createBlockingModalCoordinator().createScope(),
   phoneRequests: createPhoneRequestTracker(),
   isLive: () => true,
   isInService: () => true,
+  sessionInMemory: false,
 };
 
 class FakeHostWorker {
@@ -103,26 +105,26 @@ describe('core runtime boot', () => {
     const boot = createCoreRuntimeBoot(params);
 
     // When a core boots
-    const booted = await boot(request);
+    const booted = await boot(context);
 
     // Then the pairing runtime boots on the host worker with a stored session
     expect(booted).toMatchObject({ runtime: pairing.runtime, local: false });
     expect(create.mock.calls[0]?.[0]).toBeInstanceOf(FakeHostWorker);
     expect(create.mock.calls[0]?.[2].role).toBeUndefined();
-    expect(callbackOptions).toEqual([expect.objectContaining({ label: 'doom', sessionInMemory: false })]);
+    expect(callbackOptions).toEqual([expect.objectContaining({ core: context, sessionInMemory: false })]);
     expect(bootLocalWalletCore).not.toHaveBeenCalled();
   });
 
-  it("As a Polkadot App user, I boot my core and its callbacks get the page's in-service check", async () => {
+  it("As a Polkadot App user, I boot my core and its callbacks get the core's own context", async () => {
     // Given a boot with no stored wallet
     const { params, callbackOptions } = createHarness({ reads: [null] });
     const boot = createCoreRuntimeBoot(params);
 
     // When a core boots
-    await boot(request);
+    await boot(context);
 
-    // Then the callbacks hold the page's check
-    expect(callbackOptions[0]?.isInService).toBe(request.isInService);
+    // Then the callbacks hold the context the core was booted with
+    expect(callbackOptions[0]?.core).toBe(context);
   });
 
   it('As a user in the sign-out window, I open it and it boots a pairing core whose session stays in memory', async () => {
@@ -130,7 +132,7 @@ describe('core runtime boot', () => {
     const { params, callbackOptions, pairing } = createHarness({ reads: [null] });
 
     // When a core boots with its session in memory
-    const booted = await createCoreRuntimeBoot(params)({ ...request, sessionInMemory: true });
+    const booted = await createCoreRuntimeBoot(params)({ ...context, sessionInMemory: true });
 
     // Then a pairing core boots with the in-memory session option
     expect(booted).toMatchObject({ runtime: pairing.runtime, local: false });
@@ -143,7 +145,7 @@ describe('core runtime boot', () => {
     const boot = createCoreRuntimeBoot(params);
 
     // When a core boots
-    const booted = await boot(request);
+    const booted = await boot(context);
 
     // Then the local wallet core boots with the wallet and an in-memory session
     expect(booted).toMatchObject({ runtime: local.runtime, local: true });
@@ -151,24 +153,10 @@ describe('core runtime boot', () => {
     expect(localBoot?.create).toBe(create);
     expect(localBoot?.hostConfig).not.toHaveProperty('productId');
     expect(localBoot?.wallet).toBe(WALLET);
-    expect(localBoot?.isLive).toBe(request.isLive);
+    expect(localBoot?.isLive).toBe(context.isLive);
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
-    expect(callbackOptions[0]?.isInService).toBe(request.isInService);
+    expect(callbackOptions[0]?.core).toBe(context);
     expect(create).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { user: 'a Polkadot App user', read: null },
-    { user: 'a local wallet user', read: WALLET },
-  ])('As $user, I boot my core and its callbacks claim from the tracker it was booted with', async ({ read }) => {
-    // Given a boot over the wallet read
-    const { params, callbackOptions } = createHarness({ reads: [read] });
-
-    // When a core boots
-    await createCoreRuntimeBoot(params)(request);
-
-    // Then the callbacks hold the tracker the boot was given
-    expect(callbackOptions[0]?.phoneRequests).toBe(request.phoneRequests);
   });
 
   it('As a user on the landing page, I pair and the core uses the name the page asked for', async () => {
@@ -178,20 +166,15 @@ describe('core runtime boot', () => {
 
     // When a core boots for the landing page's pairing name
     await boot({
-      ...request,
+      ...context,
       product: { label: 'dotli', pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true } },
     });
 
     // Then the callbacks carry the pairing name
-    expect(callbackOptions).toEqual([
-      expect.objectContaining({
-        label: 'dotli',
-        pairingLabel: 'Polkadot Web',
-        pairingDotSuffix: false,
-        pairingHostGlobal: true,
-        blockingModalScope: request.blockingModalScope,
-      }),
-    ]);
+    expect(callbackOptions[0]?.core.product).toEqual({
+      label: 'dotli',
+      pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true },
+    });
   });
 
   it.each([
@@ -201,7 +184,7 @@ describe('core runtime boot', () => {
   ])('As $user, I ask whether my booted core is stale and it answers $stale', async ({ reads, local, stale }) => {
     // Given a booted core
     const { params } = createHarness({ reads });
-    const booted = await createCoreRuntimeBoot(params)(request);
+    const booted = await createCoreRuntimeBoot(params)(context);
 
     // When the page asks whether it is stale
     const answer = await booted.isStale();
@@ -222,7 +205,7 @@ describe('core runtime boot', () => {
       fakes[runtime].parseProductId.mockResolvedValue(asProductId('canonical.paseo'));
 
       // When a core boots for the product
-      const booted = await createCoreRuntimeBoot(fakes.params)(request);
+      const booted = await createCoreRuntimeBoot(fakes.params)(context);
 
       // Then it parsed the label's id, and the result and the callbacks carry the parsed one
       expect(fakes[runtime].parseProductId).toHaveBeenCalledWith('doom.paseo');
@@ -237,7 +220,7 @@ describe('core runtime boot', () => {
 
     // When a core boots for a local preview with an explicit product id
     const booted = await createCoreRuntimeBoot(params)({
-      ...request,
+      ...context,
       product: { label: 'localhost:3000', productId: 'truapi-playground.dot' },
     });
 
@@ -255,7 +238,7 @@ describe('core runtime boot', () => {
       asked.resolve(undefined);
       return parsed.promise;
     });
-    const booting = createCoreRuntimeBoot(params)(request);
+    const booting = createCoreRuntimeBoot(params)(context);
     await asked.promise;
 
     // When the callbacks read the id
@@ -280,7 +263,7 @@ describe('core runtime boot', () => {
       fakes[runtime].parseProductId.mockRejectedValue(refusal);
 
       // When a core boots for the product
-      const error = await catchRejection(createCoreRuntimeBoot(fakes.params)(request));
+      const error = await catchRejection(createCoreRuntimeBoot(fakes.params)(context));
 
       // Then the boot rejects with the refusal as its cause, and the runtime nobody holds is disposed
       expect(error).toMatchObject({ cause: refusal });
@@ -308,7 +291,7 @@ describe('core runtime boot', () => {
     const fakes = createHarness();
 
     // When a core boots
-    const booted = await createCoreRuntimeBoot({ ...fakes.params, readWallet: () => walletBoot.read() })(request);
+    const booted = await createCoreRuntimeBoot({ ...fakes.params, readWallet: () => walletBoot.read() })(context);
 
     // Then the core pairs and the page stays out of local mode
     expect(booted.local).toBe(false);

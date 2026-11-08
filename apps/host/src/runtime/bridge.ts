@@ -19,8 +19,13 @@ import { createBridge } from './createBridge.js';
 import type { AuthCommands } from './createAuthCommands.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
 import { createCoreRuntimeBoot } from './createCoreRuntimeBoot.js';
-import { getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
+import { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
+import { hostChainPool } from './hostCallbacks/createHostChainPool.js';
+import { hostBitswapClient } from './hostCallbacks/createHostBitswapClient.js';
 import { watchHostChains } from './hostCallbacks/watchHostChains.js';
+import { readOriginalAccount } from './readOriginalAccount.js';
+import { readPeopleUsernames } from './readPeopleUsernames.js';
+import { wireDescriber } from './createWireDescriber.js';
 import { pagePermissions, productPermissions } from './pagePermissions.js';
 import { isSiteGrantForgotten, pageRole } from './pageRole.js';
 import { authViews } from './session/authViews.js';
@@ -51,19 +56,6 @@ import { signingOutState } from './state/signingOutState.js';
 import { walletModeState } from './state/walletModeState.js';
 import { pageWalletBoot } from './createWalletBoot.js';
 import { walletSwitch } from './createWalletSwitch.js';
-
-// Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
-export { walletSwitch } from './createWalletSwitch.js';
-
-// The pool behind these leases and the reads over them already ships in this chunk, so callers take them from here.
-export { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
-export { hostChainPool } from './hostCallbacks/createHostChainPool.js';
-export { hostBitswapClient } from './hostCallbacks/createHostBitswapClient.js';
-export { readOriginalAccount } from './readOriginalAccount.js';
-export { readPeopleUsernames } from './readPeopleUsernames.js';
-
-// Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
-export { wireDescriber } from './createWireDescriber.js';
 
 // One load serves the frame and every core.
 const hostRuntime = createLazyLoad({
@@ -124,7 +116,7 @@ const bridge = createBridge({
   session: sessionState,
 });
 
-export const { initBridge, setPageProduct, startProductFrame } = bridge;
+const { initBridge, setPageProduct, startProductFrame } = bridge;
 
 // Whether the window already serves a site, which it decides once per page.
 let servingSite = false;
@@ -134,7 +126,7 @@ let servingSite = false;
  * `account`, a transaction's, its core runs under that account's product id. With null, a sign-in's, its core runs as
  * dot.li's own product. Called before anything boots a core. Once per page, so a second call does nothing.
  */
-export function serveSite(account: ProductAccountId | null): void {
+function serveSite(account: ProductAccountId | null): void {
   if (servingSite) {
     return;
   }
@@ -151,19 +143,19 @@ export function serveSite(account: ProductAccountId | null): void {
  * The main account a site's round runs for, as the session window's core reports it. It holds a lease of its own, so
  * the core stays up for a local wallet as for a paired session.
  */
-export const mainAccount: MainAccountSource = createMainAccountSource({
+const mainAccount: MainAccountSource = createMainAccountSource({
   acquire: () => bridge.core.acquire(),
   coreReport: sessionState.coreReport,
 });
 
 /** Reads the key of the account a site names on the page's own core, for the session window. */
-export const siteAccountReader = createSiteAccountReader({ acquire: () => bridge.core.acquire() });
+const siteAccountReader = createSiteAccountReader({ acquire: () => bridge.core.acquire() });
 
 /** Signs a site's transaction as the account the site names on the page's own core, for the session window. */
-export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });
+const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });
 
 /** Asset Hub for the session window, where a site's call is decoded and built into its signed transaction. */
-export const siteChain = createSiteChain({
+const siteChain = createSiteChain({
   genesis: () => getActiveServicesConfig().assethub.genesis,
   provider: genesis => getHostChainProvider(genesis),
   loadApi: loadPolkadotApi,
@@ -201,7 +193,7 @@ const pageSignOut = createPageSignOut({
 });
 
 /** The page's sign-in on its core, and its sign-out. */
-export const authCommands: AuthCommands = {
+const authCommands: AuthCommands = {
   login: params => coreCommands.login(params),
   logout: () => pageSignOut.signOut(),
   cancelLogin: () => {
@@ -210,7 +202,7 @@ export const authCommands: AuthCommands = {
 };
 
 /** Writes the sign-in window's result into this page's copy, where this page's cores pick it up. */
-export function applyWindowResult(result: SessionResult): Promise<'applied' | 'reloading'> {
+function applyWindowResult(result: SessionResult): Promise<'applied' | 'reloading'> {
   return applySessionResult(result, {
     installSession: (blob, uiState) => coreStorage.installSession(blob, uiState),
     readWallet: () => siteWallet.read(),
@@ -234,7 +226,7 @@ async function readRestoredWallet(): Promise<LocalWalletReadResult> {
 }
 
 /** The main store for the sign-in window, written through the page's flag keeper. */
-export const windowStore: Pick<WindowFlowParams, 'store' | 'wallet' | 'signIns'> = {
+const windowStore: Pick<WindowFlowParams, 'store' | 'wallet' | 'signIns'> = {
   signIns: signInFlag,
   store: {
     readSession: readRestoredSession,
@@ -261,7 +253,7 @@ const sessionLease = createSessionLease({
  * Starts the page's session lease, for the landing page. It has no product frame to hold a core, so its core hears the
  * phone end the session.
  */
-export function startSessionLease(): () => void {
+function startSessionLease(): () => void {
   return sessionLease.start();
 }
 
@@ -270,12 +262,12 @@ export function startSessionLease(): () => void {
  * renders. Rejects with the boot's error, or `CoreRedialError` when a replacement could not boot. Throws before
  * `initBridge`.
  */
-export function acquirePageCore(): Promise<CoreLease> {
+function acquirePageCore(): Promise<CoreLease> {
   return bridge.core.acquire();
 }
 
 /** The main store's restore and a core of its own, for the sign-out window. */
-export const windowSignOut: Pick<WindowSignOutParams, 'restore' | 'endSession'> = {
+const windowSignOut: Pick<WindowSignOutParams, 'restore' | 'endSession'> = {
   restore: pageWalletBoot.restore,
   endSession,
 };
@@ -289,7 +281,7 @@ let stopSession: (() => void) | null = null;
  * here, so the session state and the TrUAPI codecs it reads stay in this chunk. A second call returns the first one's
  * stop.
  */
-export function startSessionState(): () => void {
+function startSessionState(): () => void {
   if (stopSession !== null) {
     return stopSession;
   }
@@ -343,6 +335,39 @@ export function startSessionState(): () => void {
 }
 
 /** Reads the saved session again while it cannot be reached, and settles once the page shows it. Never rejects. */
-export function rereadSession(): Promise<void> {
+function rereadSession(): Promise<void> {
   return sessionState.retryRead();
 }
+
+/** The bridge chunk's API, which the page loads on demand. */
+export const hostBridge = {
+  initBridge,
+  setPageProduct,
+  startProductFrame,
+  serveSite,
+  mainAccount,
+  siteAccountReader,
+  siteTxSigner,
+  siteChain,
+  authCommands,
+  applyWindowResult,
+  windowStore,
+  startSessionLease,
+  acquirePageCore,
+  windowSignOut,
+  startSessionState,
+  rereadSession,
+  // Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
+  walletSwitch,
+  // The pool behind these leases and the reads over them already ships in this chunk, so callers take them from here.
+  getHostAssetHubProvider,
+  getHostChainProvider,
+  hostChainPool,
+  hostBitswapClient,
+  readOriginalAccount,
+  readPeopleUsernames,
+  // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
+  wireDescriber,
+};
+
+export type HostBridge = typeof hostBridge;

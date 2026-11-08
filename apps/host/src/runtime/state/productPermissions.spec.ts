@@ -10,7 +10,16 @@ import { createPermissionAuthorizations, type PermissionAuthorizations } from '.
 import { ALL_PERMISSIONS } from '../permissionPolicy.js';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import { productState } from './productState.js';
-import { createProductPermissions, type PermissionsChange, type ProductPermissions } from './productPermissions.js';
+import {
+  createProductPermissions,
+  getRead,
+  hasGrant,
+  isUnreadable,
+  type PermissionsChange,
+  type PermissionsRead,
+  type ProductPermissions,
+  type ProductPermissionsState,
+} from './productPermissions.js';
 
 type FakeCore = {
   stored: Map<string, PermissionAuthorizationStatus>;
@@ -792,6 +801,66 @@ describe('product permissions store, as the permissions popover reads it', () =>
 
     // Then
     expect(permissions.state.get()).toEqual({ status: 'read', label: 'other', statuses: buildStatuses() });
+  });
+});
+
+describe('product permissions views', () => {
+  const READ = { status: 'read', label: LABEL, statuses: ['granted', 'ask'] } satisfies ProductPermissionsState;
+
+  it.each<{ story: string; state: ProductPermissionsState; expected: PermissionsRead | undefined }>([
+    { story: 'nothing on show', state: { status: 'none' }, expected: undefined },
+    { story: 'a read under way', state: { status: 'reading', label: LABEL }, expected: undefined },
+    { story: 'a failed read', state: { status: 'failed', label: LABEL }, expected: undefined },
+    { story: 'statuses read', state: READ, expected: READ },
+  ])(
+    'As the permissions panel, I ask for the read with $story and get the statuses only once read',
+    ({ state, expected }) => {
+      // Given the row's store state, from the table
+
+      // When
+      const read = getRead(state);
+
+      // Then
+      expect(read).toBe(expected);
+    },
+  );
+
+  it.each<{ story: string; state: ProductPermissionsState; expected: boolean }>([
+    { story: "the product's read failed", state: { status: 'failed', label: LABEL }, expected: true },
+    { story: "another product's read failed", state: { status: 'failed', label: 'other' }, expected: false },
+    { story: 'its read is under way', state: { status: 'reading', label: LABEL }, expected: false },
+    { story: 'its statuses are read', state: READ, expected: false },
+    { story: 'nothing is on show', state: { status: 'none' }, expected: false },
+  ])(
+    'As the permissions panel, I ask whether the product is unreadable when $story and am told $expected',
+    ({ state, expected }) => {
+      // Given the row's store state, from the table
+
+      // When
+      const unreadable = isUnreadable(state, LABEL);
+
+      // Then
+      expect(unreadable).toBe(expected);
+    },
+  );
+
+  it.each<{ story: string; state: ProductPermissionsState; expected: boolean }>([
+    { story: 'a granted status read', state: READ, expected: true },
+    {
+      story: 'no granted status read',
+      state: { status: 'read', label: LABEL, statuses: ['ask', 'denied'] },
+      expected: false,
+    },
+    { story: 'a failed read', state: { status: 'failed', label: LABEL }, expected: false },
+    { story: 'nothing on show', state: { status: 'none' }, expected: false },
+  ])('As the permissions button, I ask for a grant with $story and am told $expected', ({ state, expected }) => {
+    // Given the row's store state, from the table
+
+    // When
+    const granted = hasGrant(state);
+
+    // Then
+    expect(granted).toBe(expected);
   });
 });
 

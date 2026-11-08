@@ -19,10 +19,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  const { bridgeModule } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
+  const { bridge } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
   // Idle, so the core boot never competes with the page's first paint or its boot.
   runWhenIdle(() => {
-    bridgeModule.startSessionLease();
+    bridge.startSessionLease();
   }, 2000);
   log.event('Route: landing page', { flow: 'boot' });
 }
