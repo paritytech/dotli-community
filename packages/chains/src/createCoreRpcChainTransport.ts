@@ -46,7 +46,8 @@ const HEARTBEAT_TIMEOUT_MS = 120_000;
 
 const WS_CLOSING = 2;
 
-const connectedEndpoints = new Map<string, { uri: string; owner: object }>();
+// One row per lane of a chain, so a lane that closes removes only its own node.
+const connectedEndpoints = new Map<string, ReadonlyMap<object, string>>();
 
 /**
  * The chain's transport over its configured RPC nodes, or `null` for a chain that is not a core gateway chain. A
@@ -65,12 +66,13 @@ export function isCoreRpcChainSupported(genesisHash: string): boolean {
   return findCoreGatewayChain(genesisHash) !== null;
 }
 
-/** The RPC node the chain's socket is connected to, or `null` between sockets. */
+/** The RPC node of one connected lane of the chain, or `null` when none is connected. */
 export function getConnectedRpcEndpoint(genesisHash: string): string | null {
-  return connectedEndpoints.get(genesisHash.toLowerCase())?.uri ?? null;
+  const rows = connectedEndpoints.get(genesisHash.toLowerCase());
+  return rows === undefined ? null : (rows.values().next().value ?? null);
 }
 
-/** The node Asset Hub is talking to, which may not be the first configured one, since the transport rotates. */
+/** The node of one connected Asset Hub lane, which may not be the first configured one, since the transport rotates, or `null` when none is connected. */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
   return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
@@ -83,17 +85,27 @@ function createGatewayProvider({ chain, hooks, WebSocketBase }: CreateGatewayPro
   const { WebSocketClass, closeLatest } = createClosingWebSocketClass(WebSocketBase);
   const owner = {};
   const genesisKey = chain.genesis.toLowerCase();
-  // Only the provider that recorded the endpoint may clear it.
   function clearEndpoint(): void {
-    if (connectedEndpoints.get(genesisKey)?.owner === owner) {
+    const rows = connectedEndpoints.get(genesisKey);
+    if (rows === undefined) {
+      return;
+    }
+    if (!rows.has(owner)) {
+      return;
+    }
+    const rest = new Map(rows);
+    rest.delete(owner);
+    if (rest.size === 0) {
       connectedEndpoints.delete(genesisKey);
+    } else {
+      connectedEndpoints.set(genesisKey, rest);
     }
   }
   function recordEndpoint(event: StatusChange): void {
     switch (event.type) {
       case WsEvent.CONNECTING:
       case WsEvent.CONNECTED:
-        connectedEndpoints.set(genesisKey, { uri: event.uri, owner });
+        connectedEndpoints.set(genesisKey, new Map(connectedEndpoints.get(genesisKey)).set(owner, event.uri));
         return;
       case WsEvent.ERROR:
       case WsEvent.CLOSE:
