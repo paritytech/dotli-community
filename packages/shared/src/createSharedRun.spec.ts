@@ -293,7 +293,7 @@ describe('createSharedRun', () => {
     expect(ends).toBe(0);
   });
 
-  it("As a store reset that ends the run while it begins, whose end throws, the first caller's join throws that error and the next join begins again", () => {
+  it("As a store reset that ends the run while it begins, whose end throws, I see the first caller's join throw that error and the next join begin again", () => {
     // Given a begin that ends the run it begins on its first call, and returns an end that throws
     const broken = new Error('end broke');
     let begins = 0;

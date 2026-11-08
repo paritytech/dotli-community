@@ -61,6 +61,9 @@ type Task = {
   onAbort: (() => void) | undefined;
 };
 
+// A pool's live tasks by phase. `holders` are the running and abandoned tasks, which hold slots.
+type PoolTasks = { delayed: Set<Task>; queued: Set<Task>; holders: Set<Task> };
+
 export type AsyncTaskPool = ReturnType<typeof createAsyncTaskPool>;
 
 const DEFAULT_POOL = 'default';
@@ -80,8 +83,9 @@ export function createAsyncTaskPool({
   holdSlotOnAbort = false,
   timers = realTimers,
 }: Params) {
-  // Every task not yet done, in queue order.
-  const tasks = new Set<Task>();
+  // The tasks of each pool, filed by phase. An entry exists only while the pool has a live task, and only `setPhase`
+  // and `fileTask` write it, so it always agrees with each task's phase.
+  const pools = new Map<string, PoolTasks>();
   const settleWaiters = new Map<string, (() => void)[]>();
 
   return {
@@ -108,7 +112,7 @@ export function createAsyncTaskPool({
           retry: 0,
           phase:
             delay > 0
-              ? delayedPhase(delay, () => {
+              ? startDelay(delay, () => {
                   enqueue(task);
                 })
               : { kind: 'queued' },
@@ -120,11 +124,10 @@ export function createAsyncTaskPool({
           };
           signal.addEventListener('abort', task.onAbort, { once: true });
         }
-        if (delay > 0) {
-          tasks.add(task);
-          return;
+        fileTask(task);
+        if (delay <= 0) {
+          pump(pool);
         }
-        enqueue(task);
       });
     },
     /**
@@ -150,8 +153,9 @@ export function createAsyncTaskPool({
       if (task === undefined) {
         break;
       }
-      task.phase = { kind: 'running' };
-      void run(task);
+      const started: TaskPhase = { kind: 'running' };
+      setPhase(task, started);
+      void run(task, started);
     }
     const waiters = settleWaiters.get(pool);
     if (waiters !== undefined && isIdle(pool)) {
@@ -163,30 +167,32 @@ export function createAsyncTaskPool({
   }
 
   // Never rejects: the outcome goes to the caller through the task's own promise.
-  async function run(task: Task): Promise<void> {
+  async function run(task: Task, started: TaskPhase): Promise<void> {
     let result: PromiseSettledResult<unknown>;
     try {
       result = { status: 'fulfilled', value: await task.work() };
     } catch (reason) {
       result = { status: 'rejected', reason };
     }
-    handleWorkSettled(task, result);
+    handleWorkSettled(task, started, result);
   }
 
-  /** Acts on the outcome of a task's work by the phase the task reached while the work ran. */
-  function handleWorkSettled(task: Task, result: PromiseSettledResult<unknown>): void {
+  /** Acts on the outcome of a task's work only while the task still holds the phase the work started in. */
+  function handleWorkSettled(task: Task, started: TaskPhase, result: PromiseSettledResult<unknown>): void {
+    if (task.phase === started) {
+      finishRun(task, result);
+      return;
+    }
     switch (task.phase.kind) {
-      case 'running':
-        finishRun(task, result);
-        return;
       case 'abandoned':
         markDone(task);
         pump(task.pool);
         return;
+      case 'running':
       case 'delayed':
       case 'queued':
       case 'done':
-        // An abort ended the task and rejected its call. A delayed or queued task has no work in flight.
+        // An abort ended the task and rejected its call, or a later run owns it.
         return;
     }
   }
@@ -230,21 +236,21 @@ export function createAsyncTaskPool({
 
   /** Queues the task once `ms` has passed. Until then it is delayed, so `settle` holds and an abort clears it. */
   function queueAfter(task: Task, ms: number): void {
-    task.phase = delayedPhase(ms, () => {
-      enqueue(task);
-    });
-    tasks.add(task);
+    setPhase(
+      task,
+      startDelay(ms, () => {
+        enqueue(task);
+      }),
+    );
   }
 
-  function delayedPhase(ms: number, onElapsed: () => void): TaskPhase {
+  function startDelay(ms: number, onElapsed: () => void): TaskPhase {
     return { kind: 'delayed', timer: timers.setTimeout(onElapsed, ms) };
   }
 
   /** Puts the task at the end of the queue, behind those queued while it waited, and starts what has room. */
   function enqueue(task: Task): void {
-    tasks.delete(task);
-    tasks.add(task);
-    task.phase = { kind: 'queued' };
+    setPhase(task, { kind: 'queued' });
     pump(task.pool);
   }
 
@@ -266,7 +272,7 @@ export function createAsyncTaskPool({
         return;
       case 'running':
         if (holdSlotOnAbort) {
-          task.phase = { kind: 'abandoned' };
+          setPhase(task, { kind: 'abandoned' });
           return;
         }
         markDone(task);
@@ -279,19 +285,62 @@ export function createAsyncTaskPool({
   }
 
   function markDone(task: Task): void {
-    task.phase = { kind: 'done' };
-    tasks.delete(task);
+    setPhase(task, { kind: 'done' });
     if (task.onAbort !== undefined) {
       task.signal?.removeEventListener('abort', task.onAbort);
     }
   }
 
-  /** The first queued task of the pool whose signal has not aborted. */
+  /** Moves the task to a new phase and refiles it, the one place a phase changes after the task is filed. */
+  function setPhase(task: Task, next: TaskPhase): void {
+    unfileTask(task);
+    task.phase = next;
+    fileTask(task);
+  }
+
+  /** Files the task under its current phase. A queued task goes to the end of its pool's queue. */
+  function fileTask(task: Task): void {
+    if (task.phase.kind === 'done') {
+      return;
+    }
+    let entry = pools.get(task.pool);
+    if (entry === undefined) {
+      entry = { delayed: new Set(), queued: new Set(), holders: new Set() };
+      pools.set(task.pool, entry);
+    }
+    switch (task.phase.kind) {
+      case 'delayed':
+        entry.delayed.add(task);
+        return;
+      case 'queued':
+        entry.queued.add(task);
+        return;
+      case 'running':
+      case 'abandoned':
+        entry.holders.add(task);
+        return;
+    }
+  }
+
+  function unfileTask(task: Task): void {
+    const entry = pools.get(task.pool);
+    if (entry === undefined) {
+      return;
+    }
+    entry.delayed.delete(task);
+    entry.queued.delete(task);
+    entry.holders.delete(task);
+    if (entry.delayed.size + entry.queued.size + entry.holders.size === 0) {
+      pools.delete(task.pool);
+    }
+  }
+
+  /** The head of the pool's queue whose signal has not aborted. */
   function findNext(pool: string): Task | undefined {
-    for (const task of tasks) {
+    for (const task of pools.get(pool)?.queued ?? []) {
       // A task whose signal is already aborted is left for its own abort listener, which may not have run yet when
       // another task on the same signal frees a slot.
-      if (task.pool === pool && task.phase.kind === 'queued' && task.signal?.aborted !== true) {
+      if (task.signal?.aborted !== true) {
         return task;
       }
     }
@@ -299,43 +348,14 @@ export function createAsyncTaskPool({
   }
 
   function hasRoom(pool: string): boolean {
-    if (poolSize === Number.POSITIVE_INFINITY) {
-      return true;
-    }
-    let count = 0;
-    for (const task of tasks) {
-      if (task.pool === pool && hasSlot(task.phase)) {
-        count += 1;
-        if (count >= poolSize) {
-          return false;
-        }
-      }
-    }
-    return count < poolSize;
+    return (pools.get(pool)?.holders.size ?? 0) < poolSize;
   }
 
   function isIdle(pool: string): boolean {
-    for (const task of tasks) {
-      if (task.pool === pool) {
-        return false;
-      }
-    }
-    return true;
+    return !pools.has(pool);
   }
 
   function getRetryDelay(retry: number, error: unknown): number {
     return typeof retryDelay === 'function' ? retryDelay(retry, error) : retryDelay;
-  }
-}
-
-function hasSlot(phase: TaskPhase): boolean {
-  switch (phase.kind) {
-    case 'running':
-    case 'abandoned':
-      return true;
-    case 'delayed':
-    case 'queued':
-    case 'done':
-      return false;
   }
 }

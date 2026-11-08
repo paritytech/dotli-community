@@ -378,11 +378,11 @@ describe('async task pool', () => {
     // When
     controller.abort(new Error('cancelled'));
     await timers.advance(200);
+    await Promise.all([blocker, third]);
 
     // Then
     expect(await queued).toEqual(new Error('cancelled'));
     expect(queuedTask).not.toHaveBeenCalled();
-    await Promise.all([blocker, third]);
     expect(order).toEqual(['blocker ended', 'third ran']);
   });
 
