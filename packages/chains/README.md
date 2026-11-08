@@ -44,9 +44,10 @@ flowchart LR
   any lane halts the chain.
 - The pool pauses and resumes its chains at once, keeping every lease. A pausing wrapper under each lane's watch guard
   closes its connection on a pause and opens it again on a resume, while the sessions above stay connected. A chain
-  built while paused starts closed. A resume leaves a chain that only waits out its destroy delay closed until a lease
-  takes it. A chain that fails to pause or resume is reported and halted, and the pool goes on with the others. A lease
-  that finds its chain failing to reopen gets a chain built in its place.
+  built while paused starts closed. A resume retries a connection whose reopening failed. A resume leaves a chain that
+  only waits out its destroy delay closed until a lease takes it. A chain that fails to pause or resume is reported and
+  halted, and the pool goes on with the others. A lease that finds its chain failing to reopen gets a chain built in its
+  place.
 - The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
   which gets the answer: a session, a release the broker sent itself, or a session that left, whose answered
   subscription is released at once. Events the node still sends for a subscription that is being released, by the broker

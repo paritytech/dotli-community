@@ -440,4 +440,59 @@ describe('createPausableTransport', () => {
     // Then the failing consumer kept its request and sends it once it reopens
     expect(connection(opened, 3).sent).toEqual([request(1, 'system_health')]);
   });
+
+  it('As a chain consumer whose reopen failed, I resume again and my held request goes out', () => {
+    // Given a transport that throws when the consumer reopens, and a resume that failed
+    const { transport, opened } = createFakeTransport();
+    const reopenError = new Error('reopen failed');
+    let calls = 0;
+    function flakyTransport(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
+      calls += 1;
+      if (calls === 2) {
+        throw reopenError;
+      }
+      return transport(onMessage);
+    }
+    const pausable = createPausableTransport({ transport: flakyTransport });
+    const consumer = pausable.provider(() => undefined);
+    pausable.pause();
+    consumer.send(request(1, 'system_health'));
+    const error = catchError(() => {
+      pausable.resume();
+    });
+
+    // When
+    pausable.resume();
+
+    // Then
+    expect(error).toBe(reopenError);
+    expect(opened).toHaveLength(2);
+    expect(connection(opened, 1).sent).toEqual([request(1, 'system_health')]);
+  });
+
+  it('As a chain consumer who leaves while my connection reopens, nothing is sent and the new connection is closed', () => {
+    // Given a transport whose reopen lets the consumer leave before it returns
+    const { transport, opened } = createFakeTransport();
+    let calls = 0;
+    let consumer: JsonRpcConnection | null = null;
+    function leavingTransport(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
+      calls += 1;
+      const inner = transport(onMessage);
+      if (calls === 2) {
+        consumer?.disconnect();
+      }
+      return inner;
+    }
+    const pausable = createPausableTransport({ transport: leavingTransport });
+    consumer = pausable.provider(() => undefined);
+    pausable.pause();
+    consumer.send(request(1, 'system_health'));
+
+    // When
+    pausable.resume();
+
+    // Then
+    expect(connection(opened, 1).sent).toEqual([]);
+    expect(connection(opened, 1).disconnects).toBe(1);
+  });
 });
