@@ -389,6 +389,63 @@ function upsert(list: Item[], next: Item) {
 
 Why: ownership of a resource is visible in the code that took it, and nothing leaks when the last user leaves.
 
+### A lifecycle is one state value
+
+A unit whose behaviour depends on where it is in its life, such as starting, running, stopping or disposed, holds that
+as one state value: a discriminated union with one member per phase, written only by the unit's own transitions. What a
+phase owns lives in its member, such as the timer of a wait or the controller of a request in flight, never in a
+nullable slot or a flag beside it. A unit that can be disposed has a disposed member, and every entry point checks it
+first. A unit whose only phases are live and disposed may hold them as a lifetime `AbortController` instead, whose
+aborted signal is the disposed state. Facts that are not phases, such as a config or a count of holds, sit beside the
+state value.
+
+A transition writes the next state before it calls out, so a call that re-enters from a callback finds the state
+already moved. Work that outlives a call (an `await`, a callback, a timer) captures the state it started in, and acts
+when it returns only while the unit still holds that same state. Compare by identity, never by a second flag.
+
+Work that runs on after its signal aborts stops on the signal, or checks that it still owns the state before it writes.
+A pool whose works must never overlap, even across an abort, holds its slots on abort.
+
+Why: one value names every phase, each transition has one place, and a stale callback is told apart by identity instead
+of by a flag that drifts.
+
+```ts
+// Do
+type State =
+  | { kind: 'idle' }
+  | { kind: 'opening'; abort: AbortController }
+  | { kind: 'open'; connection: Connection }
+  | { kind: 'disposed' };
+
+let state: State = { kind: 'idle' };
+
+async function open(): Promise<void> {
+  if (state.kind !== 'idle') {
+    return;
+  }
+  const opening: State = { kind: 'opening', abort: new AbortController() };
+  state = opening;
+  try {
+    const connection = await connect({ signal: opening.abort.signal });
+    if (state !== opening) {
+      connection.close();
+      return;
+    }
+    state = { kind: 'open', connection };
+  } catch (error) {
+    if (state === opening) {
+      state = { kind: 'idle' };
+    }
+    throw new Error('Could not open the connection', { cause: error });
+  }
+}
+
+// Don't
+let opening = false;
+let disposed = false;
+let connection: Connection | null = null;
+```
+
 ## Control flow
 
 ### Guard first, then the happy path

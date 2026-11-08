@@ -142,6 +142,9 @@ above the linter: semantics, data flow and naming.
   delay instead of one refcounted owner.
 - **major** (AGENTS.md § Architecture, Tools:): In-flight work deduped with a promise flag or a join-by-key option
   instead of a named pool of size 1 and an idempotent task.
+- **major** (docs/code/style.md § A lifecycle is one state value): A lifecycle phase held in flags or nullable slots
+  beside each other, a transition that calls out before it writes the next state, or work that acts after an `await` or
+  an abort without checking it still holds the state it started in.
 
 ## UI and styles
 
