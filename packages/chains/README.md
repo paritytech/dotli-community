@@ -36,8 +36,9 @@ flowchart LR
 - The chain pool holds each chain's connections in a JS context, over whichever transport it is given. Each lease is a
   consumer of the chain. An entry closes after its last lease is released, and at once when it halts. A local lease then
   heals: it takes the rebuilt chain behind the pool's redial gates, one per chain and one for the protocol frame. A
-  remote session ends at its chain's halt and hears why. A chain whose teardown fails is reported, and the pool still
-  closes the others. A watcher sees each held chain's activity and best block.
+  remote session ends at its chain's halt and hears why. A remote session whose chain halts while it opens is refused
+  with the halt as the cause. A chain whose teardown fails is reported, and the pool still closes the others. A watcher
+  sees each held chain's activity and best block.
 - Each chain's leases spread over lanes, each its own connection from the chain's transport. A consumer has a home lane
   for every request that names no follow. A follow goes to a lane with room under the transport's follow limit, and the
   follow's later calls go after it. Lane 0 lasts as long as the chain, and every other lane closes once empty. A halt of
