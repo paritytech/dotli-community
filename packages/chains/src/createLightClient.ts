@@ -242,11 +242,11 @@ export function createLightClient({
     try {
       engine = await start({ logLevel, store: observedDb, debug });
     } catch (error) {
-      throwIfLeft(starting, key, error);
+      throwIfLeft(starting, { key, cause: error });
       markFatal(`chain ${key} connection failed: ${getErrorMessage(error)}`);
       throw error;
     }
-    throwIfLeft(starting, key);
+    throwIfLeft(starting, { key });
     engineState = {
       kind: 'running',
       engine,
@@ -263,7 +263,7 @@ export function createLightClient({
     return engine;
   }
 
-  function throwIfLeft(starting: EngineState, key: string, cause?: unknown): void {
+  function throwIfLeft(starting: EngineState, { key, cause }: { key: string; cause?: unknown }): void {
     if (engineState !== starting) {
       throw new Error(`chain ${key} cannot open: the light client left its start`, { cause });
     }
