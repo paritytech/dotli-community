@@ -4,8 +4,7 @@
 import { asProductId } from '@parity/truapi';
 import type { UserConfirmation } from '@parity/truapi-host';
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry, recordCaptures, type RecordingSentry } from '@dotli/metrics/testing';
-import { spans as S } from '@dotli/metrics';
+import { bindRecordingSentry, recordReports, type RecordingSentry } from '@dotli/metrics/testing';
 import { withActiveTld } from '@dotli/config';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../createBlockingModalCoordinator.js';
 import type { HostPrompts } from '../hostPrompts.js';
@@ -772,7 +771,9 @@ describe('waiting on the phone', () => {
     expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
     expect(notices[0]?.label).toBe(withActiveTld('localhost:3000'));
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'no' }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'ok', reason: 'signPayload', background: 'no' },
+    ]);
   });
 
   it('As a user, I wait in background and still hear the outcome', async () => {
@@ -794,7 +795,9 @@ describe('waiting on the phone', () => {
     // Then
     expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Rejected in Polkadot App']);
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'refused', reason: 'signPayload', background: 'yes' }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'refused', reason: 'signPayload', background: 'yes' },
+    ]);
   });
 
   it('As a user, I press Escape on the waiting step and it goes to the background, rejecting nothing', async () => {
@@ -816,7 +819,9 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'yes' }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'ok', reason: 'signPayload', background: 'yes' },
+    ]);
   });
 
   it('As a user, I send the wait to the background and the next prompt shows', async () => {
@@ -886,14 +891,15 @@ describe('waiting on the phone', () => {
     await recorded;
 
     // Then
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'gone', reason: 'signPayload', background: 'no' }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'gone', reason: 'signPayload', background: 'no' },
+    ]);
     expect(page.notices).toEqual([]);
   });
 
   it('As a user whose toast fails to show, I sign on my phone and the failure is reported while the request is still counted', async () => {
     // Given
-    const errors: unknown[] = [];
-    const captured = recordCaptures({ onFinished: onTestFinished, errors });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const { sentry, recorded } = bindNextRecord();
     const { tap, confirmation } = await signForPhone({
       prompts: {
@@ -911,15 +917,16 @@ describe('waiting on the phone', () => {
     await page.waitForClearedScreen();
 
     // Then
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'no' }]);
-    expect(captured.map(c => c.step)).toEqual(['phone_request_notice']);
-    expect(errors).toEqual([new Error('toast stack gone')]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'ok', reason: 'signPayload', background: 'no' },
+    ]);
+    expect(captured).toMatchObject([{ step: 'phone_request_notice', error: new Error('toast stack gone') }]);
   });
 
   it('As a user, I get an answer that does not decode and the wait ends, is reported and is counted once as undecodable', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     recordLog({ onFinished: onTestFinished });
     const { tap, confirmation } = await signForPhone({ tracker: createPhoneRequestTracker() });
     await confirmation;
@@ -933,7 +940,7 @@ describe('waiting on the phone', () => {
     expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(["Polkadot App didn't complete the request: undecodable"]);
     expect(captured.map(c => c.step)).toEqual(['phone_request']);
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([
+    expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'undecodable', reason: 'signPayload', background: 'no' },
     ]);
   });
@@ -942,7 +949,7 @@ describe('waiting on the phone', () => {
     {
       label: 'user whose phone lookup throws, I approve a review and it closes as today and answers the core',
       openReview() {
-        recordCaptures({ onFinished: onTestFinished });
+        recordReports({ onFinished: onTestFinished });
         recordLog({ onFinished: onTestFinished });
         const tracker = createPhoneRequestTracker();
         const { confirmUserAction } = createPairedPhone({
@@ -1021,13 +1028,15 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(page.notices).toEqual([]);
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'gone', reason: 'signPayload', background: 'no' }]);
+    expect(sentry.counted('signing.phone_request')).toEqual([
+      { outcome: 'gone', reason: 'signPayload', background: 'no' },
+    ]);
   });
 
   it('As a local wallet user, I approve a review that cannot be matched to a request and nothing is reported', async () => {
     // Given a local wallet core's disposed tracker, and a review whose request would not encode
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const tracker = createPhoneRequestTracker();
     tracker.dispose();
     const confirmation = createPageAdapters({ phoneRequests: tracker }).confirmUserAction({
@@ -1046,7 +1055,7 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(true);
     expect(page.listPending()).toEqual([]);
-    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
+    expect(sentry.counted('signing.phone_request')).toEqual([]);
     expect(captured).toEqual([]);
   });
 

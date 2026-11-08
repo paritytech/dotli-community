@@ -25,7 +25,7 @@ to the protocol iframe.
 
 Both protocol submodes build their light client with `createLightClient` from
 `packages/chains/src/createLightClient.ts`. RPC Gateway mode routes Rust-core
-requests to configured WebSocket endpoints (`createCoreRpcChainProvider`) and
+requests to configured WebSocket endpoints (`createCoreRpcChainTransport`) and
 starts no light client.
 
 ## The light client
@@ -36,7 +36,7 @@ starts no light client.
 - In the SharedWorker (`apps/protocol/src/protocolSharedWorker.ts`) smoldot runs on the worker thread, where the `Worker` constructor is unavailable. In direct mode (`initDirectMode` in `apps/protocol/src/main.ts`) it runs in the iframe.
 - `startLightClientService` in `apps/protocol/src/startLightClientService.ts` opens the chain pool on the light client, watches the relay and Bulletin, and builds the name resolver. Both submodes start it, the SharedWorker through `startProtocolWorker`.
 
-Its members are `createChainProvider`, `isChainSupported`, `status` and `subscribe`.
+Its members are `createChainTransport`, `isChainSupported`, `status` and `subscribe`.
 
 ## Chains
 

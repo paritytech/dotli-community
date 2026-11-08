@@ -3,12 +3,9 @@
 
 // The sign-in modal's error view for a failed sign-in, from the core's failure kind and raw reason.
 
+import type { LoginFailureKind } from '@parity/truapi-host';
 import type { PairingView } from '../state/authModalState.js';
 import { getFriendlyAuthError, type FriendlyAuthError } from './getFriendlyAuthError.js';
-import type { DotliAuthState } from './session/types.js';
-
-/** Why the core's sign-in failed, as its failed auth state names it. */
-export type LoginFailureKind = Extract<DotliAuthState, { tag: 'LoginFailed' }>['kind'];
 
 /** Returns the error view for a failed sign-in, which keeps the raw reason for bug reports. Never throws. */
 export function getLoginFailureView(kind: LoginFailureKind, reason: string): PairingView {

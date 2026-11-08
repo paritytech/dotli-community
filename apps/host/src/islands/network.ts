@@ -4,7 +4,7 @@
 import type { Backend } from '@dotli/config';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
-import type { NetworkHealth } from '../components/chains/networkHealth.js';
+import type { NetworkHealth } from '../networkVerdict.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
 
@@ -20,7 +20,7 @@ export const INITIAL_NETWORK: NetworkView = {
   chains: [],
   transfer: { bytesPerSecond: null, fetched: null, total: null },
   readAt: 0,
-  verdict: { text: 'Not in use', tone: 'quiet' },
+  verdict: { tone: 'quiet' },
 };
 
 /** The network button's props, for an island's own lifetime. */

@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createChanges } from '../../testing/changes.js';
 import { CoreRedialError } from '../coreRedialError.js';
-import type { WalletMode } from '../state/walletModeState.js';
 import type { SessionRead } from './createCoreStorage.js';
 import { createSessionLease } from './createSessionLease.js';
 
@@ -21,14 +20,14 @@ type FakeLease = {
 };
 
 /** A session lease over a fake copy, wallet mode and core, whose reads and boots the test settles. */
-function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode }) {
+function createLeaseHarness(initial: { blob: string | null; local?: boolean }) {
   const changes = createChanges();
   const metrics = bindRecordingSentry({ onFinished: onTestFinished, onRecord: changes.notify });
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
 
   let blob = initial.blob;
-  let mode: WalletMode = initial.mode ?? 'app';
+  let local = initial.local ?? false;
   let failReads = false;
   let reads = 0;
   let heldRead: PromiseWithResolvers<SessionRead> | null = null;
@@ -41,7 +40,7 @@ function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode })
 
   const lease = createSessionLease({
     copy: { readSession, subscribeStoredSession },
-    walletMode: () => mode,
+    isLocalWallet: () => local,
     core: { acquire },
   });
   return {
@@ -53,7 +52,7 @@ function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode })
     listeners,
     reads: () => reads,
     setBlob,
-    setMode,
+    setLocal,
     failReads: failNextReads,
     /** The next read waits for the test to answer it. */
     holdRead,
@@ -139,8 +138,8 @@ function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode })
     blob = next;
   }
 
-  function setMode(next: WalletMode): void {
-    mode = next;
+  function setLocal(next: boolean): void {
+    local = next;
   }
 
   function failNextReads(): void {
@@ -191,23 +190,23 @@ describe('session lease', () => {
     // Then one lease is taken, kept and counted
     expect(page.leases).toHaveLength(1);
     expect(page.leases[0]?.released).toBe(0);
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'ok' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'ok' }]);
   });
 
-  it.each<{ label: string; blob: string | null; mode: WalletMode; modeWhenRead: WalletMode }>([
-    { label: 'signed-out visitor, I open the landing page', blob: null, mode: 'app', modeWhenRead: 'app' },
-    { label: 'visitor on a local wallet, I open the landing page', blob: 'b1', mode: 'local', modeWhenRead: 'local' },
+  it.each<{ label: string; blob: string | null; local: boolean; localWhenRead: boolean }>([
+    { label: 'signed-out visitor, I open the landing page', blob: null, local: false, localWhenRead: false },
+    { label: 'visitor on a local wallet, I open the landing page', blob: 'b1', local: true, localWhenRead: true },
     {
       label: 'visitor on a local wallet, I open the landing page while the mode is still found',
       blob: 'b1',
-      mode: 'app',
-      modeWhenRead: 'local',
+      local: false,
+      localWhenRead: true,
     },
-  ])('As a $label and it boots no core', async ({ blob, mode, modeWhenRead }) => {
+  ])('As a $label and it boots no core', async ({ blob, local, localWhenRead }) => {
     // Given a copy and a wallet mode, which may turn while the copy is read
-    const page = createLeaseHarness({ blob, mode });
+    const page = createLeaseHarness({ blob, local });
     page.onRead(() => {
-      page.setMode(modeWhenRead);
+      page.setLocal(localWhenRead);
     });
 
     // When the landing page starts the lease and the copy was read
@@ -316,7 +315,7 @@ describe('session lease', () => {
 
     // Then the old lease is released and a second one is held
     expect(page.leases[0]?.released).toBe(1);
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
   });
 
   it('As a signed-in visitor, I open the landing page while my first core is already down and a second core lease is held', async () => {
@@ -336,13 +335,13 @@ describe('session lease', () => {
 
   it('As a visitor on a local wallet the boot could not read, I open the landing page and it keeps no core', async () => {
     // Given a core booting for a paired session
-    const page = createLeaseHarness({ blob: 'b1', mode: 'app' });
+    const page = createLeaseHarness({ blob: 'b1', local: false });
     const boot = page.holdAcquire();
     page.lease.start();
     await page.changes.until(() => page.leases.length === 1);
 
     // When the wallet mode turns local and the core boots after it
-    page.setMode('local');
+    page.setLocal(true);
     boot.resolve(undefined);
     await page.changes.until(() => page.leases[0]?.released === 1);
     await page.anchor();
@@ -358,10 +357,10 @@ describe('session lease', () => {
 
     // When the landing page starts the lease
     page.lease.start();
-    await page.changes.until(() => page.metrics.counted(S.WALLET_SESSION_LEASE).length === 1);
+    await page.changes.until(() => page.metrics.counted('wallet.session_lease').length === 1);
 
     // Then the failure is counted and captured once
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'error', reason: 'boot' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'error', reason: 'boot' }]);
     expect(page.captures.exception).toHaveBeenCalledTimes(1);
 
     // When the copy changes again
@@ -379,10 +378,10 @@ describe('session lease', () => {
 
     // When the landing page starts the lease
     page.lease.start();
-    await page.changes.until(() => page.metrics.counted(S.WALLET_SESSION_LEASE).length === 1);
+    await page.changes.until(() => page.metrics.counted('wallet.session_lease').length === 1);
 
     // Then the redial is counted and recorded as expected, not captured as an exception
-    expect(page.metrics.counted(S.WALLET_SESSION_LEASE)).toEqual([{ outcome: 'error', reason: 'redial' }]);
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'error', reason: 'redial' }]);
     expect(page.captures.expected).toHaveBeenCalledTimes(1);
     expect(page.captures.exception).not.toHaveBeenCalled();
   });

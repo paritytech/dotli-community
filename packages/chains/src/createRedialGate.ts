@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Each product's papi client re-follows every 250 ms and each dial would boot a frame or rebuild a chain, so redials
-// after a halt go through one gate shared by every core connection.
+// Redials after a halt go through a gate. A chain that halts each time it is rebuilt, or a frame that fails each boot,
+// would otherwise be redialled back to back.
 
 import { realTimers, type Timers } from '@dotli/shared';
 
@@ -52,6 +52,10 @@ export function createRedialGate({ timers = realTimers }: Params = {}) {
       opensAt = now + delay;
       dialedAt = now;
       return true;
+    },
+    /** Returns the ms until `tryDial` may pass, 0 when it may now. Never throws. */
+    waitMs(): number {
+      return opensAt === null ? 0 : Math.max(0, opensAt - timers.now());
     },
   };
 }

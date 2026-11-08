@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 import { purgeSandboxOriginState, type SandboxOrigin } from './purgeSandboxOriginState.js';
@@ -151,7 +151,7 @@ describe('purgeSandboxOriginState', () => {
     await purgeSandboxOriginState(open);
 
     // Then the purge is counted once as ok
-    expect(sentry.counted(S.APP_ORIGIN_PURGE)).toEqual([{ outcome: 'ok' }]);
+    expect(sentry.counted('app.origin_purge')).toEqual([{ outcome: 'ok' }]);
   });
 
   it('As an operator, I watch a purge fail to wipe stores and each is counted with that store as the reason', async () => {
@@ -167,7 +167,7 @@ describe('purgeSandboxOriginState', () => {
     await purgeSandboxOriginState(refusing);
 
     // Then one error per refused store, in refusal order, and no ok
-    expect(sentry.counted(S.APP_ORIGIN_PURGE)).toEqual([
+    expect(sentry.counted('app.origin_purge')).toEqual([
       { outcome: 'error', reason: 'indexeddb' },
       { outcome: 'error', reason: 'local_storage' },
     ]);

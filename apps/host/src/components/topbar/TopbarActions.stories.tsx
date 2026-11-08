@@ -21,6 +21,7 @@ import { resetStorySettings, storySettings } from '../../testing/stories/setting
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
 import type { ActionGroupMorph } from '@dotli/ui';
 import { NetworkItem } from '../chains/NetworkItem.js';
+import { NETWORK_HEALTH } from '../../networkVerdict.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
 import { SettingsItem } from '../settings/SettingsItem.js';
 import { AccountItem } from '../account/AuthButton.js';
@@ -125,7 +126,9 @@ export const NetworkAndSettingsRowsOpen: Story = {
     await step('When I choose Network in More', async () => {
       await openMore(userEvent);
       await expect(moreRowNames()[0]).toBe('network');
-      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent('Not in use');
+      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent(
+        NETWORK_HEALTH.quiet.word,
+      );
       await userEvent.click(moreRow('network'));
     });
     await step('Then the network panel is open in place of More, and the network button says so', async () => {
@@ -177,7 +180,9 @@ export const PhoneNetworkRowLeads: Story = {
     await step('Given no chain in use', async () => {
       await openMore(userEvent);
       await expect(moreRowNames()[0]).toBe('network');
-      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent('Not in use');
+      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent(
+        NETWORK_HEALTH.quiet.word,
+      );
       await expect(more).toHaveAttribute('aria-label', 'More');
     });
     await step('When a chain in use stalls', () => {
@@ -185,10 +190,10 @@ export const PhoneNetworkRowLeads: Story = {
     });
     await step('Then the row says Unstable and More carries the warning badge in its name', async () => {
       await waitFor(() =>
-        expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent('Unstable'),
+        expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent(NETWORK_HEALTH.warn.word),
       );
       await expect(more).toHaveAttribute('data-tone', 'warn');
-      await expect(more).toHaveAttribute('aria-label', 'More, network unstable');
+      await expect(more).toHaveAttribute('aria-label', `More, network ${NETWORK_HEALTH.warn.word.toLowerCase()}`);
     });
   },
 };

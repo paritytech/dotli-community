@@ -6,10 +6,18 @@
 // same transport. A transport that closes under the feed ends it for good, since the frame that owned it was lost and
 // reported, and following the next one opens it again.
 
-import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorName, log, setErrorName, type Timers } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
 import type { FrameSubscriber } from './subscribe.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A feed the protocol frame ended while it stayed up, so the host reopens it after a backoff. Tagged `outcome` (error),
+ * `feed` (shared_auth or telemetry) and `reason` (the error's name, `ProtocolFeedEndedError` for an end without one).
+ */
+const protocolFeedEndMetric = defineCount<'error'>('protocol.feed_end');
 
 export type FeedName = 'shared_auth' | 'telemetry';
 
@@ -196,16 +204,15 @@ function reportEnd({ feed, error, capture }: ReportEndParams): void {
   const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
   const attributes = { feed };
   if (capture) {
-    reportDefect(error, {
-      flow: 'protocol',
+    report.defect(error, {
       step: 'feed_end',
       tags: { feed },
       attributes,
-      metric: S.PROTOCOL_FEED_END,
+      metric: protocolFeedEndMetric,
       message,
     });
     return;
   }
   log.error(message, error);
-  m.count(S.PROTOCOL_FEED_END, { outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
+  protocolFeedEndMetric.count({ outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
 }

@@ -161,7 +161,12 @@ describe('readBootSettings', () => {
       // Then
       expect(settings.backend).toBe('smoldot-direct');
       expect(boot.notify).toHaveBeenCalledTimes(1);
-      expect(boot.notify).toHaveBeenCalledWith(expect.objectContaining({ label: 'Light client shared unavailable' }));
+      expect(boot.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Light client shared unavailable',
+          text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
+        }),
+      );
     },
   );
 

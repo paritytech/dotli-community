@@ -3,11 +3,13 @@
 
 import { CarReader } from '@ipld/car';
 import type { CID } from 'multiformats/cid';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { isCarFile } from './isCarFile.js';
 import type { ArchiveFiles } from './types.js';
 import { assertBlockMatchesCid, assertSameContentId, createVerifyingBlockSource } from './verify.js';
 import { walkUnixFsDag } from './walkUnixFsDag.js';
+
+const report = createReporter({ flow: 'content' });
 
 type Params = {
   /** The CID the response must match. Omit it only for bytes already trusted. */
@@ -21,7 +23,7 @@ export async function parseIpfsResponse(buffer: Uint8Array, { expectedRoot }: Pa
   }
   if (expectedRoot !== undefined) {
     assertBlockMatchesCid(expectedRoot, buffer);
-    log.event(`Block ${expectedRoot.toString()} verified`, { flow: 'content', bytes: buffer.length });
+    report.log.event(`Block ${expectedRoot.toString()} verified`, { bytes: buffer.length });
   }
   return { 'index.html': buffer };
 }
@@ -58,6 +60,6 @@ async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<Arc
       return block.bytes;
     }),
   });
-  log.event(`CAR ${rootCid.toString()} verified: ${String(blocks)} blocks`, { flow: 'content', blocks, bytes });
+  report.log.event(`CAR ${rootCid.toString()} verified: ${String(blocks)} blocks`, { blocks, bytes });
   return files;
 }

@@ -8,12 +8,12 @@
 // Nothing of the main account reaches the site.
 
 import type { ProductAccountId } from '@parity/truapi';
-import { spans as S } from '@dotli/metrics';
 import { markHandled, noop, toHex } from '@dotli/shared';
 import type { MainAccount } from './createMainAccountSource.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import { SiteChainError, type SiteChain, type SiteChainSession, type SiteDecodedCall } from './createSiteChain.js';
 import { createSiteRound, type SiteAction, type SiteRound, type SiteRoundParams } from './createSiteRound.js';
+import { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';
 import { reportSiteFailure } from './reportSiteFailure.js';
 import { SiteRoundFailure, SiteRoundRefusal, SiteRoundRejected } from './siteRoundErrors.js';
 import type { SiteSignRequest } from './parseSiteSignRequest.js';
@@ -25,7 +25,7 @@ export type SiteTransactionResult = {
   transaction: string;
 };
 
-type CreateSiteTransactionParams = Omit<SiteRoundParams<SiteTransactionResult>, 'action' | 'metric' | 'request'> & {
+type CreateSiteTransactionParams = Omit<SiteRoundParams<SiteTransactionResult, 'signed'>, 'action' | 'request'> & {
   request: SiteSignRequest;
   /** The site's call, from its request or its payload. */
   call: Uint8Array;
@@ -68,7 +68,6 @@ export function createSiteTransaction({
       txSigner,
       accountReader,
     }),
-    metric: S.SITE_TRANSACTION,
   });
 }
 
@@ -81,7 +80,7 @@ export function getSiteTransactionAction({
   chain,
   txSigner,
   accountReader,
-}: GetSiteTransactionActionParams): SiteAction<SiteTransactionResult> {
+}: GetSiteTransactionActionParams): SiteAction<SiteTransactionResult, 'signed'> {
   // The named account's key once read for a main account, which a Retry within the round for that main account uses
   // rather than asking the phone again. Another main account derives another key.
   let readKey: { owner: string; key: Uint8Array } | null = null;
@@ -113,6 +112,7 @@ export function getSiteTransactionAction({
 
   return {
     route: 'sign',
+    metric: SITE_ROUTE_METRICS.sign,
     outcome: () => 'signed',
     prepare(signal) {
       if (early !== null || signal.aborted) {
@@ -202,7 +202,7 @@ function closeChain(session: SiteChainSession): void {
       message: 'Asset Hub could not be closed',
       cause: error,
     });
-    reportSiteFailure(failure, S.SITE_TRANSACTION);
+    reportSiteFailure(failure, SITE_ROUTE_METRICS.sign);
   }
 }
 

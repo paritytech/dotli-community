@@ -10,34 +10,15 @@ import type {
   WebWorkerHostCallbacks,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
-import { log } from '@dotli/shared';
-import type { BlockingModalScope } from './createBlockingModalCoordinator.js';
+import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
-import type { PageProduct } from './createPageCore.js';
-import type { PhoneRequestTracker } from './createPhoneRequestTracker.js';
+import type { CoreContext, PageProduct } from './createPageCore.js';
 import { createTruapiRuntimeConfig, toProductId } from './createTruapiRuntimeConfig.js';
 import { ERRORS } from './errors.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 
-export type CoreRuntimeRequest = {
-  product: PageProduct;
-  blockingModalScope: BlockingModalScope;
-  /** What the core's frames report phone requests to, and its confirmations claim from. */
-  phoneRequests: PhoneRequestTracker;
-  /** False once the core is gone, so a late step of its boot stands down. */
-  isLive: () => boolean;
-  /**
-   * False once the core went down or turned stale. Leases can keep a retired core running, and only the core in
-   * service speaks for the session.
-   */
-  isInService: () => boolean;
-  /**
-   * Keeps the core's session slot in memory, so nothing it does reaches the stored session or the signed-in flag. For
-   * a core that must never write either.
-   */
-  sessionInMemory?: boolean;
-};
+const report = createReporter({ flow: 'wallet' });
 
 export type BootedCoreRuntime = {
   runtime: WorkerPairingHostRuntime;
@@ -76,14 +57,7 @@ export function createCoreRuntimeBoot({
   loadLocalWalletCore,
 }: CoreRuntimeBootParams) {
   /** Resolves with the booted runtime. Rejects when a step of the boot fails. */
-  async function bootCoreRuntime({
-    product,
-    blockingModalScope,
-    phoneRequests,
-    isLive,
-    isInService,
-    sessionInMemory = false,
-  }: CoreRuntimeRequest): Promise<BootedCoreRuntime> {
+  async function bootCoreRuntime(core: CoreContext): Promise<BootedCoreRuntime> {
     const hostConfig = createTruapiRuntimeConfig();
     // Set once the core parsed it, which needs the booted core, while the callbacks are built before the boot.
     let productId: ProductId | undefined;
@@ -94,17 +68,7 @@ export function createCoreRuntimeBoot({
       return productId;
     }
     const createCoreCallbacks = (local: boolean): WebWorkerHostCallbacks =>
-      createCallbacks({
-        label: product.label,
-        getProductId,
-        pairingLabel: product.pairing?.label,
-        pairingDotSuffix: product.pairing?.dotSuffix,
-        pairingHostGlobal: product.pairing?.hostGlobal,
-        blockingModalScope,
-        sessionInMemory: local || sessionInMemory,
-        isInService,
-        phoneRequests,
-      });
+      createCallbacks({ core, getProductId, sessionInMemory: local || core.sessionInMemory });
     // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower. The
     // worker wrapper fetches its worker script only when constructed, so local mode pays nothing for it.
     const [wallet, { createWebWorkerPairingHostRuntime, HostWorker }] = await Promise.all([
@@ -118,18 +82,18 @@ export function createCoreRuntimeBoot({
         callbacks: createCoreCallbacks(true),
         hostConfig,
         wallet,
-        isLive,
+        isLive: core.isLive,
       });
-      productId = await parseProductId(runtime, product);
-      log.event('wallet core booted', { flow: 'wallet', local: true });
+      productId = await parseProductId(runtime, core.product);
+      report.log.event('wallet core booted', { local: true });
       // A local wallet is forgotten only by a switch, which reloads the page.
       return { runtime, productId, local: true, isStale: () => Promise.resolve(false) };
     }
     const runtime = await createWebWorkerPairingHostRuntime(new HostWorker(), createCoreCallbacks(false), {
       hostConfig,
     });
-    productId = await parseProductId(runtime, product);
-    log.event('wallet core booted', { flow: 'wallet' });
+    productId = await parseProductId(runtime, core.product);
+    report.log.event('wallet core booted');
     return { runtime, productId, local: false, isStale: async () => (await readWallet()) !== null };
   }
 

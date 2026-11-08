@@ -17,6 +17,7 @@ import {
 } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
+import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 
@@ -129,22 +130,23 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           session.resolve(null);
           return true;
         }
-        // No report yet, or one on the way to a session, keeps the wait.
-        switch (report?.tag) {
-          case 'Connected':
-            session.resolve(report.session);
-            return true;
-          case 'Disconnected':
-          case 'LoginFailed':
-            return new MainAccountError('signed_out', `The window's core reports the main session ${report.tag}`);
-          case 'Unreachable':
-            return new MainAccountError('unavailable', "The window's core cannot read the main session");
-          case undefined:
-          case 'Restoring':
-          case 'Pairing':
-          case 'Authenticating':
-            return false;
+        // No report yet keeps the wait.
+        if (report === null) {
+          return false;
         }
+        const signedIn = authViews.getSignedInSession(report);
+        if (signedIn !== null) {
+          session.resolve(signedIn);
+          return true;
+        }
+        if (authViews.isSignInIdle(report)) {
+          return new MainAccountError('signed_out', `The window's core reports the main session ${report.tag}`);
+        }
+        if (authViews.isSessionUnreachable(report)) {
+          return new MainAccountError('unavailable', "The window's core cannot read the main session");
+        }
+        // A report on the way to a session keeps the wait.
+        return false;
       },
       { signal },
     ).catch(session.reject);

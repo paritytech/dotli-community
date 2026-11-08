@@ -132,10 +132,12 @@ describe('readSharedSettings', () => {
 
     // Then
     expect(shared).toBeNull();
-    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'shared store unreachable' }), {
-      flow: 'boot',
-      step: 'shared_mode_read',
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'shared store unreachable' }),
+      expect.objectContaining({
+        step: 'shared_mode_read',
+      }),
+    );
     expect(counted('shared_mode.read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 });
@@ -165,10 +167,12 @@ describe('writeSharedSettings', () => {
     await writeSharedSettings({ backend: 'rpc-gateway', cache: null }, { channel: store });
 
     // Then
-    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'shared store unreachable' }), {
-      flow: 'storage',
-      step: 'shared_mode_write',
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'shared store unreachable' }),
+      expect.objectContaining({
+        step: 'shared_mode_write',
+      }),
+    );
     expect(counted('shared_mode.write')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 });

@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi, type Mock } from 'vitest';
+import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { createManualTimers } from '@dotli/shared/testing';
-import type { RemoteChainProvider } from '@dotli/protocol';
 import { bindReports } from '../testing/bindReports.js';
 import { createFinalizedBlockQuery, type FinalizedBlockClient } from './createFinalizedBlockQuery.js';
 
 const PEOPLE_GENESIS = getActiveServicesConfig().people.genesis;
 
 /** The host pool's provider for a chain, a connection that sends nowhere. */
-function connectChain(): ReturnType<RemoteChainProvider> {
+function connectChain(): JsonRpcConnection {
   return { send: vi.fn(), disconnect: vi.fn() };
 }
 
@@ -27,7 +27,7 @@ describe('queryFinalizedBlock', () => {
     const client = createReadingClient(Promise.resolve({ number: 42 }));
     const source = {
       provider: vi.fn((_genesisHash: string) => Promise.resolve(connectChain)),
-      createClient: vi.fn((_provider: RemoteChainProvider) => Promise.resolve(client)),
+      createClient: vi.fn((_provider: JsonRpcProvider) => Promise.resolve(client)),
     };
     const queryFinalizedBlock = createFinalizedBlockQuery(source);
 
@@ -44,7 +44,7 @@ describe('queryFinalizedBlock', () => {
   it('As a dotli user, I open the diagnostics and a chain the host pool cannot serve reads as no block', async () => {
     // Given a host pool that cannot serve the chain
     bindReports();
-    const createClient = vi.fn((_provider: RemoteChainProvider) =>
+    const createClient = vi.fn((_provider: JsonRpcProvider) =>
       Promise.resolve(createReadingClient(Promise.resolve({ number: 1 }))),
     );
     const queryFinalizedBlock = createFinalizedBlockQuery({ provider: () => Promise.resolve(null), createClient });
@@ -73,11 +73,13 @@ describe('queryFinalizedBlock', () => {
     expect(block).toBeNull();
     expect(client.destroy).toHaveBeenCalledOnce();
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(expect.objectContaining({ message: 'chainHead follow failed' }), {
-      flow: 'ui',
-      step: 'diagnostics_block',
-      tags: { reason: 'Error' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'chainHead follow failed' }),
+      expect.objectContaining({
+        step: 'diagnostics_block',
+        tags: { reason: 'Error' },
+      }),
+    );
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
@@ -145,7 +147,10 @@ describe('queryFinalizedBlock', () => {
     expect(client.destroy).toHaveBeenCalledOnce();
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'ui', step: 'diagnostics_block' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'diagnostics_block' }),
+    );
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
   });
 });

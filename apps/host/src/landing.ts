@@ -6,11 +6,14 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
-import { log, createRandomId } from '@dotli/shared';
+import { createRandomId } from '@dotli/shared';
 import { runWhenIdle } from '@dotli/ui';
+import { createReporter } from '@dotli/metrics';
 import { startPage } from './startPage.js';
 import { startHost } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
+
+const report = createReporter({ flow: 'boot' });
 
 async function main(): Promise<void> {
   startPage();
@@ -19,12 +22,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const { bridgeModule } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
+  const { bridge } = await startHost({ bootFlowId: createRandomId(), role: 'landing' });
   // Idle, so the core boot never competes with the page's first paint or its boot.
   runWhenIdle(() => {
-    bridgeModule.startSessionLease();
+    bridge.startSessionLease();
   }, 2000);
-  log.event('Route: landing page', { flow: 'boot' });
+  report.log.event('Route: landing page');
 }
 
 main().catch(reportBootFailure);

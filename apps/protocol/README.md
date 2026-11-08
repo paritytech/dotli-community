@@ -92,10 +92,11 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never fires the
   event, the heartbeat release frees the tab's connections once it misses its beats, and holds its port as it holds a
   frozen tab's.
-- The host pauses the network with `frame.pause`. A frame in direct or gateway mode pauses its own chain pool on it. In
-  shared-worker mode each tab's frame forwards it to the worker, which pauses its chains while every tab it serves asks
-  for a pause, and resumes them once one tab resumes or a new tab connects. A pause keeps every chain's leases, and a
-  resume reopens the chains they hold. When the last tab leaves, the worker keeps the state it had.
+- The host pauses the network with `frame.pause`. A frame in direct or gateway mode and each worker port serve the pause
+  through one pool-control server. The frame pauses its own chain pool. In shared-worker mode each tab's frame forwards
+  the pause to the worker, which pauses its chains while every tab it serves asks for one, and resumes them once one tab
+  resumes or a new tab connects. A pause keeps every chain's leases, and a resume reopens the chains they hold. When the
+  last tab leaves, the worker keeps the state it had.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. The ready wait is the link's one deadline, and its handshake has none of its own, so a worker that never answers
   counts as a ready timeout. A heartbeat it cannot send is captured, logged and counted, and the link stops answering,
@@ -109,8 +110,8 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   given, so connects already queued for it are served first, and sends the worker's buffered telemetry before it. A send
   that fails is captured, logged and counted, and the close goes on. A disposed worker closes every port at once,
   released ones too, and never closes itself, even after a failure.
-- One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher
-  that takes a halted chain again after a short wait, and the name resolver, for the iframe and the SharedWorker alike.
+- One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched and that
+  hold a halted chain again once the pool rebuilds it, and the name resolver, for the iframe and the SharedWorker alike.
   Each keeps its own transport. Both warm People through the setup without holding ready, and a warm that fails is
   logged and counted as an expected failure, since a later read retries it. Both build the telemetry they send the host
   with one typed builder, so a change to the wire contract fails the build in both. Tester knobs come from session

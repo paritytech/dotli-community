@@ -5,10 +5,13 @@
 // The peer list the watch lacks goes over the chain's JSON-RPC under a reserved string id.
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
-import { m, reportListener } from '@dotli/metrics';
+import { createReporter, m } from '@dotli/metrics';
 import { createListenerSet, getErrorMessage, isRecord, log } from '@dotli/shared';
 import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 import { SYSTEM_PEERS } from './jsonRpcMethods.js';
+
+const resolveReport = createReporter({ flow: 'resolve' });
+const protocolReport = createReporter({ flow: 'protocol' });
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export type ChainSyncKind =
@@ -104,7 +107,7 @@ const MAX_PEERS_RECORDED = 25;
 export function createChainSyncReporter({ askPeers }: Params) {
   // A throwing listener is a defect in its subscriber, so it is reported, and the other listeners still hear the event.
   const detailListeners = createListenerSet<ChainDetail>({
-    onListenerError: reportListener('resolve', 'chain_sync.detail'),
+    onListenerError: resolveReport.listener('chain_sync.detail'),
   });
   // Latest per chain and kind, so a reconnecting chain replaces its entry instead of growing the replay.
   const detailHistory = new Map<string, ChainDetail>();
@@ -137,7 +140,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
   }
 
   const syncListeners = createListenerSet<ChainSyncEvent>({
-    onListenerError: reportListener('resolve', 'chain_sync.sync'),
+    onListenerError: resolveReport.listener('chain_sync.sync'),
   });
   // Latest event per chain and kind, so the replay stays bounded.
   const syncHistory = new Map<string, ChainSyncEvent>();
@@ -341,7 +344,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
       watch = watchLifecycle();
     } catch (error: unknown) {
       // The loading screen falls back to its own timings, so this is progress, not a failure.
-      log.event('Chain lifecycle watch unavailable', { flow: 'protocol', chain, reason: getErrorMessage(error) });
+      protocolReport.log.event('Chain lifecycle watch unavailable', { chain, reason: getErrorMessage(error) });
       return { intercept, stop: () => undefined };
     }
 
@@ -355,7 +358,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
         }
       } catch (error: unknown) {
         // As when the watch is refused, the loading screen falls back to its own timings.
-        log.event('Chain lifecycle watch ended', { flow: 'protocol', chain, reason: getErrorMessage(error) });
+        protocolReport.log.event('Chain lifecycle watch ended', { chain, reason: getErrorMessage(error) });
       }
     }
 

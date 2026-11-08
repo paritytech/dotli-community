@@ -286,7 +286,10 @@ describe('presence watch', () => {
     await tab.changes.until(() => tab.signOuts.length === 1);
 
     // Then the wallet miss is recorded as expected
-    expect(tab.captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_wallet_read' });
+    expect(tab.captures.expected).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({ step: 'presence_wallet_read' }),
+    );
   });
 
   it.each<{ label: string; wallet: WalletRead }>([
@@ -404,11 +407,13 @@ describe('presence watch', () => {
 
     // Then the failure the sign-out gave is reported once
     expect(tab.captures.exception).toHaveBeenCalledTimes(1);
-    expect(tab.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'presence_signout',
-      tags: { reason: 'visible' },
-    });
+    expect(tab.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'presence_signout',
+        tags: { reason: 'visible' },
+      }),
+    );
     expect(tab.metrics.counted('session.presence_watch')).toEqual([{ outcome: 'error', reason: 'visible' }]);
   });
 

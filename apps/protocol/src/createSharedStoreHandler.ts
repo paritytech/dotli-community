@@ -5,7 +5,7 @@
 // pages that subscribe. The transport they are served on holds the shared-auth trust boundary: host and landing
 // origins of this root domain, never product origins.
 
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { SITE_ID, type SiteId } from '@dotli/config';
 import {
   buildSharedAuthStorageKey,
@@ -20,6 +20,14 @@ import {
 import type { Failure, ResultPayload, Sink } from '@dotli/transport';
 
 import { answerAdmitted } from './answerAdmitted.js';
+
+const report = createReporter({ flow: 'storage' });
+
+/**
+ * A shared auth or wallet change the protocol frame could not post to the other tabs, tagged `outcome` (error) and
+ * `reason` (the error's name).
+ */
+const protocolSharedAuthBroadcastMetric = defineCount<'error'>('protocol.shared_auth_broadcast');
 
 /** The tabs' broadcast channel, as much of it as the store uses. A `BroadcastChannel` is one. */
 export type SharedAuthChannel = {
@@ -151,10 +159,9 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
       channel.postMessage(message);
     } catch (error: unknown) {
       // The write was already made, so the host never hears other tabs missed it.
-      reportDefect(error, {
-        flow: 'storage',
+      report.defect(error, {
         step: 'shared_auth_broadcast',
-        metric: S.PROTOCOL_SHARED_AUTH_BROADCAST,
+        metric: protocolSharedAuthBroadcastMetric,
         message: '[dot.li shared auth] Broadcast to the other tabs failed',
       });
     }

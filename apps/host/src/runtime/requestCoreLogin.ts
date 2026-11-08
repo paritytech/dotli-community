@@ -16,9 +16,17 @@ import {
   type WireProvider as Provider,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { toError } from '@dotli/shared';
 import { LoginRequestError } from './loginRequestError.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * A frame on the topbar login's own connection that the login skipped and survived. Tagged `outcome` (error) and
+ * `reason` (`undecodable_frame`, a frame that did not decode, counted once per login).
+ */
+const walletLoginFrameMetric = defineCount<'error'>('wallet.login_frame');
 
 type Params = {
   /** What the core shows the user as the login's purpose. None by default. */
@@ -106,10 +114,9 @@ export function requestCoreLogin(core: Provider, { reason }: Params = {}): Promi
           // The connection is the login's alone, so it is a protocol fault, reported once per request.
           if (!reportedUndecodable) {
             reportedUndecodable = true;
-            reportExpected(decoded.error, {
-              flow: 'wallet',
+            report.expected(decoded.error, {
               step: 'login_frame',
-              metric: S.WALLET_LOGIN_FRAME,
+              metric: walletLoginFrameMetric,
               reason: 'undecodable_frame',
               message: '[dot.li login] ignored a frame that does not decode:',
             });

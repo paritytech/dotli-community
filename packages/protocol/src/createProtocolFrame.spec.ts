@@ -3,8 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred, toError } from '@dotli/shared';
 import { catchRejection, createManualTimers, readOutcome, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { createTransport, createWindowProvider, domain, err, ok, type Sink } from '@dotli/transport';
@@ -37,7 +36,7 @@ type ChangeSink = Sink<SharedAuthChange, SubscriptionEnd<undefined>>;
 
 const HANDSHAKE_TIMEOUT_MS = DEFAULT_FRAME_TIMEOUTS.handshakeMs;
 /** What the frame reports when a status listener throws. */
-const STATUS_LISTENER_CAPTURE = { flow: 'protocol', step: 'listener', tags: { owner: 'protocol.status' } };
+const STATUS_LISTENER_CAPTURE = { step: 'listener', tags: { owner: 'protocol.status' } };
 const STATUS_LISTENER_REPORT = { outcome: 'error', reason: 'Error', owner: 'protocol.status' };
 const READY_TIMEOUT_MS = 240_000;
 
@@ -203,7 +202,7 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_WIRE_REFUSED)).toEqual([
+    expect(metrics.counted('protocol.wire_refused')).toEqual([
       { outcome: 'refused', reason: 'malformed', side: 'host' },
       { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
@@ -211,13 +210,13 @@ describe('createProtocolFrame', () => {
       events
         .filter(line => line.message === 'protocol message refused')
         .map(({ message, attrs }) => ({ message, attrs })),
-    ).toEqual([
+    ).toMatchObject([
       {
         message: 'protocol message refused',
         // An asymmetric matcher is typed any.
-        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: expect.any(String) as string },
+        attrs: { reason: 'malformed', side: 'host', cause: expect.any(String) as string },
       },
-      { message: 'protocol message refused', attrs: { flow: 'protocol', reason: 'not_bytes', side: 'host' } },
+      { message: 'protocol message refused', attrs: { reason: 'not_bytes', side: 'host' } },
     ]);
     expect(frame.status.get()).toBe('listening');
   });
@@ -301,7 +300,7 @@ describe('createProtocolFrame', () => {
 
   it('As the host with an app open, I hear a version mismatch although a status listener throws on the failed frame, and the throw is reported and no frame is rebuilt', async () => {
     // Given a frame waiting on its handshake, a status listener that throws on failed, and a mismatch listener
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -331,13 +330,13 @@ describe('createProtocolFrame', () => {
     expect(statuses).toEqual(['failed']);
     expect(frame.status.get()).toBe('failed');
     expect(dom.countFrames()).toBe(0);
-    expect(captured).toEqual([STATUS_LISTENER_CAPTURE]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
+    expect(captured).toMatchObject([STATUS_LISTENER_CAPTURE]);
+    expect(metrics.counted('listener.delivery')).toEqual([STATUS_LISTENER_REPORT]);
   });
 
   it('As the host, I boot a frame while a status listener throws on booting, and the throw is reported and the boot goes on', async () => {
     // Given a configured frame, and a status listener that throws on booting
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -360,9 +359,9 @@ describe('createProtocolFrame', () => {
     await expect(loaded).resolves.toBe(transport);
     expect(frame.status.get()).toBe('listening');
     expect(dom.countFrames()).toBe(1);
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([]);
-    expect(captured).toEqual([STATUS_LISTENER_CAPTURE]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([]);
+    expect(captured).toMatchObject([STATUS_LISTENER_CAPTURE]);
+    expect(metrics.counted('listener.delivery')).toEqual([STATUS_LISTENER_REPORT]);
   });
 
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {
@@ -403,7 +402,7 @@ describe('createProtocolFrame', () => {
     expect(failure).toBeInstanceOf(ProtocolInitFailedError);
     expect(failure.message).toBe('no SharedWorker');
     expect(statusAfterFailure).toBe('failed');
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([
       { outcome: 'error', phase: 'ready', reason: 'ProtocolInitFailedError' },
     ]);
     expect(dom.countFrames()).toBe(2);
@@ -442,7 +441,7 @@ describe('createProtocolFrame', () => {
 
   it('As the host, I drop a frame while a status listener throws, and the change returns, the throw is reported and the frame is still cleaned up', async () => {
     // Given a listening frame, and a status listener that throws when the frame goes idle
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -466,13 +465,13 @@ describe('createProtocolFrame', () => {
     expect(dropped.isConnected).toBe(false);
     expect(dom.countFrames()).toBe(1);
     expect(new URL(dom.getIframe().src).searchParams.get('mode')).toBe('rpc');
-    expect(captured).toEqual([STATUS_LISTENER_CAPTURE]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
+    expect(captured).toMatchObject([STATUS_LISTENER_CAPTURE]);
+    expect(metrics.counted('listener.delivery')).toEqual([STATUS_LISTENER_REPORT]);
   });
 
   it('As the host, I let a frame listen while a status listener throws on it, and the throw is reported and the frame stays up', async () => {
     // Given a booting frame, its transport, and a status listener that throws when the frame listens
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -498,14 +497,13 @@ describe('createProtocolFrame', () => {
     expect(dom.countFrames()).toBe(1);
     expect(dom.getIframe()).toBe(booted);
     expect(frame.status.get()).toBe('listening');
-    expect(captured).toEqual([STATUS_LISTENER_CAPTURE]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
+    expect(captured).toMatchObject([STATUS_LISTENER_CAPTURE]);
+    expect(metrics.counted('listener.delivery')).toEqual([STATUS_LISTENER_REPORT]);
   });
 
   it('As the host, I change a frame status that two listeners throw on, and the frame reports one throw and goes on', async () => {
     // Given a configured frame, and two status listeners that throw on booting
-    const errors: unknown[] = [];
-    const captured = recordCaptures({ onFinished: onTestFinished, errors });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -528,9 +526,8 @@ describe('createProtocolFrame', () => {
     await dom.listen();
 
     // Then the last throw alone was reported, and the boot went on to a listening frame
-    expect(captured).toEqual([STATUS_LISTENER_CAPTURE]);
-    expect(errors).toEqual([second]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([STATUS_LISTENER_REPORT]);
+    expect(captured).toMatchObject([{ ...STATUS_LISTENER_CAPTURE, error: second }]);
+    expect(metrics.counted('listener.delivery')).toEqual([STATUS_LISTENER_REPORT]);
     expect(frame.status.get()).toBe('listening');
     expect(dom.countFrames()).toBe(1);
   });
@@ -554,14 +551,14 @@ describe('createProtocolFrame', () => {
 
     // Then
     expect(await owner).toBeInstanceOf(ProtocolFatalError);
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([
       { outcome: 'error', phase: 'ready', reason: 'ProtocolFatalError' },
     ]);
   });
 
   it('As the host, I lose a ready frame and it is counted once as lost and captured', async () => {
     // Given a ready frame, and a reporting pipeline that records captures and counts
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -574,14 +571,14 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolFatalError' }]);
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY).filter(tags => tags?.['outcome'] === 'error')).toEqual([]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
+    expect(metrics.counted('protocol.frame_lost')).toEqual([{ outcome: 'error', reason: 'ProtocolFatalError' }]);
+    expect(metrics.counted('protocol.iframe_ready').filter(tags => tags?.['outcome'] === 'error')).toEqual([]);
+    expect(captured).toMatchObject([{ step: 'frame_lost' }]);
   });
 
   it('As the host, I see ready frames that keep dying each counted, captured once, and captured again after a stable one', async () => {
     // Given a ready frame, and a reporting pipeline that records captures and counts
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -597,8 +594,8 @@ describe('createProtocolFrame', () => {
     await advance(4_000);
 
     // Then both losses are counted and only the first is captured
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toHaveLength(2);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
+    expect(metrics.counted('protocol.frame_lost')).toHaveLength(2);
+    expect(captured).toMatchObject([{ step: 'frame_lost' }]);
 
     // When the next frame stays ready for the stable span before it dies
     const third = await dom.bringUp();
@@ -607,16 +604,13 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // Then its loss is counted and captured again
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toHaveLength(3);
-    expect(captured).toEqual([
-      { flow: 'protocol', step: 'frame_lost' },
-      { flow: 'protocol', step: 'frame_lost' },
-    ]);
+    expect(metrics.counted('protocol.frame_lost')).toHaveLength(3);
+    expect(captured).toMatchObject([{ step: 'frame_lost' }, { step: 'frame_lost' }]);
   });
 
   it('As the host, I hear a worker port release end the frame through the typed released interrupt, without a capture', async () => {
     // Given a ready frame, and a reporting pipeline that records captures, counts and breadcrumbs
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const events = recordLog({ onFinished: onTestFinished, level: 'info' });
     const dom = createFrameDom({ timers });
@@ -634,7 +628,7 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolPortReleasedError' }]);
+    expect(metrics.counted('protocol.frame_lost')).toEqual([{ outcome: 'error', reason: 'ProtocolPortReleasedError' }]);
     expect(captured).toEqual([]);
     expect(events.map(line => line.message)).toContain('protocol frame released');
     expect(await owner).toBeInstanceOf(ProtocolPortReleasedError);
@@ -661,7 +655,7 @@ describe('createProtocolFrame', () => {
 
     // Then
     expect((await owner)?.message).toBe(PROTOCOL_ERRORS.FRAME_STATUS_ENDED);
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('protocol.frame_lost')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(frame.status.get()).toBe('failed');
   });
 
@@ -753,7 +747,7 @@ describe('createProtocolFrame', () => {
     await expect(frame.waitUntilReady()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
     await expect(frame.getTransport()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
     expect(dom.countFrames()).toBe(0);
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([
       { outcome: 'error', phase: 'listen', reason: 'ProtocolVersionMismatchError' },
     ]);
   });
@@ -803,7 +797,7 @@ describe('createProtocolFrame', () => {
     // Then
     expect(failure).toBeInstanceOf(ProtocolHandshakeTimeoutError);
     expect(silent.isConnected).toBe(false);
-    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([
       { outcome: 'error', phase: 'listen', reason: 'ProtocolHandshakeTimeoutError' },
     ]);
     expect(framesBeforeBackoff).toBe(0);
@@ -1010,7 +1004,7 @@ describe('frame liveness check', () => {
     expect(framesAfterCheck).toBe(0);
     expect(dom.getIframe()).not.toBe(stale);
     expect(frame.status.get()).toBe('ready');
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([
+    expect(metrics.counted('protocol.frame_lost')).toEqual([
       { outcome: 'error', reason: 'ProtocolFrameUnresponsiveError' },
     ]);
   });
@@ -1096,7 +1090,7 @@ describe('frame liveness check', () => {
     expect(frame.storeHeld.get()).toBe(false);
     expect(held.isConnected).toBe(false);
     expect(frame.status.get()).toBe('failed');
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([
+    expect(metrics.counted('protocol.frame_lost')).toEqual([
       { outcome: 'error', reason: 'ProtocolFrameUnresponsiveError' },
     ]);
   });
@@ -1122,7 +1116,7 @@ describe('frame liveness check', () => {
     expect(held.isConnected).toBe(false);
     expect(rebuilt.isConnected).toBe(true);
     expect(frame.storeHeld.get()).toBe(true);
-    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([]);
+    expect(metrics.counted('protocol.frame_lost')).toEqual([]);
     expect(lines.filter(line => line.attrs?.['outcome'] === 'lost')).toEqual([]);
   });
 
@@ -1532,7 +1526,7 @@ describe('protocol status', () => {
       await advance();
 
       // Then the failure is counted with the reason of the thrown value
-      expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toContainEqual({ outcome: 'error', phase: 'load', reason });
+      expect(metrics.counted('protocol.iframe_ready')).toContainEqual({ outcome: 'error', phase: 'load', reason });
     },
   );
 

@@ -4,10 +4,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isLoadedOutcome,
   parseApiViolationMessage,
   parseHostToSandboxMessage,
   parseSandboxToHostMessage,
   postToHost,
+  type SandboxLoadOutcome,
   type SandboxToHostMessage,
 } from './sandboxMessages.js';
 
@@ -159,5 +161,21 @@ describe('parseApiViolationMessage', () => {
 
     // Then
     expect(parsed).toEqual([null, null, null, null]);
+  });
+});
+
+describe('sandbox load outcome', () => {
+  it.each<{ outcome: SandboxLoadOutcome; loaded: boolean }>([
+    { outcome: 'loaded', loaded: true },
+    { outcome: 'failed', loaded: false },
+  ])('As the host, I ask whether the load $outcome succeeded and hear $loaded', ({ outcome, loaded }) => {
+    // Given
+    const ended: SandboxLoadOutcome = outcome;
+
+    // When
+    const answer = isLoadedOutcome(ended);
+
+    // Then
+    expect(answer).toBe(loaded);
   });
 });

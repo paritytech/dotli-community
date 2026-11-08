@@ -5,7 +5,8 @@ import { createSignal, onSettled } from 'solid-js';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { ThemePreference } from '../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings } from '../components/settings/settings.js';
+import type { SavedSettings } from '../components/settings/settings.js';
+import type { SettingsContentProps } from '../components/settings/SettingsContent.js';
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 
 /** The page's settings and theme, and what acts on them. */
@@ -13,13 +14,13 @@ export type SettingsBinding = {
   /** Null until boot has read them. */
   settings: ReadableAtom<SavedSettings | null>;
   theme: ReadableAtom<{ preference: ThemePreference }>;
-  selectTheme: (theme: ThemePreference) => void;
-  apply: ApplySettings;
+  selectTheme: SettingsContentProps['onTheme'];
+  apply: SettingsContentProps['onApply'];
   /** How the page's Open settings reaches the panel. Returns the unregister. */
   registerOpener: (open: () => void) => () => void;
-  version: string;
-  debugMode: () => boolean;
-  openDebugMode: () => void;
+  version: SettingsContentProps['version'];
+  debugMode: SettingsContentProps['debugMode'];
+  openDebugMode: SettingsContentProps['onDebugMode'];
 };
 
 /** The settings button's props, for an island's own lifetime. The page's Open settings opens it. */

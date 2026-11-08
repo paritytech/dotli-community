@@ -65,9 +65,7 @@ describe('presentLoadFailure', () => {
 
   it('As a visitor whose open app lost its protocol frame to a newer release, I see the update screen and Reload is its only button', () => {
     // Given
-    const error = describeError(new ProtocolVersionMismatchError('The peer speaks wire version 3 and this end 2'), {
-      isP2p: true,
-    });
+    const error = describeError(new ProtocolVersionMismatchError('The peer speaks wire version 3 and this end 2'));
 
     // When
     const { getShownPage, click, reload } = present({ error, backend: 'smoldot-shared-worker' });

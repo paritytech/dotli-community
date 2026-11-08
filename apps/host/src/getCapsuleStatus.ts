@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { NETWORK_HEALTH } from './networkVerdict.js';
 import type { NetworkHealth } from './networkVerdict.js';
 
 /** What the capsule shows of the page's state. */
@@ -24,5 +25,5 @@ type Params = {
 
 /** Returns what the capsule shows for the page's network health, its waiting action and its connection. Never throws. */
 export function getCapsuleStatus({ health, action, online }: Params): CapsuleStatus {
-  return { tone: health, action, announcement: online ? '' : 'You are offline' };
+  return { tone: health, action, announcement: online ? '' : NETWORK_HEALTH.err.title };
 }

@@ -6,10 +6,12 @@
 
 import type { Notifications } from '@parity/truapi-host';
 import type { HostPushNotificationRequest, HostPushNotificationResponse, ProductId } from '@parity/truapi';
-import { log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import type { ScheduledNotifications } from '../createScheduledNotifications.js';
 import { ERRORS } from '../errors.js';
 import type { HostPrompts } from '../hostPrompts.js';
+
+const report = createReporter({ flow: 'notifications' });
 
 /** Where a product's notifications wait until they are due. */
 export type NotificationScheduler = Pick<ScheduledNotifications, 'schedule' | 'cancel'>;
@@ -48,7 +50,7 @@ export function createNotificationAdapters({
   }: HostPushNotificationRequest): Promise<HostPushNotificationResponse> {
     const productId = getProductId();
     // The text and deeplink are the user's content, so they stay out of the log.
-    log.event('push notification', { flow: 'notifications', scheduled: scheduledAt !== undefined });
+    report.log.event('push notification', { scheduled: scheduledAt !== undefined });
 
     const result = await scheduler.schedule({
       productId,

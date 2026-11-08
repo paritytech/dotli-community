@@ -4,8 +4,13 @@
 // One report for a failed step of signing in, the signed-in flag or the local wallet: an error line, an issue and the
 // step's outcome count.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, type CountMetric } from '@dotli/metrics';
 import { log } from '@dotli/shared';
+
+const report = createReporter({ flow: 'wallet' });
+
+/** Local wallet boot, activation and identity steps. Tagged `outcome` and, on failure, `reason`. */
+export const walletLocalActivateMetric = defineCount<'error' | 'ok'>('wallet.local_activate');
 
 /** A tag value from a closed set: a plain `string` does not type, so a tag never takes free text. */
 type ClosedSet<Reason extends string> = string extends Reason ? never : Reason;
@@ -18,7 +23,7 @@ export type WalletFailure<Reason extends string> = {
   /** Tags the issue and the count, so the tag stays bounded. */
   reason: ClosedSet<Reason>;
   /** Counted with the reason, unless the caller counts how its flow ended itself. */
-  metric?: string;
+  metric?: CountMetric<'error'>;
 };
 
 export function reportWalletFailure<Reason extends string>(
@@ -27,9 +32,9 @@ export function reportWalletFailure<Reason extends string>(
 ): void {
   // By hand, since the count is optional.
   log.error(`[dot.li wallet] ${what} failed:`, error);
-  captureException(error, { flow: 'wallet', step, tags: { reason } });
+  report.capture(error, { step, tags: { reason } });
   if (metric !== undefined) {
-    m.count(metric, { outcome: 'error', reason });
+    metric.count({ outcome: 'error', reason });
   }
 }
 
@@ -42,6 +47,6 @@ export function reportLocalWalletFailure(error: unknown, reason: LocalWalletFail
     what: `local wallet ${reason}`,
     step: 'local_wallet',
     reason,
-    metric: S.WALLET_LOCAL_ACTIVATE,
+    metric: walletLocalActivateMetric,
   });
 }

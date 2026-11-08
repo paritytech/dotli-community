@@ -4,7 +4,7 @@
 // Labels are recorded on `<label>.<BASE_DOMAIN>` but shown on the landing origin, so the list lives in the
 // cross-subdomain shared store. `localStorage` is a mirror for when that store is unreachable.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { isValidDotLabel } from '@dotli/resolver';
 import type { SharedChannel } from './runtime/sharedMode.js';
@@ -12,6 +12,14 @@ import { pageRecentMirror, type RecentMirror } from './createStorageMirror.js';
 import { MAX_RECENT } from './maxRecent.js';
 import { parseRecentLabels, serializeRecentLabels } from './parseRecentLabels.js';
 import { RECENT_KEY } from './recentKey.js';
+
+const report = createReporter({ flow: 'storage' });
+
+/**
+ * A failed read or write of the recently visited names in the shared store. Tagged `outcome` and `reason` (`read`,
+ * `write` or `migrate`), as the list then lives in this origin only.
+ */
+const recentLabelsUpdateMetric = defineCount<'error'>('recent_labels.update');
 
 /** The recently visited names, over one shared store. */
 export type RecentLabels = {
@@ -134,5 +142,5 @@ function addRecentLabel(labels: string[], label: string): string[] {
 
 // An unreachable shared store is the environment's failure, and the mirror carries the list meanwhile.
 function reportSharedFailure({ error, reason, message }: ReportSharedFailureParams): void {
-  reportExpected(error, { flow: 'storage', step: 'recent_labels', metric: S.RECENT_LABELS_UPDATE, reason, message });
+  report.expected(error, { step: 'recent_labels', metric: recentLabelsUpdateMetric, reason, message });
 }

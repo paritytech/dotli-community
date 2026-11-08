@@ -113,7 +113,7 @@ describe('requestCoreLogin', () => {
     // Then it resolves, and the frames are reported and counted once
     await expect(login).resolves.toBe('Success');
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(expect.anything(), { flow: 'wallet', step: 'login_frame' });
+    expect(captures.expected).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ step: 'login_frame' }));
     expect(counted('wallet.login_frame')).toEqual([{ outcome: 'error', reason: 'undecodable_frame' }]);
   });
 

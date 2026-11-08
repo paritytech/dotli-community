@@ -3,10 +3,18 @@
 
 // The light client's inbound byte total, reported for the host's speed readout from wherever the light client runs.
 
-import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet } from '@dotli/shared';
 
 import { createIntervalTicker, type Ticker } from './createIntervalTicker.js';
+
+const protocolReport = createReporter({ flow: 'protocol' });
+
+/**
+ * The light client's byte meter could not be read on a tick, so the speed readout misses that reading. Counted once per
+ * run of failed reads. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const protocolNetBytesReadMetric = defineCount<'error'>('protocol.net_bytes_read');
 
 type Params = {
   /** Reads the light client's inbound byte total. */
@@ -31,7 +39,7 @@ const NET_BYTES_INTERVAL_MS = 500;
 export function shareNetBytes({
   read,
   startTicker = createIntervalTicker(NET_BYTES_INTERVAL_MS),
-  report = reportListener('protocol', 'protocol.net_bytes'),
+  report = protocolReport.listener('protocol.net_bytes'),
   reportRead = reportFailedRead,
 }: Params): (post: (total: number) => void) => () => void {
   // Whether the last tick's read failed, so a run of failures is reported once and a good read rearms the report.
@@ -82,10 +90,9 @@ export function shareNetBytes({
 }
 
 function reportFailedRead(error: unknown): void {
-  reportDefect(error, {
-    flow: 'protocol',
+  protocolReport.defect(error, {
     step: 'net_bytes_read',
-    metric: S.PROTOCOL_NET_BYTES_READ,
+    metric: protocolNetBytesReadMetric,
     message: '[dot.li] The net bytes meter could not be read',
   });
 }

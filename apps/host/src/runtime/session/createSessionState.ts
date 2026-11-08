@@ -15,6 +15,7 @@ import { pageWalletBoot, type Restored } from '../createWalletBoot.js';
 import { coreStorage, type StoredSession } from './createCoreStorage.js';
 import { getLocalSessionUiState } from './getLocalSessionUiState.js';
 import { parseUiStateCache, type TruapiSessionUiState } from './parseUiStateCache.js';
+import { authViews } from './authViews.js';
 import type { DotliAuthState, Presence } from './types.js';
 
 /** The auth store as its one writer sees it. */
@@ -173,14 +174,14 @@ export function createSessionState({
       auth.set({ tag: 'Connected', session });
       return;
     }
-    const shown = auth.store.get().tag;
+    const shown = auth.store.get();
     // A store that could not be read says nothing of a sign-out, so a sign-in on show stays.
     // A sign-in the core reported itself is its own report, so withdrawing to that report leaves it on show.
-    if (speaker === 'core' && !lastReadFailed && shown === 'Connected') {
+    if (speaker === 'core' && !lastReadFailed && shown.tag === 'Connected') {
       auth.set(getWithdrawnState(coreReport.get()));
       return;
     }
-    if (isAwaitingSavedSession(shown)) {
+    if (authViews.isAwaitingSavedSession(shown)) {
       auth.set({ tag: lastReadFailed ? 'Unreachable' : 'Disconnected' });
     }
   }
@@ -380,7 +381,7 @@ export const sessionState = createSessionState({
   restore: pageWalletBoot.restore,
   auth: authState,
   setElsewhere: sessionElsewhereState.set,
-  isLocalWallet: () => walletModeState.getMode() === 'local',
+  isLocalWallet: walletModeState.isLocal,
   // Read when first needed, as the role is chosen after this module loads.
   isResumeOffered: () => isResumeOffered(pageRole.get()),
 });
@@ -396,21 +397,6 @@ function isShowingSignedOut(tag: DotliAuthState['tag']): boolean {
     case 'Restoring':
     case 'Unreachable':
     case 'Connected':
-      return false;
-  }
-}
-
-/** Not yet known or known to be unreadable, the only states a read of the saved session may end. */
-function isAwaitingSavedSession(tag: DotliAuthState['tag']): boolean {
-  switch (tag) {
-    case 'Restoring':
-    case 'Unreachable':
-      return true;
-    case 'Disconnected':
-    case 'Pairing':
-    case 'Authenticating':
-    case 'Connected':
-    case 'LoginFailed':
       return false;
   }
 }

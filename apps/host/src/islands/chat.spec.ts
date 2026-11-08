@@ -91,7 +91,11 @@ describe('useChatDock', () => {
     expect(dock.conversation.productName()).toBe(LABEL);
 
     // When
-    productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true, displayName: 'Chatty' } });
+    productState.setLoaded({
+      label: LABEL,
+      productId: PRODUCT,
+      details: { chat: true, facts: { displayName: 'Chatty' } },
+    });
     flush();
 
     // Then

@@ -7,10 +7,13 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
-import { log, setErrorName } from '@dotli/shared';
+import { setErrorName } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import type { BlockSource } from './types.js';
 import { BLAKE2B_256, SHA2_256 } from './codecs.js';
 import { CONTENT_ERRORS } from './errors.js';
+
+const report = createReporter({ flow: 'content' });
 
 /** Throws on a mismatch, or on a hash function it cannot recompute. */
 export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
@@ -49,7 +52,7 @@ export function createRootVerifyingBlockSource(rootCid: CID, source: BlockSource
     const bytes = await source(cid);
     if (cid.equals(rootCid)) {
       assertBlockMatchesCid(cid, bytes);
-      log.event(`Root block ${cid.toString()} verified`, { flow: 'content', bytes: bytes.length });
+      report.log.event(`Root block ${cid.toString()} verified`, { bytes: bytes.length });
     }
     return bytes;
   };

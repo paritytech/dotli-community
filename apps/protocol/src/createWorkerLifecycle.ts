@@ -5,7 +5,7 @@
 // here, and a dead worker closes here once every port heard why. Releasing a port, hearing one and closing the worker
 // call each other, so one unit owns them.
 
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, spans as S } from '@dotli/metrics';
 import {
   toFrameStatusEnd,
   ProtocolPortReleasedError,
@@ -22,6 +22,14 @@ import { createIntervalTicker, type Ticker } from './createIntervalTicker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { logWorkerEvent } from './logWorkerEvent.js';
 import { WORKER_LOG_TAG } from './workerLogTag.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * One flush of buffered telemetry before a context closes. Counted only when the flush threw, tagged `outcome` and
+ * `reason` (the error's name).
+ */
+const telemetryFlushMetric = defineCount<'error'>(S.TELEMETRY_FLUSH);
 
 /** A tab's port, as much of it as the worker uses. A `MessagePort` is one. */
 export type WorkerPort = {
@@ -377,10 +385,9 @@ export function createWorkerLifecycle({
     closeTimer = timers.setTimeout(() => {
       // A flush that fails still closes, after it is reported.
       void flush().then(markFlushed, (error: unknown) => {
-        reportDefect(error, {
-          flow: 'protocol',
+        report.defect(error, {
           step: 'worker_flush',
-          metric: S.TELEMETRY_FLUSH,
+          metric: telemetryFlushMetric,
           message: `${WORKER_LOG_TAG} Telemetry flush failed`,
         });
         markFlushed();

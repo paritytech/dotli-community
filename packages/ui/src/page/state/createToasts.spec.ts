@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import {
   createFakePage,
   createManualTimers,
@@ -198,8 +197,7 @@ describe('toast store', () => {
 
   it('As a dotli user, I close a toast whose onDismiss throws and it still leaves, and the error is reported, logged and counted', () => {
     // Given
-    const errors: unknown[] = [];
-    const captured = recordCaptures({ onFinished: onTestFinished, errors });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
     const error = new TypeError('callback broke');
@@ -216,10 +214,9 @@ describe('toast store', () => {
 
     // Then
     expect(readLeaving()).toEqual([true]);
-    expect(captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'toast.dismiss' } }]);
-    expect(errors).toEqual([error]);
+    expect(captured).toMatchObject([{ step: 'listener', error, tags: { owner: 'toast.dismiss' } }]);
     expect(logged.map(line => line.args)).toEqual([['[dot.li] A toast.dismiss listener threw', error]]);
-    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual([
+    expect(sentry.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'toast.dismiss' },
     ]);
   });

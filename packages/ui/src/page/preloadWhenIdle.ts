@@ -1,9 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, spans as S } from '@dotli/metrics';
 import { realTimers, type Timers } from '@dotli/shared';
 import { runWhenIdle, type IdleScheduler } from './runWhenIdle.js';
+
+const report = createReporter({ flow: 'ui' });
+
+/** A lazy chunk a caller could not load and went on without. Tagged `outcome` and `reason` (the caller's step). */
+const lazyChunkLoadMetric = defineCount<'error'>(S.LAZY_CHUNK_LOAD);
 
 type Params = {
   /** The page's own by default. */
@@ -30,7 +35,7 @@ export function preloadWhenIdle(
   return runWhenIdle(
     () => {
       component.preload().catch((error: unknown) => {
-        reportExpected(error, { flow: 'ui', step: PRELOAD_STEP, metric: S.LAZY_CHUNK_LOAD, reason: PRELOAD_STEP });
+        report.expected(error, { step: PRELOAD_STEP, metric: lazyChunkLoadMetric, reason: PRELOAD_STEP });
       });
     },
     PRELOAD_TIMEOUT_MS,

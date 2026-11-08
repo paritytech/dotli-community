@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { OriginWipeError, wipeOriginStores, type OriginStores } from '@dotli/shared';
-import { m, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
+
+const report = createReporter({ flow: 'content' });
+
+/**
+ * Count. A full reset's wipe of the sandbox origin: `ok` once for a clean wipe, else one `error` per store it could
+ * not wipe, with the store as the `reason`.
+ */
+const appOriginPurgeMetric = defineCount<'error' | 'ok'>('app.origin_purge');
 
 /** The stores a product may leave in the sandbox origin. A store this browser lacks is `null`. */
 export type SandboxOrigin = {
@@ -25,7 +33,7 @@ export async function purgeSandboxOriginState(origin: SandboxOrigin): Promise<vo
   const purge = { refused: false };
   // The browser refusing a store is not a bug, but it explains a product that still sees its old state.
   function recordRefusal(store: string, error: unknown): void {
-    reportExpected(error, { flow: 'content', step: 'origin_purge', metric: S.APP_ORIGIN_PURGE, reason: store });
+    report.expected(error, { step: 'origin_purge', metric: appOriginPurgeMetric, reason: store });
     purge.refused = true;
   }
   async function wipe(store: string, run: () => unknown): Promise<void> {
@@ -66,6 +74,6 @@ export async function purgeSandboxOriginState(origin: SandboxOrigin): Promise<vo
   });
 
   if (!purge.refused) {
-    m.count(S.APP_ORIGIN_PURGE, { outcome: 'ok' });
+    appOriginPurgeMetric.count({ outcome: 'ok' });
   }
 }

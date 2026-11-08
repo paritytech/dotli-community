@@ -5,7 +5,7 @@
 // the cross-subdomain store, then this origin's storage, then the default. The network never leaves this origin, as
 // every link carries it.
 
-import { BACKEND_KEY, getDefaultBackend, parseBackend, type Backend } from './backend.js';
+import { BACKEND_KEY, getDefaultBackend, hasSharedWorker, parseBackend, type Backend } from './backend.js';
 import { CACHE_KEY, parseCacheSettings, type CacheSettings } from './cacheSettings.js';
 import { getDefaultNetwork, getEnabledNetworks } from './getEnabledNetworks.js';
 import { getLegacyBackend } from './getLegacyBackend.js';
@@ -62,7 +62,7 @@ export function resolveSettings({
     parseBackend(local.getItem(BACKEND_KEY)) ??
     getLegacyBackend(local) ??
     getDefaultBackend();
-  const sharedWorkerFallback = wanted === 'smoldot-shared-worker' && !sharedWorkerAvailable;
+  const sharedWorkerFallback = hasSharedWorker(wanted) && !sharedWorkerAvailable;
   const ownCache = local.getItem(CACHE_KEY);
   const cache = parseCacheSettings(preferLocal ? (ownCache ?? shared?.cache ?? null) : (shared?.cache ?? ownCache));
   return {

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS } from '../../runtime/permissionPolicy.js';
 import { permissionIcon } from './permissionIcons.js';
-import { permissionRequestDialog, type PermissionRequest } from './permissionDialog.js';
+import { getGrantButtons, permissionRequestDialog, type PermissionRequest } from './permissionDialog.js';
 
 const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
 
@@ -64,5 +64,52 @@ describe('permission request dialog', () => {
     // Then
     expect(dialogs.map(dialog => dialog.icon)).toEqual(names.map(name => permissionIcon(name)));
     expect(new Set(dialogs.map(dialog => dialog.fields[1]?.value)).size).toBe(names.length);
+  });
+});
+
+describe('grant buttons', () => {
+  it.each([
+    {
+      story: 'with no one-time grant',
+      params: { allowOnce: false },
+      expected: [
+        { label: 'Deny', variant: 'danger', result: 'denied' },
+        { label: 'Allow', variant: 'primary', result: 'granted' },
+      ],
+    },
+    {
+      story: 'with a one-time grant',
+      params: { allowOnce: true },
+      expected: [
+        { label: 'Deny', variant: 'danger', result: 'denied' },
+        { label: 'Always allow', variant: 'secondary', result: 'granted' },
+        { label: 'Allow once', variant: 'primary', result: 'granted-once' },
+      ],
+    },
+    {
+      story: 'for a signature',
+      params: { allowOnce: false, allowLabel: 'Sign', denyLabel: 'Cancel' },
+      expected: [
+        { label: 'Cancel', variant: 'danger', result: 'denied' },
+        { label: 'Sign', variant: 'primary', result: 'granted' },
+      ],
+    },
+    {
+      story: 'for a lasting review with a one-time grant',
+      params: { allowOnce: true, allowLabel: 'Allow', denyLabel: 'Cancel' },
+      expected: [
+        { label: 'Cancel', variant: 'danger', result: 'denied' },
+        { label: 'Always allow', variant: 'secondary', result: 'granted' },
+        { label: 'Allow once', variant: 'primary', result: 'granted-once' },
+      ],
+    },
+  ])('As a dotli user, I open a grant dialog $story and see its answer buttons in order', ({ params, expected }) => {
+    // Given the dialog's params, from the table
+
+    // When
+    const buttons = getGrantButtons(params);
+
+    // Then
+    expect(buttons).toEqual(expected);
   });
 });

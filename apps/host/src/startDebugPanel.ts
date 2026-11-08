@@ -3,9 +3,17 @@
 
 // The debug panel's chunk loads only in debug mode, so its load is the one place a failure to start it shows.
 
-import { m, reportDefect, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { DebugPanelHost, TruapiDebugMountModule } from '@dotli/truapi-debug-ui';
+
+const uiReport = createReporter({ flow: 'ui' });
+const bootReport = createReporter({ flow: 'boot' });
+
+/**
+ * One start of the debug panel in debug mode. Tagged `outcome` and, on error, `reason`, as a failed one shows no
+ * panel.
+ */
+const debugPanelLoadMetric = defineCount<'error' | 'ok'>('debug_panel.load');
 
 type Params = {
   load: () => Promise<Pick<TruapiDebugMountModule, 'setupTruapiDebugPanel'>>;
@@ -21,14 +29,13 @@ export async function startDebugPanel({ load, host, startCollapsed }: Params): P
     const [{ setupTruapiDebugPanel }, panelHost] = await Promise.all([load(), host()]);
     setupTruapiDebugPanel({ startCollapsed, host: panelHost });
   } catch (error: unknown) {
-    reportDefect(error, {
-      flow: 'ui',
+    uiReport.defect(error, {
       step: 'debug_panel_load',
-      metric: S.DEBUG_PANEL_LOAD,
+      metric: debugPanelLoadMetric,
       message: '[dot.li] debug panel failed to start:',
     });
     return;
   }
-  log.event('TrUAPI debug panel enabled', { flow: 'boot' });
-  m.count(S.DEBUG_PANEL_LOAD, { outcome: 'ok' });
+  bootReport.log.event('TrUAPI debug panel enabled');
+  debugPanelLoadMetric.count({ outcome: 'ok' });
 }

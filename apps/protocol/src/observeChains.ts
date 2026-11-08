@@ -1,44 +1,25 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import type { ChainPool } from '@dotli/chains';
-import { reportListener } from '@dotli/metrics';
-import { createAsyncTaskPool, realTimers, type Timers } from '@dotli/shared';
 
 type Params = {
   /** The pool whose chains are held. */
   pool: Pick<ChainPool, 'getLocalProvider'>;
   /** The chains to hold, by genesis hash. */
   genesisHashes: readonly string[];
-  /** The wait before a halted chain is taken again. */
-  retakeDelayMs?: number;
-  /** The timers the wait runs on. Defaults to the page's own. */
-  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
-/** The wait before a halted chain is taken again, so a chain that keeps halting cannot spin the worker. */
-const RETAKE_DELAY_MS = 1_000;
-
-// A re-take that throws is a defect in the pool. It is reported, and the other chains stay watched.
-const reportRetake = reportListener('protocol', 'sync_observer.retake');
-
 /**
- * Holds an idle pool lease on each chain so its sync can be observed, and takes it again after the chain halts and the
- * pool rebuilds it.
+ * Holds an idle pool lease on each chain so its sync can be observed. The pool rebuilds a halted chain under the lease,
+ * so the observer never takes it again.
  *
  * The relay needs this because papi never dials it, yet its warp sync is the slowest cold-start step and the only one
  * with a real percentage. Returns the stop, which lets go of every lease and may run more than once.
  */
-export function observeChains({
-  pool,
-  genesisHashes,
-  retakeDelayMs = RETAKE_DELAY_MS,
-  timers = realTimers,
-}: Params): () => void {
-  const leases = new Map<string, { disconnect(): void }>();
-  const stopped = new AbortController();
-  // One queue per chain, so each chain waits out its own delay.
-  const retakes = createAsyncTaskPool({ poolSize: 1, timers });
+export function observeChains({ pool, genesisHashes }: Params): () => void {
+  const leases = new Map<string, JsonRpcConnection>();
 
   for (const genesisHash of genesisHashes) {
     take(genesisHash);
@@ -47,8 +28,7 @@ export function observeChains({
   return stop;
 
   function stop(): void {
-    // Aborted first, so a re-take still waiting never opens a lease after the stop. A second stop finds nothing left.
-    stopped.abort();
+    // A second stop finds nothing left.
     for (const lease of [...leases.values()]) {
       lease.disconnect();
     }
@@ -56,7 +36,7 @@ export function observeChains({
   }
 
   function take(genesisHash: string): void {
-    // A chain listed twice, or a re-take that finds the chain held again, builds nothing.
+    // A chain listed twice builds nothing.
     if (leases.has(genesisHash)) {
       return;
     }
@@ -66,31 +46,9 @@ export function observeChains({
     }
     leases.set(
       genesisHash,
-      provider(
-        () => {
-          // The tap consumes its own responses before here, the rest is chatter nobody reads.
-        },
-        () => {
-          leases.delete(genesisHash);
-          retake(genesisHash);
-        },
-      ),
+      provider(() => {
+        // The tap consumes its own responses before here, the rest is chatter nobody reads.
+      }),
     );
-  }
-
-  function retake(genesisHash: string): void {
-    void retakes
-      .call(
-        () => {
-          take(genesisHash);
-        },
-        { pool: genesisHash, delay: retakeDelayMs, signal: stopped.signal },
-      )
-      .catch((error: unknown) => {
-        // A stop cancels the waiting re-take, which is no failure.
-        if (!stopped.signal.aborted) {
-          reportRetake(error);
-        }
-      });
   }
 }

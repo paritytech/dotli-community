@@ -4,13 +4,14 @@
 // Turns what the light client and the content fetch report into the loading bar, its slow-load warnings, the network
 // monitor and the debug panel's chain events. The reports come from other frames, so they are passed in.
 
-import type { Backend, ChainRole } from '@dotli/config';
+import { hasLightClient, type Backend, type ChainRole } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingController, type LoadingPhase } from './createLoadingController.js';
 import type { ResolutionTrace } from './startResolutionTrace.js';
-import { log, realTimers, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { productState } from './runtime/state/productState.js';
 import { networkMonitorState, type ChainPhase } from './state/networkMonitorState.js';
 import { createChainPhaseTracker } from './createChainPhaseTracker.js';
@@ -18,6 +19,8 @@ import { getChainTelemetryName } from './getChainTelemetryName.js';
 import { readPageClock } from './readPageClock.js';
 import { describeProgressStall, describeStall, isCriticalChain, type CriticalChain } from './warnings.js';
 import { STILL_WORKING } from './stillWorking.js';
+
+const report = createReporter({ flow: 'chain' });
 
 export type ContentProgressFacts = {
   bytesFetched: number;
@@ -146,7 +149,7 @@ export function startLoadProgress({
   now: readClock = readPageClock,
   debugBus = pageDebugBus,
 }: Params) {
-  const gateway = backend === 'rpc-gateway';
+  const gateway = !hasLightClient(backend);
   loading.initPhases(getLoadingPhases(backend));
   // Always the last band.
   const contentFetchPhase = gateway ? 2 : 3;
@@ -462,8 +465,7 @@ function createChainReporter({ flowId, timers, debugBus }: CreateChainReporterPa
     }
     const peers = peersByRole.get(role);
     if (phaseChanged) {
-      log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
-        flow: 'chain',
+      report.log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
         ...(peers === undefined ? {} : { peers }),
         ...(event.reason === undefined ? {} : { reason: event.reason }),
       });

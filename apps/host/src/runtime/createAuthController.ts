@@ -4,18 +4,20 @@
 // The sign-in modal's state machine, which writes the page's modal store. Imports no Solid and loads eagerly because
 // auth states arrive from boot, before any modal view mounts. The controller owns the modal and picks one sign-in route
 // per surface: the sign-in window's on a page that has one, or the page's own, which pairs in place on the core in the
-// bridge chunk, reached through `commands`.
+// bridge chunk, reached through its `bridge` port.
 
 import { withActiveTld } from '@dotli/config';
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
+import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
 import type { AuthCommands, LoginParams } from './createAuthCommands.js';
+import type { HostBridge } from './bridge.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn, type InPagePhrase } from './createInPageSignIn.js';
+import { authViews, type LoginStep } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
-import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type {
   AuthModalPort,
   CloseAuthModalParams,
@@ -25,39 +27,58 @@ import type {
 } from './signInRoute.js';
 import { authState, type AuthState } from './state/authState.js';
 import { sessionElsewhereState } from './state/sessionElsewhereState.js';
-import { walletModeState, type WalletMode } from './state/walletModeState.js';
+import { walletModeState } from './state/walletModeState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
 import { authModalState } from '../state/authModalState.js';
-import { getLoginFailureView, type LoginFailureKind } from './getLoginFailureView.js';
+import { getLoginFailureView } from './getLoginFailureView.js';
 import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
+import type { toEntropy } from './recoveryPhrase.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A sign-in command threw after the bridge chunk loaded. Tagged `outcome` (error), `reason` (the error's
+ * name) and `step` (`login, logout, cancel_login`).
+ */
+const authCommandMetric = defineCount<'error'>('auth.command');
+
+/**
+ * Count. The sign-in modal's lease failed other than by its own abort. Tagged `outcome` (error) and `reason` (the
+ * error's name).
+ */
+const authModalLeaseMetric = defineCount<'error'>('auth.modal_lease');
+
+/** What the controller reaches in the bridge chunk. */
+type AuthBridge = Pick<HostBridge, 'authCommands' | 'applyWindowResult' | 'rereadSession'> & {
+  walletSwitch: Pick<HostBridge['walletSwitch'], 'useLocalWallet'>;
+};
 
 type Params = {
   coordinator: BlockingModalCoordinator;
   /**
-   * The bridge chunk's commands. Awaited per intent, so an intent issued before the chunk loads still runs. Rejects when
-   * the bridge chunk fails to load.
+   * The bridge chunk, awaited per intent, so an intent issued before the chunk loads still runs. Rejects when the
+   * chunk fails to load.
    */
-  commands: () => Promise<AuthCommands>;
+  bridge: () => Promise<AuthBridge>;
   /** The current auth step, read for each intent. */
   auth: ReadableAtom<DotliAuthState>;
   /** Hears every auth step, an equal one included, which the controller follows until it is disposed. */
   subscribeAuthSteps: AuthState['subscribeSteps'];
   /** The sign-in window, or null for a page that pairs in place. */
   handoff: SessionHandoff | null;
-  /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */
-  applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
-  /** The page's wallet mode now. Never throws. */
-  walletMode: () => WalletMode;
-  /** Loaded the first time a page with no window asks for a phrase, so a page that never asks loads none of it. */
-  inPagePhrase: () => Promise<InPagePhrase>;
+  /** Whether the page runs on a local wallet now. Never throws. */
+  isLocalWallet: () => boolean;
+  /**
+   * Loads the recovery phrase check, the first time a page with no window asks for a phrase. Rejects when its chunk
+   * fails to load.
+   */
+  loadRecoveryPhrase: () => Promise<{ toEntropy: typeof toEntropy }>;
   /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
   elsewhere: () => boolean;
-  /** Reads the saved session again and settles once the page shows it. Rejects when the bridge chunk fails to load. */
-  rereadSession: () => Promise<void>;
 };
 
 /** What the slot's `init` takes: the controller's params, less the page stores the slot reads itself. */
-type InitParams = Omit<Params, 'auth' | 'subscribeAuthSteps' | 'walletMode' | 'elsewhere'>;
+type InitParams = Omit<Params, 'auth' | 'subscribeAuthSteps' | 'isLocalWallet' | 'elsewhere'>;
 
 type CommandStep = 'login' | 'logout' | 'cancel_login';
 
@@ -66,15 +87,13 @@ export type AuthController = ReturnType<typeof createAuthController>;
 /** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
 export function createAuthController({
   coordinator,
-  commands,
+  bridge,
   auth,
   subscribeAuthSteps,
   handoff,
-  applyResult,
-  walletMode,
-  inPagePhrase,
+  isLocalWallet,
+  loadRecoveryPhrase,
   elsewhere,
-  rereadSession,
 }: Params) {
   let authModalScope: BlockingModalScope | null = null;
   let releaseAuthModal: (() => void) | null = null;
@@ -96,14 +115,14 @@ export function createAuthController({
     }
 
     function failCommand(error: unknown): void {
-      reportDefect(error, { flow: 'wallet', step, metric: S.AUTH_COMMAND, message, attributes: { step } });
+      report.defect(error, { step, metric: authCommandMetric, message, attributes: { step } });
       showLoginFailure(error);
     }
 
-    void commands().then(
+    void bridge().then(
       loaded =>
         Promise.resolve()
-          .then(() => run(loaded))
+          .then(() => run(loaded.authCommands))
           .catch(failCommand),
       failToLoad,
     );
@@ -145,10 +164,9 @@ export function createAuthController({
       .catch((error: unknown) => {
         // Closing the modal disposes its lease, which rejects with an AbortError.
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          reportDefect(error, {
-            flow: 'wallet',
+          report.defect(error, {
             step: 'auth_modal_lease',
-            metric: S.AUTH_MODAL_LEASE,
+            metric: authModalLeaseMetric,
             message: '[dot.li auth] authentication modal lease failed:',
           });
         }
@@ -201,49 +219,44 @@ export function createAuthController({
   }
 
   /** `Disconnected` leaves the modal alone, so an unrelated disconnect never closes an active pairing. */
-  function applyAuthState(state: DotliAuthState, previous: DotliAuthState['tag']): void {
+  function applyAuthState(state: DotliAuthState, wasSignedIn: boolean): void {
+    const step = authViews.getLoginStep(state);
+    const kind = getFailureKind(step);
     // The tag and failure kind only: a failure's reason can carry wallet text.
-    log.event('auth state', {
-      flow: 'wallet',
+    report.log.event('auth state', {
       state: state.tag,
-      ...(state.tag === 'LoginFailed' ? { kind: state.kind } : {}),
+      ...(kind === undefined ? {} : { kind }),
     });
     // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends both.
-    const login = state.tag === 'Pairing' || state.tag === 'Authenticating' || state.tag === 'LoginFailed';
-    if (login && authModalScope !== null && authModalState.store.get().view.kind === 'phrase') {
+    if (step !== null && authModalScope !== null && authModalState.store.get().view.kind === 'phrase') {
       return;
     }
-    switch (state.tag) {
-      case 'Restoring':
-      case 'Disconnected':
-      case 'Unreachable':
+    if (authViews.getSignedInSession(state) !== null) {
+      // Only becoming signed in counts, so a session the core reports again leaves a phrase round started while signed
+      // in open. The route's wait goes on until its own outcome, so closing the modal now would lose that outcome.
+      if (wasSignedIn || route.isWaiting()) {
+        return;
+      }
+      // A sign-in by another route ends a sign-in the page still waits on, such as a blocked window's.
+      closeAuthModal({ skipTruapiCancel: true, cancel: 'signed_in' });
+      return;
+    }
+    switch (step?.step) {
+      case 'pairing':
+        route.pairing(step.pairing);
         break;
-      case 'Pairing':
-        route.pairing(state);
-        break;
-      case 'Authenticating':
+      case 'authenticating':
         // The core's own states must not cover the route's wait.
         if (!route.isWaiting()) {
           authModalState.update({ view: { kind: 'authenticating' } });
         }
         break;
-      case 'Connected':
-        // Only becoming signed in counts, so a session the core reports again leaves a phrase round started while
-        // signed in open.
-        if (previous === 'Connected') {
-          break;
-        }
-        // The route's wait goes on until its own outcome, so closing the modal now would lose that outcome.
-        if (route.isWaiting()) {
-          break;
-        }
-        // A sign-in by another route ends a sign-in the page still waits on, such as a blocked window's.
-        closeAuthModal({ skipTruapiCancel: true, cancel: 'signed_in' });
-        break;
-      case 'LoginFailed':
+      case 'failed':
         if (!route.isWaiting()) {
-          showFailure(state.kind, state.reason);
+          showFailure(step.kind, step.reason);
         }
+        break;
+      case undefined:
         break;
     }
   }
@@ -263,32 +276,43 @@ export function createAuthController({
     runCommand('login', loaded => loaded.login(params));
   }
 
+  /** Loads the phrase check and the bridge together. Rejects when either fails to load. */
+  async function loadInPagePhrase(): Promise<InPagePhrase> {
+    const [phraseCheck, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridge()]);
+    return { toEntropy: phraseCheck.toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
+  }
+
+  /** Reads the saved session again and settles once the page shows it. Rejects when the bridge chunk fails to load. */
+  async function rereadSession(): Promise<void> {
+    await (await bridge()).rereadSession();
+  }
+
   const route: SignInRoute =
     handoff === null
       ? createInPageSignIn({
-          inPagePhrase,
+          inPagePhrase: loadInPagePhrase,
           modal,
           login: loginInPage,
         })
       : createWindowSignIn({
           handoff,
-          applyResult,
+          applyResult: async result => (await bridge()).applyWindowResult(result),
           elsewhere,
-          walletMode,
+          isLocalWallet,
           modal,
         });
 
-  let lastTag = auth.get().tag;
+  let lastSignedIn = authViews.getSignedInSession(auth.get()) !== null;
   const unlisten = subscribeAuthSteps(state => {
-    const previous = lastTag;
-    lastTag = state.tag;
-    applyAuthState(state, previous);
+    const wasSignedIn = lastSignedIn;
+    lastSignedIn = authViews.getSignedInSession(state) !== null;
+    applyAuthState(state, wasSignedIn);
   });
 
   function startLogin(params: StartLoginParams = {}): void {
     const state = auth.get();
     // A pairing writes its session to the shared store, so one started while the store is down would be lost.
-    if (state.tag === 'Unreachable') {
+    if (authViews.isSessionUnreachable(state)) {
       void rereadBeforeSignIn({
         open: () => openAuthModal({ reason: params.reason, label: params.label }),
         modal,
@@ -304,14 +328,14 @@ export function createAuthController({
       });
       return;
     }
-    if (state.tag === 'Connected') {
+    if (authViews.getSignedInSession(state) !== null) {
       return;
     }
     route.startLogin(params);
   }
 
   function importPhrase(): void {
-    if (auth.get().tag === 'Unreachable') {
+    if (authViews.isSessionUnreachable(auth.get())) {
       void rereadBeforeSignIn({
         open: () => openAuthModal(),
         modal,
@@ -410,6 +434,18 @@ export function createAuthController({
   };
 }
 
+/** The core's failure kind of a login step, or undefined when the step is not a failure. */
+function getFailureKind(step: LoginStep | null): LoginFailureKind | undefined {
+  switch (step?.step) {
+    case 'failed':
+      return step.kind;
+    case 'pairing':
+    case 'authenticating':
+    case undefined:
+      return undefined;
+  }
+}
+
 /**
  * Builds the slot that holds a page's auth controller, which every member but `init` and `disableModal` needs. A store
  * reset disposes the controller and empties the slot.
@@ -438,7 +474,7 @@ export function createAuthControlSlot() {
       ...params,
       auth: authState.store,
       subscribeAuthSteps: authState.subscribeSteps,
-      walletMode: walletModeState.getMode,
+      isLocalWallet: walletModeState.isLocal,
       elsewhere: () => sessionElsewhereState.store.get(),
     });
     if (modalBroken) {

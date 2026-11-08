@@ -4,12 +4,15 @@
 // Reads names and manifests over the backend the settings chose, so the load never branches on it. The gateway
 // resolver is its own chunk, loaded on first use.
 
-import type { Backend } from '@dotli/config';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { hasLightClient, type Backend } from '@dotli/config';
+import { createReporter } from '@dotli/metrics';
 import type { DotnsResolver, ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import { createLazyLoad, log } from '@dotli/shared';
+import { createLazyLoad } from '@dotli/shared';
 import type { ProductManifests } from './cachedManifest.js';
 import { parseH160Address, type H160Address } from './h160Address.js';
+import { productAuthorMetric } from './productAuthorMetric.js';
+
+const resolveReport = createReporter({ flow: 'resolve' });
 
 type PhaseCallback = (phase: ResolvePhase) => void;
 
@@ -50,7 +53,7 @@ export type NameSource = ReturnType<typeof createNameSource>;
 /** Builds the name source over `backend`. Its reads reject with the resolver's or the gateway load's error. */
 export function createNameSource({ backend, remote, loadRpc, report = reportOwnerRead }: Params) {
   const rpcResolver = createLazyLoad({ load: loadRpc });
-  const gateway = backend === 'rpc-gateway';
+  const gateway = !hasLightClient(backend);
 
   const resolveName = async (name: string, { onPhase }: ResolveProductParams = {}): Promise<string | null> =>
     gateway ? (await rpcResolver()).resolveDotName(name, { onPhase }) : remote.resolveDotName(name, onPhase);
@@ -60,7 +63,7 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
     if (cid !== null) {
       return cid;
     }
-    log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
+    resolveReport.log.event('App subname has no contenthash, trying the base name');
     return resolveName(label, { onPhase });
   }
 
@@ -124,5 +127,5 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
 }
 
 function reportOwnerRead(error: unknown): void {
-  reportExpected(error, { flow: 'resolve', step: 'product_author_owner', metric: S.PRODUCT_AUTHOR, reason: 'owner' });
+  resolveReport.expected(error, { step: 'product_author_owner', metric: productAuthorMetric, reason: 'owner' });
 }

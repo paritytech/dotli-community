@@ -5,12 +5,12 @@
 // passed in, so the resolver reads through the follow its owner already keeps: the light client's broker in the
 // protocol frame, the host's chain pool on a gateway.
 
-import { createClient, DisjointError, RpcError } from '@polkadot-api/substrate-client';
+import { createClient, DisjointError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { atom } from 'nanostores';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { m, reportListener, spans as S } from '@dotli/metrics';
-import { CHAIN_HALTED_ERROR_DATA, createAsyncTaskPool, log, toHex, withTimeout } from '@dotli/shared';
+import { createReporter, m, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, isChainHaltedRpcError, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
 import { ContenthashDecodeError } from './contenthashDecodeError.js';
@@ -25,6 +25,13 @@ import { readRootManifest } from './readRootManifest.js';
 import { computeNamehash } from './storageSlots.js';
 import type { PhaseCallback, ResolvePhase } from './types.js';
 import { UnsupportedContenthashCodecError } from './unsupportedContenthashCodecError.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/** From client creation to first finalized block. */
+const SMOLDOT_FINALIZED_BLOCK = 'smoldot.finalized_block';
+
+const RESOLVE_STORAGE_READ = 'resolve.storage_read';
 
 export type ResolveOptions = {
   onPhase?: PhaseCallback | undefined;
@@ -82,7 +89,7 @@ const HUB_CHAIN: Record<Params['source'], string> = {
  */
 const MAX_HALT_ATTEMPTS = 4;
 
-const reportPhaseListener = reportListener('resolve', 'resolver.status');
+const reportPhaseListener = report.listener('resolver.status');
 
 /**
  * Builds the dotNS reads on the connections it is given. Each instance keeps its own clients.
@@ -124,7 +131,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       // Kept only once ready, and torn down on failure, so no orphaned client keeps a subscription alive.
       try {
         // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the cause.
-        await measureSpan(S.SMOLDOT_FINALIZED_BLOCK, () =>
+        await measureSpan(SMOLDOT_FINALIZED_BLOCK, () =>
           withTimeout({
             work: client.api.whenReady(),
             ms: TIMEOUTS.HUB_FINALIZED_SYNC,
@@ -133,8 +140,8 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
         );
         syncMs = performance.now() - syncStart;
         if (timed) {
-          m.measure(S.SMOLDOT_FINALIZED_BLOCK, syncMs);
-          m.distribution(S.SMOLDOT_FINALIZED_BLOCK, syncMs);
+          m.measure(SMOLDOT_FINALIZED_BLOCK, syncMs);
+          m.distribution(SMOLDOT_FINALIZED_BLOCK, syncMs);
         }
       } catch (error) {
         client.destroy();
@@ -153,8 +160,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
 
       hub = client;
       outcome = 'ok';
-      log.event('Asset Hub client ready', {
-        flow: 'resolve',
+      report.log.event('Asset Hub client ready', {
         source,
         sync_ms: Math.round(syncMs),
         total_ms: Math.round(performance.now() - initStart),
@@ -230,7 +236,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       }
       attempts += 1;
       if (attempts > 1) {
-        log.event('Resolve retry after a chain halt', { flow: 'resolve', attempt: attempts, left_ms: left });
+        report.log.event('Resolve retry after a chain halt', { attempt: attempts, left_ms: left });
       }
       const attempt = { ...options, syncTimeoutMs: left };
       return run(await getAssetHubApi(attempt), attempt);
@@ -252,7 +258,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     options.onPhase?.('resolving-content');
     const contentStart = performance.now();
 
-    const contenthashBytes = await measureSpan(S.RESOLVE_STORAGE_READ, () =>
+    const contenthashBytes = await measureSpan(RESOLVE_STORAGE_READ, () =>
       readMappingBytes({
         api,
         contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
@@ -262,9 +268,9 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     );
     const contentMs = performance.now() - contentStart;
     if (timed) {
-      m.measure(S.RESOLVE_STORAGE_READ, contentMs);
+      m.measure(RESOLVE_STORAGE_READ, contentMs);
     }
-    log.event('Contenthash read', { flow: 'resolve', found: contenthashBytes !== null, ms: Math.round(contentMs) });
+    report.log.event('Contenthash read', { found: contenthashBytes !== null, ms: Math.round(contentMs) });
 
     if (contenthashBytes === null) {
       return null;
@@ -304,7 +310,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       }
     });
     peopleClient = client;
-    log.event('People chain warmed', { flow: 'resolve', ms: Math.round(performance.now() - initStart) });
+    report.log.event('People chain warmed', { ms: Math.round(performance.now() - initStart) });
   }
 
   return {
@@ -364,10 +370,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
  * marked answer, as `ApiStoppedError`, or as papi's `DisjointError` for an operation already running.
  */
 function isChainHalt(error: unknown): boolean {
-  if (error instanceof RpcError) {
-    return error.data === CHAIN_HALTED_ERROR_DATA;
-  }
-  return error instanceof DisjointError || error instanceof ApiStoppedError;
+  return isChainHaltedRpcError(error) || error instanceof DisjointError || error instanceof ApiStoppedError;
 }
 
 /** Tells `onPhase` the phase a client status stands for, if it stands for one, and reports a throw from it. */

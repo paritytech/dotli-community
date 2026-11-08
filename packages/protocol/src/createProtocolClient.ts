@@ -4,11 +4,11 @@
 // The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
 import { realTimers } from '@dotli/shared';
-import { createFramePauseSender } from './createFramePauseSender.js';
 import { createFrameRpc } from './createFrameRpc.js';
 import { createFrameTelemetry } from './createFrameTelemetry.js';
 import { createProtocolFrame } from './createProtocolFrame.js';
 import { createRemoteChains } from './createRemoteChains.js';
+import { createRemotePoolControl } from './createRemotePoolControl.js';
 import { createRemoteResolve } from './createRemoteResolve.js';
 import { createSharedStore } from './createSharedStore.js';
 import type { ProtocolVersionMismatchError } from './errors.js';
@@ -25,7 +25,6 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
   const timers = params.timers ?? realTimers;
   const rpc = createFrameRpc({ frame, timers });
   const { status, auth, mode, wallet } = createSharedStore({ frame, rpc, timers });
-  const pause = createFramePauseSender({ frame, rpc });
   return {
     /** The protocol frame's lifecycle: its config, readiness and status. */
     frame: {
@@ -64,10 +63,6 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
       configure: (config: ProtocolFrameConfig): void => {
         frame.configure(config);
       },
-      /** Sends `paused` to the frame now if it is ready, and `true` to each later frame once it is ready. Never throws. */
-      setPaused: (paused: boolean): void => {
-        pause.setPaused(paused);
-      },
     },
     /**
      * Whether the shared store can answer, as its `status` atom. A listener's throw is reported under
@@ -85,8 +80,10 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
     resolve: createRemoteResolve({ rpc }),
     /** What the frame reports about its light client, heard from each frame there is without booting one. */
     telemetry: createFrameTelemetry({ frame, timers }),
-    /** Connections to the frame's chains. */
-    chains: createRemoteChains({ rpc }),
+    /**
+     * Connections to the frame's chains. It also pauses and resumes the pool that holds them, without booting a frame.
+     */
+    chains: { ...createRemoteChains({ rpc }), ...createRemotePoolControl({ frame, rpc }) },
   };
 }
 

@@ -4,15 +4,15 @@
 // What every page runs once its own start is done: settings, the protocol iframe, the bridge and, on a page with a
 // sign-in modal, the auth controller.
 
-import { m, reportExpected, setResolutionId, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, m, setResolutionId } from '@dotli/metrics';
 import { topbarState } from './state/topbarState.js';
 import { showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
-import { log, markHandled, pageLocalStorage } from '@dotli/shared';
+import { markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { loadBridge, loadRecoveryPhrase } from './lazy.js';
+import { loadHostBridge, loadRecoveryPhrase } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/createBlockingModalCoordinator.js';
 import { networkPause } from './runtime/createNetworkPause.js';
 import { pendingResets } from './runtime/createPendingResets.js';
@@ -23,6 +23,18 @@ import { pageRole, isSessionShown, getSignInSurface, type PageRole } from './run
 import { readBootSettings } from './readBootSettings.js';
 import { settingsState } from './state/settingsState.js';
 import { pageSettingsActions } from './createSettingsActions.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const protocolReport = createReporter({ flow: 'protocol' });
+
+/**
+ * Count. The boot's early start of the protocol frame failed. Expected. Tagged `outcome` (error) and `reason` (the
+ * error's name).
+ */
+const protocolFramePrewarmMetric = defineCount<'error'>('protocol.frame_prewarm');
+
+/** Count. The boot's resolver warm-up failed. Expected. Tagged `outcome` (error) and `reason` (the error's name). */
+const resolveWarmupMetric = defineCount<'error'>('resolve.warmup');
 
 export type EmitDebugEvent = (event: DotliDebugEvent) => void;
 
@@ -96,17 +108,10 @@ export async function startHost({
   startShellState?.();
   // The pause and its targets last the page's life, so their stops go unused.
   networkPause.start();
-  networkPause.addTarget({
-    pause() {
-      getProtocolClient().frame.setPaused(true);
-    },
-    resume() {
-      getProtocolClient().frame.setPaused(false);
-    },
-  });
+  networkPause.addTarget(getProtocolClient().chains);
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
-  const bridgeChunk = markHandled(loadBridge());
+  const bridgeChunk = markHandled(loadHostBridge());
   const settings = await settingsBoot;
   settingsState.init();
 
@@ -121,8 +126,7 @@ export async function startHost({
       skipArchiveCache: settings.cache.skipArchiveCache,
     },
   });
-  log.event('Settings applied', {
-    flow: 'boot',
+  bootReport.log.event('Settings applied', {
     network: settings.network,
     backend: settings.backend,
     skip_cid_cache: settings.cache.skipCidCache,
@@ -142,12 +146,12 @@ export async function startHost({
   getProtocolClient()
     .frame.ensureReady()
     .catch((error: unknown) => {
-      reportExpected(error, { flow: 'protocol', step: 'frame_prewarm', metric: S.PROTOCOL_FRAME_PREWARM });
+      protocolReport.expected(error, { step: 'frame_prewarm', metric: protocolFramePrewarmMetric });
     });
   getProtocolClient()
     .resolve.warmup()
     .catch((error: unknown) => {
-      reportExpected(error, { flow: 'protocol', step: 'warmup', metric: S.RESOLVE_WARMUP });
+      protocolReport.expected(error, { step: 'warmup', metric: resolveWarmupMetric });
     });
   emitDotliDebugEvent({
     layer: 'boot',
@@ -159,33 +163,28 @@ export async function startHost({
 
   const blockingModalCoordinator = createBlockingModalCoordinator({ report: topbarState.reportBlockingModals });
   // The bridge chunk brings the dialogs it asks with, so they never join the boot chunk.
-  const bridgeReady = bridgeChunk.then(bridge => {
-    bridge.initBridge(blockingModalCoordinator);
-    return bridge;
+  const bridgeReady = bridgeChunk.then(loaded => {
+    loaded.initBridge(blockingModalCoordinator);
+    return loaded;
   });
   if (getSignInSurface(role) !== 'self') {
     authControl.init({
       coordinator: blockingModalCoordinator,
-      commands: async () => (await bridgeReady).authCommands,
+      bridge: () => bridgeReady,
       handoff: getPageSignInHandoff(role),
-      applyResult: async result => (await bridgeReady).applyWindowResult(result),
-      async inPagePhrase() {
-        const [{ toEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);
-        return { toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
-      },
-      rereadSession: async () => (await bridgeReady).rereadSession(),
+      loadRecoveryPhrase,
     });
   }
 
   bootTracker.setStep('bridge_load');
-  const bridgeModule = await bridgeReady;
-  networkPause.addTarget(bridgeModule.hostChainPool);
+  const bridge = await bridgeReady;
+  networkPause.addTarget(bridge.hostChainPool);
 
   bootTracker.setStep('topbar');
   // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle
   // callback. The state lasts the page's life, so its stop goes unused.
   if (isSessionShown(role)) {
-    bridgeModule.startSessionState();
+    bridge.startSessionState();
   }
   emitDotliDebugEvent({
     layer: 'boot',
@@ -199,7 +198,7 @@ export async function startHost({
     /** The settings the page runs on. */
     settings,
     /** The loaded bridge, initialised. */
-    bridgeModule,
+    bridge,
   };
 }
 

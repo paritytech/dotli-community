@@ -14,9 +14,14 @@ import {
 } from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { mergeUint8 } from '@polkadot-api/utils';
-import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, createDeferred, createListenerSet, fromHex, toHex } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/** Count. An unpin the light client refused while the follow ran, so pins pile up. Tag `outcome` and `reason`. */
+const resolveUnpinMetric = defineCount<'error'>('resolve.unpin');
 
 /** Raw contract storage reads over one chainHead follow. */
 export type Api = {
@@ -93,7 +98,7 @@ const retriedReads = createAsyncTaskPool({
 export function createRawApi({ client, now = () => performance.now() }: Params): Api {
   let bestHashRef: string | null = null;
   let stopped = false;
-  const stops = createListenerSet<undefined>({ onListenerError: reportListener('resolve', 'resolver.stop') });
+  const stops = createListenerSet<undefined>({ onListenerError: report.listener('resolver.stop') });
   const ready = createDeferred<undefined>();
   const operations = createAsyncTaskPool({ poolSize: MAX_STORAGE_OPERATIONS });
 
@@ -122,10 +127,9 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       if (error instanceof DisjointError) {
         return;
       }
-      reportDefect(error, {
-        flow: 'resolve',
+      report.defect(error, {
         step: 'unpin',
-        metric: S.RESOLVE_UNPIN,
+        metric: resolveUnpinMetric,
         message: '[dot.li resolver] the light client refused an unpin:',
       });
     });

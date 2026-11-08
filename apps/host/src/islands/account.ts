@@ -6,12 +6,14 @@ import type { ReadableAtom } from 'nanostores';
 import type { DotliAuthState } from '../runtime/session/types.js';
 import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
 import { useStore } from '@dotli/stores-solid';
+import { authViews } from '../runtime/session/authViews.js';
 import type { Account } from '../components/account/account.js';
 
 export type AccountStores = {
   auth: ReadableAtom<DotliAuthState>;
   loggedIn: ReadableAtom<boolean>;
-  walletMode: ReadableAtom<{ mode: 'app' | 'local' }>;
+  /** Whether the page runs on a local wallet. */
+  local: ReadableAtom<boolean>;
   signingOut: ReadableAtom<boolean>;
   elsewhere: ReadableAtom<boolean>;
 };
@@ -20,20 +22,17 @@ export type AccountStores = {
 export function useAccount(stores: AccountStores): Account {
   const auth = useStore(stores.auth);
   const loggedIn = useStore(stores.loggedIn);
-  const local = useStore(stores.walletMode, state => state.mode === 'local');
+  const local = useStore(stores.local);
   const signingOut = useStore(stores.signingOut);
   const elsewhere = useStore(stores.elsewhere);
-  const last = createMemo<TruapiSessionUiState | undefined>(prev => {
-    const state = auth();
-    return state.tag === 'Connected' ? state.session : prev;
-  });
-  const connected = createMemo(() => auth().tag === 'Connected');
+  const last = createMemo<TruapiSessionUiState | undefined>(prev => authViews.getSignedInSession(auth()) ?? prev);
+  const connected = createMemo(() => authViews.getSignedInSession(auth()) !== null);
+  const knowledge = createMemo(() => authViews.getSessionKnowledge(auth()));
   return {
     loggedIn,
     session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
     connected,
-    restoring: () => auth().tag === 'Restoring',
-    unreachable: () => auth().tag === 'Unreachable',
+    knowledge,
     signingOut,
     local,
     elsewhere,

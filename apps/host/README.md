@@ -46,29 +46,29 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   One function picks the view for each step of a pairing, another the modal's views that wait on the sign-in window, and
   a third the screen for each of the window's own views.
 - The TrUAPI side lives in its own folder. The bridge is its own chunk, which every page loads in parallel with its
-  boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. One
-  runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. Once up, the
-  core parses the product id the page asks for, and that parsed id is the one its connections and the product's
-  notifications run under, so the id's rules live in the core alone. A notification is kept under the full id, its
-  network included, and titled with the label. A core that goes stale is rebuilt without being asked. A core outlives
-  its last lease by a few seconds, so a lease taken soon after keeps the same core. The signing worker and the local
-  wallet core load on demand.
-- The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
-  signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
-  reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
-  state (topbar, URL pill, product card, chat panel, network) lives with the page. Each runtime state is one entity
-  object: its read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the
-  chat panel, the loading screen, the settings snapshot, the topbar state, the URL pill and the product card are entity
-  objects the same way, and the topbar's floating surfaces register with one registry object. The first three keep what
-  their islands cannot be handed at hydration (the control focus returns to, the window's intents, the panel's element)
-  as private slots behind their members, and the product card keeps the author read the page hands it as a private slot
-  the same way, since the islands that load the author hydrate apart from the page that builds the read. The chat store
-  and the product connections it reaches the product through are each a factory with the page's instance beside it, and
-  the store stamps messages with the clock it is given. The network monitor, the network state and the network health
-  are factories the same way, and measure block arrival, read times and rechecks on the timers they are given. The chat
-  panel and the network health each follow their sources once however many callers start them, and stop with the last
-  caller's stop. The network state is derived from the monitor and rebuilds only while something reads it and for a
-  second after.
+  boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. The
+  chunk exports one object, which the page's eager code takes as a promise. One runtime boots per page core, a signing
+  host on the local wallet when there is one, else the pairing host. Once up, the core parses the product id the page
+  asks for, and that parsed id is the one its connections and the product's notifications run under, so the id's rules
+  live in the core alone. A notification is kept under the full id, its network included, and titled with the label. A
+  core that goes stale is rebuilt without being asked. A core outlives its last lease by a few seconds, so a lease taken
+  soon after keeps the same core. The signing worker and the local wallet core load on demand.
+- The session layer (the auth state type and the named views every other layer reads it through, the session state the
+  boot starts, the core's shared-store adapter, the signed-in flag, the restore rule and the session lease) sits apart
+  from the TrUAPI host callbacks. State the runtime reads or writes (auth, product, permissions, theme, wallet mode)
+  lives with the runtime, and the page chrome's own state (topbar, URL pill, product card, chat panel, network) lives
+  with the page. Each runtime state is one entity object: its read-only store, its getters and the setters its writers
+  call. The sign-in modal, the sign-in window, the chat panel, the loading screen, the settings snapshot, the topbar
+  state, the URL pill and the product card are entity objects the same way, and the topbar's floating surfaces register
+  with one registry object. The first three keep what their islands cannot be handed at hydration (the control focus
+  returns to, the window's intents, the panel's element) as private slots behind their members, and the product card
+  keeps the author read the page hands it as a private slot the same way, since the islands that load the author hydrate
+  apart from the page that builds the read. The chat store and the product connections it reaches the product through
+  are each a factory with the page's instance beside it, and the store stamps messages with the clock it is given. The
+  network monitor, the network state and the network health are factories the same way, and measure block arrival, read
+  times and rechecks on the timers they are given. The chat panel and the network health each follow their sources once
+  however many callers start them, and stop with the last caller's stop. The network state is derived from the monitor
+  and rebuilds only while something reads it and for a second after.
 - The product page hands the product card its author read, whose dotNS owner is read with the manifests and cached with
   them, so the card's first opening reads only the account Asset Hub maps the owner to and that account's People
   username. The product's icon shows in the tab and the card.
@@ -92,16 +92,16 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   gives it the host's bitswap client from the bridge to fetch the product's icon. The journey and the failure sightings
   read the session storage they are given.
 - Every reload that tells the next boot why goes through one step. The topbar's binding, the main-thread monitor, the
-  loading screen, the load progress, the bar's auto-hide on the shield, the sandbox watch and the resolution trace each
-  hand back the cleanup of what they listen to and the timers they hold. The trace releases its own once it ends, and
-  the sandbox watch once the sandbox speaks. A load that fails stops waiting for the sandbox's outcome on its content
-  and stops hearing a refused wire version. The page keeps the rest for its life.
+  loading screen, the load progress, the bar's auto-hide on the shield and the resolution trace each hand back the
+  cleanup of what they listen to and the timers they hold. The trace releases its own once it ends, and the sandbox's
+  load owner stops listening once the outcome settled. A load that fails stops hearing a refused wire version. The page
+  keeps the rest for its life.
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
-  the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
-  The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
-  lease that pool, and the chain watcher watches it. The page's bitswap client leases it too, Bulletin while a fetch
-  runs. A product's local storage is one factory whose page instance every core shares, so a write from one runtime
-  reaches the subscriptions of the others.
+  the page's own. The chain pool owns the chain redial gates for every holder, and the permission prompt rate limit
+  measures time on the clock it is given. The page's chain pool and its sources sit beside the pool's factory. The chain
+  connect and the host chain providers lease that pool, and the chain watcher watches it. The page's bitswap client
+  leases it too, Bulletin while a fetch runs. A product's local storage is one factory whose page instance every core
+  shares, so a write from one runtime reaches the subscriptions of the others.
 - The product frame, its wait for a device permission answer, the scheduled notifications and the diagnostics' finalized
   block query take the clock and timers they run on as params that default to the page's own. The scheduler takes its
   repeating poll the same way, so their specs move time themselves. The channel to the local server's shared store takes
@@ -130,10 +130,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The page builds one route to the core's permission store and one permissions store over it. The product frame and the
   permission prompts get both, the menu reads the store and the diagnostics read the route. A product's newest
   connection answers. A stored answer returns at once, and only a question waits its turn behind other dialogs.
-- The permissions panel sets an app's twelve permissions through four presets on a slider, with every permission under
+- The permissions panel sets an app's permissions through four presets on a slider, with every permission under
   Advanced. The preset shown is the one closest to the statuses, never stored. Every change, from the panel or a prompt,
   goes through one write that retries, and a newer panel change supersedes an older one. A change announces once, and
-  the frame reloads only when its `allow` attribute changes.
+  the frame reloads only when its `allow` attribute changes. Each permission's facts (its name, group, dialog copy,
+  frame directive and Trusted status) are one table in the runtime, and its icon sits with the views.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time. Its sign-in, phrase import and sign-out are the one interface every
   page offers, the debug panel's wallet tab included: they open the sign-in window, or on a preview or the landing page,

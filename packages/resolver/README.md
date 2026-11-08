@@ -50,5 +50,6 @@ every caller checks a name against.
   `ManifestResult`, `AppVersion`.
 - Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`,
   `getSandboxLabel`, `DotLabelResult`, `isExecutableKind`.
-- Errors: `ResolverErrorName`.
+- Errors: `ResolverErrorName`, `isApiStoppedError(error)` (whether a read failed because its chain's follow stopped,
+  also for a copy rebuilt under its name).
 - Lazy loader: `loadResolve`.

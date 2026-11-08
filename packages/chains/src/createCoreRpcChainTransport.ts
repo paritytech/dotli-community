@@ -11,7 +11,12 @@ import type { JsonRpcProvider } from 'polkadot-api';
 import { getWsProvider, WsEvent, type StatusChange } from '@polkadot-api/ws-provider';
 import { getActiveCoreGatewayChains, getActiveServicesConfig } from '@dotli/config';
 import type { ChainService } from '@dotli/config';
-import type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
+import {
+  RPC_FOLLOW_LIMIT,
+  type ChainTransport,
+  type ChainTransportHooks,
+  type ConnectionStatus,
+} from './transportHooks.js';
 
 type Params = {
   /** Hears each status change of the chain's socket. */
@@ -44,14 +49,15 @@ const WS_CLOSING = 2;
 const connectedEndpoints = new Map<string, { uri: string; owner: object }>();
 
 /**
- * The chain's provider over its configured RPC nodes, or `null` for a chain that is not a core gateway chain. A
+ * The chain's transport over its configured RPC nodes, or `null` for a chain that is not a core gateway chain. A
  * reconnect re-sends every confirmed subscription and maps the new ids back to the ones consumers saw.
  */
-export function createCoreRpcChainProvider(
+export function createCoreRpcChainTransport(
   genesisHash: string,
   { hooks, WebSocketBase = globalThis.WebSocket }: Params = {},
-): JsonRpcProvider | null {
-  return createGatewayProvider({ chain: findCoreGatewayChain(genesisHash), hooks, WebSocketBase });
+): ChainTransport | null {
+  const provider = createGatewayProvider({ chain: findCoreGatewayChain(genesisHash), hooks, WebSocketBase });
+  return provider === null ? null : { provider, followLimit: RPC_FOLLOW_LIMIT };
 }
 
 /** Whether the active network's gateway serves `genesisHash` over RPC nodes. */

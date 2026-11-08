@@ -8,7 +8,6 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { AuthCommands, LoginOutcome } from './createAuthCommands.js';
 import { authControl, createAuthControlSlot, createAuthController } from './createAuthController.js';
-import type { InPagePhrase } from './createInPageSignIn.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
@@ -22,10 +21,12 @@ import { recordNotified } from '../testing/recordNotified.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
-import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 
 type AuthControlSlot = ReturnType<typeof createAuthControlSlot>;
+type ControllerParams = Parameters<typeof createAuthController>[0];
+type AuthBridge = Awaited<ReturnType<ControllerParams['bridge']>>;
+type PhraseCheck = Awaited<ReturnType<ControllerParams['loadRecoveryPhrase']>>;
 
 /** What the controller asked of the bridge chunk's commands. */
 type Calls = {
@@ -40,16 +41,21 @@ type Calls = {
 type StartControllerParams = {
   /** The coordinator the modal leases come from, a fresh one by default. */
   coordinator?: BlockingModalCoordinator;
-  /** Loads the bridge chunk's commands, ones that only record what they are asked by default. */
+  /**
+   * Loads the bridge chunk's commands, ones that only record what they are asked by default. A rejection fails the
+   * whole bridge load.
+   */
   commands?: () => Promise<AuthCommands>;
   /** The sign-in window's session handoff, none by default. */
   handoff?: SessionHandoff | null;
   /** Applies the session result a sign-in window sends, rejecting by default. */
   applyResult?: (result: SessionResult) => Promise<'applied' | 'reloading'>;
-  /** The page's wallet mode, paired by default. */
-  walletMode?: WalletMode;
-  /** Loads the phrase import of a page that pairs in place, rejecting by default. */
-  inPagePhrase?: () => Promise<InPagePhrase>;
+  /** Whether the page runs on a local wallet, paired by default. */
+  local?: boolean;
+  /** Loads the phrase check of a page that pairs in place, rejecting by default. */
+  loadRecoveryPhrase?: ControllerParams['loadRecoveryPhrase'];
+  /** The bridge's wallet switch, whose phrase wallet save rejects by default. */
+  walletSwitch?: AuthBridge['walletSwitch'];
   /** Whether a sign-in made elsewhere waits, as session state says. */
   elsewhere?: () => boolean;
   /** Reads the saved session again, by default resolving with the auth state left as it was. */
@@ -90,6 +96,9 @@ afterEach(() => {
   authModalState.reset();
 });
 
+/** A test that saves no phrase wallet switches to none. */
+const NO_WALLET_SWITCH: AuthBridge['walletSwitch'] = { useLocalWallet: rejectNoPhrase };
+
 /** Pages without the sign-in window never write a result. */
 function rejectNoResult(): Promise<never> {
   return Promise.reject(new Error('This page has no sign-in window'));
@@ -98,6 +107,16 @@ function rejectNoResult(): Promise<never> {
 /** A test that asks for no phrase loads no phrase import. */
 function rejectNoPhrase(): Promise<never> {
   return Promise.reject(new Error('No phrase import in this test'));
+}
+
+/**
+ * Resolves after one macrotask turn, so every promise reaction queued now, and every one those queue in turn, has run.
+ * It waits for no time.
+ */
+function untilPromisesSettled(): Promise<void> {
+  return new Promise(resolve => {
+    setImmediate(resolve);
+  });
 }
 
 /** Every exception the capture sink is told of, with its context, while this test runs. */
@@ -114,17 +133,22 @@ function captureExceptions(): [unknown, CaptureContext][] {
   return exceptions;
 }
 
-/** The phrase import of a page that pairs in place, which knows only `PHRASE` and answers saves with `outcome`. */
+/**
+ * The phrase check of a page that pairs in place, which knows only `PHRASE`, and the wallet switch it saves through,
+ * which answers saves with `outcome`.
+ */
 function createFakePhrase({ outcome = 'reloading' }: CreateFakePhraseParams = {}) {
   const used: Uint8Array[] = [];
-  const phrase: InPagePhrase = {
+  const phrase: PhraseCheck = {
     toEntropy: candidate => (candidate === PHRASE ? ENTROPY : null),
+  };
+  const walletSwitch: AuthBridge['walletSwitch'] = {
     useLocalWallet(entropy) {
       used.push(entropy);
       return Promise.resolve(outcome);
     },
   };
-  return { phrase, used };
+  return { phrase, walletSwitch, used };
 }
 
 /** A controller over its own auth store and steps, whose commands only record what they are asked. */
@@ -133,8 +157,9 @@ function startController({
   commands,
   handoff = null,
   applyResult = rejectNoResult,
-  walletMode = 'app',
-  inPagePhrase = rejectNoPhrase,
+  local = false,
+  loadRecoveryPhrase = rejectNoPhrase,
+  walletSwitch = NO_WALLET_SWITCH,
   elsewhere = () => false,
   rereadSession = () => Promise.resolve(),
 }: StartControllerParams = {}) {
@@ -154,17 +179,21 @@ function startController({
   const changes = createChanges();
   onTestFinished(authModalState.store.listen(changes.notify));
   const recorded = recordCommands({ changes });
+  const loadCommands = commands ?? (() => Promise.resolve(recorded.commands));
   const controller = createAuthController({
     coordinator,
-    commands: commands ?? (() => Promise.resolve(recorded.commands)),
+    bridge: async () => ({
+      authCommands: await loadCommands(),
+      applyWindowResult: applyResult,
+      rereadSession,
+      walletSwitch,
+    }),
     auth,
     subscribeAuthSteps: steps.subscribe,
     handoff,
-    applyResult,
-    walletMode: () => walletMode,
-    inPagePhrase,
+    isLocalWallet: () => local,
+    loadRecoveryPhrase,
     elsewhere,
-    rereadSession,
   });
   onTestFinished(() => {
     controller.dispose();
@@ -356,11 +385,15 @@ function createHeldResults() {
 function buildInitParams(commands: AuthCommands): Parameters<AuthControlSlot['init']>[0] {
   return {
     handoff: null,
-    applyResult: rejectNoResult,
-    inPagePhrase: rejectNoPhrase,
     coordinator: createBlockingModalCoordinator(),
-    commands: () => Promise.resolve(commands),
-    rereadSession: () => Promise.resolve(),
+    bridge: () =>
+      Promise.resolve({
+        authCommands: commands,
+        applyWindowResult: rejectNoResult,
+        rereadSession: () => Promise.resolve(),
+        walletSwitch: NO_WALLET_SWITCH,
+      }),
+    loadRecoveryPhrase: rejectNoPhrase,
   };
 }
 
@@ -580,7 +613,7 @@ describe('auth controller: login requests', () => {
     await changes.until(() => getAuthModalState().view.kind === 'error');
 
     // Then the failure is captured and counted under the login step
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'login' }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'login' }]]);
     expect(metrics.counted('auth.command')).toEqual([{ outcome: 'error', reason: 'TypeError', step: 'login' }]);
   });
 
@@ -782,7 +815,7 @@ describe('auth controller: blocking-modal lease', () => {
     await nth(leases, 0).catch(() => undefined);
 
     // Then the failure is captured, logged as an error and counted
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'auth_modal_lease' }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'auth_modal_lease' }]]);
     expect(logged.map(line => line.args)).toEqual([['[dot.li auth] authentication modal lease failed:', failure]]);
     expect(metrics.counted('auth.modal_lease')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
@@ -977,7 +1010,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a debug panel user with a local wallet, I replace it and the window opens', () => {
     // Given a signed-in page in local mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, auth } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
 
     // When the debug panel imports a phrase
@@ -990,7 +1023,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a signed-in debug panel user typing a phrase in the sign-in window, I see my session reported again and the window stays open', () => {
     // Given a signed-in page in local mode whose phrase window is open
     const handoff = createFakeHandoff();
-    const { controller, auth } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
     controller.importPhrase();
 
@@ -1005,7 +1038,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a debug panel user on a page that pairs in place, I import a phrase and the modal opens at its phrase view', async () => {
     // Given a signed-out page that pairs in place
     const { phrase } = createFakePhrase();
-    const { controller, auth, calls, changes } = startController({ inPagePhrase: () => Promise.resolve(phrase) });
+    const { controller, auth, calls, changes } = startController({ loadRecoveryPhrase: () => Promise.resolve(phrase) });
     auth.set({ tag: 'Disconnected' });
 
     // When the debug panel imports a phrase, and the view checks a phrase and a non-phrase
@@ -1021,8 +1054,11 @@ describe('auth controller: the sign-in window', () => {
 
   it('As a debug panel user on a page that pairs in place, I import my phrase and it is used for every app', async () => {
     // Given the modal open at its phrase view
-    const { phrase, used } = createFakePhrase();
-    const { controller, changes } = startController({ inPagePhrase: () => Promise.resolve(phrase) });
+    const { phrase, walletSwitch, used } = createFakePhrase();
+    const { controller, changes } = startController({
+      loadRecoveryPhrase: () => Promise.resolve(phrase),
+      walletSwitch,
+    });
     controller.importPhrase();
     await changes.until(() => getAuthModalState().view.kind === 'phrase');
 
@@ -1035,8 +1071,11 @@ describe('auth controller: the sign-in window', () => {
 
   it('As a debug panel user on a page that pairs in place, I enter a phrase that is not one and nothing is saved', async () => {
     // Given the modal open at its phrase view
-    const { phrase, used } = createFakePhrase();
-    const { controller, changes } = startController({ inPagePhrase: () => Promise.resolve(phrase) });
+    const { phrase, walletSwitch, used } = createFakePhrase();
+    const { controller, changes } = startController({
+      loadRecoveryPhrase: () => Promise.resolve(phrase),
+      walletSwitch,
+    });
     controller.importPhrase();
     await changes.until(() => getAuthModalState().view.kind === 'phrase');
     const exceptions = captureExceptions();
@@ -1061,16 +1100,17 @@ describe('auth controller: the sign-in window', () => {
 
     // Then the import rejects and the load failure is reported and counted
     await expect(imported).rejects.toThrow('The recovery phrase import was not loaded');
-    expect(exceptions).toEqual([
-      [expect.any(Error), { flow: 'wallet', step: 'local_wallet', tags: { reason: 'phrase-load' } }],
-    ]);
+    expect(exceptions).toMatchObject([[expect.any(Error), { step: 'local_wallet', tags: { reason: 'phrase-load' } }]]);
     expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'phrase-load' }]);
   });
 
   it('As a debug panel user on a page that pairs in place, I import a phrase whose wallet could not be saved and the form says so', async () => {
     // Given the modal at its phrase view over a wallet save that fails
-    const { phrase } = createFakePhrase({ outcome: 'failed' });
-    const { controller, changes } = startController({ inPagePhrase: () => Promise.resolve(phrase) });
+    const { phrase, walletSwitch } = createFakePhrase({ outcome: 'failed' });
+    const { controller, changes } = startController({
+      loadRecoveryPhrase: () => Promise.resolve(phrase),
+      walletSwitch,
+    });
     controller.importPhrase();
     await changes.until(() => getAuthModalState().view.kind === 'phrase');
 
@@ -1085,7 +1125,7 @@ describe('auth controller: the sign-in window', () => {
   it("As a debug panel user typing a phrase, I keep my phrase view on show while a product's pairing runs and fails", async () => {
     // Given a signed-out page whose modal shows the phrase view
     const { phrase } = createFakePhrase();
-    const { controller, auth, changes } = startController({ inPagePhrase: () => Promise.resolve(phrase) });
+    const { controller, auth, changes } = startController({ loadRecoveryPhrase: () => Promise.resolve(phrase) });
     auth.set({ tag: 'Disconnected' });
     controller.importPhrase();
     await changes.until(() => getAuthModalState().view.kind === 'phrase');
@@ -1102,15 +1142,15 @@ describe('auth controller: the sign-in window', () => {
   it('As a debug panel user, I close the modal while the phrase check loads and it stays closed', async () => {
     // Given a phrase check that has not loaded yet
     const { phrase } = createFakePhrase();
-    const loaded = createDeferred<InPagePhrase>();
-    const { controller } = startController({ inPagePhrase: () => loaded.promise });
+    const loaded = createDeferred<PhraseCheck>();
+    const { controller } = startController({ loadRecoveryPhrase: () => loaded.promise });
     controller.importPhrase();
 
     // When the modal closes and then the check loads
     controller.closeAuthModal({ skipTruapiCancel: true });
     loaded.resolve(phrase);
-    // The controller heard the load before this test, as it asked first.
-    await loaded.promise;
+    // The controller takes the check after its bridge load joins it, which no fake is told of.
+    await untilPromisesSettled();
 
     // Then the modal stays closed
     expect(getAuthModalState()).toEqual(CLOSED_MODAL);
@@ -1122,7 +1162,7 @@ describe('auth controller: the sign-in window', () => {
     const { phrase } = createFakePhrase();
     let loads = 0;
     const { controller, calls, changes } = startController({
-      inPagePhrase: () => (++loads === 1 ? Promise.reject(new Error('chunk failed')) : Promise.resolve(phrase)),
+      loadRecoveryPhrase: () => (++loads === 1 ? Promise.reject(new Error('chunk failed')) : Promise.resolve(phrase)),
     });
 
     // When the debug panel imports a phrase, sees the failure and presses Retry
@@ -1171,7 +1211,7 @@ describe('auth controller: the sign-in window', () => {
     // Given a page that pairs in place, whose saved session cannot be reached until it is read again
     const { phrase } = createFakePhrase();
     const { controller, auth, calls, changes } = startController({
-      inPagePhrase: () => Promise.resolve(phrase),
+      loadRecoveryPhrase: () => Promise.resolve(phrase),
       rereadSession() {
         auth.set({ tag: 'Disconnected' });
         return Promise.resolve();
@@ -1214,6 +1254,29 @@ describe('auth controller: the sign-in window', () => {
     expect(handoff.signIns).toEqual(['signin']);
     expect(handoff.focuses).toBe(2);
     expect(getAuthModalState().view).toEqual({ kind: 'window' });
+  });
+
+  it('As a debug panel user whose bridge chunk could not load, I see the failure, and Retry opens the phrase view once it loads', async () => {
+    // Given a phrase check that loads, over a bridge whose first load fails
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { phrase } = createFakePhrase();
+    const { commands } = recordCommands({ changes: createChanges() });
+    let loads = 0;
+    const { controller, calls, changes } = startController({
+      commands: () => (++loads === 1 ? Promise.reject(new Error('chunk failed')) : Promise.resolve(commands)),
+      loadRecoveryPhrase: () => Promise.resolve(phrase),
+    });
+
+    // When the debug panel imports a phrase, sees the failure and presses Retry
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    const countedAtFailure = metrics.counted('lazy_chunk.load');
+    controller.retryLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    // Then the missed chunk was counted, the phrase view opened, and no pairing starts
+    expect(countedAtFailure).toEqual([{ outcome: 'error', reason: 'phrase_import' }]);
+    expect(calls.logins).toEqual([]);
   });
 
   it("As a user whose page shares the sign-in window's store, I see my sign-in early and the window stays open for its result, which names my account", async () => {
@@ -1260,13 +1323,12 @@ describe('auth controller: the sign-in window', () => {
     const { controller, handoff } = startWindowRound({ applyResult: held.applyResult });
     handoff.end({ kind: 'result', result: RESULT });
     await held.asked;
-    // Registered after the controller's own wait on the write, so it settles after the controller saw it.
-    const seen = held.written.promise.then(() => undefined);
 
     // When the user presses Cancel and the write then lands
     controller.closeAuthModal();
     held.written.resolve('applied');
-    await seen;
+    // The controller waits on the write through its bridge port, and tells no fake when it saw it land.
+    await untilPromisesSettled();
 
     // Then the modal stays closed and the result was written once
     expect(getAuthModalState()).toEqual(CLOSED_MODAL);
@@ -1314,7 +1376,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a signed-in debug panel user whose phrase window was blocked, I press Try again and the phrase window opens', async () => {
     // Given a signed-in page whose phrase window was blocked
     const handoff = createFakeHandoff();
-    const { controller, auth, changes } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth, changes } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
     controller.importPhrase();
     handoff.end({ kind: 'blocked' });
@@ -1390,7 +1452,7 @@ describe('auth controller: the sign-in window', () => {
 
     // Then the error shows with Retry and the failure is reported and counted under the intent
     expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'error', retry: true } });
-    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'session_window', tags: { reason: 'signin' } }]]);
+    expect(exceptions).toMatchObject([[failure, { step: 'session_window', tags: { reason: 'signin' } }]]);
     expect(metrics.counted('session_window.apply')).toEqual([{ outcome: 'error', reason: 'signin' }]);
     expect(metrics.counted('session_window.round')).toEqual([]);
   });
@@ -1523,7 +1585,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a user in paired mode, I sign out and the window opens with notified', async () => {
     // Given a page in paired mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, calls, changes } = startController({ handoff, walletMode: 'app' });
+    const { controller, calls, changes } = startController({ handoff, local: false });
 
     // When the user signs out and the core is asked
     controller.logout();
@@ -1550,7 +1612,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a user in local mode, I sign out and the window opens without notified, then the page logs out', async () => {
     // Given a page in local mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, calls, changes } = startController({ handoff, walletMode: 'local' });
+    const { controller, calls, changes } = startController({ handoff, local: true });
 
     // When the user signs out
     controller.logout();
@@ -1563,7 +1625,7 @@ describe('auth controller: the sign-in window', () => {
 
   it('As a user in local mode on a preview its preview host frames, I sign out in place and the paired copy stays', async () => {
     // Given: a page with no sign-in window, so nothing would tell the phone
-    const { controller, calls, changes } = startController({ handoff: null, walletMode: 'local' });
+    const { controller, calls, changes } = startController({ handoff: null, local: true });
 
     // When the user signs out
     controller.logout();

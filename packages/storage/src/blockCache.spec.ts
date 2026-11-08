@@ -7,7 +7,7 @@ import { createManualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './blockCache.js';
 import { abortAtCommit } from './testing/abortAtCommit.js';
 import { createMemoryIdb, type MemoryIdb } from './testing/index.js';
-import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 // Each test gets a fresh database, so no test sees another's records.
@@ -265,7 +265,7 @@ describe('block cache touch failures', () => {
     await refusing.prune(Number.MAX_SAFE_INTEGER);
 
     // Then the refused mark is counted, and the read still had the bytes
-    expect(sentry.counted(S.CACHE_STORAGE)).toContainEqual(
+    expect(sentry.counted('cache.storage')).toContainEqual(
       expect.objectContaining({ outcome: 'error', surface: 'block_cache', step: 'touch' }),
     );
     expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
@@ -292,9 +292,11 @@ describe('block cache failure reporting', () => {
     // Then the clear says it failed, after a breadcrumb rather than an issue
     expect(cleared).toBe(false);
     expect(captures.exception).not.toHaveBeenCalled();
-    expect(captures.expected).toHaveBeenCalledWith(expect.objectContaining({ name: 'InvalidStateError' }), {
-      flow: 'storage',
-      step: 'block_cache_clear',
-    });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'InvalidStateError' }),
+      expect.objectContaining({
+        step: 'block_cache_clear',
+      }),
+    );
   });
 });

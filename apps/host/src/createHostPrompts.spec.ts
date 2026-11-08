@@ -8,7 +8,7 @@ import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
 import { modals } from '@dotli/ui';
 import { SignIcon } from './components/icons/SignIcon.js';
 import { createHostPrompts } from './createHostPrompts.js';
-import type { PermissionPromptDecision } from './runtime/hostPrompts.js';
+import type { GrantAnswer } from './runtime/hostPrompts.js';
 import type { EnforceablePermissionName } from './runtime/permissionPolicy.js';
 
 afterEach(() => {
@@ -112,7 +112,7 @@ describe('permission request', () => {
     permission: EnforceablePermissionName;
     allowOnce: boolean;
     answer: () => void;
-    expected: PermissionPromptDecision;
+    expected: GrantAnswer;
   }>([
     {
       story: 'Allow',

@@ -5,6 +5,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import { catchError, createManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
+import { realTimers, type Timers } from '@dotli/shared';
 import { observeChains } from './observeChains.js';
 
 type Built = {
@@ -14,11 +15,18 @@ type Built = {
   halt: (error: unknown) => void;
 };
 
-function createPool(destroyDelay: number, unsupported: readonly string[] = []) {
+type CreatePoolParams = {
+  /** Chains the pool has no transport for. */
+  unsupported?: readonly string[];
+  /** The timers the pool's redial waits run on. */
+  timers?: Timers;
+};
+
+function createPool(destroyDelay: number, { unsupported = [], timers = realTimers }: CreatePoolParams = {}) {
   const built: Built[] = [];
   return {
     /** The pool whose chains are watched. */
-    pool: createChainPool({ createTransport, destroyDelay }),
+    pool: createChainPool({ createTransport, destroyDelay, timers }),
     /** Each chain transport the pool built, in order. */
     built,
   };
@@ -74,7 +82,7 @@ describe('observeChains', () => {
 
   it('As a dotli user on a network without a chain, I watch the chains and the watch skips the missing one', () => {
     // Given
-    const { pool, built } = createPool(0, ['0xaa']);
+    const { pool, built } = createPool(0, { unsupported: ['0xaa'] });
 
     // When the chains are watched, and the watch is stopped
     const stop = observeChains({ pool, genesisHashes: ['0xaa', '0xbb'] });
@@ -87,10 +95,10 @@ describe('observeChains', () => {
     expect(built.map(b => b.disconnect.mock.calls.length)).toEqual([1]);
   });
 
-  it('As a dotli user on a light client, I watch a chain whose transport halted and keep seeing its sync on the chain the pool rebuilds', () => {
+  it('As the sync observer, my chain halts and the pool gives it back under my lease', () => {
     // Given
     const { pool, built } = createPool(0);
-    observeChains({ pool, genesisHashes: ['0xaa', '0xbb'], retakeDelayMs: 0 });
+    observeChains({ pool, genesisHashes: ['0xaa', '0xbb'] });
 
     // When
     built[0]?.halt(new Error('gone'));
@@ -100,65 +108,19 @@ describe('observeChains', () => {
     expect(built[2]?.disconnect).not.toHaveBeenCalled();
   });
 
-  it('As a dotli user on a light client, I watch a chain halt again after it was rebuilt and keep seeing its sync', async () => {
-    // Given
+  it('As a dotli integrator, I stop the watch while a halted chain waits on its gate and it is not reopened', async () => {
+    // Given a chain that halts again right after its first heal, so its second heal waits on the gate
     const timers = createManualTimers();
-    const { pool, built } = createPool(0);
-    observeChains({ pool, genesisHashes: ['0xaa'], retakeDelayMs: 1_000, timers });
+    const { pool, built } = createPool(0, { timers });
+    const stop = observeChains({ pool, genesisHashes: ['0xaa'] });
     built[0]?.halt(new Error('gone'));
-    await timers.advance(1_000);
-
-    // When
     built[1]?.halt(new Error('gone again'));
-    await timers.advance(1_000);
-
-    // Then
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa', '0xaa']);
-  });
-
-  it('As a dotli integrator, I watch a chain report its halt twice and see one new lease', async () => {
-    // Given
-    const timers = createManualTimers();
-    const { pool, built } = createPool(0);
-    observeChains({ pool, genesisHashes: ['0xaa'], retakeDelayMs: 1_000, timers });
-
-    // When
-    built[0]?.halt(new Error('gone'));
-    built[0]?.halt(new Error('gone'));
-    await timers.advance(1_000);
-
-    // Then
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa']);
-  });
-
-  it('As a dotli integrator, I watch a chain halt and see it taken again only once the re-take delay has passed', async () => {
-    // Given
-    const timers = createManualTimers();
-    const { pool, built } = createPool(0);
-    observeChains({ pool, genesisHashes: ['0xaa'], retakeDelayMs: 1_000, timers });
-
-    // When
-    built[0]?.halt(new Error('gone'));
-    const beforeDelay = built.length;
-    await timers.advance(1_000);
-
-    // Then
-    expect(beforeDelay).toBe(1);
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa']);
-  });
-
-  it('As a dotli integrator, I stop the watch while a halted chain waits to be taken again and it is not reopened', async () => {
-    // Given
-    const timers = createManualTimers();
-    const { pool, built } = createPool(0);
-    const stop = observeChains({ pool, genesisHashes: ['0xaa'], retakeDelayMs: 1_000, timers });
-    built[0]?.halt(new Error('gone'));
 
     // When
     stop();
-    await timers.advance(1_000);
+    await timers.advance(30_000);
 
     // Then
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa']);
+    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa']);
   });
 });

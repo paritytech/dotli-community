@@ -3,13 +3,17 @@
 
 // Requests to the protocol frame, each on its own budget, with the metrics and trail every call to the frame shares.
 
-import { m, spans as S } from '@dotli/metrics';
-import { getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { createReporter, defineCount, m } from '@dotli/metrics';
+import { getErrorName, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { getFailureReason, type AnyMethod, type Request } from '@dotli/transport';
 import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
 import type { ProtocolFrame } from './frameTypes.js';
 import { getCallName, getPolicy, type CallName, type MethodPolicy } from './methodPolicy.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+const protocolRequestMetric = defineCount<'error' | 'timeout'>('protocol.request');
 
 export type CallOutcome = 'ok' | 'error' | 'timeout';
 
@@ -88,7 +92,7 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
         sent.trail.settle(outcome, error);
       } else if (outcome === 'timeout') {
         // Never sent, since the frame did not come up within the budget.
-        m.count(S.PROTOCOL_REQUEST, { outcome, method: policy.name, reason: getErrorName(error) ?? 'unknown' });
+        protocolRequestMetric.count({ outcome, method: policy.name, reason: getErrorName(error) ?? 'unknown' });
       }
       if (policy.whenListening && sent.transport !== null && outcome === 'timeout') {
         // A shared store call waits on no light client, so one the frame let run out may mean the frame stopped.
@@ -176,10 +180,10 @@ function getOutcomeWord(outcome: CallOutcome): string {
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
 function startCallTrail(policy: MethodPolicy, now: () => number) {
   const { name: method, budgetMs, timed, trailed } = policy;
-  const stop = timed ? m.timer(S.PROTOCOL_REQUEST, { now }) : (): number => 0;
+  const stop = timed ? m.timer(protocolRequestMetric.name, { now }) : (): number => 0;
   const sentAt = now();
   if (trailed) {
-    log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
+    report.log.event(`${method} sent`, budgetMs === null ? {} : { timeout_ms: budgetMs });
   }
   let done = false;
   return {
@@ -191,11 +195,10 @@ function startCallTrail(policy: MethodPolicy, now: () => number) {
       done = true;
       stop();
       if (outcome !== 'ok') {
-        m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: getErrorName(error) ?? 'unknown' });
+        protocolRequestMetric.count({ outcome, method, reason: getErrorName(error) ?? 'unknown' });
       }
       if (trailed) {
-        log.event(`${method} ${getOutcomeWord(outcome)}`, {
-          flow: 'protocol',
+        report.log.event(`${method} ${getOutcomeWord(outcome)}`, {
           ms: Math.round(now() - sentAt),
           ...(error !== undefined ? { error: getFailureReason(error).slice(0, 200) } : {}),
         });

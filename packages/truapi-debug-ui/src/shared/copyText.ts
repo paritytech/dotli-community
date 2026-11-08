@@ -1,8 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { PanelEffects } from '../panelEffects.js';
+
+const report = createReporter({ flow: 'ui' });
+
+/**
+ * A clipboard write the debug panel's copy controls could not make, mostly the browser's refusal. Tagged `outcome`
+ * (error) and `reason` (the error's name), as the control then shows a cross.
+ */
+const debugPanelCopyMetric = defineCount<'error'>('debug_panel.copy');
 
 export type CopyOutcome = 'copied' | 'failed';
 
@@ -16,7 +24,7 @@ export function copyText(writeClipboard: PanelEffects['writeClipboard'], text: s
   return writeClipboard(text).then(
     (): CopyOutcome => 'copied',
     (error: unknown): CopyOutcome => {
-      reportExpected(error, { flow: 'ui', step: 'debug_panel_copy', metric: S.DEBUG_PANEL_COPY });
+      report.expected(error, { step: 'debug_panel_copy', metric: debugPanelCopyMetric });
       return 'failed';
     },
   );

@@ -7,7 +7,22 @@
 
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';
 import { getProtocolClient, getProtocolOrigin } from '@dotli/protocol';
-import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
+
+const bootReport = createReporter({ flow: 'boot' });
+const storageReport = createReporter({ flow: 'storage' });
+
+/**
+ * One read of the mode settings shared across subdomains. Tagged `outcome` and, on error, `reason`, because a failed
+ * read falls back to this origin's settings without a sign.
+ */
+const sharedModeReadMetric = defineCount<'error' | 'ok'>('shared_mode.read');
+
+/**
+ * One write of a mode setting shared across subdomains. Tagged `outcome` and, on error, `reason`, as a failed one
+ * leaves the other subdomains on the old setting.
+ */
+const sharedModeWriteMetric = defineCount<'error' | 'ok'>('shared_mode.write');
 
 export type SharedChannel = {
   /** The value under `key`, or null when none is stored. Rejects when the store cannot be reached. */
@@ -46,13 +61,12 @@ export async function readSharedSettings({
 }: Params = {}): Promise<SharedSettings | null> {
   try {
     const [backend, cache] = await Promise.all([channel.read(BACKEND_KEY), channel.read(CACHE_KEY)]);
-    m.count(S.SHARED_MODE_READ, { outcome: 'ok' });
+    sharedModeReadMetric.count({ outcome: 'ok' });
     return { backend, cache };
   } catch (error: unknown) {
-    reportDefect(error, {
-      flow: 'boot',
+    bootReport.defect(error, {
       step: 'shared_mode_read',
-      metric: S.SHARED_MODE_READ,
+      metric: sharedModeReadMetric,
       message: '[dot.li shared-mode] read failed, using per-origin localStorage:',
     });
     return null;
@@ -78,13 +92,12 @@ export async function writeSharedSettings(
         : [
             channel.write(key, value).then(
               () => {
-                m.count(S.SHARED_MODE_WRITE, { outcome: 'ok' });
+                sharedModeWriteMetric.count({ outcome: 'ok' });
               },
               (error: unknown) => {
-                reportDefect(error, {
-                  flow: 'storage',
+                storageReport.defect(error, {
                   step: 'shared_mode_write',
-                  metric: S.SHARED_MODE_WRITE,
+                  metric: sharedModeWriteMetric,
                   message: `[dot.li shared-mode] write of ${key} failed:`,
                 });
               },

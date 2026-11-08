@@ -27,9 +27,10 @@ export function getProductCardView({ product, pill, card }: ProductCardSources):
     return null;
   }
   return {
-    name: product.displayName ?? product.label,
+    name: product.facts.displayName ?? product.label,
     domain: `${pill.domain}${pill.tld}`,
-    description: product.description === undefined || product.description === '' ? null : product.description,
+    description:
+      product.facts.description === undefined || product.facts.description === '' ? null : product.facts.description,
     icon: card.icon,
     author: card.author,
     connection: pill.shield,

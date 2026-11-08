@@ -15,8 +15,8 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import { getDefaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Network } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { createDeferred, listen, log, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
+import { createDeferred, listen, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
@@ -36,13 +36,15 @@ import { getRoute } from './runtime/sessionHandoff/sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './runtime/sessionHandoff/windowRequest.js';
 import { closeWindow } from './sessionWindowPage.js';
 import { reportWalletFailure } from './runtime/walletFailure.js';
-import { loadRecoveryPhrase, type BridgeModule } from './lazy.js';
+import { loadRecoveryPhrase } from './lazy.js';
+import type { HostBridge } from './runtime/bridge.js';
 import {
   createWindowFlow,
   getResponderScreen,
   type WindowFlow,
   type WindowFlowParams,
 } from './runtime/sessionHandoff/createWindowFlow.js';
+import { sessionWindowSignoutResultMetric } from './runtime/sessionHandoff/sessionWindowSignoutResultMetric.js';
 import { signOutInWindow, type WindowSignOutParams } from './runtime/sessionHandoff/signOutInWindow.js';
 import publicSuffixListUrl from './runtime/siteSignIn/public-suffix-list.dat?url';
 import { createSiteGroups } from './runtime/siteSignIn/createSiteGroups.js';
@@ -61,16 +63,20 @@ import { sessionWindowState } from './state/sessionWindowState.js';
 import { startPage } from './startPage.js';
 import { startHost, type StartHostParams } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
+import { SITE_ROUTE_METRICS } from './runtime/siteSignIn/siteRouteMetrics.js';
+
+const bootReport = createReporter({ flow: 'boot' });
+const walletReport = createReporter({ flow: 'wallet' });
 
 type OpenFlowParams = {
   responder: Responder<unknown>;
   intent: SignInIntent;
-  bridgeModule: BridgeModule;
+  bridge: HostBridge;
 };
 
 type GetSiteWindowParamsParams = {
   responder: Responder<unknown>;
-  round: Extract<SignInRound<BridgeModule>, { party: 'third' | 'third-sign' }>;
+  round: Extract<SignInRound<HostBridge>, { party: 'third' | 'third-sign' }>;
   /** The product account the window's core serves as, or `null` for dot.li's own. */
   account: ProductAccountId | null;
   /** Closes the window once the round is done. */
@@ -79,13 +85,13 @@ type GetSiteWindowParamsParams = {
 
 type OpenSiteFlowParams = {
   responder: Responder<unknown>;
-  round: Extract<SignInRound<BridgeModule>, { party: 'third' }>;
+  round: Extract<SignInRound<HostBridge>, { party: 'third' }>;
   close: () => void;
 };
 
 type OpenSiteTransactionFlowParams = {
   responder: Responder<unknown>;
-  round: Extract<SignInRound<BridgeModule>, { party: 'third-sign' }>;
+  round: Extract<SignInRound<HostBridge>, { party: 'third-sign' }>;
   /** Ends the responder's view once the window has the site's call. */
   stopShowingResponder: () => void;
 };
@@ -128,7 +134,7 @@ function judgeOpener(origin: string): OpenerParty {
 
 /** A request the window cannot read as dot.li's own has no round it answers, so it listens to nobody. */
 function refuseUnreadable(): void {
-  log.event('Session window refused: no readable request', { flow: 'boot' });
+  bootReport.log.event('Session window refused: no readable request');
   sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
 }
 
@@ -161,7 +167,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
       what: 'sign-out window answer',
       step: 'session_window_signout',
       reason: 'answer',
-      metric: S.SESSION_WINDOW_SIGNOUT_RESULT,
+      metric: sessionWindowSignoutResultMetric,
     });
   });
   // The sign-out runs whether or not the round is answered.
@@ -173,19 +179,19 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
 
 /** Boots the sign-out window's core and signs out on it, calling `read` once it read the main store. */
 async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSignOutParams): Promise<void> {
-  const { bridgeModule } = await startHost({
+  const { bridge } = await startHost({
     bootFlowId: createRandomId(),
     ...getWindowHostParams('signout-window', bootNetwork(taken, enabled)),
   }).catch((error: unknown) => {
     // Counted beside the window's own results, so every window opened counts how its sign-out ended. The boot
     // failure reports its own.
-    m.count(S.SESSION_WINDOW_SIGNOUT_RESULT, { outcome: 'error', reason: notified ? 'notified' : 'unnotified' });
+    sessionWindowSignoutResultMetric.count({ outcome: 'error', reason: notified ? 'notified' : 'unnotified' });
     throw error;
   });
-  log.event('Route: sign-out window', { flow: 'boot', notified });
+  bootReport.log.event('Route: sign-out window', { notified });
   await signOutInWindow({
     notified,
-    ...bridgeModule.windowSignOut,
+    ...bridge.windowSignOut,
     read,
     firstParty,
     forgetGrants: () => siteGrants.forgetAll(),
@@ -201,13 +207,13 @@ async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSig
  * store holds to `flow.deliver`, on the window's own store and core.
  */
 function startFlow(
-  bridgeModule: BridgeModule,
+  bridge: HostBridge,
   flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
     auth: authState.store,
-    commands: bridgeModule.authCommands,
-    ...bridgeModule.windowStore,
+    commands: bridge.authCommands,
+    ...bridge.windowStore,
     loadPhrase: loadRecoveryPhrase,
     ...flow,
   });
@@ -216,9 +222,9 @@ function startFlow(
 }
 
 /** Shows the sign-in flow for `intent`, which delivers to the responder's opener. */
-function openFlow({ responder, intent, bridgeModule }: OpenFlowParams): void {
+function openFlow({ responder, intent, bridge }: OpenFlowParams): void {
   // The flow lives as long as the window's page, so nothing disposes it.
-  const { screen } = startFlow(bridgeModule, {
+  const { screen } = startFlow(bridge, {
     responder,
     intent,
     // dot.li's own pages are named by their host.
@@ -255,18 +261,18 @@ function getSiteWindowParams({
   account,
   close,
 }: GetSiteWindowParamsParams): Omit<SiteWindowParams, 'request'> {
-  const { booted: bridgeModule } = round;
+  const { booted: bridge } = round;
   // Before the round starts, so the first core the window boots runs as the right product: the named account's for a
   // transaction, and dot.li's own for a sign-in, which names no account.
-  bridgeModule.serveSite(account);
+  bridge.serveSite(account);
   return {
     origin: round.origin,
     responder,
-    createWindowFlow: flow => startFlow(bridgeModule, flow),
+    createWindowFlow: flow => startFlow(bridge, flow),
     grants: siteGrants,
     groups: siteGroups,
     self: window.location.origin,
-    mainAccount: signal => bridgeModule.mainAccount.read(signal),
+    mainAccount: signal => bridge.mainAccount.read(signal),
     now: Date.now,
     randomToken: createSiteToken,
     close,
@@ -296,14 +302,14 @@ async function openSiteTransactionFlow({
   round,
   stopShowingResponder,
 }: OpenSiteTransactionFlowParams): Promise<void> {
-  const { booted: bridgeModule } = round;
+  const { booted: bridge } = round;
   // The site window lives as long as the window's page, so nothing disposes it.
   const opened = await openSiteTransaction({
     ...getSiteWindowParams({ responder, round, account: round.request.account, close: closeWindow }),
     request: round.request,
-    chain: bridgeModule.siteChain,
-    txSigner: bridgeModule.siteTxSigner,
-    accountReader: bridgeModule.siteAccountReader,
+    chain: bridge.siteChain,
+    txSigner: bridge.siteTxSigner,
+    accountReader: bridge.siteAccountReader,
   });
   // A refused round keeps showing the responder, which says it refused, while the window closes.
   if (opened === null) {
@@ -322,13 +328,13 @@ function showResponder(responder: Responder<unknown>): () => void {
   });
 }
 
-async function bootSignIn(taken: SessionRequest, enabled: readonly Network[]): Promise<BridgeModule> {
-  const { bridgeModule } = await startHost({
+async function bootSignIn(taken: SessionRequest, enabled: readonly Network[]): Promise<HostBridge> {
+  const { bridge } = await startHost({
     bootFlowId: createRandomId(),
     ...getWindowHostParams('signin-window', bootNetwork(taken, enabled)),
   });
-  log.event('Route: session window', { flow: 'boot' });
-  return bridgeModule;
+  bootReport.log.event('Route: session window');
+  return bridge;
 }
 
 /**
@@ -348,8 +354,8 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   });
   if (!verdict.ok) {
     const { view, reason } = verdict;
-    log.event('redirect sign-in refused', { flow: 'wallet', reason });
-    m.count(S.SITE_SIGN_IN, { outcome: 'refused', reason });
+    walletReport.log.event('redirect sign-in refused', { reason });
+    SITE_ROUTE_METRICS.auth.count({ outcome: 'refused', reason });
     sessionWindowState.setScreen(view === 'refused' ? getResponderScreen({ kind: 'refused' }) : { view });
     return;
   }
@@ -373,7 +379,7 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
         what: 'redirect answer',
         step: 'site_redirect',
         reason: 'seal',
-        metric: S.SITE_SIGN_IN,
+        metric: SITE_ROUTE_METRICS.auth,
       });
       stopShowingRound();
       sessionWindowState.setScreen({ view: 'site-unsupported' });
@@ -409,7 +415,7 @@ async function forgetUnsentGrant(token: string): Promise<void> {
       what: 'redirect unsent grant forget',
       step: 'site_redirect',
       reason: 'grant_forget',
-      metric: S.SITE_SIGN_IN,
+      metric: SITE_ROUTE_METRICS.auth,
     });
   }
 }
@@ -419,7 +425,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
   if (taken.route === 'auth') {
     const fields = readRedirectFields(taken.params);
     if (fields === 'invalid') {
-      log.event('Session window refused: invalid redirect fields', { flow: 'boot' });
+      bootReport.log.event('Session window refused: invalid redirect fields');
       sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
       return;
     }
@@ -439,9 +445,9 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
       return;
     }
     const stopShowingResponder = showResponder(responder);
-    const bridgeModule = await bootSignIn(taken, enabled);
+    const bridge = await bootSignIn(taken, enabled);
     stopShowingResponder();
-    openFlow({ responder, intent: request.intent, bridgeModule });
+    openFlow({ responder, intent: request.intent, bridge });
     return;
   }
 
@@ -458,7 +464,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
   }
   stopShowingResponder();
   if (round.party === 'first') {
-    openFlow({ responder, intent: round.intent, bridgeModule: round.booted });
+    openFlow({ responder, intent: round.intent, bridge: round.booted });
   } else {
     openSiteFlow({ responder, round, close: closeWindow });
   }
@@ -466,7 +472,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
 
 /** Lists the sites the user signed in to, each with Revoke. */
 function manageSites(): void {
-  log.event('Route: site list', { flow: 'boot' });
+  bootReport.log.event('Route: site list');
   const list = createSiteList({ grants: siteGrants });
   sessionWindowState.setSiteListIntents(list);
   sessionWindowState.showScreen(list.screen);

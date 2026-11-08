@@ -6,7 +6,7 @@ import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkado
 import type { Backend } from '@dotli/config';
 import type { ChainTransportHooks, RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolStatus } from '@dotli/protocol';
-import { createCoreRpcChainProvider } from '@dotli/chains';
+import { createCoreRpcChainTransport, RPC_FOLLOW_LIMIT } from '@dotli/chains';
 import { FakeWebSocket } from '@dotli/chains/testing';
 import type { RemoteChainFactory } from './createFrameChainTransport.js';
 import type { FrameStatusSource, HostChainSources } from './createHostChainPool.js';
@@ -79,7 +79,7 @@ export function createFakeHostChainSources() {
         hooks.onHalt(new Error('socket gone'));
       };
       upstreams.push(upstream);
-      return onMessage => connectUpstream(upstream, onMessage);
+      return { provider: onMessage => connectUpstream(upstream, onMessage), followLimit: RPC_FOLLOW_LIMIT };
     }),
   };
 }
@@ -134,7 +134,7 @@ export function createFakeSocketChain(
   hooks: ChainTransportHooks,
 ): ReturnType<HostChainSources['createRpcChain']> {
   // The fake socket implements the members the transport reaches, not the whole browser WebSocket.
-  return createCoreRpcChainProvider(genesisHash, {
+  return createCoreRpcChainTransport(genesisHash, {
     hooks,
     WebSocketBase: FakeWebSocket as unknown as typeof WebSocket,
   });

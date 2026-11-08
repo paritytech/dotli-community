@@ -6,9 +6,18 @@
 // product frame, the recent list, the protocol frame's telemetry, the block client) and what reloads or writes the page
 // (the CID cache, the failure screen) is passed in. The page's own state is imported.
 
-import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
-import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
+import {
+  getActiveTldSuffix,
+  getNetwork,
+  hasLightClient,
+  isVerifiedSession,
+  withActiveTld,
+  type Backend,
+} from '@dotli/config';
+import type { SandboxBlockRelay } from '@dotli/bitswap';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
+import { isLoadedOutcome } from '@dotli/sandbox-wire';
 import {
   createAsyncTaskPool,
   formatDuration,
@@ -31,13 +40,14 @@ import type { LoadFailure } from './presentLoadFailure.js';
 import { startLoadProgress, type LoadEvents } from './startLoadProgress.js';
 import { assertLaunchable } from './assertLaunchable.js';
 import { fromCachedManifest, toCachedManifest, type ProductManifests } from './cachedManifest.js';
-import { getManifestFacts } from './getManifestFacts.js';
+import { getProductFacts } from './getProductFacts.js';
 import type { NameSource } from './createNameSource.js';
 import { showNoContentError } from './showNoContentError.js';
-import { watchSandbox } from './watchSandbox.js';
+import type { SandboxLoad } from './watchSandboxLoad.js';
 import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
 import { startResolutionTrace, type CidCacheResult } from './startResolutionTrace.js';
+import type { HostBridge } from './runtime/bridge.js';
 import type { CoreLease } from './runtime/createPageCore.js';
 import type { ProductFrame } from './runtime/createProductFrame.js';
 import { authState } from './runtime/state/authState.js';
@@ -46,34 +56,46 @@ import { startShieldAutoHide } from './startShieldAutoHide.js';
 import { urlPillState, type ShieldState } from './state/urlPillState.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { readPageClock } from './readPageClock.js';
+import { cacheReadMetric } from './cacheReadMetric.js';
 
-/** The sandbox's one report on the content it was handed. */
-export type ContentOutcome = 'loaded' | 'failed';
+const bootReport = createReporter({ flow: 'boot' });
+const resolveReport = createReporter({ flow: 'resolve' });
+const contentReport = createReporter({ flow: 'content' });
 
-export type LoaderFrame = {
-  /**
-   * Names the product before anything resolves, so a login clicked meanwhile boots its core rather than a second one.
-   * Throws when the page's core is not set up yet.
-   */
-  setPageProduct: (product: { label: string }) => void;
-  /**
-   * Leases the page product's core, so it boots while the load reads the name. Rejects when the core cannot boot, with the boot's error or
-   * `CoreRedialError` for a replacement that could not boot. Throws when the page's core is not set up yet.
-   */
-  holdCore: () => Promise<Pick<CoreLease, 'release'>>;
-  /** Mounts the product's sandbox on this content. Settles once the sandbox owns the download. */
-  render: ProductFrame['render'];
-  /** Takes the product down for good under the failure screen, which nothing the frame does later clears. */
-  halt: ProductFrame['halt'];
-  /**
-   * Calls `callback` once, for the first outcome the sandbox reports on its content. Returns the function that removes
-   * it. Never throws.
-   */
-  onContentDone: (callback: (outcome: ContentOutcome, failedStep: string | undefined) => void) => () => void;
-  /** The content fetch's progress, as the sandbox's blocks pass through this window. Returns its unsubscribe. */
-  onContentProgress: LoadEvents['onContentProgress'];
-  /** Hears each message the sandbox sends about its load. Returns its unsubscribe. Never throws. */
-  onSandboxHeard: (listener: () => void) => () => void;
+/**
+ * Count. The failure screen of a load whose product was already on screen threw. Tagged `outcome` (error) and
+ * `reason` (the error's name).
+ */
+const resolveFailureScreenMetric = defineCount<'error'>('resolve.failure_screen');
+
+/** From CID cache hit to content rendered. */
+const E2E_FAST = 'e2e.fast_path';
+
+/** CID cache miss, then resolve, fetch and render. */
+const E2E_SLOW = 'e2e.slow_path';
+
+/** What the loader reaches outside itself, one member per owner. */
+export type LoaderPorts = {
+  /** The page's product frame. */
+  product: Pick<ProductFrame, 'render' | 'halt'>;
+  /** The bridge's page core, named and leased as the load starts. */
+  core: {
+    /**
+     * Names the product before anything resolves, so a login clicked meanwhile boots its core rather than a second
+     * one. Throws when the page's core is not set up yet.
+     */
+    setPageProduct: HostBridge['setPageProduct'];
+    /**
+     * Leases the page product's core, so it boots while the load reads the name. Rejects when the core cannot boot,
+     * with the boot's error or `CoreRedialError` for a replacement that could not boot. Throws when the page's core
+     * is not set up yet.
+     */
+    acquirePageCore: () => Promise<Pick<CoreLease, 'release'>>;
+  };
+  /** What the sandbox reported about its load. */
+  sandbox: Pick<SandboxLoad, 'outcome' | 'expectHeardWithin'>;
+  /** The content's blocks as they pass through this window. */
+  content: Pick<SandboxBlockRelay, 'onProgress'>;
 };
 
 /** A label's content as the CID cache keeps it. */
@@ -130,8 +152,8 @@ type Params = {
   startedAt: number;
   /** Where names and manifests are read. */
   names: NameSource;
-  /** The product's frame. */
-  frame: LoaderFrame;
+  /** What the load reaches outside itself. */
+  ports: LoaderPorts;
   /** The page path ahead of the product's own, which its frame does not get. */
   base?: string | undefined;
   /** The CID cache for this network. */
@@ -185,7 +207,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   const {
     backend,
     names,
-    frame,
+    ports,
     cidCache,
     flowId,
     startedAt,
@@ -196,14 +218,14 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     debugBus = pageDebugBus,
   } = options;
   const attempt = beginAttempt(label);
-  log.event('Route: app', { flow: 'boot', label, attempt: attempt.attemptNumber, entry: attempt.entry });
+  bootReport.log.event('Route: app', { label, attempt: attempt.attemptNumber, entry: attempt.entry });
   // On every event, so errors and the resolution span join into journeys without a second id.
   m.setDefaults({
     journey_id: attempt.journeyId,
     attempt_number: String(attempt.attemptNumber),
     entry: attempt.entry,
   });
-  frame.setPageProduct({ label });
+  ports.core.setPageProduct({ label });
 
   // In parallel with the CID. The frame awaits it before it connects the product, whose execution kind it picks.
   const chat = readChatCapability(label, async () => {
@@ -241,7 +263,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     onChainSync: telemetry.subscribeChainSync,
     onChainDetail: telemetry.subscribeChainDetail,
     onNetBytes: telemetry.subscribeNetBytes,
-    onContentProgress: frame.onContentProgress,
+    onContentProgress: ports.content.onProgress,
   };
   // Kept past the load, as the chain reports go on feeding the network monitor, so the cleanup goes unused.
   const progress = startLoadProgress({ label, backend, flowId, events, trace, timers, now: readClock, debugBus });
@@ -251,7 +273,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
   // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
   function getSmoldotDbCacheTags(): Record<string, string> {
-    const inapplicable = cidCacheResult === 'hit' || backend === 'rpc-gateway';
+    const inapplicable = cidCacheResult === 'hit' || !hasLightClient(backend);
     return {
       smoldotdb_relay_cache: inapplicable ? 'n/a' : telemetry.getSmoldotDbOutcome('relay'),
       smoldotdb_hub_cache: inapplicable ? 'n/a' : telemetry.getSmoldotDbOutcome('assethub'),
@@ -260,21 +282,17 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   }
 
   let resolveFailed = false;
-  // Set once the load waits for the content's outcome, which a failed load no longer does.
-  let stopSettlingOnContent: (() => void) | null = null;
   // Set once the load hears a refused wire version, which a failed load no longer does.
   let stopHearingMismatch: (() => void) | null = null;
   /** Reports the failure and shows its screen. Throws what the screen threw. */
   function failLoad(error: unknown): void {
     resolveFailed = true;
-    stopSettlingOnContent?.();
     stopHearingMismatch?.();
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
-    const description = describeError(error, { isP2p: backend !== 'rpc-gateway' });
+    const description = describeError(error, { readBackend: () => backend });
     // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
-    const dependency = backend === 'rpc-gateway' ? 'asset-hub-rpc' : 'smoldot';
-    captureException(error, {
-      flow: 'resolve',
+    const dependency = hasLightClient(backend) ? 'smoldot' : 'asset-hub-rpc';
+    resolveReport.capture(error, {
       step,
       span: trace.span,
       tags: {
@@ -307,35 +325,36 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     if (resolveFailed) {
       return;
     }
-    frame.halt();
+    ports.product.halt();
     try {
       failLoad(error);
     } catch (screenError: unknown) {
-      reportDefect(screenError, {
-        flow: 'resolve',
+      resolveReport.defect(screenError, {
         step: 'failure_screen',
-        metric: S.RESOLVE_FAILURE_SCREEN,
+        metric: resolveFailureScreenMetric,
         message: `[dot.li] The failure screen for ${failure} failed:`,
       });
     }
   }
-  // The content fetch outlives the handoff, so the trace waits for the sandbox's report. Subscribed before the
-  // handoff, since a cached archive can report before it returns.
+  // The content fetch outlives the handoff, so the trace waits for the sandbox's report.
   function settleOnContent(): void {
-    stopSettlingOnContent = frame.onContentDone((outcome, failedStep) => {
-      if (resolveFailed) {
-        return;
-      }
-      pageTopbarAutoHide.setContentShown(outcome === 'loaded');
-      if (outcome === 'loaded') {
-        log.event('Content loaded', { flow: 'content' });
-        endJourney();
-        trace.finish('rendered');
-        return;
-      }
-      log.event('Content failed', { flow: 'content', failed_step: failedStep ?? 'unknown' });
-      trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
-    });
+    void ports.sandbox.outcome
+      .then(({ outcome, failedStep }) => {
+        if (resolveFailed) {
+          return;
+        }
+        const loaded = isLoadedOutcome(outcome);
+        pageTopbarAutoHide.setContentShown(loaded);
+        if (loaded) {
+          contentReport.log.event('Content loaded');
+          endJourney();
+          trace.finish('rendered');
+          return;
+        }
+        contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
+        trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+      })
+      .catch(contentReport.listener('product_loader.content_outcome'));
   }
   /** Resolves false when a failure heard during the render already ended the load, so nothing after it runs. */
   async function render(cid: string, manifests: ProductManifests): Promise<boolean> {
@@ -343,19 +362,24 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     enterStep('render_handoff');
     await coreHold;
     settleOnContent();
-    const sandbox = watchSandbox(frame.onSandboxHeard, { timers });
-    await frame.render({ mode: 'subdomain', label, cid, base: options.base, chat, ...getManifestFacts(manifests) });
+    await ports.product.render({
+      mode: 'subdomain',
+      label,
+      cid,
+      base: options.base,
+      chat,
+      facts: getProductFacts(manifests),
+    });
     // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
     // the app would sit there with no chain or store, so the reload screen replaces it.
     stopHearingMismatch = options.onProtocolVersionMismatch(error => {
       failAfterHandoff(error, 'a protocol version mismatch');
     });
     if (resolveFailed) {
-      sandbox.dispose();
       return false;
     }
     // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
-    void sandbox.expectWithin().catch((error: unknown) => {
+    void ports.sandbox.expectHeardWithin().catch((error: unknown) => {
       failAfterHandoff(error, 'a silent sandbox');
     });
     return true;
@@ -397,8 +421,8 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   }
   /** Launches the copy the CID cache served, then has it checked against the network. Rejects when it is refused. */
   async function loadCached(cached: CachedEntry): Promise<void> {
-    m.count(S.CACHE_READ, { outcome: 'hit', surface: 'cid_cache' });
-    log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
+    cacheReadMetric.count({ outcome: 'hit', surface: 'cid_cache' });
+    resolveReport.log.event('CID cache hit', { cid: cached.cid });
     trace.recordNameResolved(cached.cid);
     // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
     const cachedManifests = fromCachedManifest(cached.manifests);
@@ -409,7 +433,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       cidCache.revalidateLater({ label, servedCid: cached.cid, onScreen: false });
       throw error;
     }
-    const live = await m.span(S.E2E_FAST, () => {
+    const live = await m.span(E2E_FAST, () => {
       settleShield();
       return render(cached.cid, cachedManifests);
     });
@@ -418,8 +442,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
     settleRendered(cachedManifests);
     performance.mark('dotli:main:end');
-    log.event('Sandbox mounted', {
-      flow: 'resolve',
+    resolveReport.log.event('Sandbox mounted', {
       path: 'cache',
       total_ms: Math.round(readClock() - startedAt),
     });
@@ -434,9 +457,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
    */
   async function loadCold(): Promise<void> {
     if (cidCacheResult === 'miss') {
-      m.count(S.CACHE_READ, { outcome: 'miss', surface: 'cid_cache' });
+      cacheReadMetric.count({ outcome: 'miss', surface: 'cid_cache' });
     }
-    log.event(cidCacheResult === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
+    resolveReport.log.event(cidCacheResult === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss');
 
     // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
     const coldStartMs = readClock();
@@ -459,7 +482,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
     enterStep('manifest_read');
     const manifests = await manifestsRead;
-    log.event('Manifests read', { flow: 'resolve', root: manifests.root.kind, app: manifests.app.kind });
+    resolveReport.log.event('Manifests read', { root: manifests.root.kind, app: manifests.app.kind });
     enterStep('launch_gate');
     assertLaunchable(manifests.root, manifests.app);
 
@@ -473,13 +496,12 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
     settleRendered(manifests);
 
-    m.distribution(S.E2E_SLOW, readClock() - coldStartMs, {
+    m.distribution(E2E_SLOW, readClock() - coldStartMs, {
       unit: 'millisecond',
       attributes: { outcome: 'ok', chain_backend: backend },
     });
     performance.mark('dotli:main:end');
-    log.event('Sandbox mounted', {
-      flow: 'resolve',
+    resolveReport.log.event('Sandbox mounted', {
       path: 'cold',
       total_ms: Math.round(readClock() - startedAt),
     });
@@ -492,7 +514,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     const resolveStart = readClock();
 
     const resolveFlowId = createRandomId();
-    const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
+    const resolveSource: 'smoldot' | 'rpc-gateway' = hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
     debugBus.emit({
       layer: 'resolve',
       event: 'started',
@@ -501,7 +523,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       payload: { label, source: resolveSource },
     });
 
-    log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend });
+    resolveReport.log.event('Resolving name', { name: withActiveTld(`app.${label}`), backend });
     const cid = await names.resolveProduct(label, {
       onPhase: phase => {
         progress.resolvePhase(phase);
@@ -528,8 +550,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     log.debug(
       `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(resolveStart, { now: readClock() })} (total ${formatElapsed(startedAt, { now: readClock() })}) -> ${cid ?? 'null'}`,
     );
-    log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
-      flow: 'resolve',
+    resolveReport.log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
       ms: Math.round(readClock() - resolveStart),
       ...(cid !== null ? { cid } : {}),
     });
@@ -540,7 +561,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
   // The core boots while the name resolves. The render awaits it and reports its failure, and a load that ends earlier
   // reports its own outcome instead.
-  const coreHold = markHandled(frame.holdCore());
+  const coreHold = markHandled(ports.core.acquirePageCore());
   try {
     const cached = await readCachedCopy();
     if (cached !== null) {

@@ -1,11 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { reportExpected } from '@dotli/metrics';
+import { createReporter, type CountMetric } from '@dotli/metrics';
 import { CoreRedialError } from '../coreRedialError.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import { MainAccountError } from './createMainAccountSource.js';
 import type { SiteRoundFailure } from './siteRoundErrors.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 /** The `step` tag every report of a site's round carries. */
 export const SITE_ROUND_STEP = 'site_round';
@@ -14,9 +16,9 @@ export const SITE_ROUND_STEP = 'site_round';
  * Reports a failed step of a site's round and counts it as `error` with the step on `metric`. A failure caused by a
  * core redial, which is captured where the redial fails, or by a main session that is gone is counted, not captured.
  */
-export function reportSiteFailure(failure: SiteRoundFailure, metric: string): void {
+export function reportSiteFailure(failure: SiteRoundFailure, metric: CountMetric<'error'>): void {
   if (isFromCoreRedial(failure) || isSignedOut(failure)) {
-    reportExpected(failure, { flow: 'wallet', step: SITE_ROUND_STEP, metric, reason: failure.step });
+    report.expected(failure, { step: SITE_ROUND_STEP, metric, reason: failure.step });
     return;
   }
   reportWalletFailure(failure, {

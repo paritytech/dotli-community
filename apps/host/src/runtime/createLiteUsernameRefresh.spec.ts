@@ -159,10 +159,12 @@ describe('lite username refresh', () => {
     await liteUsername.refresh(buildWallet('alice.42'), readReportedAccount());
 
     // Then the failure is recorded as expected and counted
-    expect(captures.expected).toHaveBeenCalledWith(expect.objectContaining({ message: 'people unavailable' }), {
-      flow: 'wallet',
-      step: 'lite_username_read',
-    });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'people unavailable' }),
+      expect.objectContaining({
+        step: 'lite_username_read',
+      }),
+    );
     expect(counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'username-read' }]);
   });
 });

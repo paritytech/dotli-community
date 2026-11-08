@@ -45,11 +45,13 @@ describe('mountRoot', () => {
 
     // Then
     expect(good.querySelector('[data-testid="ok"]')?.textContent).toBe('ok');
-    expect(failure).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }), {
-      flow: 'ui',
-      step: 'root_render',
-      tags: { root: 'bad' },
-    });
+    expect(failure).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'boom' }),
+      expect.objectContaining({
+        step: 'root_render',
+        tags: { root: 'bad' },
+      }),
+    );
     expect(document.body.contains(good)).toBe(true);
   });
 
@@ -112,11 +114,13 @@ describe('mountRoot', () => {
     expect(liveBeforeBreak).not.toBeNull();
     expect(order).toEqual(['disposed']);
     expect(failure).toHaveBeenCalledTimes(1);
-    expect(failure).toHaveBeenCalledWith(expect.objectContaining({ message: 'broke 1' }), {
-      flow: 'ui',
-      step: 'root_render',
-      tags: { root: 'late' },
-    });
+    expect(failure).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'broke 1' }),
+      expect.objectContaining({
+        step: 'root_render',
+        tags: { root: 'late' },
+      }),
+    );
   });
 
   it('As a sub-project, I mount a view that throws on its first render and it is reported once and its root disposed', async () => {

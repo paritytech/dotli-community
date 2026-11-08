@@ -34,7 +34,7 @@ describe('guarded presence', () => {
 
     // Then it reads unknown, the miss is a breadcrumb, not an issue, and it is counted with its class name
     expect(result).toBe('unknown');
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_read' });
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'presence_read' }));
     expect(captures.exception).not.toHaveBeenCalled();
     expect(counted('session.presence_read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
@@ -139,7 +139,10 @@ describe('page presence', () => {
 
     // Then it reads unknown and the miss is a breadcrumb
     expect(result).toBe('unknown');
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'wallet', step: 'presence_read' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'presence_read' }),
+    );
     expect(captures.exception).not.toHaveBeenCalled();
   });
 
@@ -248,8 +251,8 @@ describe('presence writes', () => {
       { outcome: 'error', reason: 'set' },
       { outcome: 'error', reason: 'clear' },
     ]);
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_set' });
-    expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_clear' });
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'presence_set' }));
+    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'presence_clear' }));
     expect(captures.exception).not.toHaveBeenCalled();
   });
 });

@@ -201,6 +201,39 @@ export function createRepository() {
 }
 ```
 
+### Pass collaborators whole, grouped by owner
+
+A parameter a module only hands on is typed by reference to its owner, as `Owner['member']` or
+`Pick<Owner, 'a' | 'b'>`, never restated. Collaborators that one owner provides travel as one object. What one
+instance owns, such as its scope, its trackers and its liveness checks, is one context object, built where the
+instance is built and handed on whole. Only the module that uses a part of it picks that part.
+
+A lazy chunk whose capabilities eager code calls from several modules exports one typed facade object. Eager code
+takes it as `() => Promise<Facade>`, or a `Pick` of it, never a wrapper per capability. A chunk loaded for one
+component or one call may return its module namespace.
+
+Why: a hop that restates or re-picks a collaborator changes whenever the collaborator does, and so does every spec
+that builds the hop. Handed on whole, a new member edits its owner and its user only.
+
+```ts
+// Do
+type Params = {
+  job: JobContext;
+  prompts: Pick<Prompts, 'ask'>;
+  reports: () => Promise<Pick<ReportsChunk, 'export' | 'print'>>;
+};
+
+// Don't
+type Params = {
+  label: string;
+  scope: Scope;
+  tracker: Tracker;
+  ask: (question: Question) => Promise<Answer>;
+  exportReport: () => Promise<void>;
+  printReport: () => Promise<void>;
+};
+```
+
 ### Inject through a framework only where the architecture defines it
 
 Use a DI framework (slots, pipelines, feature injection) only when the project has one and its architecture says which
@@ -395,13 +428,19 @@ Why: `for...of` supports `break`, `continue`, `return` and `await`, and does not
 
 ### Branch on a union in its own function
 
-Handle each member of a union that one module owns in a function that takes the value and returns from a `switch` over
-it, one `case` per member. Leave out `default`, so a new member fails the type check. A set that other modules extend is
-composed instead (see "Inject through a framework only where the architecture defines it").
+Handle each member of a union in a function that returns from a `switch` over it, one `case` per member. Leave out
+`default`, so a new member fails the type check. A set that other modules extend is composed instead (see "Inject
+through a framework only where the architecture defines it").
+
+Only the module that owns the union compares its raw tag. A union read outside its owner gets named views or predicates
+exported beside it, and readers outside ask those. A reader that holds facts of its own for every member, such as its own
+copy per member, maps every member in a `switch` or a `satisfies Record<Member, …>` table. It never picks out one member
+with `===`, and never groups members in one `case` to answer a question the owner could name.
 
 A function that reads only some members of a large union lists those and ends with a `default`, with a one-line reason.
 
-Why: the mapping has a name and one place to change, and the compiler finds every function a new member must reach.
+Why: the mapping has a name and one place to change, the compiler finds every function a new member must reach, and a
+reader that only asks a question stays unchanged when a member is added.
 
 ```ts
 // Do
@@ -413,11 +452,57 @@ function getStatusLabel(status: Status) {
       return 'Running';
     case 'failed':
       return 'Failed';
+    case 'done':
+      return 'Done';
   }
 }
 
 // Don't
 const label = status === 'idle' ? 'Idle' : status === 'running' ? 'Running' : 'Failed';
+```
+
+```ts
+// Do: the owner module names the question
+export function isTerminal(status: Status): boolean {
+  switch (status) {
+    case 'idle':
+    case 'running':
+      return false;
+    case 'failed':
+    case 'done':
+      return true;
+  }
+}
+
+// In a reader module
+if (isTerminal(job.status)) {
+  // ...
+}
+
+// Don't: a reader module picks members out itself
+if (job.status === 'failed' || job.status === 'done') {
+  // ...
+}
+```
+
+### A variant flag is a predicate
+
+A mode or kind that changes behaviour in several places (a backend, a wallet mode) is answered by a capability predicate
+its owner exports, never compared at each site. When the variant is fixed before its readers are built, pass a strategy
+object picked once instead.
+
+Why: a reader asks the question it means, and adding a variant edits the owner's table, not every reader.
+
+```ts
+// Do
+if (hasOfflineCache(storage)) {
+  // ...
+}
+
+// Don't
+if (storage === 'indexeddb' || storage === 'opfs') {
+  // ...
+}
 ```
 
 ## Types
@@ -450,6 +535,28 @@ enum Status {
   Failed,
 }
 type State = { status: Status; data?: Data; error?: Error };
+```
+
+### Per-member facts in one table
+
+Facts the owner knows about each member (a label, a tone, a default, a policy) live in one table beside the union, typed
+`satisfies Record<Member, Facts>`, so a new member fails the check until its row exists. Predicates read the table.
+Fixtures and stories import the table instead of copying it. A fact that is a component, or that would pull code into a
+chunk that must not load it, stays in its own `Record` in the layer that renders it.
+
+Why: one row per member is one edit per member, and a copy in a fixture cannot drift.
+
+```ts
+type Plan = 'free' | 'team';
+
+const PLAN_FACTS = {
+  free: { label: 'Free', seats: 1 },
+  team: { label: 'Team', seats: 10 },
+} satisfies Record<Plan, { label: string; seats: number }>;
+
+function getSeats(plan: Plan): number {
+  return PLAN_FACTS[plan].seats;
+}
 ```
 
 ### Brand values that look alike
@@ -559,6 +666,10 @@ domain outcome, not a result wrapper. A failure of the code or the transport sti
 Give a failure its own class (`class TimeoutError extends Error`) when a caller handles it differently from other
 failures, or needs data about it. Callers tell failures apart with `instanceof` and read typed fields, never match
 message strings. A shared base class groups a family of failures.
+
+A failure that reaches another package in another form than its class, such as a JSON-RPC error object or a copy rebuilt
+after crossing a frame or worker, is recognised by a predicate the package that owns the failure or its marker exports.
+The predicate knows every form. Callers never match the message text.
 
 Why: one error model everywhere, and the happy path reads without unwrapping. A derived class makes the failure part of
 the API.

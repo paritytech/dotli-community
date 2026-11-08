@@ -3,8 +3,9 @@
 
 // Reads content by CID over a verifying block source or over an IPFS gateway, with no marks or metrics.
 
-import { formatDuration, log } from '@dotli/shared';
+import { formatDuration } from '@dotli/shared';
 import { CID } from 'multiformats/cid';
+import { createReporter } from '@dotli/metrics';
 import { DAG_PB, RAW } from './codecs.js';
 import { fetchCarFromIpfs, fetchFromIpfs } from './fetchFromIpfs.js';
 import { getDefaultGateway } from './getDefaultGateway.js';
@@ -14,6 +15,8 @@ import { parseIpfsResponse } from './parseIpfsResponse.js';
 import type { ArchiveFiles, BlockSource, FetchResult, StatusCallback } from './types.js';
 import { assertBlockMatchesCid } from './verify.js';
 import { walkUnixFsDag } from './walkUnixFsDag.js';
+
+const report = createReporter({ flow: 'content' });
 
 type ReadViaBitswapParams = {
   /** The root to walk from. */
@@ -65,13 +68,12 @@ export async function readViaGateway({
   const host = getGatewayHost(gateway);
   if (cid.code === DAG_PB) {
     onStatus?.('Fetching archive from IPFS gateway...');
-    log.event(`Requesting CAR of ${cidString} from ${host}`, { flow: 'content', gateway: host });
+    report.log.event(`Requesting CAR of ${cidString} from ${host}`, { gateway: host });
     const gatewayStart = performance.now();
     const carBuffer = await fetchCarFromIpfs(cidString, { gateway, fetch: fetchResource });
-    log.event(
+    report.log.event(
       `Fetched ${String(Math.round(carBuffer.length / 1024))} KB CAR from ${host} in ${formatDuration(gatewayStart)}`,
       {
-        flow: 'content',
         gateway: host,
         bytes: carBuffer.length,
       },
@@ -83,17 +85,19 @@ export async function readViaGateway({
   }
   if (cid.code === RAW) {
     onStatus?.('Fetching content via IPFS gateway...');
-    log.event(`Requesting raw block ${cidString} from ${host}`, { flow: 'content', gateway: host });
+    report.log.event(`Requesting raw block ${cidString} from ${host}`, { gateway: host });
     const gatewayStart = performance.now();
     const { data } = await fetchFromIpfs(cidString, { gateway, fetch: fetchResource });
-    log.event(`Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${formatDuration(gatewayStart)}`, {
-      flow: 'content',
-      gateway: host,
-      bytes: data.length,
-    });
+    report.log.event(
+      `Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${formatDuration(gatewayStart)}`,
+      {
+        gateway: host,
+        bytes: data.length,
+      },
+    );
     // Untrusted transport.
     assertBlockMatchesCid(cid, data);
-    log.event(`Block ${cidString} verified`, { flow: 'content', bytes: data.length });
+    report.log.event(`Block ${cidString} verified`, { bytes: data.length });
     return readRawRoot(data);
   }
   throw new Error(`Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`);
@@ -113,6 +117,6 @@ function toFetchResult(files: ArchiveFiles): FetchResult {
   if (keys.length === 1 && index !== undefined) {
     return { type: 'single', content: index };
   }
-  log.event(`Archive has ${String(keys.length)} files`, { flow: 'content', files: keys.length });
+  report.log.event(`Archive has ${String(keys.length)} files`, { files: keys.length });
   return { type: 'archive', files };
 }

@@ -3,8 +3,16 @@
 
 // The sign-in QR's drawing, apart from the modal so its races are tested without a page.
 
-import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { QrDrawOptions } from './qrCode.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * One drawing of the sign-in QR code. Tagged `outcome` and, on error, `reason`, as a failed one leaves the sign-in on
+ * its spinner with nothing to scan.
+ */
+const authQrRenderMetric = defineCount<'error' | 'ok'>('auth.qr_render');
 
 export type QrShowing<Canvas> = {
   /** Draws `payload` onto `canvas`. Once `signal` aborts the code is off show. */
@@ -42,17 +50,16 @@ export function presentQr<Canvas>(payload: string, deps: QrShowing<Canvas>): () 
         if (shown.signal.aborted) {
           return;
         }
-        m.count(S.AUTH_QR_RENDER, { outcome: 'ok' });
+        authQrRenderMetric.count({ outcome: 'ok' });
         deps.onDrawn({ payload, canvas });
       },
       (err: unknown) => {
         if (shown.signal.aborted) {
           return;
         }
-        reportDefect(err, {
-          flow: 'wallet',
+        report.defect(err, {
           step: 'qr_render',
-          metric: S.AUTH_QR_RENDER,
+          metric: authQrRenderMetric,
           message: '[dot.li] QR render failed:',
         });
       },

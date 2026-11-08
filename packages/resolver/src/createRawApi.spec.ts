@@ -3,8 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DisjointError, OperationInaccessibleError, OperationLimitError } from '@polkadot-api/substrate-client';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
 import { ApiStoppedError } from './apiStoppedError.js';
@@ -260,7 +259,7 @@ describe('createRawApi', () => {
   describe('the end of the chain follow', () => {
     it('As a resolver whose stop listener throws, I am reported and the next stop listener still hears the stop', () => {
       // Given
-      const captured = recordCaptures({ onFinished: onTestFinished });
+      const captured = recordReports({ onFinished: onTestFinished }).exceptions;
       const metrics = bindRecordingSentry({ onFinished: onTestFinished });
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -278,7 +277,7 @@ describe('createRawApi', () => {
 
       // Then
       expect(heard).toBe(1);
-      expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.stop' } }]);
+      expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
       expect(metrics.counted('listener.delivery')).toEqual([
         { outcome: 'error', reason: 'TypeError', owner: 'resolver.stop' },
       ]);
@@ -286,7 +285,7 @@ describe('createRawApi', () => {
 
     it('As a stop listener that subscribes after the follow stopped and throws, I am reported and my registration returns', () => {
       // Given
-      const captured = recordCaptures({ onFinished: onTestFinished });
+      const captured = recordReports({ onFinished: onTestFinished }).exceptions;
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
       follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
@@ -301,13 +300,13 @@ describe('createRawApi', () => {
 
       // Then
       expect(error).toBeUndefined();
-      expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.stop' } }]);
+      expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
     });
   });
 
   it('As a dotli user, I let finality move on after the follow stopped and the refused unpin is not reported', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const { client, follow } = createFakeSubstrateClient();
     const refused = Promise.reject(new DisjointError());
@@ -320,12 +319,12 @@ describe('createRawApi', () => {
 
     // Then
     expect(captured).toEqual([]);
-    expect(metrics.counted(S.RESOLVE_UNPIN)).toEqual([]);
+    expect(metrics.counted('resolve.unpin')).toEqual([]);
   });
 
   it('As an operator, I see an unpin the light client refuses while the follow runs reported and counted', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const { client, follow } = createFakeSubstrateClient();
     const refused = Promise.reject(new TypeError('Invalid block hash'));
@@ -337,8 +336,8 @@ describe('createRawApi', () => {
     await refused.catch(() => undefined);
 
     // Then
-    expect(captured).toEqual([{ flow: 'resolve', step: 'unpin', tags: undefined }]);
-    expect(metrics.counted(S.RESOLVE_UNPIN)).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(captured).toMatchObject([{ step: 'unpin', tags: undefined }]);
+    expect(metrics.counted('resolve.unpin')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
 });
 

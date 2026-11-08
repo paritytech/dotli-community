@@ -491,11 +491,11 @@ describe('An expected lifecycle watch state is a breadcrumb', () => {
     });
 
     // Then the loading screen's fallback is recorded as progress, not as a failure
-    expect(log.lines).toEqual([
+    expect(log.lines).toMatchObject([
       {
         level: 'info',
         message: 'Chain lifecycle watch unavailable',
-        attrs: { flow: 'protocol', chain: 'relay', reason: 'chain is not connected' },
+        attrs: { chain: 'relay', reason: 'chain is not connected' },
       },
     ]);
   });
@@ -518,11 +518,11 @@ describe('An expected lifecycle watch state is a breadcrumb', () => {
     await logged;
 
     // Then the failure is recorded as progress, not as a warning
-    expect(log.lines).toEqual([
+    expect(log.lines).toMatchObject([
       {
         level: 'info',
         message: 'Chain lifecycle watch ended',
-        attrs: { flow: 'protocol', chain: 'relay', reason: 'chain removed' },
+        attrs: { chain: 'relay', reason: 'chain removed' },
       },
     ]);
   });

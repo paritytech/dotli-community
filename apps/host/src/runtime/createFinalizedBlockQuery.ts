@@ -3,10 +3,19 @@
 
 // A chain's finalized block height for the diagnostics report.
 
-import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
-import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
+import { createReporter, defineCount } from '@dotli/metrics';
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import { isRemoteChainSupported } from '@dotli/protocol';
 import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
-import { loadBridge, loadPolkadotApi } from '../lazy.js';
+import { loadHostBridge, loadPolkadotApi } from '../lazy.js';
+
+const report = createReporter({ flow: 'ui' });
+
+/**
+ * One finalized height the diagnostics report asks a chain for. Tagged `outcome` (ok, error or timeout) and, on
+ * failure, `reason`, as a failed one prints n/a.
+ */
+const diagnosticsFinalizedBlockMetric = defineCount<'error' | 'ok' | 'timeout'>('diagnostics.finalized_block');
 
 export type FinalizedBlockClient = {
   /** Resolves with the chain's finalized block. Rejects when the chain does not answer. */
@@ -20,9 +29,9 @@ export type FinalizedBlockSource = {
    * The host's provider for the chain, or null when the active backend does not serve it. Rejects when the provider
    * fails to load.
    */
-  provider: (genesisHash: string) => Promise<RemoteChainProvider | null>;
+  provider: (genesisHash: string) => Promise<JsonRpcProvider | null>;
   /** Resolves with a client over `provider`. Rejects when the client fails to load. */
-  createClient: (provider: RemoteChainProvider) => Promise<FinalizedBlockClient>;
+  createClient: (provider: JsonRpcProvider) => Promise<FinalizedBlockClient>;
 };
 
 type Params = {
@@ -61,25 +70,23 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
         client.destroy();
       }
       // After the close, so a close that throws counts as the one error instead of after an ok.
-      m.count(S.DIAGNOSTICS_FINALIZED_BLOCK, { outcome: 'ok' });
+      diagnosticsFinalizedBlockMetric.count({ outcome: 'ok' });
       return block.number;
     } catch (error) {
       if (error === timeout) {
         // A slow chain is the network's state rather than a fault, and the report says n/a for it.
-        reportExpected(error, {
-          flow: 'ui',
+        report.expected(error, {
           step: 'diagnostics_block',
-          metric: S.DIAGNOSTICS_FINALIZED_BLOCK,
+          metric: diagnosticsFinalizedBlockMetric,
           outcome: 'timeout',
           reason: 'timeout',
           message: '[dot.li diagnostics] finalized block query timed out:',
         });
       } else {
         const reason = getErrorName(error) ?? 'unknown';
-        reportDefect(error, {
-          flow: 'ui',
+        report.defect(error, {
           step: 'diagnostics_block',
-          metric: S.DIAGNOSTICS_FINALIZED_BLOCK,
+          metric: diagnosticsFinalizedBlockMetric,
           message: '[dot.li diagnostics] finalized block query failed:',
           tags: { reason },
         });
@@ -94,6 +101,6 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
 /** The page's query, over the host's chains. The bridge and `polkadot-api` chunks load only once it is called. */
 export const queryFinalizedBlock = createFinalizedBlockQuery({
   provider: async genesisHash =>
-    isRemoteChainSupported(genesisHash) ? (await loadBridge()).getHostChainProvider(genesisHash) : null,
+    isRemoteChainSupported(genesisHash) ? (await loadHostBridge()).getHostChainProvider(genesisHash) : null,
   createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });

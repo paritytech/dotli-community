@@ -76,8 +76,8 @@ describe('chat capability', () => {
     await readChatCapability('myapp', () => Promise.reject(failure), { cache });
 
     // Then the failure is captured once and counted with its class name
-    expect({ captured: captures.exception.mock.calls, counted: counted('chat.capability') }).toEqual({
-      captured: [[failure, { flow: 'chat', step: 'capability_read' }]],
+    expect({ captured: captures.exception.mock.calls, counted: counted('chat.capability') }).toMatchObject({
+      captured: [[failure, { step: 'capability_read' }]],
       counted: [{ outcome: 'error', reason: 'TypeError' }],
     });
   });

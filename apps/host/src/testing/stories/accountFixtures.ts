@@ -7,13 +7,13 @@
 import { createSignal, flush } from 'solid-js';
 import type { AccountSession } from '../../components/account/account.js';
 import type { Account } from '../../components/account/account.js';
+import type { SessionKnowledge } from '../../runtime/session/authViews.js';
 
 type AccountShape = {
   loggedIn: boolean;
   session: AccountSession | undefined;
   connected: boolean;
-  restoring: boolean;
-  unreachable: boolean;
+  knowledge: SessionKnowledge;
   signingOut: boolean;
   local: boolean;
   elsewhere: boolean;
@@ -24,8 +24,7 @@ const RESTORING: AccountShape = {
   loggedIn: false,
   session: undefined,
   connected: false,
-  restoring: true,
-  unreachable: false,
+  knowledge: 'reading',
   signingOut: false,
   local: false,
   elsewhere: false,
@@ -44,8 +43,7 @@ export const storyAccount: Account = {
   loggedIn: () => shape().loggedIn,
   session: () => shape().session,
   connected: () => shape().connected,
-  restoring: () => shape().restoring,
-  unreachable: () => shape().unreachable,
+  knowledge: () => shape().knowledge,
   signingOut: () => shape().signingOut,
   local: () => shape().local,
   elsewhere: () => shape().elsewhere,
@@ -81,7 +79,13 @@ export const storyCallbacks = {
 
 /** A connected session. */
 export function connect(session: AccountSession): void {
-  changeShape({ loggedIn: true, session, connected: true, restoring: false, unreachable: false, elsewhere: false });
+  changeShape({
+    loggedIn: true,
+    session,
+    connected: true,
+    knowledge: 'known',
+    elsewhere: false,
+  });
 }
 
 /** Signed out, as boot leaves a visitor with no saved session. */
@@ -90,8 +94,7 @@ export function disconnect(): void {
     loggedIn: false,
     session: undefined,
     connected: false,
-    restoring: false,
-    unreachable: false,
+    knowledge: 'known',
     elsewhere: false,
   });
 }
@@ -103,12 +106,17 @@ export function signedInElsewhere(waits = true): void {
 
 /** A pairing or a login under way: no longer connected, a signed-in user's session kept. */
 export function notConnected(): void {
-  changeShape({ connected: false, restoring: false, unreachable: false });
+  changeShape({ connected: false, knowledge: 'known' });
 }
 
 /** The saved session cannot be reached. */
 export function unreachable(): void {
-  changeShape({ loggedIn: false, session: undefined, connected: false, restoring: false, unreachable: true });
+  changeShape({
+    loggedIn: false,
+    session: undefined,
+    connected: false,
+    knowledge: 'unreachable',
+  });
 }
 
 /** A sign-out waiting for the sign-out window, the account still shown. */

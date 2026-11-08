@@ -1,14 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import { getBackend, type Backend } from '@dotli/config';
-import { getProtocolClient, isRemoteChainConnectable, type ProtocolStatus } from '@dotli/protocol';
+import { getBackend, hasLightClient, type Backend } from '@dotli/config';
+import { getProtocolClient, isFrameDown, isRemoteChainConnectable, type ProtocolStatus } from '@dotli/protocol';
 import {
   createChainPool,
-  createCoreRpcChainProvider,
+  createCoreRpcChainTransport,
   isCoreRpcChainSupported,
-  RPC_FOLLOW_LIMIT,
   type ChainPool,
   type ChainTransport,
   type ChainTransportHooks,
@@ -31,7 +29,7 @@ export type HostChainSources = {
   /** Whether the protocol frame serves the chain. Never throws. */
   isRemoteChainConnectable: (genesisHash: string) => boolean;
   /** Opens Trusted Providers' own sockets. Answers null for a chain they do not serve. Never throws. */
-  createRpcChain: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+  createRpcChain: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
   /** Whether Trusted Providers serve the chain. Never throws. */
   isRpcChainSupported: (genesisHash: string) => boolean;
 };
@@ -39,6 +37,8 @@ export type HostChainSources = {
 type Params = {
   /** Unset, an idle chain closes after the pool's default minute. */
   destroyDelay?: number | undefined;
+  /** The protocol frame whose status holds back a lease that halted with it. The page's frame by default. */
+  frame?: FrameStatusSource;
 } & Partial<Pick<HostChainSources, 'backend' | 'createRemoteChain' | 'createRpcChain'>>;
 
 /** The protocol frame's status, read when a lease that died with the frame would be taken again. */
@@ -52,40 +52,34 @@ export const pageSources: HostChainSources = {
   backend: getBackend,
   createRemoteChain: createPageRemoteChain,
   isRemoteChainConnectable,
-  createRpcChain: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, { hooks }),
+  createRpcChain: (genesisHash, hooks) => createCoreRpcChainTransport(genesisHash, { hooks }),
   isRpcChainSupported: isCoreRpcChainSupported,
 };
 
 /** Every backend switch reloads the page, so a pool entry never outlives its backend. */
 export function createHostChainPool({
   destroyDelay,
+  frame = protocolFrame,
   backend = pageSources.backend,
   createRemoteChain = pageSources.createRemoteChain,
   createRpcChain = pageSources.createRpcChain,
 }: Params = {}): ChainPool {
   function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
-    switch (backend()) {
-      case 'rpc-gateway': {
-        const provider = createRpcChain(genesisHash, hooks);
-        return provider === null ? null : { provider, followLimit: RPC_FOLLOW_LIMIT };
-      }
-      case 'smoldot-direct':
-      case 'smoldot-shared-worker': {
-        const provider = createFrameChainTransport(genesisHash, hooks, { createRemoteChain });
-        return provider === null ? null : { provider, followLimit: Infinity };
-      }
-    }
+    return hasLightClient(backend())
+      ? createFrameChainTransport(genesisHash, hooks, { createRemoteChain })
+      : createRpcChain(genesisHash, hooks);
   }
 
   return createChainPool({
     // Reopening is cheap on every backend, since the frame keeps the light client's chain.
     ...(destroyDelay === undefined ? {} : { destroyDelay }),
     createTransport,
+    isFrameDown: () => isFrameDown(frame.getProtocolStatus()),
   });
 }
 
 /** The page's protocol frame status, read from the protocol client on each call. */
-export const protocolFrame: FrameStatusSource = { getProtocolStatus: () => getProtocolClient().frame.status.get() };
+const protocolFrame: FrameStatusSource = { getProtocolStatus: () => getProtocolClient().frame.status.get() };
 
 /** The page's one host chain pool. */
 export const hostChainPool = createHostChainPool();

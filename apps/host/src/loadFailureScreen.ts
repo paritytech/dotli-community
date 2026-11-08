@@ -4,7 +4,7 @@
 // The failure screen on this page: what its buttons do here.
 
 import { getSettings, type Backend } from '@dotli/config';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
 import { markAndReload } from './createContinuation.js';
@@ -15,6 +15,14 @@ import { sessionErrorSightings } from './createSessionErrorSightings.js';
 import { presentLoadFailure } from './presentLoadFailure.js';
 import type { LoaderFailureScreen } from './createProductLoader.js';
 import { pendingResets } from './runtime/createPendingResets.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/**
+ * A purge request the failure screen could not store before its reload. Tagged `outcome` and `reason`, as the reload
+ * then comes up on the chain database it had.
+ */
+const pendingResetScheduleMetric = defineCount<'error'>('pending_reset.schedule');
 
 /** This page's failure screen. */
 export const loadFailureScreen: LoaderFailureScreen = {
@@ -48,10 +56,9 @@ function resetProtocolOnReload(): void {
     pendingResets.schedule(['protocol']);
   } catch (error: unknown) {
     // No session storage, as in a private window, so the reload comes up on the chain database it had.
-    reportExpected(error, {
-      flow: 'resolve',
+    report.expected(error, {
       step: 'pending_reset',
-      metric: S.PENDING_RESET_SCHEDULE,
+      metric: pendingResetScheduleMetric,
       reason: 'failure_screen',
       message: '[dot.li] protocol purge not stored before the reload:',
     });

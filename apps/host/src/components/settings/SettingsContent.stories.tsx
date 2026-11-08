@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
-  BACKEND_LABELS,
+  BACKEND_FACTS,
+  hasSharedWorker,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Backend,
   type CacheSettings,
@@ -22,6 +23,7 @@ import {
   settingsAsked,
   storySettings,
 } from '../../testing/stories/settingsFixtures.js';
+import { TRANSPORT_FACTS, TRANSPORT_ORDER } from './SettingsContent.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
@@ -98,20 +100,16 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
         });
       }
     }
-    const choices: [Backend, string][] = [
-      ['smoldot-direct', 'Verified in your browser, separate for each tab'],
-      ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
-      ['rpc-gateway', 'Fetched from trusted servers. Fastest, but less private'],
-    ];
-    await expect(transports?.querySelectorAll('input')).toHaveLength(choices.length);
-    for (const [value, description] of choices) {
-      const disabled = value === 'smoldot-shared-worker' && !shown.sharedWorkerSupported;
+    await expect(transports?.querySelectorAll('input')).toHaveLength(TRANSPORT_ORDER.length);
+    for (const value of TRANSPORT_ORDER) {
+      const facts = TRANSPORT_FACTS[value];
+      const disabled = hasSharedWorker(value) && !shown.sharedWorkerSupported;
       await expectChoice('dotli-backend', value, {
-        label: BACKEND_LABELS[value],
-        description: disabled ? 'Unavailable in this browser or private window' : description,
+        label: BACKEND_FACTS[value].label,
+        description: disabled ? 'Unavailable in this browser or private window' : facts.description,
         selected: value === shown.backend,
         disabled,
-        ...(value === 'smoldot-direct' ? { chip: 'Recommended' } : {}),
+        ...(facts.recommended ? { chip: 'Recommended' } : {}),
       });
     }
   }

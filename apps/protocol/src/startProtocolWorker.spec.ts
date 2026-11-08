@@ -151,7 +151,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   let disconnectFailure: Error | null = null;
   const defaultPresync = Promise.resolve();
   const lightClient: LightClient = {
-    createChainProvider(genesisHash) {
+    createChainTransport(genesisHash) {
       chains.push(genesisHash);
       const disconnect = vi.fn<() => void>(() => {
         const failure = disconnectFailure;
@@ -161,9 +161,12 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
         }
       });
       disconnects.push(disconnect);
-      return (): JsonRpcConnection => {
-        opened.push(genesisHash);
-        return { send: () => undefined, disconnect };
+      return {
+        provider: (): JsonRpcConnection => {
+          opened.push(genesisHash);
+          return { send: () => undefined, disconnect };
+        },
+        followLimit: Infinity,
       };
     },
     isChainSupported: () => true,
@@ -721,7 +724,7 @@ describe('protocol SharedWorker', () => {
     await expect(linked.ready).rejects.toMatchObject({ name: 'ProtocolFatalError', message: FATAL });
     expect(
       metrics.distributions
-        .filter(metric => metric.name === `dotli.${S.PROTOCOL_SW_READY}`)
+        .filter(metric => metric.name === 'dotli.protocol.sw_ready')
         .map(metric => metric.attributes),
     ).toEqual([{ outcome: 'error', reason: 'worker_reported' }]);
   });
@@ -1513,7 +1516,7 @@ describe('protocol SharedWorker', () => {
 
     // Then nothing threw, the failed close was counted, and the tab's connection and port were freed
     expect(thrown).toBeUndefined();
-    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
     expect(tab.countCloses()).toBe(1);
   });

@@ -5,15 +5,10 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import type { PermissionStatus } from '../../runtime/permissionPolicy.js';
+import { ALL_PERMISSIONS, type PermissionStatus } from '../../runtime/permissionPolicy.js';
 import { expectPhone, openSurface } from '../../testing/stories/topbarFrame.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
-import {
-  givenApp,
-  resetStoryPermissions,
-  STORY_PERMISSIONS,
-  storyPermissions,
-} from '../../testing/stories/permissionsFixtures.js';
+import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import {
   DEFAULT_SETTINGS,
   givenSettings,
@@ -151,7 +146,7 @@ export const PhoneRowMarksGrants: Story = {
       await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
       await waitFor(() =>
         expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
-          STORY_PERMISSIONS.length,
+          ALL_PERMISSIONS.length,
         ),
       );
       await expect(statusOf('Camera')).toBe('granted');

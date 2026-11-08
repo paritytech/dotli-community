@@ -3,7 +3,7 @@
 
 // The SharedWorker's span of one tab's request, labelled with the page load that tab's hello names.
 
-import { spans as S, type m, type SpanHandle } from '@dotli/metrics';
+import type { m, SpanHandle } from '@dotli/metrics';
 import {
   getCallName,
   getFailure,
@@ -24,6 +24,12 @@ import type {
   Subscription,
   SubscriptionHandler,
 } from '@dotli/transport';
+
+/**
+ * One request as the SharedWorker served it, tagged with the asking tab's `resolution_id`. Apart from
+ * `protocol.request` because it excludes the postMessage hops.
+ */
+const PROTOCOL_WORKER_REQUEST = 'protocol.worker_request';
 
 type WithRequestSpanParams<Payload, Response, Domain extends DomainFailure> = {
   /** Opens the span of each timed call. */
@@ -151,7 +157,7 @@ export function withSubscriptionSpan<Start, Value, Domain extends DomainFailure>
 
 /** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
 function openRequestSpan({ openSpan, method, resolutionId }: OpenRequestSpanParams): SpanHandle {
-  return openSpan(S.PROTOCOL_WORKER_REQUEST, {
+  return openSpan(PROTOCOL_WORKER_REQUEST, {
     root: true,
     attributes: {
       method,

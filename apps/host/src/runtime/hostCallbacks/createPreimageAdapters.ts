@@ -5,11 +5,19 @@
 
 import type { PreimageHost } from '@parity/truapi-host';
 import { createCidFromHash, loadVerify as loadContentVerify } from '@dotli/content';
-import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, createLazyLoad, serializeError, log, noop, toHex } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import { fetchContentBlock, type PreimageBlock, type PreimageFetch } from './createBlockFetch.js';
 import { createResultStream } from './createResultStream.js';
+
+const report = createReporter({ flow: 'content' });
+
+/**
+ * One preimage lookup a product asked for. Tagged `outcome` and, on error, `reason`: `fetch` once per lookup whose
+ * backend keeps failing while the poll retries, or `mismatch` for bytes that do not hash to the key.
+ */
+const preimageLookupMetric = defineCount<'error' | 'ok'>('preimage.lookup');
 
 type Params = {
   /** Where the preimage's block is fetched from. The selected content backend by default. */
@@ -55,7 +63,7 @@ function createPreimageLookupSubscribe(
   const verify = createLazyLoad({
     load: loadVerify,
     onFirstMiss: error => {
-      reportLazyMiss({ flow: 'content', step: 'preimage_verify_load', error });
+      reportLazyMiss({ report, step: 'preimage_verify_load', error });
     },
   });
   const polls = createAsyncTaskPool({
@@ -95,10 +103,9 @@ function createPreimageLookupSubscribe(
           // Teardown aborts the in-flight lookup, so this ends a dropped subscription, not a failure.
           if (!aborter.signal.aborted && !failureRecorded) {
             failureRecorded = true;
-            reportExpected(error, {
-              flow: 'content',
+            report.expected(error, {
               step: 'preimage_lookup',
-              metric: S.PREIMAGE_LOOKUP,
+              metric: preimageLookupMetric,
               reason: 'fetch',
               message: `[${label}] preimage lookup failing, the poll keeps retrying:`,
             });
@@ -122,16 +129,15 @@ function createPreimageLookupSubscribe(
 
       polls.call(attempt, { pool: key, signal: aborter.signal, delay: INITIAL_POLL_DELAY_MS }).then(
         data => {
-          m.count(S.PREIMAGE_LOOKUP, { outcome: 'ok' });
+          preimageLookupMetric.count({ outcome: 'ok' });
           push(data);
         },
         (error: unknown) => {
           if (error instanceof PreimageMismatch) {
             // A backend served bytes that do not hash to the key, which no retry fixes.
-            reportDefect(error, {
-              flow: 'content',
+            report.defect(error, {
               step: 'preimage_lookup',
-              metric: S.PREIMAGE_LOOKUP,
+              metric: preimageLookupMetric,
               reason: 'mismatch',
               message: `[${label}] preimage lookup got the wrong bytes:`,
             });

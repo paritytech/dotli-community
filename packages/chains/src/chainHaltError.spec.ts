@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ChainHaltError } from './chainHaltError.js';
-import { getHaltReason } from './getHaltReason.js';
+import { ChainHaltError, getHaltReason } from './chainHaltError.js';
 
 describe('getHaltReason', () => {
   it('As a dotli integrator, I read from a chain halt error why its chain halted', () => {
@@ -21,22 +20,15 @@ describe('getHaltReason', () => {
     expect(frame.message).toBe('Chain halted (frame)');
   });
 
-  it('As a dotli integrator, I read a halt error from another realm by its name', () => {
-    // Given
-    const foreign = Object.assign(new Error('Chain halted (frame)'), { name: 'ChainHaltError', reason: 'frame' });
-
-    // When
-    const reason = getHaltReason(foreign);
-
-    // Then
-    expect(reason).toBe('frame');
-  });
-
   it.each([
     { kind: 'a plain error', halt: new Error('smoldot died') },
     { kind: 'no error', halt: undefined },
     { kind: 'a string', halt: 'frame' },
     { kind: 'a plain object with a reason', halt: { reason: 'frame' } },
+    {
+      kind: 'an error that only carries the name',
+      halt: Object.assign(new Error('Chain halted (frame)'), { name: 'ChainHaltError', reason: 'frame' }),
+    },
   ])('As a dotli integrator, I read any other halt as a halt of the chain: $kind', ({ halt }) => {
     // When
     const reason = getHaltReason(halt);

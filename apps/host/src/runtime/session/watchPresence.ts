@@ -4,12 +4,21 @@
 // The restore rule again on an open page each time its sign-in may have changed elsewhere, so a tab or window left
 // open drops an account signed out elsewhere.
 
-import { m, spans as S } from '@dotli/metrics';
-import { areBytesEqual, createAsyncTaskPool, log, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { areBytesEqual, createAsyncTaskPool, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
 import { reportWalletFailure } from '../walletFailure.js';
 import type { Presence } from './types.js';
 import type { Reconciled } from './restoreRule.js';
 import { recordPresenceWalletReadFailure } from './siteWallet.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. What an open page did as it became visible and found the signed-in flag changed. Tagged `outcome`:
+ * `signed_out` for a page it signed out, `switched` for a page it reloads onto a local wallet replaced elsewhere, and
+ * `error` for a sign-out that failed after its retries. Tagged `reason` (`visible`).
+ */
+const sessionPresenceWatchMetric = defineCount<'error' | 'signed_out' | 'switched'>('session.presence_watch');
 
 type Params = {
   /**
@@ -101,8 +110,8 @@ export function watchPresence({
       case 'keep':
         return;
       case 'switched':
-        log.event('local wallet replaced elsewhere, reloading onto it', { flow: 'wallet' });
-        m.count(S.SESSION_PRESENCE_WATCH, { outcome: 'switched', reason: 'visible' });
+        report.log.event('local wallet replaced elsewhere, reloading onto it');
+        sessionPresenceWatchMetric.count({ outcome: 'switched', reason: 'visible' });
         followWallet();
         return;
       case 'signed_out':
@@ -112,13 +121,13 @@ export function watchPresence({
   }
 
   async function signOutPage(): Promise<void> {
-    log.event('signed out elsewhere, signing out this page', { flow: 'wallet' });
+    report.log.event('signed out elsewhere, signing out this page');
     try {
       await signOutLocally();
     } catch (error) {
       throw new LocalSignOutFailed('Could not sign this page out', { cause: error });
     }
-    m.count(S.SESSION_PRESENCE_WATCH, { outcome: 'signed_out', reason: 'visible' });
+    sessionPresenceWatchMetric.count({ outcome: 'signed_out', reason: 'visible' });
   }
 
   function recheck(): void {
@@ -140,7 +149,7 @@ export function watchPresence({
           what: signOut ? 'local sign-out' : 'presence check',
           step: signOut ? 'presence_signout' : 'presence_check',
           reason: 'visible',
-          metric: S.SESSION_PRESENCE_WATCH,
+          metric: sessionPresenceWatchMetric,
         });
       });
   }

@@ -3,8 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { atom, type WritableAtom } from 'nanostores';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper, type FeedEnds, type FeedFrame, type FeedName } from './createFeedKeeper.js';
@@ -110,7 +109,7 @@ describe('createFeedKeeper', () => {
   it('As an operator, I see every end of a feed counted and logged as it happens, and captured once while it is held', async () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     createKeeper('shared_auth').follow();
     await timers.advance(0);
@@ -119,25 +118,25 @@ describe('createFeedKeeper', () => {
     const countedAtEach: number[] = [];
     for (const wait of [1_000, 2_000, 4_000]) {
       opened.at(-1)?.end(new TypeError('relay broke'));
-      countedAtEach.push(metrics.counted(S.PROTOCOL_FEED_END).length);
+      countedAtEach.push(metrics.counted('protocol.feed_end').length);
       await timers.advance(wait);
     }
 
     // Then
     expect(countedAtEach).toEqual([1, 2, 3]);
-    expect(metrics.counted(S.PROTOCOL_FEED_END)[0]).toEqual({
+    expect(metrics.counted('protocol.feed_end')[0]).toEqual({
       outcome: 'error',
       feed: 'shared_auth',
       reason: 'TypeError',
     });
     expect(errors).toHaveLength(3);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } }]);
+    expect(captured).toMatchObject([{ step: 'feed_end', tags: { feed: 'shared_auth' } }]);
   });
 
   it('As the host, I lose the transport under a feed and the feed is neither reported nor reopened', async () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     createKeeper('telemetry').follow();
     await timers.advance(0);
 
@@ -148,7 +147,7 @@ describe('createFeedKeeper', () => {
     // Then
     expect(opened).toHaveLength(1);
     expect(timers.countPending()).toBe(0);
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(metrics.counted('protocol.feed_end')).toEqual([]);
     expect(captured).toEqual([]);
   });
 

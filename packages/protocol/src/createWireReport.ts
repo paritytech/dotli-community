@@ -4,10 +4,26 @@
 // What a transport and its window provider cannot handle themselves, reported as the protocol has always counted and
 // logged it.
 
-import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
+import { createReporter, defineCount, type CountSink } from '@dotli/metrics';
 import { getErrorName, log } from '@dotli/shared';
 import { getFailureReason, type TransportIssue } from '@dotli/transport';
 import { getCallNameAt } from './methodPolicy.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A protocol message dropped on receipt. Tagged `outcome` (refused), `side` (host, frame or worker) and `reason`:
+ * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, `not_bytes` for
+ * data that is not an `ArrayBuffer`, which a host page of an earlier release sends, and `origin` for the first bytes
+ * from each page outside the frame's trust boundary.
+ */
+const protocolWireRefusedMetric = defineCount<'refused'>('protocol.wire_refused');
+
+/**
+ * A protocol message a side could not post, so its peer never hears it. Tagged `outcome` (error), `side` (host, frame
+ * or worker) and `reason` (the error's name).
+ */
+const protocolServePostMetric = defineCount<'error'>('protocol.serve_post');
 
 type WireSide = 'host' | 'frame' | 'worker';
 
@@ -17,7 +33,7 @@ type WireIssue = TransportIssue | { kind: 'refused'; reason: 'not_bytes' };
 type Params = {
   /** The side whose wire this reports, which tags every count. */
   side: WireSide;
-  count: typeof m.count;
+  count: CountSink;
   /** Where a refused origin is logged. The shared log when unset. */
   warn?: (...args: unknown[]) => void;
 };
@@ -35,7 +51,7 @@ const MAX_CAUSE_CHARS = 200;
  *
  * @example
  * // wire.onIssue goes to the transport, the rest to the window provider
- * const wire = createWireReport({ side: 'frame', count: m.count });
+ * const wire = createWireReport({ side: 'frame', count: countMetric });
  */
 export function createWireReport({ side, count, warn = log.warn }: Params) {
   const reportIssue = createIssueReporter({ side, count });
@@ -50,7 +66,7 @@ export function createWireReport({ side, count, warn = log.warn }: Params) {
       return;
     }
     refusedOrigins.add(origin);
-    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side });
+    count(protocolWireRefusedMetric, { outcome: 'refused', reason: 'origin', side });
     warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
   }
 
@@ -69,15 +85,14 @@ export function createWireReport({ side, count, warn = log.warn }: Params) {
  * provider threw on is captured, logged and counted, and a listener that threw is reported as a listener.
  */
 function createIssueReporter({ side, count }: IssueReporterParams): (issue: WireIssue) => void {
-  const reportListenerError = reportListener('protocol', 'protocol.transport');
+  const reportListenerError = report.listener('protocol.transport');
 
   function reportIssue(issue: WireIssue): void {
     switch (issue.kind) {
       case 'refused': {
         const { reason } = issue;
-        count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason, side });
-        log.event('protocol message refused', {
-          flow: 'protocol',
+        count(protocolWireRefusedMetric, { outcome: 'refused', reason, side });
+        report.log.event('protocol message refused', {
           reason,
           side,
           ...('cause' in issue ? { cause: getFailureReason(issue.cause).slice(0, MAX_CAUSE_CHARS) } : {}),
@@ -88,14 +103,13 @@ function createIssueReporter({ side, count }: IssueReporterParams): (issue: Wire
         const { error, call } = issue;
         const method = call === undefined ? null : getCallNameAt(call.section, call.method);
         // Captured, logged and counted by hand, since the count is the injected one.
-        captureException(error, {
-          flow: 'protocol',
+        report.capture(error, {
           step: 'serve_post',
           tags: method === null ? { side } : { method, side },
         });
         const what = method === null ? 'A message' : `A ${method} message`;
         log.error(`[dot.li protocol] ${what} could not be posted`, error);
-        count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', side });
+        count(protocolServePostMetric, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', side });
         return;
       }
       case 'listener_threw':

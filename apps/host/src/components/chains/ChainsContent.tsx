@@ -3,12 +3,13 @@
 
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { Backend } from '@dotli/config';
+import { hasLightClient, type Backend } from '@dotli/config';
 import { formatRate, formatSize } from '@dotli/shared';
 import { InfoIcon } from '@dotli/ui/icons';
 import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainGroup } from './ChainGroup.js';
-import type { NetworkHealth } from './networkHealth.js';
+import { isNetworkOffline } from '../../networkVerdict.js';
+import type { NetworkHealth } from '../../networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
 import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
@@ -33,7 +34,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   const status = createMemo(() =>
     describeNetworkStatus(
       props.network().verdict,
-      props.health() === 'err',
+      isNetworkOffline(props.health()),
       props.network().chains.filter(chain => chain.state === 'live').length,
       props.backend(),
     ),
@@ -58,6 +59,10 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   });
   const sinceLast = (chain: ChainView): number | null =>
     chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, now() - props.network().readAt);
+  const showTips = (): boolean => {
+    const backend = props.backend();
+    return backend === undefined || hasLightClient(backend);
+  };
   // Once the product is on screen speed and size describe history, so the footer empties.
   const loading = (): boolean => !props.productLoaded();
   const speed = (): string | null => {
@@ -85,13 +90,9 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           <p class={s['statusTitle']} data-testid="chains-status-title">
             {status().title}
           </p>
-          <Show when={status().detail}>
-            {detail => (
-              <p class={s['statusDetail']} data-testid="chains-status-detail">
-                {detail()}
-              </p>
-            )}
-          </Show>
+          <p class={s['statusDetail']} data-testid="chains-status-detail">
+            {status().detail}
+          </p>
         </div>
       </Well>
       <For each={knownChains()} keyed={chain => chain.key}>
@@ -145,7 +146,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
         </p>
       </div>
       {/* Trusted providers have no peers to steady. */}
-      <Show when={props.backend() !== 'rpc-gateway'}>
+      <Show when={showTips()}>
         <Callout icon={InfoIcon} testId="chains-tips">
           {TIP}
         </Callout>

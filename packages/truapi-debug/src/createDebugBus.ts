@@ -3,10 +3,12 @@
 
 // The bus is off until `enableBuffering()`, so sessions that never open debug mode pay nothing.
 
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createListenerSet, noop } from '@dotli/shared';
 
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from './dotliDebugTypes.js';
+
+const report = createReporter({ flow: 'ui' });
 
 export type DebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
@@ -21,12 +23,12 @@ export function createDebugBus() {
   let enabled = false;
   let bufferingEnabled = false;
   let bufferedEvents: DebugBusEvent[] = [];
-  const listeners = createListenerSet<DebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.live') });
+  const listeners = createListenerSet<DebugBusEvent>({ onListenerError: report.listener('debug_bus.live') });
   // Watchers see live events only. They are not listeners, so they neither take the boot replay from the panel nor turn
   // on the emit sites gated by `hasListeners`.
-  const watchers = createListenerSet<DebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.watch') });
+  const watchers = createListenerSet<DebugBusEvent>({ onListenerError: report.listener('debug_bus.watch') });
   // Never subscribed: it delivers the boot replay to the first panel under its own owner.
-  const replays = createListenerSet<DebugBusEvent>({ onListenerError: reportListener('ui', 'debug_bus.replay') });
+  const replays = createListenerSet<DebugBusEvent>({ onListenerError: report.listener('debug_bus.replay') });
 
   return {
     /**

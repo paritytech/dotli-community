@@ -141,10 +141,7 @@ describe('sandbox UI', () => {
 
     // Then
     expect(texts).toEqual(['Failed to load content. The network did not answer']);
-    expect(captures.expected).toHaveBeenCalledWith(
-      missing,
-      expect.objectContaining({ flow: 'content', step: 'page_ui_load' }),
-    );
+    expect(captures.expected).toHaveBeenCalledWith(missing, expect.objectContaining({ step: 'page_ui_load' }));
   });
 
   it('As a visitor, I hit a second failure after the page UI failed to load and it loads again', async () => {

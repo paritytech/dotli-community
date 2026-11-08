@@ -11,7 +11,6 @@ import type { SessionRead } from './session/createCoreStorage.js';
 import type { DotliAuthState, Presence } from './session/types.js';
 import { createFakeSessionPresence } from './session/createPagePresence.fake.js';
 import { createPageSignOut, type PageSignOutParams } from './createPageSignOut.js';
-import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 import { createChanges } from '../testing/changes.js';
 
@@ -33,8 +32,8 @@ type FakeWallet = {
 };
 
 type CreateHarnessParams = {
-  /** The page's wallet mode, paired by default. */
-  walletMode?: WalletMode;
+  /** Whether the page runs on a local wallet, paired by default. */
+  local?: boolean;
   /** The paired session the page's copy holds, one by default. */
   held?: string | null;
   /** The signed-in flag as a local sign-out reads it, gone by default, as the sign-out deleted it. */
@@ -60,7 +59,7 @@ type CreateFakeCopyParams = {
 
 /** A page's sign-out over fakes, with a fake Sentry and capture sink bound for this test. */
 function createHarness({
-  walletMode = 'app',
+  local = false,
   held = '0xsession',
   flag = 'absent',
   leaveOutcome,
@@ -101,7 +100,7 @@ function createHarness({
   const coreRun = vi.fn<() => void>();
   const signingOut: boolean[] = [];
   const signOut = createPageSignOut({
-    walletMode: () => walletMode,
+    isLocalWallet: () => local,
     copy,
     flag: {
       async clear(clearOptions) {
@@ -308,11 +307,13 @@ describe('paired sign-out', () => {
     expect(fakes.endSession).toHaveBeenCalledTimes(1);
     expect(fakes.reportSignedOut).toHaveBeenCalledTimes(2);
     expect(fakes.copy.held).toBeNull();
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'end' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'end' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'end' }]);
   });
 
@@ -408,11 +409,13 @@ describe('paired sign-out', () => {
     // Then the copy goes, the phone is told and the reset failure is reported
     expect(fakes.copy.held).toBeNull();
     expect(fakes.endSession).toHaveBeenCalledWith('0xsession');
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'reset' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'reset' },
+      }),
+    );
     expect(fakes.captures.exception).toHaveBeenCalledTimes(1);
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
   });
@@ -429,11 +432,13 @@ describe('paired sign-out', () => {
     // Then the phone is told, one issue is tagged drop and the sign-out counts once as ok
     expect(fakes.endSession).toHaveBeenCalledWith('0xsession');
     expect(fakes.captures.exception).toHaveBeenCalledTimes(1);
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
   });
 
@@ -473,7 +478,7 @@ describe('local sign-out', () => {
   it('As a user in local mode, I sign out and leave local mode once the sign-out window read the paired session left for it', async () => {
     // Given a sign-out window that has not read the main store yet
     const read = createDeferred<undefined>();
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: createProductWindow(read.promise) });
+    const fakes = createHarness({ local: true, signOutWindow: createProductWindow(read.promise) });
 
     // When the user signs out and the window then reads
     const signOut = fakes.signOut.signOut();
@@ -492,7 +497,7 @@ describe('local sign-out', () => {
   it('As a user in local mode, I sign out and the page shows my sign-out pending while the sign-out window reads', async () => {
     // Given a local page whose sign-out window has not read yet
     const read = createDeferred<undefined>();
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: createProductWindow(read.promise) });
+    const fakes = createHarness({ local: true, signOutWindow: createProductWindow(read.promise) });
 
     // When the user signs out, and the window then reads
     const signOut = fakes.signOut.signOut();
@@ -509,7 +514,7 @@ describe('local sign-out', () => {
   it('As a user in local mode, I sign out and a visible check of the restore rule waits for my sign-out to end', async () => {
     // Given a sign-out waiting for the window to read the paired copy, and a check queued behind it
     const read = createDeferred<undefined>();
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: createProductWindow(read.promise) });
+    const fakes = createHarness({ local: true, signOutWindow: createProductWindow(read.promise) });
     const signOut = fakes.signOut.signOut();
     const checked: string[] = [];
     const check = fakes.signOuts.call(() => {
@@ -540,7 +545,7 @@ describe('local sign-out', () => {
         },
       };
     }
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: openSignOutWindow });
+    const fakes = createHarness({ local: true, signOutWindow: openSignOutWindow });
 
     // When I sign out, another window opens before my sign-out runs, and the first window reads
     const signOut = fakes.signOut.signOut();
@@ -556,7 +561,7 @@ describe('local sign-out', () => {
   it('As a user in local mode whose sign-out window never reads, I sign out and nothing on the core is held up', async () => {
     // Given a local page whose sign-out window never reads
     const fakes = createHarness({
-      walletMode: 'local',
+      local: true,
       signOutWindow: createProductWindow(new Promise<void>(() => undefined)),
     });
 
@@ -570,7 +575,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode whose flag cannot be read, I sign out and the paired copy goes before the wallet', async () => {
     // Given no restore rule would clear the copy on the reload
-    const fakes = createHarness({ walletMode: 'local', flag: 'unknown' });
+    const fakes = createHarness({ local: true, flag: 'unknown' });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -583,7 +588,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode signed in again elsewhere meanwhile, I sign out and the paired copy stays', async () => {
     // Given a local page whose flag is present again
-    const fakes = createHarness({ walletMode: 'local', flag: 'present' });
+    const fakes = createHarness({ local: true, flag: 'present' });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -595,7 +600,7 @@ describe('local sign-out', () => {
   it('As a user in local mode on a product whose other tab imports a wallet while the sign-out window reads, I sign out and that wallet stays', async () => {
     // Given a local sign-out waiting on its window's read
     const read = createDeferred<undefined>();
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: createProductWindow(read.promise) });
+    const fakes = createHarness({ local: true, signOutWindow: createProductWindow(read.promise) });
     const signOut = fakes.signOut.signOut();
     await fakes.changes.until(() => fakes.signingOut.length === 1);
 
@@ -611,7 +616,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode on a page with no sign-in window whose other tab imports a wallet meanwhile, I sign out and that wallet stays', async () => {
     // Given a local page with no window whose copy read lets another tab save a wallet
-    const fakes = createHarness({ walletMode: 'local', held: null, signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, held: null, signOutWindow: openNoWindow });
     fakes.copy.readSession.mockImplementationOnce(() => {
       saveElsewhere(fakes.wallet);
       return Promise.resolve({ status: 'ok', blob: null });
@@ -627,7 +632,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode whose wallet cannot be read, I sign out and nothing is forgotten while the switch reports why', async () => {
     // Given a local page whose wallet cannot be read
-    const fakes = createHarness({ walletMode: 'local' });
+    const fakes = createHarness({ local: true });
     const failure = new Error('frame unavailable');
     fakes.wallet.readFailure = failure;
     let forgetFailure: unknown;
@@ -650,7 +655,7 @@ describe('local sign-out', () => {
 
   it('As an operator, I see a local sign-out whose paired copy stays reported and it still leaves local mode', async () => {
     // Given a local page whose flag reads unknown and whose copy refuses the drop
-    const fakes = createHarness({ walletMode: 'local', flag: 'unknown' });
+    const fakes = createHarness({ local: true, flag: 'unknown' });
     const failure = new Error('store refused the clear');
     fakes.copy.dropSessionIf.mockRejectedValue(failure);
 
@@ -658,18 +663,20 @@ describe('local sign-out', () => {
     await fakes.signOut.signOut();
 
     // Then the failed drop is reported and the page still leaves local mode
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
     expect(fakes.leaveLocalWallet).toHaveBeenCalledTimes(1);
   });
 
   it('As a user in local mode on a page with no sign-in window, I sign out and my paired copy and wallet go through the flag keeper while the phone is reported untold', async () => {
     // Given a local page with no sign-in window
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
 
     // When the user signs out
     const outcome = await fakes.signOut.signOut();
@@ -684,7 +691,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode on a page with no sign-in window and no paired copy, I sign out and my wallet goes through the flag keeper with nothing to tell', async () => {
     // Given a local page with no sign-in window and an empty copy
-    const fakes = createHarness({ walletMode: 'local', held: null, signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, held: null, signOutWindow: openNoWindow });
 
     // When the user signs out
     const outcome = await fakes.signOut.signOut();
@@ -698,7 +705,7 @@ describe('local sign-out', () => {
 
   it('As an operator, I see a local sign-out in place whose paired copy could not be dropped reported and counted once, and the wallet still goes', async () => {
     // Given a local page with no sign-in window whose copy refuses the drop
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
     const failure = new Error('store refused the clear');
     fakes.copy.dropSessionIf.mockRejectedValue(failure);
 
@@ -706,11 +713,13 @@ describe('local sign-out', () => {
     const outcome = await fakes.signOut.signOut();
 
     // Then the failed drop is reported and counted once
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'drop' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'drop' },
+      }),
+    );
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
     expect(fakes.calls).toEqual(['leave local', 'forget wallet']);
     expect(outcome.phone).toBe('untold');
@@ -718,7 +727,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode on a page with no sign-in window whose copy cannot be read, I sign out and my wallet still goes while the phone is reported untold', async () => {
     // Given a local page with no sign-in window whose copy cannot be read
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
     fakes.copy.readFailure = new Error('frame unavailable');
 
     // When the user signs out
@@ -732,7 +741,7 @@ describe('local sign-out', () => {
 
   it('As a local wallet user whose switch back failed, I sign out with no session ended and nothing counted', async () => {
     // Given a switch that reports its own failure and answers failed
-    const fakes = createHarness({ walletMode: 'local', leaveOutcome: 'failed' });
+    const fakes = createHarness({ local: true, leaveOutcome: 'failed' });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -745,7 +754,7 @@ describe('local sign-out', () => {
 
   it('As a user in local mode, I sign out and my sign-out runs its end through the core commands after the window read', async () => {
     // Given a local page
-    const fakes = createHarness({ walletMode: 'local' });
+    const fakes = createHarness({ local: true });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -773,7 +782,7 @@ describe('sign-out on a page signed out elsewhere', () => {
 
   it('As a local wallet user in a tab whose wallet a sign-out elsewhere forgot, I leave local mode and forget nothing', async () => {
     // Given a wallet another tab imported since the watch found mine gone
-    const fakes = createHarness({ walletMode: 'local', wallet: 2 });
+    const fakes = createHarness({ local: true, wallet: 2 });
 
     // When the page signs out locally
     await fakes.signOut.signOutLocally();
@@ -785,7 +794,7 @@ describe('sign-out on a page signed out elsewhere', () => {
 
   it('As a local wallet user in a tab whose wallet cannot be forgotten, I am signed out locally and the sign-out rejects', async () => {
     // Given a local page whose switch back fails
-    const fakes = createHarness({ walletMode: 'local', leaveOutcome: 'failed' });
+    const fakes = createHarness({ local: true, leaveOutcome: 'failed' });
 
     // When the page signs out locally
     const error = await catchRejection(fakes.signOut.signOutLocally());
@@ -824,7 +833,7 @@ describe('signed-in sites on sign-out', () => {
 
   it('As a user in local mode on a product, I sign out and my signed-in sites are forgotten before the page reloads', async () => {
     // Given a local product page whose sign-out window read the main store
-    const fakes = createHarness({ walletMode: 'local' });
+    const fakes = createHarness({ local: true });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -838,7 +847,7 @@ describe('signed-in sites on sign-out', () => {
 
   it('As a user in local mode on a page with no sign-in window, I sign out and my signed-in sites are forgotten before the page reloads', async () => {
     // Given a local page that pairs in place
-    const fakes = createHarness({ walletMode: 'local', signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
 
     // When the user signs out
     await fakes.signOut.signOut();
@@ -861,11 +870,13 @@ describe('signed-in sites on sign-out', () => {
 
     // Then the failure is reported under its own reason and counted as a forget that failed, and the sign-out ends as
     // it would have
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'grants' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'grants' },
+      }),
+    );
     expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
     expect(outcome).toEqual({ phone: 'told' });
     expect(fakes.calls).toEqual(['reset', 'drop 0xsession', 'signed out', 'end 0xsession']);
@@ -874,7 +885,7 @@ describe('signed-in sites on sign-out', () => {
 
   it('As an operator, I watch a local sign-out whose grants could not be forgotten and see it reported while the page still leaves local mode', async () => {
     // Given a local page that pairs in place, whose grants cannot be forgotten
-    const fakes = createHarness({ walletMode: 'local', held: null, signOutWindow: openNoWindow });
+    const fakes = createHarness({ local: true, held: null, signOutWindow: openNoWindow });
     const failure = new Error('grants database blocked');
     fakes.forgetGrants.mockRejectedValue(failure);
 
@@ -882,11 +893,13 @@ describe('signed-in sites on sign-out', () => {
     const outcome = await fakes.signOut.signOut();
 
     // Then the failure is reported and counted, and the wallet still goes as the page leaves local mode
-    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'logout',
-      tags: { reason: 'grants' },
-    });
+    expect(fakes.captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'logout',
+        tags: { reason: 'grants' },
+      }),
+    );
     expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
     expect(outcome).toEqual({ phone: 'told' });
     expect(fakes.calls).toEqual(['leave local', 'forget wallet']);

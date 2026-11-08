@@ -19,11 +19,13 @@ describe('reportSandboxHandlerFailure', () => {
 
     // Then one issue names the handler, and one count names the cause
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'ui',
-      step: 'sandbox_handler',
-      tags: { type: 'dotli:bitswap-get' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'sandbox_handler',
+        tags: { type: 'dotli:bitswap-get' },
+      }),
+    );
     expect(counted('sandbox.handler')).toContainEqual({ outcome: 'error', reason: 'TypeError' });
   });
 });

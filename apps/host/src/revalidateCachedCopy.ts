@@ -4,13 +4,23 @@
 // A product served from the CID cache is checked against the network after it renders, so the cache stays honest
 // without holding the render back.
 
-import { m, reportDefect, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import type { ShowNotification } from '@dotli/ui';
 import { compareCachedCid } from './compareCachedCid.js';
 import { judgeRedeploy } from './judgeRedeploy.js';
 import type { NameSource } from './createNameSource.js';
 import type { CachedCopy, ServedCopy } from './createProductLoader.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/**
+ * A cached copy checked against the network. Tag `outcome`: `match` (unchanged), `update` (the visitor is offered a
+ * reload onto the newer version), `cleared` (evicted, and the page reloads when it showed the copy) or `error` (the
+ * check failed and the entry is left as it was).
+ */
+const cacheRevalidateMetric = defineCount<'cleared' | 'error' | 'match' | 'update'>('cache.revalidate');
+
+const CACHE_REVALIDATE_LATENCY = 'cache.revalidate_latency';
 
 export type RevalidateCachedCopyParams = ServedCopy & {
   names: Pick<NameSource, 'resolveProduct' | 'readManifests'>;
@@ -39,12 +49,12 @@ export async function revalidateCachedCopy({
     const evicted = await params.cache.evict(label);
     if (!evicted) {
       // The label still holds the stale CID, so a reload would serve it again and loop. Storage reported the failure.
-      m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: 'evict_failed' });
-      log.event('Cached app could not be evicted', { flow: 'resolve', served: servedCid, reason });
+      cacheRevalidateMetric.count({ outcome: 'error', reason: 'evict_failed' });
+      report.log.event('Cached app could not be evicted', { served: servedCid, reason });
       return false;
     }
-    m.count(S.CACHE_REVALIDATE, { outcome: 'cleared', reason });
-    log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason });
+    cacheRevalidateMetric.count({ outcome: 'cleared', reason });
+    report.log.event('Cached app evicted', { served: servedCid, reason });
     if (onScreen) {
       params.reload();
     }
@@ -58,15 +68,15 @@ export async function revalidateCachedCopy({
       return drop(decision.reason);
     }
     await params.cache.set({ label, cid: decision.cid, manifests: decision.manifests });
-    m.count(S.CACHE_REVALIDATE, { outcome: 'update' });
-    log.event('Cached app is outdated', { flow: 'resolve', served: servedCid, latest: cid });
+    cacheRevalidateMetric.count({ outcome: 'update' });
+    report.log.event('Cached app is outdated', { served: servedCid, latest: cid });
     return false;
   }
 
   try {
     const found = compareCachedCid(servedCid, await lookUpCid(label, params.names));
     if (found.kind === 'keep') {
-      m.count(S.CACHE_REVALIDATE, { outcome: 'match' });
+      cacheRevalidateMetric.count({ outcome: 'match' });
       return;
     }
     if (found.kind === 'evict') {
@@ -99,10 +109,9 @@ export async function revalidateCachedCopy({
     });
     await adopted;
   } catch (error: unknown) {
-    reportDefect(error, {
-      flow: 'resolve',
+    report.defect(error, {
       step: 'cache_revalidate',
-      metric: S.CACHE_REVALIDATE,
+      metric: cacheRevalidateMetric,
       message: '[dot.li] Cached copy revalidation failed:',
       tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
     });
@@ -111,7 +120,7 @@ export async function revalidateCachedCopy({
 
 /** Timed alone, since the network's answer is what the visitor waits on. */
 async function lookUpCid(label: string, names: RevalidateCachedCopyParams['names']): Promise<string | null> {
-  const stopTimer = m.timer(S.CACHE_REVALIDATE_LATENCY);
+  const stopTimer = m.timer(CACHE_REVALIDATE_LATENCY);
   try {
     // The same lookup the load made, or a product published under its app subname never matches.
     return await names.resolveProduct(label);

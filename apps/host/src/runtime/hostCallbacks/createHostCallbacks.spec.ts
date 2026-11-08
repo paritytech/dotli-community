@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../createBlockingModalCoordinator.js';
+import type { CoreContext } from '../createPageCore.js';
 import { createHostCallbacks } from './createHostCallbacks.js';
 import { createPromptAsks } from './createPromptAsks.js';
 import { SUBMIT_MAX_PER_WINDOW } from './createSubmitRateLimiter.js';
@@ -46,10 +47,9 @@ describe('blocking modal queue across host callbacks', () => {
     });
     const page = createFakePrompts();
     const callbacks = createHostCallbacks({
-      label: 'localhost:3000',
+      core: createCore({ blockingModalScope: scope }),
       getProductId: () => PRODUCT.productId,
-      phoneRequests: createPhoneRequestTracker(),
-      blockingModalScope: scope,
+      sessionInMemory: false,
       ...buildPromptAsks(page.prompts),
       notifications: scheduler,
     });
@@ -97,12 +97,11 @@ describe('blocking modal queue across host callbacks', () => {
     });
     const tap = phoneRequests.connect();
     const callbacks = createHostCallbacks({
-      label: 'localhost:3000',
+      core: createCore({ blockingModalScope: scope, phoneRequests }),
       getProductId: () => PRODUCT.productId,
-      blockingModalScope: scope,
+      sessionInMemory: false,
       ...buildPromptAsks(page.prompts),
       notifications: scheduler,
-      phoneRequests,
     });
     tap.fromProduct(
       encodePhoneRequestFrame({
@@ -152,10 +151,9 @@ describe('session window asks across host callbacks', () => {
     const page = createFakePrompts();
     const askPermission = vi.fn<PermissionAsk>(page.prompts.askPermission);
     const callbacks = createHostCallbacks({
-      label: 'localhost:3000',
+      core: createCore(),
       getProductId: () => PRODUCT.productId,
-      phoneRequests: createPhoneRequestTracker(),
-      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      sessionInMemory: false,
       prompts: { ...page.prompts, askPermission },
       createAsks: getWindowAsks,
       notifications: scheduler,
@@ -187,10 +185,9 @@ describe('notifications across host callbacks', () => {
     );
     const ask = vi.fn<PermissionAsk>(() => Promise.resolve('granted'));
     const { notifications } = createHostCallbacks({
-      label: 'myapp',
+      core: createCore({ product: { label: 'myapp' } }),
       getProductId: () => PRODUCT.productId,
-      phoneRequests: createPhoneRequestTracker(),
-      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      sessionInMemory: false,
       notifications: { schedule, cancel: () => Promise.resolve(true) },
       ...buildPromptAsks(createPromptsAnswering(ask)),
     });
@@ -217,10 +214,9 @@ describe('prompt rate limiting across host callbacks', () => {
     // Given a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
     const { permissions } = createHostCallbacks({
-      label: 'myapp',
+      core: createCore({ product: { label: 'myapp' } }),
       getProductId: () => PRODUCT.productId,
-      phoneRequests: createPhoneRequestTracker(),
-      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      sessionInMemory: false,
       notifications: scheduler,
       ...buildPromptAsks(createPromptsAnswering(ask)),
     });
@@ -239,10 +235,9 @@ describe('prompt rate limiting across host callbacks', () => {
   it('As a user, I get many notifications delivered and my prompts still pass', async () => {
     // Given one callback surface, whose prompts and notifications share its one limiter
     const { permissions, notifications } = createHostCallbacks({
-      label: 'myapp',
+      core: createCore({ product: { label: 'myapp' } }),
       getProductId: () => PRODUCT.productId,
-      phoneRequests: createPhoneRequestTracker(),
-      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      sessionInMemory: false,
       notifications: scheduler,
       ...buildPromptAsks(createPromptsAnswering(ask)),
     });
@@ -266,6 +261,19 @@ describe('prompt rate limiting across host callbacks', () => {
     expect(afterTheBudget).toEqual({ id: 7 });
   });
 });
+
+/** A core for localhost with a fresh queue scope and phone tracker, live and in service, with `overrides` applied. */
+function createCore(overrides: Partial<CoreContext> = {}): CoreContext {
+  return {
+    product: { label: 'localhost:3000' },
+    blockingModalScope: overrides.blockingModalScope ?? createBlockingModalCoordinator().createScope(),
+    phoneRequests: overrides.phoneRequests ?? createPhoneRequestTracker(),
+    isLive: () => true,
+    isInService: () => true,
+    sessionInMemory: false,
+    ...overrides,
+  };
+}
 
 /** Prompts that answer permissions with `ask` and leave every other ask waiting. */
 function createPromptsAnswering(ask: PermissionAsk): HostPrompts {

@@ -16,3 +16,8 @@ export class ChainHaltError extends Error {
     this.reason = reason;
   }
 }
+
+/** Why a lease's chain halted: the reason a `ChainHaltError` carries, and `'chain'` for any other halt. Never throws. */
+export function getHaltReason(error: unknown): RemoteChainHalt {
+  return error instanceof ChainHaltError ? error.reason : 'chain';
+}

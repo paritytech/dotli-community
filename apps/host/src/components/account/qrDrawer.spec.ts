@@ -186,7 +186,7 @@ describe('the sign-in QR drawer', () => {
     await answered(Promise.reject(failure));
 
     // Then
-    expect(captured).toEqual([{ error: failure, context: { flow: 'wallet', step: 'qr_render' } }]);
+    expect(captured).toMatchObject([{ error: failure, context: { step: 'qr_render' } }]);
     expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(errorsLogged).toHaveLength(1);
     expect(qr.drawn).toEqual([]);

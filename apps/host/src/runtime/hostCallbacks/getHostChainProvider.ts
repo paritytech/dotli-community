@@ -3,8 +3,8 @@
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
-import { isRemoteChainConnectable, type RemoteChainProvider } from '@dotli/protocol';
-import { getHaltReason, requireBrokerLocalProvider, type ChainPool } from '@dotli/chains';
+import { isRemoteChainConnectable } from '@dotli/protocol';
+import { requireBrokerLocalProvider, type ChainPool } from '@dotli/chains';
 import { hostChainPool } from './createHostChainPool.js';
 
 type Params = {
@@ -13,25 +13,17 @@ type Params = {
 };
 
 /**
- * Leases the chain from the pool, on the connection the products share. A halt is told as `'frame'` for a dead protocol
- * frame, `'chain'` otherwise. Returns null for a chain the protocol frame does not serve or the pool has no transport
- * for.
+ * Leases the chain from the pool, on the connection the products share. Its connections heal after a halt. Returns null
+ * for a chain the protocol frame does not serve or the pool has no transport for.
  */
 export function getHostChainProvider(
   genesisHash: string,
   { pool = hostChainPool }: Params = {},
-): RemoteChainProvider | null {
+): JsonRpcProvider | null {
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
-  const lease = pool.getLocalProvider(genesisHash, { holder: 'host' });
-  if (lease === null) {
-    return null;
-  }
-  return (onMessage, onHalt) =>
-    lease(onMessage, error => {
-      onHalt?.(getHaltReason(error));
-    });
+  return pool.getLocalProvider(genesisHash, { holder: 'host' });
 }
 
 /** Leases Asset Hub from the pool. Throws when the pool has no transport for it. */

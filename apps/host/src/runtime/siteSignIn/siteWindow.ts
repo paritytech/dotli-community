@@ -18,7 +18,8 @@ import type { MainAccount } from './createMainAccountSource.js';
 import type { SiteChain } from './createSiteChain.js';
 import type { SiteGroups } from './createSiteGroups.js';
 import type { SiteRequest } from './parseSiteRequest.js';
-import type { SiteRound, SiteRoundParams, SiteRoute } from './createSiteRound.js';
+import type { SiteRound, SiteRoundParams } from './createSiteRound.js';
+import type { SiteRoute } from './siteRouteMetrics.js';
 import { createSiteSignIn } from './createSiteSignIn.js';
 import { parseSiteCall, type SiteSignRequest } from './parseSiteSignRequest.js';
 import type { SiteAccountReader } from './createSiteAccountReader.js';
@@ -68,7 +69,7 @@ type OpenSiteTransactionParams = Omit<SiteWindowParams, 'request'> & {
 type OpenSiteWindowParams = Pick<SiteWindowParams, 'origin' | 'responder' | 'createWindowFlow'> & {
   route: SiteRoute;
   /** Makes the site's round with the start of the window flow it reuses. */
-  createRound: (startWindowFlow: SiteRoundParams<unknown>['startWindowFlow']) => SiteRound;
+  createRound: (startWindowFlow: SiteRoundParams<unknown, string>['startWindowFlow']) => SiteRound;
 };
 
 /** A site's round and what its window shows. */

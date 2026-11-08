@@ -7,7 +7,6 @@ import type {
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
-  PermissionDecision,
   ProductSubtreeReview,
   ResourceAllocationReview,
   SignPayloadReview,
@@ -15,7 +14,6 @@ import type {
   SignVrfReview,
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
-  UserConfirmationReview,
 } from '@parity/truapi-host';
 import type {
   AllocatableResource,
@@ -32,14 +30,16 @@ import { withActiveTld } from '@dotli/config';
 import { createDeferred, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import type { BlockingModalScope, HoldSlot } from '../createBlockingModalCoordinator.js';
-import type { ModalButton, ModalField, ModalHandoff, ModalView } from '@dotli/ui';
+import type { ModalField, ModalHandoff, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
+import { getGrantButtons } from '../../components/permissions/permissionDialog.js';
 import { phoneWaitingView, WAITING_BACKGROUND } from '../../components/signing/phoneWaitingView.js';
-import type { HostPrompts } from '../hostPrompts.js';
+import { isDismissed, isGranted, toPermissionDecision, type GrantAnswer, type HostPrompts } from '../hostPrompts.js';
 import { PHONE_METHODS } from '../phoneMethods.js';
 import { reportPhoneEnd } from '../phoneReport.js';
 import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 import { matchPhoneReview } from '../matchPhoneReview.js';
+import { servedRequests, type ServedReview } from './servedRequests.js';
 
 /** The prompts a confirmation asks through and tells its outcome on. */
 type ConfirmationPrompts = Pick<HostPrompts, 'confirmReview' | 'notify'>;
@@ -53,13 +53,8 @@ type ConfirmationCopy = {
 
 type ConfirmationField = ModalField;
 
-type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
-
 /** The step an answered review hands its place to, if any. */
-type ReviewHandoff = (decision: ConfirmationDecision) => ModalHandoff | undefined;
-
-/** The browser core serves no NFT purses, so a drain review is refused before any modal. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain' }>;
+type ReviewHandoff = (answer: GrantAnswer) => ModalHandoff | undefined;
 
 type Params = {
   /** The product the confirmations speak for. */
@@ -73,7 +68,7 @@ type Params = {
 };
 
 type ConfirmParams = {
-  review: ModalReview;
+  review: ServedReview;
   signal: AbortSignal;
   /** Whether the review offers "Allow once" beside "Always allow". */
   allowOnce: boolean;
@@ -82,7 +77,7 @@ type ConfirmParams = {
 
 type HandleConfirmationReviewParams = {
   label: string;
-  review: ModalReview;
+  review: ServedReview;
   signal: AbortSignal;
   allowOnce: boolean;
   prompts: ConfirmationPrompts;
@@ -119,7 +114,7 @@ type CreateTransactionPayloadFieldsParams = {
 
 type CreatePhoneWaitHandoffParams = {
   label: string;
-  review: ModalReview;
+  review: ServedReview;
   requests: PhoneRequestTracker;
   notify: HostPrompts['notify'];
   signal: AbortSignal;
@@ -137,7 +132,7 @@ export function createUserConfirmationAdapters({
   modalScope,
   phoneRequests,
 }: Params): Required<UserConfirmationHost> {
-  function confirm({ review, signal, allowOnce, hold }: ConfirmParams): Promise<ConfirmationDecision> {
+  function confirm({ review, signal, allowOnce, hold }: ConfirmParams): Promise<GrantAnswer> {
     return handleConfirmationReview({
       label,
       review,
@@ -152,18 +147,18 @@ export function createUserConfirmationAdapters({
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
     confirmUserAction: review =>
-      review.tag === 'NftPurseDrain'
+      !servedRequests.isServed(review)
         ? Promise.resolve(false)
-        : modalScope.enqueue(
-            async (signal, hold) => (await confirm({ review, signal, allowOnce: false, hold })) === 'accepted',
+        : modalScope.enqueue(async (signal, hold) =>
+            isGranted(await confirm({ review, signal, allowOnce: false, hold })),
           ),
     // The core stores AllowAlways and Deny and decides how long AllowOnce lasts. A drain review is refused by a
     // rejection, since a Deny would be stored.
     confirmPermission: review =>
-      review.tag === 'NftPurseDrain'
+      !servedRequests.isServed(review)
         ? Promise.reject(new Error(ERRORS.UNSERVED_REQUEST))
         : modalScope.enqueue(async (signal, hold) =>
-            getPermissionDecision(await confirm({ review, signal, allowOnce: true, hold })),
+            toPermissionDecision(await confirm({ review, signal, allowOnce: true, hold })),
           ),
   };
 }
@@ -176,31 +171,13 @@ function showConfirmationModal({
   allowOnce,
   prompts,
   handoff,
-}: ShowConfirmationModalParams): Promise<ConfirmationDecision> {
-  const buttons: ModalButton<ConfirmationDecision>[] = [
-    // Every cancel here rejects the core's request, so it is drawn destructive.
-    {
-      label: copy.cancelAction ?? 'Cancel',
-      variant: 'danger',
-      result: 'rejected',
-    },
-    allowOnce
-      ? { label: 'Always allow', variant: 'secondary', result: 'accepted' }
-      : { label: copy.action, variant: 'primary', result: 'accepted' },
-  ];
-  if (allowOnce) {
-    buttons.push({
-      label: 'Allow once',
-      variant: 'primary',
-      result: 'accepted-once',
-    });
-  }
-  return prompts.confirmReview<ConfirmationDecision>({
+}: ShowConfirmationModalParams): Promise<GrantAnswer> {
+  return prompts.confirmReview<GrantAnswer>({
     dialog: {
       ...(copy.icon === undefined ? {} : { icon: copy.icon }),
       title: copy.title,
       fields: getConfirmationFields(label, review),
-      buttons,
+      buttons: getGrantButtons({ allowOnce, allowLabel: copy.action, denyLabel: copy.cancelAction ?? 'Cancel' }),
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
     },
@@ -209,7 +186,7 @@ function showConfirmationModal({
   });
 }
 
-function getConfirmationFields(label: string, review: ModalReview): ConfirmationField[] {
+function getConfirmationFields(label: string, review: ServedReview): ConfirmationField[] {
   switch (review.tag) {
     case 'SignPayload':
       return createSignPayloadFields(label, review.value);
@@ -468,7 +445,7 @@ function createResourceAllocationFields(review: ResourceAllocationReview): Confi
   ];
 }
 
-function getConfirmationCopy(review: ModalReview): ConfirmationCopy {
+function getConfirmationCopy(review: ServedReview): ConfirmationCopy {
   switch (review.tag) {
     case 'SignPayload':
       return { title: 'Sign Transaction', action: 'Sign', icon: SignIcon };
@@ -515,13 +492,13 @@ function getConfirmationCopy(review: ModalReview): ConfirmationCopy {
   }
 }
 
-async function handleConfirmationReview(params: HandleConfirmationReviewParams): Promise<ConfirmationDecision> {
+async function handleConfirmationReview(params: HandleConfirmationReviewParams): Promise<GrantAnswer> {
   const { review } = params;
-  const decision = await showConfirmationModal({ ...params, copy: getConfirmationCopy(review) });
-  if (decision === 'dismissed' && review.tag === 'IdentityDisclosure') {
+  const answer = await showConfirmationModal({ ...params, copy: getConfirmationCopy(review) });
+  if (isDismissed(answer) && review.tag === 'IdentityDisclosure') {
     throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
   }
-  return decision;
+  return answer;
 }
 
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
@@ -537,8 +514,8 @@ function createPhoneWaitHandoff({
   signal,
   hold,
 }: CreatePhoneWaitHandoffParams): ReviewHandoff {
-  function handOff(decision: ConfirmationDecision): ModalHandoff | undefined {
-    if (decision !== 'accepted' && decision !== 'accepted-once') {
+  function handOff(answer: GrantAnswer): ModalHandoff | undefined {
+    if (!isGranted(answer)) {
       return undefined;
     }
     const matches = matchPhoneReview(review);
@@ -567,18 +544,4 @@ function createPhoneWaitHandoff({
   }
 
   return handOff;
-}
-
-function getPermissionDecision(decision: ConfirmationDecision): PermissionDecision {
-  switch (decision) {
-    case 'accepted-once':
-      return 'AllowOnce';
-    case 'accepted':
-      return 'AllowAlways';
-    case 'rejected':
-      return 'Deny';
-    case 'dismissed':
-      // The core keeps every answer but AllowOnce, so a dismissal rejects and the next request asks again.
-      throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
-  }
 }

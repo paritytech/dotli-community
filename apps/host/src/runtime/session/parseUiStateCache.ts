@@ -4,8 +4,11 @@
 // The account a paired session shows before any core reports it, from its cached UI state. It imports nothing of the
 // page's session layer, so a page without one can read it.
 
-import { m, spans as S } from '@dotli/metrics';
-import { getErrorName, log } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
+import { getErrorName } from '@dotli/shared';
+import { sharedSessionUiCacheMetric } from './sharedSessionUiCacheMetric.js';
+
+const report = createReporter({ flow: 'storage' });
 
 export type TruapiSessionUiState = {
   connected: boolean;
@@ -23,8 +26,8 @@ export function parseUiStateCache(raw: string): TruapiSessionUiState | null {
     parsed = JSON.parse(raw);
   } catch (error) {
     // A stale cache, which the next session report rewrites, rather than a failure.
-    log.event('Session UI cache unreadable', { flow: 'storage', error: getErrorName(error) ?? 'unknown' });
-    m.count(S.SHARED_SESSION_UI_CACHE, { outcome: 'invalid', reason: 'json' });
+    report.log.event('Session UI cache unreadable', { error: getErrorName(error) ?? 'unknown' });
+    sharedSessionUiCacheMetric.count({ outcome: 'invalid', reason: 'json' });
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) {

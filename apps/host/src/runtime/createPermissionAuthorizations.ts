@@ -4,16 +4,13 @@
 // The Rust core owns and persists permission authorization. This side only maps granted device
 // permissions to the iframe `allow` attribute.
 
-import { getKeys } from '@dotli/shared';
-import type {
-  PermissionAuthorizationRequest,
-  PermissionAuthorizationStatus,
-  TrUApiProductProvider,
-} from '@parity/truapi-host';
+import type { PermissionAuthorizationStatus, TrUApiProductProvider } from '@parity/truapi-host';
 import {
-  DEVICE_PERMISSION_POLICY,
-  type DevicePermissionName,
-  type PermissionName,
+  ALL_PERMISSIONS,
+  getAuthorizationRequest,
+  getFrameDirective,
+  hasFrameDirective,
+  type EnforceablePermissionName,
   type PermissionStatus,
 } from './permissionPolicy.js';
 
@@ -27,7 +24,7 @@ export type PermissionAuthorizations = ReturnType<typeof createPermissionAuthori
 
 type SetStatusParams = {
   label: string;
-  permission: PermissionName;
+  permission: EnforceablePermissionName;
   status: PermissionStatus;
 };
 
@@ -61,16 +58,19 @@ export function createPermissionAuthorizations() {
     }
   }
 
-  async function getStatuses(label: string, permissions: readonly PermissionName[]): Promise<PermissionStatus[]> {
+  async function getStatuses(
+    label: string,
+    permissions: readonly EnforceablePermissionName[],
+  ): Promise<PermissionStatus[]> {
     const provider = getProvider(label);
     if (provider === null) {
       return permissions.map(() => 'ask');
     }
-    const answered = await provider.getPermissionAuthorizationStatuses(permissions.map(toAuthorizationRequest));
+    const answered = await provider.getPermissionAuthorizationStatuses(permissions.map(getAuthorizationRequest));
     return answered.map(fromAuthorizationStatus);
   }
 
-  async function getStatus(label: string, permission: PermissionName): Promise<PermissionStatus> {
+  async function getStatus(label: string, permission: EnforceablePermissionName): Promise<PermissionStatus> {
     return (await getStatuses(label, [permission])).at(0) ?? 'ask';
   }
 
@@ -79,11 +79,11 @@ export function createPermissionAuthorizations() {
     if (provider === null) {
       return;
     }
-    await provider.setPermissionAuthorizationStatus(toAuthorizationRequest(permission), toAuthorizationStatus(status));
+    await provider.setPermissionAuthorizationStatus(getAuthorizationRequest(permission), toAuthorizationStatus(status));
   }
 
-  async function getGrantedDevicePermissions(label: string): Promise<DevicePermissionName[]> {
-    const names = getKeys(DEVICE_PERMISSION_POLICY);
+  async function getGrantedFramePermissions(label: string): Promise<EnforceablePermissionName[]> {
+    const names = ALL_PERMISSIONS.map(({ name }) => name).filter(hasFrameDirective);
     const answered = await getStatuses(label, names);
     return names.filter((_, index) => answered[index] === 'granted');
   }
@@ -91,9 +91,9 @@ export function createPermissionAuthorizations() {
   async function getAllowAttribute(label: string): Promise<string> {
     // TrUAPI has no screen capture permission, and the browser's picker asks on every capture anyway.
     const policies = ['clipboard-write', 'display-capture'];
-    for (const name of await getGrantedDevicePermissions(label)) {
-      const directive = DEVICE_PERMISSION_POLICY[name];
-      if (directive !== undefined) {
+    for (const name of await getGrantedFramePermissions(label)) {
+      const directive = getFrameDirective(name);
+      if (directive !== null) {
         policies.push(directive);
       }
     }
@@ -112,36 +112,11 @@ export function createPermissionAuthorizations() {
     getStatus,
     /** Sets `label`'s status of `permission`. A no-op while no connection of `label` is open. */
     setStatus,
-    /** The device permissions `label` was granted, none while no connection of `label` is open. */
-    getGrantedDevicePermissions,
+    /** The permissions `label` was granted whose grant adds a frame directive, none while no connection is open. */
+    getGrantedFramePermissions,
     /** The iframe `allow` attribute for `label`'s granted device permissions, plus those every product gets. */
     getAllowAttribute,
   };
-}
-
-function toAuthorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
-  switch (permission) {
-    case 'ChainSubmit':
-    case 'PreimageSubmit':
-    case 'StatementSubmit':
-      return {
-        tag: 'Remote',
-        value: { permission: { tag: permission } },
-      };
-    case 'IdentityDisclosure':
-      return { tag: 'IdentityDisclosure' };
-    case 'Notifications':
-    case 'Camera':
-    case 'Microphone':
-    case 'Bluetooth':
-    case 'NFC':
-    case 'Location':
-    case 'Motion':
-    case 'Clipboard':
-    case 'OpenUrl':
-    case 'Biometrics':
-      return { tag: 'Device', value: permission };
-  }
 }
 
 function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {

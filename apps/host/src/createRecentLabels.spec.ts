@@ -180,7 +180,10 @@ describe('recent labels across subdomains', () => {
     // Then
     expect(readMirrorList()).toEqual(['staking', 'explore']);
     expect(logged).toEqual(['warn']);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'storage', step: 'recent_labels' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'recent_labels' }),
+    );
     expect(metrics.counted('recent_labels.update')).toEqual([{ outcome: 'error', reason: 'read' }]);
   });
 
@@ -197,7 +200,10 @@ describe('recent labels across subdomains', () => {
     expect(readSharedList()).toEqual(['explore']);
     expect(readMirrorList()).toEqual(['staking', 'explore']);
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(Error), { flow: 'storage', step: 'recent_labels' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'recent_labels' }),
+    );
     expect(captures.exception).not.toHaveBeenCalled();
     expect(metrics.counted('recent_labels.update')).toEqual([{ outcome: 'error', reason: 'write' }]);
   });

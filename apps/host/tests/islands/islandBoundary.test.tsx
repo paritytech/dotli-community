@@ -42,11 +42,13 @@ describe('island boundary', () => {
 
     // Then
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'ui',
-      step: 'root_render',
-      tags: { root: 'island:Test' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'root_render',
+        tags: { root: 'island:Test' },
+      }),
+    );
     expect(onBroken).toHaveBeenCalledTimes(1);
     expect(notify).not.toHaveBeenCalled();
     expect(host.textContent).toBe('');

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'solid-js';
+import { createMemo, createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
 import { AlertTriangleIcon } from '@dotli/ui/icons';
@@ -9,7 +9,8 @@ import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionInitials } from './accountNames.js';
 import { UserIcon } from '../icons/UserIcon.js';
-import type { Account } from './account.js';
+import { getAuthButtonState } from './account.js';
+import type { Account, AccountSession, AuthButtonFace, AuthButtonState } from './account.js';
 import s from './AuthButton.module.css';
 import { loadAccountContent } from '../../lazy.js';
 
@@ -36,36 +37,58 @@ export type AuthButtonProps = {
 };
 
 /** A signed-in account by where its keys live, in this browser or in Polkadot App. */
-function accountKind(account: Account): string {
-  return account.loggedIn() && account.local() ? 'Local account' : 'Account';
-}
-
-/** Signed out here while a sign-in made elsewhere on the site waits, which the button continues. */
-function resumes(account: Account): boolean {
-  return !account.loggedIn() && account.elsewhere();
+function getAccountKind(local: boolean): string {
+  return local ? 'Local account' : 'Account';
 }
 
 /** What a button that resumes says it does. The page only knows a sign-in exists, so it names no account. */
 const RESUME_TITLE = 'Continue the sign-in you already made to keep using this app';
 
-/** What the button says it does in `account`'s state: its title, and its More row's label. */
-function authLabel(account: Account): string {
-  if (account.restoring()) {
-    return 'Checking sign-in';
+/** What the button says it does in `state`: its title, and its More row's label. */
+function getAuthLabel(state: AuthButtonState, local: boolean): string {
+  switch (state.kind) {
+    case 'checking':
+      return 'Checking sign-in';
+    case 'unreachable':
+      return "Can't reach your sign-in";
+    case 'signingOut':
+      return 'Signing out';
+    case 'resume':
+      return 'Continue session';
+    case 'signIn':
+      return 'Sign in with Polkadot App';
+    case 'signedIn':
+      return getAccountKind(local);
   }
-  if (account.unreachable()) {
-    return "Can't reach your sign-in";
+}
+
+/** Whether the button shows its loading state and takes no clicks. */
+function isBusy(state: AuthButtonState): boolean {
+  switch (state.kind) {
+    case 'checking':
+    case 'signingOut':
+      return true;
+    case 'unreachable':
+      return state.busy;
+    case 'resume':
+    case 'signIn':
+    case 'signedIn':
+      return false;
   }
-  if (account.signingOut()) {
-    return 'Signing out';
+}
+
+/** The button's title. The name stays the visible text, and a button that resumes describes the sign-in it continues. */
+function getAuthTitle(state: AuthButtonState, label: string): string {
+  switch (state.kind) {
+    case 'resume':
+      return RESUME_TITLE;
+    case 'checking':
+    case 'unreachable':
+    case 'signingOut':
+    case 'signIn':
+    case 'signedIn':
+      return label;
   }
-  if (resumes(account)) {
-    return 'Continue session';
-  }
-  if (!account.loggedIn()) {
-    return 'Sign in with Polkadot App';
-  }
-  return accountKind(account);
 }
 
 type ButtonAppearance = {
@@ -73,15 +96,66 @@ type ButtonAppearance = {
   class: string;
 };
 
-/** The variant and class of the button: an icon chip while unreachable, a chip while logged in, else the sign-in pill. */
-function getButtonAppearance(account: Account, named: boolean): ButtonAppearance {
-  if (account.unreachable()) {
-    return { variant: 'secondary', class: [s['chip'], s['avatarOnly']].join(' ') };
+/** How a face looks: the button's variant and class, and what the button shows. */
+type FaceLook = ButtonAppearance & {
+  /** The session the face shows as its avatar, or undefined when it shows an icon. */
+  avatar: AccountSession | undefined;
+  /** The name beside the avatar, on a page that shows names. */
+  name: string | undefined;
+  /** Whether the alert icon stands in place of the user icon and the prompt's text. */
+  alert: boolean;
+  /** The prompt's text beside the user icon. */
+  text: string;
+  /** Whether the prompt continues a sign-in made elsewhere, which `data-session` says. */
+  resumes: boolean;
+};
+
+/** An icon chip: the button shows an icon, not an avatar. */
+const ICON_CHIP_LOOK: FaceLook = {
+  variant: 'secondary',
+  class: [s['chip'], s['avatarOnly']].join(' '),
+  avatar: undefined,
+  name: undefined,
+  alert: false,
+  text: 'Sign in',
+  resumes: false,
+};
+
+/** The look of `face`: a chip for the account and the alert, else the sign-in pill. */
+function getFaceLook(face: AuthButtonFace, showName: boolean): FaceLook {
+  switch (face.kind) {
+    case 'account':
+      return getAccountLook(face.session, showName);
+    case 'prompt':
+      return {
+        variant: 'primary',
+        class: s['signIn'] ?? '',
+        avatar: undefined,
+        name: undefined,
+        alert: false,
+        text: face.resumes ? 'Continue session' : 'Sign in',
+        resumes: face.resumes,
+      };
+    case 'alert':
+      return { ...ICON_CHIP_LOOK, alert: true };
   }
-  if (account.loggedIn()) {
-    return { variant: 'secondary', class: [s['chip'], named ? undefined : s['avatarOnly']].join(' ').trim() };
+}
+
+/** The account's chip: its avatar and, on a page that shows names, its name. With no session to show, an icon chip. */
+function getAccountLook(session: AccountSession | undefined, showName: boolean): FaceLook {
+  if (session === undefined) {
+    return ICON_CHIP_LOOK;
   }
-  return { variant: 'primary', class: s['signIn'] ?? '' };
+  const name = showName ? sessionDisplayName(session) : undefined;
+  return {
+    variant: 'secondary',
+    class: [s['chip'], name === undefined ? s['avatarOnly'] : undefined].join(' ').trim(),
+    avatar: session,
+    name,
+    alert: false,
+    text: 'Sign in',
+    resumes: false,
+  };
 }
 
 /**
@@ -97,23 +171,15 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = (): Account => props.account;
   const opensPopover = (): boolean => account().connected();
-  const busy = (): boolean => account().restoring() || account().signingOut();
-  // The keys live in this browser, not in Polkadot App.
-  const local = (): boolean => account().loggedIn() && account().local();
-  const shownName = (): string | undefined => {
-    const session = props.showName === true && account().loggedIn() ? account().session() : undefined;
-    return session === undefined ? undefined : sessionDisplayName(session);
-  };
-  const appearance = (): ButtonAppearance => getButtonAppearance(account(), shownName() !== undefined);
-  const label = (): string => authLabel(account());
-  // The name stays the visible text, and the title describes the sign-in a click continues.
-  const title = (): string => (!busy() && resumes(account()) ? RESUME_TITLE : label());
+  const state = createMemo(() => getAuthButtonState(account()));
+  const look = createMemo(() => getFaceLook(state().face, props.showName === true));
+  const label = (): string => getAuthLabel(state(), account().local());
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
-    const session = account().loggedIn() ? account().session() : undefined;
-    const initials = session === undefined ? undefined : sessionInitials(session);
-    const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
-    return visible === '' ? label() : `${visible}, ${accountKind(account()).toLowerCase()}`;
+    const avatar = look().avatar;
+    const initials = avatar === undefined ? undefined : sessionInitials(avatar);
+    const visible = [initials, look().name].filter(part => part !== undefined).join(' ');
+    return visible === '' ? label() : `${visible}, ${getAccountKind(account().local()).toLowerCase()}`;
   };
   onSettled(() => {
     const el = untrack(button);
@@ -137,34 +203,34 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         onClick={onClick}
         id={id('auth-button')}
         testId={id('auth-button')}
-        loading={busy()}
-        title={title()}
+        loading={isBusy(state())}
+        title={getAuthTitle(state(), label())}
         aria-label={ariaLabel()}
         aria-haspopup={opensPopover() ? undefined : 'dialog'}
         aria-expanded={opensPopover() ? undefined : props.modalOpen() ? 'true' : 'false'}
         aria-controls={opensPopover() ? undefined : 'auth-modal-backdrop'}
-        variant={appearance().variant}
-        class={appearance().class}
+        variant={look().variant}
+        class={look().class}
       >
         <Show
-          when={account().loggedIn() && account().session()}
+          when={look().avatar}
           fallback={
-            <Show when={!account().unreachable()} fallback={<AlertTriangleIcon class={s['signInIcon']} />}>
+            <Show when={!look().alert} fallback={<AlertTriangleIcon class={s['signInIcon']} />}>
               <UserIcon class={s['signInIcon']} />
               <span
                 class={s['label']}
                 data-testid="auth-button-label"
-                data-session={resumes(account()) ? 'elsewhere' : undefined}
+                data-session={look().resumes ? 'elsewhere' : undefined}
               >
-                {resumes(account()) ? 'Continue session' : 'Sign in'}
+                {look().text}
               </span>
             </Show>
           }
         >
           {session => (
             <>
-              <AccountAvatar session={session()} size="sm" local={local()} testId="user-badge" />
-              <Show when={shownName()}>
+              <AccountAvatar session={session()} size="sm" local={account().local()} testId="user-badge" />
+              <Show when={look().name}>
                 {name => (
                   // The space keeps the initials and the name apart in the visible text, as in the button's name.
                   <>
@@ -197,7 +263,7 @@ export function AccountItem(props: AuthButtonProps): JSX.Element {
   return (
     <ActionItem
       name="auth"
-      label={authLabel(props.account)}
+      label={getAuthLabel(getAuthButtonState(props.account), props.account.local())}
       icon={UserIcon}
       priority={TOPBAR_PRIORITY.auth}
       activate={() => {

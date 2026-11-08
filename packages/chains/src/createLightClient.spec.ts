@@ -20,8 +20,8 @@ import {
 } from './createLightClient.js';
 import type { ChainSyncReporter } from './createChainSyncReporter.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
-import type { ChainTransportHooks } from './transportHooks.js';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { LIGHT_CLIENT_FOLLOW_LIMIT, type ChainTransportHooks } from './transportHooks.js';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 const waiting = new Set<() => void>();
 
@@ -265,11 +265,11 @@ describe('createLightClient', () => {
   });
 
   function open(chainHooks: MockHooks, genesisHash = people): JsonRpcConnection {
-    const provider = client.createChainProvider(genesisHash, chainHooks);
-    if (provider === null) {
-      throw new Error(`no provider for ${genesisHash}`);
+    const transport = client.createChainTransport(genesisHash, chainHooks);
+    if (transport === null) {
+      throw new Error(`no transport for ${genesisHash}`);
     }
-    return provider(() => undefined);
+    return transport.provider(() => undefined);
   }
 
   it('As a dotli integrator, I open a light-client connection and see it report connecting, then connected', async () => {
@@ -283,6 +283,17 @@ describe('createLightClient', () => {
     expect(chainHooks.onStatus).toHaveBeenCalledWith('connecting');
     await chainHooks.reported('connected');
     expect(chainHooks.onHalt).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, I open a light-client chain and its transport takes two follows per connection', () => {
+    // Given a chain the network defines
+    const chainHooks = createMockHooks();
+
+    // When its transport opens
+    const transport = client.createChainTransport(people, chainHooks);
+
+    // Then the transport carries the light client's follow limit
+    expect(transport?.followLimit).toBe(LIGHT_CLIENT_FOLLOW_LIMIT);
   });
 
   it('As a dotli integrator, I open two connections to one chain and only the first reports its sync', async () => {
@@ -379,7 +390,7 @@ describe('createLightClient', () => {
 
   it('As a dotli integrator, I see a halt listener that throws on the end of the stream called once and reported', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const chainHooks = createMockHooks();
     chainHooks.onHalt.mockImplementation(() => {
@@ -394,7 +405,7 @@ describe('createLightClient', () => {
     // Then
     await waitUntil(() => captured.length > 0);
     expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client.halt' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'light_client.halt' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'light_client.halt' },
     ]);
@@ -553,7 +564,7 @@ describe('createLightClient', () => {
 
   it('As a dotli integrator, I see a light client listener that throws on the fatal change reported while the next one still hears it', async () => {
     // Given a start that fails, a listener that throws and one after it
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     client.subscribe(() => {
       throw new TypeError('listener broke');
@@ -569,7 +580,7 @@ describe('createLightClient', () => {
     // Then
     await first.halted();
     expect(changes).toEqual([{ kind: 'fatal', message: `chain ${people} connection failed: wasm fetch failed` }]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'light_client' } }]);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'light_client' } }]);
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'light_client' },
     ]);

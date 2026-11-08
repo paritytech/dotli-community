@@ -4,6 +4,7 @@
 // The settings this page runs with, read at boot. A link that changes a saved choice wipes and reloads, as Save does.
 
 import {
+  BACKEND_FACTS,
   hasStoredSettings,
   parseSettingsFromSearch,
   resolveSettings,
@@ -87,9 +88,10 @@ export async function readBootSettings(params: BootSettingsParams): Promise<Sett
   }
 
   if (sharedWorkerFallback) {
+    const sharedLabel = BACKEND_FACTS['smoldot-shared-worker'].label;
     params.notify({
-      label: 'Light client shared unavailable',
-      text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
+      label: `${sharedLabel} unavailable`,
+      text: `This browser doesn't support ${sharedLabel}. Falling back to ${BACKEND_FACTS['smoldot-direct'].label}.`,
       tone: 'warn',
       dismissMs: 5_000,
     });

@@ -5,10 +5,18 @@
 // here, outside Solid.
 
 import { createSharedRun, registerStoreStateReset, toAbortError, registerAtomReset } from '@dotli/shared';
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { atom, type ReadableAtom } from 'nanostores';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
+
+const report = createReporter({ flow: 'ui' });
+
+/**
+ * A view an answered dialog was to hand its place to that could not be built, so the dialog closed instead. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+const modalHandoffMetric = defineCount<'error'>('modal.handoff');
 
 /**
  * `danger` rejects the request and is drawn destructive. `cancel` backs out of a prompt that is not a
@@ -202,11 +210,10 @@ export function createModals() {
       next = callHandoff(entry, outcome);
     } catch (error) {
       // The answer still reaches the caller, and the dialog closes as without a handoff.
-      reportDefect(error, {
-        flow: 'ui',
+      report.defect(error, {
         step: 'modal_handoff',
         tags: { kind: 'modal_handoff_error' },
-        metric: S.MODAL_HANDOFF,
+        metric: modalHandoffMetric,
         message: '[dot.li modal] handoff failed, closing the dialog:',
       });
     }

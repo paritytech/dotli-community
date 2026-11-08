@@ -38,3 +38,38 @@ describe('resolution summary: archive cache', () => {
     expect(model.summary.archiveCache).toBe('miss');
   });
 });
+
+describe('resolution summary: backend', () => {
+  it.each<{ from: string; to: string; expected: 'smoldot' | 'rpc-gateway' }>([
+    { from: 'rpc-gateway', to: 'smoldot-shared-worker', expected: 'smoldot' },
+    { from: 'rpc-gateway', to: 'smoldot-direct', expected: 'smoldot' },
+    { from: 'smoldot', to: 'rpc-gateway', expected: 'rpc-gateway' },
+    { from: 'rpc-gateway', to: 'a-backend-from-a-newer-deploy', expected: 'rpc-gateway' },
+  ])(
+    "As a developer, I watch a load fail over from $from to $to and the summary's transport reads $expected",
+    ({ from, to, expected }) => {
+      // Given a load that boots on `from` and fails over to `to`
+      const events = [
+        buildSystemEvent({
+          layer: 'boot',
+          event: 'started',
+          flowId: 'boot-1',
+          payload: { chainBackend: from, skipCidCache: false, skipArchiveCache: false },
+        }),
+        buildSystemEvent({
+          layer: 'failover',
+          event: 'chain_backend',
+          flowId: 'boot-1',
+          timestamp: 10,
+          payload: { from, to, reason: 'resolution failed' },
+        }),
+      ];
+
+      // When the resolution is built
+      const model = buildResolution(events, 100);
+
+      // Then the summary's transport follows the failover target
+      expect(model.summary.backend).toBe(expected);
+    },
+  );
+});

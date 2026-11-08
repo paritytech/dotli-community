@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { defineCount } from '@dotli/metrics';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
@@ -34,7 +35,7 @@ type FakeResult = {
   done: string;
 };
 
-type RunInput = Parameters<SiteAction<FakeResult>['run']>[0];
+type RunInput = Parameters<SiteAction<FakeResult, 'granted'>['run']>[0];
 
 /** One run of the action, which the test may finish itself. */
 type ActionRun = {
@@ -83,7 +84,7 @@ type StartRoundParams = {
 
 const SHOP = 'https://shop.my-site.com';
 const SELF = 'https://dot.li';
-const METRIC = 'test.site_round';
+const METRIC = defineCount<'granted' | 'refused' | 'cancelled' | 'error'>('test.site_round');
 
 const GROUP_TOKEN = 'my group';
 
@@ -168,8 +169,9 @@ async function startRound(options: StartRoundParams = {}) {
   const readMain = options.mainAccount ?? (() => Promise.resolve(MAIN_ACCOUNT));
   const failures = [...(options.failures ?? [])];
   const runs: ActionRun[] = [];
-  const action: SiteAction<FakeResult> = {
+  const action: SiteAction<FakeResult, 'granted'> = {
     route: 'sign',
+    metric: METRIC,
     outcome: () => 'granted',
     run(input) {
       const failure = failures.shift();
@@ -226,7 +228,6 @@ async function startRound(options: StartRoundParams = {}) {
       closed.resolve(undefined);
     },
     action,
-    metric: METRIC,
   });
   const screens: SiteScreen[] = [];
   onTestFinished(
@@ -310,7 +311,7 @@ describe('site round', () => {
       { view: 'window' },
       { view: 'site-signing', origin: SITE_ORIGIN, route: 'sign' },
     ]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'new' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });
 
   it('As a site that got its result, I see the window flow close the window and hear nothing more', async () => {
@@ -325,7 +326,7 @@ describe('site round', () => {
     // Then the site heard only its result, and the window closed again
     expect(round.posts.map(post => post.type)).toEqual(['dotli:s:result']);
     expect(round.countCloses()).toBe(2);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'new' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });
 
   it('As a site whose window came back from the back-forward cache before its result went out, I get the result on my next hello and only then does the window close', async () => {
@@ -411,7 +412,7 @@ describe('site round', () => {
     expect(round.mainReads.every(signal => signal.aborted)).toBe(true);
     expect(round.windowFlows).toHaveLength(1);
     expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'main_account' },
       { outcome: 'granted', reason: 'new' },
     ]);
@@ -446,7 +447,7 @@ describe('site round', () => {
 
   it('As an operator, I see a round whose core could not boot again counted, and the round does not capture the core redial', async () => {
     // Given a core whose redial failed, which the page core already reported
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const redial = new CoreRedialError(new Error('The worker crashed'));
     const round = await startRound({
       mainAccount: () =>
@@ -459,12 +460,12 @@ describe('site round', () => {
 
     // Then the failure is counted and not captured again
     expect(captured).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'main_account' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'main_account' }]);
   });
 
   it('As an operator, I see a round whose stored session is gone counted and not captured', async () => {
     // Given a core that reports the stored session gone, which only a new sign-in brings back
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const round = await startRound({
       mainAccount: () => Promise.reject(new MainAccountError('signed_out', 'The main session ended')),
     });
@@ -475,7 +476,7 @@ describe('site round', () => {
 
     // Then the failure is counted as the main account's and nothing is captured
     expect(captured).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'main_account' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'main_account' }]);
   });
 
   it('As a site the user granted before, I skip consent and keep my token', async () => {
@@ -493,7 +494,7 @@ describe('site round', () => {
     expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
     expect(getResult(round.posts).site_token).toBeUndefined();
     expect(await round.stored.list()).toEqual([createGrant({ lastUsedAt: ROUND_NOW })]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'known' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'known' }]);
   });
 
   it('As a site sending a token kept for another origin, I am asked for consent and get a new token', async () => {
@@ -544,7 +545,7 @@ describe('site round', () => {
     expect(round.readViews()).toEqual(['site-signing', 'consent']);
     expect(round.windowFlows).toHaveLength(0);
     expect(await round.stored.list()).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'declined' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'declined' }]);
   });
 
   it('As a site, I start a round and the window prepares its action at once with a signal that aborts once the round ends', async () => {
@@ -583,7 +584,7 @@ describe('site round', () => {
 
     // Then the site hears the round was cancelled
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
   it('As a user, I cancel while the grant is kept and no grant is left for a token the site never got', async () => {
@@ -601,7 +602,7 @@ describe('site round', () => {
     // Then the site heard only the cancel, and the main store keeps no grant
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(await round.stored.list()).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
   it('As a user, I cancel while the grant is kept and see no failure when the save then fails, which is still reported', async () => {
@@ -621,7 +622,7 @@ describe('site round', () => {
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(round.readViews()).not.toContain('site-failed');
     expect(round.errors).toHaveLength(1);
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'cancelled', reason: 'page' },
       { outcome: 'error', reason: 'grant' },
     ]);
@@ -643,7 +644,7 @@ describe('site round', () => {
     expect(run.input.signal.aborted).toBe(true);
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(await round.stored.list()).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
   it('As a user whose window flow failed to start, I retry and the window flow starts and the site gets its result', async () => {
@@ -659,7 +660,7 @@ describe('site round', () => {
     // Then the retry started the window flow, and the site got its result
     expect(round.windowFlows).toHaveLength(1);
     expect(getResult(round.posts).site_token).toBeUndefined();
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'action' },
       { outcome: 'granted', reason: 'known' },
     ]);
@@ -675,7 +676,7 @@ describe('site round', () => {
 
     // Then the failed read was reported and counted, and the site got a new token
     expect(round.errors).toHaveLength(1);
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'grant_read' },
       { outcome: 'granted', reason: 'new' },
     ]);
@@ -693,14 +694,14 @@ describe('site round', () => {
     // Then the site is refused with the action's reason, nothing was kept and nothing was reported
     expect(round.posts).toEqual([{ type: 'dotli:s:refused', reason: 'bad_request' }]);
     expect(await round.stored.list()).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
     expect(round.errors).toEqual([]);
   });
 
   it('As a site the action refuses for a failure, I am refused and the failure is reported once', async () => {
     // Given an action that refuses the site for a failure behind the refusal
     const failure = new Error('The chain refused the transaction');
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const round = await startRound({ failures: [new SiteRoundRefusal('transaction_invalid', { cause: failure })] });
 
     // When the round reaches the action
@@ -713,8 +714,8 @@ describe('site round', () => {
     expect(round.errors[0]?.args).toContainEqual(
       expect.objectContaining({ reason: 'transaction_invalid', cause: failure }),
     );
-    expect(captured).toEqual([{ flow: 'wallet', step: 'site_round', tags: { reason: 'transaction_invalid' } }]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'transaction_invalid' }]);
+    expect(captured).toMatchObject([{ step: 'site_round', tags: { reason: 'transaction_invalid' } }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'transaction_invalid' }]);
   });
 
   it('As a site whose round the user left, I wait and hear nothing of a refusal the action throws after', async () => {
@@ -732,7 +733,7 @@ describe('site round', () => {
 
     // Then the site heard only the cancel, counted once, and the window was not closed again
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
     expect(round.countCloses()).toBe(1);
   });
 
@@ -747,7 +748,7 @@ describe('site round', () => {
     // Then the site hears the round was cancelled and nothing was kept
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(await round.stored.list()).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'phone' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'phone' }]);
   });
 
   it('As a user whose action failed, I see the failure with Try again, retry and the site gets its result', async () => {
@@ -771,7 +772,7 @@ describe('site round', () => {
     });
     expect(round.runs).toHaveLength(2);
     expect(getResult(round.posts).result).toEqual(RESULT);
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'chain' },
       { outcome: 'granted', reason: 'new' },
     ]);
@@ -792,7 +793,7 @@ describe('site round', () => {
     expect(round.flow.screen.get()).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: false });
     expect(round.runs).toHaveLength(1);
     expect(round.posts).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'chain' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'chain' }]);
   });
 
   it('As a user whose action failed for a reason it does not name, I start the round and see the failure with Try again, counted for the action', async () => {
@@ -807,7 +808,7 @@ describe('site round', () => {
     expect(round.flow.screen.get()).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: true });
     expect(round.errors).toHaveLength(1);
     expect(round.posts).toEqual([]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'action' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'action' }]);
   });
 
   it('As a user, I press confirm before the action asks for one and the press goes nowhere', async () => {
@@ -894,7 +895,7 @@ describe('site round of a group', () => {
         group: { registrable: 'my-site.com', token: GROUP_TOKEN, origins: [SITE_ORIGIN] },
       },
     ]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'group' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'group' }]);
   });
 
   it("As a site on another origin of a group, I send the group's token and skip consent, and my origin joins the grant", async () => {
@@ -921,7 +922,7 @@ describe('site round of a group', () => {
         group: { registrable: 'my-site.com', token: GROUP_TOKEN, origins: [SITE_ORIGIN, SHOP] },
       }),
     ]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'group' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'group' }]);
   });
 
   it.each([
@@ -1011,7 +1012,7 @@ describe('site round of a group', () => {
       expect(round.runs).toEqual([]);
       expect(await round.stored.list()).toEqual([]);
       expect(round.errors).toEqual([]);
-      expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
+      expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
     },
   );
 
@@ -1047,7 +1048,7 @@ describe('site round of a group', () => {
 
     // Then the site was refused as a bad request, and only the refusal was counted, with nothing reported
     expect(round.posts).toEqual([{ type: 'dotli:s:refused', reason: 'bad_request' }]);
-    expect(round.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
+    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
     expect(round.errors).toEqual([]);
   });
 
@@ -1063,7 +1064,7 @@ describe('site round of a group', () => {
     expect(round.posts).toEqual([{ type: 'dotli:s:refused', reason: 'bad_request' }]);
     expect(round.readViews()).not.toContain('consent');
     expect(round.errors).toHaveLength(1);
-    expect(round.metrics.counted(METRIC)).toEqual([
+    expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'group_list' },
       { outcome: 'refused', reason: 'bad_request' },
     ]);

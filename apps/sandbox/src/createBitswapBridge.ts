@@ -5,7 +5,7 @@
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
 import { TIMEOUTS, isSiteOrigin } from '@dotli/config';
-import { reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createPendingReplies,
   log,
@@ -15,6 +15,14 @@ import {
   withTimeout,
   type Timers,
 } from '@dotli/shared';
+
+const report = createReporter({ flow: 'content' });
+
+/**
+ * An abort the sandbox's block bridge could not post to the host after a request timed out. Tagged `outcome` (error)
+ * and `reason` (the error's name).
+ */
+const sandboxBitswapAbortMetric = defineCount<'error'>('sandbox.bitswap_abort');
 
 type Params = {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
@@ -132,10 +140,9 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
     try {
       postToHost(parent, { type: 'dotli:bitswap-abort', ids, frame });
     } catch (error) {
-      reportDefect(error, {
-        flow: 'content',
+      report.defect(error, {
         step: 'bitswap_abort',
-        metric: S.SANDBOX_BITSWAP_ABORT,
+        metric: sandboxBitswapAbortMetric,
         message: `${BRIDGE_LOG_TAG} bitswap bridge abort postMessage failed:`,
         tags: { surface: 'sandbox_main' },
       });

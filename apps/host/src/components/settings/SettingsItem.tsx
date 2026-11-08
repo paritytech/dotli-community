@@ -3,7 +3,7 @@
 
 // The settings button in the topbar: its place in the bar, its More row, its popover and the panel it opens.
 
-import { createSignal, lazy, type Accessor } from 'solid-js';
+import { createSignal, lazy, omit, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SlidersIcon } from '@dotli/ui/icons';
 import { ActionItem, IconButton, Popover, StatusDot } from '@dotli/ui';
@@ -32,6 +32,7 @@ function unverified(settings: SavedSettings | null): boolean {
  * Saved settings come only from `settings`, which boot may read after this mounts.
  */
 export function SettingsItem(props: SettingsItemProps): JSX.Element {
+  const content = omit(props, 'open', 'onOpenChange');
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <ActionItem
@@ -66,15 +67,7 @@ export function SettingsItem(props: SettingsItemProps): JSX.Element {
         class={s['popover']}
         preload={Settings.preload}
       >
-        <Settings
-          settings={props.settings}
-          version={props.version}
-          theme={props.theme}
-          onTheme={props.onTheme}
-          onApply={props.onApply}
-          debugMode={props.debugMode}
-          onDebugMode={props.onDebugMode}
-        />
+        <Settings {...content} />
       </Popover>
     </ActionItem>
   );

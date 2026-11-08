@@ -25,10 +25,10 @@ flowchart LR
 ```
 
 - The client keeps one Bulletin connection from its caller while a fetch runs, and closes it after the last one settles.
-  A close that fails is reported, and the next fetch dials anew. A halt drops the connection, and the next attempt
-  redials. Retryable errors go through `createAsyncTaskPool` within a total time budget. A "block not found" answer is
-  retried a few times because it only means the connected peers lacked the block. Other errors are terminal. A second
-  request for the same CID waits on the first.
+  A close that fails is reported, and the next fetch dials anew. The caller's connection answers a halt with the halted
+  marker and takes the rebuilt chain itself. Retryable errors go through `createAsyncTaskPool` within a total time
+  budget. A "block not found" answer is retried a few times because it only means the connected peers lacked the block.
+  Other errors are terminal. A second request for the same CID waits on the first.
 - The relay listens on the host's sandbox channel. It takes the cache and the client as its params and tags each block
   with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses its storage on
   reload.

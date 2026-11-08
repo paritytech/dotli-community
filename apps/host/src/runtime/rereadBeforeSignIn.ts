@@ -7,6 +7,7 @@
 import { log } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { AuthModalView } from '../state/authModalState.js';
+import { authViews } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { AuthModalPort } from './signInRoute.js';
 
@@ -59,23 +60,23 @@ export async function rereadBeforeSignIn(params: Params): Promise<void> {
 }
 
 function continueAfterReread(state: DotliAuthState, { modal, proceed, elsewhere }: Params): void {
-  switch (state.tag) {
-    case 'Unreachable':
+  switch (authViews.getSessionKnowledge(state)) {
+    case 'unreachable':
       modal.show(UNREACHABLE_VIEW);
       return;
-    case 'Disconnected':
-    case 'LoginFailed':
-      if (proceed !== null) {
-        proceed();
-        return;
-      }
-      modal.show({ kind: 'prompt', resume: elsewhere() });
+    case 'reading':
+      // A read is under way, so the click starts nothing.
       return;
-    case 'Restoring':
-    case 'Pairing':
-    case 'Authenticating':
-    case 'Connected':
-      // A read or a sign-in is under way, or the user is signed in, so the click starts nothing.
-      return;
+    case 'known':
+      break;
   }
+  // A sign-in is under way, or the user is signed in, so the click starts nothing.
+  if (!authViews.isSignInIdle(state)) {
+    return;
+  }
+  if (proceed !== null) {
+    proceed();
+    return;
+  }
+  modal.show({ kind: 'prompt', resume: elsewhere() });
 }

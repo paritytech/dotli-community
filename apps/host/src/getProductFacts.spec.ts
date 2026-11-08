@@ -5,15 +5,15 @@ import { toRootManifestResult } from '@dotli/resolver';
 import { describe, expect, it } from 'vitest';
 
 import { parseH160Address } from './h160Address.js';
-import { getManifestFacts } from './getManifestFacts.js';
+import { getProductFacts } from './getProductFacts.js';
 import { APP, EMPTY, ROOT } from './testing/manifestFixtures.js';
 
 const OWNER = parseH160Address('0x1111111111111111111111111111111111111111');
 
-describe('manifest facts', () => {
+describe('product facts', () => {
   it('As a visitor, I open a product and the page takes its name, description and versions from its manifests', () => {
     // When the facts are taken from a root and an app manifest
-    const facts = getManifestFacts({ root: ROOT, app: APP });
+    const facts = getProductFacts({ root: ROOT, app: APP });
 
     // Then the facts carry the name, the description and both versions
     expect(facts).toEqual({
@@ -36,7 +36,7 @@ describe('manifest facts', () => {
     );
 
     // When the facts are taken from it
-    const facts = getManifestFacts({ root, app: EMPTY });
+    const facts = getProductFacts({ root, app: EMPTY });
 
     // Then the facts carry the description
     expect(facts).toMatchObject({ description: 'Trade tokens.' });
@@ -50,7 +50,7 @@ describe('manifest facts', () => {
     'As a visitor, I open a product that %s and the page takes the owner only when there is one',
     (_case, manifests, expected) => {
       // When the facts are taken from its manifests
-      const facts = getManifestFacts(manifests);
+      const facts = getProductFacts(manifests);
 
       // Then the facts carry the owner only when there is one
       expect(facts).toEqual(expected);
@@ -59,7 +59,7 @@ describe('manifest facts', () => {
 
   it('As a visitor on a product with no manifests, I open it and the page has no facts to show', () => {
     // When the facts are taken from them
-    const facts = getManifestFacts({ root: EMPTY, app: EMPTY });
+    const facts = getProductFacts({ root: EMPTY, app: EMPTY });
 
     // Then the facts are empty
     expect(facts).toEqual({});

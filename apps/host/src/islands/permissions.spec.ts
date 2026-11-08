@@ -5,9 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
 import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
-import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
+import type {
+  ChangeOutcome,
+  PendingPermissions,
+  ProductPermissionsState,
+} from '../runtime/state/productPermissions.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
-import { type ReadPermissions, type ShownProduct, usePermissionsPanel } from './permissions.js';
+import { type ShownProduct, usePermissionsPanel } from './permissions.js';
 
 const PERMISSIONS: readonly MenuPermission[] = [
   { name: 'Camera', label: 'Camera', group: 'device' },
@@ -19,18 +23,18 @@ const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
 /** The page's product and permissions, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
   const product = atom<ShownProduct>({ status: 'none' });
-  const state = atom<ReadPermissions>({ status: 'none' });
+  const state = atom<ProductPermissionsState>({ status: 'none' });
   const pending = atom<PendingPermissions>(null);
   const intents = {
     refresh: vi.fn(() => Promise.resolve()),
     change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),
   };
   const { panel, dispose } = createRoot(d => ({
-    panel: usePermissionsPanel({ permissions: PERMISSIONS, product, state, pending, ...intents }),
+    panel: usePermissionsPanel({ permissions: PERMISSIONS, product, store: { state, pending, ...intents } }),
     dispose: d,
   }));
   flush();
-  const given = (shown: ShownProduct, read: ReadPermissions): void => {
+  const given = (shown: ShownProduct, read: ProductPermissionsState): void => {
     product.set(shown);
     state.set(read);
     flush();
@@ -38,14 +42,14 @@ function mount() {
   return { panel, dispose, intents, given, pending };
 }
 
-const read = (statuses: readonly PermissionStatus[], label = 'app'): ReadPermissions => ({
+const read = (statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState => ({
   status: 'read',
   label,
   statuses,
 });
 
 describe('usePermissionsPanel', () => {
-  it.each<[string, ShownProduct, ReadPermissions, string | undefined]>([
+  it.each<[string, ShownProduct, ProductPermissionsState, string | undefined]>([
     ['the product is still loading', { status: 'none' }, { status: 'none' }, 'loading'],
     ['there is no app', { status: 'error' }, { status: 'none' }, 'no-app'],
     ['the permissions are unreadable', LOADED, { status: 'failed', label: 'app' }, 'unavailable'],

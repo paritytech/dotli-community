@@ -5,7 +5,7 @@
 // session per origin, so this flag is how a page learns about a sign-out it never saw.
 
 import { BASE_DOMAIN, isLocalhost } from '@dotli/config';
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { listen } from '@dotli/shared';
 import { pageRole, isFlagShared } from '../pageRole.js';
 import { getSharedChannel, type SharedChannel } from '../sharedMode.js';
@@ -18,6 +18,15 @@ import {
 } from './createCookiePresence.js';
 import { createStorePresence, getFlagWriteReport, type FlagWrite } from './createStorePresence.js';
 import type { Presence, SessionPresence } from './types.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A read of the signed-in flag threw, so presence answered unknown. Counted once for each read that threw,
+ * whoever read it, so one page may count several. Expected. Tagged `outcome` (error) and `reason` (the error's
+ * name).
+ */
+const sessionPresenceReadMetric = defineCount<'error'>('session.presence_read');
 
 type Params = {
   /** Whether the page shares the root domain's flag. A preview its preview host frames does not. */
@@ -86,7 +95,7 @@ export function createPagePresence({
       callSettled(
         () => getPresence().read(),
         (error): Presence => {
-          reportExpected(error, { flow: 'wallet', step: 'presence_read', metric: S.SESSION_PRESENCE_READ });
+          report.expected(error, { step: 'presence_read', metric: sessionPresenceReadMetric });
           return 'unknown';
         },
       ),

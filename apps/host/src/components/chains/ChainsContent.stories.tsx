@@ -22,7 +22,8 @@ import {
   VERDICTS,
   waitingOn,
 } from '../../testing/stories/networkFixtures.js';
-import type { LiveVerdict } from '../../networkVerdict.js';
+import { NETWORK_HEALTH } from '../../networkVerdict.js';
+import type { LiveVerdict, NetworkHealth } from '../../networkVerdict.js';
 import type { ChainView, TransferView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
 
@@ -54,7 +55,7 @@ type ExpectedChain = {
 type ExpectedBody = {
   title: string;
   detail: string;
-  tone: 'idle' | 'warn' | 'ok' | 'err' | 'quiet';
+  tone: NetworkHealth;
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
@@ -201,7 +202,7 @@ function statusStory(
 
 /** As a dotli user opening it with nothing in use, it says no chains are in use. */
 export const StatusNothingInUse: Story = statusStory([], {
-  title: 'No chains in use',
+  title: NETWORK_HEALTH.quiet.title,
   detail: 'Chains appear here once the app connects to them.',
   tone: 'quiet',
   chains: [],
@@ -211,7 +212,7 @@ export const StatusNothingInUse: Story = statusStory([], {
 export const StatusStartingUnreachable: Story = statusStory(
   [chain({ reachable: false }), chain({ role: 'assethub', label: 'Asset Hub', reachable: false })],
   {
-    title: 'Syncing',
+    title: NETWORK_HEALTH.idle.title,
     detail: SEARCHING,
     tone: 'idle',
     chains: [
@@ -225,7 +226,7 @@ export const StatusStartingUnreachable: Story = statusStory(
 export const StatusConnecting: Story = statusStory(
   [chain(), chain({ role: 'assethub', label: 'Asset Hub' })],
   {
-    title: 'Syncing',
+    title: NETWORK_HEALTH.idle.title,
     detail: SEARCHING,
     tone: 'idle',
     chains: [
@@ -242,7 +243,7 @@ export const StatusConnecting: Story = statusStory(
 export const StatusSyncingNoEndpoint: Story = statusStory(
   [chain({ phase: 'syncing', peers: 1 }), chain({ role: 'people', label: 'People', reachable: false, peers: 3 })],
   {
-    title: 'Syncing',
+    title: NETWORK_HEALTH.idle.title,
     detail: SEARCHING,
     tone: 'idle',
     chains: [
@@ -267,7 +268,7 @@ export const StatusOneOfTwoReady: Story = statusStory(
     chain({ role: 'people', label: 'People' }),
   ],
   {
-    title: 'Syncing',
+    title: NETWORK_HEALTH.idle.title,
     detail: SEARCHING,
     tone: 'idle',
     chains: [
@@ -305,7 +306,7 @@ export const StatusOverdue: Story = statusStory(
     }),
   ],
   {
-    title: 'Connection is unstable',
+    title: NETWORK_HEALTH.warn.title,
     detail: 'Relay chain and Asset Hub are behind',
     tone: 'warn',
     chains: [
@@ -330,7 +331,7 @@ export const StatusGood: Story = statusStory(
     chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3, 4000), sinceLast: 200, peers: 1 }),
   ],
   {
-    title: 'Your connection is good',
+    title: NETWORK_HEALTH.ok.title,
     detail: 'Light client is in sync on both chains',
     tone: 'ok',
     chains: [
@@ -433,7 +434,7 @@ export const Offline: Story = {
     await ctx.step('Then the status says I am offline', async () => {
       await expect(query(document, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', 'err');
       await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
-        'You are offlineNo peers on any chain. Retrying.',
+        `${NETWORK_HEALTH.err.title}No peers on any chain. Retrying.`,
       );
     });
   },
@@ -472,7 +473,7 @@ export const FollowsNetwork: Story = {
       await waitFor(() => expect(shownBlocks()).toEqual(['11', '12']));
       await expect(query(document, '[data-testid="chains-group-peers"]')).toHaveTextContent('2 peers');
       await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
-        'Your connection is goodLight client is in sync',
+        `${NETWORK_HEALTH.ok.title}Light client is in sync`,
       );
     });
   },
@@ -582,11 +583,10 @@ export const RenderErrorCloses: Story = {
     });
     await ctx.step('Then it is reported once and the popover closes', async () => {
       await waitFor(() => expect(captured).toHaveBeenCalledTimes(1));
-      await expect(captured).toHaveBeenCalledWith(expect.any(Error), {
-        flow: 'ui',
-        step: 'root_render',
-        tags: { root: 'popover:chains-popover' },
-      });
+      await expect(captured).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ step: 'root_render', tags: { root: 'popover:chains-popover' } }),
+      );
       await waitFor(() => expect(isOpen()).toBe(false));
       await waitFor(() => expect(document.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull());
     });

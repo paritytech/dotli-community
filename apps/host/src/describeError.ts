@@ -2,14 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { ProtocolFatalError, ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
-import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
+import {
+  getActiveServicesConfig,
+  getBackend,
+  hasLightClient,
+  hasSharedWorker,
+  BACKEND_FACTS,
+  type Backend,
+} from '@dotli/config';
 
 import { CONTENT_ERRORS } from '@dotli/content';
-import { getEndpointHost, getErrorMessage, getErrorName, describeGatewayUnreachable } from '@dotli/shared';
-import type { ResolverErrorName } from '@dotli/resolver';
+import {
+  getEndpointHost,
+  getErrorMessage,
+  getErrorName,
+  describeGatewayUnreachable,
+  isChainHaltedRpcError,
+} from '@dotli/shared';
+import { isApiStoppedError, type ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
 import { ManifestRejectedError } from './manifestRejectedError.js';
-import { SandboxSilentError } from './watchSandbox.js';
+import { SandboxSilentError } from './watchSandboxLoad.js';
 
 export type Recovery = 'switch-backend' | 'reload' | 'none';
 
@@ -50,21 +63,16 @@ export type ErrorDescription = {
 };
 
 type DescribeErrorParams = {
-  /** Picks copy that would be wrong in the other mode. */
-  isP2p: boolean;
   /** Gives the backend the page runs, from settings by default. */
   readBackend?: (() => Backend) | undefined;
 };
 
 type ClassifyErrorParams = {
-  isP2p: boolean;
   readBackend: () => Backend;
 };
 
 // Annotated, so renaming the resolver's error fails to compile here. Only the name survives postMessage.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
-// Not a public error class of the resolver, so it cannot be annotated the same way.
-const API_STOPPED = 'ApiStoppedError';
 
 const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 
@@ -82,9 +90,9 @@ const MAINTAINER_TIPS = ['Contacting the app maintainer.'] as const;
  */
 export function describeError(
   error: unknown,
-  { isP2p, readBackend = getBackend }: DescribeErrorParams,
+  { readBackend = getBackend }: DescribeErrorParams = {},
 ): ErrorDescription {
-  const described = classifyError(error, { isP2p, readBackend });
+  const described = classifyError(error, { readBackend });
   return {
     ...described,
     title: described.title ?? ERROR_TITLES.DOMAIN_UNREACHABLE,
@@ -99,11 +107,12 @@ export function getTrustedProviderHosts(): string[] {
 
 function classifyError(
   error: unknown,
-  { isP2p, readBackend }: ClassifyErrorParams,
+  { readBackend }: ClassifyErrorParams,
 ): Omit<ErrorDescription, 'tips' | 'title'> & {
   tips?: readonly string[];
   title?: string;
 } {
+  const isP2p = hasLightClient(readBackend());
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
   const message = getErrorMessage(error);
 
@@ -200,7 +209,7 @@ function classifyError(
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
       message: describeGatewayUnreachable(getIpfsGatewayHost()),
       recovery: 'switch-backend',
-      tips: getGatewayTips(),
+      tips: getGatewayTips(readBackend()),
     };
   }
   // The CAR body was cut short in transit, a download failure rather than a reachability one.
@@ -210,7 +219,7 @@ function classifyError(
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
       message: HOST_ERRORS.ARCHIVE_TRUNCATED,
       recovery: 'switch-backend',
-      tips: getTruncatedTips(isP2p),
+      tips: getTruncatedTips(readBackend()),
     };
   }
   // Fresh fetch and cache hit are one fault, since purging the cache would re-fetch the same archive.
@@ -260,7 +269,7 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
-      ...(readBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
+      ...(hasSharedWorker(readBackend()) ? { tips: SHARED_WORKER_TIPS } : {}),
     };
   }
   if (message.includes('timed out') || message.includes('Timed out')) {
@@ -272,11 +281,7 @@ function classifyError(
   }
   // The chain halted, and so did its one retry. Unlike `chainhead-disjointed`, the next connect rebuilds the chain,
   // so a plain reload needs no purge.
-  if (
-    message.includes('Chain transport halted') ||
-    message.includes('chainHead follow stopped') ||
-    (error instanceof Error && error.name === API_STOPPED)
-  ) {
+  if (isChainHaltedRpcError(error) || isApiStoppedError(error)) {
     return {
       kind: 'chain-halted',
       message: HOST_ERRORS.NETWORK_DROPPED,
@@ -296,19 +301,17 @@ function getIpfsGatewayHost(): string | undefined {
   return getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0));
 }
 
-// Quotes the Settings label verbatim, and names the mode the visitor is not already in.
-function getSwitchTransportTip(isP2p: boolean): string {
-  return `Switching Network transport to "${
-    isP2p ? BACKEND_LABELS['rpc-gateway'] : BACKEND_LABELS['smoldot-direct']
-  }" in Settings.`;
+// Quotes the Settings label verbatim, and names the backend this one fails over to.
+function getSwitchTransportTip(backend: Backend): string {
+  return `Switching Network transport to "${BACKEND_FACTS[BACKEND_FACTS[backend].failover].label}" in Settings.`;
 }
 
 // A failing provider is more often its own problem than the visitor's connection, so switching comes first.
-function getGatewayTips(): readonly string[] {
-  return [getSwitchTransportTip(false), 'Checking your internet connection.'];
+function getGatewayTips(backend: Backend): readonly string[] {
+  return [getSwitchTransportTip(backend), 'Checking your internet connection.'];
 }
 
 // A short body is rarely a flaky link. The repeatable cause is an incompletely pinned archive only the publisher fixes.
-function getTruncatedTips(isP2p: boolean): readonly string[] {
-  return [getSwitchTransportTip(isP2p), 'Contacting the app maintainer if this keeps happening.'];
+function getTruncatedTips(backend: Backend): readonly string[] {
+  return [getSwitchTransportTip(backend), 'Contacting the app maintainer if this keeps happening.'];
 }

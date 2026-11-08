@@ -6,8 +6,8 @@
 // window has to give, a sign-in window's boot or a sign-out window's read.
 
 import type { Network } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { log, waitForStatus } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
+import { waitForStatus } from '@dotli/shared';
 import type { SiteRequest } from '../siteSignIn/parseSiteRequest.js';
 import type { SiteSignRequest } from '../siteSignIn/parseSiteSignRequest.js';
 import type { SignInIntent } from './parseWindowRequest.js';
@@ -17,6 +17,9 @@ import type { Party } from './openerRule.js';
 import type { SessionRequest } from './readSessionRequest.js';
 import type { RefusalReason } from './sessionMessages.js';
 import type { SessionRoute } from './sessionRoute.js';
+import { SITE_ROUTE_METRICS, type SiteRoute } from '../siteSignIn/siteRouteMetrics.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 /**
  * What the sign-in window runs for its round: dot.li's own flow for the request's intent, or a site's sign-in or
@@ -85,14 +88,14 @@ type GetSignInRoundParams<Booted> = {
 export const SIGNED_OUT_RESULT: Readonly<Record<string, never>> = {};
 
 /**
- * Refuses the round with `reason`, leaves a breadcrumb, and counts a site's refusal as the outcome of its round on
- * `route`: a transaction on the sign route, else a sign-in.
+ * Refuses the round with `reason`, leaves a breadcrumb, and counts a site's refusal on the metric of the site route
+ * `route` maps to: a transaction's on the sign route, a sign-in's on any other.
  */
 export function refuseRound({ responder, party, reason, route }: RefuseRoundParams): void {
   responder.refuse(reason);
-  log.event('session window refused its round', { flow: 'wallet', party, reason });
+  report.log.event('session window refused its round', { party, reason });
   if (party === 'third') {
-    m.count(route === 'sign' ? S.SITE_TRANSACTION : S.SITE_SIGN_IN, { outcome: 'refused', reason });
+    SITE_ROUTE_METRICS[getRefusedSiteRoute(route)].count({ outcome: 'refused', reason });
   }
 }
 
@@ -157,6 +160,18 @@ export function answerSignOut({ responder, request, enabled, read }: AnswerSignO
       responder.send(SIGNED_OUT_RESULT);
     }),
   };
+}
+
+/** The site route whose metric a site's refusal on `route` counts on. */
+function getRefusedSiteRoute(route: SessionRoute): SiteRoute {
+  switch (route) {
+    case 'sign':
+      return 'sign';
+    case 'auth':
+    case 'signout':
+    case 'manage':
+      return 'auth';
+  }
 }
 
 /** Resolves with the responder's first vetting, or null once it can have none: no opener, or one it refused. */

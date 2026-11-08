@@ -44,10 +44,10 @@ describe('createFrameChainTransport', () => {
 
   it('As a dotli integrator, I connect to a chain over the frame and the connection reports connecting, then connected', () => {
     // Given
-    const transport = must(createFrameChainTransport(GENESIS, hooks, { createRemoteChain }), 'transport');
+    const provider = must(createFrameChainTransport(GENESIS, hooks, { createRemoteChain }), 'transport').provider;
 
     // When
-    transport(() => undefined);
+    provider(() => undefined);
 
     // Then
     expect(createRemoteChain).toHaveBeenCalledWith(GENESIS);
@@ -58,8 +58,8 @@ describe('createFrameChainTransport', () => {
     'As a dotli integrator, I see a %s halt of the frame connection and the pool hears a disconnect, then a halt that carries its reason',
     reason => {
       // Given
-      const transport = must(createFrameChainTransport(GENESIS, hooks, { createRemoteChain }), 'transport');
-      transport(() => undefined);
+      const provider = must(createFrameChainTransport(GENESIS, hooks, { createRemoteChain }), 'transport').provider;
+      provider(() => undefined);
       events = [];
 
       // When
@@ -69,6 +69,17 @@ describe('createFrameChainTransport', () => {
       expect(events).toEqual(['status:disconnected', `halt:${reason}`]);
     },
   );
+
+  it('As the host page, I open a chain through the protocol frame and its transport sets no follow limit', () => {
+    // Given
+    const params = { createRemoteChain };
+
+    // When
+    const transport = must(createFrameChainTransport(GENESIS, hooks, params), 'transport');
+
+    // Then
+    expect(transport.followLimit).toBe(Infinity);
+  });
 
   it('As a dotli integrator, I ask for a chain the frame cannot serve and get no transport', () => {
     // Given

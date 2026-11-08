@@ -11,7 +11,8 @@ import { loadChainsContent } from '../../lazy.js';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import type { NetworkView } from './chains.js';
 import type { ChainsContentProps } from './ChainsContent.js';
-import { healthWord } from './networkHealth.js';
+import { NETWORK_HEALTH } from '../../networkVerdict.js';
+import type { NetworkHealth } from '../../networkVerdict.js';
 import s from './NetworkItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
@@ -35,19 +36,17 @@ function OpenChains(props: NetworkItemProps): JSX.Element {
 /** The network button and its popover. As a More row: the health in a word, and a warning raised on More. */
 export function NetworkItem(props: NetworkItemProps): JSX.Element {
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-  const settled = (): boolean => props.health() === 'ok' || props.health() === 'quiet';
+  const facts = (): (typeof NETWORK_HEALTH)[NetworkHealth] => NETWORK_HEALTH[props.health()];
   return (
     <ActionItem
       name="network"
       label="Network"
       icon={GlobeIcon}
-      alert={
-        settled() ? undefined : { tone: props.health(), label: `network ${healthWord(props.health()).toLowerCase()}` }
-      }
+      alert={facts().alerts ? { tone: props.health(), label: `network ${facts().word.toLowerCase()}` } : undefined}
       aside={() => (
         <>
-          <StatusDot tone={props.health()} size="sm" pulse={props.health() === 'idle'} />
-          <span>{healthWord(props.health())}</span>
+          <StatusDot tone={props.health()} size="sm" pulse={facts().pulses} />
+          <span>{facts().word}</span>
         </>
       )}
       priority={TOPBAR_PRIORITY.network}

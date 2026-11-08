@@ -7,21 +7,17 @@
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
-import type { HostDevicePermissionRequest, RemotePermission, RemotePermissionRequest } from '@parity/truapi';
+import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
-import {
-  isDevicePermission,
-  isEnforceableDevicePermission,
-  type EnforceablePermissionName,
-  type PermissionStatus,
-} from '../permissionPolicy.js';
+import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../permissionPolicy.js';
 import type { BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import { throwIfModalAborted } from '../throwIfModalAborted.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './createSubmitRateLimiter.js';
 import type { Notify } from './createNotificationAdapters.js';
 import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
-import type { HostPrompts, PermissionPromptDecision } from '../hostPrompts.js';
+import { servedRequests, type ServeRule } from './servedRequests.js';
+import { getLastingStatus, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
@@ -56,9 +52,6 @@ type PromptRequest = Omit<Params, 'limiter' | 'modalScope'> & {
   limiter: SubmitRateLimiter;
 };
 
-/** An answer the product's permissions keep. */
-type LastingPromptDecision = Exclude<PermissionPromptDecision, 'dismissed' | 'granted-once'>;
-
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
  * page's prompt queue. Rejects when the prompts go past the rate limit, the user dismisses the dialog, or the
@@ -78,51 +71,28 @@ export function createPromptPermission({
     _product: ProductContext,
     tag: HostDevicePermissionRequest,
   ): Promise<PermissionDecision> {
-    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
-    if (!isEnforceableDevicePermission(tag)) {
-      return 'AllowOnce';
-    }
-    return decidePromptPermission({ ...options, name: tag, kind: 'Device' }, modalScope);
+    return answerFromRule(servedRequests.getDeviceRule(tag), 'Device');
   }
 
   async function remotePermission(
     _product: ProductContext,
     request: RemotePermissionRequest,
   ): Promise<PermissionDecision> {
-    const gate = getRemotePermissionGate(request.permission.tag);
-    switch (gate.kind) {
+    return answerFromRule(servedRequests.getRemoteRule(request.permission.tag), 'Remote');
+  }
+
+  async function answerFromRule(rule: ServeRule, kind: PromptRequest['kind']): Promise<PermissionDecision> {
+    switch (rule.kind) {
       case 'grant':
         return 'AllowOnce';
       case 'refuse':
         throw new Error(ERRORS.UNSERVED_REQUEST);
       case 'prompt':
-        return decidePromptPermission({ ...options, name: gate.name, kind: 'Remote' }, modalScope);
+        return decidePromptPermission({ ...options, name: rule.name, kind }, modalScope);
     }
   }
 
   return { devicePermission, remotePermission };
-}
-
-/** How the host answers one remote permission: by asking the user, or at once. */
-type RemotePermissionGate =
-  { kind: 'prompt'; name: EnforceablePermissionName } | { kind: 'grant' } | { kind: 'refuse' };
-
-// The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
-// would offer a choice the host could not keep, so both are auto-granted. The browser core serves no balances and no
-// NFT purses, so their permissions are refused, by a rejection rather than a `Deny` the core would store.
-function getRemotePermissionGate(tag: RemotePermission['tag']): RemotePermissionGate {
-  switch (tag) {
-    case 'ChainSubmit':
-    case 'PreimageSubmit':
-    case 'StatementSubmit':
-      return { kind: 'prompt', name: tag };
-    case 'Remote':
-    case 'WebRtc':
-      return { kind: 'grant' };
-    case 'BalanceAccess':
-    case 'NftPurseRead':
-      return { kind: 'refuse' };
-  }
 }
 
 /** Only a question waits for the dialog queue. A stored answer needs no dialog, so it never waits behind one. */
@@ -172,7 +142,7 @@ async function decidePromptPermissionWhenActive(
 ): Promise<PermissionDecision> {
   const { label, name, limiter, ask, permissions } = request;
   // A grant reloads the product.
-  const gatedByIframe = isDevicePermission(name);
+  const gatedByIframe = hasFrameDirective(name);
   // An earlier prompt for the same permission may have answered it while this one waited.
   const status = await permissions.registry.getStatus(label, name);
   throwIfModalAborted(signal);
@@ -183,24 +153,13 @@ async function decidePromptPermissionWhenActive(
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
-  const decision = await ask({ label, permission: name, signal, allowOnce: !gatedByIframe });
+  const answer = await ask({ label, permission: name, signal, allowOnce: !gatedByIframe });
   throwIfModalAborted(signal);
-  if (decision === 'dismissed') {
-    throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
-  }
+  const decision = toPermissionDecision(answer);
+  const lasting = getLastingStatus(answer);
   // The core keeps a one-time grant for this execution itself, so only a lasting answer is recorded.
-  if (decision === 'granted-once') {
-    return 'AllowOnce';
+  if (lasting !== null) {
+    await permissions.product.recordPromptDecision({ label, name, decision: lasting, signal });
   }
-  await permissions.product.recordPromptDecision({ label, name, decision, signal });
-  return getLastingDecision(decision);
-}
-
-function getLastingDecision(decision: LastingPromptDecision): PermissionDecision {
-  switch (decision) {
-    case 'granted':
-      return 'AllowAlways';
-    case 'denied':
-      return 'Deny';
-  }
+  return decision;
 }

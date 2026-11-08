@@ -5,11 +5,19 @@
 // origin loses its storage on every reload, so the host fetches and keeps the blocks.
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
-import { reportDefect, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, getErrorName, setErrorName, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './readDagTotal.js';
 import { errorCode } from './errors.js';
+
+const report = createReporter({ flow: 'content' });
+
+/**
+ * A bitswap relay step that failed. Tag `outcome` (`error`), `reason` (the error name) and `step` (`verify, cache_read,
+ * cache_delete, cache_write`).
+ */
+const contentBlockRelayMetric = defineCount<'error'>('content.block_relay');
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
 export type ContentProgress = {
@@ -98,10 +106,10 @@ const VERIFICATION_ERROR = 'ContentVerificationError';
 export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = () => performance.now() }: Params) {
   // A listener's throw must not fail a block the sandbox already got, nor keep the next listener from hearing it.
   const progressListeners = createListenerSet<ContentProgress>({
-    onListenerError: reportListener('content', 'bitswap_relay.progress'),
+    onListenerError: report.listener('bitswap_relay.progress'),
   });
   const servedListeners = createListenerSet<BlockOrigin>({
-    onListenerError: reportListener('content', 'bitswap_relay.served'),
+    onListenerError: report.listener('bitswap_relay.served'),
   });
   /** The running load's count. A walk asks for its root first and only once, so the root asked again is a new load. */
   let load: { root: string; totalBytes: number | null; bytesFetched: number; startedAt: number } | null = null;
@@ -138,10 +146,9 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
       return (await verify(cid, bytes)) ? { kind: 'match' } : { kind: 'mismatch' };
     } catch (error) {
       // The verifier reported why it could not run, so each block it leaves unchecked is expected and counted.
-      reportExpected(error, {
-        flow: 'content',
+      report.expected(error, {
         step: 'relay_verify',
-        metric: S.CONTENT_BLOCK_RELAY,
+        metric: contentBlockRelayMetric,
         attributes: { step: 'verify' },
       });
       return { kind: 'unknown', cause: error };
@@ -287,11 +294,10 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
 
 /** A relay step that failed and was worked around, reported so the workaround does not hide it. */
 function reportRelayFailure({ step, error, cid, reason }: ReportRelayFailureParams): void {
-  reportDefect(error, {
-    flow: 'content',
+  report.defect(error, {
     step: `relay_${step}`,
     ...(cid === undefined ? {} : { tags: { cid } }),
-    metric: S.CONTENT_BLOCK_RELAY,
+    metric: contentBlockRelayMetric,
     attributes: { step },
     message: `[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}:`,
     ...(reason === undefined ? {} : { reason }),

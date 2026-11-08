@@ -6,13 +6,16 @@
 // elsewhere since stays. A flag that cannot be read keeps everything, since failing closed would sign such a user out
 // on every load. A local wallet never goes with the flag, only with a sign-out.
 
-import { m, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { log } from '@dotli/shared';
 import { coreStorage, type SessionRead } from './createCoreStorage.js';
 import { sessionPresence } from './createPagePresence.js';
 import { readWalletOrFailed, siteWallet, type WalletRead } from './siteWallet.js';
+import { sessionPresenceMetric } from './sessionPresenceMetric.js';
 import type { Presence, SessionPresence } from './types.js';
+
+const walletReport = createReporter({ flow: 'wallet' });
+const storageReport = createReporter({ flow: 'storage' });
 
 /** Who applies the rule: a page as it loads, an open page becoming visible, or a window over the main store. */
 export type PresenceReader = 'load' | 'visible' | 'window';
@@ -84,8 +87,8 @@ export async function reconcileWithPresence({ presence, store }: Params, reader:
   }
   const cleared = await dropSession({ store, blob, reader });
   if (cleared === 'dropped') {
-    log.event('stored session dropped, signed out elsewhere', { flow: 'wallet', reader });
-    m.count(S.SESSION_PRESENCE, { outcome: 'dropped', reason: reader });
+    walletReport.log.event('stored session dropped, signed out elsewhere', { reader });
+    sessionPresenceMetric.count({ outcome: 'dropped', reason: reader });
   }
   return {
     presence: 'absent',
@@ -109,10 +112,9 @@ async function dropSession({
     return (await store.dropSessionIf(blob)) ? 'dropped' : 'none';
   } catch (error) {
     // An unreachable store is the environment's failure, and the next load tries again.
-    reportExpected(error, {
-      flow: 'storage',
+    storageReport.expected(error, {
       step: 'session_drop',
-      metric: S.SESSION_PRESENCE,
+      metric: sessionPresenceMetric,
       reason: reader,
       message: '[dot.li] dropping a session signed out elsewhere failed:',
     });

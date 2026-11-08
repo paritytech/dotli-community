@@ -6,6 +6,7 @@
 
 import {
   ALL_PERMISSIONS,
+  PERMISSION_CATALOG,
   type EnforceablePermissionName,
   type PermissionStatus,
 } from '../../runtime/permissionPolicy.js';
@@ -20,54 +21,32 @@ export type Preset = {
   statuses: Readonly<Record<EnforceablePermissionName, PermissionStatus>>;
 };
 
-function every(status: PermissionStatus): Record<EnforceablePermissionName, PermissionStatus> {
-  return Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, status])) as Record<
-    EnforceablePermissionName,
-    PermissionStatus
-  >;
-}
-
 export const RESTRICTED: Preset = {
   id: 'restricted',
   label: 'Restricted',
   line: "For apps you don't trust.",
-  statuses: every('denied'),
+  statuses: mapStatuses(() => 'denied'),
 };
 
 export const SECURE: Preset = {
   id: 'secure',
   label: 'Secure',
   line: 'Decide each time the app asks.',
-  statuses: every('ask'),
+  statuses: mapStatuses(() => 'ask'),
 };
 
-// Spelled out, so a permission added to the menu fails the type check until Trusted gives it a status.
 export const TRUSTED: Preset = {
   id: 'trusted',
   label: 'Trusted',
   line: 'For apps you use often.',
-  statuses: {
-    Notifications: 'granted',
-    Camera: 'granted',
-    Microphone: 'granted',
-    Location: 'ask',
-    Motion: 'ask',
-    Bluetooth: 'ask',
-    NFC: 'ask',
-    Clipboard: 'granted',
-    Biometrics: 'ask',
-    IdentityDisclosure: 'granted',
-    ChainSubmit: 'granted',
-    PreimageSubmit: 'granted',
-    StatementSubmit: 'granted',
-  },
+  statuses: mapStatuses(name => PERMISSION_CATALOG[name].trusted),
 };
 
 export const UNLIMITED: Preset = {
   id: 'unlimited',
   label: 'Unlimited',
   line: 'For apps you fully trust.',
-  statuses: every('granted'),
+  statuses: mapStatuses(() => 'granted'),
 };
 
 /** Safest first, as the slider lays them out. */
@@ -103,4 +82,13 @@ export function presetOf(statuses: readonly PermissionStatus[]): ShownPreset {
     }
   }
   return { preset: closest, modified: least > 0 };
+}
+
+function mapStatuses(
+  read: (name: EnforceablePermissionName) => PermissionStatus,
+): Record<EnforceablePermissionName, PermissionStatus> {
+  return Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, read(name)])) as Record<
+    EnforceablePermissionName,
+    PermissionStatus
+  >;
 }

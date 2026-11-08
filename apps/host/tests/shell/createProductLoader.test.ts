@@ -12,7 +12,9 @@ import { flush } from 'solid-js';
 import type { Backend } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
+import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
+import { createDeferred, withTimeout } from '@dotli/shared';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -22,12 +24,8 @@ import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
 import { pageLoading } from '../../src/createLoadingController.js';
 import type { NameSource } from '../../src/createNameSource.js';
-import {
-  createProductLoader,
-  type ContentOutcome,
-  type LoaderCidCache,
-  type LoaderFrame,
-} from '../../src/createProductLoader.js';
+import { createProductLoader, type LoaderCidCache, type LoaderPorts } from '../../src/createProductLoader.js';
+import { SandboxSilentError, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { urlPillState } from '../../src/state/urlPillState.js';
 
@@ -56,13 +54,13 @@ const NO_CACHED_MANIFESTS: CachedManifests = { root: null, app: null };
 describe('createProductLoader', () => {
   it('As a visitor, I open a name for the first time and get its app subname content rendered', async () => {
     // Given
-    const { loader, frame, listEvents } = setupLoader({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
+    const { loader, ports, listEvents } = setupLoader({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
 
     // When
     await loader.load('doom');
 
     // Then
-    expect(frame.render).toHaveBeenCalledWith(getRenderedDoom('bafy-app'));
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-app'));
     expect(listEvents()).toContain('boot:ready');
   });
 
@@ -105,19 +103,19 @@ describe('createProductLoader', () => {
     'As a visitor, I open a product with %s and get it rendered with chat %s',
     async (_name, _chat, manifest, chatOn) => {
       // Given
-      const { loader, frame } = setupLoader({ published: { doom: 'bafy-base' }, workerManifest: manifest });
+      const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, workerManifest: manifest });
 
       // When
       await loader.load('doom');
 
       // Then
-      await expect(frame.render.mock.calls[0]?.[0].chat).resolves.toBe(chatOn);
+      await expect(ports.product.render.mock.calls[0]?.[0].chat).resolves.toBe(chatOn);
     },
   );
 
   it('As a visitor, I return to a cached app and see it without a name read while it is checked against the network', async () => {
     // Given
-    const { loader, names, frame, revalidated, debug } = setupLoader({
+    const { loader, names, ports, revalidated, debug } = setupLoader({
       cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS },
     });
 
@@ -126,14 +124,14 @@ describe('createProductLoader', () => {
 
     // Then
     expect(names.resolveProduct).not.toHaveBeenCalled();
-    expect(frame.render).toHaveBeenCalledWith(getRenderedDoom('bafy-cached'));
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-cached'));
     expect(revalidated).toEqual([['doom', 'bafy-cached', true]]);
     expect(debug.at(-1)?.payload).toMatchObject({ label: 'doom', path: 'fast' });
   });
 
   it('As a visitor whose cached copy no longer passes, I open it and see why, and the copy is checked without reloading me', async () => {
     // Given
-    const { loader, frame, failures, revalidated, captured } = setupLoader({
+    const { loader, ports, failures, revalidated, captured } = setupLoader({
       cached: { cid: 'bafy-cached', manifests: { root: '{"$v":2}', app: null } },
     });
 
@@ -141,7 +139,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // Then
-    expect(frame.render).not.toHaveBeenCalled();
+    expect(ports.product.render).not.toHaveBeenCalled();
     expect(failures.map(failure => failure.error.kind)).toEqual(['manifest-unsupported-version']);
     expect(productState.store.get().status).toBe('error');
     expect(revalidated).toEqual([['doom', 'bafy-cached', false]]);
@@ -151,7 +149,7 @@ describe('createProductLoader', () => {
 
   it('As a visitor, I open a name with nothing published and see the no-content screen, and my journey ends', async () => {
     // Given
-    const { loader, frame, failures, readResolution } = setupLoader();
+    const { loader, ports, failures, readResolution } = setupLoader();
 
     // When the load ends, and the name is opened again
     await loader.load('doom');
@@ -163,7 +161,7 @@ describe('createProductLoader', () => {
     expect(productState.store.get().status).toBe('error');
     expect(nextAttempt.attemptNumber).toBe(1);
     expect(readResolution()).toMatchObject({ outcome: 'no_content' });
-    expect(frame.render).not.toHaveBeenCalled();
+    expect(ports.product.render).not.toHaveBeenCalled();
     expect(failures).toEqual([]);
   });
 
@@ -201,19 +199,19 @@ describe('createProductLoader', () => {
 
   it('As a visitor, I open a name for the first time and its wallet core boots while the name resolves', async () => {
     // Given a name with an app published
-    const { loader, frame, names } = setupLoader({ published: { 'app.doom': 'bafy-app' } });
+    const { loader, ports, names } = setupLoader({ published: { 'app.doom': 'bafy-app' } });
 
     // When the name is loaded
     await loader.load('doom');
 
     // Then the core was held before the name was resolved
-    expect(frame.holdCore).toHaveBeenCalledBefore(vi.mocked(names.resolveProduct));
+    expect(ports.core.acquirePageCore).toHaveBeenCalledBefore(vi.mocked(names.resolveProduct));
   });
 
   it('As a visitor whose wallet core cannot boot, I open a name and see the failure screen at the render, and the app is never asked to render', async () => {
     // Given a wallet core that fails to boot and an app published
     const cause = new Error('the wallet core did not boot');
-    const { loader, frame, failures, captured } = setupLoader({
+    const { loader, ports, failures, captured } = setupLoader({
       published: { 'app.doom': 'bafy-app' },
       coreBootError: cause,
     });
@@ -224,7 +222,7 @@ describe('createProductLoader', () => {
     // Then only the render handoff is reported, the failure screen shows, and the app is not rendered
     expect(captured.map(context => context.step)).toEqual(['render_handoff']);
     expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
-    expect(frame.render).not.toHaveBeenCalled();
+    expect(ports.product.render).not.toHaveBeenCalled();
   });
 
   it.each<{ outcome: string; params: Params; steps: string[] }>([
@@ -266,14 +264,14 @@ describe('createProductLoader', () => {
     'As a visitor, I open a name that $outcome and the core held for it is let go once the load ends',
     async ({ params }) => {
       // Given a name that ends one of four ways
-      const { loader, frame, releaseCore } = setupLoader(params);
+      const { loader, ports, releaseCore } = setupLoader(params);
 
       // When the name is loaded
       await loader.load('doom');
 
       // Then the held core is released once and was held once
       expect(releaseCore).toHaveBeenCalledTimes(1);
-      expect(frame.holdCore).toHaveBeenCalledTimes(1);
+      expect(ports.core.acquirePageCore).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -283,7 +281,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // When the content loads, and the name is opened again
-    reportContent('loaded');
+    await reportContent('loaded');
     const nextAttempt = beginAttempt('doom');
 
     // Then
@@ -297,7 +295,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // When the download fails, and the name is opened again
-    reportContent('failed', 'archive_fetch');
+    await reportContent('failed', 'archive_fetch');
     const nextAttempt = beginAttempt('doom');
 
     // Then
@@ -307,7 +305,7 @@ describe('createProductLoader', () => {
 
   it('As a visitor, I open an app whose frame never starts and see the failure screen after its deadline instead of a loading bar for good', async () => {
     // Given
-    const { loader, frame, failures, reportContent, timers, captured, readResolution } = setupLoader({
+    const { loader, ports, failures, reportContent, timers, captured, readResolution } = setupLoader({
       published: { doom: 'bafy-base' },
       silentSandbox: true,
     });
@@ -315,13 +313,13 @@ describe('createProductLoader', () => {
 
     // When
     await timers.advance(30_000);
-    reportContent('loaded');
+    await reportContent('loaded');
 
     // Then
     expect(failures.map(failure => failure.error.kind)).toEqual(['sandbox-silent']);
     expect(captured).toContainEqual(expect.objectContaining({ step: 'content' }));
     expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'sandbox-silent' });
-    expect(frame.halt).toHaveBeenCalledTimes(1);
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -333,15 +331,15 @@ describe('createProductLoader', () => {
       // Given
       const {
         loader,
-        frame,
+        ports,
         failures,
         recents,
         countForgotten,
-        countSandboxListeners,
         reportContent,
         listEvents,
         readResolution,
         distributions,
+        timers,
       } = setupLoader({
         published: { doom: 'bafy-base' },
         latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
@@ -351,11 +349,12 @@ describe('createProductLoader', () => {
 
       // When
       await loader.load('doom');
-      reportContent('loaded');
+      await reportContent('loaded');
+      await timers.advance(30_000);
 
       // Then
       expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
-      expect(frame.halt).toHaveBeenCalledTimes(1);
+      expect(ports.product.halt).toHaveBeenCalledTimes(1);
       expect(countForgotten()).toBe(0);
       expect(recents).toEqual([]);
       expect(listEvents()).not.toContain('boot:ready');
@@ -366,24 +365,23 @@ describe('createProductLoader', () => {
           metric => metric.name === 'dotli.e2e.slow_path' && metric.attributes?.['outcome'] === 'ok',
         ),
       ).toEqual([]);
-      expect(countSandboxListeners()).toBe(0);
     },
   );
 
   it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen', async () => {
     // Given
-    const { loader, frame, failures, refuseWire, reportContent, readResolution } = setupLoader({
+    const { loader, ports, failures, refuseWire, reportContent, readResolution } = setupLoader({
       published: { doom: 'bafy-base' },
     });
     await loader.load('doom');
 
     // When
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
-    reportContent('loaded');
+    await reportContent('loaded');
 
     // Then
     expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
-    expect(frame.halt).toHaveBeenCalledTimes(1);
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
     expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
   });
 
@@ -400,24 +398,12 @@ describe('createProductLoader', () => {
 
     // Then the throw is captured once and counted with its error name
     expect(captured.filter(context => context.step === 'failure_screen')).toEqual([
-      expect.objectContaining({ flow: 'resolve', step: 'failure_screen' }),
+      expect.objectContaining({ step: 'failure_screen' }),
     ]);
     // The page sets its journey as defaults on every count
     expect(counted('resolve.failure_screen')).toEqual([
       expect.objectContaining({ outcome: 'error', reason: 'TypeError' }),
     ]);
-  });
-
-  it('As a visitor with the app open, I meet a failure that ends the load and it stops waiting for the content', async () => {
-    // Given
-    const { loader, refuseWire, countContentCallbacks } = setupLoader({ published: { doom: 'bafy-base' } });
-    await loader.load('doom');
-
-    // When
-    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
-
-    // Then
-    expect(countContentCallbacks()).toBe(0);
   });
 
   it('As a visitor whose app frame never starts, I see the load fail and a protocol frame refusing the page later reaches no listener', async () => {
@@ -452,7 +438,7 @@ describe('createProductLoader', () => {
 
   it('As a visitor with the CID cache turned off, I open a name and it is resolved with nothing cached', async () => {
     // Given
-    const { loader, cidCache, stored, frame } = setupLoader({ skipCidCache: true, published: { doom: 'bafy-base' } });
+    const { loader, cidCache, stored, ports } = setupLoader({ skipCidCache: true, published: { doom: 'bafy-base' } });
 
     // When
     await loader.load('doom');
@@ -460,19 +446,19 @@ describe('createProductLoader', () => {
     // Then
     expect(cidCache.get).not.toHaveBeenCalled();
     expect(stored).toEqual([]);
-    expect(frame.render).toHaveBeenCalledWith(getRenderedDoom('bafy-base'));
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-base'));
   });
 
   it('As a visitor, I load the same name twice at once and the second load waits for the first and loads nothing more', async () => {
     // Given
-    const { loader, names, frame } = setupLoader({ published: { doom: 'bafy-base' } });
+    const { loader, names, ports } = setupLoader({ published: { doom: 'bafy-base' } });
 
     // When
     await Promise.all([loader.load('doom'), loader.load('doom')]);
 
     // Then
     expect(names.resolveProduct).toHaveBeenCalledTimes(1);
-    expect(frame.render).toHaveBeenCalledTimes(1);
+    expect(ports.product.render).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -510,13 +496,16 @@ function setupLoader(params: Params = {}) {
   });
   const timers = createManualTimers();
   const failures: LoadFailure[] = [];
-  const contentDone = new Set<(outcome: ContentOutcome, failedStep: string | undefined) => void>();
+  const loadOutcome = createDeferred<SandboxLoadReport>();
+  const heard = createDeferred<undefined>();
+  if (params.silentSandbox !== true) {
+    heard.resolve(undefined);
+  }
   const stored: string[] = [];
   const revalidated: [string, string, boolean][] = [];
   const recents: string[] = [];
   let forgotten = 0;
   const mismatchListeners = new Set<(error: ProtocolVersionMismatchError) => void>();
-  const sandboxListeners = new Set<() => void>();
   const published = params.published ?? {};
   const releaseCore = vi.fn();
   const names: NameSource = {
@@ -529,32 +518,31 @@ function setupLoader(params: Params = {}) {
     readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
     readWorkerManifest: vi.fn(() => Promise.resolve(params.workerManifest ?? { kind: 'empty' as const })),
   };
-  const frame = {
-    setPageProduct: vi.fn(),
-    holdCore: vi.fn<LoaderFrame['holdCore']>(() =>
-      params.coreBootError !== undefined
-        ? Promise.reject(params.coreBootError)
-        : Promise.resolve({ release: releaseCore }),
-    ),
-    render: vi.fn<LoaderFrame['render']>(() => Promise.resolve()),
-    halt: vi.fn(),
-    onContentDone(callback) {
-      contentDone.add(callback);
-      return () => {
-        contentDone.delete(callback);
-      };
+  const ports = {
+    product: {
+      render: vi.fn<LoaderPorts['product']['render']>(() => Promise.resolve()),
+      halt: vi.fn(),
     },
-    onContentProgress: () => () => undefined,
-    onSandboxHeard(listener) {
-      sandboxListeners.add(listener);
-      if (params.silentSandbox !== true) {
-        queueMicrotask(listener);
-      }
-      return () => {
-        sandboxListeners.delete(listener);
-      };
+    core: {
+      setPageProduct: vi.fn(),
+      acquirePageCore: vi.fn<LoaderPorts['core']['acquirePageCore']>(() =>
+        params.coreBootError !== undefined
+          ? Promise.reject(params.coreBootError)
+          : Promise.resolve({ release: releaseCore }),
+      ),
     },
-  } satisfies LoaderFrame;
+    sandbox: {
+      outcome: loadOutcome.promise,
+      expectHeardWithin: () =>
+        withTimeout({
+          work: heard.promise,
+          ms: 30_000,
+          timeoutError: () => new SandboxSilentError(30_000),
+          timers,
+        }),
+    },
+    content: { onProgress: () => () => undefined },
+  } satisfies LoaderPorts;
   const cidCache = {
     get: vi.fn<LoaderCidCache['get']>(() => Promise.resolve(params.cached ?? null)),
     storeLater({ label, cid }) {
@@ -570,7 +558,7 @@ function setupLoader(params: Params = {}) {
     flowId: 'boot-1',
     startedAt: 0,
     names,
-    frame,
+    ports,
     cidCache,
     fetchBlock: () => new Promise<Uint8Array>(() => undefined),
     recents: {
@@ -609,8 +597,8 @@ function setupLoader(params: Params = {}) {
     /** The page's clock and timers, which only the case moves. */
     timers,
     names,
-    frame,
-    /** The release of the core lease the frame handed the load. */
+    ports,
+    /** The release of the core lease the core port handed the load. */
     releaseCore,
     cidCache,
     failures,
@@ -630,15 +618,11 @@ function setupLoader(params: Params = {}) {
     listEvents: () => debug.map(event => `${event.layer}:${event.event}`),
     /** Returns how often the failure screen forgot the previous attempt's failure. */
     countForgotten: () => forgotten,
-    /** Returns how many listeners still hear the sandbox. */
-    countSandboxListeners: () => sandboxListeners.size,
-    /** Returns how many callbacks still wait for the content's outcome. */
-    countContentCallbacks: () => contentDone.size,
     /** Returns how many listeners still hear a protocol frame refuse this page's wire. */
     countMismatchListeners: () => mismatchListeners.size,
     /** A protocol frame rebuilt from a newer release refusing this page's wire. */
     refuseWire,
-    /** The sandbox reporting its content's outcome, once. */
+    /** The sandbox reporting its content's outcome, once. Resolves after the load has handled it. */
     reportContent,
   };
 
@@ -650,12 +634,10 @@ function setupLoader(params: Params = {}) {
     }
   }
 
-  function reportContent(outcome: ContentOutcome, failedStep?: string): void {
-    const callbacks = [...contentDone];
-    contentDone.clear();
-    for (const callback of callbacks) {
-      callback(outcome, failedStep);
-    }
+  async function reportContent(outcome: SandboxLoadOutcome, failedStep?: string): Promise<void> {
+    loadOutcome.resolve({ outcome, failedStep });
+    // Queued after the load's own reader, so it runs once that has handled the outcome.
+    await loadOutcome.promise;
   }
 }
 
@@ -668,5 +650,5 @@ function createWorkerManifest(
 /** The product `doom` the frame is asked to render from `cid`, with any chat flag. */
 function getRenderedDoom(cid: string): Record<string, unknown> {
   const chat: unknown = expect.any(Promise);
-  return { mode: 'subdomain', label: 'doom', cid, chat };
+  return { mode: 'subdomain', label: 'doom', cid, chat, facts: {} };
 }

@@ -7,7 +7,7 @@
 
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
-import { reportDefect, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
@@ -27,6 +27,14 @@ import {
 } from '@dotli/storage';
 import { atom, type ReadableAtom } from 'nanostores';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
+
+const report = createReporter({ flow: 'chat' });
+
+/**
+ * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, or
+ * a product's room list, which then rejects to its caller. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const chatReadMetric = defineCount<'error'>('chat.read');
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
@@ -156,7 +164,7 @@ const NO_VIEW: ChatView = {
  */
 export function createChatStore({ repo, connections, timers = realTimers }: Params) {
   // A broken subscriber must not fail the product's call that made the write.
-  const listeners = createListenerSet<ChatChange>({ onListenerError: reportListener('chat', 'chat_store.change') });
+  const listeners = createListenerSet<ChatChange>({ onListenerError: report.listener('chat_store.change') });
   const viewChange = atom<ChatView>(NO_VIEW);
   viewChange.eq = isShallowEqual;
   registerAtomReset(viewChange);
@@ -179,13 +187,12 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     step: 'chat_contacts_read' | 'chat_messages_read' | 'chat_rooms_read',
   ): void {
     if (isExpectedDbError(error)) {
-      reportExpected(error, { flow: 'chat', step, metric: S.CHAT_READ });
+      report.expected(error, { step, metric: chatReadMetric });
       return;
     }
-    reportDefect(error, {
-      flow: 'chat',
+    report.defect(error, {
       step,
-      metric: S.CHAT_READ,
+      metric: chatReadMetric,
       message: `[dot.li chat] ${step} failed:`,
       tags: { kind: 'chat_panel_read_error' },
     });

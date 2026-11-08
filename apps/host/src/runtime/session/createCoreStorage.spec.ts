@@ -401,7 +401,7 @@ describe('core storage', () => {
     // Then
     await expect(stored).resolves.toBeUndefined();
     expect(counted('core_storage.read')).toEqual([{ outcome: 'error', reason: 'corrupt' }]);
-    expect(captures.expected.mock.calls).toEqual([[expect.anything(), { flow: 'storage', step: 'core_decode' }]]);
+    expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_decode' }]]);
   });
 
   it('As a dotli integrator, I read a corrupt shared auth session and get a cache miss', async () => {
@@ -416,7 +416,7 @@ describe('core storage', () => {
     // Then
     await expect(stored).resolves.toBeUndefined();
     expect(counted('core_storage.read')).toEqual([{ outcome: 'error', reason: 'corrupt' }]);
-    expect(captures.expected.mock.calls).toEqual([[expect.anything(), { flow: 'storage', step: 'core_decode' }]]);
+    expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_decode' }]]);
   });
 
   it('As an operator, I watch shared session reads and see each counted as a hit or a miss', async () => {
@@ -464,7 +464,7 @@ describe('core storage', () => {
     // Then the read answers failed, with one breadcrumb, no issue and one failed read counted
     expect(session).toEqual({ status: 'failed', error: UNREACHABLE });
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, { flow: 'storage', step: 'session_read' });
+    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'session_read' }));
     expect(captures.exception).not.toHaveBeenCalled();
     expect(counted('shared_session.read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
@@ -512,7 +512,7 @@ describe('core storage', () => {
     // Then
     expect(cached).toBeNull();
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, { flow: 'storage', step: 'ui_cache' });
+    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'ui_cache' }));
     expect(captures.exception).not.toHaveBeenCalled();
     expect(counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'read' }]);
   });
@@ -544,7 +544,7 @@ describe('core storage', () => {
     // Then
     expect(shared.entries.get(SESSION_KEY)).toBeUndefined();
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, { flow: 'storage', step: 'ui_cache' });
+    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'ui_cache' }));
     expect(counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'clear' }]);
   });
 
@@ -711,10 +711,12 @@ describe('core storage', () => {
     // Then
     expect(Array.from(readBack ?? [])).toEqual([1, 2, 3, 4]);
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(expect.any(DOMException), {
-      flow: 'storage',
-      step: 'core_secret_key',
-    });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.any(DOMException),
+      expect.objectContaining({
+        step: 'core_secret_key',
+      }),
+    );
     expect(metrics.counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'ephemeral_key' }]);
   });
 
@@ -732,7 +734,10 @@ describe('core storage', () => {
     await storage.readCoreStorage(key);
 
     // Then
-    expect(captures.expected).toHaveBeenCalledWith(expect.anything(), { flow: 'storage', step: 'core_secret_decrypt' });
+    expect(captures.expected).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ step: 'core_secret_decrypt' }),
+    );
     expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'undecryptable' }]);
   });
 
@@ -929,11 +934,13 @@ describe('core storage', () => {
 
     // Then the session goes and the flag failure is reported
     expect(shared.entries.has(SESSION_KEY)).toBe(false);
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'wallet',
-      step: 'presence_clear',
-      tags: { reason: 'clear' },
-    });
+    expect(captures.exception).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        step: 'presence_clear',
+        tags: { reason: 'clear' },
+      }),
+    );
     expect(counted('session.flag_write')).toEqual([{ outcome: 'error', reason: 'clear' }]);
   });
 

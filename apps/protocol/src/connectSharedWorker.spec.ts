@@ -4,8 +4,7 @@
 // The worker is a transport on the far end of a real port pair, so the link speaks to it over the wire.
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import {
   protocolSchema,
   ProtocolFatalError,
@@ -320,9 +319,9 @@ describe('connectSharedWorker', () => {
     await linked;
 
     // Then
-    expect(metrics.distributions.filter(d => d.name === `dotli.${S.PROTOCOL_SW_READY}`).map(d => d.attributes)).toEqual(
-      [row.outcome],
-    );
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      row.outcome,
+    ]);
   });
 
   it('As a dotli operator, I watch a worker that never answers the handshake and see one ready timeout counted, with one deadline', async () => {
@@ -348,14 +347,14 @@ describe('connectSharedWorker', () => {
       name: 'ProtocolInitFailedError',
       message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT,
     });
-    expect(metrics.distributions.filter(d => d.name === `dotli.${S.PROTOCOL_SW_READY}`).map(d => d.attributes)).toEqual(
-      [{ outcome: 'timeout' }],
-    );
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      { outcome: 'timeout' },
+    ]);
   });
 
   it('As a dotli maintainer, I watch a SharedWorker fail after it was ready and see it reported, since nothing waits on it', async () => {
     // Given a worker that is ready
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = createFakeWorker();
     const linked = link(worker);
@@ -367,7 +366,7 @@ describe('connectSharedWorker', () => {
 
     // Then the late failure was captured once and counted once
     expect(captured.map(capture => capture.step)).toEqual(['shared_worker_error']);
-    expect(metrics.counted(S.PROTOCOL_SHARED_WORKER_ERROR)).toEqual([
+    expect(metrics.counted('protocol.shared_worker_error')).toEqual([
       { outcome: 'error', reason: 'ProtocolInitFailedError' },
     ]);
   });
@@ -394,7 +393,7 @@ describe('connectSharedWorker', () => {
 
   it('As a dotli maintainer, I watch the worker refuse a heartbeat and see it reported once while the tab stops answering', async () => {
     // Given a tab on a ready worker that refuses heartbeats
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = createFakeWorker();
     const linked = link(worker);
@@ -416,7 +415,7 @@ describe('connectSharedWorker', () => {
 
     // Then the refusal was captured and counted once, and the second beat went unanswered
     expect(captured.map(capture => capture.step)).toEqual(['worker_heartbeat']);
-    expect(metrics.counted(S.PROTOCOL_WORKER_HEARTBEAT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(metrics.counted('protocol.worker_heartbeat')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.heartbeats).toHaveLength(1);
   });
 
@@ -524,7 +523,7 @@ describe('connectSharedWorker', () => {
 
   it('As a dotli maintainer, I watch a SharedWorker fail after its tab let go of the link and see nothing reported', async () => {
     // Given a tab that let go of its link to a ready worker
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const worker = createFakeWorker();
     const linked = link(worker);
     worker.status.markReady();
@@ -555,7 +554,7 @@ describe('connectSharedWorker', () => {
 
   it('As a tab whose worker stopped serving it, I stop answering its beats and a heartbeat it then fails is not reported', async () => {
     // Given a ready tab whose last heartbeat the worker holds
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const worker = createFakeWorker();
     const linked = link(worker);
     worker.status.markReady();

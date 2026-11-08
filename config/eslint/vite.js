@@ -105,7 +105,7 @@ export const restrictedSyntax = [
     // A genuinely safe swallow takes an eslint-disable with a one-line reason, so it gets reviewed.
     selector: 'CatchClause > BlockStatement[body.length=0]',
     message:
-      'Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric.',
+      "Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or report it through the feature's reporter (`report.defect` or `report.expected`).",
   },
   {
     selector:

@@ -4,9 +4,9 @@
 // The seam between the auth controller, which owns the sign-in modal, and the one route a page signs in by. A route
 // reaches the modal only through the port it is given.
 
+import type { LoginFailureKind } from '@parity/truapi-host';
 import type { AuthModalView } from '../state/authModalState.js';
-import type { LoginFailureKind } from './getLoginFailureView.js';
-import type { DotliAuthState } from './session/types.js';
+import type { PairingState } from './session/types.js';
 import type { PageCancelReason } from './sessionHandoff/createSessionHandoff.js';
 
 /** Why a sign-in starts and which product it is for. */
@@ -59,7 +59,7 @@ export type SignInRoute = {
   /** Whether the round on show is a phrase round, so Retry imports a phrase rather than logs in. Never throws. */
   isPhraseRound(): boolean;
   /** The core paired, or a product asked to log in. Never throws. */
-  pairing(state: Extract<DotliAuthState, { tag: 'Pairing' }>): void;
+  pairing(state: PairingState): void;
   /**
    * Whether the route's own wait is on show. That wait is the sign-in itself, so the core's login states must not
    * cover or end it. The route's own outcome ends it. Never throws.

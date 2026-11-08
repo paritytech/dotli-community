@@ -93,7 +93,8 @@ tab, and picking one opens the panel on it. A collapsed panel also stops reading
 ### Adding a host event
 
 Add it to the debug bus's event union with a layer, an event name, a flow id and a payload, and emit it. The panel then
-fails the type check until its models give the event a one-line summary. A longer explanation is optional.
+fails the type check until its models give the event a one-line summary and a facts row: its explanation and whether it
+ends its flow.
 
 ## Public API
 

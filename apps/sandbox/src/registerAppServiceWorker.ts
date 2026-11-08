@@ -7,10 +7,21 @@ import { APP_LOG_TAG } from './appLogTag.js';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
-import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
-import { isRecord, log, withTimeout } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { isRecord, withTimeout } from '@dotli/shared';
 
 import { SANDBOX_ERRORS } from './errors.js';
+
+const report = createReporter({ flow: 'content' });
+
+/** A failed registration of the sandbox service worker. Tagged `outcome` (error) and `reason` (the error's name). */
+const sandboxSwRegisterMetric = defineCount<'error'>('sandbox.sw_register');
+
+/**
+ * A failed freshness check or update of the sandbox service worker. Tagged `outcome` (error) and `reason` (the
+ * error's name). An update the browser refuses as expected (`TypeError`, `InvalidStateError`) is counted too.
+ */
+const sandboxSwUpdateMetric = defineCount<'error'>('sandbox.sw_update');
 
 /** The page's service worker container and the build it expects that worker to run. */
 export type AppServiceWorker = {
@@ -34,8 +45,6 @@ type EnsureFreshServiceWorkerParams = {
   registration: ServiceWorkerRegistration;
 };
 
-const contentLog = log.createChild({ flow: 'content' });
-
 /**
  * Registers the worker and settles once it controls the page, or the page goes on without one. Never rejects: a
  * failed registration or wait is logged, captured and counted. `waitForFreshController` is for the full reset path:
@@ -48,7 +57,7 @@ export async function registerAppServiceWorker(
 ): Promise<void> {
   const { container } = app;
   if (container === null) {
-    contentLog.event('No service worker support, continuing without one');
+    report.log.event('No service worker support, continuing without one');
     return;
   }
 
@@ -95,13 +104,11 @@ export async function registerAppServiceWorker(
     void ensureFreshServiceWorker({ app, container, registration });
   } catch (error) {
     // The page goes on, since a worker from an earlier visit may still control it and serve the archive.
-    reportDefect(error, {
-      flow: 'content',
+    report.defect(error, {
       step: 'sw_register',
-      metric: S.SANDBOX_SW_REGISTER,
+      metric: sandboxSwRegisterMetric,
       message: `${APP_LOG_TAG} Service worker registration failed; continuing without one:`,
       tags: { surface: 'sandbox_main' },
-      logger: contentLog,
     });
   }
 }
@@ -115,13 +122,11 @@ async function ensureFreshServiceWorker(params: EnsureFreshServiceWorkerParams):
   try {
     await updateIfOutdated(params);
   } catch (error) {
-    reportDefect(error, {
-      flow: 'content',
+    report.defect(error, {
       step: 'sw_update',
-      metric: S.SANDBOX_SW_UPDATE,
+      metric: sandboxSwUpdateMetric,
       message: `${APP_LOG_TAG} Service worker freshness check failed:`,
       tags: { surface: 'sandbox_main' },
-      logger: contentLog,
     });
   }
 }
@@ -143,19 +148,17 @@ async function updateIfOutdated({ app, container, registration }: EnsureFreshSer
   if (actual === null || actual === expected) {
     return;
   }
-  log.event('Service worker outdated, updating', { flow: 'content', active: actual, expected });
+  report.log.event('Service worker outdated, updating', { active: actual, expected });
   registration.update().catch((error: unknown) => {
     // A failed download rejects with TypeError, a registration a full reset removed with InvalidStateError.
     if (error instanceof Error && (error.name === 'TypeError' || error.name === 'InvalidStateError')) {
-      reportExpected(error, { flow: 'content', step: 'sw_update', metric: S.SANDBOX_SW_UPDATE });
+      report.expected(error, { step: 'sw_update', metric: sandboxSwUpdateMetric });
       return;
     }
-    reportDefect(error, {
-      flow: 'content',
+    report.defect(error, {
       step: 'sw_update',
-      metric: S.SANDBOX_SW_UPDATE,
+      metric: sandboxSwUpdateMetric,
       message: `${APP_LOG_TAG} Service worker update failed:`,
-      logger: contentLog,
     });
   });
   app.offerReload();

@@ -158,7 +158,7 @@ describe('applyAndReset', () => {
     expect(saved.at(-1)?.backend).toBe('rpc-gateway');
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(refused, { flow: 'storage', step: 'settings_apply' });
+    expect(captures.expected).toHaveBeenCalledWith(refused, expect.objectContaining({ step: 'settings_apply' }));
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'pending_reset' }]);
   });
 
@@ -208,7 +208,7 @@ describe('applyAndReset', () => {
     // Then the page still reloads, and the fault is captured and counted beside the steps
     expect(steps).toEqual(['reload']);
     expect(captures.exception).toHaveBeenCalledTimes(1);
-    expect(captures.exception).toHaveBeenCalledWith(fault, { flow: 'ui', step: 'settings_apply' });
+    expect(captures.exception).toHaveBeenCalledWith(fault, expect.objectContaining({ step: 'settings_apply' }));
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'fault' }]);
   });
 

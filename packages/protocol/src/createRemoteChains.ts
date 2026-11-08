@@ -4,13 +4,21 @@
 // JSON-RPC connections to the chains the protocol frame serves.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
 import { createChainHaltedError, createJsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { FrameRpc } from './createFrameRpc.js';
 import { isRemoteChainConnectable } from './isRemoteChainConnectable.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscribe.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A chain message from the protocol frame that the host could not parse, so its connection never hears it. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+const protocolChainMessageMetric = defineCount<'error'>('protocol.chain_message');
 
 /**
  * A remote chain provider whose connections may hear `onHalt` once:
@@ -60,10 +68,9 @@ export function createRemoteChains({ rpc }: Params) {
       // The frame relays the chain's JSON-RPC text as it is, and the consumer reads it as a JSON-RPC message.
       parsed = JSON.parse(message) as JsonRpcMessage;
     } catch (error: unknown) {
-      reportDefect(error, {
-        flow: 'protocol',
+      report.defect(error, {
         step: 'chain_message_parse',
-        metric: S.PROTOCOL_CHAIN_MESSAGE,
+        metric: protocolChainMessageMetric,
         message: `[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`,
       });
       return;
@@ -231,7 +238,7 @@ function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   try {
     call();
   } catch (error: unknown) {
-    reportListener('protocol', `remote_chain.${label}`)(error);
+    report.listener(`remote_chain.${label}`)(error);
   }
 }
 

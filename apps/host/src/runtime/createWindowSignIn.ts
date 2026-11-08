@@ -4,15 +4,20 @@
 // The sign-in route of a page with the sign-in window. It signs in and out through the window, and the modal only
 // waits for it.
 
-import { spans as S } from '@dotli/metrics';
+import { defineCount } from '@dotli/metrics';
 import { getErrorMessage } from '@dotli/shared';
-import type { DotliAuthState } from './session/types.js';
+import type { PairingState } from './session/types.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
 import type { SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { AuthModalPort, SignInRoute, StartLoginParams } from './signInRoute.js';
-import type { WalletMode } from './state/walletModeState.js';
 import { reportLocalWalletFailure, reportWalletFailure } from './walletFailure.js';
+
+/**
+ * Count. A sign-in window's result the page could not write into its copy. Tagged `outcome` (`error`) and `reason`,
+ * the round's intent (`signin, phrase, resume`).
+ */
+const sessionWindowApplyMetric = defineCount<'error'>('session_window.apply');
 
 type Params = {
   /** The page's sign-in and sign-out windows. */
@@ -21,8 +26,8 @@ type Params = {
   applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
   /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
   elsewhere: () => boolean;
-  /** The page's wallet mode now. */
-  walletMode: () => WalletMode;
+  /** Whether the page runs on a local wallet now. Never throws. */
+  isLocalWallet: () => boolean;
   /** The page's sign-in modal. */
   modal: AuthModalPort;
 };
@@ -37,7 +42,7 @@ type WindowRound = {
 };
 
 /** Builds the sign-in route through the window. Building it never throws. */
-export function createWindowSignIn({ handoff, applyResult, elsewhere, walletMode, modal }: Params): SignInRoute {
+export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWallet, modal }: Params): SignInRoute {
   // The window round on show. Closing the modal ends it, so an outcome that arrives later changes nothing on screen.
   let round: WindowRound | null = null;
 
@@ -46,7 +51,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, walletMode
    * Sign in gives the click. A failure on show is replaced, while a prompt already up, the wait for the window and its
    * outcome stay, so the core's later pairing updates write nothing.
    */
-  function promptForWindow(state: Extract<DotliAuthState, { tag: 'Pairing' }>): void {
+  function promptForWindow(state: PairingState): void {
     if (round?.open === true) {
       return;
     }
@@ -102,7 +107,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, walletMode
         what: 'writing the sign-in window result',
         step: 'session_window',
         reason: windowRound.intent,
-        metric: S.SESSION_WINDOW_APPLY,
+        metric: sessionWindowApplyMetric,
       });
       if (round === windowRound) {
         windowRound.open = false;
@@ -137,7 +142,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, walletMode
     signOut() {
       // First, before any wait, since a browser opens a window only in the click's own turn. A paired page tells the
       // phone itself, about the session its copy holds. The signed-in flag is not the route's to write.
-      handoff.signOut({ notified: walletMode() === 'app' });
+      handoff.signOut({ notified: !isLocalWallet() });
     },
     focus() {
       handoff.focus();

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
 import { createSandboxBlockRelay, type BlockOrigin, type ContentProgress } from './createSandboxBlockRelay.js';
 
@@ -410,7 +410,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a sandbox asking for a block a peer forged, I get a verification failure and the block is not served', async () => {
     // Given a network that hands back bytes of some other block
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const cache = createMemoryCache();
     const { channel, send } = createFakeChannel();
@@ -438,7 +438,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
       },
     ]);
     expect(cache.writes).toBe(0);
-    expect(captured).toEqual([{ flow: 'content', step: 'relay_verify', tags: { cid: 'bafyBlock' } }]);
+    expect(captured).toMatchObject([{ step: 'relay_verify', tags: { cid: 'bafyBlock' } }]);
     expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'mismatch', step: 'verify' }]);
   });
 
@@ -464,7 +464,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I still load the app when the block cache cannot be read', async () => {
     // Given a cache whose reads fail
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const network = createFakeNetwork();
     const { channel, send } = createFakeChannel();
@@ -484,7 +484,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(frame.replies).toHaveLength(1);
     expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
     expect(network.fetches).toHaveLength(1);
-    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_read', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'relay_cache_read', tags: undefined }]);
     expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_read' }]);
   });
 
@@ -508,7 +508,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I get no block when the verifier fails to load, the cached copy is kept for a later check, and nothing is written', async () => {
     // Given a cache already holding the block, but a verifier whose chunk cannot load
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const network = createFakeNetwork();
     const cache = createMemoryCache([['bafyBlock', BLOCK.slice()]]);
@@ -566,7 +566,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     ]);
     expect(captures.exception).not.toHaveBeenCalled();
     expect(captures.expected).toHaveBeenCalledTimes(2);
-    expect(captures.expected).toHaveBeenCalledWith(missing, { flow: 'content', step: 'relay_verify' });
+    expect(captures.expected).toHaveBeenCalledWith(missing, expect.objectContaining({ step: 'relay_verify' }));
     const verifyFailure = { outcome: 'error', reason: 'Error', step: 'verify' };
     expect(sentry.counted('content.block_relay')).toEqual([verifyFailure, verifyFailure]);
   });
@@ -601,7 +601,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I am still served the fetched block when dropping a corrupted cached block fails', async () => {
     // Given a cache holding corrupted bytes whose delete fails
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const reported = createRecording<true>();
     const sentry = bindRecordingSentry({
       onFinished: onTestFinished,
@@ -627,7 +627,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(reported).toHaveLength(1);
     expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
     expect(network.fetches).toHaveLength(1);
-    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_delete', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'relay_cache_delete', tags: undefined }]);
     expect(sentry.counted('content.block_relay')).toEqual([
       { outcome: 'error', reason: 'Error', step: 'cache_delete' },
     ]);
@@ -635,7 +635,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
 
   it('As a user, I am still served the fetched block when the block cache write rejects', async () => {
     // Given a cache whose writes fail
-    const captured = recordCaptures({ onFinished: onTestFinished });
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const reported = createRecording<true>();
     const sentry = bindRecordingSentry({
       onFinished: onTestFinished,
@@ -659,7 +659,7 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(frame.replies).toHaveLength(1);
     expect(reported).toHaveLength(1);
     expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
-    expect(captured).toEqual([{ flow: 'content', step: 'relay_cache_write', tags: undefined }]);
+    expect(captured).toMatchObject([{ step: 'relay_cache_write', tags: undefined }]);
     expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_write' }]);
   });
 });

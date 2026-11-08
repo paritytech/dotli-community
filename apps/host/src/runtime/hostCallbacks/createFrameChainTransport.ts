@@ -4,7 +4,7 @@
 // The host page runs no light client, so chains go over one remote connection to the protocol frame.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import type { ChainTransportHooks } from '@dotli/chains';
+import type { ChainTransport, ChainTransportHooks } from '@dotli/chains';
 import { ChainHaltError } from '@dotli/chains';
 import { getProtocolClient, type RemoteChainProvider } from '@dotli/protocol';
 
@@ -17,19 +17,19 @@ type Params = {
 };
 
 /**
- * A halt of the remote connection reaches the pool as `disconnected`, then as a `ChainHaltError`. Returns null for a
- * chain the protocol frame cannot serve.
+ * The chain's transport through the protocol frame, with no follow limit, or null for a chain the frame cannot serve. A
+ * halt of the remote connection reaches the pool as `disconnected`, then as a `ChainHaltError`.
  */
 export function createFrameChainTransport(
   genesisHash: string,
   hooks: ChainTransportHooks,
   { createRemoteChain = createPageRemoteChain }: Params = {},
-): JsonRpcProvider | null {
+): ChainTransport | null {
   const remote = createRemoteChain(genesisHash);
   if (remote === null) {
     return null;
   }
-  return createRemoteTransport(remote, hooks);
+  return { provider: createRemoteTransport(remote, hooks), followLimit: Infinity };
 }
 
 /**

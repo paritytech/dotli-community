@@ -4,7 +4,7 @@
 // The iframe's link to the protocol SharedWorker: a transport on the worker's port that waits until the worker is
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
-import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { getFailure, ProtocolInitFailedError, protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import { createDeferred, getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
@@ -13,6 +13,23 @@ import { disposeOnPageHide } from './disposeOnPageHide.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { FRAME_LOG_TAG } from './frameLogTag.js';
 import { getWorkerEndError, watchWorkerStatus, type WorkerStatus } from './watchWorkerStatus.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/** From SharedWorker creation to its ready signal. */
+const PROTOCOL_SW_READY = 'protocol.sw_ready';
+
+/**
+ * An error event the protocol SharedWorker fired after it was ready. Tagged `outcome` (error) and `reason` (the error's
+ * name).
+ */
+const protocolSharedWorkerErrorMetric = defineCount<'error'>('protocol.shared_worker_error');
+
+/**
+ * A heartbeat the protocol frame could not send the SharedWorker, so it stops answering the worker's beats and the
+ * worker lets go of its port. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const protocolWorkerHeartbeatMetric = defineCount<'error'>('protocol.worker_heartbeat');
 
 type Params = {
   /** The protocol SharedWorker, whose port the link speaks on. */
@@ -77,7 +94,7 @@ export function connectSharedWorker({
     timers,
   }).then(
     () => {
-      m.measure(S.PROTOCOL_SW_READY, recordReadyWait('ok'));
+      m.measure(PROTOCOL_SW_READY, recordReadyWait('ok'));
     },
     (error: unknown) => {
       recordReadyWait(error === timedOut ? 'timeout' : 'error');
@@ -144,8 +161,8 @@ export function connectSharedWorker({
       return;
     }
     // After ready nothing waits on the worker's start, so the host would never hear of it.
-    captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
-    m.count(S.PROTOCOL_SHARED_WORKER_ERROR, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    report.capture(error, { step: 'shared_worker_error' });
+    protocolSharedWorkerErrorMetric.count({ outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
   }
 
   function failReadyWait(error: Error, why: string): void {
@@ -160,7 +177,7 @@ export function connectSharedWorker({
   function recordReadyWait(outcome: 'ok' | 'error' | 'timeout'): number {
     waiting = false;
     const waitMs = now() - startedAt;
-    m.distribution(S.PROTOCOL_SW_READY, waitMs, {
+    m.distribution(PROTOCOL_SW_READY, waitMs, {
       unit: 'millisecond',
       attributes: { outcome, ...(reason !== undefined ? { reason } : {}) },
     });
@@ -222,10 +239,9 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): () => 
       return;
     }
     stopAnswering();
-    reportDefect(error, {
-      flow: 'protocol',
+    report.defect(error, {
       step: 'worker_heartbeat',
-      metric: S.PROTOCOL_WORKER_HEARTBEAT,
+      metric: protocolWorkerHeartbeatMetric,
       message: `${FRAME_LOG_TAG} Worker heartbeat failed`,
     });
   }

@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { log } from '@dotli/shared';
-import { m, spans as S } from '@dotli/metrics';
+import { createReporter, m } from '@dotli/metrics';
 import type { DotnsContracts } from '@dotli/config';
 import type { Api } from './createRawApi.js';
 import type { ManifestRecordResult, ManifestResult } from './manifestTypes.js';
 import { readNestedMappingString } from './readNestedMappingString.js';
+
+const report = createReporter({ flow: 'resolve' });
+
+/**
+ * Read and validate one manifest text record. Tag `kind` (`root, app, widget, worker`) and `outcome`
+ * (`ok, empty, invalid, error`) so "no manifest yet" is told apart from "malformed".
+ */
+const RESOLVE_MANIFEST_READ = 'resolve.manifest_read';
 
 type Params<T> = {
   api: Api;
@@ -46,7 +54,7 @@ export async function readManifestText<T>({
     });
   } catch (error) {
     const ms = performance.now() - start;
-    m.distribution(S.RESOLVE_MANIFEST_READ, ms, {
+    m.distribution(RESOLVE_MANIFEST_READ, ms, {
       unit: 'millisecond',
       attributes: { kind: metricKind, outcome: 'error' },
     });
@@ -55,13 +63,12 @@ export async function readManifestText<T>({
   }
   const result = judge(raw);
   const ms = performance.now() - start;
-  m.distribution(S.RESOLVE_MANIFEST_READ, ms, {
+  m.distribution(RESOLVE_MANIFEST_READ, ms, {
     unit: 'millisecond',
     attributes: { kind: metricKind, outcome: result.kind },
   });
   // The owner controls the text and it can be large, so only its size goes in the trail.
-  log.event('Manifest read', {
-    flow: 'resolve',
+  report.log.event('Manifest read', {
     kind: metricKind,
     bytes: raw?.length ?? 0,
     outcome: result.kind,

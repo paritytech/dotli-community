@@ -4,7 +4,8 @@
 import { createMemo, createSignal, For, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
-  BACKEND_LABELS,
+  BACKEND_FACTS,
+  hasSharedWorker,
   type Backend,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Network,
@@ -33,17 +34,15 @@ import type { ThemePreference } from '../../runtime/state/themeState.js';
 import type { ApplySettings, SavedSettings } from './settings.js';
 import s from './SettingsContent.module.css';
 
-type Transport = {
-  value: Backend;
-  description: string;
-  recommended: boolean;
-};
+/** The order the transport choices are listed in. */
+export const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
 
-const TRANSPORTS: readonly Transport[] = [
-  { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
-  { value: 'smoldot-shared-worker', description: 'Verified in your browser, shared across tabs', recommended: false },
-  { value: 'rpc-gateway', description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
-];
+/** What the transport choice for each backend says. */
+export const TRANSPORT_FACTS = {
+  'smoldot-direct': { description: 'Verified in your browser, separate for each tab', recommended: true },
+  'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', recommended: false },
+  'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
+} satisfies Record<Backend, { description: string; recommended: boolean }>;
 
 type Category = 'general' | 'network' | 'advanced';
 
@@ -128,7 +127,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   }
 
   const networks = saved.enabledNetworks;
-  const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
+  const unavailable = (value: Backend): boolean => hasSharedWorker(value) && !saved.sharedWorkerAvailable;
 
   return (
     <Surface width="lg" padded>
@@ -182,23 +181,23 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
           <Stack>
             <SectionLabel text="Network transport" />
             <Stack role="radiogroup" aria-label="Network transport">
-              <For each={TRANSPORTS}>
-                {transport => (
+              <For each={TRANSPORT_ORDER}>
+                {value => (
                   <Choice
-                    title={BACKEND_LABELS[transport.value]}
+                    title={BACKEND_FACTS[value].label}
                     description={
-                      unavailable(transport.value)
+                      unavailable(value)
                         ? 'Unavailable in this browser or private window'
-                        : transport.description
+                        : TRANSPORT_FACTS[value].description
                     }
-                    chip={transport.recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
-                    selected={backend() === transport.value}
+                    chip={TRANSPORT_FACTS[value].recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
+                    selected={backend() === value}
                     radio={{
                       name: 'dotli-backend',
-                      value: transport.value,
-                      disabled: unavailable(transport.value),
+                      value,
+                      disabled: unavailable(value),
                       onChoose: () => {
-                        setBackend(transport.value);
+                        setBackend(value);
                       },
                     }}
                   />

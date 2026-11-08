@@ -5,10 +5,12 @@
 
 import type { WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
-import { reportListener } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { createListenerSet, noop } from '@dotli/shared';
 import type { CoreConnection } from './createPageCore.js';
 import { emitWireFrameDebug } from './createWireDescriber.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 export type CoreProvider = WireProvider &
   Pick<
@@ -23,7 +25,7 @@ export type CoreProvider = WireProvider &
 export function ownCoreConnection(connection: CoreConnection): CoreProvider {
   const { provider, productId } = connection;
   const listeners = createListenerSet<Uint8Array>({
-    onListenerError: reportListener('wallet', 'core_connection.frame'),
+    onListenerError: report.listener('core_connection.frame'),
   });
   let disposed = false;
   const unsubscribeCore = provider.subscribe(message => {

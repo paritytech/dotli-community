@@ -3,38 +3,34 @@
 
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
-import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
-import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
-import type { MenuPermission, PermissionsNotice } from '../components/permissions/permissions.js';
+import type { PermissionTargets } from '../runtime/permissionPolicy.js';
+import {
+  getRead,
+  hasGrant,
+  isUnreadable,
+  type PermissionsRead,
+  type ProductPermissions,
+} from '../runtime/state/productPermissions.js';
+import type { PermissionsNotice } from '../components/permissions/permissions.js';
+import type { PermissionsContentProps } from '../components/permissions/PermissionsContent.js';
 import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';
 
 /** The product on show, as the panel reads it. */
 export type ShownProduct = { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string };
 
-/** The product's permissions as last read or written, `statuses` in the order of the menu. */
-export type ReadPermissions =
-  | { status: 'none' }
-  | { status: 'reading'; label: string }
-  | { status: 'failed'; label: string }
-  | { status: 'read'; label: string; statuses: readonly PermissionStatus[] };
-
 /** The page's product and permissions, and the intents that change them. */
 export type PermissionsBinding = {
-  /** In menu order. */
-  permissions: readonly MenuPermission[];
+  permissions: PermissionsContentProps['permissions'];
   product: ReadableAtom<ShownProduct>;
-  state: ReadableAtom<ReadPermissions>;
-  /** The panel change not yet settled. */
-  pending: ReadableAtom<PendingPermissions>;
-  refresh: () => Promise<void>;
-  change: (label: string, targets: PermissionTargets) => Promise<ChangeOutcome>;
+  /** The product's permissions as last read or written, and the intents that change them. */
+  store: Pick<ProductPermissions, 'state' | 'pending' | 'refresh' | 'change'>;
 };
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
 export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {
   const product = useStore(binding.product);
-  const state = useStore(binding.state);
-  const pendingChange = useStore(binding.pending);
+  const state = useStore(binding.store.state);
+  const pendingChange = useStore(binding.store.pending);
 
   const notice = (): PermissionsNotice | undefined => {
     const current = product();
@@ -44,14 +40,13 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
     if (current.status === 'error') {
       return 'no-app';
     }
-    const read = state();
-    return read.status === 'failed' && read.label === current.label ? 'unavailable' : undefined;
+    return isUnreadable(state(), current.label) ? 'unavailable' : undefined;
   };
 
-  const shownRead = (): { label: string; statuses: readonly PermissionStatus[] } | undefined => {
+  const shownRead = (): PermissionsRead | undefined => {
     const current = product();
-    const read = state();
-    return current.status === 'loaded' && read.status === 'read' && read.label === current.label ? read : undefined;
+    const read = getRead(state());
+    return current.status === 'loaded' && read?.label === current.label ? read : undefined;
   };
 
   // A pending change of another app, such as the one shown before, says nothing about this one.
@@ -63,7 +58,7 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
 
   return {
     permissions: binding.permissions,
-    hasGrants: useStore(binding.state, read => read.status === 'read' && read.statuses.includes('granted')),
+    hasGrants: useStore(binding.store.state, hasGrant),
     notice,
     statuses: () => {
       const read = shownRead();
@@ -78,11 +73,11 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
     },
     pending: () => pendingTargets() !== undefined,
     onOpen: () => {
-      void binding.refresh();
+      void binding.store.refresh();
     },
     onChange: async targets => {
-      const read = binding.state.get();
-      return read.status === 'read' ? (await binding.change(read.label, targets)).failed : [];
+      const read = getRead(binding.store.state.get());
+      return read === undefined ? [] : (await binding.store.change(read.label, targets)).failed;
     },
   };
 }

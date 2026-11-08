@@ -7,11 +7,12 @@ import type { JsonRpcProvider } from 'polkadot-api';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import {
-  createCoreRpcChainProvider,
+  createCoreRpcChainTransport,
   getConnectedAssetHubRpcEndpoint,
   getConnectedRpcEndpoint,
   isCoreRpcChainSupported,
-} from './createCoreRpcChainProvider.js';
+} from './createCoreRpcChainTransport.js';
+import { RPC_FOLLOW_LIMIT } from './transportHooks.js';
 import { FakeWebSocket } from './testing/fakeWebSocket.js';
 
 // The fake implements only the part of WebSocket the provider's sockets use.
@@ -34,7 +35,7 @@ async function connect(
   return { socket, connection };
 }
 
-describe('createCoreRpcChainProvider', () => {
+describe('createCoreRpcChainTransport', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
@@ -50,23 +51,34 @@ describe('createCoreRpcChainProvider', () => {
 
     // When
     const provider = must(
-      createCoreRpcChainProvider(people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'People provider',
-    );
+    ).provider;
     const { socket } = await connect(provider);
 
     // Then
     expect(people.rpcs).toContain(socket.url);
   });
 
-  it('As a product on Trusted Providers, I ask for an unknown chain and get no provider', () => {
+  it('As a dotli integrator, I open a core RPC chain and its transport takes four follows per connection', () => {
+    // Given
+    const { genesis } = getActiveServicesConfig().people;
+
+    // When
+    const transport = must(createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }), 'transport');
+
+    // Then
+    expect(transport.followLimit).toBe(RPC_FOLLOW_LIMIT);
+  });
+
+  it('As a product on Trusted Providers, I ask for an unknown chain and get no transport', () => {
     // When
     const supported = isCoreRpcChainSupported('0xdeadbeef');
-    const provider = createCoreRpcChainProvider('0xdeadbeef', { WebSocketBase: FakeWebSocketClass });
+    const transport = createCoreRpcChainTransport('0xdeadbeef', { WebSocketBase: FakeWebSocketClass });
 
     // Then
     expect(supported).toBe(false);
-    expect(provider).toBeNull();
+    expect(transport).toBeNull();
   });
 
   it('As a dotli integrator whose host-owned Rust core reads Bulletin, I reach it over its configured RPC endpoints', async () => {
@@ -76,9 +88,9 @@ describe('createCoreRpcChainProvider', () => {
     // When
     const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
     const provider = must(
-      createCoreRpcChainProvider(bulletin.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(bulletin.genesis, { WebSocketBase: FakeWebSocketClass }),
       'Bulletin provider',
-    );
+    ).provider;
     const { socket } = await connect(provider);
 
     // Then
@@ -90,12 +102,12 @@ describe('createCoreRpcChainProvider', () => {
     // Given
     const onStatus = vi.fn();
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, {
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, {
         hooks: { onStatus },
         WebSocketBase: FakeWebSocketClass,
       }),
       'provider',
-    );
+    ).provider;
 
     // When
     await connect(provider);
@@ -107,7 +119,10 @@ describe('createCoreRpcChainProvider', () => {
   it('As a dotli user on Trusted Providers, I see in diagnostics the node my chain is talking to right now', async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
-    const provider = must(createCoreRpcChainProvider(genesis, { WebSocketBase: FakeWebSocketClass }), 'provider');
+    const provider = must(
+      createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }),
+      'provider',
+    ).provider;
 
     // When
     const connection = provider(() => undefined);
@@ -145,7 +160,10 @@ describe('createCoreRpcChainProvider', () => {
   it('As a dotli user on Trusted Providers, I see in diagnostics the node Asset Hub is talking to', async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
-    const provider = must(createCoreRpcChainProvider(genesis, { WebSocketBase: FakeWebSocketClass }), 'provider');
+    const provider = must(
+      createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }),
+      'provider',
+    ).provider;
 
     // When
     const { socket, connection } = await connect(provider);
@@ -160,7 +178,10 @@ describe('createCoreRpcChainProvider', () => {
   it('As a dotli user on Trusted Providers, I close the chain connection and diagnostics show no node', async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
-    const provider = must(createCoreRpcChainProvider(genesis, { WebSocketBase: FakeWebSocketClass }), 'provider');
+    const provider = must(
+      createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }),
+      'provider',
+    ).provider;
 
     // When
     const { socket, connection } = await connect(provider);
@@ -179,12 +200,12 @@ describe('createCoreRpcChainProvider', () => {
     // Given
     const onStatus = vi.fn();
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, {
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, {
         hooks: { onStatus },
         WebSocketBase: FakeWebSocketClass,
       }),
       'provider',
-    );
+    ).provider;
     const { socket } = await connect(provider);
     onStatus.mockClear();
 
@@ -205,9 +226,9 @@ describe('createCoreRpcChainProvider', () => {
   it('As a dotli user on Trusted Providers, I lose a socket to a heartbeat kill and it is closed, and stays closed when the next one opens', async () => {
     // Given
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'provider',
-    );
+    ).provider;
     const { socket: first } = await connect(provider);
 
     // When
@@ -227,9 +248,9 @@ describe('createCoreRpcChainProvider', () => {
   it('As a dotli user on Trusted Providers, I disconnect and a heartbeat-killed socket is closed at once', async () => {
     // Given
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'provider',
-    );
+    ).provider;
     const { socket: first, connection } = await connect(provider);
 
     // When
@@ -246,9 +267,9 @@ describe('createCoreRpcChainProvider', () => {
     // Given
     const received: JsonRpcMessage[] = [];
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'provider',
-    );
+    ).provider;
     const { socket: first, connection } = await connect(provider, received);
     connection.send({ jsonrpc: '2.0', id: 'sub', method: 'statement_subscribeStatement', params: [{ matchAll: [] }] });
     const firstSubscribe = must(first.requests('statement_subscribeStatement')[0], 'first subscribe');
@@ -288,9 +309,9 @@ describe('createCoreRpcChainProvider', () => {
     // Given
     const received: JsonRpcMessage[] = [];
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'provider',
-    );
+    ).provider;
     const { socket, connection } = await connect(provider, received);
 
     // When
@@ -307,9 +328,9 @@ describe('createCoreRpcChainProvider', () => {
     // Given
     const received: JsonRpcMessage[] = [];
     const provider = must(
-      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+      createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
       'provider',
-    );
+    ).provider;
     const { connection } = await connect(provider, received);
     connection.send({ jsonrpc: '2.0', id: 'core-1', method: 'chainSpec_v1_genesisHash', params: [] });
 
@@ -340,9 +361,9 @@ describe('createCoreRpcChainProvider', () => {
     ];
     try {
       const provider = must(
-        createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
+        createCoreRpcChainTransport(getActiveServicesConfig().people.genesis, { WebSocketBase: FakeWebSocketClass }),
         'provider',
-      );
+      ).provider;
       const { socket, connection } = await connect(provider);
 
       // When

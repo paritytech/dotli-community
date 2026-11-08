@@ -195,8 +195,8 @@ describe('getStatus / setStatus', () => {
   });
 });
 
-describe('getGrantedDevicePermissions', () => {
-  it('As a dApp user, I grant some permissions and my app frame receives only the granted device ones', async () => {
+describe('getGrantedFramePermissions', () => {
+  it('As a dApp user, I grant some permissions and my app frame receives only the granted ones that add a frame directive', async () => {
     // Given
     const { permissions } = createHarness();
     await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
@@ -205,7 +205,7 @@ describe('getGrantedDevicePermissions', () => {
     await permissions.setStatus({ label: 'myapp', permission: 'IdentityDisclosure', status: 'granted' });
 
     // When
-    const granted = await permissions.getGrantedDevicePermissions('myapp');
+    const granted = await permissions.getGrantedFramePermissions('myapp');
 
     // Then
     expect(granted).toEqual(['Camera']);

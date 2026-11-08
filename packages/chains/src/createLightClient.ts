@@ -5,9 +5,8 @@
 // product. Each chain comes from its genesis hash through truapi-provider's bundled catalog.
 
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import type { JsonRpcProvider } from 'polkadot-api';
 import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
-import { m, reportExpected, reportListener, spans } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { createAsyncTaskPool, createListenerSet, getErrorMessage, log, markHandled } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
@@ -19,7 +18,22 @@ import {
   type ChainSyncTap,
   type ParsedRpcMessage,
 } from './createChainSyncReporter.js';
-import type { ChainTransportHooks } from './transportHooks.js';
+import { LIGHT_CLIENT_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/**
+ * A light-client connection refused at the light client's connection cap, which halts its chain.
+ * Tagged `outcome` (error) and `reason` (`cap`).
+ */
+const smoldotConnectionCapMetric = defineCount<'error'>('smoldot.connection_cap');
+
+/**
+ * Liveness heartbeat, the constant `1` once per 60s per light client.
+ * Read it with `count_unique(trace)`. Summing counts heartbeats, which scale with the bucket size.
+ * A heartbeat because a client dies with its tab or worker and never reports a destroy.
+ */
+const SMOLDOT_ACTIVE = 'smoldot.active';
 
 // Reached through `loadProvider` too, so a caller that loads the light client lazily keeps sync reporting off its boot path.
 export { chainSync } from './createChainSyncReporter.js';
@@ -87,10 +101,11 @@ export type LightClientChange =
 
 export type LightClient = {
   /**
-   * Returns `null` for a genesis the active network does not define. smoldot never reconnects underneath its
-   * consumers, so a failure or an unrequested stream end halts the chain.
+   * Returns the chain's transport, which takes the light client's follow limit, or `null` for a genesis the active
+   * network does not define. smoldot never reconnects underneath its consumers, so a failure or an unrequested stream
+   * end halts the chain.
    */
-  createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
+  createChainTransport: (genesisHash: string, hooks?: ChainTransportHooks) => ChainTransport | null;
   /** Whether the active network defines the genesis. */
   isChainSupported: (genesisHash: string) => boolean;
   /** The light client's state now, as a copy. */
@@ -132,7 +147,7 @@ export class LightClientCapError extends Error {
  *
  * @example
  * const lightClient = createLightClient(createLightClientDeps(null, false)); // no session store, not local
- * const provider = lightClient.createChainProvider(genesisHash); // null for a genesis the network does not define
+ * const transport = lightClient.createChainTransport(genesisHash); // null for a genesis the network does not define
  */
 export function createLightClient({
   db,
@@ -144,7 +159,7 @@ export function createLightClient({
   attachChainSync = pageChainSyncReporter.attachChainSync,
 }: LightClientDeps): LightClient {
   const listeners = createListenerSet<LightClientChange>({
-    onListenerError: reportListener('protocol', 'light_client'),
+    onListenerError: report.listener('light_client'),
   });
   const dbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
   // The read needs no engine, so it overlaps the wasm compile. A blob is megabytes, so an entry lives only until its
@@ -217,7 +232,7 @@ export function createLightClient({
       const next = await start({ logLevel, store: observedDb, debug });
       engine = next;
       startHeartbeat();
-      log.event('Light client ready', { flow: 'protocol' });
+      report.log.event('Light client ready');
       return next;
     });
   }
@@ -255,7 +270,7 @@ export function createLightClient({
     return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
   }
 
-  function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
+  function createChainTransport(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport | null {
     const key = genesisHash.toLowerCase();
     if (!isChainSupported(key)) {
       log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
@@ -295,10 +310,9 @@ export function createLightClient({
           return;
         }
         if (error instanceof LightClientCapError) {
-          reportExpected(error, {
-            flow: 'protocol',
+          report.expected(error, {
             step: 'light_client_connect',
-            metric: spans.SMOLDOT_CONNECTION_CAP,
+            metric: smoldotConnectionCapMetric,
             reason: 'cap',
             message: `[dot.li provider] chain ${key} is past the light client's connection cap, halting it: ${reason}`,
           });
@@ -367,7 +381,7 @@ export function createLightClient({
             fail(new Error(`chain ${key} stopped responding`));
           } catch (error) {
             // Nothing awaits this loop to hear it.
-            reportListener('protocol', 'light_client.halt')(error);
+            report.listener('light_client.halt')(error);
           }
         }
       }
@@ -392,11 +406,11 @@ export function createLightClient({
         },
       };
     }
-    return provider;
+    return { provider, followLimit: LIGHT_CLIENT_FOLLOW_LIMIT };
   }
 
   return {
-    createChainProvider,
+    createChainTransport,
     isChainSupported,
     status: () => ({ fatal, db: new Map(dbOutcomes) }),
     subscribe: listeners.subscribe,
@@ -416,7 +430,7 @@ export function createLightClientDeps(session: Pick<Storage, 'getItem'> | null, 
     logLevel: level !== '' ? level : local ? 'info' : 'off',
     gauge: m.enabled
       ? value => {
-          m.gauge(spans.SMOLDOT_ACTIVE, value);
+          m.gauge(SMOLDOT_ACTIVE, value);
         }
       : null,
     ...(Number.isFinite(heartbeatMs) && heartbeatMs > 0 ? { heartbeatMs } : {}),

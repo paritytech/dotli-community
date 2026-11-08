@@ -10,7 +10,7 @@ import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { getSandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
-import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount, getResolutionId, m } from '@dotli/metrics';
 import { createAsyncTaskPool, log, noop, createRandomId, realTimers, sleep, type Timers } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/createChatConnections.js';
@@ -25,7 +25,21 @@ import { toProductId } from './createTruapiRuntimeConfig.js';
 import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
-import type { ManifestFacts } from './formatAppVersion.js';
+import type { ProductFacts } from '../getProductFacts.js';
+
+const chatReport = createReporter({ flow: 'chat' });
+const walletReport = createReporter({ flow: 'wallet' });
+const uiReport = createReporter({ flow: 'ui' });
+
+/**
+ * A render the product frame started on its own: on a replacement core, after a device permission change or at a
+ * reloaded sandbox's ask. Tagged `outcome` (ok, error, or aborted when a newer render or a core loss took over) and
+ * `reason` (which of those, or `core_deaths` once the frame stopped rendering on cores that kept dying), as no caller
+ * is there to report it.
+ */
+const productRerenderMetric = defineCount<'aborted' | 'error' | 'ok'>('product.rerender');
+
+const BRIDGE_SETUP = 'bridge.setup';
 
 /**
  * A product the host loads from a URL it was given, or from its content id on the app subdomain. `chat` says whether it
@@ -34,13 +48,14 @@ import type { ManifestFacts } from './formatAppVersion.js';
  */
 export type FrameProduct =
   | { mode: 'iframe'; label: string; url: string; productId?: string | undefined; chat: Promise<boolean> }
-  | ({
+  | {
       mode: 'subdomain';
       label: string;
       cid: string;
       base?: string | undefined;
       chat: Promise<boolean>;
-    } & ManifestFacts);
+      facts: ProductFacts;
+    };
 
 /** `lost` is a product whose core went down, was refused or turned stale, until its render on a replacement begins. */
 export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 'failed';
@@ -269,7 +284,7 @@ export function createProductFrame({
     }
     return start(product).then(
       shown => {
-        m.count(S.PRODUCT_RERENDER, { outcome: shown ? 'ok' : 'aborted', reason });
+        productRerenderMetric.count({ outcome: shown ? 'ok' : 'aborted', reason });
       },
       (error: unknown) => {
         reportRerenderFailure(error, reason);
@@ -329,7 +344,7 @@ export function createProductFrame({
     const renderFlowId = createRandomId();
     const bridgeFlowId = createRandomId();
     const productId = getFrameProductId(product);
-    const stopSetup = m.timer(S.BRIDGE_SETUP);
+    const stopSetup = m.timer(BRIDGE_SETUP);
     // Keep the product on screen while its replacement connects, which can take seconds.
     const previous = mounted;
     switch (product.mode) {
@@ -545,9 +560,9 @@ export function createProductFrame({
     try {
       // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
       const chatCapable = await chat;
-      log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
+      chatReport.log.event('chat capability resolved', { capable: chatCapable });
       const connection = await lease.connect({ executionKind: chatCapable ? 'Worker' : 'App' });
-      log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });
+      walletReport.log.event('product connected to wallet core', { kind: chatCapable ? 'Worker' : 'App' });
       return { lease, connection, chatCapable };
     } catch (error) {
       lease.release();
@@ -682,11 +697,11 @@ function reportRerenderFailure(error: unknown, reason: RerenderReason | 'core_de
   log.error('[dot.li] Product iframe reload failed:', error);
   if (error instanceof CoreRedialError) {
     // A redial failure is captured where it happens, so the frame only records that its render fell with it.
-    reportExpected(error, { flow: 'ui', step: 'product_rerender', metric: S.PRODUCT_RERENDER, reason });
+    uiReport.expected(error, { step: 'product_rerender', metric: productRerenderMetric, reason });
     return;
   }
-  captureException(error, { flow: 'ui', step: 'product_rerender', tags: { reason } });
-  m.count(S.PRODUCT_RERENDER, { outcome: 'error', reason });
+  uiReport.capture(error, { step: 'product_rerender', tags: { reason } });
+  productRerenderMetric.count({ outcome: 'error', reason });
 }
 
 function showReloadNotice(notify: ShowNotification, page: ProductFramePage): void {
@@ -884,35 +899,14 @@ function toLoadedProduct(
       return {
         label: product.label,
         productId,
-        details: {
-          cid: product.cid,
-          chat,
-          ...pickManifestFacts(product),
-        },
+        details: { cid: product.cid, chat, facts: product.facts },
       };
   }
 }
 
 /** The tab's view of a product: a local or preview URL has no root manifest to name it. */
 function toTitledProduct(product: FrameProduct): TitledProduct {
-  return product.mode === 'subdomain' && product.displayName !== undefined
-    ? { mode: product.mode, label: product.label, displayName: product.displayName }
+  return product.mode === 'subdomain' && product.facts.displayName !== undefined
+    ? { mode: product.mode, label: product.label, displayName: product.facts.displayName }
     : { mode: product.mode, label: product.label };
-}
-
-/** The facts a product carries, without the keys it lacks. */
-function pickManifestFacts({
-  displayName,
-  description,
-  manifestVersion,
-  appVersion,
-  owner,
-}: ManifestFacts): ManifestFacts {
-  return {
-    ...(displayName !== undefined ? { displayName } : {}),
-    ...(description !== undefined ? { description } : {}),
-    ...(manifestVersion !== undefined ? { manifestVersion } : {}),
-    ...(appVersion !== undefined ? { appVersion } : {}),
-    ...(owner !== undefined ? { owner } : {}),
-  };
 }

@@ -50,12 +50,16 @@ async function untilModal(open: boolean): Promise<void> {
 function mountIsland({ placement = 'topbar-end' }: Params = {}): void {
   authControl.init({
     coordinator: createBlockingModalCoordinator({ report: topbarState.reportBlockingModals }),
-    commands: () => Promise.resolve(commands),
+    bridge: () =>
+      Promise.resolve({
+        authCommands: commands,
+        applyWindowResult: () => Promise.reject(new Error('This page has no sign-in window')),
+        rereadSession: () => Promise.resolve(),
+        walletSwitch: { useLocalWallet: () => Promise.reject(new Error('No phrase import in this test')) },
+      }),
     // The in-page pairing, as on a preview its preview host frames.
     handoff: null,
-    applyResult: () => Promise.reject(new Error('This page has no sign-in window')),
-    inPagePhrase: () => Promise.reject(new Error('No phrase import in this test')),
-    rereadSession: () => Promise.resolve(),
+    loadRecoveryPhrase: () => Promise.reject(new Error('No phrase import in this test')),
   });
   authState.set({ tag: 'Disconnected' });
   const slot = document.createElement('div');

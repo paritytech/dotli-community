@@ -8,7 +8,7 @@
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import { getActiveFixedServicesConfig } from '@dotli/config/fixed';
-import { m, spans as S } from '@dotli/metrics';
+import { countMetric, defineCount, m, spans as S } from '@dotli/metrics';
 import {
   createFrameStatus,
   createWireReport,
@@ -27,12 +27,16 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { logWorkerEvent } from './logWorkerEvent.js';
 import type { WorkerNetwork } from './parseWorkerNetwork.js';
 import { serveEngineMethods } from './serveEngineMethods.js';
+import { servePoolControl } from './servePoolControl.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { startLightClientService, type LightClientService } from './startLightClientService.js';
 import { toLightClientDb } from './toLightClientDb.js';
 import { withRefusalReports } from './withRefusalReports.js';
 import { withRequestSpan, withSubscriptionSpan } from './withRequestSpan.js';
 import { WORKER_LOG_TAG } from './workerLogTag.js';
+
+/** Create, relay, asset hub and first finalized block together. */
+const smoldotPresyncMetric = defineCount<'error'>(S.SMOLDOT_PRESYNC);
 
 /** A tab that connects to the worker, with its port first. */
 type ConnectEvent = { readonly ports: readonly WorkerPort[] };
@@ -106,7 +110,7 @@ export function startProtocolWorker({
   dispose: () => void;
 } {
   // What each port's transport cannot handle itself, counted as the worker's.
-  const wire = createWireReport({ side: 'worker', count: m.count });
+  const wire = createWireReport({ side: 'worker', count: countMetric });
   // Built by the pre-sync, unless the network is unknown.
   let service: LightClientService | null = null;
   let engine: ProtocolEngine | null = null;
@@ -178,9 +182,16 @@ export function startProtocolWorker({
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest(frame.heartbeat, () => ok());
     // The worker pauses only while every tab it serves asks.
-    transport.handleRequest(frame.pause, ({ paused }) => {
-      lifecycle.markPaused(session, paused);
-      return ok();
+    servePoolControl({
+      serving: transport,
+      control: {
+        pause: () => {
+          lifecycle.markPaused(session, true);
+        },
+        resume: () => {
+          lifecycle.markPaused(session, false);
+        },
+      },
     });
     // The engine and the tab's scope are made on first use, so each method asks for them when called. A failure is
     // logged under its call name, and reaches the tab as the call's answer.
@@ -299,7 +310,7 @@ export function startProtocolWorker({
       }
       const message = serializeError(error);
       log.error(`${WORKER_LOG_TAG} Pre-sync failed: ${message}`, error);
-      m.count(S.SMOLDOT_PRESYNC, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      smoldotPresyncMetric.count({ outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
       // A light client that died during pre-sync is the real cause, and the fatal already closed the worker.
       lifecycle.fail(new ProtocolInitFailedError(message, { cause: error }));
     }

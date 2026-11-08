@@ -5,12 +5,14 @@
 // RPC for gateway mode.
 
 import {
+  createReporter,
+  defineCount,
   initSentry,
   installGlobalErrorHandlers,
+  countMetric,
   getResolutionId,
   m,
   setResolutionId,
-  spans as S,
 } from '@dotli/metrics';
 import { byteMeter, loadProvider, type ChainPool } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
@@ -51,13 +53,20 @@ import { readResolveBudgetCap } from './readResolveBudgetCap.js';
 import { readSessionTuning } from './readSessionTuning.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
 import { serveEngineScope } from './serveEngineMethods.js';
-import { serveFramePause } from './serveFramePause.js';
 import { serveHeartbeat } from './serveHeartbeat.js';
 import { serveLocalWallet } from './serveLocalWallet.js';
+import { servePoolControl } from './servePoolControl.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
 import { toLightClientDb } from './toLightClientDb.js';
 import { withRefusalReports } from './withRefusalReports.js';
+
+const report = createReporter({ flow: 'protocol' });
+
+/** Mode detection plus engine start. */
+const PROTOCOL_INIT = 'protocol.init';
+
+const protocolModeMetric = defineCount('protocol.mode');
 
 type Params = {
   /** What made the boot fail, kept as the error's cause. */
@@ -98,7 +107,7 @@ function adoptResolutionId(): void {
 }
 
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
-const wire = createWireReport({ side: 'frame', count: m.count });
+const wire = createWireReport({ side: 'frame', count: countMetric });
 
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
 // speaks only when spoken to. This frame reads its page load from its URL, never from a hello.
@@ -124,7 +133,7 @@ serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.handleT
 serveHeartbeat({ serving });
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
-const served = withRefusalReports(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
+const served = withRefusalReports(serving, createRefusalReporter({ warn: log.warn, count: countMetric }));
 const sharedStores = createSharedStoreHandler({
   serving: served,
   readStorage: () => localStorage,
@@ -150,7 +159,7 @@ async function init(): Promise<void> {
   const mode = frameSearch.get('mode');
   // No mode means an auth-only iframe.
   if (mode === null) {
-    log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
+    report.log.event('Protocol mode', { mode: 'auth-only' });
     boot.markReady();
     return;
   }
@@ -168,13 +177,13 @@ async function init(): Promise<void> {
   }
   setActiveNetwork(network);
   m.setDefaults({ network });
-  log.event('Protocol mode', { flow: 'protocol', mode, network });
+  report.log.event('Protocol mode', { mode, network });
 
   // Before any smoldot init. A failed purge aborts, since a stale DB would silently ignore the user's setting.
   if (skipWorkerCache === true) {
     try {
       const deleted = await purgeWorkerCaches(indexedDB);
-      log.event('Worker caches purged', { flow: 'protocol', databases: deleted.length });
+      report.log.event('Worker caches purged', { databases: deleted.length });
     } catch (error: unknown) {
       log.error(`${FRAME_LOG_TAG} purgeWorkerCaches failed:`, error);
       failInit(`Failed to reset chain DB: ${getErrorMessage(error)}`, { cause: error });
@@ -192,9 +201,9 @@ async function init(): Promise<void> {
     const initMs = performance.now() - initStart;
     // A failed init is only a point in the distribution.
     if (initOutcome === 'ok') {
-      m.measure(S.PROTOCOL_INIT, initMs);
+      m.measure(PROTOCOL_INIT, initMs);
     }
-    m.distribution(S.PROTOCOL_INIT, initMs, { unit: 'millisecond', attributes: { outcome: initOutcome } });
+    m.distribution(PROTOCOL_INIT, initMs, { unit: 'millisecond', attributes: { outcome: initOutcome } });
   }
 }
 
@@ -212,17 +221,17 @@ async function startMode(backend: Backend, network: Network): Promise<boolean> {
       // Before any further metrics, so every one carries the mode.
       m.setDefaults({ protocol_mode: SHARED_WORKER_MODE });
       await initSharedWorkerMode(network);
-      m.count(S.PROTOCOL_MODE, { mode: SHARED_WORKER_MODE });
+      protocolModeMetric.count({ mode: SHARED_WORKER_MODE });
       return true;
     case 'rpc-gateway':
       m.setDefaults({ protocol_mode: 'rpc' });
       await initRpcMode();
-      m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
+      protocolModeMetric.count({ mode: 'rpc' });
       return true;
     case 'smoldot-direct':
       m.setDefaults({ protocol_mode: 'direct' });
       await initDirectMode();
-      m.count(S.PROTOCOL_MODE, { mode: 'direct' });
+      protocolModeMetric.count({ mode: 'direct' });
       return true;
   }
 }
@@ -254,7 +263,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 function serveEngine(engine: ProtocolEngine, pool: ChainPool): void {
   // The frame serves its engine and its pause as long as its page, so the stops go unused.
   serveEngineScope(served, engine);
-  serveFramePause({ serving: served, pool });
+  servePoolControl({ serving: served, control: pool });
   disposeOnPageHide({ target: window, dispose: engine.dispose });
   boot.markReady();
 }

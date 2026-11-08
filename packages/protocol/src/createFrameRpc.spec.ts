@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
-import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { catchRejection, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
@@ -166,7 +165,7 @@ describe('createFrameRpc', () => {
       method: 'resolveOwner',
     });
     expect(await stopped).toMatchObject({ name: 'ApiStoppedError', message: 'stopped' });
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toEqual([
+    expect(metrics.counted('protocol.request')).toEqual([
       { outcome: 'error', method: 'resolveOwner', reason: 'NetworkSyncTimeoutError' },
       { outcome: 'error', method: 'resolveOwner', reason: 'ApiStoppedError' },
     ]);
@@ -200,7 +199,7 @@ describe('createFrameRpc', () => {
       expect.objectContaining({ name: 'Unsupported', method: 'modeStorageRead' }),
       expect.objectContaining({ name: 'Unsupported', method: 'localWalletRead' }),
     ]);
-    const counted = metrics.counted(S.PROTOCOL_REQUEST);
+    const counted = metrics.counted('protocol.request');
     expect(counted.sort((a, b) => String(a?.['method']).localeCompare(String(b?.['method'])))).toEqual([
       { outcome: 'error', method: 'authStorageRead', reason: 'Denied' },
       { outcome: 'error', method: 'localWalletRead', reason: 'Unsupported' },
@@ -290,7 +289,7 @@ describe('createFrameRpc', () => {
     // Then
     expect((await write).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
     expect(served).toEqual([]);
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).not.toContainEqual(expect.objectContaining({ outcome: 'timeout' }));
+    expect(metrics.counted('protocol.request')).not.toContainEqual(expect.objectContaining({ outcome: 'timeout' }));
   });
 
   it('As a dotli integrator, I make a request the frame never answers and it times out on its budget and is counted', async () => {
@@ -305,7 +304,7 @@ describe('createFrameRpc', () => {
 
     // Then
     expect((await read).name).toBe('ProtocolTimeoutError');
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({
+    expect(metrics.counted('protocol.request')).toContainEqual({
       outcome: 'timeout',
       method: 'authStorageRead',
       reason: 'ProtocolTimeoutError',
@@ -393,7 +392,7 @@ describe('createFrameRpc', () => {
     // Then
     expect((await read).name).toBe('ProtocolTimeoutError');
     expect(served).toEqual([]);
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({
+    expect(metrics.counted('protocol.request')).toContainEqual({
       outcome: 'timeout',
       method: 'localWalletRead',
       reason: 'ProtocolTimeoutError',
@@ -420,7 +419,7 @@ describe('createFrameRpc', () => {
     // Then
     await expect(read).resolves.toEqual({ tag: 'none', value: undefined });
     expect(
-      metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).map(metric => metric.value),
+      metrics.distributions.filter(metric => metric.name === 'dotli.protocol.request').map(metric => metric.value),
     ).toEqual([0]);
   });
 
@@ -447,7 +446,7 @@ describe('createFrameRpc', () => {
     // Then
     await expect(owner).resolves.toBe('5Grw');
     expect(
-      metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).map(metric => metric.value),
+      metrics.distributions.filter(metric => metric.name === 'dotli.protocol.request').map(metric => metric.value),
     ).toEqual([40]);
   });
 
@@ -466,8 +465,8 @@ describe('createFrameRpc', () => {
     // Then the frame counts its own boot failure, so the calls add nothing
     expect((await read).message).toBe('boot failed');
     expect((await write).message).toBe('boot failed');
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toEqual([]);
-    expect(metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`)).toEqual([]);
+    expect(metrics.counted('protocol.request')).toEqual([]);
+    expect(metrics.distributions.filter(metric => metric.name === 'dotli.protocol.request')).toEqual([]);
   });
 
   it('As the host booting, I read the wallet and the read keeps only what the wait for the frame left of its budget', async () => {

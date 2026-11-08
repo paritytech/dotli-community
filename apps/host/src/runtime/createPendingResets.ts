@@ -4,7 +4,15 @@
 // Purge requests that survive the reload a reset ends with. The host cannot wipe the protocol and sandbox origins, so
 // it asks each of them to purge itself on the next boot.
 
-import { reportExpected, spans as S } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
+
+const report = createReporter({ flow: 'storage' });
+
+/**
+ * A purge request that could not be read on boot. Tagged `outcome` and `reason` (the storage error's name), as the
+ * boot then goes ahead without the purge.
+ */
+const pendingResetReadMetric = defineCount<'error'>('pending_reset.read');
 
 export type PendingResetTarget = 'protocol' | 'sandbox';
 
@@ -62,7 +70,7 @@ export const pendingResets = createPendingResets({
   storage: () => sessionStorage,
   onReadFailure: error => {
     // No session storage, as in a private window, is the browser's limit rather than a fault.
-    reportExpected(error, { flow: 'storage', step: 'pending_reset', metric: S.PENDING_RESET_READ });
+    report.expected(error, { step: 'pending_reset', metric: pendingResetReadMetric });
   },
 });
 

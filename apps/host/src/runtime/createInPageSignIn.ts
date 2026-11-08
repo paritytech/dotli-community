@@ -5,11 +5,14 @@
 // recovery phrase in the modal.
 
 import { getErrorMessage } from '@dotli/shared';
+import { createReporter } from '@dotli/metrics';
 import { reportLazyMiss } from '../reportLazyMiss.js';
 import type { AuthModalPort, SignInRoute } from './signInRoute.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 import type { LoginParams } from './createAuthCommands.js';
+
+const report = createReporter({ flow: 'wallet' });
 
 /** The recovery phrase import of a page that pairs in place. */
 export type InPagePhrase = {
@@ -50,7 +53,7 @@ export function createInPageSignIn({ inPagePhrase, modal, login }: Params): Sign
         }
       },
       (error: unknown) => {
-        reportLazyMiss({ flow: 'wallet', step: 'phrase_import', error });
+        reportLazyMiss({ report, step: 'phrase_import', error });
         if (modal.getLease() === scope) {
           retryImportsPhrase = true;
           modal.showFailure('Other', getErrorMessage(error));

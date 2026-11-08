@@ -4,7 +4,7 @@
 // Lazy entry points, each its own chunk, so the product page boot leaves them out.
 
 import type * as AccountContentNamespace from './components/account/AccountContent.js';
-import type * as BridgeNamespace from './runtime/bridge.js';
+import type { HostBridge } from './runtime/bridge.js';
 import type * as ChainsContentNamespace from './components/chains/ChainsContent.js';
 import type * as ChatPanelNamespace from './components/chat/ChatPanel.js';
 import type * as DebugPanelHostNamespace from './debugPanelHost.js';
@@ -33,7 +33,6 @@ type QrCodeModule = typeof QrCodeNamespace & { default: typeof QrCodeNamespace }
 
 export type DebugPanelHostModule = typeof DebugPanelHostNamespace;
 export type ChatPanelModule = typeof ChatPanelNamespace;
-export type BridgeModule = typeof BridgeNamespace;
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
 export type PhraseScreenModule = typeof PhraseScreenNamespace;
 
@@ -83,8 +82,8 @@ export function loadViolationPanelMount(): Promise<typeof ViolationPanelMountNam
 }
 
 /** The TrUAPI bridge and the dialogs it asks with. Rejects when its chunk fails to load. */
-export function loadBridge(): Promise<BridgeModule> {
-  return import('./runtime/bridge.js');
+export async function loadHostBridge(): Promise<HostBridge> {
+  return (await import('./runtime/bridge.js')).hostBridge;
 }
 /** The signing worker's constructor. Rejects when its chunk fails to load. */
 export function loadSigningWorker(): Promise<{ default: new () => Worker }> {

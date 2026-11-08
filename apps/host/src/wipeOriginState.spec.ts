@@ -154,7 +154,7 @@ describe('full reset', () => {
     expect(local.getItem('dotli:network')).toBeNull();
     expect(captures.expected).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Failed to delete dotli DB: UnknownError' }),
-      { flow: 'storage', step: 'origin_wipe_indexeddb' },
+      expect.objectContaining({ step: 'origin_wipe_indexeddb' }),
     );
     expect(captures.exception).not.toHaveBeenCalled();
     expect(metrics.counted('settings.origin_wipe')).toEqual([{ outcome: 'error', reason: 'indexeddb' }]);

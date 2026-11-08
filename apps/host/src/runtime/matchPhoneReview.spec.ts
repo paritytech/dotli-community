@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { asProductId, type ContactHandle, type HostSignPayloadData } from '@parity/truapi';
-import type { UserConfirmationReview } from '@parity/truapi-host';
 import { describe, expect, it, vi } from 'vitest';
 import type { PhoneMethod } from './phoneMethods.js';
 import { matchPhoneReview } from './matchPhoneReview.js';
 import type { PhoneRequest } from './createPhoneRequestTracker.js';
+import type { ServedReview } from './hostCallbacks/servedRequests.js';
 
 type Hex = `0x${string}`;
 
 type Row = {
   name: string;
-  review: UserConfirmationReview;
+  review: ServedReview;
   matching: PhoneRequest[];
   differing: PhoneRequest;
 };
@@ -20,7 +20,7 @@ type Row = {
 const GENESIS_HASH: Hex = '0x04';
 const LEGACY_SIGNER: Hex = '0x0a';
 
-const SIGN_PAYLOAD_REVIEW: UserConfirmationReview = {
+const SIGN_PAYLOAD_REVIEW: ServedReview = {
   tag: 'SignPayload',
   value: {
     tag: 'Product',
@@ -156,7 +156,7 @@ describe('phone review match', () => {
 
   it('As a Polkadot App user, I review an identity disclosure and it never waits on the phone', () => {
     // Given
-    const review: UserConfirmationReview = {
+    const review: ServedReview = {
       tag: 'IdentityDisclosure',
       value: { productId: asProductId('product.dot') },
     };
@@ -210,7 +210,7 @@ describe('phone review match against the core rewrites', () => {
 
   it('As a dotli integrator, I match against a review that cannot be encoded and nothing matches, with no throw', () => {
     // Given
-    const review: UserConfirmationReview = {
+    const review: ServedReview = {
       tag: 'SignVrf',
       // A request the codec cannot encode, which no typed value can be.
       value: { callingProductId: asProductId('p.dot'), request: {} as never },
@@ -318,7 +318,7 @@ function buildProductTx(callData: Hex, contacts: ContactHandle[]) {
   return { ...buildTxPayload(callData), contacts };
 }
 
-function buildTxReview(payload: ReturnType<typeof buildProductTx>): UserConfirmationReview {
+function buildTxReview(payload: ReturnType<typeof buildProductTx>): ServedReview {
   return {
     tag: 'CreateTransaction',
     value: { tag: 'Product', value: { payload } },
