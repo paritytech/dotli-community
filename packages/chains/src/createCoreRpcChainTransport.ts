@@ -72,7 +72,10 @@ export function getConnectedRpcEndpoint(genesisHash: string): string | null {
   return rows === undefined ? null : (rows.values().next().value ?? null);
 }
 
-/** The node of one connected Asset Hub lane, which may not be the first configured one, since the transport rotates, or `null` when none is connected. */
+/**
+ * The node of one connected Asset Hub lane, or `null` when none is connected.
+ * It may not be the first configured node, since the transport rotates.
+ */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
   return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
@@ -87,10 +90,7 @@ function createGatewayProvider({ chain, hooks, WebSocketBase }: CreateGatewayPro
   const genesisKey = chain.genesis.toLowerCase();
   function clearEndpoint(): void {
     const rows = connectedEndpoints.get(genesisKey);
-    if (rows === undefined) {
-      return;
-    }
-    if (!rows.has(owner)) {
+    if (rows?.has(owner) !== true) {
       return;
     }
     const rest = new Map(rows);

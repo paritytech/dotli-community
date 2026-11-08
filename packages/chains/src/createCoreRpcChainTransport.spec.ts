@@ -196,22 +196,31 @@ describe('createCoreRpcChainTransport', () => {
     expect(getConnectedRpcEndpoint(genesis)).toBeNull();
   });
 
-  it("As a dotli user on Trusted Providers, my chain's extra lane closes while its first lane stays connected, and diagnostics still show the first lane's node", async () => {
+  it("As a dotli user on Trusted Providers, my chain's lanes close one after the other, and diagnostics show a node until the last lane is gone", async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
     const first = must(createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }), 'first').provider;
     const second = must(createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }), 'second').provider;
-    const { socket: firstSocket, connection: firstConnection } = await connect(first);
+    const { socket, connection: firstConnection } = await connect(first);
     onTestFinished(() => {
       firstConnection.disconnect();
     });
     const { connection: secondConnection } = await connect(second);
+    onTestFinished(() => {
+      secondConnection.disconnect();
+    });
 
     // When
     secondConnection.disconnect();
 
     // Then
-    expect(getConnectedAssetHubRpcEndpoint()).toBe(firstSocket.url);
+    expect(getConnectedAssetHubRpcEndpoint()).toBe(socket.url);
+
+    // When
+    firstConnection.disconnect();
+
+    // Then
+    expect(getConnectedAssetHubRpcEndpoint()).toBeNull();
   });
 
   it('As a dotli user on Trusted Providers, I keep a quiet socket until it has gone 120 seconds without a message', async () => {
