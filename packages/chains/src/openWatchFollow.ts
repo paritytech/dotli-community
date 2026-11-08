@@ -25,11 +25,29 @@ type Params = {
   connect: (onMessage: (message: unknown) => void) => FollowSession;
   /** The follow was established, or stopped. */
   onFollowing: (following: boolean) => void;
+  /** The node refused the follow, which then sends nothing more. */
+  onRefused: () => void;
   /** Hears the number of each new best block. */
   onBestBlock: (blockNumber: number) => void;
   /** Whether a follow the chain stopped is started again. False once the chain closed. */
   live: () => boolean;
 };
+
+type FollowState =
+  | { kind: 'idle' }
+  | { kind: 'requesting'; id: string }
+  | {
+      kind: 'following';
+      token: string;
+      /** Still pinned, since it can be the best block. */
+      finalized: string | null;
+      headerIds: Set<string>;
+    }
+  | { kind: 'stopped' }
+  | { kind: 'refused' }
+  | { kind: 'closed' };
+
+type Following = Extract<FollowState, { kind: 'following' }>;
 
 type SendParams = {
   method: string;
@@ -39,17 +57,12 @@ type SendParams = {
 };
 
 /** Opens a session through `connect`, sends the follow on `start`, and follows until `disconnect` ends the session. */
-export function openWatchFollow({ sessionId, connect, onFollowing, onBestBlock, live }: Params): {
+export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, onBestBlock, live }: Params): {
   start: () => void;
   disconnect: () => void;
 } {
   let requests = 0;
-  let followId: string | null = null;
-  let token: string | null = null;
-  // Still pinned, since it can be the best block.
-  let finalized: string | null = null;
-  const headerIds = new Set<string>();
-  let closed = false;
+  let state: FollowState = { kind: 'idle' };
 
   // The broker can answer inside `send`, so callers note the id first.
   function send({ method, params, noteId }: SendParams): void {
@@ -59,86 +72,116 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onBestBlock, 
     session.send({ jsonrpc: '2.0', id, method, params });
   }
   function follow(): void {
-    token = null;
-    finalized = null;
-    headerIds.clear();
     send({
       method: CHAIN_HEAD_FOLLOW,
       params: [true],
       noteId: id => {
-        followId = id;
+        state = { kind: 'requesting', id };
       },
     });
   }
-  function unpin(hashes: string[]): void {
-    if (token !== null && hashes.length > 0) {
-      send({ method: CHAIN_HEAD_UNPIN, params: [token, hashes] });
+  function unpin(following: Following, hashes: string[]): void {
+    if (hashes.length > 0) {
+      send({ method: CHAIN_HEAD_UNPIN, params: [following.token, hashes] });
     }
   }
-  function handleEvent(result: Record<string, unknown>): void {
-    if (result['event'] === 'initialized') {
-      const hashes = readStrings(result['finalizedBlockHashes']);
-      finalized = hashes.at(-1) ?? null;
-      unpin(hashes.slice(0, -1));
-    } else if (result['event'] === 'bestBlockChanged' && token !== null) {
-      send({
-        method: CHAIN_HEAD_HEADER,
-        params: [token, result['bestBlockHash']],
-        noteId: id => {
-          headerIds.add(id);
-        },
-      });
-    } else if (result['event'] === 'finalized') {
-      const hashes = readStrings(result['finalizedBlockHashes']);
-      unpin([
-        ...(finalized === null ? [] : [finalized]),
-        ...hashes.slice(0, -1),
-        ...readStrings(result['prunedBlockHashes']),
-      ]);
-      finalized = hashes.at(-1) ?? finalized;
-    } else if (result['event'] === 'stop') {
-      token = null;
-      onFollowing(false);
-      // A halted chain stops it too, and its broker has dropped this session by then.
-      if (!closed && live()) {
-        follow();
-      }
+  function handleMessage(message: Record<string, unknown>): void {
+    switch (state.kind) {
+      case 'requesting':
+        handleFollowAnswer(state, message);
+        return;
+      case 'following':
+        handleFollowingMessage(state, message);
+        return;
+      case 'idle':
+      case 'stopped':
+      case 'refused':
+      case 'closed':
+        return;
     }
   }
-  const session = connect(message => {
-    if (!isRecord(message)) {
+  function handleFollowAnswer(
+    requesting: Extract<FollowState, { kind: 'requesting' }>,
+    message: Record<string, unknown>,
+  ): void {
+    if (message['id'] !== requesting.id) {
       return;
     }
-    const id = message['id'];
     const result = message['result'];
-    if (id === followId) {
-      if (typeof result === 'string') {
-        token = result;
-        onFollowing(true);
-      } else {
-        log.debug(`[dot.li chain-pool] ${sessionId} refused the network panel's follow`, message['error']);
-      }
-    } else if (typeof id === 'string' && headerIds.delete(id)) {
+    if (typeof result === 'string') {
+      state = { kind: 'following', token: result, finalized: null, headerIds: new Set() };
+      onFollowing(true);
+    } else {
+      state = { kind: 'refused' };
+      log.debug(`[dot.li chain-pool] ${sessionId} refused the network panel's follow`, message['error']);
+      onRefused();
+    }
+  }
+  function handleFollowingMessage(following: Following, message: Record<string, unknown>): void {
+    const id = message['id'];
+    if (typeof id === 'string' && following.headerIds.delete(id)) {
       // Refused for a block finalization already unpinned, and the next best block reports instead.
+      const result = message['result'];
       const blockNumber = typeof result === 'string' ? decodeHeaderNumber(result) : null;
       if (blockNumber !== null) {
         onBestBlock(blockNumber);
       }
     } else if (message['method'] === CHAIN_HEAD_FOLLOW_EVENT) {
       const params = message['params'];
-      if (isRecord(params) && params['subscription'] === token && isRecord(params['result'])) {
-        handleEvent(params['result']);
+      if (isRecord(params) && params['subscription'] === following.token && isRecord(params['result'])) {
+        handleEvent(following, params['result']);
       }
+    }
+  }
+  function handleEvent(following: Following, result: Record<string, unknown>): void {
+    if (result['event'] === 'initialized') {
+      const hashes = readStrings(result['finalizedBlockHashes']);
+      following.finalized = hashes.at(-1) ?? null;
+      unpin(following, hashes.slice(0, -1));
+    } else if (result['event'] === 'bestBlockChanged') {
+      send({
+        method: CHAIN_HEAD_HEADER,
+        params: [following.token, result['bestBlockHash']],
+        noteId: id => {
+          following.headerIds.add(id);
+        },
+      });
+    } else if (result['event'] === 'finalized') {
+      const hashes = readStrings(result['finalizedBlockHashes']);
+      unpin(following, [
+        ...(following.finalized === null ? [] : [following.finalized]),
+        ...hashes.slice(0, -1),
+        ...readStrings(result['prunedBlockHashes']),
+      ]);
+      following.finalized = hashes.at(-1) ?? following.finalized;
+    } else if (result['event'] === 'stop') {
+      const stopped: FollowState = { kind: 'stopped' };
+      state = stopped;
+      onFollowing(false);
+      // A halted chain stops it too, and its broker has dropped this session by then.
+      if (state === stopped && live()) {
+        follow();
+      }
+    }
+  }
+  const session = connect(message => {
+    if (isRecord(message)) {
+      handleMessage(message);
     }
   });
   return {
-    /** Sends the follow. Called once, after the caller stored the follow. Throws what the session's send throws. */
+    /** Sends the follow once, after the caller stored the follow. Throws what the session's send throws. */
     start() {
-      follow();
+      if (state.kind === 'idle') {
+        follow();
+      }
     },
-    /** Ends the session and stops a follow the chain stops from starting again. */
+    /** Ends the session and stops a follow the chain stops from starting again. Repeating it does nothing. */
     disconnect() {
-      closed = true;
+      if (state.kind === 'closed') {
+        return;
+      }
+      state = { kind: 'closed' };
       session.disconnect();
     },
   };

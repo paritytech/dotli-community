@@ -303,6 +303,13 @@ export function createChainPool({
           report(entry);
         }
       },
+      onRefused: () => {
+        const watch = findOwnWatch();
+        if (watch !== null) {
+          open.watch = { kind: 'off' };
+          watch.follow.disconnect();
+        }
+      },
       onBestBlock: blockNumber => {
         if (findOwnWatch() !== null) {
           watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
