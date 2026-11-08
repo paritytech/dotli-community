@@ -4,9 +4,10 @@
 // Each chain's lanes, shared by every consumer in this JS context. Each lease is a consumer of the chain's lanes, which
 // spread the chain's follows over as many connections as its transport's follow limit needs. An entry closes
 // `destroyDelay` after its last lease is released, and at once when any lane's transport halts. While someone watches
-// the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A pause closes
-// every lane's connection under the same leases, and a resume opens them again. A local provider's lease takes the
-// rebuilt chain after a halt, behind the pool's redial, and a remote session ends at its chain's halt.
+// the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A follow the
+// node refuses is tried again behind a backoff while the chain is held. A pause closes every lane's connection under
+// the same leases, and a resume opens them again. A local provider's lease takes the rebuilt chain after a halt, behind
+// the pool's redial, and a remote session ends at its chain's halt.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
@@ -18,6 +19,7 @@ import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
 import { createChainLanes, type ChainLanes } from './createChainLanes.js';
 import { createChainRedial } from './createChainRedial.js';
 import { createHealingLease } from './createHealingLease.js';
+import { createRedialGate, type RedialGate } from './createRedialGate.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 
@@ -110,7 +112,14 @@ export type ChainPool = {
 export type ChainPoolControl = Pick<ChainPool, 'pause' | 'resume'>;
 
 /** The watchers' own follow on an open entry. */
-type WatchState = { kind: 'off' } | { kind: 'open'; follow: { disconnect: () => void }; following: boolean };
+type WatchState =
+  | { kind: 'off' }
+  | { kind: 'open'; follow: { disconnect: () => void }; following: boolean }
+  | {
+      kind: 'refused';
+      /** The handle of the timer that tries the follow again. */
+      retry: unknown;
+    };
 
 /** An entry's live phase, written in place. Only `destroy` replaces it, so callbacks compare it by identity. */
 type OpenEntry = {
@@ -131,6 +140,8 @@ type EntryState =
 type Entry = {
   readonly key: string;
   readonly lanes: ChainLanes;
+  /** Holds back the watchers' follow after the node refuses it. */
+  readonly followGate: RedialGate;
   leases: number;
   state: EntryState;
 };
@@ -169,6 +180,13 @@ type HaltOnFailureParams = {
   entry: Entry;
   /** What to do to its lanes, which also names the step in the report. */
   action: 'pause' | 'resume';
+};
+
+type RetryWatchParams = {
+  /** The entry's live phase the retry was set in. */
+  open: OpenEntry;
+  /** The watch the retry was set for. */
+  refused: WatchState;
 };
 
 /** What the pool tells its watchers, one listener per watcher. */
@@ -238,6 +256,7 @@ export function createChainPool({
     if (open.destroyTimer !== null) {
       timers.clearTimeout(open.destroyTimer);
     }
+    closeWatch(open.watch);
     log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
     entries.delete(entry.key);
     // Before the lanes call: a halt handler may lease the chain again, and
@@ -257,6 +276,18 @@ export function createChainPool({
         metric: chainPoolCloseMetric,
         message: `${POOL_TAG} closing ${getShortKey(entry.key)} (${halt === null ? 'on release or unload' : 'on a halt'}) failed:`,
       });
+    }
+  }
+
+  /** Stops what the watchers' follow of a closing chain still waits on. */
+  function closeWatch(watch: WatchState): void {
+    switch (watch.kind) {
+      case 'off':
+      case 'open':
+        return;
+      case 'refused':
+        timers.clearTimeout(watch.retry);
+        return;
     }
   }
 
@@ -305,10 +336,12 @@ export function createChainPool({
       },
       onRefused: () => {
         const watch = findOwnWatch();
-        if (watch !== null) {
-          open.watch = { kind: 'off' };
-          watch.follow.disconnect();
+        if (watch === null) {
+          return;
         }
+        entry.followGate.noteHalt();
+        waitToRetryWatch(entry, open);
+        watch.follow.disconnect();
       },
       onBestBlock: blockNumber => {
         if (findOwnWatch() !== null) {
@@ -324,10 +357,47 @@ export function createChainPool({
   }
 
   /**
+   * Opens the watchers' follow under `open` now, or once the backoff after the node's last refusal ends. Never throws.
+   */
+  function startWatchFollow(entry: Entry, open: OpenEntry): void {
+    if (entry.followGate.waitMs() > 0) {
+      waitToRetryWatch(entry, open);
+      return;
+    }
+    openWatch(entry, open);
+  }
+
+  /** Holds the watchers' follow under `open` as refused until the follow gate's wait ends. */
+  function waitToRetryWatch(entry: Entry, open: OpenEntry): void {
+    const refused: WatchState = {
+      kind: 'refused',
+      retry: timers.setTimeout(() => {
+        retryWatch(entry, { open, refused });
+      }, entry.followGate.waitMs()),
+    };
+    open.watch = refused;
+  }
+
+  /** Tries the watchers' follow again while `open` still holds `refused`. */
+  function retryWatch(entry: Entry, { open, refused }: RetryWatchParams): void {
+    if (entry.state !== open || open.watch !== refused) {
+      return;
+    }
+    // The timer and the gate's clock may disagree, so the follow waits again as the gate says.
+    if (!entry.followGate.tryDial()) {
+      waitToRetryWatch(entry, open);
+      return;
+    }
+    open.watch = { kind: 'off' };
+    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} the network panel follows it again`);
+    openWatch(entry, open);
+  }
+
+  /**
    * Opens the watchers' follow under `open`, stores it, then sends it. A failure leaves the chain without one, and the
    * next sync tries again. Never throws.
    */
-  function startWatchFollow(entry: Entry, open: OpenEntry): void {
+  function openWatch(entry: Entry, open: OpenEntry): void {
     const off = open.watch;
     let follow: ReturnType<typeof openWatchFollow>;
     try {
@@ -374,15 +444,32 @@ export function createChainPool({
     }
     const wanted = watchers.size > 0 && entry.leases > 0;
     const { watch } = open;
-    if (wanted && watch.kind === 'off') {
-      log.debug(`${POOL_TAG} ${getShortKey(entry.key)} held, the network panel follows it`);
-      startWatchFollow(entry, open);
-    } else if (!wanted && watch.kind === 'open') {
-      open.watch = { kind: 'off' };
-      log.debug(
-        `${POOL_TAG} ${getShortKey(entry.key)} the network panel stops following it (${String(entry.leases)} leases)`,
-      );
-      watch.follow.disconnect();
+    switch (watch.kind) {
+      case 'off':
+        if (!wanted) {
+          return;
+        }
+        log.debug(`${POOL_TAG} ${getShortKey(entry.key)} held, the network panel follows it`);
+        startWatchFollow(entry, open);
+        return;
+      case 'open':
+        if (wanted) {
+          return;
+        }
+        open.watch = { kind: 'off' };
+        log.debug(
+          `${POOL_TAG} ${getShortKey(entry.key)} the network panel stops following it (${String(entry.leases)} leases)`,
+        );
+        watch.follow.disconnect();
+        return;
+      case 'refused':
+        // The retry timer opens the follow itself once the backoff ends.
+        if (wanted) {
+          return;
+        }
+        open.watch = { kind: 'off' };
+        timers.clearTimeout(watch.retry);
+        return;
     }
   }
 
@@ -413,6 +500,7 @@ export function createChainPool({
     const created: Entry = {
       key,
       lanes,
+      followGate: createRedialGate({ timers }),
       leases: 0,
       state: { kind: 'open', destroyTimer: null, watch: { kind: 'off' } },
     };

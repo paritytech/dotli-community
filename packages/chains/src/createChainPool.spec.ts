@@ -973,6 +973,111 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(2);
   });
 
+  /** Refuses the pool's newest follow request upstream, as a node at its follow limit does. */
+  function refuseFollow(record: TransportRecord): void {
+    const request = must(record.sent.filter(isFollow).at(-1), 'follow request');
+    record.emit({ jsonrpc: '2.0', id: must(request.id, 'follow id'), error: { code: -32800, message: 'limit' } });
+  }
+
+  it('As the network panel, my follow on a held chain is refused and I follow it again after the backoff', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+
+    // When
+    vi.advanceTimersByTime(0);
+    const afterFirstRetry = transport.sent.filter(isFollow).length;
+    refuseFollow(transport);
+    vi.advanceTimersByTime(999);
+    const beforeBackoffEnds = transport.sent.filter(isFollow).length;
+    vi.advanceTimersByTime(1);
+
+    // Then
+    expect(afterFirstRetry).toBe(2);
+    expect(beforeBackoffEnds).toBe(2);
+    expect(transport.sent.filter(isFollow)).toHaveLength(3);
+  });
+
+  it('As the network panel, my chain released and leased again while its refused follow waits is followed only once the backoff ends', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+    vi.advanceTimersByTime(0);
+    refuseFollow(transport);
+
+    // When
+    connection.disconnect();
+    lease(pool, '0xaa');
+    vi.advanceTimersByTime(999);
+    const beforeBackoffEnds = transport.sent.filter(isFollow).length;
+    vi.advanceTimersByTime(1);
+
+    // Then
+    expect(beforeBackoffEnds).toBe(2);
+    expect(transport.sent.filter(isFollow)).toHaveLength(3);
+  });
+
+  it('As the network panel, a refused follow on a chain released before its retry opens no follow', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+
+    // When
+    connection.disconnect();
+    const timersLeft = vi.getTimerCount();
+    vi.advanceTimersByTime(30_000);
+
+    // Then
+    expect(timersLeft).toBe(0);
+    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+  });
+
+  it('As the network panel, my follow on a chain that halts while its retry waits is not retried on the dead chain', () => {
+    // Given a remote session, so nothing rebuilds the chain and opens a follow of its own
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() });
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+
+    // When
+    transport.hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
+    expect(transport.sent.filter(isFollow)).toHaveLength(1);
+  });
+
+  it('As the network panel, my chain leased, released and leased again opens its follow at once each time', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    const connection = lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    answerFollow(transport, 'up-1');
+
+    // When
+    connection.disconnect();
+    lease(pool, '0xaa');
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toHaveLength(2);
+  });
+
   it('As a dotli integrator, I leave a pool unwatched and it follows nothing of its own, and the last unwatch ends its follows', () => {
     // Given
     const { createTransport, built } = createTransports();
