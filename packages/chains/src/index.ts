@@ -3,7 +3,7 @@
 
 export { byteMeter } from './byteMeter.js';
 export type { RemoteChainHalt } from './chainHaltError.js';
-export { ChainHaltError } from './chainHaltError.js';
+export { ChainHaltError, getHaltReason } from './chainHaltError.js';
 export { createChainHaltedError } from './createChainHaltedError.js';
 export type { ChainActivity, ChainPool, ChainPoolWatcher, LeaseProvider } from './createChainPool.js';
 export { createChainPool } from './createChainPool.js';
@@ -25,7 +25,6 @@ export type {
 } from './createLightClient.js';
 export { createLightClient, createLightClientDeps } from './createLightClient.js';
 export { SMOLDOT_DB_NAME } from './createSmoldotDb.js';
-export { getHaltReason } from './getHaltReason.js';
 export { loadProvider } from './lazy.js';
 export type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 export { requireBrokerLocalProvider } from './requireBrokerLocalProvider.js';

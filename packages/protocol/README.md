@@ -33,8 +33,8 @@ flowchart TB
   optional field is an `Option`, a whole number of any size is a compact, and a record crosses as entries.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
-  or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
-  refused as malformed.
+  or a stopped light client, and a read its chain halted under crosses as the latter. A telemetry event past the limits,
+  such as the peer count limit, fails to decode, so it is refused as malformed.
 - Each subscription declares its interrupt as truapi's `Result<(), CallError>` of its reason, an empty reason for one
   that has none, so its end crosses as truapi lays it out and a frame that relays another frame's subscription can pass
   a failure it heard on as its own end.

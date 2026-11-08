@@ -4,8 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ChainClock } from './state/networkMonitorState.js';
 import {
+  NETWORK_HEALTH,
   describeLiveNetwork,
   getNextOverdueAt,
+  isNetworkOffline,
   judgeNetworkHealth,
   type LiveVerdict,
   type NetworkHealth,
@@ -72,35 +74,75 @@ describe('The network menu verdict', () => {
     {
       story: 'whose chains in use all produce blocks',
       chains: [createChain(), createChain({ label: 'Hub' })],
-      expected: { text: 'Your connection is good', tone: 'ok' },
+      expected: { tone: 'ok' },
     },
     {
       story: 'while one of two chains in use connects',
       chains: [createChain(), createChain({ label: 'Hub', state: 'pending', latest: null, sinceLast: null })],
-      expected: { text: 'Connecting, 1 of 2 ready', tone: 'idle' },
+      expected: { tone: 'idle' },
     },
     {
       story: 'while the only chain in use connects',
       chains: [createChain({ state: 'pending', latest: null, sinceLast: null })],
-      expected: { text: 'Connecting', tone: 'idle' },
+      expected: { tone: 'idle' },
     },
     {
       story: 'whose chains are overdue or stalled',
       chains: [createChain({ sinceLast: 18_001 }), createChain({ label: 'Hub', alarm: true })],
-      expected: { text: 'Waiting on Relay and Hub', tone: 'warn', slow: ['Relay', 'Hub'] },
+      expected: { tone: 'warn', slow: ['Relay', 'Hub'] },
     },
     {
       story: 'with nothing in use',
       chains: [createChain({ state: 'unused' })],
-      expected: { text: 'Not in use', tone: 'quiet' },
+      expected: { tone: 'quiet' },
     },
-  ])('As a user $story, I open the network menu and the verdict reads "$expected.text"', ({ chains, expected }) => {
+  ])('As a user $story, I open the network menu and the verdict reads $expected.tone', ({ chains, expected }) => {
     // When
     const verdict = describeLiveNetwork(chains);
 
     // Then
     expect(verdict).toEqual(expected);
   });
+});
+
+describe('NETWORK_HEALTH', () => {
+  it.each<{ health: NetworkHealth; word: string; title: string; alerts: boolean; pulses: boolean }>([
+    { health: 'ok', word: 'Connected', title: 'Your connection is good', alerts: false, pulses: false },
+    { health: 'idle', word: 'Syncing', title: 'Syncing', alerts: true, pulses: true },
+    { health: 'warn', word: 'Unstable', title: 'Connection is unstable', alerts: true, pulses: false },
+    { health: 'err', word: 'Offline', title: 'You are offline', alerts: true, pulses: false },
+    { health: 'quiet', word: 'Not in use', title: 'No chains in use', alerts: false, pulses: false },
+  ])(
+    'As a dotli user whose network is $health, I see "$word" in the More row and "$title" in the panel',
+    ({ health, word, title, alerts, pulses }) => {
+      // Given the row's network health, from the table
+
+      // When
+      const facts = NETWORK_HEALTH[health];
+
+      // Then
+      expect(facts).toEqual({ word, title, alerts, pulses });
+    },
+  );
+
+  it.each<{ health: NetworkHealth; offline: boolean }>([
+    { health: 'ok', offline: false },
+    { health: 'idle', offline: false },
+    { health: 'warn', offline: false },
+    { health: 'err', offline: true },
+    { health: 'quiet', offline: false },
+  ])(
+    'As a dotli user whose network is $health, I ask whether I am offline and am told $offline',
+    ({ health, offline }) => {
+      // Given the row's network health, from the table
+
+      // When
+      const answer = isNetworkOffline(health);
+
+      // Then
+      expect(answer).toBe(offline);
+    },
+  );
 });
 
 describe('getNextOverdueAt', () => {

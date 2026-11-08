@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import { getKeys } from '@dotli/shared';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
-import type { PermissionStatus } from '../../runtime/permissionPolicy.js';
+import { ALL_PERMISSIONS, PERMISSION_GROUPS, type PermissionStatus } from '../../runtime/permissionPolicy.js';
 import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   givenApp,
@@ -16,7 +17,6 @@ import {
   readAll,
   refuseChanges,
   resetStoryPermissions,
-  STORY_PERMISSIONS,
   storyPermissions,
 } from '../../testing/stories/permissionsFixtures.js';
 import { PermissionsItem } from './PermissionsItem.js';
@@ -77,23 +77,10 @@ async function expectPreset(id: string, modified: boolean): Promise<void> {
 }
 
 /** Each group's heading and its permissions, in menu order. */
-const GROUPS = [
-  {
-    label: 'Device',
-    names: [
-      'Notifications',
-      'Camera',
-      'Microphone',
-      'Location',
-      'Motion',
-      'Bluetooth',
-      'NFC',
-      'Clipboard',
-      'Biometrics',
-    ],
-  },
-  { label: 'Account and chain', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
-];
+const GROUPS = getKeys(PERMISSION_GROUPS).map(group => ({
+  label: PERMISSION_GROUPS[group].label,
+  names: ALL_PERMISSIONS.filter(p => p.group === group).map(p => p.name),
+}));
 
 /** The permissions button and panel as the host composes them, given the story's permissions. */
 function StoryPermissions(): JSX.Element {
@@ -201,7 +188,7 @@ export const OpenPhone: Story = {
       await expect(within(sheet).getByTestId('popover-sheet-title')).toHaveTextContent('Permissions');
       await expect(sheet.querySelector('[data-testid="permissions-popover-header"]')).toBeNull();
       await expect(sheet.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(
-        STORY_PERMISSIONS.length,
+        ALL_PERMISSIONS.length,
       );
     });
   },

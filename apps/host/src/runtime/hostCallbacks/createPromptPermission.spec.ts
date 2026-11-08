@@ -14,7 +14,7 @@ import {
 import { productState } from '../state/productState.js';
 import { createBlockingModalCoordinator, type BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import { createPromptPermission } from './createPromptPermission.js';
-import type { PermissionPromptDecision } from '../hostPrompts.js';
+import type { GrantAnswer } from '../hostPrompts.js';
 import { createFakePrompts, type FakePrompts } from '../hostPrompts.fake.js';
 
 type Params = {
@@ -33,7 +33,7 @@ const PRODUCT: ProductContext = {
   executionKind: 'App',
 };
 
-const DECISIONS: Record<PromptButton, PermissionPromptDecision> = {
+const DECISIONS: Record<PromptButton, GrantAnswer> = {
   Deny: 'denied',
   Allow: 'granted',
   'Always allow': 'granted',

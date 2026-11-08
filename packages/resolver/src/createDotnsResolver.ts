@@ -5,12 +5,12 @@
 // passed in, so the resolver reads through the follow its owner already keeps: the light client's broker in the
 // protocol frame, the host's chain pool on a gateway.
 
-import { createClient, DisjointError, RpcError } from '@polkadot-api/substrate-client';
+import { createClient, DisjointError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { atom } from 'nanostores';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
 import { m, reportListener, spans as S } from '@dotli/metrics';
-import { CHAIN_HALTED_ERROR_DATA, createAsyncTaskPool, log, toHex, withTimeout } from '@dotli/shared';
+import { createAsyncTaskPool, isChainHaltedRpcError, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
 import { ContenthashDecodeError } from './contenthashDecodeError.js';
@@ -364,10 +364,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
  * marked answer, as `ApiStoppedError`, or as papi's `DisjointError` for an operation already running.
  */
 function isChainHalt(error: unknown): boolean {
-  if (error instanceof RpcError) {
-    return error.data === CHAIN_HALTED_ERROR_DATA;
-  }
-  return error instanceof DisjointError || error instanceof ApiStoppedError;
+  return isChainHaltedRpcError(error) || error instanceof DisjointError || error instanceof ApiStoppedError;
 }
 
 /** Tells `onPhase` the phase a client status stands for, if it stands for one, and reports a throw from it. */

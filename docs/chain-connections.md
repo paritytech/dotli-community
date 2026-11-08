@@ -483,7 +483,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Broker | `packages/chains/src/createChainBroker.ts` |
 | Watch guard | `packages/chains/src/createWatchGuard.ts` |
 | Halted-chain marker | `packages/shared/src/chainHaltedErrorData.ts` |
-| Halted-chain error, `ChainHaltError`, `getHaltReason` | `packages/chains/src/createChainHaltedError.ts`, `packages/chains/src/chainHaltError.ts`, `packages/chains/src/getHaltReason.ts` |
+| Halted-chain error, `ChainHaltError`, `getHaltReason` | `packages/chains/src/createChainHaltedError.ts`, `packages/chains/src/chainHaltError.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
 | RPC transport | `packages/chains/src/createCoreRpcChainProvider.ts` |
 | smoldot transport | `packages/chains/src/createLightClient.ts` |

@@ -4,7 +4,7 @@
 // The sandbox's run: read the host's contract from the URL once, then load the product, and again on each retry the
 // visitor asks for, up to a limit. Every failure is reported and shown.
 
-import { getLocalRoot } from '@dotli/config';
+import { getLocalRoot, hasLightClient } from '@dotli/config';
 import { CONTENT_ERRORS } from '@dotli/content';
 import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
@@ -247,11 +247,5 @@ function isAppSubdomain(hostname: string, baseDomain: string): boolean {
 }
 
 function getDependency(backend: SandboxParams['backend']): string {
-  switch (backend) {
-    case 'rpc-gateway':
-      return 'ipfs-gateway';
-    case 'smoldot-direct':
-    case 'smoldot-shared-worker':
-      return 'smoldot-bitswap';
-  }
+  return hasLightClient(backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
 }

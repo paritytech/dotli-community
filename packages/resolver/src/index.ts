@@ -14,3 +14,4 @@ export type { AppVersion, ExecutableManifest, ManifestResult, RootManifest } fro
 export { toExecutableManifestResult } from './toExecutableManifestResult.js';
 export { toRootManifestResult } from './toRootManifestResult.js';
 export { loadResolve } from './lazy.js';
+export { isApiStoppedError } from './apiStoppedError.js';

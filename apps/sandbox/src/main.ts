@@ -7,7 +7,7 @@
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
 import '@dotli/ui/styles.css';
-import { BASE_DOMAIN, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
+import { BASE_DOMAIN, getActiveServicesConfig, hasLightClient, setActiveNetwork } from '@dotli/config';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
 import { getEndpointHost } from '@dotli/shared';
@@ -121,7 +121,7 @@ function configure(params: SandboxParams): void {
   m.setDefaults({ chain_backend: params.backend, network: params.network });
   // The listener lives as long as the sandbox page, so its stop goes unused.
   listenForArchiveFailures(appWorker.container);
-  if (params.backend !== 'rpc-gateway') {
+  if (hasLightClient(params.backend)) {
     // The bridge lives as long as the sandbox page, so nothing disposes it.
     blockSource = createBitswapBridge({
       window,

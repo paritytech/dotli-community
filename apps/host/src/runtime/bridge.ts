@@ -23,6 +23,7 @@ import { getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 import { watchHostChains } from './hostCallbacks/watchHostChains.js';
 import { pagePermissions, productPermissions } from './pagePermissions.js';
 import { isSiteGrantForgotten, pageRole } from './pageRole.js';
+import { authViews } from './session/authViews.js';
 import { coreStorage, signInFlag, type SessionRead } from './session/createCoreStorage.js';
 import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
 import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
@@ -177,12 +178,12 @@ const coreCommands = createCoreAuthCommands({
   auth: authState.store,
   core: bridge.core,
   session: sessionState,
-  walletMode: walletModeState.getMode,
+  isLocalWallet: walletModeState.isLocal,
   storedSession: coreStorage,
 });
 
 const pageSignOut = createPageSignOut({
-  walletMode: walletModeState.getMode,
+  isLocalWallet: walletModeState.isLocal,
   copy: coreStorage,
   flag: signInFlag,
   endSession,
@@ -252,7 +253,7 @@ const sessionLease = createSessionLease({
     readSession: readRestoredSession,
     subscribeStoredSession: coreStorage.subscribeStoredSession,
   },
-  walletMode: walletModeState.getMode,
+  isLocalWallet: walletModeState.isLocal,
   core: bridge.core,
 });
 
@@ -309,11 +310,11 @@ export function startSessionState(): () => void {
 
       return unsubscribe;
     },
-    isSignedIn: () => authState.store.get().tag === 'Connected',
+    isSignedIn: () => authViews.getSignedInSession(authState.store.get()) !== null,
     signOuts,
     reconcile: () => reconcilePage('visible'),
     readPageWalletVersion: async () =>
-      walletModeState.getMode() === 'local' ? ((await pageWalletBoot.read())?.version ?? null) : null,
+      walletModeState.isLocal() ? ((await pageWalletBoot.read())?.version ?? null) : null,
     followWallet: () => {
       window.location.reload();
     },

@@ -19,7 +19,7 @@ import { atom, type ReadableAtom } from 'nanostores';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   ALL_PERMISSIONS,
-  isDevicePermission,
+  hasFrameDirective,
   type EnforceablePermissionName,
   type PermissionStatus,
   type PermissionTargets,
@@ -329,7 +329,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
         label,
         permissions: changed,
         allowChanged: changed.some(
-          name => isDevicePermission(name) && (getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
+          name => hasFrameDirective(name) && (getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
         ),
         fromPrompt,
       });

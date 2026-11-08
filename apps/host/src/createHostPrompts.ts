@@ -6,7 +6,7 @@
 
 import { withActiveTld } from '@dotli/config';
 import type { HostPrompts } from './runtime/hostPrompts.js';
-import { isDevicePermission } from './runtime/permissionPolicy.js';
+import { hasFrameDirective } from './runtime/permissionPolicy.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permissionDialog.js';
 
@@ -35,7 +35,7 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
         app: withActiveTld(label),
         permission,
         allowOnce,
-        reloads: isDevicePermission(permission),
+        reloads: hasFrameDirective(permission),
       });
       return (await ask({ view: dialog, signal })).result;
     },

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { reportListener } from '@dotli/metrics';
+import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createListenerSet, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
@@ -60,10 +61,8 @@ function subscribeSteps(listener: (step: DotliAuthState) => void): () => void {
 }
 
 function followSession(): void {
-  const { tag } = auth.get();
-  if (tag === 'Connected') {
-    session.set(true);
-  } else if (tag === 'Disconnected' || tag === 'Unreachable') {
-    session.set(false);
+  const change = authViews.getLoggedInChange(auth.get());
+  if (change !== null) {
+    session.set(change);
   }
 }

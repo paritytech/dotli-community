@@ -53,22 +53,22 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   network included, and titled with the label. A core that goes stale is rebuilt without being asked. A core outlives
   its last lease by a few seconds, so a lease taken soon after keeps the same core. The signing worker and the local
   wallet core load on demand.
-- The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
-  signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
-  reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
-  state (topbar, URL pill, product card, chat panel, network) lives with the page. Each runtime state is one entity
-  object: its read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the
-  chat panel, the loading screen, the settings snapshot, the topbar state, the URL pill and the product card are entity
-  objects the same way, and the topbar's floating surfaces register with one registry object. The first three keep what
-  their islands cannot be handed at hydration (the control focus returns to, the window's intents, the panel's element)
-  as private slots behind their members, and the product card keeps the author read the page hands it as a private slot
-  the same way, since the islands that load the author hydrate apart from the page that builds the read. The chat store
-  and the product connections it reaches the product through are each a factory with the page's instance beside it, and
-  the store stamps messages with the clock it is given. The network monitor, the network state and the network health
-  are factories the same way, and measure block arrival, read times and rechecks on the timers they are given. The chat
-  panel and the network health each follow their sources once however many callers start them, and stop with the last
-  caller's stop. The network state is derived from the monitor and rebuilds only while something reads it and for a
-  second after.
+- The session layer (the auth state type and the named views every other layer reads it through, the session state the
+  boot starts, the core's shared-store adapter, the signed-in flag, the restore rule and the session lease) sits apart
+  from the TrUAPI host callbacks. State the runtime reads or writes (auth, product, permissions, theme, wallet mode)
+  lives with the runtime, and the page chrome's own state (topbar, URL pill, product card, chat panel, network) lives
+  with the page. Each runtime state is one entity object: its read-only store, its getters and the setters its writers
+  call. The sign-in modal, the sign-in window, the chat panel, the loading screen, the settings snapshot, the topbar
+  state, the URL pill and the product card are entity objects the same way, and the topbar's floating surfaces register
+  with one registry object. The first three keep what their islands cannot be handed at hydration (the control focus
+  returns to, the window's intents, the panel's element) as private slots behind their members, and the product card
+  keeps the author read the page hands it as a private slot the same way, since the islands that load the author hydrate
+  apart from the page that builds the read. The chat store and the product connections it reaches the product through
+  are each a factory with the page's instance beside it, and the store stamps messages with the clock it is given. The
+  network monitor, the network state and the network health are factories the same way, and measure block arrival, read
+  times and rechecks on the timers they are given. The chat panel and the network health each follow their sources once
+  however many callers start them, and stop with the last caller's stop. The network state is derived from the monitor
+  and rebuilds only while something reads it and for a second after.
 - The product page hands the product card its author read, whose dotNS owner is read with the manifests and cached with
   them, so the card's first opening reads only the account Asset Hub maps the owner to and that account's People
   username. The product's icon shows in the tab and the card.
@@ -130,10 +130,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The page builds one route to the core's permission store and one permissions store over it. The product frame and the
   permission prompts get both, the menu reads the store and the diagnostics read the route. A product's newest
   connection answers. A stored answer returns at once, and only a question waits its turn behind other dialogs.
-- The permissions panel sets an app's twelve permissions through four presets on a slider, with every permission under
+- The permissions panel sets an app's permissions through four presets on a slider, with every permission under
   Advanced. The preset shown is the one closest to the statuses, never stored. Every change, from the panel or a prompt,
   goes through one write that retries, and a newer panel change supersedes an older one. A change announces once, and
-  the frame reloads only when its `allow` attribute changes.
+  the frame reloads only when its `allow` attribute changes. Each permission's facts (its name, group, dialog copy,
+  frame directive and Trusted status) are one table in the runtime, and its icon sits with the views.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time. Its sign-in, phrase import and sign-out are the one interface every
   page offers, the debug panel's wallet tab included: they open the sign-in window, or on a preview or the landing page,

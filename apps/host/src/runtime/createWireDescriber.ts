@@ -51,7 +51,7 @@ export function emitWireFrameDebug({ direction, productId, message }: EmitWireFr
     return;
   }
   const { requestId, payload } = decoded.value;
-  const decodeWalletFrames = walletModeState.getMode() === 'local';
+  const decodeWalletFrames = walletModeState.isLocal();
   // Off the transport path: a panel listener that throws becomes a rejection the page reports, and delivery goes on.
   void wireDescriber.preload().then(
     ({ describeWireFrame }) => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { fetchFromIpfs } from '@dotli/content';
-import { getBackend, type Backend } from '@dotli/config';
+import { getBackend, hasLightClient, type Backend } from '@dotli/config';
 import { hostBitswapClient } from './createHostBitswapClient.js';
 
 /** A block as one content backend returned it. Empty data is a miss. */
@@ -39,13 +39,7 @@ type FetchFromParams = {
  */
 export function createBlockFetch({ backend, fetchOverBitswap, fetchFromGateway }: BlockSources): PreimageFetch {
   function fetchFrom({ source, cid, signal }: FetchFromParams): Promise<Uint8Array> {
-    switch (source) {
-      case 'rpc-gateway':
-        return fetchFromGateway(cid);
-      case 'smoldot-direct':
-      case 'smoldot-shared-worker':
-        return fetchOverBitswap(cid, signal);
-    }
+    return hasLightClient(source) ? fetchOverBitswap(cid, signal) : fetchFromGateway(cid);
   }
 
   async function fetchBlock(cid: string, signal: AbortSignal): Promise<PreimageBlock> {

@@ -19,7 +19,7 @@ export function AccountButton(props: { idPrefix?: string; showName?: boolean }):
   const account = useAccount({
     auth: authState.store,
     loggedIn: authState.loggedInStore,
-    walletMode: walletModeState.store,
+    local: walletModeState.localStore,
     signingOut: signingOutState.store,
     elsewhere: sessionElsewhereState.store,
   });

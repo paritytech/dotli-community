@@ -298,7 +298,7 @@ function createTopbarLogin({ fakes }: CreateTopbarLoginParams): () => Promise<vo
     auth,
     core: fakes.core,
     session: { reportLoginFailure: vi.fn() },
-    walletMode: () => 'app',
+    isLocalWallet: () => false,
     storedSession: createFakeStoredSession({ blob: '0xsession' }),
   });
   return async () => {

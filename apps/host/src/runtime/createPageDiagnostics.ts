@@ -8,7 +8,8 @@ import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
 import {
   getCacheSettings,
   getBackend,
-  BACKEND_LABELS,
+  BACKEND_FACTS,
+  hasLightClient,
   type Backend,
   getNetwork,
   NETWORK_NAME_TO_SERVICES_CONFIG,
@@ -80,7 +81,7 @@ export function createPageDiagnostics({
     rows(): DiagnosticsRow[] {
       const rows = buildBaseDiagnosticsRows({ page: page() });
       // polkadot-api rotates nodes on failure, so ask the live transport which one answers.
-      const node = getBackend() === 'rpc-gateway' ? connectedAssetHubNode() : null;
+      const node = hasLightClient(getBackend()) ? null : connectedAssetHubNode();
       const assetHub = rows.find(([label]) => label === 'AssetHub node');
       if (node !== null && assetHub !== undefined) {
         assetHub[1] = node;
@@ -229,14 +230,14 @@ function buildTransportRows(backend: Backend, sha: string): DiagnosticsRow[] {
 }
 
 function getBackendLabel(backend: Backend): string {
-  return BACKEND_LABELS[backend];
+  return BACKEND_FACTS[backend].label;
 }
 
 async function collectSmoldotInfo(
   finalizedBlock: (genesisHash: string) => Promise<number | null>,
 ): Promise<SmoldotInfo> {
   const version = buildLightClientVersionLabel();
-  if (getBackend() === 'rpc-gateway') {
+  if (!hasLightClient(getBackend())) {
     return { version, blocks: null };
   }
   const servicesConfig = getActiveServicesConfig();

@@ -10,7 +10,7 @@ import type { PermissionDecision, Permissions, ProductContext } from '@parity/tr
 import type { HostDevicePermissionRequest, RemotePermission, RemotePermissionRequest } from '@parity/truapi';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
-  isDevicePermission,
+  hasFrameDirective,
   isEnforceableDevicePermission,
   type EnforceablePermissionName,
   type PermissionStatus,
@@ -21,7 +21,7 @@ import { createSubmitRateLimiter, type SubmitRateLimiter } from './createSubmitR
 import type { Notify } from './createNotificationAdapters.js';
 import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
-import type { HostPrompts, PermissionPromptDecision } from '../hostPrompts.js';
+import { getLastingStatus, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
@@ -55,9 +55,6 @@ type PromptRequest = Omit<Params, 'limiter' | 'modalScope'> & {
   /** Shared by device and remote prompts. */
   limiter: SubmitRateLimiter;
 };
-
-/** An answer the product's permissions keep. */
-type LastingPromptDecision = Exclude<PermissionPromptDecision, 'dismissed' | 'granted-once'>;
 
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
@@ -172,7 +169,7 @@ async function decidePromptPermissionWhenActive(
 ): Promise<PermissionDecision> {
   const { label, name, limiter, ask, permissions } = request;
   // A grant reloads the product.
-  const gatedByIframe = isDevicePermission(name);
+  const gatedByIframe = hasFrameDirective(name);
   // An earlier prompt for the same permission may have answered it while this one waited.
   const status = await permissions.registry.getStatus(label, name);
   throwIfModalAborted(signal);
@@ -183,24 +180,13 @@ async function decidePromptPermissionWhenActive(
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
-  const decision = await ask({ label, permission: name, signal, allowOnce: !gatedByIframe });
+  const answer = await ask({ label, permission: name, signal, allowOnce: !gatedByIframe });
   throwIfModalAborted(signal);
-  if (decision === 'dismissed') {
-    throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
-  }
+  const decision = toPermissionDecision(answer);
+  const lasting = getLastingStatus(answer);
   // The core keeps a one-time grant for this execution itself, so only a lasting answer is recorded.
-  if (decision === 'granted-once') {
-    return 'AllowOnce';
+  if (lasting !== null) {
+    await permissions.product.recordPromptDecision({ label, name, decision: lasting, signal });
   }
-  await permissions.product.recordPromptDecision({ label, name, decision, signal });
-  return getLastingDecision(decision);
-}
-
-function getLastingDecision(decision: LastingPromptDecision): PermissionDecision {
-  switch (decision) {
-    case 'granted':
-      return 'AllowAlways';
-    case 'denied':
-      return 'Deny';
-  }
+  return decision;
 }

@@ -5,25 +5,24 @@
 
 import { createSignal, onCleanup } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import type { NetworkHealth } from '../../components/chains/networkHealth.js';
 import type { BlockHealth } from '../../state/networkMonitorState.js';
 import type { ChainBar } from '../../components/chains/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../../components/chains/chains.js';
-import type { LiveVerdict } from '../../networkVerdict.js';
+import type { LiveVerdict, NetworkHealth } from '../../networkVerdict.js';
 import type { NetworkItemProps } from '../../components/chains/NetworkItem.js';
 
 const NO_TRANSFER: TransferView = { bytesPerSecond: null, fetched: null, total: null };
 
-/** Verdicts as the page words them. A story that checks the status line gives the one its chains earn. */
+/** Verdicts a story gives the network. A story that checks the status line gives the one its chains earn. */
 export const VERDICTS = {
-  quiet: { text: 'Not in use', tone: 'quiet' },
-  connecting: { text: 'Connecting', tone: 'idle' },
-  good: { text: 'Your connection is good', tone: 'ok' },
+  quiet: { tone: 'quiet' },
+  connecting: { tone: 'idle' },
+  good: { tone: 'ok' },
 } satisfies Record<string, LiveVerdict>;
 
 /** The verdict while the `labels` chains are behind. */
 export function waitingOn(...labels: string[]): LiveVerdict {
-  return { text: `Waiting on ${labels.join(' and ')}`, tone: 'warn', slow: labels };
+  return { tone: 'warn', slow: labels };
 }
 
 const NOTHING: NetworkView = { chains: [], transfer: NO_TRANSFER, readAt: 0, verdict: VERDICTS.quiet };

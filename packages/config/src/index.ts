@@ -13,7 +13,15 @@ export {
 } from './activeNetwork.js';
 export { setSettings, subscribeSettings } from './activeSettings.js';
 export type { Backend } from './backend.js';
-export { BACKEND_KEY, BACKEND_LABELS, getBackend, isVerifiedSession, parseBackend } from './backend.js';
+export {
+  BACKEND_FACTS,
+  BACKEND_KEY,
+  getBackend,
+  hasLightClient,
+  hasSharedWorker,
+  isVerifiedSession,
+  parseBackend,
+} from './backend.js';
 export type { SiteId } from './baseDomain.js';
 export { BASE_DOMAIN, LOCAL_ROOT, SITE_ID, isLocalhost } from './baseDomain.js';
 export type { CacheSettings } from './cacheSettings.js';

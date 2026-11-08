@@ -13,7 +13,6 @@ import { readWalletOrFailed, type SiteWallet, type WalletRead } from './session/
 import type { SessionState } from './session/createSessionState.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import type { SignInFlag } from './session/signInFlag.js';
-import type { WalletMode } from './state/walletModeState.js';
 import { reportWalletFailure } from './walletFailure.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 
@@ -27,8 +26,8 @@ import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 export type LogoutOutcome = { phone: 'told' } | { phone: 'untold'; tellAgain: () => Promise<LogoutOutcome> };
 
 export type PageSignOutParams = {
-  /** The page's wallet mode now. */
-  walletMode: () => WalletMode;
+  /** Whether the page runs on a local wallet now. Never throws. */
+  isLocalWallet: () => boolean;
   /** The page's copy of the paired session. Its reads never reject. */
   copy: Pick<HostCoreStorage, 'readSession' | 'dropSessionIf'>;
   /**
@@ -92,7 +91,7 @@ const UNTOLD_IN_PLACE: LogoutOutcome = { phone: 'untold', tellAgain: () => Promi
 
 /** Builds the page's own sign-out. Building it never throws. */
 export function createPageSignOut({
-  walletMode,
+  isLocalWallet,
   copy,
   flag,
   endSession,
@@ -291,7 +290,7 @@ export function createPageSignOut({
 
   function signOut(): Promise<LogoutOutcome> {
     log.event('logout requested', { flow: 'wallet' });
-    if (walletMode() !== 'local') {
+    if (!isLocalWallet()) {
       // Before any wait, so the read is ahead of the window's restore rule and of a visible check.
       const held = copy.readSession();
       return signOuts.call(() => runOnCore(() => signOutPaired(held)));
@@ -317,7 +316,7 @@ export function createPageSignOut({
   }
 
   async function signOutLocally(): Promise<void> {
-    if (walletMode() === 'local') {
+    if (isLocalWallet()) {
       // The watch found the wallet gone, so nothing is forgotten here, and a wallet saved since stays. A failed
       // switch was reported there and left the page as it was.
       if ((await leaveLocalWallet(forgetNothing)) === 'failed') {

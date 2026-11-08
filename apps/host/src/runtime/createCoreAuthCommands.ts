@@ -20,9 +20,9 @@ import { LoginRequestError } from './loginRequestError.js';
 import { ownCoreConnection } from './ownCoreConnection.js';
 import { requestCoreLogin } from './requestCoreLogin.js';
 import type { HostCoreStorage } from './session/createCoreStorage.js';
+import { authViews } from './session/authViews.js';
 import type { SessionState } from './session/createSessionState.js';
 import type { DotliAuthState } from './session/types.js';
-import type { WalletMode } from './state/walletModeState.js';
 
 type Params = {
   /** The page's auth state, which tells how a login ended. */
@@ -30,7 +30,7 @@ type Params = {
   core: Pick<PageCore, 'acquire' | 'cancelPairing'>;
   session: Pick<SessionState, 'reportLoginFailure'>;
   /** A local wallet core keeps its session in memory, so its login stores nothing. */
-  walletMode: () => WalletMode;
+  isLocalWallet: () => boolean;
   /** The page's copy, which holds the session a pairing stored, or hears that its write failed. */
   storedSession: Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession' | 'subscribeSessionWriteFailures'>;
 };
@@ -45,7 +45,7 @@ type RequestTopbarLoginParams = {
 };
 
 /** Returns the topbar's login, logout and cancel on the page core. Never throws. */
-export function createCoreAuthCommands({ auth, core, session, walletMode, storedSession }: Params) {
+export function createCoreAuthCommands({ auth, core, session, isLocalWallet, storedSession }: Params) {
   async function login({ reason, signal }: CoreLoginParams): Promise<LoginOutcome> {
     log.event('login requested', { flow: 'wallet' });
     // Before the request, so a failed write of the session it pairs is heard even when it comes first.
@@ -88,26 +88,30 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
   /**
    * Answers how a login's sign-in ended at `state`, or null while it goes on. A failure or a sign-out ends it only once
    * the state moved on from `answered`, the state when the core answered the request. Rejects when the read of the
-   * page's copy failed.
+   * page's copy failed. A failed login is told apart before an idle one, since a failed login is idle too.
    */
   async function readSignInOutcome(state: DotliAuthState, answered: DotliAuthState): Promise<LoginOutcome | null> {
-    switch (state.tag) {
-      case 'LoginFailed':
-        return state === answered ? null : FAILED;
-      case 'Disconnected':
-        return state === answered ? null : CANCELLED;
-      case 'Connected':
-        // A local wallet core keeps its session in memory, so nothing is stored for it.
-        if (walletMode() === 'local' || (await hasSessionCopy())) {
-          return { kind: 'paired', account: state.session };
-        }
-        return null;
-      case 'Restoring':
-      case 'Unreachable':
-      case 'Pairing':
-      case 'Authenticating':
-        return null;
+    const account = authViews.getSignedInSession(state);
+    if (account !== null) {
+      // A local wallet core keeps its session in memory, so nothing is stored for it.
+      if (isLocalWallet() || (await hasSessionCopy())) {
+        return { kind: 'paired', account };
+      }
+      return null;
     }
+    switch (authViews.getLoginStep(state)?.step) {
+      case 'failed':
+        return state === answered ? null : FAILED;
+      case 'pairing':
+      case 'authenticating':
+        return null;
+      case undefined:
+        break;
+    }
+    if (authViews.isSignInIdle(state)) {
+      return state === answered ? null : CANCELLED;
+    }
+    return null;
   }
 
   /**

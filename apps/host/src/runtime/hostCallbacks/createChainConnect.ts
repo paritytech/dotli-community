@@ -19,6 +19,7 @@ import {
   type LeaseProvider,
   type RemoteChainHalt,
 } from '@dotli/chains';
+import { hasLightClient } from '@dotli/config';
 import { m, reportDefect, spans as S } from '@dotli/metrics';
 import { isRecord, log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
@@ -85,13 +86,9 @@ export function createChainConnect({
   } = sources;
 
   function getBackendSupport(): BackendSupport {
-    switch (backendInForce()) {
-      case 'rpc-gateway':
-        return { isSupported: isRpcSupported, backend: 'RPC' };
-      case 'smoldot-direct':
-      case 'smoldot-shared-worker':
-        return { isSupported: isRemoteSupported, backend: 'smoldot' };
-    }
+    return hasLightClient(backendInForce())
+      ? { isSupported: isRemoteSupported, backend: 'smoldot' }
+      : { isSupported: isRpcSupported, backend: 'RPC' };
   }
 
   function connect(genesisHashBytes: Uint8Array): ReturnType<ChainProvider['connect']> {

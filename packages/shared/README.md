@@ -89,7 +89,8 @@ listener set, the test reset of stores and a few formatting helpers.
   `withTimeout({ work, ms, timeoutError, timers?, signal? })`, `sleep(ms, { signal?, timers? })`, `createRandomId()`,
   `noop`, `Timers`, `realTimers`.
 - Wire constants several packages share: `CHAIN_HALTED_ERROR_DATA`, the `error.data` of a JSON-RPC answer to a request
-  its chain halted under.
+  its chain halted under, and `isChainHaltedRpcError(error)`, whether a JSON-RPC error, or an error built from one,
+  carries that marker.
 
 ### `@dotli/shared/testing`
 

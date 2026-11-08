@@ -57,8 +57,13 @@ above the linter: semantics, data flow and naming.
   the main logic unindented.
 - **major** (docs/code/style.md § `for...of` over `forEach` and `for...in`): A `forEach` with a callback, or `for...in`.
 - **major** (docs/code/style.md § Branch on a union in its own function): A union mapped by a ternary chain or an `if`
-  ladder inline, or a `switch` over a closed union with a `default`, unless it reads only some members and gives a
-  one-line reason.
+  ladder inline, a `switch` over a closed union with a `default` unless it reads only some members and gives a one-line
+  reason, or, outside the module that owns a union, one member picked out with `===` or members grouped in one `case` to
+  answer a question the owner could name.
+- **major** (docs/code/style.md § Per-member facts in one table): A member's facts written outside the table beside its
+  union, or a fixture or story that copies the table instead of importing it.
+- **major** (docs/code/style.md § A variant flag is a predicate): A mode or kind compared at a use site where its owner
+  exports, or could export, a predicate.
 - **major** (docs/code/style.md § Brand values that look alike): An identifier or encoded value passed as a bare
   `string` or `Uint8Array` where another kind could be passed in its place.
 - **major** (docs/code/style.md § Parse at the boundary): Data from the network, storage or another context used without
@@ -72,8 +77,9 @@ above the linter: semantics, data flow and naming.
   `as unknown as X` or `@ts-expect-error` in application code, one in library code without a one-line reason, or an
   exported function without a return type other than a factory whose type is derived from it.
 - **major** (docs/code/style.md § Throw errors, catch at the boundary): A result wrapper for a failure inside a layer (a
-  domain outcome union is fine), a catch that adds context without `{ cause }`, or failures told apart by their message
-  instead of `instanceof`.
+  domain outcome union is fine), a catch that adds context without `{ cause }`, failures told apart by their message
+  instead of `instanceof`, a failure from another package recognised by its message text, or a check that misses one of
+  the forms a failure arrives in.
 - **major** (docs/code/style.md § Thread an `AbortSignal`): An async API that waits on the network, a timer or another
   context that a caller can stop but that takes no optional `signal`, or an abort that rejects with anything but
   `signal.reason`.

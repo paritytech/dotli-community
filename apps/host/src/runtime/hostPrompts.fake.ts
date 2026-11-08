@@ -7,7 +7,7 @@
 import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
 import { modals, type ModalView, type NotificationParams } from '@dotli/ui';
-import type { HostPrompts, PermissionPromptDecision } from './hostPrompts.js';
+import type { HostPrompts, GrantAnswer } from './hostPrompts.js';
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName; allowOnce: boolean }
@@ -198,7 +198,7 @@ export function createFakePrompts() {
     return waitUntil(() => (notices.length >= count ? [...notices] : undefined));
   }
 
-  function decide(decision: PermissionPromptDecision): void {
+  function decide(decision: GrantAnswer): void {
     const { entry, prompt } = getShownPrompt();
     if (prompt.kind !== 'permission') {
       throw new Error(`expected a permission prompt on screen, a ${prompt.kind} prompt is`);

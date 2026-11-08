@@ -585,8 +585,8 @@ describe('The network monitor after a return', () => {
     monitor.recordBestBlock(getRelayGenesis(), 101);
 
     // Then
-    expect(back).toEqual({ text: 'Connecting', tone: 'idle' });
-    expect(describeLiveNetwork(monitor.getChainClocks()).text).toBe('Your connection is good');
+    expect(back).toEqual({ tone: 'idle' });
+    expect(describeLiveNetwork(monitor.getChainClocks()).tone).toBe('ok');
   });
 
   it('As a user back on my page, I see a light client syncing again as Connecting, not as Waiting', () => {

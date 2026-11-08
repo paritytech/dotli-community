@@ -17,7 +17,7 @@ function mount(auth: DotliAuthState, loggedIn = auth.tag === 'Connected') {
   const stores = {
     auth: atom<DotliAuthState>(auth),
     loggedIn: atom(loggedIn),
-    walletMode: atom<{ mode: 'app' | 'local' }>({ mode: 'app' }),
+    local: atom(false),
     signingOut: atom(false),
     elsewhere: atom(false),
   };
@@ -31,8 +31,7 @@ function read(account: Account) {
     loggedIn: account.loggedIn(),
     session: account.session(),
     connected: account.connected(),
-    restoring: account.restoring(),
-    unreachable: account.unreachable(),
+    knowledge: account.knowledge(),
     signingOut: account.signingOut(),
     local: account.local(),
     elsewhere: account.elsewhere(),
@@ -40,7 +39,7 @@ function read(account: Account) {
 }
 
 describe('useAccount', () => {
-  it('As a visitor whose session is still being read, the account is restoring and signed out', () => {
+  it('As a visitor whose session is still being read, the account says so and is signed out', () => {
     // When
     const { account, dispose } = mount({ tag: 'Restoring' });
 
@@ -49,8 +48,7 @@ describe('useAccount', () => {
       loggedIn: false,
       session: undefined,
       connected: false,
-      restoring: true,
-      unreachable: false,
+      knowledge: 'reading',
       signingOut: false,
       local: false,
       elsewhere: false,
@@ -105,8 +103,7 @@ describe('useAccount', () => {
     const { account, dispose } = mount({ tag: 'Unreachable' });
 
     // Then
-    expect(account.unreachable()).toBe(true);
-    expect(account.restoring()).toBe(false);
+    expect(account.knowledge()).toBe('unreachable');
     dispose();
   });
 
@@ -152,7 +149,7 @@ describe('useAccount', () => {
     const { stores, account, dispose } = mount({ tag: 'Connected', session: ALICE });
 
     // When
-    stores.walletMode.set({ mode: 'local' });
+    stores.local.set(true);
     flush();
 
     // Then

@@ -4,6 +4,7 @@
 // One load of the product the host named: fetch and verify its content, hand an archive to the service worker, and
 // write its page into this window. It never throws, and its outcome names the step that failed.
 
+import { hasLightClient } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
@@ -176,7 +177,6 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
 
 async function fetchContent(params: SandboxParams, deps: LoadProductDeps): Promise<FetchResult> {
   const { cid, backend } = params;
-  const isGateway = backend === 'rpc-gateway';
   let result: FetchResult;
   if (deps.blockSource === null) {
     contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.measureSinceStart() });
@@ -188,7 +188,7 @@ async function fetchContent(params: SandboxParams, deps: LoadProductDeps): Promi
     deps.showStatus('Fetching via bitswap...');
     result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, bitswapBlockSource: deps.blockSource });
   }
-  contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
+  contentLog.event(`Content fetched via ${hasLightClient(backend) ? 'bitswap' : 'gateway'}`, {
     type: result.type,
     bytes: countResultBytes(result),
     files: countResultFiles(result),

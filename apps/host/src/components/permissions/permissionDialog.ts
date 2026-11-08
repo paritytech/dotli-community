@@ -1,28 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ModalView } from '@dotli/ui';
+import type { ModalButton, ModalView } from '@dotli/ui';
 import { permissionIcon } from './permissionIcons.js';
-import type { EnforceablePermissionName } from '../../runtime/permissionPolicy.js';
-
-const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
-  Notifications: 'Show in-app and system notifications',
-  Camera: 'Access your camera for photo and video capture',
-  Microphone: 'Access your microphone for audio input',
-  Location: 'Access your location for geolocation services',
-  Motion: "Read your device's motion and orientation sensors",
-  Bluetooth: 'Connect to nearby Bluetooth devices',
-  NFC: 'Read and write nearby NFC tags',
-  Clipboard: 'Read text and data from your clipboard',
-  Biometrics: 'Authenticate with a platform passkey or biometric prompt',
-  IdentityDisclosure: 'Share your primary DotNS identity with this app',
-  ChainSubmit: 'Sign and submit network transactions on your behalf',
-  PreimageSubmit: 'Store preimage data on the Bulletin network',
-  StatementSubmit: 'Submit signed statements to the statement store',
-};
-
-/** `dismissed` stays apart from `denied` so a dismissal stores no denial. */
-export type PermissionDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
+import { PERMISSION_CATALOG, type EnforceablePermissionName } from '../../runtime/permissionPolicy.js';
+import type { GrantAnswer } from '../../runtime/hostPrompts.js';
 
 export type PermissionRequest = {
   /** The app's name as the user reads it. */
@@ -34,31 +16,48 @@ export type PermissionRequest = {
   reloads: boolean;
 };
 
+type GetGrantButtonsParams = {
+  /** Offers a one-time grant beside the lasting one. */
+  allowOnce: boolean;
+  /** The allow button's label when no one-time grant is offered. */
+  allowLabel?: string;
+  /** The deny button's label. */
+  denyLabel?: string;
+};
+
 /** The dialog an app's request for a permission asks the user with. */
-export function permissionRequestDialog(request: PermissionRequest): ModalView<PermissionDecision> {
-  const buttons: ModalView<PermissionDecision>['buttons'] = [
-    { label: 'Deny', variant: 'danger', result: 'denied' },
-    request.allowOnce
-      ? { label: 'Always allow', variant: 'secondary', result: 'granted' }
-      : { label: 'Allow', variant: 'primary', result: 'granted' },
-  ];
-  if (request.allowOnce) {
-    buttons.push({
-      label: 'Allow once',
-      variant: 'primary',
-      result: 'granted-once',
-    });
-  }
+export function permissionRequestDialog(request: PermissionRequest): ModalView<GrantAnswer> {
   return {
     icon: permissionIcon(request.permission),
     title: 'Permission Request',
     fields: [
       { label: 'Application', value: request.app },
-      { label: 'Permission', value: PERMISSION_DESCRIPTIONS[request.permission] },
+      { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
     ],
     ...(request.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),
-    buttons,
+    buttons: getGrantButtons({ allowOnce: request.allowOnce }),
     dismissOnBackdrop: true,
     dismissResult: 'dismissed',
   };
+}
+
+/**
+ * The answer buttons of a grant dialog: Deny, then Allow, or Always allow and Allow once when a one-time grant is
+ * offered. Never throws.
+ */
+export function getGrantButtons({
+  allowOnce,
+  allowLabel = 'Allow',
+  denyLabel = 'Deny',
+}: GetGrantButtonsParams): ModalButton<GrantAnswer>[] {
+  // Every deny refuses the request, so it is drawn destructive.
+  const deny: ModalButton<GrantAnswer> = { label: denyLabel, variant: 'danger', result: 'denied' };
+  if (!allowOnce) {
+    return [deny, { label: allowLabel, variant: 'primary', result: 'granted' }];
+  }
+  return [
+    deny,
+    { label: 'Always allow', variant: 'secondary', result: 'granted' },
+    { label: 'Allow once', variant: 'primary', result: 'granted-once' },
+  ];
 }

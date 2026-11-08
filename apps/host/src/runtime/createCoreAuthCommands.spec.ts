@@ -13,13 +13,12 @@ import { getFrameRequestId } from '../testing/getFrameRequestId.js';
 import { answerConnection, createFakePageCore, createFakeProvider } from './createPageCore.fake.js';
 import { createFakeStoredSession } from './session/createCoreStorage.fake.js';
 import type { DotliAuthState } from './session/types.js';
-import type { WalletMode } from './state/walletModeState.js';
 
 type CreateHarnessParams = {
   /** The auth state the core reports at first, signed out by default. */
   auth?: DotliAuthState;
-  /** The page's wallet mode, paired by default. */
-  walletMode?: WalletMode;
+  /** Whether the page runs on a local wallet, paired by default. */
+  local?: boolean;
   /** The session the page's copy holds, one by default, as a pairing stores it. */
   stored?: string | null;
 };
@@ -34,7 +33,7 @@ const SIGNED_IN: DotliAuthState = { tag: 'Connected', session: { connected: true
 /** Commands over a fake page core, with a fake Sentry and capture sink bound for this test. */
 function createHarness({
   auth: initial = { tag: 'Disconnected' },
-  walletMode = 'app',
+  local = false,
   stored = '0xsession',
 }: CreateHarnessParams = {}) {
   const fakes = createFakePageCore();
@@ -48,7 +47,7 @@ function createHarness({
     auth,
     core: fakes.core,
     session,
-    walletMode: () => walletMode,
+    isLocalWallet: () => local,
     storedSession,
   });
   return {
@@ -210,6 +209,24 @@ describe('topbar login over the page core', () => {
 
     // Then the login answers paired with the reported account
     expect(readAnswer()).toEqual({ kind: 'paired', account: { connected: true, publicKey: '0x01' } });
+  });
+
+  it('As a user on a local wallet, I log in and my login answers paired once the core reports me, with nothing stored', async () => {
+    // Given a login on a local wallet whose core answered with success, over a copy that holds nothing
+    const fakes = createHarness({ local: true, stored: null });
+    const reads = vi.spyOn(fakes.storedSession, 'readSession');
+    const done = fakes.commands.login();
+    await answerConnection(fakes, 0, {
+      provider: createAnsweringProvider({ result: { kind: 'success', value: 'Success' } }),
+    });
+
+    // When the core reports the account
+    fakes.auth.set(SIGNED_IN);
+    const outcome = await done;
+
+    // Then the login answers paired with the reported account, without looking at the copy
+    expect(outcome).toEqual({ kind: 'paired', account: { connected: true, publicKey: '0x01' } });
+    expect(reads).not.toHaveBeenCalled();
   });
 
   it('As a user whose core fails the login after it answered, I wait for my login and see it failed', async () => {

@@ -26,6 +26,7 @@ import type { AuthCommands } from '../createAuthCommands.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
 import { getLoginFailureView } from '../getLoginFailureView.js';
+import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SignInFlag } from '../session/signInFlag.js';
@@ -674,19 +675,16 @@ function getNextScreen({ shown, next, change }: GetNextScreenParams): SignInScre
 
 /** How far the core's pairing got. A disconnect leaves what is on show, so a failure stays up for Retry. */
 function getPairingView(shown: PairingView, state: DotliAuthState): PairingView {
-  switch (state.tag) {
-    case 'Pairing':
-      return state.deeplink ? { kind: 'pairing', payload: state.deeplink } : SPINNER;
-    case 'Authenticating':
+  const step = authViews.getLoginStep(state);
+  switch (step?.step) {
+    case 'pairing':
+      return step.pairing.deeplink ? { kind: 'pairing', payload: step.pairing.deeplink } : SPINNER;
+    case 'authenticating':
       return { kind: 'authenticating' };
-    case 'LoginFailed':
-      return getLoginFailureView(state.kind, state.reason);
-    case 'Connected':
-      return SPINNER;
-    case 'Restoring':
-    case 'Disconnected':
-    case 'Unreachable':
-      return shown;
+    case 'failed':
+      return getLoginFailureView(step.kind, step.reason);
+    case undefined:
+      return authViews.getSignedInSession(state) === null ? shown : SPINNER;
   }
 }
 

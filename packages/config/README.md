@@ -34,7 +34,9 @@ timeouts.
 - Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches are settings beside the network.
   One pure function resolves them from the link, the cross-subdomain store and this origin's storage. A page sets its
   settings once at boot and the getters return them. A change reloads the page, so nothing sets them after. The resolver
-  also says when the shared light client was chosen and this browser runs the per-tab one instead.
+  also says when the shared light client was chosen and this browser runs the per-tab one instead. A backend's facts and
+  its capability predicates live with the backend setting, so a reader asks what a backend can do instead of comparing
+  its name.
 - A chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere: the network table, sync events,
   the light client's database outcomes and the UI. A genesis hash maps to its role from the fixed config, so a worker
   that never sees the runtime network config may read it.
@@ -58,7 +60,8 @@ timeouts.
 - Networks: `NETWORK_NAMES` and its union `Network`, `getNetwork`, `getEnabledNetworks`, `getDefaultNetwork` (the first
   enabled one), `getActiveServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
   `getChainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
-- Settings: `getSettings`, `setSettings`, `subscribeSettings`, `getBackend`, `parseBackend`, `getCacheSettings`,
+- Settings: `getSettings`, `setSettings`, `subscribeSettings`, `getBackend`, `parseBackend`, `BACKEND_FACTS` (each
+  backend's settings label, capabilities and failover target), `hasLightClient`, `hasSharedWorker`, `getCacheSettings`,
   `isSharedWorkerAvailable({ scope })` (the page's global unless `scope` says), `isVerifiedSession`,
   `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`, `writeLocalSettings`,
   `getSharedSettings`, `hasStoredSettings`, `ResolvedSettings`, `Settings`, `SharedSettings`.

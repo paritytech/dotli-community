@@ -4,7 +4,7 @@
 // Reads names and manifests over the backend the settings chose, so the load never branches on it. The gateway
 // resolver is its own chunk, loaded on first use.
 
-import type { Backend } from '@dotli/config';
+import { hasLightClient, type Backend } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
 import type { DotnsResolver, ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
 import { createLazyLoad, log } from '@dotli/shared';
@@ -50,7 +50,7 @@ export type NameSource = ReturnType<typeof createNameSource>;
 /** Builds the name source over `backend`. Its reads reject with the resolver's or the gateway load's error. */
 export function createNameSource({ backend, remote, loadRpc, report = reportOwnerRead }: Params) {
   const rpcResolver = createLazyLoad({ load: loadRpc });
-  const gateway = backend === 'rpc-gateway';
+  const gateway = !hasLightClient(backend);
 
   const resolveName = async (name: string, { onPhase }: ResolveProductParams = {}): Promise<string | null> =>
     gateway ? (await rpcResolver()).resolveDotName(name, { onPhase }) : remote.resolveDotName(name, onPhase);

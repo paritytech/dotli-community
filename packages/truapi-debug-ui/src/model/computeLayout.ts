@@ -16,8 +16,8 @@ import { formatCount } from './formatCount.js';
 import { getCorrelationKey } from './getCorrelationKey.js';
 import { getEventLabel } from './getEventLabel.js';
 import { getHashColor } from './getHashColor.js';
-import { getSystemEventKey, type SystemEventKey } from './getSystemEventKey.js';
 import { getRidColor } from './getRidColor.js';
+import { findSystemEventFacts } from './systemEventFacts.js';
 import type { EventSeq, StoredEvent, StoredSystemEvent, StoredTruapiEvent } from './storedEvent.js';
 import { ROW_HEIGHT } from './timelineGeometry.js';
 
@@ -183,27 +183,6 @@ const LIFECYCLE_COLORS: Record<string, string> = {
   Finalized: 'var(--td-green)',
   Stop: 'var(--td-health-bad)',
 };
-
-const SYSTEM_TERMINATOR_EVENTS: ReadonlySet<SystemEventKey> = new Set([
-  'boot:ready',
-  'boot:landing_page_shown',
-  'bridge:first_outbound',
-  'render:iframe_ready',
-  'sandbox:document_written',
-  'main:monitor_stopped',
-]);
-
-const SYSTEM_TERMINATOR_SUFFIXES: readonly string[] = [
-  'failed',
-  'completed',
-  'terminated',
-  'peer_action_processed',
-  'peer_action_failed',
-  'host_action_response_received',
-  'host_action_failed',
-  'resolve_completed',
-  'resolve_failed',
-];
 
 /**
  * The rails, boxes and ticks of `events` on the rows `positions` gives, with lanes packed leftmost first. Throws only for
@@ -538,11 +517,8 @@ function describeSystemSegment(first: StoredSystemEvent, all: StoredSystemEvent[
 }
 
 function isSystemFlowTerminator(event: StoredSystemEvent): boolean {
-  const eventName = event.event;
-  if (SYSTEM_TERMINATOR_EVENTS.has(getSystemEventKey(event))) {
-    return true;
-  }
-  return SYSTEM_TERMINATOR_SUFFIXES.some(suffix => eventName === suffix || eventName.endsWith(`_${suffix}`));
+  // A sandbox of another release can send a name the union lacks, which ends no flow.
+  return findSystemEventFacts(event)?.endsFlow ?? false;
 }
 
 function describeOperationBox({

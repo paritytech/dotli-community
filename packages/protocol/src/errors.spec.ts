@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { TransportUnsupportedProtocolVersionError, denied, domain, hostFailure } from '@dotli/transport';
+import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
 import {
   ProtocolFatalError,
   ProtocolInitFailedError,
@@ -105,7 +106,7 @@ describe('fromTransportError', () => {
 });
 
 describe('toRemoteEnd', () => {
-  it("As a frame, I type the resolver failures the host's error screen tells apart by name, and end any other as my own", () => {
+  it("As a frame, I type the resolver failures the host's error screen tells apart, a halted read as a stopped chain, and end any other as my own", () => {
     // Given
     function createNamedError(name: string, message: string): Error {
       return Object.assign(new Error(message), { name });
@@ -115,6 +116,10 @@ describe('toRemoteEnd', () => {
     const failures = [
       toRemoteEnd(createNamedError('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
       toRemoteEnd(createNamedError('ApiStoppedError', 'The light client stopped')),
+      toRemoteEnd(
+        Object.assign(new Error('Chain transport halted'), { name: 'RpcError', data: CHAIN_HALTED_ERROR_DATA }),
+      ),
+      toRemoteEnd(Object.assign(new Error('Too many requests'), { name: 'RpcError', data: 'other' })),
       toRemoteEnd(new TypeError('bad label')),
     ];
 
@@ -122,6 +127,8 @@ describe('toRemoteEnd', () => {
     expect(failures).toEqual([
       domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' }),
       domain({ tag: 'apiStopped', value: 'The light client stopped' }),
+      domain({ tag: 'apiStopped', value: 'Chain transport halted' }),
+      hostFailure('RpcError: Too many requests'),
       hostFailure('TypeError: bad label'),
     ]);
   });

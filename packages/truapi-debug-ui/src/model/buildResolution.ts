@@ -3,7 +3,7 @@
 
 // One page load as a row of phase blocks per chain role, plus whole-load figures.
 
-import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from '@dotli/config';
+import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole, hasLightClient, parseBackend } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { getSystemEventKey } from './getSystemEventKey.js';
 
@@ -385,7 +385,7 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         paintedMs = Math.max(0, event.timestamp - startedAt);
         break;
       case 'failover:chain_backend':
-        summary.backend = toChainBackend(payload['to']) ?? summary.backend;
+        summary.backend = readFailoverBackend(payload['to']) ?? summary.backend;
         break;
       case 'chain:bytes': {
         const total = readNumber(payload['received']);
@@ -424,6 +424,15 @@ function getByteRate(from: ByteCount, to: ByteCount): number | null {
 
 function toChainBackend(value: unknown): ResolutionSummary['backend'] {
   return value === 'smoldot' || value === 'rpc-gateway' ? value : null;
+}
+
+/** The summary's transport for a failover target, or `null` for a backend this build does not know. Never throws. */
+function readFailoverBackend(value: unknown): ResolutionSummary['backend'] {
+  const backend = parseBackend(readString(value));
+  if (backend === null) {
+    return null;
+  }
+  return hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
 }
 
 function readString(value: unknown): string | null {

@@ -24,6 +24,9 @@ export type DotliAuthState =
   | { tag: 'Connected'; session: TruapiSessionUiState }
   | { tag: 'LoginFailed'; kind: LoginFailureKind; reason: string };
 
+/** The auth state while the core pairs, with what the pairing presents. */
+export type PairingState = Extract<DotliAuthState, { tag: 'Pairing' }>;
+
 /** Whether some sign-in exists on the root domain, or `unknown` when the flag cannot be read. */
 export type Presence = 'present' | 'absent' | 'unknown';
 

@@ -9,7 +9,6 @@ import { m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { CoreRedialError } from '../coreRedialError.js';
 import type { CoreLease } from '../createPageCore.js';
-import type { WalletMode } from '../state/walletModeState.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import type { HostCoreStorage } from './createCoreStorage.js';
 
@@ -18,8 +17,8 @@ type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 type Params = {
   /** The page's copy, whose paired session the lease follows. */
   copy: Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession'>;
-  /** The page's wallet mode, as only a page that pairs holds a lease. */
-  walletMode: () => WalletMode;
+  /** Whether the page runs on a local wallet now, as only a page that pairs holds a lease. Never throws. */
+  isLocalWallet: () => boolean;
   /**
    * Only the two lease calls the session lease makes. `acquire` rejects with `CoreRedialError` when the core the page
    * redialed could not boot, and with the boot's error when the core it dials cannot boot.
@@ -27,7 +26,7 @@ type Params = {
   core: { acquire(): Promise<HeldLease> };
 };
 
-export function createSessionLease({ copy, walletMode, core }: Params) {
+export function createSessionLease({ copy, isLocalWallet, core }: Params) {
   // One run at a time, so a run never sees the lease another run is taking.
   const runs = createAsyncTaskPool({ poolSize: 1 });
   let stopped = false;
@@ -53,7 +52,7 @@ export function createSessionLease({ copy, walletMode, core }: Params) {
     if (isStopped() || read.status === 'failed') {
       return;
     }
-    const wanted = read.blob !== null && walletMode() === 'app';
+    const wanted = read.blob !== null && !isLocalWallet();
     if (!wanted) {
       releaseHeld();
       return;
@@ -69,7 +68,7 @@ export function createSessionLease({ copy, walletMode, core }: Params) {
       return;
     }
     m.count(S.WALLET_SESSION_LEASE, { outcome: 'ok' });
-    if (isStopped() || walletMode() !== 'app') {
+    if (isStopped() || isLocalWallet()) {
       lease.release();
       return;
     }

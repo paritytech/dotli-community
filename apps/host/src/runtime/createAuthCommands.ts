@@ -6,6 +6,7 @@
 
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
+import { authViews } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { TruapiSessionUiState } from './session/parseUiStateCache.js';
 import type { LogoutOutcome } from './createPageSignOut.js';
@@ -102,9 +103,9 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
             return CANCELLED;
           }
           try {
-            const state = auth.get();
-            if (state.tag === 'Connected') {
-              asked.answer = { kind: 'paired', account: state.session };
+            const account = authViews.getSignedInSession(auth.get());
+            if (account !== null) {
+              asked.answer = { kind: 'paired', account };
               return asked.answer;
             }
             asked.answer = await login({ reason, signal: asked.controller.signal });
@@ -126,8 +127,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
     logout<T>(end: () => Promise<T>): Promise<T> {
       endRound();
       // The logout queues behind the open login, which only the cancel ends when the core never answers it.
-      const { tag } = auth.get();
-      if (tag === 'Pairing' || tag === 'Authenticating') {
+      if (authViews.isLoginRunning(auth.get())) {
         cancelPairing();
       }
       return queue.call(end, { pool: AUTH_POOL });

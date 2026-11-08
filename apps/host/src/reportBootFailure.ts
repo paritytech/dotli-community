@@ -4,7 +4,6 @@
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException } from '@dotli/metrics';
 import { showError } from '@dotli/ui';
-import { getBackend } from '@dotli/config';
 import { bootTracker } from './createBootTracker.js';
 import { markAndReload } from './createContinuation.js';
 import { productState } from './runtime/state/productState.js';
@@ -14,7 +13,7 @@ import { RELOAD_BTN_LABEL } from './errorCopy.js';
 /** For a failure before either page had anything to show: reports it under the boot's step and shows the error screen. */
 export function reportBootFailure(error: unknown): void {
   captureException(error, { flow: 'boot', step: bootTracker.getStep() });
-  const description = describeError(error, { isP2p: getBackend() !== 'rpc-gateway' });
+  const description = describeError(error);
   showError(description.title, {
     detail: description.message,
     action: {

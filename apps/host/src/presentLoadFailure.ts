@@ -3,7 +3,7 @@
 
 // The screens a failed load ends on, and what their buttons do. The failure is already reported when it gets here.
 
-import { withActiveTld, type Backend } from '@dotli/config';
+import { BACKEND_FACTS, hasLightClient, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
 import { log, createRandomId, realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
@@ -78,9 +78,9 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
     });
     return;
   }
-  const nextBackend = backend === 'rpc-gateway' ? 'smoldot-shared-worker' : 'rpc-gateway';
+  const nextBackend = BACKEND_FACTS[backend].failover;
   // A failed provider will fail again, while a failed light client is usually a transient peer problem.
-  const failoverIsPrimary = backend === 'rpc-gateway';
+  const failoverIsPrimary = !hasLightClient(backend);
   // The reload comes up on a fresh light client instead of the one that lost its subscription.
   function reloadForRecovery(): void {
     if (error.resetProtocol === true) {
@@ -117,10 +117,10 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
   }
   // A first sighting points at Settings rather than offering a one-click drop to a trusted provider. A repeat of the
   // same failure earns the shortcut.
-  const gateFailover = nextBackend === 'rpc-gateway' && !params.sightings.hasSeen(error.kind);
+  const gateFailover = !isVerifiedSession(nextBackend) && !params.sightings.hasSeen(error.kind);
   function showResolutionError(): void {
     // Only the gated direction records a sighting. `unknown` never does, since two unrelated failures share it.
-    if (nextBackend === 'rpc-gateway' && error.kind !== 'unknown') {
+    if (!isVerifiedSession(nextBackend) && error.kind !== 'unknown') {
       params.sightings.remember(error.kind);
     }
     params.showErrorPage({

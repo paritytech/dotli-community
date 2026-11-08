@@ -6,7 +6,14 @@
 // product frame, the recent list, the protocol frame's telemetry, the block client) and what reloads or writes the page
 // (the CID cache, the failure screen) is passed in. The page's own state is imported.
 
-import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
+import {
+  getActiveTldSuffix,
+  getNetwork,
+  hasLightClient,
+  isVerifiedSession,
+  withActiveTld,
+  type Backend,
+} from '@dotli/config';
 import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
@@ -251,7 +258,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
 
   // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
   function getSmoldotDbCacheTags(): Record<string, string> {
-    const inapplicable = cidCacheResult === 'hit' || backend === 'rpc-gateway';
+    const inapplicable = cidCacheResult === 'hit' || !hasLightClient(backend);
     return {
       smoldotdb_relay_cache: inapplicable ? 'n/a' : telemetry.getSmoldotDbOutcome('relay'),
       smoldotdb_hub_cache: inapplicable ? 'n/a' : telemetry.getSmoldotDbOutcome('assethub'),
@@ -270,9 +277,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     stopSettlingOnContent?.();
     stopHearingMismatch?.();
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
-    const description = describeError(error, { isP2p: backend !== 'rpc-gateway' });
+    const description = describeError(error, { readBackend: () => backend });
     // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
-    const dependency = backend === 'rpc-gateway' ? 'asset-hub-rpc' : 'smoldot';
+    const dependency = hasLightClient(backend) ? 'smoldot' : 'asset-hub-rpc';
     captureException(error, {
       flow: 'resolve',
       step,
@@ -492,7 +499,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     const resolveStart = readClock();
 
     const resolveFlowId = createRandomId();
-    const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
+    const resolveSource: 'smoldot' | 'rpc-gateway' = hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
     debugBus.emit({
       layer: 'resolve',
       event: 'started',

@@ -3,6 +3,7 @@
 
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { getKeys } from '@dotli/shared';
 import { ReloadIcon } from '@dotli/ui/icons';
 import {
   Accordion,
@@ -17,11 +18,12 @@ import {
   usePopover,
   Well,
 } from '@dotli/ui';
-import type {
-  EnforceablePermissionName,
-  PermissionGroup,
-  PermissionStatus,
-  PermissionTargets,
+import {
+  PERMISSION_GROUPS,
+  type EnforceablePermissionName,
+  type PermissionGroup,
+  type PermissionStatus,
+  type PermissionTargets,
 } from '../../runtime/permissionPolicy.js';
 import { PermissionRow } from './PermissionRow.js';
 import { PresetPicker } from './PresetPicker.js';
@@ -29,10 +31,10 @@ import { presetOf, SECURE } from './presets.js';
 import type { MenuPermission, PermissionsNotice } from './permissions.js';
 import s from './PermissionsContent.module.css';
 
-const MENU_GROUPS: readonly { id: PermissionGroup; label: string }[] = [
-  { id: 'device', label: 'Device' },
-  { id: 'app', label: 'Account and chain' },
-];
+const MENU_GROUPS: readonly { id: PermissionGroup; label: string }[] = getKeys(PERMISSION_GROUPS).map(id => ({
+  id,
+  label: PERMISSION_GROUPS[id].label,
+}));
 
 const NOTICES: Record<PermissionsNotice, string> = {
   loading: 'Wait for the app to finish loading to change its permissions.',

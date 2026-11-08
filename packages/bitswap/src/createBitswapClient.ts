@@ -9,11 +9,11 @@ import { TIMEOUTS } from '@dotli/config';
 import { reportDefect, spans as S } from '@dotli/metrics';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
-  CHAIN_HALTED_ERROR_DATA,
   createAsyncTaskPool,
   createPendingReplies,
   createSharedRun,
   fromHex,
+  isChainHaltedRpcError,
   log,
   setErrorName,
   realTimers,
@@ -126,7 +126,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
             BITSWAP_ERRORS.RPC,
           );
           // A halt answer arrives before `onHalt` drops the connection, so the retry redials a rebuilt chain.
-          const halted = message.error.data === CHAIN_HALTED_ERROR_DATA;
+          const halted = isChainHaltedRpcError(message.error);
           replies.reject(message.id, withCode(error, halted ? ERROR_FAIL_RETRY : message.error.code));
           return;
         }

@@ -22,7 +22,6 @@ import { recordNotified } from '../testing/recordNotified.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
-import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 
 type AuthControlSlot = ReturnType<typeof createAuthControlSlot>;
@@ -46,8 +45,8 @@ type StartControllerParams = {
   handoff?: SessionHandoff | null;
   /** Applies the session result a sign-in window sends, rejecting by default. */
   applyResult?: (result: SessionResult) => Promise<'applied' | 'reloading'>;
-  /** The page's wallet mode, paired by default. */
-  walletMode?: WalletMode;
+  /** Whether the page runs on a local wallet, paired by default. */
+  local?: boolean;
   /** Loads the phrase import of a page that pairs in place, rejecting by default. */
   inPagePhrase?: () => Promise<InPagePhrase>;
   /** Whether a sign-in made elsewhere waits, as session state says. */
@@ -133,7 +132,7 @@ function startController({
   commands,
   handoff = null,
   applyResult = rejectNoResult,
-  walletMode = 'app',
+  local = false,
   inPagePhrase = rejectNoPhrase,
   elsewhere = () => false,
   rereadSession = () => Promise.resolve(),
@@ -161,7 +160,7 @@ function startController({
     subscribeAuthSteps: steps.subscribe,
     handoff,
     applyResult,
-    walletMode: () => walletMode,
+    isLocalWallet: () => local,
     inPagePhrase,
     elsewhere,
     rereadSession,
@@ -977,7 +976,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a debug panel user with a local wallet, I replace it and the window opens', () => {
     // Given a signed-in page in local mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, auth } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
 
     // When the debug panel imports a phrase
@@ -990,7 +989,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a signed-in debug panel user typing a phrase in the sign-in window, I see my session reported again and the window stays open', () => {
     // Given a signed-in page in local mode whose phrase window is open
     const handoff = createFakeHandoff();
-    const { controller, auth } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
     controller.importPhrase();
 
@@ -1314,7 +1313,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a signed-in debug panel user whose phrase window was blocked, I press Try again and the phrase window opens', async () => {
     // Given a signed-in page whose phrase window was blocked
     const handoff = createFakeHandoff();
-    const { controller, auth, changes } = startController({ handoff, walletMode: 'local' });
+    const { controller, auth, changes } = startController({ handoff, local: true });
     auth.set(SIGNED_IN);
     controller.importPhrase();
     handoff.end({ kind: 'blocked' });
@@ -1523,7 +1522,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a user in paired mode, I sign out and the window opens with notified', async () => {
     // Given a page in paired mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, calls, changes } = startController({ handoff, walletMode: 'app' });
+    const { controller, calls, changes } = startController({ handoff, local: false });
 
     // When the user signs out and the core is asked
     controller.logout();
@@ -1550,7 +1549,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a user in local mode, I sign out and the window opens without notified, then the page logs out', async () => {
     // Given a page in local mode with a sign-in window
     const handoff = createFakeHandoff();
-    const { controller, calls, changes } = startController({ handoff, walletMode: 'local' });
+    const { controller, calls, changes } = startController({ handoff, local: true });
 
     // When the user signs out
     controller.logout();
@@ -1563,7 +1562,7 @@ describe('auth controller: the sign-in window', () => {
 
   it('As a user in local mode on a preview its preview host frames, I sign out in place and the paired copy stays', async () => {
     // Given: a page with no sign-in window, so nothing would tell the phone
-    const { controller, calls, changes } = startController({ handoff: null, walletMode: 'local' });
+    const { controller, calls, changes } = startController({ handoff: null, local: true });
 
     // When the user signs out
     controller.logout();

@@ -34,7 +34,7 @@ describe('network store', () => {
     // Then
     expect({ syncing: getRelayPhase(syncing), syncingVerdict: syncing.verdict, ready }).toEqual({
       syncing: 'syncing',
-      syncingVerdict: { text: 'Connecting', tone: 'idle' },
+      syncingVerdict: { tone: 'idle' },
       ready: 'ready',
     });
   });

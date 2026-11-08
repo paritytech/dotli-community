@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom, computed } from 'nanostores';
 import type { Backend } from '@dotli/config';
-import type { NetworkHealth } from '../components/chains/networkHealth.js';
+import type { NetworkHealth } from '../networkVerdict.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import { INITIAL_NETWORK, useNetworkPanel } from './network.js';
 
@@ -25,6 +25,19 @@ function mount() {
 }
 
 describe('useNetworkPanel', () => {
+  it('As a visitor before any chain is in use, I open the network panel and it reads nothing in use', () => {
+    // Given
+    const { panel, dispose } = mount();
+
+    // When
+    const opened = createRoot(close => ({ network: panel.followNetwork(), close }));
+
+    // Then
+    expect(opened.network().verdict.tone).toBe('quiet');
+    opened.close();
+    dispose();
+  });
+
   it('As the network button, I follow the health the page judges', () => {
     // Given
     const { stores, panel, dispose } = mount();
