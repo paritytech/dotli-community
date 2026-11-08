@@ -32,7 +32,7 @@ starts no light client.
 
 `createLightClient` in `packages/chains/src/createLightClient.ts` builds one light client per context over the smoldot that `@parity/truapi-provider` embeds. `createLightClientDeps` gives it its stored chain databases, its log level and its live gauge.
 
-- The engine (`startTruapiProvider`) starts on the first chain the light client opens. Every first open waits on that one start, and a failed start is tried again by the next open.
+- The engine (`startTruapiProvider`) starts on the first chain the light client opens. Every first open waits on that one start. A failed start turns the light client fatal, and a chain opened after it halts without starting the engine.
 - In the SharedWorker (`apps/protocol/src/protocolSharedWorker.ts`) smoldot runs on the worker thread, where the `Worker` constructor is unavailable. In direct mode (`initDirectMode` in `apps/protocol/src/main.ts`) it runs in the iframe.
 - `startLightClientService` in `apps/protocol/src/startLightClientService.ts` opens the chain pool on the light client, watches the relay and Bulletin, and builds the name resolver. Both submodes start it, the SharedWorker through `startProtocolWorker`.
 
@@ -101,7 +101,7 @@ Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's 
 
 ## Failure modes
 
-- **Light client fatal.** A failed engine start, or a chain that fails before it connects, marks the light client fatal (`markFatal`). `subscribe` hears it as a `fatal` change, and `status()` keeps it, since it never clears. In direct mode the frame fails its boot with a `ProtocolFatalError`. In the SharedWorker `startProtocolWorker` ends every port's status with one. The host client rejects every pending request with it. Recovery requires a new frame. A connect past truapi-provider's connection cap halts only its chain and is not fatal.
+- **Light client fatal.** A failed engine start, or a chain that fails before it connects, marks the light client fatal (`markFatal`). `subscribe` hears it as a `fatal` change, and `status()` keeps it, since it never clears. A chain opened after the fatal halts without starting the engine again. In direct mode the frame fails its boot with a `ProtocolFatalError`. In the SharedWorker `startProtocolWorker` ends every port's status with one. The host client rejects every pending request with it. Recovery requires a new frame. A connect past truapi-provider's connection cap halts only its chain and is not fatal.
 - **CPU long-task warnings.** Smoldot's WASM warns when a single Rust `poll()` blocks the thread for at least 150ms (smoldot upstream `wasm-node/rust/src/platform.rs:167`). Format: `` The task named `add-chain-N` has occupied the CPU for an unreasonable amount of time (Xms). `` The `N` suffix comes from the spawned task name. How the counter is scoped (per-client vs. process-global) has not been verified, so do not infer correlations from `N` alone.
 - **Chain halts.** smoldot never reconnects underneath its consumers. A chain whose read fails after it connected, or whose stream ends unasked, halts: its provider reports `disconnected` and then the halt through `ChainTransportHooks`.
 

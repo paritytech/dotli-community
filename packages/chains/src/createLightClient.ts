@@ -133,6 +133,13 @@ type ChainSyncEntry = {
   held: { source: ChainSyncSource; tap: ChainSyncTap } | null;
 };
 
+// The engine's life. A fatal never clears, so a light client that reached it opens no chain again.
+type EngineState =
+  | { kind: 'idle' }
+  | { kind: 'starting' }
+  | { kind: 'running'; engine: LightClientEngine; heartbeat: ReturnType<typeof setInterval> | null }
+  | { kind: 'fatal'; message: string };
+
 /** A connect the engine refused because it already holds as many connections as it allows. */
 export class LightClientCapError extends Error {
   override readonly name = 'LightClientCapError';
@@ -143,7 +150,8 @@ export class LightClientCapError extends Error {
 }
 
 /**
- * A light client whose engine starts on the first chain it opens, with a failed start retried by the next open.
+ * A light client whose engine starts on the first chain it opens. A failed start turns it fatal for good, and a chain
+ * opened after a fatal halts without starting the engine.
  *
  * @example
  * const lightClient = createLightClient(createLightClientDeps(null, false)); // no session store, not local
@@ -165,20 +173,21 @@ export function createLightClient({
   // The read needs no engine, so it overlaps the wasm compile. A blob is megabytes, so an entry lives only until its
   // chain's resume.
   const earlyReads = new Map<string, Promise<string | null>>();
-  let fatal: string | null = null;
-  let engine: LightClientEngine | null = null;
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
-  // Every chain's first open waits on one start. A failed start is tried again by the next open.
+  let engineState: EngineState = { kind: 'idle' };
+  // Every chain's first open waits on one start.
   const starts = createAsyncTaskPool({ poolSize: 1 });
   const syncTaps = createChainSyncTaps({ attachChainSync });
 
   function markFatal(message: string): void {
-    if (fatal !== null) {
+    if (engineState.kind === 'fatal') {
       return;
     }
-    fatal = message;
+    const left = engineState;
+    engineState = { kind: 'fatal', message };
     // A dead light client must not be counted as live.
-    clearInterval(heartbeat);
+    if (left.kind === 'running' && left.heartbeat !== null) {
+      clearInterval(left.heartbeat);
+    }
     log.error(`[dot.li provider] ${message}`);
     listeners.emit({ kind: 'fatal', message });
   }
@@ -212,34 +221,58 @@ export function createLightClient({
           save: (genesisHash, blob) => db.save(genesisHash, blob),
         };
 
-  function startHeartbeat(): void {
-    // A start retried after a fatal is still not counted, as the fatal never clears.
-    if (gauge === null || fatal !== null) {
-      return;
-    }
-    // At start, so the first bucket counts a client that is already syncing.
-    gauge(1);
-    heartbeat = setInterval(() => {
-      gauge(1);
-    }, heartbeatMs);
-  }
-
-  function ensureEngine(): Promise<LightClientEngine> {
+  function ensureEngine(key: string): Promise<LightClientEngine> {
     return starts.call(async () => {
-      if (engine !== null) {
-        return engine;
+      switch (engineState.kind) {
+        case 'running':
+          return engineState.engine;
+        case 'fatal':
+          throw new Error(`chain ${key} cannot open: the light client is fatal: ${engineState.message}`);
+        case 'idle':
+        case 'starting':
+          return startEngine(key);
       }
-      const next = await start({ logLevel, store: observedDb, debug });
-      engine = next;
-      startHeartbeat();
-      report.log.event('Light client ready');
-      return next;
     });
   }
 
+  async function startEngine(key: string): Promise<LightClientEngine> {
+    const starting: EngineState = { kind: 'starting' };
+    engineState = starting;
+    let engine: LightClientEngine;
+    try {
+      engine = await start({ logLevel, store: observedDb, debug });
+    } catch (error) {
+      throwIfLeft(starting, key, error);
+      markFatal(`chain ${key} connection failed: ${getErrorMessage(error)}`);
+      throw error;
+    }
+    throwIfLeft(starting, key);
+    engineState = {
+      kind: 'running',
+      engine,
+      heartbeat:
+        gauge === null
+          ? null
+          : setInterval(() => {
+              gauge(1);
+            }, heartbeatMs),
+    };
+    // At start, so the first bucket counts a client that is already syncing.
+    gauge?.(1);
+    report.log.event('Light client ready');
+    return engine;
+  }
+
+  function throwIfLeft(starting: EngineState, key: string, cause?: unknown): void {
+    if (engineState !== starting) {
+      throw new Error(`chain ${key} cannot open: the light client left its start`, { cause });
+    }
+  }
+
   function readEarly(genesisHash: string): void {
-    // Once the engine is up there is nothing to overlap, and a chain it already added reads nothing.
-    if (db === null || engine !== null || earlyReads.has(genesisHash)) {
+    // Once the engine is up there is nothing to overlap, a chain it already added reads nothing, and a fatal light
+    // client opens no chain.
+    if (db === null || !isEngineComing(engineState) || earlyReads.has(genesisHash)) {
       return;
     }
     earlyReads.set(genesisHash, markHandled(db.load(genesisHash)));
@@ -257,7 +290,7 @@ export function createLightClient({
   async function prepareChain(key: string): Promise<LightClientEngine> {
     readEarly(key);
     try {
-      const live = await ensureEngine();
+      const live = await ensureEngine(key);
       // Must run before the chain is added: only a chain's first add consumes a blob.
       await resumeFromStore(live, key);
       return live;
@@ -412,7 +445,7 @@ export function createLightClient({
   return {
     createChainTransport,
     isChainSupported,
-    status: () => ({ fatal, db: new Map(dbOutcomes) }),
+    status: () => ({ fatal: engineState.kind === 'fatal' ? engineState.message : null, db: new Map(dbOutcomes) }),
     subscribe: listeners.subscribe,
   };
 }
@@ -534,6 +567,18 @@ function createChainSyncTaps({ attachChainSync }: CreateChainSyncTapsParams) {
       return held?.source === source && held.tap.intercept(parsed);
     },
   };
+}
+
+// Whether the engine may still come up.
+function isEngineComing(state: EngineState): boolean {
+  switch (state.kind) {
+    case 'idle':
+    case 'starting':
+      return true;
+    case 'running':
+    case 'fatal':
+      return false;
+  }
 }
 
 async function resumeFromStore(engine: LightClientEngine, key: string): Promise<void> {

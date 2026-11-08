@@ -520,25 +520,42 @@ describe('createLightClient', () => {
     expect(metrics.counted('smoldot.connection_cap')).toEqual([{ outcome: 'error', reason: 'cap' }]);
   });
 
-  it('As a dotli user on a light client, I open a chain after a failed start and the light client starts again', async () => {
-    // Given
+  it('As a dotli user on a light client, I open a chain after the light client turned fatal and it halts without starting the engine again', async () => {
+    // Given a failed start, which turns the light client fatal
     engine.start.mockRejectedValueOnce(new Error('wasm fetch failed'));
     const failed = createMockHooks();
-
-    // When
     open(failed);
-
-    // Then
     await failed.halted();
-    expect(failed.onHalt).toHaveBeenCalledTimes(1);
+    const later = createMockHooks();
 
     // When
-    const retried = createMockHooks();
-    open(retried);
+    open(later, services.assethub.genesis);
+    await later.halted();
 
     // Then
-    await retried.reported('connected');
-    expect(engine.start).toHaveBeenCalledTimes(2);
+    expect(engine.start).toHaveBeenCalledTimes(1);
+    expect(later.onHalt).toHaveBeenCalledTimes(1);
+    expect(client.status().fatal).toBe(`chain ${people} connection failed: wasm fetch failed`);
+  });
+
+  it('As a dotli user on a light client, I see two chains queued behind a failed start halt and the engine start once', async () => {
+    // Given a start that fails once, when the test rejects it
+    const gate = createDeferred<LightClientEngine>();
+    engine.start.mockReturnValueOnce(gate.promise);
+    const first = createMockHooks();
+    const second = createMockHooks();
+
+    // When two chains open before the start fails
+    open(first);
+    open(second, services.assethub.genesis);
+    gate.reject(new Error('wasm fetch failed'));
+    await first.halted();
+    await second.halted();
+
+    // Then
+    expect(engine.start).toHaveBeenCalledTimes(1);
+    expect(first.onHalt).toHaveBeenCalledTimes(1);
+    expect(second.onHalt).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user on a light client, I see a failed start mark the light client fatal exactly once', async () => {
@@ -745,7 +762,7 @@ describe('createLightClient', () => {
       expect(warnings[0]?.args?.[1]).toBe(outage);
     });
 
-    it('As the protocol frame, I open a chain after a failed start and its stored database is read afresh', async () => {
+    it('As the protocol frame, I open a chain after a failed start and its stored database is not read again', async () => {
       // Given a failed start of the relay, with a store that holds it
       engine.start.mockRejectedValueOnce(new Error('wasm fetch failed'));
       const load = vi.fn<SmoldotDb['load']>(() => Promise.resolve(BLOB));
@@ -755,18 +772,15 @@ describe('createLightClient', () => {
       const failed = createMockHooks();
       open(failed, relay);
       await failed.halted();
-      const retried = createMockHooks();
+      const reopened = createMockHooks();
 
       // When
-      open(retried, relay);
-      await retried.reported('connected');
+      open(reopened, relay);
+      await reopened.halted();
 
       // Then
-      expect(load).toHaveBeenCalledTimes(2);
-      expect(changes).toEqual([
-        { kind: 'fatal', message: `chain ${relay} connection failed: wasm fetch failed` },
-        { kind: 'db', chain: 'relay', outcome: 'hit' },
-      ]);
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(changes).toEqual([{ kind: 'fatal', message: `chain ${relay} connection failed: wasm fetch failed` }]);
     });
 
     it('As the protocol frame, I open a chain while the light client fails to start and a store that cannot answer leaves no unhandled failure', async () => {
