@@ -5,13 +5,26 @@
 // for a while after a deploy, so these shapes are the wire format: a change may add an optional field or a new type,
 // never rename or retype one. Any frame or extension can post to a window, so each side parses what it receives.
 
+/** How the sandbox's load of the product's content ended. */
+export type SandboxLoadOutcome = 'loaded' | 'failed';
+
+/** Whether the sandbox loaded the product's content. Never throws. */
+export function isLoadedOutcome(outcome: SandboxLoadOutcome): boolean {
+  switch (outcome) {
+    case 'loaded':
+      return true;
+    case 'failed':
+      return false;
+  }
+}
+
 /** Progress text for the host's loading screen, or the end of the sandbox's use of it. */
 export type LoadingStatusMessage = {
   type: 'dotli:loading-status';
   message?: string;
   /** Without an `outcome` it only clears the screen for a prompt the sandbox shows before its content loads. */
   done?: true;
-  outcome?: 'loaded' | 'failed';
+  outcome?: SandboxLoadOutcome;
   failedStep?: string;
 };
 

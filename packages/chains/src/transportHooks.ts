@@ -23,3 +23,14 @@ export const RPC_FOLLOW_LIMIT = 4;
 
 /** Smoldot allows 2 follows per JSON-RPC client of a chain, which is one light-client connection. */
 export const LIGHT_CLIENT_FOLLOW_LIMIT = 2;
+
+/** Whether a chain is up or on its way up, so it needs no dial of its own. Never throws. */
+export function isChainUp(status: ConnectionStatus): boolean {
+  switch (status) {
+    case 'connecting':
+    case 'connected':
+      return true;
+    case 'disconnected':
+      return false;
+  }
+}

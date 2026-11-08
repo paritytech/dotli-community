@@ -62,10 +62,10 @@ flowchart TB
   shared store's status, the frame reports that throw under `protocol.status` and goes on.
 - The facades are the host's parts written against the transport: name resolution, remote chains, the shared store and
   telemetry. The client factory builds them and returns one object of entities: `frame`, `sharedStore`, `sharedAuth`,
-  `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains`, each with verb members. The `frame` entity sends
-  the host's network pause to the ready frame, and to each later frame once it is ready while the pause lasts, without
-  booting one. The page's instance is `getProtocolClient()`, built on first use, and callers reach every request through
-  it.
+  `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains`, each with verb members. The `chains` entity also
+  pauses and resumes the pool that holds them: it sends the host's network pause to the ready frame, and to each later
+  frame once it is ready while the pause lasts, without booting one. The page's instance is `getProtocolClient()`, built
+  on first use, and callers reach every request through it.
 - A request has a budget per method. No deadline crosses the wire, so the frame sizes its own work from the same
   budgets. A shared store request's budget runs from the call. A chain or resolve request's runs once the frame is
   ready, since it also waits for the light client. A request that outlives its budget is given up on the host and its
@@ -179,7 +179,8 @@ a call that is no longer waiting is ignored without a count.
 
 - Client: `getProtocolClient` (the page's client, built on first use: `frame`, `sharedStore`, `sharedAuth`,
   `sharedMode`, `sharedWallet`, `resolve`, `telemetry` and `chains` as one object, whose shared store writes of three
-  inputs take one params object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `getProtocolOrigin`.
+  inputs take one params object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `isFrameDown`,
+  `getProtocolOrigin`.
 - Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
 - Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, `SHARED_AUTH_KEY_PREFIX`, `SHARED_MODE_KEY_PREFIX`, the
   key helpers `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`,

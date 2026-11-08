@@ -7,7 +7,7 @@
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import type { ChainRole, FixedServicesConfig } from '@dotli/config/fixed';
-import { createChainPool, LIGHT_CLIENT_FOLLOW_LIMIT, requireBrokerLocalProvider } from '@dotli/chains';
+import { createChainPool, requireBrokerLocalProvider } from '@dotli/chains';
 import { createReporter, defineCount } from '@dotli/metrics';
 
 import { observeChains } from './observeChains.js';
@@ -44,10 +44,7 @@ export function startLightClientService({ lightClient, resolver, services }: Par
   resolver.enableSyncReporting(REPORTED_CHAINS);
   // Releasing a smoldot chain makes the light client drop it and re-sync later.
   const pool = createChainPool({
-    createTransport: (genesisHash, hooks) => {
-      const provider = lightClient.createChainProvider(genesisHash, hooks);
-      return provider === null ? null : { provider, followLimit: LIGHT_CLIENT_FOLLOW_LIMIT };
-    },
+    createTransport: lightClient.createChainTransport,
     destroyDelay: Infinity,
   });
   // The relay carries the warp progress but papi never dials it. Bulletin opened lazily by the first `bitswap_v1_get`

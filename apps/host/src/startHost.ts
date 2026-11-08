@@ -108,14 +108,7 @@ export async function startHost({
   startShellState?.();
   // The pause and its targets last the page's life, so their stops go unused.
   networkPause.start();
-  networkPause.addTarget({
-    pause() {
-      getProtocolClient().frame.setPaused(true);
-    },
-    resume() {
-      getProtocolClient().frame.setPaused(false);
-    },
-  });
+  networkPause.addTarget(getProtocolClient().chains);
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.
   const bridgeChunk = markHandled(loadHostBridge());

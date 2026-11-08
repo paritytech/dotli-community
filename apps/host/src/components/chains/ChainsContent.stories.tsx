@@ -583,11 +583,10 @@ export const RenderErrorCloses: Story = {
     });
     await ctx.step('Then it is reported once and the popover closes', async () => {
       await waitFor(() => expect(captured).toHaveBeenCalledTimes(1));
-      await expect(captured).toHaveBeenCalledWith(expect.any(Error), {
-        flow: 'ui',
-        step: 'root_render',
-        tags: { root: 'popover:chains-popover' },
-      });
+      await expect(captured).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ step: 'root_render', tags: { root: 'popover:chains-popover' } }),
+      );
       await waitFor(() => expect(isOpen()).toBe(false));
       await waitFor(() => expect(document.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull());
     });

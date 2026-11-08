@@ -23,9 +23,12 @@ function createFakes() {
   const events: string[] = [];
   let resolverParams: ResolverParams | null = null;
   const lightClient: LightClient = {
-    createChainProvider(genesisHash) {
+    createChainTransport(genesisHash) {
       events.push(`open ${genesisHash}`);
-      return (): JsonRpcConnection => ({ send: () => undefined, disconnect: () => undefined });
+      return {
+        provider: (): JsonRpcConnection => ({ send: () => undefined, disconnect: () => undefined }),
+        followLimit: Infinity,
+      };
     },
     isChainSupported: () => true,
     status: () => ({ fatal: null, db: new Map() }),

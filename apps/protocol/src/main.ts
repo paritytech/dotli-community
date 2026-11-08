@@ -53,9 +53,9 @@ import { readResolveBudgetCap } from './readResolveBudgetCap.js';
 import { readSessionTuning } from './readSessionTuning.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
 import { serveEngineScope } from './serveEngineMethods.js';
-import { serveFramePause } from './serveFramePause.js';
 import { serveHeartbeat } from './serveHeartbeat.js';
 import { serveLocalWallet } from './serveLocalWallet.js';
+import { servePoolControl } from './servePoolControl.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
 import { toLightClientDb } from './toLightClientDb.js';
@@ -263,7 +263,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 function serveEngine(engine: ProtocolEngine, pool: ChainPool): void {
   // The frame serves its engine and its pause as long as its page, so the stops go unused.
   serveEngineScope(served, engine);
-  serveFramePause({ serving: served, pool });
+  servePoolControl({ serving: served, control: pool });
   disposeOnPageHide({ target: window, dispose: engine.dispose });
   boot.markReady();
 }

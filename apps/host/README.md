@@ -92,16 +92,16 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   gives it the host's bitswap client from the bridge to fetch the product's icon. The journey and the failure sightings
   read the session storage they are given.
 - Every reload that tells the next boot why goes through one step. The topbar's binding, the main-thread monitor, the
-  loading screen, the load progress, the bar's auto-hide on the shield, the sandbox watch and the resolution trace each
-  hand back the cleanup of what they listen to and the timers they hold. The trace releases its own once it ends, and
-  the sandbox watch once the sandbox speaks. A load that fails stops waiting for the sandbox's outcome on its content
-  and stops hearing a refused wire version. The page keeps the rest for its life.
+  loading screen, the load progress, the bar's auto-hide on the shield and the resolution trace each hand back the
+  cleanup of what they listen to and the timers they hold. The trace releases its own once it ends, and the sandbox's
+  load owner stops listening once the outcome settled. A load that fails stops hearing a refused wire version. The page
+  keeps the rest for its life.
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
-  the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
-  The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
-  lease that pool, and the chain watcher watches it. The page's bitswap client leases it too, Bulletin while a fetch
-  runs. A product's local storage is one factory whose page instance every core shares, so a write from one runtime
-  reaches the subscriptions of the others.
+  the page's own. The chain pool owns the chain redial gates for every holder, and the permission prompt rate limit
+  measures time on the clock it is given. The page's chain pool and its sources sit beside the pool's factory. The chain
+  connect and the host chain providers lease that pool, and the chain watcher watches it. The page's bitswap client
+  leases it too, Bulletin while a fetch runs. A product's local storage is one factory whose page instance every core
+  shares, so a write from one runtime reaches the subscriptions of the others.
 - The product frame, its wait for a device permission answer, the scheduled notifications and the diagnostics' finalized
   block query take the clock and timers they run on as params that default to the page's own. The scheduler takes its
   repeating poll the same way, so their specs move time themselves. The channel to the local server's shared store takes

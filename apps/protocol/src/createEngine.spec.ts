@@ -54,12 +54,12 @@ function createTransports() {
   const built: TransportRecord[] = [];
   return {
     /** Builds a recorded transport for each chain the pool opens. Never throws. */
-    createChainProvider,
+    createChainTransport,
     /** Each transport built, in order. */
     built,
   };
 
-  function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport {
+  function createChainTransport(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport {
     let listener: ((message: JsonRpcMessage) => void) | null = null;
     const record: TransportRecord = {
       genesisHash,
@@ -110,8 +110,8 @@ function openTab(engine: ProtocolEngine) {
 
 /** Starts an engine on a real pool that records each transport it builds, with one tab open. */
 function startEngine({ destroyDelay = Infinity, ...engineParams }: Params = {}) {
-  const { createChainProvider, built } = createTransports();
-  const pool = createChainPool({ createTransport: createChainProvider, destroyDelay });
+  const { createChainTransport, built } = createTransports();
+  const pool = createChainPool({ createTransport: createChainTransport, destroyDelay });
   const engine = createEngine({ pool, isChainSupported: () => true, ...engineParams });
   return { engine, tab: openTab(engine), built };
 }
@@ -262,8 +262,8 @@ describe('createEngine chain connections', () => {
 describe('createEngine chain pool', () => {
   it('As the protocol frame, I hand the engine the chain pool the name resolver reads and a product shares its chain', async () => {
     // Given the resolver already holds a lease on the chain
-    const { createChainProvider, built } = createTransports();
-    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const { createChainTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport: createChainTransport, destroyDelay: Infinity });
     must(pool.getLocalProvider('0xaa', { holder: 'resolver' }), 'resolver lease')(() => undefined);
     const engine = createEngine({ pool, isChainSupported: () => true });
 
@@ -277,8 +277,8 @@ describe('createEngine chain pool', () => {
 
   it('As the protocol frame, I dispose the engine and the chains of the pool it was handed are released', async () => {
     // Given
-    const { createChainProvider, built } = createTransports();
-    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    const { createChainTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport: createChainTransport, destroyDelay: Infinity });
     const engine = createEngine({ pool, isChainSupported: () => true });
     await openTab(engine).connect('0xaa', 'c1');
 

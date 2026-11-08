@@ -17,16 +17,7 @@ export default defineConfig([
   },
   ...importBans([
     onlyAllowedScopes(
-      [
-        '@dotli/chains',
-        '@dotli/config',
-        '@dotli/metrics',
-        '@dotli/protocol',
-        '@dotli/sandbox-wire',
-        '@dotli/shared',
-        '@config/eslint',
-        '@config/vite',
-      ],
+      ['@dotli/config', '@dotli/metrics', '@dotli/sandbox-wire', '@dotli/shared', '@config/eslint', '@config/vite'],
       'bitswap moves content blocks between the sandbox and the light client, below the apps.',
     ),
   ]),

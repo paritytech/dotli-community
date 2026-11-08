@@ -4,7 +4,8 @@
 // A chain's finalized block height for the diagnostics report.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import { isRemoteChainSupported } from '@dotli/protocol';
 import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
 import { loadHostBridge, loadPolkadotApi } from '../lazy.js';
 
@@ -28,9 +29,9 @@ export type FinalizedBlockSource = {
    * The host's provider for the chain, or null when the active backend does not serve it. Rejects when the provider
    * fails to load.
    */
-  provider: (genesisHash: string) => Promise<RemoteChainProvider | null>;
+  provider: (genesisHash: string) => Promise<JsonRpcProvider | null>;
   /** Resolves with a client over `provider`. Rejects when the client fails to load. */
-  createClient: (provider: RemoteChainProvider) => Promise<FinalizedBlockClient>;
+  createClient: (provider: JsonRpcProvider) => Promise<FinalizedBlockClient>;
 };
 
 type Params = {

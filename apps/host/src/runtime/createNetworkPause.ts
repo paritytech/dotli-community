@@ -4,6 +4,7 @@
 // A hidden page keeps its network for a grace, so a quick look at another tab costs no reconnect. A visible page's
 // timers stop while the device sleeps, so a tick that comes late reads as a return too.
 
+import type { ChainPoolControl } from '@dotli/chains';
 import { createReporter } from '@dotli/metrics';
 import {
   createListenerSet,
@@ -16,14 +17,6 @@ import {
 import { pagePoll, type Poll } from '../pagePoll.js';
 
 const report = createReporter({ flow: 'protocol' });
-
-/** What a pause reaches: a chain pool, or the protocol frame. */
-export type PauseTarget = {
-  /** Pauses its network. Never throws. */
-  pause(): void;
-  /** Resumes it. Never throws. */
-  resume(): void;
-};
 
 type Params = {
   /** The clock and timers the grace runs on. The page's own unless given. */
@@ -58,7 +51,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
   /** Set while the page is followed as visible. */
   let stopTick: (() => void) | null = null;
   let lastTickAt = 0;
-  const targets = new Set<PauseTarget>();
+  const targets = new Set<ChainPoolControl>();
   const returns = createListenerSet<undefined>({ onListenerError: report.listener('network_pause.return') });
   const following = createSharedRun<VisibilitySource>({ begin: beginFollowing });
   const holds = createSharedRun({ begin: beginHold });
@@ -81,7 +74,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     return following.join(visibility);
   }
 
-  function addTarget(target: PauseTarget): () => void {
+  function addTarget(target: ChainPoolControl): () => void {
     targets.add(target);
     // A target runs until told otherwise, so only a pause in force, or one under way, is news to it.
     if (state.kind === 'paused' || state.kind === 'pausing') {
@@ -207,7 +200,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
    * Tells the targets of the moment the change. One removed while an earlier one hears it is told nothing more, and one
    * added then hears only what its addition told it.
    */
-  function tellTargets(change: keyof PauseTarget): void {
+  function tellTargets(change: keyof ChainPoolControl): void {
     for (const target of [...targets]) {
       if (targets.has(target)) {
         target[change]();

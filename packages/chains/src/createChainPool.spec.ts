@@ -12,6 +12,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_HEADER } from './jsonRpcMethods.js';
 import { RPC_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
+import { ChainHaltError } from './chainHaltError.js';
 import { bindLogSink, isRecord } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
@@ -94,16 +95,95 @@ function createReopenFailingTransports(failing: string): {
   return { createTransport, built };
 }
 
-/** Leases a chain through the pool's local provider, failing the test when the pool has no provider for it. */
+/** Builds transports as `createTransports` does, except that the first one halts as its connection opens. */
+function createHaltOnOpenTransports(): {
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
+  built: TransportRecord[];
+} {
+  const { createTransport: createBase, built } = createTransports();
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+    const base = createBase(genesisHash, hooks);
+    if (base === null || built.length > 1) {
+      return base;
+    }
+    const provider: JsonRpcProvider = onMessage => {
+      const connection = base.provider(onMessage);
+      hooks.onHalt(new Error('gone while opening'));
+      return connection;
+    };
+    return { provider, followLimit: base.followLimit };
+  }
+  return { createTransport, built };
+}
+
+/** Builds transports as `createTransports` does, except that each rebuilt one refuses its first two connects. */
+function createRefusingRebuildTransports(): {
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
+  built: TransportRecord[];
+  rebuiltConnects: () => number;
+} {
+  const { createTransport: createBase, built } = createTransports();
+  let connects = 0;
+  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+    const base = createBase(genesisHash, hooks);
+    if (base === null || built.length === 1) {
+      return base;
+    }
+    const provider: JsonRpcProvider = onMessage => {
+      connects += 1;
+      if (connects <= 2) {
+        throw new Error('connect refused');
+      }
+      return base.provider(onMessage);
+    };
+    return { provider, followLimit: base.followLimit };
+  }
+  return { createTransport, built, rebuiltConnects: () => connects };
+}
+
+/** Takes a healing lease through the pool's local provider, failing the test when the pool has no provider for it. */
 function lease(
+  pool: ChainPool,
+  genesisHash: string,
+  { onMessage = () => undefined }: { onMessage?: (message: JsonRpcMessage) => void } = {},
+): JsonRpcConnection {
+  return must(pool.getLocalProvider(genesisHash), `provider for ${genesisHash}`)(onMessage);
+}
+
+let remoteLeases = 0;
+
+/**
+ * Leases a chain for a remote session under a fresh id, which ends at its chain's halt, with its JSON text read as
+ * messages. Fails the test when the pool cannot reach the chain.
+ */
+function remoteLease(
   pool: ChainPool,
   genesisHash: string,
   {
     onMessage = () => undefined,
     onHalt,
-  }: { onMessage?: (message: JsonRpcMessage) => void; onHalt?: (error?: unknown) => void } = {},
+  }: { onMessage?: (message: JsonRpcMessage) => void; onHalt: (error?: unknown) => void },
 ): JsonRpcConnection {
-  return must(pool.getLocalProvider(genesisHash), `provider for ${genesisHash}`)(onMessage, onHalt);
+  const connectionId = `lease-${String(remoteLeases)}`;
+  remoteLeases += 1;
+  const connection = must(
+    pool.connectRemote({
+      genesisHash,
+      connectionId,
+      onMessage: message => {
+        // The string wire carries JSON-RPC messages as text.
+        onMessage(JSON.parse(message) as JsonRpcMessage);
+      },
+      onHalt,
+    }),
+    `remote session on ${genesisHash}`,
+  );
+  return {
+    send: message => {
+      connection.send(JSON.stringify(message));
+    },
+    disconnect: connection.disconnect,
+  };
 }
 
 /** The requests of `method` a connection sent the node, in order. */
@@ -271,8 +351,8 @@ describe('createChainPool', () => {
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
     const haltA = vi.fn();
     const haltB = vi.fn();
-    lease(pool, '0xaa', { onHalt: haltA });
-    lease(pool, '0xaa', { onHalt: haltB });
+    remoteLease(pool, '0xaa', { onHalt: haltA });
+    remoteLease(pool, '0xaa', { onHalt: haltB });
     const failure = new Error('chain stopped responding');
 
     // When
@@ -293,13 +373,21 @@ describe('createChainPool', () => {
     expect(built).toHaveLength(2);
   });
 
-  it('As a dotli integrator, I release a lease after its chain was rebuilt and the new connection is left alone', () => {
+  it('As a dotli integrator, I release a lease after its chain was rebuilt and neither the new connection nor the watchers hear of it', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
-    const stale = lease(pool, '0xaa');
+    const stale = remoteLease(pool, '0xaa', { onHalt: () => undefined });
     must(built[0], 'transport').hooks.onHalt(new Error('gone'));
     lease(pool, '0xaa');
+    const activity: ChainActivity[] = [];
+    pool.watch({
+      onActivity: next => {
+        activity.push(next);
+      },
+      onBestBlock: () => undefined,
+    });
+    const heardBefore = activity.length;
 
     // When
     stale.disconnect();
@@ -308,6 +396,7 @@ describe('createChainPool', () => {
     // Then
     expect(must(built[1], 'transport').disconnect).not.toHaveBeenCalled();
     expect(pool.status('0xaa')).toBe('connecting');
+    expect(activity.slice(heardBefore)).toEqual([]);
   });
 
   it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', () => {
@@ -374,8 +463,8 @@ describe('createChainPool', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const onHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt });
-    lease(pool, '0xbb', { onHalt });
+    remoteLease(pool, '0xaa', { onHalt });
+    remoteLease(pool, '0xbb', { onHalt });
 
     // When
     pool.disconnectAll();
@@ -448,7 +537,7 @@ describe('createChainPool', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const onHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt });
+    remoteLease(pool, '0xaa', { onHalt });
     must(built[0], 'transport').disconnect.mockImplementation(() => {
       throw new Error('close failed');
     });
@@ -502,7 +591,7 @@ describe('createChainPool', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const events: string[] = [];
-    const connection = lease(pool, '0xaa', {
+    const connection = remoteLease(pool, '0xaa', {
       onMessage: message => {
         // A response has no params, so only a notification names an event.
         const event = (message as { params?: { result?: { event?: string } } }).params?.result?.event;
@@ -537,7 +626,7 @@ describe('createChainPool', () => {
     pool.onStatusChanged('0xaa', status => {
       seen.push(status);
     });
-    lease(pool, '0xaa', {
+    remoteLease(pool, '0xaa', {
       onHalt: () => {
         lease(pool, '0xaa');
       },
@@ -694,7 +783,7 @@ describe('createChainPool watch', () => {
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
     const seen = createRecorder();
     pool.watch(seen.watcher);
-    lease(pool, '0xaa', {
+    remoteLease(pool, '0xaa', {
       onHalt: () => {
         lease(pool, '0xaa');
       },
@@ -938,7 +1027,7 @@ describe('createChainPool watch', () => {
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
     const halts: unknown[] = [];
     for (let index = 0; index < RPC_FOLLOW_LIMIT; index += 1) {
-      const connection = lease(pool, '0xaa', {
+      const connection = remoteLease(pool, '0xaa', {
         onHalt: error => {
           halts.push(error);
         },
@@ -986,7 +1075,7 @@ describe('createChainPool watch', () => {
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
     const halts: unknown[] = [];
     for (let index = 0; index < RPC_FOLLOW_LIMIT; index += 1) {
-      const connection = lease(pool, '0xaa', {
+      const connection = remoteLease(pool, '0xaa', {
         onHalt: error => {
           halts.push(error);
         },
@@ -1020,7 +1109,7 @@ describe('createChainPool pausing', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const onHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt });
+    remoteLease(pool, '0xaa', { onHalt });
 
     // When
     pool.pause();
@@ -1164,7 +1253,7 @@ describe('createChainPool pausing', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const onHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt });
+    remoteLease(pool, '0xaa', { onHalt });
     pool.pause();
 
     // When
@@ -1185,8 +1274,8 @@ describe('createChainPool pausing', () => {
     const pool = createChainPool({ createTransport });
     const failingHalt = vi.fn();
     const otherHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt: failingHalt });
-    lease(pool, '0xbb', { onHalt: otherHalt });
+    remoteLease(pool, '0xaa', { onHalt: failingHalt });
+    remoteLease(pool, '0xbb', { onHalt: otherHalt });
     must(built[0], 'transport').disconnect.mockImplementation(() => {
       throw new Error('close failed');
     });
@@ -1214,8 +1303,8 @@ describe('createChainPool pausing', () => {
     const pool = createChainPool({ createTransport });
     const failingHalt = vi.fn();
     const otherHalt = vi.fn();
-    lease(pool, '0xaa', { onHalt: failingHalt });
-    lease(pool, '0xbb', { onHalt: otherHalt });
+    remoteLease(pool, '0xaa', { onHalt: failingHalt });
+    remoteLease(pool, '0xbb', { onHalt: otherHalt });
     pool.pause();
 
     // When
@@ -1245,7 +1334,7 @@ describe('createChainPool pausing', () => {
 
     // When
     const error = catchError(() => {
-      lease(pool, '0xaa', { onHalt });
+      remoteLease(pool, '0xaa', { onHalt });
     });
 
     // Then
@@ -1255,5 +1344,158 @@ describe('createChainPool pausing', () => {
     expect(pool.status('0xaa')).toBe('connecting');
     expect(onHalt).not.toHaveBeenCalled();
     expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
+  });
+});
+
+describe('createChainPool healing', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("As a dotli integrator, my lease's chain halts and my next request rebuilds it on a new transport", () => {
+    // Given a healing lease on a chain whose transport halts
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const connection = lease(pool, '0xaa');
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+
+    // When
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(listMethod(must(built[0], 'transport'), 'system_health')).toHaveLength(0);
+    expect(listMethod(must(built[1], 'transport'), 'system_health')).toHaveLength(1);
+  });
+
+  it('As a dotli integrator, two leases on a chain that halts take one rebuilt chain', () => {
+    // Given two healing leases on one chain
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const first = lease(pool, '0xaa');
+    const second = lease(pool, '0xaa');
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    first.send({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
+    second.send({ jsonrpc: '2.0', id: 2, method: 'system_health', params: [] });
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(listMethod(must(built[1], 'transport'), 'system_health')).toHaveLength(2);
+  });
+
+  it('As a dotli integrator, my chain halts while the pool is paused and it is rebuilt closed', () => {
+    // Given a healing lease on a paused pool
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    pool.pause();
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'transport').opened).toBe(0);
+
+    // When
+    pool.resume();
+
+    // Then
+    expect(must(built[1], 'transport').opened).toBe(1);
+  });
+
+  it('As a dotli integrator, I disconnect all and my healing lease is neither rebuilt nor sends', async () => {
+    // Given a healing lease whose chain halted twice, so its next rebuild waits for the gate
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const onMessage = vi.fn();
+    const connection = lease(pool, '0xaa', { onMessage });
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    must(built[1], 'transport').hooks.onHalt(new Error('gone'));
+
+    // When
+    pool.disconnectAll();
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
+    const pendingAfterDisconnect = vi.getTimerCount();
+    await vi.runAllTimersAsync();
+
+    // Then
+    expect(pendingAfterDisconnect).toBe(0);
+    expect(built).toHaveLength(2);
+    expect(built.flatMap(record => listMethod(record, 'system_health'))).toHaveLength(0);
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, I release a healing lease and disconnect all, and it is not released again', () => {
+    // Given a healing lease released while its chain waits out its destroy delay
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    lease(pool, '0xaa').disconnect();
+
+    // When
+    pool.disconnectAll();
+
+    // Then
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a dotli integrator, my chain's transport halts while my lease opens on it and the lease takes the rebuilt chain", () => {
+    // Given a transport that halts inside its first connect
+    const { createTransport, built } = createHaltOnOpenTransports();
+    const pool = createChainPool({ createTransport });
+
+    // When
+    lease(pool, '0xaa');
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'transport').opened).toBe(1);
+    expect(pool.status('0xaa')).toBe('connecting');
+  });
+
+  it("As a dotli integrator, my rebuilt chain refuses my lease's connect and I wait for the gate before the next try", async () => {
+    // Given a healing lease on a chain whose rebuilt transport refuses its first connects
+    recordReports({ onFinished: onTestFinished });
+    const { createTransport, built, rebuiltConnects } = createRefusingRebuildTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    await vi.advanceTimersByTimeAsync(999);
+    const beforeASecond = rebuiltConnects();
+    await vi.advanceTimersByTimeAsync(1);
+    const atASecond = rebuiltConnects();
+
+    // Then
+    expect([beforeASecond, atASecond]).toEqual([1, 2]);
+    expect(built).toHaveLength(2);
+  });
+
+  it('As the host page, my chain halts with the frame while the frame is down and it is rebuilt only as the frame gate allows', async () => {
+    // Given a healing lease whose chain rides a frame that is down, already rebuilt once after a frame halt
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, isFrameDown: () => true });
+    lease(pool, '0xaa');
+    must(built[0], 'transport').hooks.onHalt(new ChainHaltError('frame'));
+
+    // When the rebuilt chain halts with the frame too
+    must(built[1], 'transport').hooks.onHalt(new ChainHaltError('frame'));
+    await vi.advanceTimersByTimeAsync(999);
+
+    // Then the second rebuild waits for the frame gate
+    expect(built).toHaveLength(2);
+
+    // When
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Then
+    expect(built).toHaveLength(3);
   });
 });

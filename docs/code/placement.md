@@ -44,7 +44,7 @@ flowchart TD
   host -->|every package| packages
   protocolApp --> chains & config & metrics & protocol & resolver & shared & storage & transport
   sandbox --> config & content & metrics & sandboxWire & shared & ui
-  bitswap --> chains & config & metrics & protocol & sandboxWire & shared
+  bitswap --> config & metrics & sandboxWire & shared
   chains --> config & metrics & shared
   config --> shared
   content --> config & metrics & shared

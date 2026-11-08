@@ -145,3 +145,29 @@ export type ProtocolFrame = {
    */
   checkAlive(transport: ProtocolTransport): void;
 };
+
+/** Whether the frame's light client is ready, so a request to it boots nothing. Never throws. */
+export function isFrameReady(status: ProtocolStatus): boolean {
+  switch (status) {
+    case 'idle':
+    case 'booting':
+    case 'listening':
+    case 'failed':
+      return false;
+    case 'ready':
+      return true;
+  }
+}
+
+/** Whether the frame is down, until a rebuild boots or for good after a version mismatch. Never throws. */
+export function isFrameDown(status: ProtocolStatus): boolean {
+  switch (status) {
+    case 'idle':
+    case 'booting':
+    case 'listening':
+    case 'ready':
+      return false;
+    case 'failed':
+      return true;
+  }
+}

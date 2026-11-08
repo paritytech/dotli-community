@@ -27,6 +27,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { logWorkerEvent } from './logWorkerEvent.js';
 import type { WorkerNetwork } from './parseWorkerNetwork.js';
 import { serveEngineMethods } from './serveEngineMethods.js';
+import { servePoolControl } from './servePoolControl.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { startLightClientService, type LightClientService } from './startLightClientService.js';
 import { toLightClientDb } from './toLightClientDb.js';
@@ -181,9 +182,16 @@ export function startProtocolWorker({
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest(frame.heartbeat, () => ok());
     // The worker pauses only while every tab it serves asks.
-    transport.handleRequest(frame.pause, ({ paused }) => {
-      lifecycle.markPaused(session, paused);
-      return ok();
+    servePoolControl({
+      serving: transport,
+      control: {
+        pause: () => {
+          lifecycle.markPaused(session, true);
+        },
+        resume: () => {
+          lifecycle.markPaused(session, false);
+        },
+      },
     });
     // The engine and the tab's scope are made on first use, so each method asks for them when called. A failure is
     // logged under its call name, and reaches the tab as the call's answer.

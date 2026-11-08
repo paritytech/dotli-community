@@ -208,8 +208,9 @@ A parameter a module only hands on is typed by reference to its owner, as `Owner
 instance owns, such as its scope, its trackers and its liveness checks, is one context object, built where the
 instance is built and handed on whole. Only the module that uses a part of it picks that part.
 
-A lazy chunk exports one typed facade object. Eager code takes it as `() => Promise<Facade>`, or a `Pick` of it,
-never a wrapper per capability.
+A lazy chunk whose capabilities eager code calls from several modules exports one typed facade object. Eager code
+takes it as `() => Promise<Facade>`, or a `Pick` of it, never a wrapper per capability. A chunk loaded for one
+component or one call may return its module namespace.
 
 Why: a hop that restates or re-picks a collaborator changes whenever the collaborator does, and so does every spec
 that builds the hop. Handed on whole, a new member edits its owner and its user only.

@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
-import type { ChainActivity, RemoteChainHalt } from '@dotli/chains';
+import type { ChainActivity } from '@dotli/chains';
 import { FakeWebSocket } from '@dotli/chains/testing';
 import { fromHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
@@ -73,8 +73,8 @@ describe('host chain pool on a light client backend', () => {
 
   it("As a user, I open a block bar and it shares the products' connection to the protocol frame", async () => {
     // Given
-    const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain });
-    const connect = createChainConnect({ pool, frame: chains.frame });
+    const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame });
+    const connect = createChainConnect({ pool });
     const first = await connect(fromHex(people));
     const second = await connect(fromHex(people));
     onTestFinished(() => {
@@ -94,22 +94,26 @@ describe('host chain pool on a light client backend', () => {
   });
 
   it.each(['chain', 'frame'] as const)(
-    'As a user, I watch a block bar through a %s halt of the connection to the protocol frame and the bar hears it with its reason',
+    "As the host page, my read's chain halts for %s and my next request goes on the rebuilt chain",
     async reason => {
       // Given
-      const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain });
-      const product = await createChainConnect({ pool, frame: chains.frame })(fromHex(people));
+      const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame });
+      const product = await createChainConnect({ pool })(fromHex(people));
       onTestFinished(() => {
         product.close();
       });
-      const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
-      must(getHostChainProvider(people, { pool }), 'provider')(() => undefined, onHalt);
-
-      // When
+      const read = must(getHostChainProvider(people, { pool }), 'provider')(() => undefined);
+      onTestFinished(() => {
+        read.disconnect();
+      });
       must(chains.remotes[0], 'remote').halt(reason);
 
+      // When
+      read.send({ jsonrpc: '2.0', id: 'read:1', method: 'chainSpec_v1_genesisHash', params: [] });
+
       // Then
-      expect(onHalt.mock.calls).toEqual([[reason]]);
+      expect(chains.remotes).toHaveLength(2);
+      expect(must(chains.remotes[1], 'rebuilt remote').sent).toHaveLength(1);
     },
   );
 
@@ -130,10 +134,7 @@ describe('host chain pool on a light client backend', () => {
     // Given
     const pool = createHostChainPool({ createRemoteChain: chains.createRemoteChain });
     const provider = must(getHostChainProvider(people, { pool }), 'provider');
-    provider(
-      () => undefined,
-      () => undefined,
-    );
+    provider(() => undefined);
     must(chains.remotes[0], 'first remote').halt('chain');
 
     // When

@@ -14,7 +14,6 @@ import type {
   SignVrfReview,
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
-  UserConfirmationReview,
 } from '@parity/truapi-host';
 import type {
   AllocatableResource,
@@ -40,6 +39,7 @@ import { PHONE_METHODS } from '../phoneMethods.js';
 import { reportPhoneEnd } from '../phoneReport.js';
 import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 import { matchPhoneReview } from '../matchPhoneReview.js';
+import { servedRequests, type ServedReview } from './servedRequests.js';
 
 /** The prompts a confirmation asks through and tells its outcome on. */
 type ConfirmationPrompts = Pick<HostPrompts, 'confirmReview' | 'notify'>;
@@ -56,9 +56,6 @@ type ConfirmationField = ModalField;
 /** The step an answered review hands its place to, if any. */
 type ReviewHandoff = (answer: GrantAnswer) => ModalHandoff | undefined;
 
-/** The browser core serves no NFT purses, so a drain review is refused before any modal. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain' }>;
-
 type Params = {
   /** The product the confirmations speak for. */
   label: string;
@@ -71,7 +68,7 @@ type Params = {
 };
 
 type ConfirmParams = {
-  review: ModalReview;
+  review: ServedReview;
   signal: AbortSignal;
   /** Whether the review offers "Allow once" beside "Always allow". */
   allowOnce: boolean;
@@ -80,7 +77,7 @@ type ConfirmParams = {
 
 type HandleConfirmationReviewParams = {
   label: string;
-  review: ModalReview;
+  review: ServedReview;
   signal: AbortSignal;
   allowOnce: boolean;
   prompts: ConfirmationPrompts;
@@ -117,7 +114,7 @@ type CreateTransactionPayloadFieldsParams = {
 
 type CreatePhoneWaitHandoffParams = {
   label: string;
-  review: ModalReview;
+  review: ServedReview;
   requests: PhoneRequestTracker;
   notify: HostPrompts['notify'];
   signal: AbortSignal;
@@ -150,7 +147,7 @@ export function createUserConfirmationAdapters({
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
     confirmUserAction: review =>
-      review.tag === 'NftPurseDrain'
+      !servedRequests.isServed(review)
         ? Promise.resolve(false)
         : modalScope.enqueue(async (signal, hold) =>
             isGranted(await confirm({ review, signal, allowOnce: false, hold })),
@@ -158,7 +155,7 @@ export function createUserConfirmationAdapters({
     // The core stores AllowAlways and Deny and decides how long AllowOnce lasts. A drain review is refused by a
     // rejection, since a Deny would be stored.
     confirmPermission: review =>
-      review.tag === 'NftPurseDrain'
+      !servedRequests.isServed(review)
         ? Promise.reject(new Error(ERRORS.UNSERVED_REQUEST))
         : modalScope.enqueue(async (signal, hold) =>
             toPermissionDecision(await confirm({ review, signal, allowOnce: true, hold })),
@@ -189,7 +186,7 @@ function showConfirmationModal({
   });
 }
 
-function getConfirmationFields(label: string, review: ModalReview): ConfirmationField[] {
+function getConfirmationFields(label: string, review: ServedReview): ConfirmationField[] {
   switch (review.tag) {
     case 'SignPayload':
       return createSignPayloadFields(label, review.value);
@@ -448,7 +445,7 @@ function createResourceAllocationFields(review: ResourceAllocationReview): Confi
   ];
 }
 
-function getConfirmationCopy(review: ModalReview): ConfirmationCopy {
+function getConfirmationCopy(review: ServedReview): ConfirmationCopy {
   switch (review.tag) {
     case 'SignPayload':
       return { title: 'Sign Transaction', action: 'Sign', icon: SignIcon };

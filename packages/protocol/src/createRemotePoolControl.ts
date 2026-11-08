@@ -3,9 +3,10 @@
 
 // Tells the protocol frame whether the host's network is paused, so a frame in SharedWorker mode can pass it on.
 
+import type { ChainPoolControl } from '@dotli/chains';
 import { createReporter, defineCount } from '@dotli/metrics';
 import type { FrameRpc } from './createFrameRpc.js';
-import type { ProtocolFrame } from './frameTypes.js';
+import { isFrameReady, type ProtocolFrame } from './frameTypes.js';
 import { protocolSchema } from './schema.js';
 
 const report = createReporter({ flow: 'protocol' });
@@ -22,12 +23,12 @@ type Params = {
   rpc: Pick<FrameRpc, 'request'>;
 };
 
-/** Tells each frame there is whether the host's network is paused, without booting one. */
-export function createFramePauseSender({ frame, rpc }: Params) {
+/** Pauses and resumes the pool that holds the frame's chains, telling each frame there is without booting one. */
+export function createRemotePoolControl({ frame, rpc }: Params): ChainPoolControl {
   let paused = false;
 
   function isReady(): boolean {
-    return frame.status.get() === 'ready';
+    return isFrameReady(frame.status.get());
   }
 
   function send(value: boolean): void {
@@ -47,19 +48,33 @@ export function createFramePauseSender({ frame, rpc }: Params) {
   // A new frame starts unpaused, so it only needs telling when the host is paused. The listener lasts as long as the
   // client's frame, so it has no stop.
   frame.status.listen(status => {
-    if (status === 'ready' && paused) {
+    if (isFrameReady(status) && paused) {
       send(true);
     }
   });
 
+  function latch(next: boolean): void {
+    paused = next;
+    // The request would boot a frame that is not ready, and a frame that boots later hears it once it is.
+    if (isReady()) {
+      send(next);
+    }
+  }
+
   return {
-    /** Sends `paused` to the frame now if it is ready, and `true` to each later frame once it is ready. Never throws. */
-    setPaused(next: boolean): void {
-      paused = next;
-      // The request would boot a frame that is not ready, and a frame that boots later hears it once it is.
-      if (isReady()) {
-        send(next);
-      }
+    /**
+     * Sends the pause to the frame now if it is ready, and the pause to each later frame once it is ready while it
+     * lasts. Never throws.
+     */
+    pause(): void {
+      latch(true);
+    },
+    /**
+     * Sends the resume to the frame now if it is ready, and ends the pause each later frame would hear once it is
+     * ready. Never throws.
+     */
+    resume(): void {
+      latch(false);
     },
   };
 }

@@ -22,7 +22,7 @@ import {
 import { isApiStoppedError, type ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
 import { ManifestRejectedError } from './manifestRejectedError.js';
-import { SandboxSilentError } from './watchSandbox.js';
+import { SandboxSilentError } from './watchSandboxLoad.js';
 
 export type Recovery = 'switch-backend' | 'reload' | 'none';
 

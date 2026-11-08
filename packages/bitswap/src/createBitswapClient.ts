@@ -4,10 +4,9 @@
 // Fetches blocks with `bitswap_v1_get` over one Bulletin connection, held while a fetch runs and closed after the last.
 
 import { isResponse } from '@polkadot-api/json-rpc-provider';
-import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { TIMEOUTS } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import type { RemoteChainProvider } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
   createPendingReplies,
@@ -32,8 +31,11 @@ const report = createReporter({ flow: 'content' });
 const contentBitswapReleaseMetric = defineCount<'error'>('content.bitswap_release');
 
 type Params = {
-  /** The Bulletin chain's provider, read at each dial, or null when the caller has no connection for Bulletin. */
-  provider: () => RemoteChainProvider | null;
+  /**
+   * The Bulletin chain's provider, read at each dial, or null when the caller has no connection for Bulletin. Its
+   * connections take the rebuilt chain after a halt and answer the requests the halt cut with the halted marker.
+   */
+  provider: () => JsonRpcProvider | null;
   /** The clock and timers the budget, the per-call timeout and the retry waits run on. */
   timers?: Timers;
 };
@@ -122,50 +124,34 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     if (bulletin === null) {
       throw setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE);
     }
-    const opened = bulletin(
-      (message: JsonRpcMessage) => {
-        if (!isResponse(message) || typeof message.id !== 'number') {
-          return;
-        }
-        if ('error' in message) {
-          const error = setErrorName(
-            new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
+    connection = bulletin((message: JsonRpcMessage) => {
+      if (!isResponse(message) || typeof message.id !== 'number') {
+        return;
+      }
+      if ('error' in message) {
+        const error = setErrorName(
+          new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
+          BITSWAP_ERRORS.RPC,
+        );
+        // A halt is retried on the same connection.
+        const halted = isChainHaltedRpcError(message.error);
+        replies.reject(message.id, withCode(error, halted ? ERROR_FAIL_RETRY : message.error.code));
+        return;
+      }
+      if (typeof message.result !== 'string') {
+        replies.reject(
+          message.id,
+          setErrorName(
+            new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
             BITSWAP_ERRORS.RPC,
-          );
-          // A halt answer arrives before `onHalt` drops the connection, so the retry redials a rebuilt chain.
-          const halted = isChainHaltedRpcError(message.error);
-          replies.reject(message.id, withCode(error, halted ? ERROR_FAIL_RETRY : message.error.code));
-          return;
-        }
-        if (typeof message.result !== 'string') {
-          replies.reject(
-            message.id,
-            setErrorName(
-              new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
-              BITSWAP_ERRORS.RPC,
-            ),
-          );
-          return;
-        }
-        // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
-        replies.resolve(message.id, fromHex(message.result));
-      },
-      reason => {
-        // The next attempt redials. Requests the halt never answered are rejected here, and a halt from a replaced
-        // connection must not touch its successor.
-        if (connection !== opened) {
-          return;
-        }
-        connection = null;
-        replies.rejectAll(() => {
-          const error = setErrorName(new Error('Bulletin connection halted'), BITSWAP_ERRORS.CONNECTION);
-          // A halted chain is rebuilt on reconnect, so it is retried. A dead frame is fatal.
-          return reason === 'chain' ? withCode(error, ERROR_FAIL_RETRY) : error;
-        });
-      },
-    );
-    connection = opened;
-    return opened;
+          ),
+        );
+        return;
+      }
+      // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
+      replies.resolve(message.id, fromHex(message.result));
+    });
+    return connection;
   }
 
   function release(): void {
@@ -173,7 +159,6 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     if (held === null) {
       return;
     }
-    // Cleared first, so the closed connection's halt finds itself replaced.
     connection = null;
     try {
       held.disconnect();

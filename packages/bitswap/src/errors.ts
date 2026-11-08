@@ -8,8 +8,6 @@ export const BITSWAP_ERRORS = {
   UNAVAILABLE: 'BitswapUnavailableError',
   /** The light client answered with an error the client does not retry. */
   RPC: 'BitswapRpcError',
-  /** The caller's connection to the Bulletin chain died under the request. */
-  CONNECTION: 'BitswapConnectionError',
   /** No peer produced the block within the discovery allowance. */
   NOT_FOUND: 'BitswapNotFoundError',
   TIMEOUT: 'BitswapTimeoutError',

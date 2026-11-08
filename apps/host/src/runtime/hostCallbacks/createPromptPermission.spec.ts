@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { asProductId } from '@parity/truapi';
+import { asProductId, type RemotePermission } from '@parity/truapi';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
@@ -89,6 +89,38 @@ describe('device permission prompts', () => {
       // Then
       expect(answer).toBe('AllowAlways');
       expect(changes).toEqual([{ label: 'myapp', permissions: [permission], allowChanged, fromPrompt: true }]);
+    },
+  );
+});
+
+describe('remote permissions without a prompt', () => {
+  it.each<RemotePermission>([{ tag: 'Remote', value: { domains: ['example.com'] } }, { tag: 'WebRtc' }])(
+    'As a product, I ask for the $tag permission and it is granted once without a prompt',
+    async permission => {
+      // Given a product with no stored permissions and no prompt on show
+
+      // When
+      const answer = await createPrompts().remotePermission(PRODUCT, { permission });
+
+      // Then
+      expect(answer).toBe('AllowOnce');
+      expect(page.listPending()).toEqual([]);
+    },
+  );
+
+  it.each<RemotePermission>([{ tag: 'BalanceAccess' }, { tag: 'NftPurseRead', value: { owner: { tag: 'Root' } } }])(
+    'As a product, I ask for $tag and the host refuses it unstored',
+    async permission => {
+      // Given a product with no stored permissions
+      const changes = recordChanges();
+
+      // When
+      const response = createPrompts().remotePermission(PRODUCT, { permission });
+
+      // Then
+      await expect(response).rejects.toThrow('This host does not serve the request');
+      expect(changes).toEqual([]);
+      expect(myappStore.size).toBe(0);
     },
   );
 });

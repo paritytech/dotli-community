@@ -151,7 +151,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   let disconnectFailure: Error | null = null;
   const defaultPresync = Promise.resolve();
   const lightClient: LightClient = {
-    createChainProvider(genesisHash) {
+    createChainTransport(genesisHash) {
       chains.push(genesisHash);
       const disconnect = vi.fn<() => void>(() => {
         const failure = disconnectFailure;
@@ -161,9 +161,12 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
         }
       });
       disconnects.push(disconnect);
-      return (): JsonRpcConnection => {
-        opened.push(genesisHash);
-        return { send: () => undefined, disconnect };
+      return {
+        provider: (): JsonRpcConnection => {
+          opened.push(genesisHash);
+          return { send: () => undefined, disconnect };
+        },
+        followLimit: Infinity,
       };
     },
     isChainSupported: () => true,

@@ -17,6 +17,7 @@ import {
 import type { SandboxBlockRelay } from '@dotli/bitswap';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
+import { isLoadedOutcome } from '@dotli/sandbox-wire';
 import {
   createAsyncTaskPool,
   formatDuration,
@@ -33,7 +34,6 @@ import {
 import type { CachedManifests } from '@dotli/storage';
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { readChatCapability } from './readChatCapability.js';
-import type { LoadingController } from './createLoadingController.js';
 import { describeError } from './describeError.js';
 import { beginAttempt, endJourney } from './journey.js';
 import type { LoadFailure } from './presentLoadFailure.js';
@@ -43,7 +43,7 @@ import { fromCachedManifest, toCachedManifest, type ProductManifests } from './c
 import { getProductFacts } from './getProductFacts.js';
 import type { NameSource } from './createNameSource.js';
 import { showNoContentError } from './showNoContentError.js';
-import { watchSandbox } from './watchSandbox.js';
+import type { SandboxLoad } from './watchSandboxLoad.js';
 import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
 import { startResolutionTrace, type CidCacheResult } from './startResolutionTrace.js';
@@ -92,16 +92,8 @@ export type LoaderPorts = {
      */
     acquirePageCore: () => Promise<Pick<CoreLease, 'release'>>;
   };
-  /** What the sandbox reports about its load. */
-  sandbox: {
-    /**
-     * Calls `callback` once, for the first outcome the sandbox reports on its content. Returns the function that
-     * removes it. Never throws.
-     */
-    onContentDone: LoadingController['onSandboxDone'];
-    /** Hears each message the sandbox sends about its load. Returns its unsubscribe. Never throws. */
-    onSandboxHeard: (listener: () => void) => () => void;
-  };
+  /** What the sandbox reported about its load. */
+  sandbox: Pick<SandboxLoad, 'outcome' | 'expectHeardWithin'>;
   /** The content's blocks as they pass through this window. */
   content: Pick<SandboxBlockRelay, 'onProgress'>;
 };
@@ -290,14 +282,11 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   }
 
   let resolveFailed = false;
-  // Set once the load waits for the content's outcome, which a failed load no longer does.
-  let stopSettlingOnContent: (() => void) | null = null;
   // Set once the load hears a refused wire version, which a failed load no longer does.
   let stopHearingMismatch: (() => void) | null = null;
   /** Reports the failure and shows its screen. Throws what the screen threw. */
   function failLoad(error: unknown): void {
     resolveFailed = true;
-    stopSettlingOnContent?.();
     stopHearingMismatch?.();
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
     const description = describeError(error, { readBackend: () => backend });
@@ -347,23 +336,25 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       });
     }
   }
-  // The content fetch outlives the handoff, so the trace waits for the sandbox's report. Subscribed before the
-  // handoff, since a cached archive can report before it returns.
+  // The content fetch outlives the handoff, so the trace waits for the sandbox's report.
   function settleOnContent(): void {
-    stopSettlingOnContent = ports.sandbox.onContentDone((outcome, failedStep) => {
-      if (resolveFailed) {
-        return;
-      }
-      pageTopbarAutoHide.setContentShown(outcome === 'loaded');
-      if (outcome === 'loaded') {
-        contentReport.log.event('Content loaded');
-        endJourney();
-        trace.finish('rendered');
-        return;
-      }
-      contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
-      trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
-    });
+    void ports.sandbox.outcome
+      .then(({ outcome, failedStep }) => {
+        if (resolveFailed) {
+          return;
+        }
+        const loaded = isLoadedOutcome(outcome);
+        pageTopbarAutoHide.setContentShown(loaded);
+        if (loaded) {
+          contentReport.log.event('Content loaded');
+          endJourney();
+          trace.finish('rendered');
+          return;
+        }
+        contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
+        trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+      })
+      .catch(contentReport.listener('product_loader.content_outcome'));
   }
   /** Resolves false when a failure heard during the render already ended the load, so nothing after it runs. */
   async function render(cid: string, manifests: ProductManifests): Promise<boolean> {
@@ -371,7 +362,6 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     enterStep('render_handoff');
     await coreHold;
     settleOnContent();
-    const sandbox = watchSandbox(ports.sandbox.onSandboxHeard, { timers });
     await ports.product.render({
       mode: 'subdomain',
       label,
@@ -386,11 +376,10 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       failAfterHandoff(error, 'a protocol version mismatch');
     });
     if (resolveFailed) {
-      sandbox.dispose();
       return false;
     }
     // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
-    void sandbox.expectWithin().catch((error: unknown) => {
+    void ports.sandbox.expectHeardWithin().catch((error: unknown) => {
       failAfterHandoff(error, 'a silent sandbox');
     });
     return true;

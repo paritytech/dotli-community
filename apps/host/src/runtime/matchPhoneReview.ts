@@ -4,15 +4,11 @@
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
 import { isRecord } from '@dotli/shared';
-import type {
-  CreateTransactionReview,
-  SignPayloadReview,
-  SignRawReview,
-  UserConfirmationReview,
-} from '@parity/truapi-host';
+import type { CreateTransactionReview, SignPayloadReview, SignRawReview } from '@parity/truapi-host';
 import { PHONE_METHODS, type PhoneMethod } from './phoneMethods.js';
 import { reportUnmatchablePhoneReview } from './phoneReport.js';
 import type { PhoneRequest } from './createPhoneRequestTracker.js';
+import type { ServedReview } from './hostCallbacks/servedRequests.js';
 
 /** Whether `request` is the one a review was shown for. */
 export type PhoneReviewMatch = (request: PhoneRequest) => boolean;
@@ -32,7 +28,7 @@ type MatchByRequestParams = {
  * match it returns reports a review or request that would not encode and answers false for it.
  */
 export function matchPhoneReview(
-  review: UserConfirmationReview,
+  review: ServedReview,
   { reportEncodeFailure = reportUnmatchablePhoneReview }: Params = {},
 ): PhoneReviewMatch | undefined {
   /**
@@ -132,7 +128,6 @@ export function matchPhoneReview(
     case 'AccountAlias':
     case 'CreateProof':
     case 'IdentityDisclosure':
-    case 'NftPurseDrain':
     case 'StatementStoreProductSign':
       return undefined;
   }

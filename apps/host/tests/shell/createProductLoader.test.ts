@@ -12,7 +12,9 @@ import { flush } from 'solid-js';
 import type { Backend } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
+import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
+import { createDeferred, withTimeout } from '@dotli/shared';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -20,9 +22,10 @@ import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageScreen } from '@dotli/ui';
 import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
-import { pageLoading, type SandboxOutcome } from '../../src/createLoadingController.js';
+import { pageLoading } from '../../src/createLoadingController.js';
 import type { NameSource } from '../../src/createNameSource.js';
 import { createProductLoader, type LoaderCidCache, type LoaderPorts } from '../../src/createProductLoader.js';
+import { SandboxSilentError, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { urlPillState } from '../../src/state/urlPillState.js';
 
@@ -278,7 +281,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // When the content loads, and the name is opened again
-    reportContent('loaded');
+    await reportContent('loaded');
     const nextAttempt = beginAttempt('doom');
 
     // Then
@@ -292,7 +295,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // When the download fails, and the name is opened again
-    reportContent('failed', 'archive_fetch');
+    await reportContent('failed', 'archive_fetch');
     const nextAttempt = beginAttempt('doom');
 
     // Then
@@ -310,7 +313,7 @@ describe('createProductLoader', () => {
 
     // When
     await timers.advance(30_000);
-    reportContent('loaded');
+    await reportContent('loaded');
 
     // Then
     expect(failures.map(failure => failure.error.kind)).toEqual(['sandbox-silent']);
@@ -332,11 +335,11 @@ describe('createProductLoader', () => {
         failures,
         recents,
         countForgotten,
-        countSandboxListeners,
         reportContent,
         listEvents,
         readResolution,
         distributions,
+        timers,
       } = setupLoader({
         published: { doom: 'bafy-base' },
         latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
@@ -346,7 +349,8 @@ describe('createProductLoader', () => {
 
       // When
       await loader.load('doom');
-      reportContent('loaded');
+      await reportContent('loaded');
+      await timers.advance(30_000);
 
       // Then
       expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
@@ -361,7 +365,6 @@ describe('createProductLoader', () => {
           metric => metric.name === 'dotli.e2e.slow_path' && metric.attributes?.['outcome'] === 'ok',
         ),
       ).toEqual([]);
-      expect(countSandboxListeners()).toBe(0);
     },
   );
 
@@ -374,7 +377,7 @@ describe('createProductLoader', () => {
 
     // When
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
-    reportContent('loaded');
+    await reportContent('loaded');
 
     // Then
     expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
@@ -401,18 +404,6 @@ describe('createProductLoader', () => {
     expect(counted('resolve.failure_screen')).toEqual([
       expect.objectContaining({ outcome: 'error', reason: 'TypeError' }),
     ]);
-  });
-
-  it('As a visitor with the app open, I meet a failure that ends the load and it stops waiting for the content', async () => {
-    // Given
-    const { loader, refuseWire, countContentCallbacks } = setupLoader({ published: { doom: 'bafy-base' } });
-    await loader.load('doom');
-
-    // When
-    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
-
-    // Then
-    expect(countContentCallbacks()).toBe(0);
   });
 
   it('As a visitor whose app frame never starts, I see the load fail and a protocol frame refusing the page later reaches no listener', async () => {
@@ -505,13 +496,16 @@ function setupLoader(params: Params = {}) {
   });
   const timers = createManualTimers();
   const failures: LoadFailure[] = [];
-  const contentDone = new Set<(outcome: SandboxOutcome, failedStep: string | undefined) => void>();
+  const loadOutcome = createDeferred<SandboxLoadReport>();
+  const heard = createDeferred<undefined>();
+  if (params.silentSandbox !== true) {
+    heard.resolve(undefined);
+  }
   const stored: string[] = [];
   const revalidated: [string, string, boolean][] = [];
   const recents: string[] = [];
   let forgotten = 0;
   const mismatchListeners = new Set<(error: ProtocolVersionMismatchError) => void>();
-  const sandboxListeners = new Set<() => void>();
   const published = params.published ?? {};
   const releaseCore = vi.fn();
   const names: NameSource = {
@@ -538,21 +532,14 @@ function setupLoader(params: Params = {}) {
       ),
     },
     sandbox: {
-      onContentDone(callback) {
-        contentDone.add(callback);
-        return () => {
-          contentDone.delete(callback);
-        };
-      },
-      onSandboxHeard(listener) {
-        sandboxListeners.add(listener);
-        if (params.silentSandbox !== true) {
-          queueMicrotask(listener);
-        }
-        return () => {
-          sandboxListeners.delete(listener);
-        };
-      },
+      outcome: loadOutcome.promise,
+      expectHeardWithin: () =>
+        withTimeout({
+          work: heard.promise,
+          ms: 30_000,
+          timeoutError: () => new SandboxSilentError(30_000),
+          timers,
+        }),
     },
     content: { onProgress: () => () => undefined },
   } satisfies LoaderPorts;
@@ -631,15 +618,11 @@ function setupLoader(params: Params = {}) {
     listEvents: () => debug.map(event => `${event.layer}:${event.event}`),
     /** Returns how often the failure screen forgot the previous attempt's failure. */
     countForgotten: () => forgotten,
-    /** Returns how many listeners still hear the sandbox. */
-    countSandboxListeners: () => sandboxListeners.size,
-    /** Returns how many callbacks still wait for the content's outcome. */
-    countContentCallbacks: () => contentDone.size,
     /** Returns how many listeners still hear a protocol frame refuse this page's wire. */
     countMismatchListeners: () => mismatchListeners.size,
     /** A protocol frame rebuilt from a newer release refusing this page's wire. */
     refuseWire,
-    /** The sandbox reporting its content's outcome, once. */
+    /** The sandbox reporting its content's outcome, once. Resolves after the load has handled it. */
     reportContent,
   };
 
@@ -651,12 +634,10 @@ function setupLoader(params: Params = {}) {
     }
   }
 
-  function reportContent(outcome: SandboxOutcome, failedStep?: string): void {
-    const callbacks = [...contentDone];
-    contentDone.clear();
-    for (const callback of callbacks) {
-      callback(outcome, failedStep);
-    }
+  async function reportContent(outcome: SandboxLoadOutcome, failedStep?: string): Promise<void> {
+    loadOutcome.resolve({ outcome, failedStep });
+    // Queued after the load's own reader, so it runs once that has handled the outcome.
+    await loadOutcome.promise;
   }
 }
 

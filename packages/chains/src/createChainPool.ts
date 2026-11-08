@@ -5,24 +5,23 @@
 // spread the chain's follows over as many connections as its transport's follow limit needs. An entry closes
 // `destroyDelay` after its last lease is released, and at once when any lane's transport halts. While someone watches
 // the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A pause closes
-// every lane's connection under the same leases, and a resume opens them again.
+// every lane's connection under the same leases, and a resume opens them again. A local provider's lease takes the
+// rebuilt chain after a halt, behind the pool's redial, and a remote session ends at its chain's halt.
 
-import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 import { createReporter } from '@dotli/metrics';
-import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
+import { createAsyncTaskPool, createListenerSet, log, realTimers, type ListenerSet, type Timers } from '@dotli/shared';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
-import { chainLaneOpenMetric, chainPoolCloseMetric, createChainLanes, type ChainLanes } from './createChainLanes.js';
+import { chainLaneOpenMetric } from './chainLaneOpenMetric.js';
+import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
+import { createChainLanes, type ChainLanes } from './createChainLanes.js';
+import { createChainRedial } from './createChainRedial.js';
+import { createHealingLease } from './createHealingLease.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 
 const protocolReport = createReporter({ flow: 'protocol' });
-
-/** A provider whose connections also hear when their chain's transport halts. */
-export type LeaseProvider = (
-  onMessage: (message: JsonRpcMessage) => void,
-  onHalt?: (error?: unknown) => void,
-) => JsonRpcConnection;
 
 /** One chain as the pool holds it, for an observer that must not hold it too. */
 export type ChainActivity = {
@@ -50,6 +49,13 @@ type Params = {
   createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
   /** How long a chain outlives its last lease, in ms. `Infinity` keeps it. */
   destroyDelay?: number;
+  /**
+   * For a pool whose transports ride the protocol frame: whether that frame is down, which holds back a lease that
+   * halted with it.
+   */
+  isFrameDown?: () => boolean;
+  /** The clock and timers the pool runs on. */
+  timers?: Timers;
 };
 
 type ConnectRemoteParams = Parameters<ChainBrokerManager['connectRemote']>[0] & {
@@ -66,11 +72,11 @@ export type ChainPool = {
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
-   * A provider whose connections are leases on the chain, or `null` when this context cannot reach it. Calling the
-   * provider throws when the chain's transport is gone and cannot be built again by then. `holder` names the lease in
-   * debug logs.
+   * A provider whose connections are leases on the chain that take the rebuilt chain after a halt, or `null` when this
+   * context cannot reach it. Calling the provider throws when no transport can be had for the chain at that call.
+   * `holder` names the lease in debug logs.
    */
-  getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): LeaseProvider | null;
+  getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
   status(genesisHash: string): ConnectionStatus;
   /** Hears each change of the chain's status, and returns the unsubscribe. */
@@ -82,8 +88,8 @@ export type ChainPool = {
    */
   watch(watcher: ChainPoolWatcher): () => void;
   /**
-   * Closes every chain and its sessions, without telling them of a halt. Never throws, and reports a chain that fails
-   * to close.
+   * Ends every healing lease, and closes every chain and its sessions without telling them of a halt. Never throws, and
+   * reports a lease or a chain that fails to close.
    */
   disconnectAll(): void;
   /**
@@ -99,12 +105,18 @@ export type ChainPool = {
   resume(): void;
 };
 
+/** What a pool's owner may tell it from outside: pause and resume. */
+export type ChainPoolControl = Pick<ChainPool, 'pause' | 'resume'>;
+
 type Entry = {
   readonly key: string;
   readonly lanes: ChainLanes;
   leases: number;
-  destroyTimer: ReturnType<typeof setTimeout> | null;
+  /** The pending destroy's timer handle, `null` while none is pending. */
+  destroyTimer: unknown;
   live: boolean;
+  /** Why the entry halted, for a lease that took it as it halted and so missed the halt. `null` otherwise. */
+  halt: { error: unknown } | null;
   following: boolean;
   watchFollow: { disconnect: () => void } | null;
 };
@@ -116,6 +128,26 @@ type LeaseParams<Connection> = {
   connection: Connection;
   /** Names the lease in debug logs. */
   holder: string;
+};
+
+type AttachLocalParams = {
+  /** The chain to lease. */
+  genesisHash: string;
+  /** Names the lease in debug logs. */
+  holder: string;
+  /** Hears the lease's messages. */
+  onMessage: (message: JsonRpcMessage) => void;
+  /** Hears the chain's halt, including one that came while the lease was taken. */
+  onHalt: (error?: unknown) => void;
+};
+
+type ConnectHealingParams = {
+  /** The chain, lowercase. */
+  key: string;
+  /** Names the lease in debug logs. */
+  holder: string;
+  /** Hears every message of every lease the healing lease takes. */
+  onMessage: (message: JsonRpcMessage) => void;
 };
 
 type HaltOnFailureParams = {
@@ -138,18 +170,27 @@ const POOL_TAG = '[dot.li chain-pool]';
  * A pool that shares each chain's lanes among its leases, and closes them `destroyDelay` after the last one.
  *
  * @example
- * const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: 10_000 });
+ * const pool = createChainPool({ createTransport: createChainTransport, destroyDelay: 10_000 });
  * const connection = pool.getLocalProvider(genesisHash, { holder: 'balances' })?.(onMessage);
  */
-export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTROY_DELAY_MS }: Params): ChainPool {
+export function createChainPool({
+  createTransport,
+  destroyDelay = DEFAULT_DESTROY_DELAY_MS,
+  isFrameDown = () => false,
+  timers = realTimers,
+}: Params): ChainPool {
   const entries = new Map<string, Entry>();
   // Outlives the entries, so a chain that halts and is rebuilt keeps its warning count.
   const warners = new Map<string, BrokerWarner>();
   const statuses = new Map<string, ConnectionStatus>();
   const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
   let sessionCounter = 0;
+  let healCounter = 0;
   let paused = false;
   const watchers = createListenerSet<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
+  const redial = createChainRedial({ status: key => statuses.get(key) ?? 'disconnected', isFrameDown, timers });
+  const waits = createAsyncTaskPool({ poolSize: 1, timers });
+  const healingLeases = new Set<JsonRpcConnection>();
 
   function getActivity(entry: Entry): ChainActivity {
     return {
@@ -178,11 +219,12 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       return;
     }
     entry.live = false;
+    entry.halt = halt;
     log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
     // The lanes drop it with the other consumers.
     entry.watchFollow = null;
     if (entry.destroyTimer !== null) {
-      clearTimeout(entry.destroyTimer);
+      timers.clearTimeout(entry.destroyTimer);
       entry.destroyTimer = null;
     }
     entries.delete(entry.key);
@@ -323,6 +365,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       leases: 0,
       destroyTimer: null,
       live: true,
+      halt: null,
       following: false,
       watchFollow: null,
     };
@@ -344,7 +387,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       haltOnFailure({ entry, action: 'resume' });
     }
     if (entry.destroyTimer !== null) {
-      clearTimeout(entry.destroyTimer);
+      timers.clearTimeout(entry.destroyTimer);
       entry.destroyTimer = null;
     }
     // A chain that failed to reopen is halted, so the lease takes the chain built in its place.
@@ -363,7 +406,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
-    entry.destroyTimer = setTimeout(() => {
+    entry.destroyTimer = timers.setTimeout(() => {
       entry.destroyTimer = null;
       destroy(entry, null);
     }, destroyDelay);
@@ -402,6 +445,92 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     };
   }
 
+  /** Takes the chain for a local provider, and lets it go idle once its caller has had this turn to connect. */
+  function acquireForProvider(genesisHash: string): Entry | null {
+    const entry = acquire(genesisHash);
+    if (entry === null) {
+      return null;
+    }
+    // Callers call the provider at once. One that never does must not keep
+    // the entry for good, so its countdown starts once this turn is over.
+    queueMicrotask(() => {
+      idle(entry);
+    });
+    return entry;
+  }
+
+  /**
+   * A healing lease's attach: leases the chain as the pool holds it now, on the object wire. Returns `null` when no
+   * transport can be had, and throws as the chain's connect throws.
+   */
+  function attachLocal({ genesisHash, holder, onMessage, onHalt }: AttachLocalParams): JsonRpcConnection | null {
+    const entry = acquire(genesisHash);
+    if (entry === null) {
+      return null;
+    }
+    const sessionId = `local:${sessionCounter.toString(36)}`;
+    sessionCounter += 1;
+    let connection: JsonRpcConnection;
+    try {
+      // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
+      connection = lease({
+        entry,
+        connection: entry.lanes.connect({
+          sessionId,
+          onMessage: onMessage as (message: unknown) => void,
+          wireMode: 'object',
+          onHalt,
+        }),
+        holder,
+      }) as JsonRpcConnection;
+    } catch (error) {
+      idle(entry);
+      throw error;
+    }
+    // A halt while the lease is taken may not reach it, so a lease on an entry that is no longer live hears it here.
+    if (!entry.live) {
+      onHalt(entry.halt?.error);
+    }
+    return connection;
+  }
+
+  /** A healing lease on `key`, which `disconnectAll` ends while it is held. */
+  function connectHealing({ key, holder, onMessage }: ConnectHealingParams): JsonRpcConnection {
+    healCounter += 1;
+    const connection = createHealingLease({
+      key,
+      attach: (onLeaseMessage, onHalt) => attachLocal({ genesisHash: key, holder, onMessage: onLeaseMessage, onHalt }),
+      redial,
+      waits,
+      waitPool: `chain_heal:${String(healCounter)}`,
+      logTag: POOL_TAG,
+      holder,
+      onMessage,
+    });
+    const held: JsonRpcConnection = {
+      send: connection.send,
+      disconnect() {
+        healingLeases.delete(held);
+        connection.disconnect();
+      },
+    };
+    healingLeases.add(held);
+    return held;
+  }
+
+  /** Ends a healing lease for `disconnectAll`, which goes on with the others when one fails. */
+  function endHealing(held: JsonRpcConnection): void {
+    try {
+      held.disconnect();
+    } catch (error) {
+      protocolReport.defect(error, {
+        step: 'chain_pool_close',
+        metric: chainPoolCloseMetric,
+        message: `${POOL_TAG} ending a healing lease failed:`,
+      });
+    }
+  }
+
   return {
     connectRemote({ genesisHash, connectionId, onMessage, onHalt }) {
       const entry = acquire(genesisHash);
@@ -428,46 +557,18 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     },
 
     getLocalProvider(genesisHash, { holder = 'local' } = {}) {
-      const entry = acquire(genesisHash);
+      const entry = acquireForProvider(genesisHash);
       if (entry === null) {
         return null;
       }
-      // Callers call the provider at once. One that never does must not keep
-      // the entry for good, so its countdown starts once this turn is over.
-      queueMicrotask(() => {
-        idle(entry);
-      });
-      function connectLease(
-        onMessage: (message: JsonRpcMessage) => void,
-        onHalt?: (error?: unknown) => void,
-      ): JsonRpcConnection {
-        const current = acquire(genesisHash);
-        if (current === null) {
-          throw new Error(`No chain transport for ${genesisHash}`);
-        }
-        const sessionId = `local:${sessionCounter.toString(36)}`;
-        sessionCounter += 1;
-        try {
-          // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
-          return lease({
-            entry: current,
-            connection: current.lanes.connect({
-              sessionId,
-              onMessage: onMessage as (message: unknown) => void,
-              wireMode: 'object',
-              onHalt: onHalt ?? null,
-            }),
-            holder,
-          }) as JsonRpcConnection;
-        } catch (error) {
-          idle(current);
-          throw error;
-        }
-      }
-      return connectLease;
+      const { key } = entry;
+      return onMessage => connectHealing({ key, holder, onMessage });
     },
 
     disconnectAll() {
+      for (const held of [...healingLeases]) {
+        endHealing(held);
+      }
       for (const entry of [...entries.values()]) {
         destroy(entry, null);
       }

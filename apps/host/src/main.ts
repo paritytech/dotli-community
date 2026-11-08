@@ -47,6 +47,7 @@ import { startShellState } from './startShellState.js';
 import { createProductLoader } from './createProductLoader.js';
 import { createPageCidCache, type EarlyCidRead } from './createPageCidCache.js';
 import { startSandboxContent } from './startSandboxContent.js';
+import { watchSandboxLoad, type SandboxLoad } from './watchSandboxLoad.js';
 import { startShieldAutoHide } from './startShieldAutoHide.js';
 import { createNameSource, type RpcResolver } from './createNameSource.js';
 import type { H160Address } from './h160Address.js';
@@ -85,6 +86,8 @@ type Shell = {
   /** The debug panel's flow for this page load, and the Sentry trace's id. */
   flowId: string;
   sandboxChannel: SandboxChannel;
+  /** What the sandbox said about the page's load. */
+  sandboxLoad: SandboxLoad;
   startup: HostStartup;
   productFrame: ProductFrame;
 };
@@ -134,6 +137,8 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
     },
     report: reportSandboxHandlerFailure,
   });
+  // The page never stops watching its sandbox's load early, so the watch's `dispose` goes unused.
+  const sandboxLoad = watchSandboxLoad(sandboxChannel);
 
   const flowId = createRandomId();
   if (debugMode.enabled) {
@@ -156,7 +161,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
     },
   });
   const productFrame = startup.bridge.startProductFrame(sandboxChannel);
-  return { flowId, sandboxChannel, startup, productFrame };
+  return { flowId, sandboxChannel, sandboxLoad, startup, productFrame };
 }
 
 /** Tells the debug panel which route the page took, with the path as the settings left it. */
@@ -246,10 +251,7 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
     ports: {
       product: shell.productFrame,
       core: bridge,
-      sandbox: {
-        onContentDone: pageLoading.onSandboxDone,
-        onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
-      },
+      sandbox: shell.sandboxLoad,
       content: relay,
     },
     cidCache: createPageCidCache({ names, cidRead, runWhenIdle: runWhenPageIdle }),
@@ -274,8 +276,8 @@ function runWhenPageIdle(callback: () => void): void {
 
 /** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
 function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBlockRelay {
-  // The screen follows the sandbox for the page's life, so the unsubscribe goes unused.
-  pageLoading.listenForSandboxStatus(shell.sandboxChannel);
+  // The screen clears at the sandbox's first done.
+  void shell.sandboxLoad.cleared.then(pageLoading.dismissLoading).catch(contentReport.listener('page_loading.dismiss'));
   const blockCache = skipArchiveCache
     ? null
     : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
@@ -293,7 +295,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
   startSandboxContent({
     relay,
     cached: blockCache !== null,
-    onSandboxDone: pageLoading.onSandboxDone,
+    outcome: shell.sandboxLoad.outcome,
     prune() {
       void pageBlockCache.prune(BLOCK_CACHE_MAX_BYTES);
     },

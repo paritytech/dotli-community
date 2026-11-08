@@ -7,20 +7,16 @@
 
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
-import type { HostDevicePermissionRequest, RemotePermission, RemotePermissionRequest } from '@parity/truapi';
+import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
-import {
-  hasFrameDirective,
-  isEnforceableDevicePermission,
-  type EnforceablePermissionName,
-  type PermissionStatus,
-} from '../permissionPolicy.js';
+import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../permissionPolicy.js';
 import type { BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import { throwIfModalAborted } from '../throwIfModalAborted.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './createSubmitRateLimiter.js';
 import type { Notify } from './createNotificationAdapters.js';
 import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
+import { servedRequests, type ServeRule } from './servedRequests.js';
 import { getLastingStatus, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
@@ -75,51 +71,28 @@ export function createPromptPermission({
     _product: ProductContext,
     tag: HostDevicePermissionRequest,
   ): Promise<PermissionDecision> {
-    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
-    if (!isEnforceableDevicePermission(tag)) {
-      return 'AllowOnce';
-    }
-    return decidePromptPermission({ ...options, name: tag, kind: 'Device' }, modalScope);
+    return answerFromRule(servedRequests.getDeviceRule(tag), 'Device');
   }
 
   async function remotePermission(
     _product: ProductContext,
     request: RemotePermissionRequest,
   ): Promise<PermissionDecision> {
-    const gate = getRemotePermissionGate(request.permission.tag);
-    switch (gate.kind) {
+    return answerFromRule(servedRequests.getRemoteRule(request.permission.tag), 'Remote');
+  }
+
+  async function answerFromRule(rule: ServeRule, kind: PromptRequest['kind']): Promise<PermissionDecision> {
+    switch (rule.kind) {
       case 'grant':
         return 'AllowOnce';
       case 'refuse':
         throw new Error(ERRORS.UNSERVED_REQUEST);
       case 'prompt':
-        return decidePromptPermission({ ...options, name: gate.name, kind: 'Remote' }, modalScope);
+        return decidePromptPermission({ ...options, name: rule.name, kind }, modalScope);
     }
   }
 
   return { devicePermission, remotePermission };
-}
-
-/** How the host answers one remote permission: by asking the user, or at once. */
-type RemotePermissionGate =
-  { kind: 'prompt'; name: EnforceablePermissionName } | { kind: 'grant' } | { kind: 'refuse' };
-
-// The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
-// would offer a choice the host could not keep, so both are auto-granted. The browser core serves no balances and no
-// NFT purses, so their permissions are refused, by a rejection rather than a `Deny` the core would store.
-function getRemotePermissionGate(tag: RemotePermission['tag']): RemotePermissionGate {
-  switch (tag) {
-    case 'ChainSubmit':
-    case 'PreimageSubmit':
-    case 'StatementSubmit':
-      return { kind: 'prompt', name: tag };
-    case 'Remote':
-    case 'WebRtc':
-      return { kind: 'grant' };
-    case 'BalanceAccess':
-    case 'NftPurseRead':
-      return { kind: 'refuse' };
-  }
 }
 
 /** Only a question waits for the dialog queue. A stored answer needs no dialog, so it never waits behind one. */

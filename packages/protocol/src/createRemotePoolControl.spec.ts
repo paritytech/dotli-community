@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { denied, err, ok } from '@dotli/transport';
-import { createFramePauseSender } from './createFramePauseSender.js';
 import { createFrameRpc } from './createFrameRpc.js';
 import { createFakeFrame } from './createProtocolFrame.fake.js';
+import { createRemotePoolControl } from './createRemotePoolControl.js';
 import type { ProtocolStatus } from './frameTypes.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
@@ -36,17 +36,17 @@ function createPauseServer({ refuse = false }: { refuse?: boolean } = {}): Pause
   };
 }
 
-describe('createFramePauseSender', () => {
+describe('createRemotePoolControl', () => {
   let timers: ManualTimers;
 
   function settle(): Promise<void> {
     return timers.advance(0);
   }
 
-  function createSender(server: PauseServer, status: ProtocolStatus = 'ready') {
+  function createControl(server: PauseServer, status: ProtocolStatus = 'ready') {
     const fake = createFakeFrame({ serve: server.serve, status, timers });
     const rpc = createFrameRpc({ frame: fake.frame, timers });
-    return { fake, sender: createFramePauseSender({ frame: fake.frame, rpc }) };
+    return { fake, control: createRemotePoolControl({ frame: fake.frame, rpc }) };
   }
 
   beforeEach(() => {
@@ -56,12 +56,12 @@ describe('createFramePauseSender', () => {
   it('As a hidden host page, I tell my ready frame to pause and to resume', async () => {
     // Given
     const server = createPauseServer();
-    const { sender } = createSender(server);
+    const { control } = createControl(server);
 
     // When
-    sender.setPaused(true);
+    control.pause();
     await settle();
-    sender.setPaused(false);
+    control.resume();
     await settle();
 
     // Then
@@ -71,8 +71,8 @@ describe('createFramePauseSender', () => {
   it('As a host page whose frame is rebuilt while paused, I tell the new frame to pause once it is ready', async () => {
     // Given a paused host whose first frame heard it
     const server = createPauseServer();
-    const { fake, sender } = createSender(server);
-    sender.setPaused(true);
+    const { fake, control } = createControl(server);
+    control.pause();
     await settle();
 
     // When
@@ -88,10 +88,10 @@ describe('createFramePauseSender', () => {
   it('As a host page, I never boot a frame to say I pause', async () => {
     // Given
     const server = createPauseServer();
-    const { fake, sender } = createSender(server, 'idle');
+    const { fake, control } = createControl(server, 'idle');
 
     // When
-    sender.setPaused(true);
+    control.pause();
     await settle();
 
     // Then
@@ -103,10 +103,10 @@ describe('createFramePauseSender', () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const server = createPauseServer({ refuse: true });
-    const { sender } = createSender(server);
+    const { control } = createControl(server);
 
     // When
-    sender.setPaused(true);
+    control.pause();
     await settle();
 
     // Then
@@ -118,10 +118,10 @@ describe('createFramePauseSender', () => {
     // Given a ready frame that refuses the pause
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const server = createPauseServer({ refuse: true });
-    const { fake, sender } = createSender(server);
+    const { fake, control } = createControl(server);
 
     // When the pause is sent and the frame goes down before the refusal is heard
-    sender.setPaused(true);
+    control.pause();
     fake.lose(new Error('gone'));
     await settle();
 
@@ -132,14 +132,14 @@ describe('createFramePauseSender', () => {
   it('As a host page whose frame is down, I resume and the next ready frame is told nothing', async () => {
     // Given a paused host whose frame went down
     const server = createPauseServer();
-    const { fake, sender } = createSender(server);
-    sender.setPaused(true);
+    const { fake, control } = createControl(server);
+    control.pause();
     await settle();
     fake.lose(new Error('gone'));
     fake.setStatus('booting');
 
     // When the host resumes while the frame is down, and the next frame is ready
-    sender.setPaused(false);
+    control.resume();
     fake.setStatus('ready');
     await settle();
 
@@ -150,11 +150,11 @@ describe('createFramePauseSender', () => {
   it('As a hidden host page, I pause and resume with no settle between and my ready frame hears both in order', async () => {
     // Given
     const server = createPauseServer();
-    const { sender } = createSender(server);
+    const { control } = createControl(server);
 
     // When
-    sender.setPaused(true);
-    sender.setPaused(false);
+    control.pause();
+    control.resume();
     await settle();
 
     // Then

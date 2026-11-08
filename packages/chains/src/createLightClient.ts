@@ -5,7 +5,6 @@
 // product. Each chain comes from its genesis hash through truapi-provider's bundled catalog.
 
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import type { JsonRpcProvider } from 'polkadot-api';
 import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { createAsyncTaskPool, createListenerSet, getErrorMessage, log, markHandled } from '@dotli/shared';
@@ -19,7 +18,7 @@ import {
   type ChainSyncTap,
   type ParsedRpcMessage,
 } from './createChainSyncReporter.js';
-import type { ChainTransportHooks } from './transportHooks.js';
+import { LIGHT_CLIENT_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 
 const report = createReporter({ flow: 'protocol' });
 
@@ -102,10 +101,11 @@ export type LightClientChange =
 
 export type LightClient = {
   /**
-   * Returns `null` for a genesis the active network does not define. smoldot never reconnects underneath its
-   * consumers, so a failure or an unrequested stream end halts the chain.
+   * Returns the chain's transport, which takes the light client's follow limit, or `null` for a genesis the active
+   * network does not define. smoldot never reconnects underneath its consumers, so a failure or an unrequested stream
+   * end halts the chain.
    */
-  createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
+  createChainTransport: (genesisHash: string, hooks?: ChainTransportHooks) => ChainTransport | null;
   /** Whether the active network defines the genesis. */
   isChainSupported: (genesisHash: string) => boolean;
   /** The light client's state now, as a copy. */
@@ -147,7 +147,7 @@ export class LightClientCapError extends Error {
  *
  * @example
  * const lightClient = createLightClient(createLightClientDeps(null, false)); // no session store, not local
- * const provider = lightClient.createChainProvider(genesisHash); // null for a genesis the network does not define
+ * const transport = lightClient.createChainTransport(genesisHash); // null for a genesis the network does not define
  */
 export function createLightClient({
   db,
@@ -270,7 +270,7 @@ export function createLightClient({
     return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
   }
 
-  function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
+  function createChainTransport(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport | null {
     const key = genesisHash.toLowerCase();
     if (!isChainSupported(key)) {
       log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
@@ -406,11 +406,11 @@ export function createLightClient({
         },
       };
     }
-    return provider;
+    return { provider, followLimit: LIGHT_CLIENT_FOLLOW_LIMIT };
   }
 
   return {
-    createChainProvider,
+    createChainTransport,
     isChainSupported,
     status: () => ({ fatal, db: new Map(dbOutcomes) }),
     subscribe: listeners.subscribe,

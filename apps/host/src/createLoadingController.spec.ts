@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
-import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
+import { getActiveTldSuffix } from '@dotli/config';
 import {
   createLoadingController,
   ERASE_MS,
@@ -13,30 +12,21 @@ import {
   TYPE_MS,
   type LoadingController,
   type LoadingPhase,
-  type SandboxFailedStep,
-  type SandboxOutcome,
 } from './createLoadingController.js';
 import { atom, type WritableAtom } from 'nanostores';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { PageContent } from '@dotli/ui';
 import { loadingState, type StepPart } from './state/loadingState.js';
-import { rethrow } from './testing/rethrow.js';
 
 /** A controller over a page of its own, disposed with its timers when the case ends. */
 type Stand = {
   controller: LoadingController;
   pageContent: WritableAtom<PageContent>;
-  /** Hears the sandbox as the host wires it, through the channel that checks the origin. Returns the stop. */
-  listenForSandbox: () => () => void;
-  /** Posts a loading status to the page from the sandbox's origin. */
-  postSandboxStatus: (status: Record<string, unknown>) => void;
 };
 
 type Params = {
   reducedMotion?: boolean;
 };
-
-const SANDBOX_ORIGIN = 'http://myapp.app.localhost:5173';
 
 const STALL_PHASES: LoadingPhase[] = [
   {
@@ -296,83 +286,6 @@ describe('The loading controller drives the loading store', () => {
     expect(loadingState.get().phase).toBe('gone');
   });
 
-  it.each<{
-    story: string;
-    status: Record<string, unknown>;
-    heard: string;
-    calls: [SandboxOutcome, SandboxFailedStep][];
-  }>([
-    { story: 'for a loaded app', status: { outcome: 'loaded' }, heard: 'its outcome', calls: [['loaded', undefined]] },
-    {
-      story: 'for content that failed to load',
-      status: { outcome: 'failed', failedStep: 'content_fetch' },
-      heard: 'the failure and the step it stopped at',
-      calls: [['failed', 'content_fetch']],
-    },
-    {
-      story: 'with a failed step that is not a short token',
-      status: { outcome: 'failed', failedStep: 'Failed: <script>' },
-      heard: 'the failure with the step dropped before it can become a tag',
-      calls: [['failed', undefined]],
-    },
-    {
-      story: 'at a password prompt',
-      status: {},
-      heard: 'nothing while they keep waiting for the content',
-      calls: [],
-    },
-  ])(
-    'As a visitor, I get the sandbox done message $story and the loading screen dismisses while the done callbacks hear $heard',
-    ({ status, calls }) => {
-      // Given
-      const { controller, listenForSandbox, postSandboxStatus } = setupController();
-      const onDone = vi.fn();
-      listenForSandbox();
-      controller.onSandboxDone(onDone);
-
-      // When
-      postSandboxStatus({ done: true, ...status });
-
-      // Then
-      expect(loadingState.get().phase).toBe('dismissing');
-      expect(onDone.mock.calls).toEqual(calls);
-    },
-  );
-
-  it('As a dotli developer, I stop hearing the sandbox and a later done message leaves the loading screen up', () => {
-    // Given
-    const { controller, listenForSandbox, postSandboxStatus } = setupController();
-    const onDone = vi.fn();
-    const stopListening = listenForSandbox();
-    controller.onSandboxDone(onDone);
-
-    // When
-    stopListening();
-    postSandboxStatus({ done: true, outcome: 'loaded' });
-
-    // Then
-    expect(loadingState.get().phase).toBe('active');
-    expect(onDone).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli developer, I remove my done callback and the sandbox finishing does not call it', () => {
-    // Given
-    const { controller, listenForSandbox, postSandboxStatus } = setupController();
-    const removed = vi.fn();
-    const kept = vi.fn();
-    listenForSandbox();
-    const removeDone = controller.onSandboxDone(removed);
-    controller.onSandboxDone(kept);
-
-    // When
-    removeDone();
-    postSandboxStatus({ done: true, outcome: 'loaded' });
-
-    // Then
-    expect(removed).not.toHaveBeenCalled();
-    expect(kept.mock.calls).toEqual([['loaded', undefined]]);
-  });
-
   it('As a visitor, I see the loading screen hidden and every loading timer stops while the screen is marked gone', () => {
     // Given a crawling bar, a rotating explanation and an armed stall watch
     const { controller } = setupController();
@@ -490,24 +403,6 @@ describe('The loading controller drives the loading store', () => {
     // Then the line no longer changes
     expect(readExplanation()).toBe(settled);
     expect(loadingState.get().explanationOpacity).toBe(1);
-  });
-
-  it('As a visitor, I get a second done message from the sandbox and the done callbacks run only once', () => {
-    // Given
-    const { controller, listenForSandbox, postSandboxStatus } = setupController();
-    const onDone = vi.fn();
-    listenForSandbox();
-    controller.onSandboxDone(onDone);
-    postSandboxStatus({ done: true, outcome: 'loaded' });
-    vi.advanceTimersByTime(FADE_MS);
-
-    // When
-    postSandboxStatus({ done: true, outcome: 'loaded' });
-
-    // Then
-    expect(onDone).toHaveBeenCalledTimes(1);
-    expect(loadingState.get().phase).toBe('gone');
-    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
@@ -682,11 +577,9 @@ function setupController({ reducedMotion = false }: Params = {}): Stand {
   // settle a real macrotask after each one.
   vi.useFakeTimers();
   resetAllStoresForTests();
-  const page = new EventTarget();
   const pageContent = atom<PageContent>('page');
   const frameTimers = new Map<number, ReturnType<typeof setTimeout>>();
   let lastFrame = 0;
-  let sandboxChannel: StartedSandboxChannel | null = null;
   const controller = createLoadingController({
     prefersReducedMotion: () => reducedMotion,
     // A frame every 16ms on the faked clock. Node's timers are objects, so each gets a number like a frame handle.
@@ -712,24 +605,11 @@ function setupController({ reducedMotion = false }: Params = {}): Stand {
   });
   onTestFinished(() => {
     controller.dispose();
-    sandboxChannel?.stop();
     vi.useRealTimers();
   });
   return {
     controller,
     pageContent,
-    listenForSandbox() {
-      sandboxChannel = startSandboxChannel({ target: page, isTrustedOrigin: isSandboxOrigin, report: rethrow });
-      return controller.listenForSandboxStatus(sandboxChannel);
-    },
-    postSandboxStatus(status) {
-      page.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: 'dotli:loading-status', ...status },
-          origin: SANDBOX_ORIGIN,
-        }),
-      );
-    },
   };
 }
 

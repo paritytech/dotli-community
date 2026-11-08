@@ -4,7 +4,6 @@
 // The loading screen's behaviour. It writes the loading store and touches no DOM.
 
 import { getActiveTldSuffix } from '@dotli/config';
-import type { SandboxChannel } from '@dotli/sandbox-wire';
 import { realTimers, type Timers } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { pageScreen, prefersReducedMotion, type PageContent } from '@dotli/ui';
@@ -24,11 +23,6 @@ export type LoadingPhase = {
 };
 
 export type LoadingStage = 'starting' | 'relay' | 'assetHub' | 'resolving' | 'content' | 'preparing';
-
-export type SandboxOutcome = 'loaded' | 'failed';
-
-/** Becomes a Sentry tag from another origin, so anything but a short snake_case token is dropped. */
-export type SandboxFailedStep = string | undefined;
 
 /** Animation frames for the typed explanation, and their clock. */
 export type LoadingFrames = {
@@ -120,8 +114,6 @@ export const FADE_MS = 300;
 // A fixed budget rather than a per-character delay, so any sentence lands inside the rotation interval.
 export const ERASE_MS = 1_400;
 export const TYPE_MS = 3_600;
-
-const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
 
 /** The screen is live from first paint, so a full-page screen ends it even before any load started. */
 export function createLoadingController({
@@ -470,41 +462,6 @@ export function createLoadingController({
     }
   }
 
-  // One-shot, for telemetry that must wait until the content fetch has dialled the Bulletin Chain.
-  const sandboxDoneCallbacks: ((outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void)[] = [];
-
-  function onSandboxDone(callback: (outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void): () => void {
-    sandboxDoneCallbacks.push(callback);
-    return removeSandboxDoneCallback;
-
-    // A callback already called is gone, so this does nothing then.
-    function removeSandboxDoneCallback(): void {
-      const index = sandboxDoneCallbacks.indexOf(callback);
-      if (index !== -1) {
-        sandboxDoneCallbacks.splice(index, 1);
-      }
-    }
-  }
-
-  /** Returns the unsubscribe. */
-  function listenForSandboxStatus(channel: SandboxChannel): () => void {
-    return channel.on('dotli:loading-status', ({ done, outcome, failedStep: step }) => {
-      // A `done` without an outcome only clears the overlay for an early sandbox prompt such as the
-      // archive password, so the callbacks wait for the outcome.
-      if (done !== true) {
-        return;
-      }
-      dismissLoading();
-      if (outcome === undefined) {
-        return;
-      }
-      const failedStep = outcome === 'failed' && step !== undefined && FAILED_STEP_RE.test(step) ? step : undefined;
-      for (const callback of sandboxDoneCallbacks.splice(0)) {
-        callback(outcome, failedStep);
-      }
-    });
-  }
-
   return {
     /**
      * Sets the listener that hears each time the bar stops afresh, replacing any previous one. Returns the function
@@ -538,13 +495,6 @@ export function createLoadingController({
     setLoadingWarning,
     /** Fills the bar and fades the screen out. Never throws. */
     dismissLoading,
-    /**
-     * Calls `callback` once, with the sandbox's first outcome on its content. Returns the function that removes it,
-     * which does nothing once it was called. Never throws.
-     */
-    onSandboxDone,
-    /** Drives the screen from the sandbox's status on `channel`. Returns the unsubscribe. Throws only as `channel.on` does. */
-    listenForSandboxStatus,
     /**
      * Stops following the page's content, the crawl, the stage messages, the stall watch and the fade, leaving the
      * screen as it is. Throws only as the unsubscribe `pageContent` returned does.

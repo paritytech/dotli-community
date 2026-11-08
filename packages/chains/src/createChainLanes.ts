@@ -5,9 +5,11 @@
 // the follow limit its transport states. Lane 0 lives as long as the lanes. Another lane opens when no lane has room
 // and closes once no session is on it.
 
-import { createReporter, defineCount } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import { runEvery } from '@dotli/shared';
 import type { BrokerConnection } from './brokerMessages.js';
+import { chainLaneOpenMetric } from './chainLaneOpenMetric.js';
+import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
 import type { BrokerWarner } from './createBrokerWarner.js';
 import { createChainBroker, type ChainBroker } from './createChainBroker.js';
 import { createLaneRouter, type LaneConnectParams, type LaneHandle } from './createLaneRouter.js';
@@ -16,20 +18,6 @@ import { createWatchGuard, type WatchGuard } from './createWatchGuard.js';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 
 const report = createReporter({ flow: 'protocol' });
-
-/**
- * Count. A chain's lane that could not be built, a consumer's session that could not open on another lane, or the
- * network panel's follow that could not open, told apart by the `step` tag (`chain_lane_build`, `chain_lane_session`,
- * `chain_pool_watch_follow`). Tagged `outcome` (error) and `reason` (the error's name).
- */
-export const chainLaneOpenMetric = defineCount<'error'>('chain_pool.lane_open');
-
-/**
- * Count. A held chain whose teardown threw as the pool closed it, whose pause or resume threw, or whose empty extra
- * lane threw as it closed, told apart by the `step` tag (`chain_pool_close`, `chain_pool_pause`, `chain_pool_resume`,
- * `chain_lane_close`). Tagged `outcome` (error) and `reason` (the error's name).
- */
-export const chainPoolCloseMetric = defineCount<'error'>('chain_pool.close');
 
 /** The lanes of one chain, which keep each connection under the chain's follow limit. */
 export type ChainLanes = NonNullable<ReturnType<typeof createChainLanes>>;

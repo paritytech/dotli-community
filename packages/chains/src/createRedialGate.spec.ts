@@ -61,4 +61,21 @@ describe('createRedialGate', () => {
     // Then
     expect([whileTheWaitHadGrown, afterTheUptime]).toEqual([false, true]);
   });
+
+  it('As a chain pool, I ask how long a shut gate waits and hear the time left, then 0 once it opens', async () => {
+    // Given a gate that dialled once after a halt, so it is shut for 1 s
+    const timers = createManualTimers();
+    const gate = createRedialGate({ timers });
+    gate.noteHalt();
+    gate.tryDial();
+
+    // When the clock is at 400 ms, and then at 1 000 ms
+    await timers.advance(400);
+    const waitAt400 = gate.waitMs();
+    await timers.advance(600);
+    const waitAt1000 = gate.waitMs();
+
+    // Then
+    expect([waitAt400, waitAt1000]).toEqual([600, 0]);
+  });
 });

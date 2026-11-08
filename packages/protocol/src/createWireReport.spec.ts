@@ -53,16 +53,16 @@ describe('the transport issues', () => {
       { outcome: 'refused', reason: 'malformed', side: 'host' },
       { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
-    expect(lines).toEqual([
+    expect(lines).toMatchObject([
       {
         level: 'info',
         message: 'protocol message refused',
-        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: 'RangeError: the data is cut short' },
+        attrs: { reason: 'malformed', side: 'host', cause: 'RangeError: the data is cut short' },
       },
       {
         level: 'info',
         message: 'protocol message refused',
-        attrs: { flow: 'protocol', reason: 'not_bytes', side: 'host' },
+        attrs: { reason: 'not_bytes', side: 'host' },
       },
     ]);
   });

@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
-import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
-import type { ChainPool } from '@dotli/chains';
 import { FakeWebSocket } from '@dotli/chains/testing';
 import { fromHex, isRecord } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
@@ -16,7 +12,6 @@ import {
   createFakeSocketChain,
   type FakeHostChainSources,
   type FakeRemoteChains,
-  type RemoteConnection,
 } from './createHostChainPool.fake.js';
 import { createChainConnect } from './createChainConnect.js';
 import { createHostChainPool, type FrameStatusSource } from './createHostChainPool.js';
@@ -29,8 +24,6 @@ type Params = {
 
 const READY_FRAME: FrameStatusSource = { getProtocolStatus: () => 'ready' };
 
-const HALTED = { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' };
-
 const FILTER = [{ matchAny: [`0x${'ab'.repeat(32)}`] }];
 
 describe('createChainConnect', () => {
@@ -42,55 +35,6 @@ describe('createChainConnect', () => {
     people = getActiveServicesConfig().people.genesis;
     assetHub = getActiveServicesConfig().assethub.genesis;
     sources = createFakeHostChainSources();
-  });
-
-  it('As an operator, I watch a re-lease that finds no transport and it is counted', async () => {
-    // Given
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    must(sources.upstreams[0], 'upstream').halt();
-    sources.createRemoteChain.mockReturnValue(null);
-
-    // When
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
-    await responses.next();
-
-    // Then
-    expect(metrics.counted('truapi_chain.reopen')).toEqual([{ outcome: 'error', reason: 'no_transport' }]);
-  });
-
-  it('As an operator, I watch a re-lease that throws and it is captured and counted while the request is still answered', async () => {
-    // Given
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    onTestFinished(bindCaptureSink(captures));
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    must(sources.upstreams[0], 'upstream').halt();
-    sources.createRemoteChain.mockImplementation(() => {
-      throw new Error('transport refused');
-    });
-
-    // When
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
-    const answer: unknown = JSON.parse(yielded(await responses.next()));
-
-    // Then
-    expect(answer).toMatchObject({ id: 'truapi:2', error: { data: 'dotli:chain-halted' } });
-    expect(captures.exception).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'transport refused' }),
-      expect.objectContaining({
-        step: 'chain_reopen',
-      }),
-    );
-    expect(metrics.counted('truapi_chain.reopen')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it("As a dotli integrator, I connect a core to a chain on a light client backend and it goes through the protocol frame's light client", async () => {
@@ -181,60 +125,6 @@ describe('createChainConnect', () => {
     expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:2', result: 'People' });
   });
 
-  it('As a dotli integrator, I take a lease that halts before it is handed over and it is not kept', async () => {
-    // Given a pool whose first lease halts while it is being taken
-    const live = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
-    const dead = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
-    let leases = 0;
-    function provideLease(_onMessage: (message: JsonRpcMessage) => void, onHalt?: (error?: unknown) => void) {
-      leases += 1;
-      if (leases === 1) {
-        onHalt?.(new Error('chain died while connecting'));
-        return dead;
-      }
-      return live;
-    }
-    // The connect reaches only these two members of the pool.
-    const pool = { getLocalProvider: () => provideLease, status: () => 'disconnected' } as unknown as ChainPool;
-    const connection = await createChainConnect({ pool, frame: READY_FRAME, sources })(fromHex(people));
-
-    // When
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
-
-    // Then the request went out on a new lease, not the dead one
-    expect(dead.send).not.toHaveBeenCalled();
-    expect(live.send).toHaveBeenCalledTimes(1);
-
-    // When
-    connection.close();
-
-    // Then
-    expect(live.disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli integrator, I send after a halt that no new transport can serve and the request is answered at once', async () => {
-    // Given
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    must(sources.upstreams[0], 'upstream').halt();
-    sources.createRemoteChain.mockReturnValue(null);
-
-    // When a request and a notification go out
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
-    connection.send(JSON.stringify({ jsonrpc: '2.0', method: 'chainSpec_v1_chainName', params: [] }));
-    const answer: unknown = JSON.parse(yielded(await responses.next()));
-
-    // Then the request gets the halted error, the notification nothing
-    expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:2', error: HALTED });
-
-    // When
-    connection.close();
-    const afterTheClose = await responses.next();
-
-    // Then
-    expect(afterTheClose.done).toBe(true);
-  });
-
   it('As a dotli integrator, I watch a chain transport halt and the messages queued before it are still delivered', async () => {
     // Given
     const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
@@ -302,25 +192,20 @@ describe('createChainConnect', () => {
   });
 
   it('As a dotli integrator, I close a halted core connection twice and its lease is released once', async () => {
-    // Given
-    const pool = createHostChainPool({ ...sources, destroyDelay: 0 });
-    const connection = await createChainConnect({ pool, frame: READY_FRAME, sources })(fromHex(people));
-    const upstream = must(sources.upstreams[0], 'upstream');
-    upstream.halt();
+    // Given a connection whose lease took the rebuilt chain inside the halt
+    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
+    const halted = must(sources.upstreams[0], 'upstream');
+    halted.halt();
+    const rebuilt = must(sources.upstreams[1], 'rebuilt upstream');
+    const haltedDisconnects = halted.disconnect.mock.calls.length;
 
     // When
     connection.close();
     connection.close();
 
-    // Then the transport is torn down once
-    expect(upstream.disconnect).toHaveBeenCalledTimes(1);
-
-    // When a new lease is taken
-    await createChainConnect({ pool, frame: READY_FRAME, sources })(fromHex(people));
-
-    // Then it builds a fresh transport and leaves the old one alone
-    expect(sources.upstreams).toHaveLength(2);
-    expect(upstream.disconnect).toHaveBeenCalledTimes(1);
+    // Then the rebuilt transport is torn down once, and the halted one is left as the halt left it
+    expect(rebuilt.disconnect).toHaveBeenCalledTimes(1);
+    expect(halted.disconnect).toHaveBeenCalledTimes(haltedDisconnects);
   });
 
   describe('with the default pool settings', () => {
@@ -405,7 +290,6 @@ describe('createChainConnect', () => {
 
 describe('host chain pool on a light client backend', () => {
   let people: string;
-  let assetHub: string;
   let chains: FakeRemoteChains;
 
   beforeEach(() => {
@@ -416,7 +300,6 @@ describe('host chain pool on a light client backend', () => {
     });
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     people = getActiveServicesConfig().people.genesis;
-    assetHub = getActiveServicesConfig().assethub.genesis;
     chains = createFakeRemoteChains();
   });
 
@@ -425,12 +308,11 @@ describe('host chain pool on a light client backend', () => {
   });
 
   it.each(['chain', 'frame'] as const)(
-    "As a user, I keep a product's chain connection through a %s halt and what was queued arrives while its next request opens a fresh connection to the frame",
+    "As a user, I keep a product's chain connection through a %s halt and what was queued arrives while its next request goes on the rebuilt connection to the frame",
     async reason => {
       // Given a product request answered by the frame, not yet read
       const connection = await createChainConnect({
-        pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-        frame: chains.frame,
+        pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame }),
       })(fromHex(people));
       const responses = connection.responses()[Symbol.asyncIterator]();
       connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
@@ -466,15 +348,14 @@ describe('host chain pool on a light client backend', () => {
   it('As a user whose chain halted with the frame, I ask while the frame is down and my requests wait on its boot instead of failing at once', async () => {
     // Given
     const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
+      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame }),
     })(fromHex(people));
     onTestFinished(() => {
       connection.close();
     });
     const responses = connection.responses()[Symbol.asyncIterator]();
-    must(chains.remotes[0], 'first remote').halt('frame');
     chains.setFrameStatus('failed');
+    must(chains.remotes[0], 'first remote').halt('frame');
 
     // When the product asks, its papi client retries while the frame boots, and the booted frame answers
     askChainName(connection, 'truapi:1');
@@ -494,234 +375,10 @@ describe('host chain pool on a light client backend', () => {
     expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'People' });
   });
 
-  it('As a user whose frame fails every boot, I keep retrying and the frame is dialled at most once per gate window', async () => {
-    // Given the frame died, and every boot of it fails at once
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    must(chains.remotes[0], 'first remote').halt('frame');
-    chains.setFrameStatus('failed');
-    chains.setRefusal('frame');
-
-    // When the product's papi client retries every 250 ms for two minutes
-    for (let retry = 0; retry < 480; retry++) {
-      askChainName(connection, `truapi:${String(retry)}`);
-      await vi.advanceTimersByTimeAsync(250);
-    }
-
-    // Then the frame is dialled at once, then at 1, 3, 7, 15, 31, 61 and 91 s, the gate's windows, and no more
-    expect(chains.remotes).toHaveLength(9);
-  });
-
-  it('As a user, I ask again after a frame halt that finds no transport and the request is answered at once', async () => {
-    // Given a frame halt, the frame back, and no transport to be had
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    must(chains.remotes[0], 'first remote').halt('frame');
-    chains.createRemoteChain.mockReturnValue(null);
-
-    // When
-    askChainName(connection, 'truapi:1');
-    const answer: unknown = JSON.parse(yielded(await responses.next()));
-
-    // Then
-    expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:1', error: HALTED });
-    expect(chains.createRemoteChain).toHaveBeenCalledTimes(2);
-  });
-
-  it('As a user on a chain that halts right after each rebuild, I keep retrying and it is rebuilt only as the backoff allows', async () => {
-    // Given the chain halted, and every rebuild of it halts at once
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    must(chains.remotes[0], 'first remote').halt('chain');
-    chains.setRefusal('chain');
-
-    // When the product's papi client retries every 250 ms for two minutes
-    for (let retry = 0; retry < 480; retry++) {
-      askChainName(connection, `truapi:${String(retry)}`);
-      await vi.advanceTimersByTimeAsync(250);
-    }
-
-    // Then the chain is rebuilt at once, then at 1, 3, 7, 15, 31, 61 and
-    // 91 s, the chain backoff's windows, and no more
-    expect(chains.remotes).toHaveLength(9);
-  });
-
-  it('As a user, I ask on a chain whose backoff is shut and the request is answered at once', async () => {
-    // Given the chain halted, was rebuilt at once, and halted again
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    must(chains.remotes[0], 'first remote').halt('chain');
-    askChainName(connection, 'truapi:1');
-    must(chains.remotes[1], 'second remote').halt('chain');
-
-    // When a request and a notification go out
-    askChainName(connection, 'truapi:2');
-    connection.send(JSON.stringify({ jsonrpc: '2.0', method: 'chainSpec_v1_chainName', params: [] }));
-    const answers: unknown[] = [
-      JSON.parse(yielded(await responses.next())),
-      JSON.parse(yielded(await responses.next())),
-    ];
-
-    // Then each request gets the halted error, the notification nothing, and the chain is not rebuilt
-    expect(answers).toEqual([
-      { jsonrpc: '2.0', id: 'truapi:1', error: HALTED },
-      { jsonrpc: '2.0', id: 'truapi:2', error: HALTED },
-    ]);
-    expect(chains.remotes).toHaveLength(2);
-  });
-
-  it('As a user, I see a chain halt again within 30 s of its rebuild and it is rebuilt 1 s later', async () => {
-    // Given the chain halted, was rebuilt at once, and the rebuild lived 10 s
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    must(chains.remotes[0], 'first remote').halt('chain');
-    askChainName(connection, 'truapi:1');
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    // When the rebuild halts, and the product keeps asking
-    must(chains.remotes[1], 'second remote').halt('chain');
-    askChainName(connection, 'truapi:2');
-    await vi.advanceTimersByTimeAsync(999);
-    askChainName(connection, 'truapi:3');
-    const beforeASecond = chains.remotes.length;
-    await vi.advanceTimersByTimeAsync(1);
-    askChainName(connection, 'truapi:4');
-    const atASecond = chains.remotes.length;
-
-    // Then
-    expect([beforeASecond, atASecond]).toEqual([2, 3]);
-  });
-
-  it('As a user, I see a chain halt after its rebuild lived past 30 s and it is rebuilt at once', async () => {
-    // Given the chain halted twice in a row, so its backoff has grown, and
-    // the rebuild after that lived 31 s
-    const connection = await createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    must(chains.remotes[0], 'first remote').halt('chain');
-    askChainName(connection, 'truapi:1');
-    must(chains.remotes[1], 'second remote').halt('chain');
-    await vi.advanceTimersByTimeAsync(1_000);
-    askChainName(connection, 'truapi:2');
-    await vi.advanceTimersByTimeAsync(31_000);
-
-    // When it halts, and its rebuild halts right away while the product keeps asking
-    must(chains.remotes[2], 'third remote').halt('chain');
-    askChainName(connection, 'truapi:3');
-    const afterTheHalt = chains.remotes.length;
-    must(chains.remotes[3], 'fourth remote').halt('chain');
-    await vi.advanceTimersByTimeAsync(999);
-    askChainName(connection, 'truapi:4');
-    const beforeASecond = chains.remotes.length;
-    await vi.advanceTimersByTimeAsync(1);
-    askChainName(connection, 'truapi:5');
-    const atASecond = chains.remotes.length;
-
-    // Then it is rebuilt at once, and a halt right after waits 1 s again
-    expect([afterTheHalt, beforeASecond, atASecond]).toEqual([4, 4, 5]);
-  });
-
-  it("As a user, I wait out one chain's backoff and it does not hold back another chain", async () => {
-    // Given People halted, was rebuilt at once, and halted again
-    const connect = createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    });
-    const onPeople = await connect(fromHex(people));
-    const onAssetHub = await connect(fromHex(assetHub));
-    onTestFinished(() => {
-      onPeople.close();
-      onAssetHub.close();
-    });
-    const peopleRemotes = (): RemoteConnection[] => chains.remotes.filter(r => r.genesisHash === people.toLowerCase());
-    const assetHubRemotes = (): RemoteConnection[] =>
-      chains.remotes.filter(r => r.genesisHash === assetHub.toLowerCase());
-    must(peopleRemotes()[0], 'People').halt('chain');
-    askChainName(onPeople, 'p:1');
-    must(peopleRemotes()[1], 'rebuilt People').halt('chain');
-
-    // When Asset Hub halts, and both products ask
-    must(assetHubRemotes()[0], 'Asset Hub').halt('chain');
-    askChainName(onAssetHub, 'a:1');
-    askChainName(onPeople, 'p:2');
-
-    // Then Asset Hub is rebuilt at once, People waits for its own window
-    expect(assetHubRemotes()).toHaveLength(2);
-    expect(peopleRemotes()).toHaveLength(2);
-  });
-
-  it('As a user with two products on a halted chain, I let both ask and they share its rebuild and wait together when it halts again', async () => {
-    // Given
-    const connect = createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
-    });
-    const first = await connect(fromHex(people));
-    const second = await connect(fromHex(people));
-    onTestFinished(() => {
-      first.close();
-      second.close();
-    });
-    must(chains.remotes[0], 'first remote').halt('chain');
-
-    // When both products ask
-    askChainName(first, 'a:1');
-    askChainName(second, 'b:1');
-
-    // Then the first rebuilt the chain, and the second's request rides on it
-    expect(chains.remotes).toHaveLength(2);
-    expect(must(chains.remotes[1], 'second remote').sent).toHaveLength(2);
-
-    // When the rebuild halts at once, both ask again, and both ask once more after the window opens
-    must(chains.remotes[1], 'second remote').halt('chain');
-    askChainName(first, 'a:2');
-    askChainName(second, 'b:2');
-    const beforeTheWindow = chains.remotes.length;
-    await vi.advanceTimersByTimeAsync(1_000);
-    askChainName(second, 'b:3');
-    askChainName(first, 'a:3');
-
-    // Then neither rebuilds it before the window opens, and one rebuild then carries both
-    expect([beforeTheWindow, chains.remotes.length]).toEqual([2, 3]);
-    expect(must(chains.remotes[2], 'third remote').sent).toHaveLength(2);
-  });
-
   it('As a user, I release the last of two leases and the connection to the protocol frame closes 60 seconds later', async () => {
     // Given
     const connect = createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-      frame: chains.frame,
+      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame }),
     });
     const first = await connect(fromHex(people));
     const second = await connect(fromHex(people));
@@ -814,8 +471,12 @@ function createProductConnect(
   sources: FakeHostChainSources,
   { destroyDelay }: Params,
 ): ReturnType<typeof createChainConnect> {
-  const pool = createHostChainPool({ ...sources, ...(destroyDelay === undefined ? {} : { destroyDelay }) });
-  return createChainConnect({ pool, frame: READY_FRAME, sources });
+  const pool = createHostChainPool({
+    ...sources,
+    frame: READY_FRAME,
+    ...(destroyDelay === undefined ? {} : { destroyDelay }),
+  });
+  return createChainConnect({ pool, sources });
 }
 
 /** Asks the chain for its name over `connection` under the request id `id`. */

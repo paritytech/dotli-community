@@ -19,6 +19,7 @@ export { getProtocolOrigin } from './getProtocolOrigin.js';
 export type { ProtocolClient } from './createProtocolClient.js';
 export { getProtocolClient } from './createProtocolClient.js';
 export type { ProtocolFrameConfig, ProtocolStatus } from './frameTypes.js';
+export { isFrameDown } from './frameTypes.js';
 export { getBackendOfFrameMode } from './getBackendOfFrameMode.js';
 export { isRemoteChainConnectable } from './isRemoteChainConnectable.js';
 export { isRemoteChainSupported } from './isRemoteChainSupported.js';

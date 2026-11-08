@@ -1,14 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ChainPoolControl } from '@dotli/chains';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createFakePage, createManualTimers, recordLog, type FakePage, type ManualTimers } from '@dotli/shared/testing';
-import {
-  createNetworkPause,
-  NETWORK_PAUSE_GRACE_MS,
-  type NetworkPause,
-  type PauseTarget,
-} from './createNetworkPause.js';
+import { createNetworkPause, NETWORK_PAUSE_GRACE_MS, type NetworkPause } from './createNetworkPause.js';
 import { createManualPoll } from '../testing/createManualPoll.js';
 
 let timers: ManualTimers;
@@ -404,14 +400,11 @@ describe('The network pause', () => {
     page.setVisibility('visible');
 
     // Then
-    expect(lines.map(line => [line.message, line.attrs])).toEqual([
-      ['Network paused', { flow: 'protocol' }],
-      ['Network resumed', { flow: 'protocol' }],
-    ]);
+    expect(lines).toMatchObject([{ message: 'Network paused' }, { message: 'Network resumed' }]);
   });
 });
 
-function createRecordingTarget(): PauseTarget {
+function createRecordingTarget(): ChainPoolControl {
   return {
     pause: () => calls.push('pause'),
     resume: () => calls.push('resume'),

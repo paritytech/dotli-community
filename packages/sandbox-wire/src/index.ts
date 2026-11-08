@@ -16,6 +16,7 @@ export type {
   ApiViolationMessage,
   BitswapResultMessage,
   HostToSandboxMessage,
+  SandboxLoadOutcome,
   SandboxToHostMessage,
 } from './sandboxMessages.js';
-export { parseApiViolationMessage, parseHostToSandboxMessage, postToHost } from './sandboxMessages.js';
+export { isLoadedOutcome, parseApiViolationMessage, parseHostToSandboxMessage, postToHost } from './sandboxMessages.js';

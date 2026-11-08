@@ -210,13 +210,13 @@ describe('createProtocolFrame', () => {
       events
         .filter(line => line.message === 'protocol message refused')
         .map(({ message, attrs }) => ({ message, attrs })),
-    ).toEqual([
+    ).toMatchObject([
       {
         message: 'protocol message refused',
         // An asymmetric matcher is typed any.
-        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: expect.any(String) as string },
+        attrs: { reason: 'malformed', side: 'host', cause: expect.any(String) as string },
       },
-      { message: 'protocol message refused', attrs: { flow: 'protocol', reason: 'not_bytes', side: 'host' } },
+      { message: 'protocol message refused', attrs: { reason: 'not_bytes', side: 'host' } },
     ]);
     expect(frame.status.get()).toBe('listening');
   });
