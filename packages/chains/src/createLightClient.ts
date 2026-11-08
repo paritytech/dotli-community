@@ -133,6 +133,13 @@ type ChainSyncEntry = {
   held: { source: ChainSyncSource; tap: ChainSyncTap } | null;
 };
 
+type ThrowIfLeftParams = {
+  /** The chain whose open waits on the start. */
+  key: string;
+  /** What the start threw, when it threw. */
+  cause?: unknown;
+};
+
 // The engine's life. A fatal never clears, so a light client that reached it opens no chain again.
 type EngineState =
   | { kind: 'idle' }
@@ -229,8 +236,12 @@ export function createLightClient({
         case 'fatal':
           throw new Error(`chain ${key} cannot open: the light client is fatal: ${engineState.message}`);
         case 'idle':
-        case 'starting':
           return startEngine(key);
+        case 'starting':
+          // The start pool has one slot, so no start is in flight when this runs.
+          throw new Error(
+            `chain ${key} cannot open: the light client is starting, but its start pool runs one at a time`,
+          );
       }
     });
   }
@@ -246,8 +257,8 @@ export function createLightClient({
       markFatal(`chain ${key} connection failed: ${getErrorMessage(error)}`);
       throw error;
     }
-    // The engine has no close, so a start that succeeds after the state moved would leak it. Only this task writes
-    // `starting`, so that path cannot happen.
+    // The engine has no close, so a start that succeeds after the state moved would leak it. Every other writer of the
+    // engine state waits on this start, so that path cannot happen.
     throwIfLeft(starting, { key });
     engineState = {
       kind: 'running',
@@ -265,7 +276,7 @@ export function createLightClient({
     return engine;
   }
 
-  function throwIfLeft(starting: EngineState, { key, cause }: { key: string; cause?: unknown }): void {
+  function throwIfLeft(starting: EngineState, { key, cause }: ThrowIfLeftParams): void {
     if (engineState !== starting) {
       throw new Error(`chain ${key} cannot open: the light client left its start`, { cause });
     }
