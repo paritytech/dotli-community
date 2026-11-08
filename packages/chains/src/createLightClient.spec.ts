@@ -498,6 +498,27 @@ describe('createLightClient', () => {
     expect(client.status().fatal).toBe(message);
   });
 
+  it('As a dotli user on a light client, I open a chain after a connect failure turned a running engine fatal and it halts without connecting', async () => {
+    // Given an engine that is running and refuses the next connection
+    let connects = 0;
+    engine.connect = () => {
+      connects += 1;
+      return Promise.reject(new Error('catalog has no such chain'));
+    };
+    const failed = createMockHooks();
+    open(failed);
+    await failed.halted();
+    const later = createMockHooks();
+
+    // When
+    open(later, services.assethub.genesis);
+    await later.halted();
+
+    // Then
+    expect(connects).toBe(1);
+    expect(later.onHalt).toHaveBeenCalledTimes(1);
+  });
+
   it("As a dotli integrator, I open a connection past the light client's cap and only that chain halts", async () => {
     // Given an engine that refuses the people chain at its cap and opens any other chain
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });

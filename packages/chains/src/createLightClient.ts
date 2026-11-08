@@ -246,6 +246,8 @@ export function createLightClient({
       markFatal(`chain ${key} connection failed: ${getErrorMessage(error)}`);
       throw error;
     }
+    // The engine has no close, so a start that succeeds after the state moved would leak it. Only this task writes
+    // `starting`, so that path cannot happen.
     throwIfLeft(starting, { key });
     engineState = {
       kind: 'running',
