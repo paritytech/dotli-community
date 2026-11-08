@@ -153,6 +153,171 @@ describe('createSharedRun', () => {
     expect(fake.params).toHaveLength(2);
   });
 
+  it('As a listener woken while the run begins, I join and share it, so it begins once and ends after both stops', () => {
+    // Given a begin that joins the run it begins and keeps that nested stop
+    let begins = 0;
+    let ends = 0;
+    let stopNested = (): void => undefined;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        if (begins === 1) {
+          stopNested = run.join();
+        }
+        return () => {
+          ends += 1;
+        };
+      },
+    });
+
+    // When the outer join returns, and then the outer stop and the nested stop are called in that order
+    const stopOuter = run.join();
+    stopOuter();
+    const endsAfterOuterStop = ends;
+    stopNested();
+
+    // Then
+    expect(begins).toBe(1);
+    expect(endsAfterOuterStop).toBe(0);
+    expect(ends).toBe(1);
+  });
+
+  it("As a store reset that ends the run while it begins, I end it once begin returns and the first caller's stop does nothing", () => {
+    // Given a begin that ends the run it begins
+    let begins = 0;
+    let ends = 0;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        if (begins === 1) {
+          run.end();
+        }
+        return () => {
+          ends += 1;
+        };
+      },
+    });
+
+    // When the join returns, and then its stop is called
+    const stop = run.join();
+    const endsAfterJoin = ends;
+    stop();
+
+    // Then
+    expect(endsAfterJoin).toBe(1);
+    expect(ends).toBe(1);
+  });
+
+  it('As a caller after a run ended while it began, I join in a later turn and a new run begins', () => {
+    // Given a run that was ended while it began
+    const events: string[] = [];
+    let begins = 0;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        events.push('begin');
+        if (begins === 1) {
+          run.end();
+        }
+        return () => {
+          events.push('end');
+        };
+      },
+    });
+    run.join();
+
+    // When
+    run.join();
+
+    // Then
+    expect(events).toEqual(['begin', 'end', 'begin']);
+  });
+
+  it('As a listener woken after the run was ended while it began, I join and get an error', () => {
+    // Given a begin that ends the run it begins and then joins it, keeping what that join throws
+    let begins = 0;
+    let ends = 0;
+    let nestedFailure: unknown;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        if (begins === 1) {
+          run.end();
+          nestedFailure = catchError(() => run.join());
+        }
+        return () => {
+          ends += 1;
+        };
+      },
+    });
+
+    // When
+    run.join();
+
+    // Then
+    expect(nestedFailure).toBeInstanceOf(Error);
+    expect(nestedFailure).toHaveProperty(
+      'message',
+      'createSharedRun: cannot join a run that was ended inside its own begin',
+    );
+    expect(ends).toBe(1);
+  });
+
+  it('As a listener woken while a begin that throws runs, I join and my stop does nothing, and the next join begins again', () => {
+    // Given a begin that joins the run it begins, keeps that nested stop and throws, on its first call only
+    const broken = new Error('begin broke');
+    let begins = 0;
+    let ends = 0;
+    let stopNested = (): void => undefined;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        if (begins === 1) {
+          stopNested = run.join();
+          throw broken;
+        }
+        return () => {
+          ends += 1;
+        };
+      },
+    });
+
+    // When the outer join throws, the nested stop is called, and a caller joins again
+    const failure = catchError(() => run.join());
+    stopNested();
+    run.join();
+
+    // Then
+    expect(failure).toBe(broken);
+    expect(begins).toBe(2);
+    expect(ends).toBe(0);
+  });
+
+  it("As a store reset that ends the run while it begins, whose end throws, the first caller's join throws that error and the next join begins again", () => {
+    // Given a begin that ends the run it begins on its first call, and returns an end that throws
+    const broken = new Error('end broke');
+    let begins = 0;
+    const run = createSharedRun({
+      begin: () => {
+        begins += 1;
+        if (begins === 1) {
+          run.end();
+        }
+        return () => {
+          throw broken;
+        };
+      },
+    });
+
+    // When
+    const failure = catchError(() => run.join());
+    run.join();
+
+    // Then
+    expect(failure).toBe(broken);
+    expect(begins).toBe(2);
+  });
+
   it('As a store reset with no run going, I end and nothing happens', () => {
     // Given a run nobody joined
     const fake = createFakeBegin();
