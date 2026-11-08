@@ -196,7 +196,7 @@ describe('createCoreRpcChainTransport', () => {
     expect(getConnectedRpcEndpoint(genesis)).toBeNull();
   });
 
-  it("As a dotli user on Trusted Providers, my chain's lanes close one after the other, and diagnostics show a node until the last lane is gone", async () => {
+  it("As a dotli user on Trusted Providers, I close my chain's lanes one after the other, and diagnostics show a node until the last lane is gone", async () => {
     // Given
     const { genesis } = getActiveServicesConfig().assethub;
     const first = must(createCoreRpcChainTransport(genesis, { WebSocketBase: FakeWebSocketClass }), 'first').provider;
