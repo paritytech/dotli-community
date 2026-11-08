@@ -83,8 +83,8 @@ export function createAsyncTaskPool({
   holdSlotOnAbort = false,
   timers = realTimers,
 }: Params) {
-  // The tasks of each pool, filed by phase. An entry exists only while the pool has a live task, and only `setPhase`
-  // and `fileTask` write it, so it always agrees with each task's phase.
+  // Each pool's live tasks filed by phase, so room, the next task and idleness are read without walking every task. An
+  // entry exists only while its pool has a live task.
   const pools = new Map<string, PoolTasks>();
   const settleWaiters = new Map<string, (() => void)[]>();
 
@@ -125,7 +125,7 @@ export function createAsyncTaskPool({
           signal.addEventListener('abort', task.onAbort, { once: true });
         }
         fileTask(task);
-        if (delay <= 0) {
+        if (task.phase.kind === 'queued') {
           pump(pool);
         }
       });
@@ -185,7 +185,7 @@ export function createAsyncTaskPool({
     }
     switch (task.phase.kind) {
       case 'abandoned':
-        markDone(task);
+        markAbortedDone(task);
         pump(task.pool);
         return;
       case 'running':
@@ -265,17 +265,17 @@ export function createAsyncTaskPool({
     switch (task.phase.kind) {
       case 'delayed':
         timers.clearTimeout(task.phase.timer);
-        markDone(task);
+        markAbortedDone(task);
         return;
       case 'queued':
-        markDone(task);
+        markAbortedDone(task);
         return;
       case 'running':
         if (holdSlotOnAbort) {
           setPhase(task, { kind: 'abandoned' });
           return;
         }
-        markDone(task);
+        markAbortedDone(task);
         return;
       case 'abandoned':
       case 'done':
@@ -289,6 +289,14 @@ export function createAsyncTaskPool({
     if (task.onAbort !== undefined) {
       task.signal?.removeEventListener('abort', task.onAbort);
     }
+  }
+
+  /**
+   * Ends a task whose signal has aborted. Its listener ran once and is gone, and removing it again inside the abort
+   * dispatch would scan the signal's whole listener list for each task on it.
+   */
+  function markAbortedDone(task: Task): void {
+    setPhase(task, { kind: 'done' });
   }
 
   /** Moves the task to a new phase and refiles it, the one place a phase changes after the task is filed. */

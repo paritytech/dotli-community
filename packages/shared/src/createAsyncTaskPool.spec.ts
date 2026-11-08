@@ -481,6 +481,23 @@ describe('async task pool', () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 
+  it.each([Number.NaN, -1])(
+    'As a caller, I pass a delay that is not a positive number (%s) and the task runs at once',
+    async delay => {
+      // Given
+      const timers = createManualTimers();
+      const pool = createAsyncTaskPool({ poolSize: 1, timers });
+      const task = vi.fn(() => 'done');
+
+      // When
+      const call = pool.call(task, { delay });
+
+      // Then
+      expect(task).toHaveBeenCalledTimes(1);
+      await expect(call).resolves.toBe('done');
+    },
+  );
+
   it('As a caller, I settle a pool and it waits for a task that is waiting out its delay', async () => {
     // Given
     const timers = createManualTimers();
