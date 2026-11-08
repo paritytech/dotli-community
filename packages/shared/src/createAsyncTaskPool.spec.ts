@@ -317,6 +317,131 @@ describe('async task pool', () => {
     await pool.settle();
   });
 
+  it('As a caller of a pool that holds slots on abort, I abort a running task and it rejects at once while the next task waits for the aborted work', async () => {
+    // Given
+    const timers = createManualTimers();
+    const pool = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true, timers });
+    const controller = new AbortController();
+    const order: string[] = [];
+    const running = pool
+      .call(() => wait(timers, 500).then(() => void order.push('running-work-done')), { signal: controller.signal })
+      .catch((error: unknown) => void order.push(`running-rejected:${(error as Error).message}`));
+    const next = pool.call(() => void order.push('next-ran'));
+    await timers.advance(50);
+
+    // When
+    controller.abort(new Error('stop'));
+    await timers.advance(500);
+    await running;
+    await next;
+
+    // Then
+    expect(order).toEqual(['running-rejected:stop', 'running-work-done', 'next-ran']);
+  });
+
+  it('As a caller of a pool that holds slots on abort, I settle after an abort and wait for the aborted work', async () => {
+    // Given
+    const timers = createManualTimers();
+    const pool = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true, timers });
+    const controller = new AbortController();
+    const running = rejection(pool.call(() => wait(timers, 500), { signal: controller.signal }));
+    await timers.advance(50);
+    controller.abort(new Error('stop'));
+    let settled = false;
+
+    // When
+    const settling = pool.settle().then(() => {
+      settled = true;
+    });
+    await timers.advance(449);
+    const settledEarly = settled;
+    await timers.advance(51);
+    await settling;
+
+    // Then
+    expect(settledEarly).toBe(false);
+    expect(settled).toBe(true);
+    expect(await running).toEqual(new Error('stop'));
+  });
+
+  it('As a caller of a pool that holds slots on abort, I abort a queued task and the next one runs once the running one ends', async () => {
+    // Given
+    const timers = createManualTimers();
+    const pool = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true, timers });
+    const controller = new AbortController();
+    const queuedTask = vi.fn();
+    const blocker = pool.call(() => wait(timers, 200));
+    const queued = rejection(pool.call(queuedTask, { signal: controller.signal }));
+    const third = pool.call(() => 'third');
+
+    // When
+    controller.abort(new Error('cancelled'));
+    await timers.advance(200);
+
+    // Then
+    expect(await queued).toEqual(new Error('cancelled'));
+    expect(queuedTask).not.toHaveBeenCalled();
+    await expect(blocker).resolves.toBeUndefined();
+    await expect(third).resolves.toBe('third');
+  });
+
+  it('As a caller of a pool that holds slots on abort and retries, I abort a running task whose work then fails and the next task waits for it and no retry runs', async () => {
+    // Given
+    const timers = createManualTimers();
+    const pool = createAsyncTaskPool({ poolSize: 1, retryCount: 2, holdSlotOnAbort: true, timers });
+    const controller = new AbortController();
+    const order: string[] = [];
+    const work = vi.fn(() =>
+      wait(timers, 500).then(() => {
+        throw new Error('failed');
+      }),
+    );
+    const running = rejection(pool.call(work, { signal: controller.signal }));
+    const next = pool.call(() => void order.push('next-ran'));
+    await timers.advance(50);
+
+    // When
+    controller.abort(new Error('stop'));
+    await timers.advance(449);
+    const ranEarly = order.length > 0;
+    await timers.advance(51);
+    await next;
+
+    // Then
+    expect(ranEarly).toBe(false);
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['next-ran']);
+    expect(await running).toEqual(new Error('stop'));
+  });
+
+  it('As a caller, I queue tasks behind one that fails and its retry runs after every task queued before the retry', async () => {
+    // Given
+    const timers = createManualTimers();
+    const pool = createAsyncTaskPool({ poolSize: 1, retryCount: 1, timers });
+    const order: string[] = [];
+    let firstRuns = 0;
+    const first = pool.call(() => {
+      firstRuns += 1;
+      if (firstRuns === 1) {
+        order.push('first-failed');
+        throw new Error('once');
+      }
+      order.push('first-retried');
+    });
+    const second = pool.call(() => {
+      order.push('second-ran');
+      return wait(timers, 100);
+    });
+    const third = pool.call(() => void order.push('third-ran'));
+
+    // When
+    await timers.advance(200);
+    await Promise.all([first, second, third]);
+
+    // Then
+    expect(order).toEqual(['first-failed', 'second-ran', 'third-ran', 'first-retried']);
+  });
+
   it('As a caller, I abort during a retry delay and the retry never runs', async () => {
     // Given
     const timers = createManualTimers();

@@ -16,7 +16,8 @@ listener set, the test reset of stores and a few formatting helpers.
 ## Design
 
 - One async task pool is the place for queueing, bounded concurrency, retries and abort. Callers name a pool and keep
-  their task idempotent instead of hand-rolling in-flight flags.
+  their task idempotent instead of hand-rolling in-flight flags. An abort frees its task's slot at once while the work
+  may run on, unless the pool holds slots on abort, so its works never overlap.
 - A module that waits takes `Timers`, the page's own by default, which read the globals at each call. A spec passes
   `createManualTimers()` and moves time itself, so it fakes no globals.
 - A store, or module state kept beside one, registers a reset, so tests can restore all of them at once.

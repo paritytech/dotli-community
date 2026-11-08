@@ -7,7 +7,10 @@
 import { realTimers, type Timers } from './realTimers.js';
 
 type Params = {
-  /** How many tasks of one pool run at once. */
+  /**
+   * How many tasks of one pool run at once. Aborted work that runs on counts only when the pool holds slots on
+   * abort.
+   */
   poolSize: number;
   /** Extra attempts after a failure. */
   retryCount?: number;
@@ -18,6 +21,11 @@ type Params = {
    * retries.
    */
   retryIf?: (error: unknown) => boolean;
+  /**
+   * Whether an aborted task keeps its slot until its work settles, so the pool's works never overlap. By default an
+   * abort frees the slot at once while the work may still run. Aborted work that never settles keeps its slot for good.
+   */
+  holdSlotOnAbort?: boolean;
   /** The timers delays and retry waits run on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
@@ -25,11 +33,22 @@ type Params = {
 type TaskParams = {
   /** Tasks share capacity only with tasks of the same pool. */
   pool?: string;
-  /** Aborting rejects the task with the signal's reason and frees its slot at once. */
+  /**
+   * Aborting rejects the task with the signal's reason at once. Its slot frees at once, or once its work settles when
+   * the pool holds slots on abort.
+   */
   signal?: AbortSignal;
   /** The wait before the task is queued. `settle` counts it as pending meanwhile. */
   delay?: number;
 };
+
+// `delayed` covers both the initial delay and a retry wait. `abandoned` is aborted while running under the hold.
+type TaskPhase =
+  | { kind: 'delayed'; timer: unknown }
+  | { kind: 'queued' }
+  | { kind: 'running' }
+  | { kind: 'abandoned' }
+  | { kind: 'done' };
 
 type Task = {
   readonly work: () => unknown;
@@ -38,8 +57,7 @@ type Task = {
   readonly reject: (reason: unknown) => void;
   readonly signal: AbortSignal | undefined;
   retry: number;
-  // The pending delay or retry wait.
-  timer: unknown;
+  phase: TaskPhase;
   onAbort: (() => void) | undefined;
 };
 
@@ -59,11 +77,11 @@ export function createAsyncTaskPool({
   retryCount = 0,
   retryDelay = 0,
   retryIf,
+  holdSlotOnAbort = false,
   timers = realTimers,
 }: Params) {
-  const queue: Task[] = [];
-  const running = new Set<Task>();
-  const waiting = new Set<Task>();
+  // Every task not yet done, in queue order.
+  const tasks = new Set<Task>();
   const settleWaiters = new Map<string, (() => void)[]>();
 
   return {
@@ -88,7 +106,7 @@ export function createAsyncTaskPool({
           reject,
           signal,
           retry: 0,
-          timer: undefined,
+          phase: { kind: 'queued' },
           onAbort: undefined,
         };
         if (signal !== undefined) {
@@ -101,11 +119,13 @@ export function createAsyncTaskPool({
           queueAfter(task, delay);
           return;
         }
-        queue.push(task);
-        pump(task.pool);
+        enqueue(task);
       });
     },
-    /** Resolves once the pool has nothing queued, running, delayed or waiting to retry. */
+    /**
+     * Resolves once the pool has nothing queued, running, delayed or waiting to retry, nor aborted work it holds a
+     * slot for.
+     */
     settle(pool: string = DEFAULT_POOL): Promise<void> {
       if (isIdle(pool)) {
         return Promise.resolve();
@@ -121,17 +141,12 @@ export function createAsyncTaskPool({
   /** Starts queued tasks of the pool while it has room, then tells `settle` waiters if nothing is left. */
   function pump(pool: string): void {
     while (hasRoom(pool)) {
-      // A task whose signal is already aborted is left for its own abort listener, which may not have run yet when
-      // another task on the same signal frees a slot.
-      const index = queue.findIndex(task => task.pool === pool && task.signal?.aborted !== true);
-      if (index < 0) {
+      const task = findNext(pool);
+      if (task === undefined) {
         break;
       }
-      const [task] = queue.splice(index, 1);
-      if (task !== undefined) {
-        running.add(task);
-        void run(task);
-      }
+      task.phase = { kind: 'running' };
+      void run(task);
     }
     const waiters = settleWaiters.get(pool);
     if (waiters !== undefined && isIdle(pool)) {
@@ -144,67 +159,137 @@ export function createAsyncTaskPool({
 
   // Never rejects: the outcome goes to the caller through the task's own promise.
   async function run(task: Task): Promise<void> {
+    let result: PromiseSettledResult<unknown>;
     try {
-      const value = await task.work();
-      if (running.has(task)) {
-        finish(task);
-        task.resolve(value);
-      }
-    } catch (error) {
-      // An aborted task was already rejected with the signal's reason.
-      if (!running.has(task)) {
+      result = { status: 'fulfilled', value: await task.work() };
+    } catch (reason) {
+      result = { status: 'rejected', reason };
+    }
+    handleWorkSettled(task, result);
+  }
+
+  /** Acts on the outcome of a task's work by the phase the task reached while the work ran. */
+  function handleWorkSettled(task: Task, result: PromiseSettledResult<unknown>): void {
+    switch (task.phase.kind) {
+      case 'running':
+        finishRun(task, result);
         return;
-      }
-      let delay: number | undefined;
-      try {
-        const retry = task.retry < retryCount && (retryIf?.(error) ?? true);
-        delay = retry ? getRetryDelay(task.retry, error) : undefined;
-      } catch (callbackError) {
-        // A throwing retryIf or retryDelay must still settle the call, and the task's own failure stays visible.
-        finish(task);
-        task.reject(new AggregateError([callbackError, error], 'Could not decide whether to retry the task'));
+      case 'abandoned':
+        markDone(task);
+        pump(task.pool);
         return;
-      }
-      if (delay === undefined) {
-        finish(task);
-        task.reject(error);
+      case 'delayed':
+      case 'queued':
+      case 'done':
+        // An abort ended the task and rejected its call. A delayed or queued task has no work in flight.
         return;
-      }
-      task.retry += 1;
-      queueAfter(task, delay);
-    } finally {
-      running.delete(task);
-      pump(task.pool);
     }
   }
 
-  /** Queues the task once `ms` has passed. Until then it is waiting, so `settle` holds and an abort clears it. */
-  function queueAfter(task: Task, ms: number): void {
-    waiting.add(task);
-    task.timer = timers.setTimeout(() => {
-      waiting.delete(task);
-      task.timer = undefined;
-      queue.push(task);
+  function finishRun(task: Task, result: PromiseSettledResult<unknown>): void {
+    switch (result.status) {
+      case 'fulfilled':
+        markDone(task);
+        task.resolve(result.value);
+        pump(task.pool);
+        return;
+      case 'rejected':
+        failRun(task, result.reason);
+        return;
+    }
+  }
+
+  /** Retries the failed task after its wait while retries remain, or rejects its call. */
+  function failRun(task: Task, error: unknown): void {
+    let delay: number | undefined;
+    try {
+      const retry = task.retry < retryCount && (retryIf?.(error) ?? true);
+      delay = retry ? getRetryDelay(task.retry, error) : undefined;
+    } catch (callbackError) {
+      // A throwing retryIf or retryDelay must still settle the call, and the task's own failure stays visible.
+      markDone(task);
+      task.reject(new AggregateError([callbackError, error], 'Could not decide whether to retry the task'));
       pump(task.pool);
-    }, ms);
+      return;
+    }
+    if (delay === undefined) {
+      markDone(task);
+      task.reject(error);
+      pump(task.pool);
+      return;
+    }
+    task.retry += 1;
+    queueAfter(task, delay);
+    pump(task.pool);
+  }
+
+  /** Queues the task once `ms` has passed. Until then it is delayed, so `settle` holds and an abort clears it. */
+  function queueAfter(task: Task, ms: number): void {
+    task.phase = {
+      kind: 'delayed',
+      timer: timers.setTimeout(() => {
+        enqueue(task);
+      }, ms),
+    };
+    tasks.add(task);
+  }
+
+  /** Puts the task at the end of the queue, behind those queued while it waited, and starts what has room. */
+  function enqueue(task: Task): void {
+    tasks.delete(task);
+    tasks.add(task);
+    task.phase = { kind: 'queued' };
+    pump(task.pool);
   }
 
   function abort(task: Task): void {
-    timers.clearTimeout(task.timer);
-    const index = queue.indexOf(task);
-    if (index >= 0) {
-      queue.splice(index, 1);
-    }
-    running.delete(task);
-    waiting.delete(task);
+    applyAbort(task);
     task.reject(task.signal?.reason);
     pump(task.pool);
   }
 
-  function finish(task: Task): void {
+  /** Ends an aborted task, or abandons it while its work runs on when the pool holds slots on abort. */
+  function applyAbort(task: Task): void {
+    switch (task.phase.kind) {
+      case 'delayed':
+        timers.clearTimeout(task.phase.timer);
+        markDone(task);
+        return;
+      case 'queued':
+        markDone(task);
+        return;
+      case 'running':
+        if (holdSlotOnAbort) {
+          task.phase = { kind: 'abandoned' };
+          return;
+        }
+        markDone(task);
+        return;
+      case 'abandoned':
+      case 'done':
+        // Its call has already settled, so it keeps its phase.
+        return;
+    }
+  }
+
+  function markDone(task: Task): void {
+    task.phase = { kind: 'done' };
+    tasks.delete(task);
     if (task.onAbort !== undefined) {
       task.signal?.removeEventListener('abort', task.onAbort);
     }
+  }
+
+  /** The first queued task of the pool whose signal has not aborted. */
+  function findNext(pool: string): Task | undefined {
+    for (const task of tasks) {
+      // A task whose signal is already aborted is left for its own abort listener, which may not have run yet when
+      // another task on the same signal frees a slot.
+      if (task.pool === pool && task.phase.kind === 'queued' && task.signal?.aborted !== true) {
+        return task;
+      }
+    }
+    return undefined;
   }
 
   function hasRoom(pool: string): boolean {
@@ -212,8 +297,8 @@ export function createAsyncTaskPool({
       return true;
     }
     let count = 0;
-    for (const task of running) {
-      if (task.pool === pool) {
+    for (const task of tasks) {
+      if (task.pool === pool && hasSlot(task.phase)) {
         count += 1;
         if (count >= poolSize) {
           return false;
@@ -224,11 +309,9 @@ export function createAsyncTaskPool({
   }
 
   function isIdle(pool: string): boolean {
-    for (const tasks of [queue, running, waiting]) {
-      for (const task of tasks) {
-        if (task.pool === pool) {
-          return false;
-        }
+    for (const task of tasks) {
+      if (task.pool === pool) {
+        return false;
       }
     }
     return true;
@@ -236,5 +319,17 @@ export function createAsyncTaskPool({
 
   function getRetryDelay(retry: number, error: unknown): number {
     return typeof retryDelay === 'function' ? retryDelay(retry, error) : retryDelay;
+  }
+}
+
+function hasSlot(phase: TaskPhase): boolean {
+  switch (phase.kind) {
+    case 'running':
+    case 'abandoned':
+      return true;
+    case 'delayed':
+    case 'queued':
+    case 'done':
+      return false;
   }
 }
