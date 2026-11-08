@@ -38,8 +38,9 @@ type SendParams = {
   noteId?: (id: string) => void;
 };
 
-/** Opens a session through `connect` and sends the follow at once, until `disconnect` ends the session. */
+/** Opens a session through `connect`, sends the follow on `start`, and follows until `disconnect` ends the session. */
 export function openWatchFollow({ sessionId, connect, onFollowing, onBestBlock, live }: Params): {
+  start: () => void;
   disconnect: () => void;
 } {
   let requests = 0;
@@ -130,8 +131,11 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onBestBlock, 
       }
     }
   });
-  follow();
   return {
+    /** Sends the follow. Called once, after the caller stored the follow. Throws what the session's send throws. */
+    start() {
+      follow();
+    },
     /** Ends the session and stops a follow the chain stops from starting again. */
     disconnect() {
       closed = true;

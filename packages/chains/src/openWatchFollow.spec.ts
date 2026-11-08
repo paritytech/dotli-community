@@ -38,6 +38,7 @@ function follow(options: { live?: () => boolean } = {}) {
     live: options.live ?? (() => true),
   };
   const handle = openWatchFollow(watch);
+  handle.start();
 
   function findLastSent(method: string): Sent {
     return must(sent.filter(message => message.method === method).at(-1), method);

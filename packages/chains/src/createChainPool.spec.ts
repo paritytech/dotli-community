@@ -1459,6 +1459,27 @@ describe('createChainPool healing', () => {
     expect(pool.status('0xaa')).toBe('connecting');
   });
 
+  it('As a dotli integrator, I connect remotely to a chain whose transport halts as it opens and my connect fails with the halt', () => {
+    // Given a transport that halts inside its first connect
+    const { createTransport, built } = createHaltOnOpenTransports();
+    const pool = createChainPool({ createTransport });
+    const onHalt = vi.fn<(error?: unknown) => void>();
+
+    // When
+    const error = catchError(() =>
+      pool.connectRemote({ genesisHash: '0xaa', connectionId: 'halting', onMessage: () => undefined, onHalt }),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(Error);
+    const cause = error instanceof Error ? error.cause : undefined;
+    expect(cause).toBeInstanceOf(Error);
+    expect(cause).toHaveProperty('message', 'gone while opening');
+    expect(onHalt).not.toHaveBeenCalled();
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(built).toHaveLength(1);
+  });
+
   it("As a dotli integrator, my rebuilt chain refuses my lease's connect and I wait for the gate before the next try", async () => {
     // Given a healing lease on a chain whose rebuilt transport refuses its first connects
     recordReports({ onFinished: onTestFinished });

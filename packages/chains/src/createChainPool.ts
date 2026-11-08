@@ -68,7 +68,8 @@ export type ChainPool = {
   /**
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
    * and its halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
-   * `connectionId` already has a session.
+   * `connectionId` already has a session. Throws when the chain halts while the session opens, with the halt's error as
+   * the cause.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
@@ -108,17 +109,30 @@ export type ChainPool = {
 /** What a pool's owner may tell it from outside: pause and resume. */
 export type ChainPoolControl = Pick<ChainPool, 'pause' | 'resume'>;
 
+/** The watchers' own follow on an open entry. */
+type WatchState = { kind: 'off' } | { kind: 'open'; follow: { disconnect: () => void }; following: boolean };
+
+/** An entry's live phase, written in place. Only `destroy` replaces it, so callbacks compare it by identity. */
+type OpenEntry = {
+  kind: 'open';
+  /** The pending destroy's timer handle, `null` while none is pending. */
+  destroyTimer: unknown;
+  watch: WatchState;
+};
+
+type EntryState =
+  | OpenEntry
+  | {
+      kind: 'closed';
+      /** Why the entry halted, for a lease that took it as it halted and so missed the halt. `null` otherwise. */
+      halt: { error: unknown } | null;
+    };
+
 type Entry = {
   readonly key: string;
   readonly lanes: ChainLanes;
   leases: number;
-  /** The pending destroy's timer handle, `null` while none is pending. */
-  destroyTimer: unknown;
-  live: boolean;
-  /** Why the entry halted, for a lease that took it as it halted and so missed the halt. `null` otherwise. */
-  halt: { error: unknown } | null;
-  following: boolean;
-  watchFollow: { disconnect: () => void } | null;
+  state: EntryState;
 };
 
 type LeaseParams<Connection> = {
@@ -195,9 +209,9 @@ export function createChainPool({
   function getActivity(entry: Entry): ChainActivity {
     return {
       genesisHash: entry.key,
-      consumers: entry.live ? entry.leases : 0,
+      consumers: entry.state.kind === 'open' ? entry.leases : 0,
       status: statuses.get(entry.key) ?? 'disconnected',
-      following: entry.live && entry.following,
+      following: isFollowing(entry.state),
     };
   }
 
@@ -215,18 +229,16 @@ export function createChainPool({
 
   /** Close an entry: quietly on release or unload, telling its leases on a halt. */
   function destroy(entry: Entry, halt: { error: unknown } | null): void {
-    if (!entry.live) {
+    const open = entry.state;
+    if (open.kind !== 'open') {
       return;
     }
-    entry.live = false;
-    entry.halt = halt;
-    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
-    // The lanes drop it with the other consumers.
-    entry.watchFollow = null;
-    if (entry.destroyTimer !== null) {
-      timers.clearTimeout(entry.destroyTimer);
-      entry.destroyTimer = null;
+    // Leaves the watchers' follow open. The lanes drop it with the other consumers.
+    entry.state = { kind: 'closed', halt };
+    if (open.destroyTimer !== null) {
+      timers.clearTimeout(open.destroyTimer);
     }
+    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
     entries.delete(entry.key);
     // Before the lanes call: a halt handler may lease the chain again, and
     // the rebuilt entry's status must not be overwritten afterwards.
@@ -250,7 +262,7 @@ export function createChainPool({
 
   /** Gives a chain's new status to the pool's statuses and the watchers, and nothing once the chain is closed. */
   function applyStatus(entry: Entry, status: ConnectionStatus): void {
-    if (!entry.live) {
+    if (entry.state.kind !== 'open') {
       return;
     }
     setStatus(entry.key, status);
@@ -271,67 +283,99 @@ export function createChainPool({
     }
   }
 
-  /** The watchers' own follow on a held chain, which reports to them while the entry lives. */
-  function openFollow(entry: Entry): { disconnect: () => void } {
+  /**
+   * The watchers' own follow on a held chain, which reports to them while `open` is the entry's state and the follow is
+   * its watch.
+   */
+  function openFollow(entry: Entry, open: OpenEntry): ReturnType<typeof openWatchFollow> {
     // Names the chain, so the follow's debug log says which one refused it.
     const sessionId = `watch:${getShortKey(entry.key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
+    // Its callbacks run only after `start`, so `follow` is assigned by then.
     const follow = openWatchFollow({
       sessionId,
       connect: onMessage => entry.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
-      live: () => entry.live,
+      live: () => entry.state.kind === 'open',
       onFollowing: following => {
-        if (entry.live && entry.following !== following) {
-          entry.following = following;
+        const watch = findOwnWatch();
+        if (watch !== null && watch.following !== following) {
+          watch.following = following;
           report(entry);
         }
       },
       onBestBlock: blockNumber => {
-        if (entry.live) {
+        if (findOwnWatch() !== null) {
           watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
         }
       },
     });
-    return {
-      disconnect() {
-        follow.disconnect();
-        // Reported by whoever stopped it, with the change that stopped it.
-        entry.following = false;
-      },
-    };
+    function findOwnWatch(): Extract<WatchState, { kind: 'open' }> | null {
+      const { watch } = open;
+      return entry.state === open && watch.kind === 'open' && watch.follow === follow ? watch : null;
+    }
+    return follow;
   }
 
   /**
-   * Opens the watchers' follow. A failure leaves the chain without one, and the next sync tries again. Never throws.
+   * Opens the watchers' follow under `open`, stores it, then sends it. A failure leaves the chain without one, and the
+   * next sync tries again. Never throws.
    */
-  function startWatchFollow(entry: Entry): void {
+  function startWatchFollow(entry: Entry, open: OpenEntry): void {
+    const off = open.watch;
+    let follow: ReturnType<typeof openWatchFollow>;
     try {
-      entry.watchFollow = openFollow(entry);
+      follow = openFollow(entry, open);
     } catch (error) {
-      // The follow has no caller to throw to. A halted chain tells its leases itself, so only a live chain is reported.
-      if (entry.live) {
-        protocolReport.defect(error, {
-          step: 'chain_pool_watch_follow',
-          metric: chainLaneOpenMetric,
-          message: `${POOL_TAG} ${getShortKey(entry.key)} the network panel's follow could not open:`,
-        });
-      }
+      reportWatchFollowFailure(entry, error);
+      return;
     }
+    // Opening the follow's connection may have halted the chain, or a watcher it reported to may have changed the want.
+    if (entry.state !== open || open.watch !== off) {
+      follow.disconnect();
+      return;
+    }
+    const watch: WatchState = { kind: 'open', follow, following: false };
+    open.watch = watch;
+    try {
+      follow.start();
+    } catch (error) {
+      if (open.watch === watch) {
+        open.watch = { kind: 'off' };
+        follow.disconnect();
+      }
+      reportWatchFollowFailure(entry, error);
+    }
+  }
+
+  /** The follow has no caller to throw to. A halted chain tells its leases itself, so only an open chain reports. */
+  function reportWatchFollowFailure(entry: Entry, error: unknown): void {
+    if (entry.state.kind !== 'open') {
+      return;
+    }
+    protocolReport.defect(error, {
+      step: 'chain_pool_watch_follow',
+      metric: chainLaneOpenMetric,
+      message: `${POOL_TAG} ${getShortKey(entry.key)} the network panel's follow could not open:`,
+    });
   }
 
   /** The watchers' follow runs exactly while the chain is held and watched. */
   function syncWatchFollow(entry: Entry): void {
-    const wanted = entry.live && watchers.size > 0 && entry.leases > 0;
-    if (wanted && entry.watchFollow === null) {
+    const open = entry.state;
+    if (open.kind !== 'open') {
+      return;
+    }
+    const wanted = watchers.size > 0 && entry.leases > 0;
+    const { watch } = open;
+    if (wanted && watch.kind === 'off') {
       log.debug(`${POOL_TAG} ${getShortKey(entry.key)} held, the network panel follows it`);
-      startWatchFollow(entry);
-    } else if (!wanted && entry.watchFollow !== null) {
-      const watchFollow = entry.watchFollow;
-      entry.watchFollow = null;
+      startWatchFollow(entry, open);
+    } else if (!wanted && watch.kind === 'open') {
+      open.watch = { kind: 'off' };
       log.debug(
         `${POOL_TAG} ${getShortKey(entry.key)} the network panel stops following it (${String(entry.leases)} leases)`,
       );
-      watchFollow.disconnect();
+      watch.follow.disconnect();
     }
   }
 
@@ -350,7 +394,7 @@ export function createChainPool({
         }
       },
       onHalt: error => {
-        if (entry?.live === true) {
+        if (entry?.state.kind === 'open') {
           destroy(entry, { error });
         }
       },
@@ -363,11 +407,7 @@ export function createChainPool({
       key,
       lanes,
       leases: 0,
-      destroyTimer: null,
-      live: true,
-      halt: null,
-      following: false,
-      watchFollow: null,
+      state: { kind: 'open', destroyTimer: null, watch: { kind: 'off' } },
     };
     log.debug(`${POOL_TAG} ${getShortKey(key)} opening`);
     entry = created;
@@ -386,16 +426,21 @@ export function createChainPool({
     if (!paused) {
       haltOnFailure({ entry, action: 'resume' });
     }
-    if (entry.destroyTimer !== null) {
-      timers.clearTimeout(entry.destroyTimer);
-      entry.destroyTimer = null;
-    }
+    const { state } = entry;
     // A chain that failed to reopen is halted, so the lease takes the chain built in its place.
-    return entry.live ? entry : (entries.get(key) ?? build(key));
+    if (state.kind !== 'open') {
+      return entries.get(key) ?? build(key);
+    }
+    if (state.destroyTimer !== null) {
+      timers.clearTimeout(state.destroyTimer);
+      state.destroyTimer = null;
+    }
+    return entry;
   }
 
   function idle(entry: Entry): void {
-    if (entry.leases > 0 || !entry.live || entry.destroyTimer !== null) {
+    const open = entry.state;
+    if (entry.leases > 0 || open.kind !== 'open' || open.destroyTimer !== null) {
       return;
     }
     if (destroyDelay <= 0) {
@@ -406,22 +451,27 @@ export function createChainPool({
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
-    entry.destroyTimer = timers.setTimeout(() => {
-      entry.destroyTimer = null;
+    open.destroyTimer = timers.setTimeout(() => {
+      open.destroyTimer = null;
       destroy(entry, null);
     }, destroyDelay);
   }
 
-  /** Count `connection` as a lease on `entry`, released once by its first `disconnect()`. */
+  /**
+   * Count `connection` as a lease on `entry`, released once by its first `disconnect()`. A lease on a closed entry is not
+   * counted, and its `disconnect()` still acts once.
+   */
   function lease<Connection extends { disconnect: () => void }>({
     entry,
     connection,
     holder,
   }: LeaseParams<Connection>): Connection {
-    entry.leases += 1;
-    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} leased by ${holder} (${String(entry.leases)} held)`);
-    report(entry);
-    syncWatchFollow(entry);
+    if (entry.state.kind === 'open') {
+      entry.leases += 1;
+      log.debug(`${POOL_TAG} ${getShortKey(entry.key)} leased by ${holder} (${String(entry.leases)} held)`);
+      report(entry);
+      syncWatchFollow(entry);
+    }
     let released = false;
     return {
       ...connection,
@@ -432,7 +482,7 @@ export function createChainPool({
         released = true;
         connection.disconnect();
         // A halted entry is already gone, so its leases count for nothing.
-        if (!entry.live) {
+        if (entry.state.kind !== 'open') {
           return;
         }
         entry.leases -= 1;
@@ -488,8 +538,9 @@ export function createChainPool({
       throw error;
     }
     // A halt while the lease is taken may not reach it, so a lease on an entry that is no longer live hears it here.
-    if (!entry.live) {
-      onHalt(entry.halt?.error);
+    const { state } = entry;
+    if (state.kind === 'closed') {
+      onHalt(state.halt?.error);
     }
     return connection;
   }
@@ -537,9 +588,10 @@ export function createChainPool({
       if (entry === null) {
         return null;
       }
+      let connection: StringJsonRpcConnection;
       try {
         // Prefixed so no remote id can collide with a local lease's `local:N`.
-        return lease({
+        connection = lease({
           entry,
           connection: entry.lanes.connect({
             sessionId: `remote:${connectionId}`,
@@ -554,6 +606,15 @@ export function createChainPool({
         idle(entry);
         throw error;
       }
+      // A halt while the session opens may not reach it, and a session on a closed chain would never hear one.
+      const { state } = entry;
+      if (state.kind === 'closed') {
+        connection.disconnect();
+        throw new Error(`chain ${getShortKey(entry.key)} halted while remote session ${connectionId} opened`, {
+          cause: state.halt?.error,
+        });
+      }
+      return connection;
     },
 
     getLocalProvider(genesisHash, { holder = 'local' } = {}) {
@@ -595,7 +656,7 @@ export function createChainPool({
       // Each transport reports its own status as it opens, some inside this call, so none is set here.
       for (const entry of live) {
         // A consumer's delivery in this loop may have closed the chain.
-        if (entry.live && entry.leases > 0) {
+        if (entry.state.kind === 'open' && entry.leases > 0) {
           haltOnFailure({ entry, action: 'resume' });
         }
       }
@@ -645,6 +706,15 @@ export function createChainPool({
       return unwatch;
     },
   };
+}
+
+function isFollowing(state: EntryState): boolean {
+  switch (state.kind) {
+    case 'open':
+      return state.watch.kind === 'open' && state.watch.following;
+    case 'closed':
+      return false;
+  }
 }
 
 function getShortKey(key: string): string {
