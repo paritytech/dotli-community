@@ -29,7 +29,8 @@ type GetLocalProviderParams = {
 export type ChainBrokerManager = {
   /**
    * Opens a session on the chain under `connectionId`, with its messages sent to `onMessage` as JSON text. Returns
-   * `null` when this context cannot reach the chain, and throws when `connectionId` already has a session.
+   * `null` when this context cannot reach the chain, and throws when `connectionId` already has a session. Throws when
+   * the chain halts while the session opens, with the halt's error as the cause.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
