@@ -159,7 +159,7 @@ describe('openWatchFollow', () => {
     expect(watch.following).toEqual([true, false]);
   });
 
-  it("As the network panel closing while my follow's stop is reported, I start no other follow", () => {
+  it("As the network panel who closes while my follow's stop is reported, I start no other follow", () => {
     // Given
     const watch = follow({
       onFollowing: (value, handle) => {
