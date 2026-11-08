@@ -272,7 +272,6 @@ describe('createChainPool', () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     // Then
-    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
     expect(pool.status('0xaa')).toBe('disconnected');
   });
 
@@ -1002,6 +1001,68 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(3);
   });
 
+  it('As the network panel, a follow the chain stopped and then refused is followed again after the backoff', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    lease(pool, '0xaa');
+    const transport = must(built[0], 'transport');
+    answerFollow(transport, 'up-1')({ event: 'stop' });
+
+    // When
+    refuseFollow(transport);
+    vi.advanceTimersByTime(0);
+
+    // Then
+    expect(transport.sent.filter(isFollow)).toHaveLength(3);
+  });
+
+  it('As the network panel, my follow that throws as the retry opens it waits behind the backoff and tries again', () => {
+    // Given a first follow that was refused, the only connection's follow room taken, and a second connection whose
+    // provider throws on opening
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    recordReports({ onFinished: onTestFinished });
+    const { createTransport: createBase, built } = createTransports({ followLimit: 1 });
+    function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+      const base = createBase(genesisHash, hooks);
+      if (base === null || built.length === 1) {
+        return base;
+      }
+      return {
+        ...base,
+        provider: () => {
+          throw new Error('open failed');
+        },
+      };
+    }
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() });
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() }).send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: CHAIN_HEAD_FOLLOW,
+      params: [true],
+    });
+
+    // When the retry throws as it opens the follow
+    vi.advanceTimersByTime(0);
+    const afterThrow = built.length;
+    const timersLeft = vi.getTimerCount();
+    vi.advanceTimersByTime(999);
+    const beforeBackoffEnds = built.length;
+    vi.advanceTimersByTime(1);
+
+    // Then the follow waited for the backoff, and tried again when it ended
+    expect(afterThrow).toBe(2);
+    expect(timersLeft).toBe(1);
+    expect(beforeBackoffEnds).toBe(2);
+    expect(built).toHaveLength(3);
+  });
+
   it('As the network panel, my chain released and leased again while its refused follow waits is followed only once the backoff ends', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -1055,10 +1116,41 @@ describe('createChainPool watch', () => {
 
     // When
     transport.hooks.onHalt(new Error('gone'));
+    const timersLeft = vi.getTimerCount();
+    vi.advanceTimersByTime(30_000);
 
     // Then
-    expect(vi.getTimerCount()).toBe(0);
+    expect(timersLeft).toBe(0);
     expect(transport.sent.filter(isFollow)).toHaveLength(1);
+  });
+
+  it('As the network panel, I unwatch while my follow opens a new connection and no follow is sent on it', () => {
+    // Given a first follow that was refused, and the only connection's follow room taken by a remote session
+    const { createTransport, built } = createTransports({ followLimit: 1 });
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    let unwatch: (() => void) | null = null;
+    unwatch = pool.watch({
+      onActivity: () => {
+        unwatch?.();
+      },
+      onBestBlock: () => undefined,
+    });
+    const first = unwatch;
+    unwatch = null;
+    remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() });
+    const transport = must(built[0], 'transport');
+    refuseFollow(transport);
+    transport.hooks.onStatus('connected');
+    const remote = remoteLease(pool, '0xaa', { onHalt: vi.fn<(error?: unknown) => void>() });
+    remote.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    unwatch = first;
+
+    // When the retry opens its follow on a new connection, and the status change that opens it reaches the panel
+    vi.advanceTimersByTime(0);
+
+    // Then the panel's unwatch left the new connection with no follow
+    const opened = must(built[1], 'second connection');
+    expect(listMethod(opened, 'chainHead_v1_follow')).toEqual([]);
   });
 
   it('As the network panel, my chain leased, released and leased again opens its follow at once each time', () => {

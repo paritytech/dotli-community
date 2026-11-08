@@ -71,7 +71,7 @@ export type ChainPool = {
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
    * and its halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
    * `connectionId` already has a session. Throws when the chain halts while the session opens, with the halt's error as
-   * the cause.
+   * the cause. `onHalt` may have heard that halt before the throw.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
@@ -121,7 +121,7 @@ type WatchState =
       retry: unknown;
     };
 
-/** An entry's live phase, written in place. Only `destroy` replaces it, so callbacks compare it by identity. */
+/** An entry's live phase, written in place and replaced when the entry closes, so callbacks compare it by identity. */
 type OpenEntry = {
   kind: 'open';
   /** The pending destroy's timer handle, `null` while none is pending. */
@@ -186,7 +186,7 @@ type RetryWatchParams = {
   /** The entry's live phase the retry was set in. */
   open: OpenEntry;
   /** The watch the retry was set for. */
-  refused: WatchState;
+  refused: Extract<WatchState, { kind: 'refused' }>;
 };
 
 /** What the pool tells its watchers, one listener per watcher. */
@@ -322,7 +322,6 @@ export function createChainPool({
     // Names the chain, so the follow's debug log says which one refused it.
     const sessionId = `watch:${getShortKey(entry.key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
-    // Its callbacks run only after `start`, so `follow` is assigned by then.
     const follow = openWatchFollow({
       sessionId,
       connect: onMessage => entry.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
@@ -369,7 +368,7 @@ export function createChainPool({
 
   /** Holds the watchers' follow under `open` as refused until the follow gate's wait ends. */
   function waitToRetryWatch(entry: Entry, open: OpenEntry): void {
-    const refused: WatchState = {
+    const refused: Extract<WatchState, { kind: 'refused' }> = {
       kind: 'refused',
       retry: timers.setTimeout(() => {
         retryWatch(entry, { open, refused });
@@ -394,8 +393,8 @@ export function createChainPool({
   }
 
   /**
-   * Opens the watchers' follow under `open`, stores it, then sends it. A failure leaves the chain without one, and the
-   * next sync tries again. Never throws.
+   * Opens the watchers' follow under `open`, stores it, then sends it. A failure is reported, and while the chain is
+   * still watched the follow waits behind the gate as a refusal does. Never throws.
    */
   function openWatch(entry: Entry, open: OpenEntry): void {
     const off = open.watch;
@@ -404,10 +403,12 @@ export function createChainPool({
       follow = openFollow(entry, open);
     } catch (error) {
       reportWatchFollowFailure(entry, error);
+      waitAfterFailure(entry, open);
       return;
     }
-    // Opening the follow's connection may have halted the chain, or a watcher it reported to may have changed the want.
-    if (entry.state !== open || open.watch !== off) {
+    // Opening the follow's connection may have halted the chain, or a watcher it reported to may have changed the watch
+    // or the want. The follow is dropped then, and a later sync opens what is wanted.
+    if (entry.state !== open || open.watch !== off || !isWatchWanted(entry)) {
       follow.disconnect();
       return;
     }
@@ -417,11 +418,26 @@ export function createChainPool({
       follow.start();
     } catch (error) {
       if (open.watch === watch) {
-        open.watch = { kind: 'off' };
+        open.watch = off;
         follow.disconnect();
       }
       reportWatchFollowFailure(entry, error);
+      waitAfterFailure(entry, open);
     }
+  }
+
+  /** Makes a follow that failed to open wait behind the gate, unless the chain closed or no one wants it. */
+  function waitAfterFailure(entry: Entry, open: OpenEntry): void {
+    if (entry.state !== open || open.watch.kind !== 'off' || !isWatchWanted(entry)) {
+      return;
+    }
+    entry.followGate.noteHalt();
+    waitToRetryWatch(entry, open);
+  }
+
+  /** The watchers' follow runs exactly while the chain is held and watched. */
+  function isWatchWanted(entry: Entry): boolean {
+    return watchers.size > 0 && entry.leases > 0;
   }
 
   /** The follow has no caller to throw to. A halted chain tells its leases itself, so only an open chain reports. */
@@ -442,7 +458,7 @@ export function createChainPool({
     if (open.kind !== 'open') {
       return;
     }
-    const wanted = watchers.size > 0 && entry.leases > 0;
+    const wanted = isWatchWanted(entry);
     const { watch } = open;
     switch (watch.kind) {
       case 'off':
@@ -468,6 +484,7 @@ export function createChainPool({
           return;
         }
         open.watch = { kind: 'off' };
+        log.debug(`${POOL_TAG} ${getShortKey(entry.key)} the network panel stops waiting to follow it`);
         timers.clearTimeout(watch.retry);
         return;
     }

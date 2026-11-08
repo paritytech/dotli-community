@@ -38,8 +38,8 @@ flowchart LR
   heals: it takes the rebuilt chain behind the pool's redial gates, one per chain and one for the protocol frame. A
   remote session ends at its chain's halt and hears why. A remote session whose chain halts while it opens is refused
   with the halt as the cause. A chain whose teardown fails is reported, and the pool still closes the others. A watcher
-  sees each held chain's activity and best block. A follow the node refuses is tried again behind the redial backoff
-  while the chain is held.
+  sees each held chain's activity and best block. A follow the node refuses, or that fails to open, is tried again
+  behind the redial backoff while the chain is held.
 - Each chain's leases spread over lanes, each its own connection from the chain's transport. A consumer has a home lane
   for every request that names no follow. A follow goes to a lane with room under the transport's follow limit, and the
   follow's later calls go after it. Lane 0 lasts as long as the chain, and every other lane closes once empty. A halt of

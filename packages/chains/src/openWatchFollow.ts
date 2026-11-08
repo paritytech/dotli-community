@@ -170,7 +170,10 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, on
     }
   });
   return {
-    /** Sends the follow once, after the caller stored the follow. Throws what the session's send throws. */
+    /**
+     * Sends the follow once, after the caller stored the follow, since no callback runs before it. Throws what the
+     * session's send throws.
+     */
     start() {
       if (state.kind === 'idle') {
         follow();
