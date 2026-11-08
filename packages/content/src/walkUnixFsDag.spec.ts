@@ -301,6 +301,38 @@ describe('walkUnixFsDag', () => {
     expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
   });
 
+  it('As a visitor whose load failed on a missing block, I retry and the failed walk fetches no more blocks', async () => {
+    // Given a root linking a missing file and a folder of 40 files, over a source that records every call
+    const blocks: Blocks = new Map();
+    const bigLinks = Array.from({ length: 40 }, (_, i) =>
+      putRaw(blocks, `${String(i)}.js`, encodeText(`file-${String(i)}`)),
+    );
+    const big = putNode(blocks, 'big', new UnixFS({ type: 'directory' }), bigLinks);
+    const missing: dagPb.PBLink = { Name: 'missing.js', Hash: createSha256Cid(encodeText('absent'), RAW), Tsize: 6 };
+    const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), [missing, big]);
+    const held = createHeldSource(blocks);
+    const calls: Promise<Uint8Array>[] = [];
+    const blockSource: BlockSource = cid => {
+      const call = held.source(cid);
+      calls.push(call);
+      return call;
+    };
+
+    // When the walk fails on the missing block and every held fetch is released until no new fetch starts
+    const walk = walkUnixFsDag({ rootCid: root.Hash, blockSource, parseInnerArchive: rejectInnerArchive });
+    await expect(drive(walk, held, [1, 2], 8)).rejects.toThrow('missing block');
+    const startedAtRejection = calls.length;
+    let seen: number;
+    do {
+      seen = calls.length;
+      held.releaseAll();
+      await Promise.allSettled(calls);
+    } while (calls.length !== seen);
+
+    // Then the failed walk started no fetch after it failed
+    expect(calls.length).toBe(startedAtRejection);
+  });
+
   it('As a visitor, I load a site packed as one CAR at its root and the walk unpacks it with the parser it was given', async () => {
     // Given a raw root block that holds a whole CAR
     const { root, car } = createPackedSite({ 'index.html': 'hi' });

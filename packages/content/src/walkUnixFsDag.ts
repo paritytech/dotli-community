@@ -37,8 +37,10 @@ export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }:
   // The pool bounds only the fetches, so a node waiting on its children never holds a slot they need.
   const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
 
+  const walkAbort = new AbortController();
+
   function fetchBlock(cid: CID): Promise<Uint8Array> {
-    return fetches.call(() => blockSource(cid));
+    return fetches.call(() => blockSource(cid), { signal: walkAbort.signal });
   }
 
   /** One chunk of a file and everything under it. */
@@ -148,7 +150,13 @@ export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }:
     throw new Error(`Unsupported UnixFS node type "${unixFs.type}" at path="${path}"`);
   }
 
-  await processNode(rootCid, '');
+  try {
+    await processNode(rootCid, '');
+  } catch (error) {
+    // The other branches stop fetching once one has failed the walk.
+    walkAbort.abort(error);
+    throw error;
+  }
   return files;
 }
 
