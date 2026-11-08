@@ -37,6 +37,23 @@ function createFakeTransport(): { transport: JsonRpcProvider; opened: FakeConnec
   return { transport, opened };
 }
 
+/** A transport whose `call`th connection runs `action` first, then opens as usual. */
+function createTransportWithActionOnCall(
+  call: number,
+  action: () => void,
+): { transport: JsonRpcProvider; opened: FakeConnection[] } {
+  const { transport, opened } = createFakeTransport();
+  let calls = 0;
+  function acting(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
+    calls += 1;
+    if (calls === call) {
+      action();
+    }
+    return transport(onMessage);
+  }
+  return { transport: acting, opened };
+}
+
 function setup(): {
   pausable: PausableTransport;
   opened: FakeConnection[];
@@ -406,17 +423,11 @@ describe('createPausableTransport', () => {
 
   it('As a chain consumer beside one whose reopen fails, my held request still goes out, and theirs goes out on the next resume', () => {
     // Given two consumers, and a transport that throws when the first one reopens
-    const { transport, opened } = createFakeTransport();
     const reopenError = new Error('reopen failed');
-    let calls = 0;
-    function flakyTransport(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
-      calls += 1;
-      if (calls === 3) {
-        throw reopenError;
-      }
-      return transport(onMessage);
-    }
-    const pausable = createPausableTransport({ transport: flakyTransport });
+    const { transport, opened } = createTransportWithActionOnCall(3, () => {
+      throw reopenError;
+    });
+    const pausable = createPausableTransport({ transport });
     const failing = pausable.provider(() => undefined);
     const other = pausable.provider(() => undefined);
     pausable.pause();
@@ -443,17 +454,11 @@ describe('createPausableTransport', () => {
 
   it('As a chain consumer whose reopen failed, I resume again and my held request goes out', () => {
     // Given a transport that throws when the consumer reopens, and a resume that failed
-    const { transport, opened } = createFakeTransport();
     const reopenError = new Error('reopen failed');
-    let calls = 0;
-    function flakyTransport(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
-      calls += 1;
-      if (calls === 2) {
-        throw reopenError;
-      }
-      return transport(onMessage);
-    }
-    const pausable = createPausableTransport({ transport: flakyTransport });
+    const { transport, opened } = createTransportWithActionOnCall(2, () => {
+      throw reopenError;
+    });
+    const pausable = createPausableTransport({ transport });
     const consumer = pausable.provider(() => undefined);
     pausable.pause();
     consumer.send(request(1, 'system_health'));
@@ -472,18 +477,11 @@ describe('createPausableTransport', () => {
 
   it('As a chain consumer who leaves while my connection reopens, nothing is sent and the new connection is closed', () => {
     // Given a transport whose reopen lets the consumer leave before it returns
-    const { transport, opened } = createFakeTransport();
-    let calls = 0;
     let consumer: JsonRpcConnection | null = null;
-    function leavingTransport(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
-      calls += 1;
-      const inner = transport(onMessage);
-      if (calls === 2) {
-        consumer?.disconnect();
-      }
-      return inner;
-    }
-    const pausable = createPausableTransport({ transport: leavingTransport });
+    const { transport, opened } = createTransportWithActionOnCall(2, () => {
+      consumer?.disconnect();
+    });
+    const pausable = createPausableTransport({ transport });
     consumer = pausable.provider(() => undefined);
     pausable.pause();
     consumer.send(request(1, 'system_health'));
