@@ -160,7 +160,10 @@ type MountedHost = {
   chat: boolean;
   /** Runs `run` once the product's pending permission answer has reached it. */
   runAfterPermissionResponse: (run: () => void) => void;
-  /** Whether the core under the product reported itself down, refused or stale. Never throws. */
+  /**
+   * Whether the core under the product reported itself down, refused or stale. Reads false once the core was released.
+   * Never throws.
+   */
   isCoreDown: () => boolean;
   /**
    * Lets go of the core under the product, which stays on screen until a render replaces it. Idempotent, and `dispose`
@@ -461,7 +464,7 @@ export function createProductFrame({
       timestamp: timers.now(),
       payload: { label: product.label, mode: product.mode },
     });
-    // The core's down report can arrive during any wait above, before this frame was the one on screen.
+    // The core's down report can land before the render reaches `connected`, which keeps the down listener idle.
     if (host.isCoreDown()) {
       renderOnReplacement();
       return;
@@ -481,9 +484,11 @@ export function createProductFrame({
     const { lease, connection, chatCapable } = await attaches.call(() => attach(chat), {
       pool: debugFlowId,
     });
-    let coreDown = false;
+    let coreSide: 'live' | 'down' | 'released' = 'live';
     const unsubscribeDown = lease.subscribeDown(() => {
-      coreDown = true;
+      if (coreSide === 'live') {
+        coreSide = 'down';
+      }
       onCoreDown();
     });
     const coreProvider = ownCoreConnection(connection);
@@ -497,8 +502,6 @@ export function createProductFrame({
       timeoutMs: PERMISSION_ANSWER_WAIT_MS,
       timers,
     });
-    let coreSideHeld = true;
-
     function disposeProductSide(): void {
       disposePipe?.();
       productProvider?.dispose();
@@ -508,10 +511,10 @@ export function createProductFrame({
 
     /** Runs once, from a dispose, a failed build or a frame that gave up on its core. */
     function releaseCoreSide(): void {
-      if (!coreSideHeld) {
+      if (coreSide === 'released') {
         return;
       }
-      coreSideHeld = false;
+      coreSide = 'released';
       unsubscribeDown();
       unregisterPermissions();
       unregisterChat();
@@ -545,7 +548,7 @@ export function createProductFrame({
         productId: connection.productId,
         chat: chatCapable,
         runAfterPermissionResponse: responses.runAfterResponse,
-        isCoreDown: () => coreDown,
+        isCoreDown: () => coreSide === 'down',
         // The frame's lifetime runs on, so a device grant still waiting for its answer when the frame gives up still
         // rebuilds it.
         releaseCore: releaseCoreSide,

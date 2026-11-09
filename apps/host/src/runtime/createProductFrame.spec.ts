@@ -1371,7 +1371,7 @@ describe('product frame and the page core', () => {
     expect(counted('product.rerender')).toEqual([{ outcome: 'aborted', reason: 'recover' }]);
   });
 
-  it('As a dApp user whose replacement core cannot boot, I see the frame report failed and stop there', async () => {
+  it('As a dApp user whose replacement core cannot boot, I see the frame report failed and stop there, with my product on screen and its dead core let go', async () => {
     // Given
     const fakes = createHarness();
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
@@ -1386,6 +1386,8 @@ describe('product frame and the page core', () => {
     // Then
     expect(fakes.listStatuses()).toEqual(['connecting', 'connected', 'lost', 'connecting', 'failed']);
     expect(fakes.connections).toHaveLength(1);
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('As an operator, I watch a replacement core that cannot boot and see it reported once, as the redial', async () => {
@@ -1714,23 +1716,6 @@ describe('product frame and the page core', () => {
     ]);
     expect(fakes.listOnScreen()).toHaveLength(1);
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dApp user whose replacement core cannot boot, I keep my product on screen and the page lets go of its dead core', async () => {
-    // Given a product on screen whose core's redial will fail
-    const fakes = createHarness();
-    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
-    const dead = await answerConnection(fakes, 0);
-    await rendered;
-    fakes.nextBoots.push(() => new Error('worker fatal error: redial'));
-
-    // When its core goes down
-    crash(dead);
-    await fakes.changes.until(() => fakes.readLastStatus() === 'failed');
-
-    // Then the product stays and the dead core goes with its last lease
-    expect(fakes.listOnScreen()).toHaveLength(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 
