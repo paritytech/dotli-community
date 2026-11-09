@@ -57,7 +57,7 @@ export const storySettings: SettingsItemProps = {
     setTheme(next);
   },
   onApply: (...args) => {
-    // The page's reset moves before it calls out, and a second one while it runs does nothing.
+    // Moves only from `idle`, so a second call keeps the running status.
     if (!isResetRunning(untrack(reset))) {
       setResetSignal(args[2]?.forceFullWipe === true ? 'clearing' : 'applying');
       flush();

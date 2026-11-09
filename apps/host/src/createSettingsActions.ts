@@ -151,9 +151,14 @@ export function createSettingsActions({
     }
     const finished = createDeferred<undefined>();
     resetState.set({ kind: 'running', fullWipe: forceFullWipe, done: finished.promise });
-    void runReset({ next, prior, forceFullWipe }, reason).then(() => {
-      finished.resolve(undefined);
-    });
+    void runReset({ next, prior, forceFullWipe }, reason).then(
+      () => {
+        finished.resolve(undefined);
+      },
+      (error: unknown) => {
+        finished.reject(error);
+      },
+    );
     return finished.promise;
   }
 
@@ -178,8 +183,8 @@ export function createSettingsActions({
     /**
      * Applies `next` over `prior` and reloads. Deletes only caches the user just turned off. The persisted
      * `skipWorkerCache` flag makes the protocol iframe purge itself on its next boot. Settings persist before the
-     * deletes so the reload boots with them. Never rejects: a step that fails is counted, and the rest of the reset and
-     * the reload still run. The reload carries `reason`. A call while a reset runs saves and reloads nothing and
+     * deletes so the reload boots with them. Rejects only as `reload` throws: a step that fails is counted, and the rest of
+     * the reset and the reload still run. The reload carries `reason`. A call while a reset runs saves and reloads nothing and
      * resolves when the running one does.
      */
     applyAndReset,

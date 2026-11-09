@@ -201,16 +201,34 @@ describe('applyAndReset', () => {
     // Given a clear that rejects instead of resolving false
     const fault = new TypeError('clear broke');
     const { params, steps, captures, metrics } = setupReset({ clearBlockCache: () => Promise.reject(fault) });
-    const { applyAndReset } = createSettingsActions(params);
+    const { applyAndReset, reset } = createSettingsActions(params);
 
     // When
     await applyAndReset({ ...PRIOR, cache: { ...CACHE_ON, skipArchiveCache: true } }, PRIOR);
 
-    // Then the page still reloads, and the fault is captured and counted beside the steps
+    // Then the page still reloads and the reset keeps reading applying, and the fault is captured and counted beside the steps
     expect(steps).toEqual(['reload']);
+    expect(reset.get()).toBe('applying');
     expect(captures.exception).toHaveBeenCalledTimes(1);
     expect(captures.exception).toHaveBeenCalledWith(fault, expect.objectContaining({ step: 'settings_apply' }));
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'fault' }]);
+  });
+
+  it('As a user whose page cannot reload, I Save & Apply and the call rejects with the reload error', async () => {
+    // Given a reload that throws
+    const refused = new Error('reload refused');
+    const { params } = setupReset({
+      reload() {
+        throw refused;
+      },
+    });
+    const { applyAndReset } = createSettingsActions(params);
+
+    // When
+    const result = applyAndReset({ ...PRIOR, network: 'previewnet' }, PRIOR);
+
+    // Then
+    await expect(result).rejects.toBe(refused);
   });
 
   it('As an operator, I watch a Save & Apply clear what it had to and it is counted as ok', async () => {
