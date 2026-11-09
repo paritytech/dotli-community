@@ -252,8 +252,10 @@ export const ShareOnceAcrossTabs: Story = {
     const built = createDeferred<string>();
     source.report.mockReturnValueOnce(built.promise);
     const toggle = canvas.getByRole('button', { name: 'Toggle diagnostics' });
-    await step('When I click Share diagnostic, then leave the tab and come back while the report builds', async () => {
+    await step('Given I clicked Share diagnostic and the report is still building', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostic' }));
+    });
+    await step('When I leave the tab and come back', async () => {
       await userEvent.click(toggle);
       await userEvent.click(toggle);
     });

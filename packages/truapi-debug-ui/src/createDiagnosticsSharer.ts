@@ -21,7 +21,7 @@ export function createDiagnosticsSharer({ source, onBusy }: Params) {
   let round = {};
   return {
     /**
-     * Shares the report of `rows`, which the tab shows. A click in a running share's round belongs to that round,
+     * Shares the report of `rows`. A click in a running share's round belongs to that round,
      * whatever rows it passes, so it settles with the share and opens no second issue. A failed share is reported
      * here, not rejected.
      */

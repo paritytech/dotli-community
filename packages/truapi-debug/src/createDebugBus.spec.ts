@@ -202,7 +202,7 @@ describe('debug bus delivery', () => {
     expect(shown).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
   });
 
-  it('As a dotli developer, I open a second panel from inside the first panel replay and it gets no replay', () => {
+  it('As a dotli developer, I open a second panel from inside the replay to the first panel and it gets no replay', () => {
     // Given two buffered events
     const bus = createEnabledBus();
     bus.emit(createBootEvent('flow-1'));
