@@ -302,7 +302,7 @@ Everything that happens from here until \`sandbox:document_written\` runs in the
       title: 'Service worker registration',
       body: `The sandbox is registering its per-origin service worker. The SW is what intercepts sub-resource requests (CSS, JS, fonts, images) from the dApp after \`document.write\`. Without it, those requests would fall through to the origin server and break the offline-capable "serve from bulletin chain archive" model.
 
-\`waitForFreshController=true\` only happens on the \`fullReset=1\` boot path: after the host's settings popover nukes sandbox state, the existing \`navigator.serviceWorker.controller\` still points at the SW we just unregistered, so we have to wait for a \`controllerchange\` event to guarantee the new install has taken over.`,
+\`waitForFreshController=true\` only happens on the \`fullReset=1\` boot path. After the host's settings popover wipes sandbox state, the existing \`navigator.serviceWorker.controller\` still points at the SW the reset just unregistered, so the sandbox waits for a \`controllerchange\` event before it relies on the new install. When the browser kept the worker that controls the page, with nothing installing or waiting, no \`controllerchange\` can come, so it goes on at once.`,
     },
     endsFlow: false,
   },
