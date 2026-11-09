@@ -55,6 +55,31 @@ describe('sandbox UI', () => {
     expect(module.mountOverlays).toHaveBeenCalledOnce();
   });
 
+  it('As a visitor, I get a toast after the page UI failed to load once, and it shows once the UI loads', async () => {
+    // Given a first load that fails and a second that succeeds, and a first toast queued
+    const firstLoad = createDeferred<PageUiModule>();
+    const mounted = createDeferred<undefined>();
+    const module = createFakeUi();
+    vi.mocked(module.mountOverlays).mockImplementation(() => {
+      mounted.resolve(undefined);
+    });
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockReturnValueOnce(firstLoad.promise);
+    load.mockResolvedValueOnce(module);
+    const { ui, toasts } = createHarness(load);
+    toasts.set({ items: ['reload offer'] });
+    firstLoad.reject(new Error('chunk missing'));
+
+    // When a second toast is queued
+    toasts.set({ items: ['reload offer', 'stale worker'] });
+    await mounted.promise;
+    await ui.loadUi();
+
+    // Then the UI loaded again and the queue stopped listening
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(toasts.lc).toBe(0);
+  });
+
   it('As a visitor, I open the sandbox with a toast already queued and it still shows', async () => {
     // Given
     const module = createFakeUi();
