@@ -640,7 +640,7 @@ describe('createProtocolFrame', () => {
   });
 
   it('As the host, I see a frame that dies soon after ready captured when the frame before it stayed up and its port was released', async () => {
-    // Given a frame that died soon after ready, and the rebuilt frame that stayed ready for the stable span
+    // Given a frame that died soon after ready, the rebuilt frame that stayed ready for the stable span and was released, and the frame rebuilt after it ready
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
@@ -653,12 +653,12 @@ describe('createProtocolFrame', () => {
     await advance(2_000);
     const second = await dom.bringUp();
     await advance(30_000);
-
-    // When the worker releases the stable frame's port, and the frame rebuilt after it dies soon after ready
     second.interrupt(err(domain({ tag: 'released', value: 'The worker released this tab' })));
     await advance(2_000);
     const third = await dom.bringUp();
     await advance(1_000);
+
+    // When the frame rebuilt after the release dies soon after ready
     third.fail(new ProtocolFatalError('boom'));
     await advance();
 

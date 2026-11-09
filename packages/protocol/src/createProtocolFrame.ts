@@ -350,7 +350,7 @@ export function createProtocolFrame<E extends FrameElement>({
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
       const reason = fromTransportError(toError(thrown));
       const stable = readyAt !== null && timers.now() - readyAt >= timeouts.stableMs;
-      // A frame that stayed up ends the incident, however it left, so the next loss is captured.
+      // A frame that stayed up ends the incident, however it left.
       if (stable) {
         lossCapturedSinceStable = false;
       }
