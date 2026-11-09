@@ -55,9 +55,10 @@ flowchart LR
   which gets the answer: a session, a release the broker sent itself, or a session that left, whose answered
   subscription is released at once. Events the node still sends for a subscription that is being released, by the broker
   itself or by the last session that held it, are dropped quietly. A follow the node refuses is answered to its session.
-  The broker counts the follows its node may hold and knows the tokens it issued, so the chain's lanes can keep each
-  connection under its follow limit. The watch guard ends transaction watches that a disconnect drops, so a replay never
-  resubmits them.
+  A halt is final: a session that opens after it, or while the upstream opens, is never served, and the upstream it
+  opened is closed. The broker counts the follows its node may hold and knows the tokens it issued, so the chain's lanes
+  can keep each connection under its follow limit. The watch guard ends transaction watches that a disconnect drops, so
+  a replay never resubmits them.
 - Each session's follow is its own upstream follow, owned by its session like any subscription, so its events, unpins
   and unfollow go to and from the node for that session alone.
 - A request a halted chain leaves unanswered gets a marked error, and a typed error says whether the chain or the whole

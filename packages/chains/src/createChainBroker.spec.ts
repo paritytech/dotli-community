@@ -1541,6 +1541,50 @@ describe('createChainBroker halt', () => {
       },
     ]);
   });
+
+  it('As a dotli integrator, I connect while the upstream halts as it opens and the connection it opened is closed, and my session is never served', () => {
+    // Given an upstream whose transport halts the broker before its provider call returns
+    const harness = createProviderHarness();
+    const broker: ChainBroker = createChainBroker({
+      provider: listener => {
+        const connection = harness.provider(listener);
+        broker.halt(new Error('gone'));
+        return connection;
+      },
+    });
+    const onHalt = vi.fn();
+
+    // When a session connects and sends a follow
+    collectWarningsDuring(() => {
+      const connection = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object', onHalt });
+      connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    });
+
+    // Then the opened upstream is closed, nothing went upstream, and the session heard no halt
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+    expect(harness.sent).toEqual([]);
+    expect(onHalt).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, I connect to a halted broker and it opens no upstream', () => {
+    // Given a broker whose first session opened the upstream, then halted
+    const harness = createProviderHarness();
+    let opened = 0;
+    const broker = createChainBroker({
+      provider: listener => {
+        opened += 1;
+        return harness.provider(listener);
+      },
+    });
+    broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    broker.halt();
+
+    // When a second session connects
+    broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' });
+
+    // Then the upstream was opened only by the first session
+    expect(opened).toBe(1);
+  });
 });
 
 describe('upstream follow stop', () => {
@@ -2064,5 +2108,103 @@ describe('createChainBroker teardown', () => {
     expect(error).toBeInstanceOf(AggregateError);
     expect(error).toHaveProperty('errors', [new Error('send failed'), new Error('close failed')]);
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, I close every session while the upstream opens, and the next session opens a fresh one', () => {
+    // Given an upstream whose first opening closes every session before its provider call returns
+    const harness = createProviderHarness();
+    let opened = 0;
+    const broker: ChainBroker = createChainBroker({
+      provider: listener => {
+        opened += 1;
+        const connection = harness.provider(listener);
+        if (opened === 1) {
+          broker.disconnectAll();
+        }
+        return connection;
+      },
+    });
+
+    // When a first session connects and sends a follow, then a second session does the same
+    collectWarningsDuring(() => {
+      const first = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+      first.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    });
+    const second = broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' });
+    second.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] });
+
+    // Then the first opening was closed, and only the second session's follow went upstream
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+    expect(harness.sent.map(request => request.method)).toEqual(['chainHead_v1_follow']);
+  });
+
+  it('As a dotli integrator, I connect while the upstream throws as it opens, and my next session opens it again', () => {
+    // Given an upstream whose first opening throws
+    const harness = createProviderHarness();
+    let opened = 0;
+    const broker = createChainBroker({
+      provider: listener => {
+        opened += 1;
+        if (opened === 1) {
+          throw new Error('refused');
+        }
+        return harness.provider(listener);
+      },
+    });
+
+    // When a first session connects, then a second session connects and sends a follow
+    const error = catchError(() => broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' }));
+    const second = broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' });
+    second.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] });
+
+    // Then the first connect threw the provider's error, and the second session's follow went upstream
+    expect(error).toHaveProperty('message', 'refused');
+    expect(harness.sent.map(request => request.method)).toEqual(['chainHead_v1_follow']);
+  });
+
+  it('As a dotli integrator, I connect from inside the provider call that opens the upstream and my inner session is never served', () => {
+    // Given an upstream whose first opening connects an inner session that sends a follow
+    const harness = createProviderHarness();
+    let opened = 0;
+    const broker: ChainBroker = createChainBroker({
+      provider: listener => {
+        opened += 1;
+        if (opened === 1) {
+          const inner = broker.connect({ sessionId: 'inner', onMessage: () => undefined, wireMode: 'object' });
+          inner.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+        }
+        return harness.provider(listener);
+      },
+    });
+
+    // When an outer session connects
+    collectWarningsDuring(() => {
+      broker.connect({ sessionId: 'outer', onMessage: () => undefined, wireMode: 'object' });
+    });
+
+    // Then the upstream opened once, and the inner session's follow never went upstream
+    expect(opened).toBe(1);
+    expect(harness.sent).toEqual([]);
+  });
+
+  it('As an operator, I see a failed close of an upstream that halted as it opened reported, and my connect does not throw', () => {
+    // Given an upstream whose close throws, and whose transport halts the broker before its provider call returns
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const harness = createFailingProviderHarness();
+    harness.flags.failClose = true;
+    const broker: ChainBroker = createChainBroker({
+      provider: listener => {
+        const connection = harness.provider(listener);
+        broker.halt();
+        return connection;
+      },
+    });
+
+    // When a session connects
+    const error = catchError(() => broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' }));
+
+    // Then the connect did not throw, and the failed close was reported
+    expect(error).toBeUndefined();
+    expect(captured).toMatchObject([{ step: 'chain_broker_close' }]);
   });
 });

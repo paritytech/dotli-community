@@ -36,6 +36,7 @@ import {
   type SubscriptionMessage,
   type WireMode,
 } from './brokerMessages.js';
+import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
 import { createBrokerWarner, logBrokerTraffic, type BrokerWarner } from './createBrokerWarner.js';
 import { createChainHaltedError } from './createChainHaltedError.js';
 import { createEarlySubscriptions } from './createEarlySubscriptions.js';
@@ -84,6 +85,10 @@ type ForwardForSessionParams = {
   upstreamToken?: string;
 };
 
+/** Where the broker's upstream connection is in its life. A halt is final. */
+type UpstreamState =
+  { kind: 'closed' } | { kind: 'opening' } | { kind: 'open'; connection: JsonRpcConnection } | { kind: 'halted' };
+
 type UnparseableUpstreamParams = {
   /** The upstream message as it arrived, JSON text or an object. */
   message: unknown;
@@ -99,7 +104,7 @@ const FOLLOW_LIMIT_ERROR_CODE = -32800;
 
 /** Builds a broker that serves many JSON-RPC sessions over `provider`, opening it only with the first session. */
 export function createChainBroker({ provider, warn = createBrokerWarner() }: Params) {
-  let upstream: JsonRpcConnection | null = null;
+  let state: UpstreamState = { kind: 'closed' };
   const sessions = new Map<string, Session>();
   const localTokenIds = createLocalTokenIds();
   const pending = createPendingRequests({ sendUpstream });
@@ -124,6 +129,9 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
     logBrokerTraffic(`Session ${sessionId} connecting (${String(sessions.size)} existing sessions)`);
     ensureUpstream();
+    if (state.kind !== 'open') {
+      return createUnservedConnection(sessionId);
+    }
     sessions.set(sessionId, {
       id: sessionId,
       onMessage,
@@ -155,6 +163,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function halt(error?: unknown): void {
+    const previous = state;
+    state = { kind: 'halted' };
     const haltedSessions = [...sessions.values()];
     sessions.clear();
     for (const session of haltedSessions) {
@@ -171,7 +181,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
         reportHaltListener(thrown);
       }
     }
-    disconnectUpstream();
+    releaseUpstream(previous);
   }
 
   function addSessionToken({ sessionId, token }: SessionTokenParams): void {
@@ -188,7 +198,9 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function sendUpstream(message: unknown): void {
     // The provider types its requests narrower than the messages the broker forwards.
-    upstream?.send(message as UpstreamJsonRpcRequest);
+    if (state.kind === 'open') {
+      state.connection.send(message as UpstreamJsonRpcRequest);
+    }
   }
 
   /**
@@ -247,23 +259,68 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     }
   }
 
+  /** Opens the upstream from `closed`. Throws what the provider throws, and leaves the state `closed` then. */
   function ensureUpstream(): void {
-    if (upstream !== null) {
+    if (state.kind !== 'closed') {
       return;
     }
     logBrokerTraffic(`Connecting to upstream provider... (sessions: [${[...sessions.keys()].join(',')}])`);
-    upstream = provider(message => {
-      handleUpstreamMessage(message);
-    });
+    const opening: UpstreamState = { kind: 'opening' };
+    state = opening;
+    let connection: JsonRpcConnection;
+    try {
+      connection = provider(message => {
+        handleUpstreamMessage(message);
+      });
+    } catch (error) {
+      if (state === opening) {
+        state = { kind: 'closed' };
+      }
+      throw error;
+    }
+    // The transport may halt the broker, or its owner close it, from inside the provider call.
+    if (state !== opening) {
+      closeAbandonedUpstream(connection);
+      return;
+    }
+    state = { kind: 'open', connection };
     logBrokerTraffic(
-      `Upstream provider connected (send=${typeof upstream.send}, disconnect=${typeof upstream.disconnect})`,
+      `Upstream provider connected (send=${typeof connection.send}, disconnect=${typeof connection.disconnect})`,
     );
+  }
+
+  /** Closes an upstream the broker halted or closed while it opened. A failed close is reported, never thrown. */
+  function closeAbandonedUpstream(connection: JsonRpcConnection): void {
+    try {
+      connection.disconnect();
+    } catch (error) {
+      report.defect(error, {
+        step: 'chain_broker_close',
+        metric: chainPoolCloseMetric,
+        message: '[dot.li broker] closing an upstream that halted or closed while it opened failed:',
+      });
+    }
+  }
+
+  /** A connection for a session the broker cannot serve, which drops what it sends. */
+  function createUnservedConnection(sessionId: string): BrokerConnection {
+    logBrokerTraffic(`Session ${sessionId} not served, as the upstream is ${state.kind}`);
+    return {
+      send: () => {
+        warnNotConnected(sessionId);
+      },
+      disconnect: () => undefined,
+    };
+  }
+
+  function warnNotConnected(sessionId: string): void {
+    warn('session_not_connected', `sendFromSession: session ${sessionId} not connected, dropping message`);
   }
 
   function sendFromSession(sessionId: string, message: unknown): void {
     const session = sessions.get(sessionId);
     if (session === undefined) {
-      warn('session_not_connected', `sendFromSession: session ${sessionId} not connected, dropping message`);
+      warnNotConnected(sessionId);
       return;
     }
 
@@ -598,34 +655,45 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function disconnectUpstream(): void {
-    const closing = upstream;
-    // Dropped first, so a later `connect` opens a fresh upstream even when closing this one throws.
-    upstream = null;
+    const previous = state;
+    // Written first, so a later `connect` opens a fresh upstream even when closing this one throws.
+    state = getClosedState(previous);
+    releaseUpstream(previous);
+  }
+
+  /** Forgets what the upstream held, then closes it when it was open. Throws what the close throws. */
+  function releaseUpstream(previous: UpstreamState): void {
     try {
       pending.clear();
       ownedTokens.clear();
       earlySubscriptions.clear();
     } finally {
-      closing?.disconnect();
+      if (previous.kind === 'open') {
+        previous.connection.disconnect();
+      }
     }
   }
 
   return {
     /**
      * Opens a session, and the upstream with the first one. Throws when `sessionId` names an open session. The
-     * connection it returns routes the session's messages and ends it.
+     * connection it returns routes the session's messages and ends it. On a broker that halted, or that halts or closes
+     * while its upstream opens, returns a connection that drops what it sends, adds no session and calls no `onHalt`.
+     * The same holds for a `connect` made from inside the provider call that opens the upstream. Throws what the
+     * provider throws as the upstream opens, and the next `connect` opens it again.
      */
     connect,
     /**
      * Ends every session, releasing what each holds upstream, then closes the upstream. Every step runs even when one
      * throws, and then the one `Error`, or an AggregateError otherwise, is thrown. A later `connect` reopens the
-     * upstream.
+     * upstream, unless the broker halted.
      */
     disconnectAll,
     /**
      * The transport is gone for good. Each session first gets an error per request in flight and a `stop` per
      * established follow. The upstream is dropped without unsubscribing, as nothing is left to unsubscribe from. A
-     * session's throwing handler is reported, never thrown, so every session hears the halt.
+     * session's throwing handler is reported, never thrown, so every session hears the halt. A later `connect` opens
+     * nothing.
      */
     halt,
     /**
@@ -636,6 +704,18 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     /** Whether a session of this broker holds `localToken`. Never throws. */
     hasToken: ownedTokens.has,
   };
+}
+
+/** The state a close leaves, which keeps a halt final. */
+function getClosedState(previous: UpstreamState): UpstreamState {
+  switch (previous.kind) {
+    case 'halted':
+      return previous;
+    case 'closed':
+    case 'opening':
+    case 'open':
+      return { kind: 'closed' };
+  }
 }
 
 /** Counts a follow the node refused, telling its follow limit apart from any other refusal. */
