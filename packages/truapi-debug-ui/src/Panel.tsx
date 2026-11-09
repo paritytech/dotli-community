@@ -232,6 +232,7 @@ export function Panel(props: {
 
   /** Each orientation starts from its CSS defaults, so inline resize and split sizes are cleared. */
   function applyDockLayout(): void {
+    hideTooltip();
     const panel = panelElement;
     if (panel === undefined) {
       return;
@@ -289,10 +290,14 @@ export function Panel(props: {
     }
   }
 
+  function hideTooltip(): void {
+    // Hiding, moving or folding the pane under the cursor may fire no boundary event, which would strand the tooltip.
+    tooltipElement?.removeAttribute('data-visible');
+  }
+
   /** Switches what the panel shows, keeping the list pinned and the detail pane in step. */
   function show(update: () => void): void {
-    // Hiding the pane under the cursor may fire no boundary event, which would strand the tooltip.
-    tooltipElement?.removeAttribute('data-visible');
+    hideTooltip();
     commit(() => {
       update();
       refreshSnapshot();
@@ -301,6 +306,7 @@ export function Panel(props: {
   }
   /** Folds the panel to its header, or unfolds it running `update` in the same pass. */
   function setCollapsedTo(next: boolean, { update }: SetCollapsedToParams = {}): void {
+    hideTooltip();
     applyCollapsedHeight(next);
     if (next) {
       flush(() => setCollapsed(true));
