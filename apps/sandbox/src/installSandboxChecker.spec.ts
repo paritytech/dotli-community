@@ -32,7 +32,7 @@ class FakeXhr {
 }
 
 /** A product page on https://app.example with the APIs the checker wraps, and the violations it reported. */
-function createProductPage() {
+function createProductPage({ globals = {} }: { globals?: Record<string, unknown> } = {}) {
   const fetched: unknown[] = [];
   const timers: (() => void)[] = [];
   const page = {
@@ -53,6 +53,7 @@ function createProductPage() {
       timers.push(run);
       return 0;
     },
+    ...globals,
   };
   const violations: Violation[] = [];
   // The checker wraps a whole page, and the fake carries only the globals it reaches.
@@ -122,5 +123,18 @@ describe('the sandbox checker', () => {
       { api: 'Direct wallet access (injectedWeb3)', details: { action: 'read' } },
       { api: 'Direct wallet access (injectedWeb3)', details: { action: 'write' } },
     ]);
+  });
+
+  it('As a product developer, I overwrite a wallet global an extension set before the checker ran and my write is reported', () => {
+    // Given a page whose ethereum an extension set before the checker installed
+    const { page, violations, elapse } = createProductPage({ globals: { ethereum: { extension: true } } });
+    const pageGlobals = page as unknown as Record<string, unknown>;
+
+    // When the page settles and the product writes ethereum
+    elapse();
+    pageGlobals['ethereum'] = {};
+
+    // Then only the write is reported
+    expect(violations).toEqual([{ api: 'Direct wallet access (ethereum)', details: { action: 'write' } }]);
   });
 });

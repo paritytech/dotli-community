@@ -319,7 +319,8 @@ function trapWallets(page: CheckedPage, report: ReportViolation): void {
   const globals = getGlobals(page);
   for (const name of WALLET_GLOBALS) {
     let value = globals[name];
-    let firstWrite = true;
+    // An extension that set the global before the checker ran has already registered.
+    let firstWrite = value === undefined;
     Object.defineProperty(page, name, {
       configurable: true,
       enumerable: true,
