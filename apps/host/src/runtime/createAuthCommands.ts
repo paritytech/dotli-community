@@ -92,6 +92,21 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
     round = createLoginRound();
   }
 
+  /** What a call queued in `asked` answers from how its round ended, or null while it must run the login itself. */
+  function shareRound(asked: LoginRound): LoginOutcome | null {
+    switch (asked.settled.kind) {
+      case 'answered':
+        return asked.settled.outcome;
+      case 'failed':
+        if (asked.controller.signal.aborted) {
+          return CANCELLED;
+        }
+        throw new Error('The login this call queued behind failed', { cause: asked.settled.error });
+      case 'pending':
+        return asked.controller.signal.aborted || asked !== round ? CANCELLED : null;
+    }
+  }
+
   return {
     /**
      * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
@@ -102,17 +117,9 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
       const asked = round;
       return queue.call(
         async () => {
-          if (asked.settled.kind === 'answered') {
-            return asked.settled.outcome;
-          }
-          if (asked.controller.signal.aborted) {
-            return CANCELLED;
-          }
-          if (asked.settled.kind === 'failed') {
-            throw new Error('The login this call queued behind failed', { cause: asked.settled.error });
-          }
-          if (asked !== round) {
-            return CANCELLED;
+          const shared = shareRound(asked);
+          if (shared !== null) {
+            return shared;
           }
           try {
             const account = authViews.getSignedInSession(auth.get());
