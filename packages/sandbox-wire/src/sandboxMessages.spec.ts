@@ -127,14 +127,16 @@ describe('sandbox messages', () => {
     expect(received).toEqual({ type: 'dotli:sandbox-recover-accepted' });
   });
 
-  it('As the sandbox, I drop any other message as no acceptance', () => {
+  it.each([
+    ['a block result', { type: 'dotli:bitswap-result', id: 'r-1', ok: true }],
+    ['null', null],
+    ['a bare type string', 'dotli:sandbox-recover-accepted'],
+  ])('As the sandbox, I drop %s as no acceptance', (_name, data) => {
     // When
-    const results = [{ type: 'dotli:bitswap-result', id: 'r-1', ok: true }, null, 'dotli:sandbox-recover-accepted'].map(
-      parseRecoverAcceptedMessage,
-    );
+    const received = parseRecoverAcceptedMessage(data);
 
     // Then
-    expect(results).toEqual([null, null, null]);
+    expect(received).toBeNull();
   });
 
   it('As the sandbox, I post to my host whatever its origin', () => {
