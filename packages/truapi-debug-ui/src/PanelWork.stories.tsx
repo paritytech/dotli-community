@@ -165,6 +165,29 @@ export const PendingClockStopsCollapsed: Story = {
     }),
 };
 
+/** As a developer using the debug panel, I expand the panel after a call waited a minute and its badge reads the whole wait at once. */
+export const PendingBadgeCurrentOnExpand: Story = {
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      getDebugPanel().mount();
+      emitMessage('host_sign_request', 'r1');
+      clock.passFrame();
+      await step('Given the panel collapsed for a minute with the call pending', () => {
+        getPart('td-collapse').click();
+        clock.advance(60_000);
+      });
+      await step('When I expand it', () => {
+        getPart('td-collapse').click();
+        clock.passFrame();
+      });
+      await step('Then the badge reads the whole wait and is slow, before any tick', async () => {
+        const badge = findPendingBadge(listRows()[0]);
+        await expect(badge?.textContent).toMatch(/^60\.\ds pending$/);
+        await expect(badge).toHaveAttribute('data-slow');
+      });
+    }),
+};
+
 /** As a developer using the debug panel, I start a load on the Resolution tab and its clock runs only while the running load is on screen. */
 export const ResolutionClockStopsHidden: Story = {
   play: async ({ step }) =>

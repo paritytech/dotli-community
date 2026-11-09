@@ -113,7 +113,8 @@ export function EventList(props: {
     },
   );
 
-  // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge.
+  // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge. Coming
+  // back reads the clock, since neither the snapshot nor the tick moved while the list was hidden.
   const waiting = work.createKeyedSignals<string, number>();
   let clockAt = 0;
   let wasLive = false;
@@ -134,6 +135,7 @@ export function EventList(props: {
       tracker.update(input.events);
       const open = tracker.open();
       if (!wasLive || input.tick !== clockAt) {
+        const now = wasLive ? input.now : Date.now();
         wasLive = true;
         clockAt = input.tick;
         for (const key of [...waiting.keys()]) {
@@ -142,7 +144,7 @@ export function EventList(props: {
           }
         }
         for (const [key, since] of open) {
-          waiting.write(key, input.now - since);
+          waiting.write(key, now - since);
         }
         return;
       }
