@@ -74,6 +74,12 @@ const E2E_FAST = 'e2e.fast_path';
 /** CID cache miss, then resolve, fetch and render. */
 const E2E_SLOW = 'e2e.slow_path';
 
+/** Where a load is: reading, handed to the frame with its two listeners held, or failed with its screen shown. */
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'handedOff'; stopHearingMismatch: () => void; stopFollowingContent: () => void }
+  | { kind: 'failed' };
+
 /** What the loader reaches outside itself, one member per owner. */
 export type LoaderPorts = {
   /** The page's product frame. */
@@ -281,16 +287,19 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     };
   }
 
-  let resolveFailed = false;
-  // Set once the load hears a refused wire version, which a failed load no longer does.
-  let stopHearingMismatch: (() => void) | null = null;
-  // Set once the load follows the sandbox's outcomes, which a failed load no longer does.
-  let stopFollowingContent: (() => void) | null = null;
+  let state: LoadState = { kind: 'loading' };
+  /** Reads the state through a call, so a check after a callback that may have failed the load is not narrowed away. */
+  function hasFailed(): boolean {
+    return state.kind === 'failed';
+  }
   /** Reports the failure and shows its screen. Throws what the screen threw. */
   function failLoad(error: unknown): void {
-    resolveFailed = true;
-    stopHearingMismatch?.();
-    stopFollowingContent?.();
+    const previous = state;
+    state = { kind: 'failed' };
+    if (previous.kind === 'handedOff') {
+      previous.stopHearingMismatch();
+      previous.stopFollowingContent();
+    }
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
     const description = describeError(error, { readBackend: () => backend });
     // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
@@ -325,7 +334,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
    * again. A screen that fails is reported here, since nothing waits on the load anymore.
    */
   function failAfterHandoff(error: unknown, failure: string): void {
-    if (resolveFailed) {
+    if (hasFailed()) {
       return;
     }
     ports.product.halt();
@@ -340,9 +349,9 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
   }
   // The content fetch outlives the handoff, so the load follows each attempt's outcome while the trace keeps the first.
-  function settleOnContent(): void {
-    stopFollowingContent = ports.sandbox.subscribeOutcomes(({ outcome, failedStep }) => {
-      if (resolveFailed) {
+  function settleOnContent(): () => void {
+    return ports.sandbox.subscribeOutcomes(({ outcome, failedStep }) => {
+      if (hasFailed()) {
         return;
       }
       const loaded = isLoadedOutcome(outcome);
@@ -378,17 +387,24 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     }
     // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
     // the app would sit there with no chain or store, so the reload screen replaces it.
-    stopHearingMismatch = options.onProtocolVersionMismatch(error => {
+    const stopHearingMismatch = options.onProtocolVersionMismatch(error => {
       failAfterHandoff(error, 'a protocol version mismatch');
     });
-    if (resolveFailed) {
+    if (hasFailed()) {
+      stopHearingMismatch();
       return false;
     }
-    settleOnContent();
     // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
     void ports.sandbox.expectHeardWithin().catch((error: unknown) => {
       failAfterHandoff(error, 'a silent sandbox');
     });
+    const stopFollowingContent = settleOnContent();
+    if (hasFailed()) {
+      stopHearingMismatch();
+      stopFollowingContent();
+    } else {
+      state = { kind: 'handedOff', stopHearingMismatch, stopFollowingContent };
+    }
     return true;
   }
   function settleRendered(manifests: ProductManifests): void {
