@@ -114,7 +114,7 @@ export function EventList(props: {
   );
 
   // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge. Coming
-  // back reads the clock, since neither the snapshot nor the tick moved while the list was hidden.
+  // back reads the clock, since the snapshot time and the last tick can be as old as the moment the list was hidden.
   const waiting = work.createKeyedSignals<string, number>();
   let clockAt = 0;
   let wasLive = false;

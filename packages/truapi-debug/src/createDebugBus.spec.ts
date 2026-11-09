@@ -139,7 +139,6 @@ describe('debug bus delivery', () => {
     const bus = createEnabledBus();
     const leave = bus.subscribe(() => undefined);
     leave();
-    const listeningAfterLeave = bus.hasListeners();
     bus.emit(createBootEvent('flow-1'));
     bus.emit(createBootEvent('flow-2'));
 
@@ -147,10 +146,22 @@ describe('debug bus delivery', () => {
     const shown: DebugBusEvent[] = [];
     bus.subscribe(event => shown.push(event));
 
-    // Then it got nothing replayed, no panel listened while none was open, and the new one listens
+    // Then it got nothing replayed, and the new one listens
     expect(shown).toEqual([]);
-    expect(listeningAfterLeave).toBe(false);
     expect(bus.hasListeners()).toBe(true);
+  });
+
+  it('As a dotli developer, I close the only panel and emit sites see no panel listening', () => {
+    // Given a panel that subscribed and then left
+    const bus = createEnabledBus();
+    const leave = bus.subscribe(() => undefined);
+    leave();
+
+    // When an emit site asks whether a panel listens
+    const listening = bus.hasListeners();
+
+    // Then none does
+    expect(listening).toBe(false);
   });
 
   it('As a dotli developer, I enable buffering again after the panel opened and a panel opened later gets no replay', () => {
