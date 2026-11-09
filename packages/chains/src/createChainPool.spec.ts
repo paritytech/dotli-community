@@ -1495,6 +1495,7 @@ describe('createChainPool pausing', () => {
     expect(built).toHaveLength(2);
     expect(must(built[1], 'transport').opened).toBe(1);
     expect(pool.status('0xaa')).toBe('connecting');
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
     expect(onHalt).not.toHaveBeenCalled();
     expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
   });
@@ -1629,6 +1630,7 @@ describe('createChainPool healing', () => {
     expect(onHalt).not.toHaveBeenCalled();
     expect(pool.status('0xaa')).toBe('disconnected');
     expect(built).toHaveLength(1);
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("As a dotli integrator, my rebuilt chain refuses my lease's connect and I wait for the gate before the next try", async () => {
