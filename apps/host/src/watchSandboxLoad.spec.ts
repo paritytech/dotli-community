@@ -151,6 +151,22 @@ describe('watchSandboxLoad', () => {
     expect(frame.countListening()).toBe(0);
   });
 
+  it('As a visitor who stopped following my app frame, I hear none of its later outcomes, and stopping twice is safe', () => {
+    // Given a follower that stopped
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    const stopFollowing = load.subscribeOutcomes(report => heard.push(report));
+    stopFollowing();
+
+    // When it stops again and the app frame loads
+    stopFollowing();
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then it heard nothing
+    expect(heard).toEqual([]);
+  });
+
   it('As an operator, I watch a follower of the app frame throw and see it reported while the other followers still hear the outcome', () => {
     // Given a follower that throws and one that records
     const { captures } = bindReports();

@@ -358,10 +358,11 @@ describe('createProductLoader', () => {
 
   it('As a visitor, I open an app whose frame never starts and see the failure screen after its deadline instead of a loading bar for good', async () => {
     // Given
-    const { loader, ports, failures, reportContent, timers, captured, readResolution } = setupLoader({
-      published: { doom: 'bafy-base' },
-      silentSandbox: true,
-    });
+    const { loader, ports, failures, reportContent, timers, captured, readResolution, countOutcomeFollowers } =
+      setupLoader({
+        published: { doom: 'bafy-base' },
+        silentSandbox: true,
+      });
     await loader.load('doom');
 
     // When
@@ -373,6 +374,7 @@ describe('createProductLoader', () => {
     expect(captured).toContainEqual(expect.objectContaining({ step: 'content' }));
     expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'sandbox-silent' });
     expect(ports.product.halt).toHaveBeenCalledTimes(1);
+    expect(countOutcomeFollowers()).toBe(0);
   });
 
   it.each([
@@ -588,7 +590,7 @@ function setupLoader(params: Params = {}) {
     sandbox: {
       subscribeOutcomes: (listener: (report: SandboxLoadReport) => void) => {
         if (latestOutcome !== null) {
-          listener(latestOutcome);
+          sandboxOutcomes.deliver(listener, latestOutcome);
         }
         return sandboxOutcomes.subscribe(listener);
       },
@@ -677,6 +679,8 @@ function setupLoader(params: Params = {}) {
     listEvents: () => debug.map(event => `${event.layer}:${event.event}`),
     /** Returns how often the failure screen forgot the previous attempt's failure. */
     countForgotten: () => forgotten,
+    /** Returns how many followers still hear the sandbox's outcomes. */
+    countOutcomeFollowers: () => sandboxOutcomes.size,
     /** Returns how many listeners still hear a protocol frame refuse this page's wire. */
     countMismatchListeners: () => mismatchListeners.size,
     /** A protocol frame rebuilt from a newer release refusing this page's wire. */

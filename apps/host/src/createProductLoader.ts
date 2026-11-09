@@ -399,12 +399,13 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       failAfterHandoff(error, 'a silent sandbox');
     });
     const stopFollowingContent = settleOnContent();
+    // The follower hears the latest outcome during its subscribe, and a failed one fails the load before this returns.
     if (hasFailed()) {
       stopHearingMismatch();
       stopFollowingContent();
-    } else {
-      state = { kind: 'handedOff', stopHearingMismatch, stopFollowingContent };
+      return false;
     }
+    state = { kind: 'handedOff', stopHearingMismatch, stopFollowingContent };
     return true;
   }
   function settleRendered(manifests: ProductManifests): void {
