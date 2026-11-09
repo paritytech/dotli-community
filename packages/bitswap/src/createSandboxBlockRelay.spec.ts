@@ -147,6 +147,26 @@ function verifyBlock(_cid: string, bytes: Uint8Array): Promise<boolean> {
   return Promise.resolve(bytes.length === BLOCK.length && bytes.every((byte, index) => byte === BLOCK[index]));
 }
 
+/** A cache whose read of `bafyOld` waits for `release`, and whose other reads miss. */
+function createDeferredRead(): { cache: NonNullable<RelayParams['cache']>; release: () => void } {
+  let release = (): void => undefined;
+  const held = new Promise<Uint8Array | null>(resolve => {
+    release = () => {
+      resolve(BLOCK.slice());
+    };
+  });
+  return {
+    release: () => {
+      release();
+    },
+    cache: {
+      get: cid => (cid === 'bafyOld' ? held : Promise.resolve(null)),
+      put: () => Promise.resolve(),
+      delete: () => Promise.resolve(),
+    },
+  };
+}
+
 function createGetRequest(id: string, cid = 'bafyBlock'): SandboxMessageOf<'dotli:bitswap-get'> {
   return { type: 'dotli:bitswap-get', id, cid };
 }
@@ -339,6 +359,52 @@ describe('createSandboxBlockRelay', () => {
     expect(network.fetches).toHaveLength(2);
     expect(first.replies).toHaveLength(1);
     expect(network.fetches.find(fetch => fetch.cid === 'bafySlow')?.signal.aborted).toBe(true);
+  });
+
+  it("As a user, I reload a product frame while its old request still reads the cache, and my new frame's fetches still stop when it leaves", async () => {
+    // Given an old frame whose request was aborted while its cache read is pending, and a new frame reusing its frame id
+    const network = createFakeNetwork(() => 'hold');
+    const { channel, send } = createFakeChannel();
+    const oldRead = createDeferredRead();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: oldRead.cache, verify: verifyBlock });
+    const oldFrame = createFakeFrame();
+    send(oldFrame, { ...createGetRequest('req-1', 'bafyOld'), frame: 'frame-a' });
+    send(null, { ...createAbortRequest('req-1'), frame: 'frame-a' });
+    const newFrame = createFakeFrame();
+    send(newFrame, { ...createGetRequest('req-2', 'bafyNew'), frame: 'frame-a' });
+    await waitForLength(network.fetches);
+    oldRead.release();
+    await waitForLength(oldFrame.replies);
+
+    // When the new frame leaves
+    send(null, { ...createAbortRequest('req-2'), frame: 'frame-a' });
+
+    // Then the fetch of its block stopped
+    expect(network.fetches.find(fetch => fetch.cid === 'bafyNew')?.signal.aborted).toBe(true);
+  });
+
+  it('As a user, a block my frame dropped is not counted in the loading bar', async () => {
+    // Given a frame whose request was aborted while its cache read is pending
+    const { channel, send } = createFakeChannel();
+    const read = createDeferredRead();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: createFakeNetwork(() => 'hold').blocks,
+      cache: read.cache,
+      verify: verifyBlock,
+    });
+    const progress: ContentProgress[] = [];
+    relay.onProgress(update => progress.push(update));
+    const frame = createFakeFrame();
+    send(frame, { ...createGetRequest('req-1', 'bafyOld'), frame: 'frame-a' });
+    send(null, { ...createAbortRequest('req-1'), frame: 'frame-a' });
+
+    // When the cache read settles
+    read.release();
+    await waitForLength(frame.replies);
+
+    // Then nothing was counted
+    expect(progress).toEqual([]);
   });
 
   it('As the host, I stop the relay and it stops listening to the channel', () => {

@@ -249,12 +249,16 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
         if (own.get(data.id) === aborter) {
           own.delete(data.id);
         }
-        if (own.size === 0) {
+        // An abort may have emptied this map and a newer request of the frame replaced it.
+        if (own.size === 0 && inFlight.get(key) === own) {
           inFlight.delete(key);
         }
       })
       .then(served => {
-        noteBlock(data.cid, served);
+        // An aborted request's block is not part of the load the bar shows.
+        if (!aborter.signal.aborted) {
+          noteBlock(data.cid, served);
+        }
         const reply: BitswapResultMessage = {
           type: 'dotli:bitswap-result',
           id: data.id,
