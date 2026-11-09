@@ -1,4 +1,4 @@
-// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
+// @vitest-environment-options {"settings":{"enableIframePageLoading":true,"navigation":{"disableChildFrameNavigation":true}}}
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { NativeChatContactsSnapshot, PlacedAvatar, ProductContext } from '@parity/truapi-host';
 import { fromHex, toHex } from '@dotli/shared';

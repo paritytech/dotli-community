@@ -1,6 +1,5 @@
-// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
-// The product and protocol frames are never navigated in these tests, and
-// happy-dom would otherwise try to fetch their pages from a dev server.
+// @vitest-environment-options {"settings":{"enableIframePageLoading":true,"navigation":{"disableChildFrameNavigation":true}}}
+// Happy DOM may create product and protocol frames, but must not fetch their absent dev-server pages.
 import 'fake-indexeddb/auto';
 import { MessageChannel as NodeMessageChannel, MessagePort as NodeMessagePort } from 'node:worker_threads';
 import type * as TruapiHostWeb from '@parity/truapi-host/web';

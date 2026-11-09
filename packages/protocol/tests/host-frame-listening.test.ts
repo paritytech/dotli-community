@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
-// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
-// The protocol iframe's host does not exist here, so happy-dom must not fetch it.
+// @vitest-environment-options {"settings":{"enableIframePageLoading":true,"navigation":{"disableChildFrameNavigation":true}}}
+// The protocol iframe's host does not exist here, so happy-dom may create its frame but must not fetch it.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SITE_ID } from '@dotli/config';

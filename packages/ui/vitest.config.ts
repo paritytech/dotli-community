@@ -21,6 +21,15 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'happy-dom',
+    // Keep synthetic iframe windows available without fetching their absent test URLs.
+    environmentOptions: {
+      happyDOM: {
+        settings: {
+          enableIframePageLoading: true,
+          navigation: { disableChildFrameNavigation: true },
+        },
+      },
+    },
     name: 'ui',
     include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['tests/setup/popover-polyfill.ts'],
