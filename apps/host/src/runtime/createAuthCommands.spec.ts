@@ -331,10 +331,10 @@ describe('auth commands', () => {
 
     // Then both rejected, the queued one with the failure as its cause
     expect(settled[0]).toEqual({ status: 'rejected', reason: failure });
-    expect(settled[1]).toMatchObject({ status: 'rejected' });
-    const queuedReason: unknown = settled[1].status === 'rejected' ? settled[1].reason : null;
-    expect(queuedReason).toBeInstanceOf(Error);
-    expect(queuedReason).toMatchObject({ message: 'The login this call queued behind failed', cause: failure });
+    expect(settled[1]).toEqual({
+      status: 'rejected',
+      reason: new Error('The login this call queued behind failed', { cause: failure }),
+    });
   });
 
   it('As a user who closed the modal, I click Sign in twice and the queued click answers cancelled when the login then fails', async () => {
