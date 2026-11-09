@@ -33,6 +33,7 @@ import { authModalState } from '../state/authModalState.js';
 import { getLoginFailureView } from './getLoginFailureView.js';
 import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
 import type { toEntropy } from './recoveryPhrase.js';
+import { reportLocalWalletFailure } from './walletFailure.js';
 
 const report = createReporter({ flow: 'wallet' });
 
@@ -82,6 +83,14 @@ type InitParams = Omit<Params, 'auth' | 'subscribeAuthSteps' | 'isLocalWallet' |
 
 type CommandStep = 'login' | 'logout' | 'cancel_login';
 
+/** The sign-in modal's hold on the blocking-modal queue, from the controller's start until it is disposed. */
+type ModalLease =
+  | { kind: 'closed' }
+  | { kind: 'queued'; scope: BlockingModalScope }
+  | { kind: 'open'; scope: BlockingModalScope; release: () => void }
+  | { kind: 'disabled' }
+  | { kind: 'disposed' };
+
 export type AuthController = ReturnType<typeof createAuthController>;
 
 /** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
@@ -95,9 +104,11 @@ export function createAuthController({
   loadRecoveryPhrase,
   elsewhere,
 }: Params) {
-  let authModalScope: BlockingModalScope | null = null;
-  let releaseAuthModal: (() => void) | null = null;
-  let authModalDisabled = false;
+  let lease: ModalLease = { kind: 'closed' };
+
+  function isDisposed(): boolean {
+    return lease.kind === 'disposed';
+  }
 
   function runCommand(step: CommandStep, run: (commands: AuthCommands) => unknown): void {
     const message = `[dot.li auth] ${step} failed:`;
@@ -135,28 +146,26 @@ export function createAuthController({
   }
 
   function ensureAuthModalLease(): void {
-    if (authModalScope !== null) {
+    if (lease.kind !== 'closed') {
       return;
     }
     const scope = coordinator.createScope();
-    authModalScope = scope;
+    const queued: ModalLease = { kind: 'queued', scope };
+    lease = queued;
     void scope
       .enqueue(
         signal =>
           new Promise<void>(resolve => {
-            if (authModalScope !== scope || signal.aborted) {
+            if (lease !== queued || signal.aborted) {
               resolve();
               return;
             }
 
             function finish(): void {
               signal.removeEventListener('abort', finish);
-              if (releaseAuthModal === finish) {
-                releaseAuthModal = null;
-              }
               resolve();
             }
-            releaseAuthModal = finish;
+            lease = { kind: 'open', scope, release: finish };
             signal.addEventListener('abort', finish, { once: true });
             authModalState.update({ open: true });
           }),
@@ -174,7 +183,10 @@ export function createAuthController({
   }
 
   function openAuthModal({ reason, label, dotSuffix }: OpenAuthModalParams = {}): boolean {
-    if (authModalDisabled) {
+    if (isDisposed()) {
+      return false;
+    }
+    if (lease.kind === 'disabled') {
       cancelTruapiLogin();
       return false;
     }
@@ -192,20 +204,29 @@ export function createAuthController({
     return true;
   }
 
-  /** Takes the modal off screen and gives up its lease, leaving any login it showed running. */
-  function releaseModal(): void {
+  /**
+   * Takes the modal off screen and gives up `held`, a lease its caller already moved on from, leaving any login it
+   * showed running.
+   */
+  function releaseLease(held: ModalLease): void {
     authModalState.reset();
-    const scope = authModalScope;
-    const release = releaseAuthModal;
-    authModalScope = null;
-    releaseAuthModal = null;
-    release?.();
-    scope?.dispose('Authentication modal closed');
+    if (held.kind === 'open') {
+      held.release();
+    }
+    getLeaseScope(held)?.dispose('Authentication modal closed');
   }
 
   function closeAuthModal({ skipTruapiCancel, cancel = 'page' }: CloseAuthModalParams = {}): void {
+    const held = lease;
+    if (held.kind === 'disposed') {
+      return;
+    }
+    // A disabled lease stays disabled, so a close never brings back a broken modal island.
+    if (isLeaseHeld(held)) {
+      lease = { kind: 'closed' };
+    }
     route.end(cancel);
-    releaseModal();
+    releaseLease(held);
 
     if (skipTruapiCancel !== true) {
       // A user close stops the core's pairing poll, which then resolves as Rejected.
@@ -214,7 +235,9 @@ export function createAuthController({
   }
 
   function showFailure(kind: LoginFailureKind, reason: string): void {
-    openAuthModal();
+    if (!openAuthModal()) {
+      return;
+    }
     authModalState.update({ view: getLoginFailureView(kind, reason) });
   }
 
@@ -228,7 +251,7 @@ export function createAuthController({
       ...(kind === undefined ? {} : { kind }),
     });
     // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends both.
-    if (step !== null && authModalScope !== null && authModalState.store.get().view.kind === 'phrase') {
+    if (step !== null && isLeaseHeld(lease) && authModalState.store.get().view.kind === 'phrase') {
       return;
     }
     if (authViews.getSignedInSession(state) !== null) {
@@ -263,7 +286,7 @@ export function createAuthController({
 
   const modal: AuthModalPort = {
     open: openAuthModal,
-    getLease: () => authModalScope,
+    getLease: () => getLeaseScope(lease),
     getViewKind: () => authModalState.store.get().view.kind,
     show(view) {
       authModalState.update({ view });
@@ -310,6 +333,9 @@ export function createAuthController({
   });
 
   function startLogin(params: StartLoginParams = {}): void {
+    if (isDisposed()) {
+      return;
+    }
     const state = auth.get();
     // A pairing writes its session to the shared store, so one started while the store is down would be lost.
     if (authViews.isSessionUnreachable(state)) {
@@ -335,6 +361,9 @@ export function createAuthController({
   }
 
   function importPhrase(): void {
+    if (isDisposed()) {
+      return;
+    }
     if (authViews.isSessionUnreachable(auth.get())) {
       void rereadBeforeSignIn({
         open: () => openAuthModal(),
@@ -372,14 +401,23 @@ export function createAuthController({
     importPhrase,
     /** Whether the modal's phrase view takes `phrase`. Never throws. */
     isValidPhrase(phrase: string): boolean {
+      if (isDisposed()) {
+        return false;
+      }
       return route.isValidPhrase(phrase);
     },
     /**
      * Uses the wallet of a phrase the modal's phrase view took, which reloads the page. Rejects when it could not be
-     * saved, which the switch reported, when the phrase import has not loaded, which is reported here, or when the
-     * phrase is not valid, which is the user's input and goes unreported.
+     * saved, which the switch reported, when the phrase import has not loaded, or when the controller was disposed,
+     * which is reported here, or when the phrase is not valid, which is the user's input and goes unreported.
      */
     importPhraseInPage(phrase: string): Promise<void> {
+      if (isDisposed()) {
+        // A disposed controller shows no phrase view, so a call here is a fault of the page and not of the input.
+        const error = new Error('The sign-in controller was disposed');
+        reportLocalWalletFailure(error, 'phrase-load');
+        return Promise.reject(error);
+      }
       return route.importPhraseInPage(phrase);
     },
     /**
@@ -387,6 +425,9 @@ export function createAuthController({
      * starts a sign-in. Never throws.
      */
     retryLogin(): void {
+      if (isDisposed()) {
+        return;
+      }
       if (route.isPhraseRound()) {
         importPhrase();
       } else {
@@ -395,6 +436,9 @@ export function createAuthController({
     },
     /** Opens the sign-out window before this returns, then asks the core to log out. Never throws. */
     logout(): void {
+      if (isDisposed()) {
+        return;
+      }
       // The route's sign-out window opens first, before any wait, since a browser opens a window only in the click's
       // own turn. The signed-in flag is not the controller's to write.
       route.signOut();
@@ -404,9 +448,15 @@ export function createAuthController({
     },
     /** Brings the sign-in window of the open round to the front. Never throws. */
     focusSignInWindow(): void {
+      if (isDisposed()) {
+        return;
+      }
       route.focus();
     },
-    /** Opens the modal and returns true, or returns false when the modal is disabled, having cancelled the login. */
+    /**
+     * Opens the modal and returns true, or returns false when the modal is disabled, having cancelled the login, and
+     * returns false after dispose, cancelling nothing.
+     */
     openAuthModal,
     /** Closes the modal, cancelling the login it showed unless `params` says not to. Never throws. */
     closeAuthModal,
@@ -415,23 +465,64 @@ export function createAuthController({
      * can close, stalling every later prompt. A sign-in window already open still signs in. Never throws.
      */
     disableAuthModal(): void {
-      authModalDisabled = true;
-      if (authModalScope === null) {
+      const held = lease;
+      if (held.kind === 'disposed') {
+        return;
+      }
+      lease = { kind: 'disabled' };
+      if (!isLeaseHeld(held)) {
         return;
       }
       // The route's wait goes on and its own outcome ends the core's login, so only the modal is released.
       if (route.isWaiting()) {
-        releaseModal();
+        releaseLease(held);
         return;
       }
-      closeAuthModal();
+      route.end('page');
+      releaseLease(held);
+      cancelTruapiLogin();
     },
-    /** Stops following the auth state and closes the modal without cancelling a login. Never throws. */
+    /**
+     * Stops following the auth state and closes the modal without cancelling a login. Every later call does nothing,
+     * and a login it left running opens no modal. Never throws.
+     */
     dispose(): void {
+      const held = lease;
+      if (held.kind === 'disposed') {
+        return;
+      }
+      lease = { kind: 'disposed' };
       unlisten();
-      closeAuthModal({ skipTruapiCancel: true });
+      route.end('page');
+      releaseLease(held);
     },
   };
+}
+
+/** Whether `lease` holds a place in the blocking-modal queue, waiting for the screen or on it. */
+function isLeaseHeld(lease: ModalLease): boolean {
+  switch (lease.kind) {
+    case 'queued':
+    case 'open':
+      return true;
+    case 'closed':
+    case 'disabled':
+    case 'disposed':
+      return false;
+  }
+}
+
+/** The blocking-modal scope `lease` holds, or null when it holds none. */
+function getLeaseScope(lease: ModalLease): BlockingModalScope | null {
+  switch (lease.kind) {
+    case 'queued':
+    case 'open':
+      return lease.scope;
+    case 'closed':
+    case 'disabled':
+    case 'disposed':
+      return null;
+  }
 }
 
 /** The core's failure kind of a login step, or undefined when the step is not a failure. */

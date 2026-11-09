@@ -381,11 +381,17 @@ function createHeldResults() {
   };
 }
 
-/** What a page's boot hands the auth control slot, a page that pairs in place over `commands`. */
-function buildInitParams(commands: AuthCommands): Parameters<AuthControlSlot['init']>[0] {
+/**
+ * What a page's boot hands the auth control slot, a page that pairs in place over `commands`, whose modal leases come
+ * from `coordinator`, a fresh one by default.
+ */
+function buildInitParams(
+  commands: AuthCommands,
+  coordinator: BlockingModalCoordinator = createBlockingModalCoordinator(),
+): Parameters<AuthControlSlot['init']>[0] {
   return {
     handoff: null,
-    coordinator: createBlockingModalCoordinator(),
+    coordinator,
     bridge: () =>
       Promise.resolve({
         authCommands: commands,
@@ -836,6 +842,93 @@ describe('auth controller: blocking-modal lease', () => {
     // Then nothing is captured or counted
     expect(exceptions).toEqual([]);
     expect(metrics.counted('auth.modal_lease')).toEqual([]);
+  });
+
+  it('As a user whose page dropped its sign-in controller, I see a login it left running fail and no modal holds up my later prompts', async () => {
+    // Given a login under way whose controller is then disposed
+    const exceptions = captureExceptions();
+    const failure = new Error('The paired session could not be stored');
+    const pending = createDeferred<LoginOutcome>();
+    const failing: AuthCommands = {
+      login: () => pending.promise,
+      logout: () => Promise.resolve({ phone: 'told' as const }),
+      cancelLogin: () => undefined,
+    };
+    const { controller, auth, coordinator, changes } = startController({ commands: () => Promise.resolve(failing) });
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().open);
+    controller.dispose();
+
+    // When the login fails and another prompt asks for the screen
+    pending.reject(failure);
+    await untilPromisesSettled();
+    let promptShown = false;
+    void coordinator.createScope().enqueue(() => {
+      promptShown = true;
+      return Promise.resolve();
+    });
+    await untilPromisesSettled();
+
+    // Then the failure was reported, the modal stayed closed and the prompt showed
+    expect(exceptions).toMatchObject([[failure, { step: 'login' }]]);
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(promptShown).toBe(true);
+  });
+
+  it('As a dotli integrator, I call a disposed controller and nothing opens, signs in or out, and a phrase import is refused', async () => {
+    // Given a disposed controller on a page that pairs in place
+    const exceptions = captureExceptions();
+    const { controller, auth, calls } = startController();
+    auth.set({ tag: 'Disconnected' });
+    controller.dispose();
+
+    // When every member is called, dispose again included
+    controller.dispose();
+    const opened = controller.openAuthModal();
+    controller.startLogin();
+    controller.importPhrase();
+    controller.retryLogin();
+    controller.logout();
+    controller.focusSignInWindow();
+    controller.disableAuthModal();
+    controller.closeAuthModal();
+    const valid = controller.isValidPhrase(PHRASE);
+    const imported = await controller.importPhraseInPage(PHRASE).catch((error: unknown) => error);
+    await untilPromisesSettled();
+
+    // Then nothing reached the core or the modal, and the import was refused as the page's fault
+    expect(opened).toBe(false);
+    expect(valid).toBe(false);
+    expect(imported).toEqual(new Error('The sign-in controller was disposed'));
+    expect(calls).toEqual({ logins: [], logouts: 0, cancels: 0 });
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(exceptions).toMatchObject([[imported, { step: 'local_wallet' }]]);
+  });
+
+  it('As a dotli integrator, I call a disposed controller on a page with the sign-in window and no window opens, closes or comes forward', async () => {
+    // Given a disposed controller on a signed-out page with the sign-in window
+    const handoff = createFakeHandoff();
+    const { controller, auth, calls } = startController({ handoff });
+    auth.set({ tag: 'Disconnected' });
+    controller.dispose();
+
+    // When every member that reaches the window is called
+    controller.startLogin();
+    controller.importPhrase();
+    controller.retryLogin();
+    controller.logout();
+    controller.focusSignInWindow();
+    await untilPromisesSettled();
+
+    // Then the window was never asked for anything and the core heard nothing
+    expect({
+      signIns: handoff.signIns,
+      signOuts: handoff.signOuts,
+      focuses: handoff.focuses,
+      cancels: handoff.cancels,
+    }).toEqual({ signIns: [], signOuts: [], focuses: 0, cancels: [] });
+    expect(calls).toEqual({ logins: [], logouts: 0, cancels: 0 });
   });
 });
 
@@ -1653,14 +1746,14 @@ describe('auth controller: the sign-in window', () => {
     await changes.until(() => getAuthModalState().view.kind === 'blocked');
     controller.startLogin();
     handoff.end({ kind: 'result', result: RESULT });
-    await changes.until(() => getAuthModalState().view.kind === 'error');
     await changes.until(() => calls.cancels === 3);
 
-    // Then: both windows opened and the failure is reported, while the modal never opened and each of its three opens
-    // (two sign-ins and the failure) cancelled the core's login instead
+    // Then: both windows opened and the failure is reported while the modal shows nothing, since it never opened and
+    // each of its three opens (two sign-ins and the failure) cancelled the core's login instead
     expect(handoff.signIns).toEqual(['signin', 'signin']);
     expect(exceptions.map(([error]) => error)).toEqual([failure]);
     expect(getAuthModalState().open).toBe(false);
+    expect(getAuthModalState().view.kind).not.toBe('error');
     expect(calls.cancels).toBe(3);
   });
 
@@ -1695,6 +1788,28 @@ describe('auth controller: the sign-in window', () => {
     // Then: a product's login waiting on the core is answered, and the page cancelled no round
     expect(calls.cancels).toBe(1);
     expect(handoff.cancels).toEqual([]);
+  });
+
+  it("As a user whose sign-in modal broke, I sign in through the window and a product's later login request still opens no modal", async () => {
+    // Given a broken modal island and a window sign-in whose result was written
+    const handoff = createFakeHandoff();
+    const { controller, auth, calls, changes } = startController({
+      handoff,
+      applyResult: () => Promise.resolve('applied'),
+    });
+    controller.disableAuthModal();
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
+    handoff.end({ kind: 'result', result: RESULT });
+    await untilPromisesSettled();
+
+    // When a product asks for a login
+    auth.set(PAIRING);
+    await changes.until(() => calls.cancels === 2);
+
+    // Then the modal stayed closed and the core's login was cancelled instead
+    expect(getAuthModalState().open).toBe(false);
+    expect(calls.cancels).toBe(2);
   });
 
   it('As a user on a preview its preview host frames, I sign in in place and see the pairing in the modal', async () => {
@@ -1829,6 +1944,39 @@ describe('auth controller on the page stores', () => {
       // Then the emptied slot threw, and the new controller presents the modal
       expect(error).toEqual(new Error('Auth control used before init'));
       expect(opened).toBe(true);
+    });
+
+    it('As a dotli integrator, I start the controller again while a login runs and its later failure leaves the new modal closed and the prompts free', async () => {
+      // Given a slot whose controller has a login under way on the page's coordinator
+      captureExceptions();
+      const coordinator = createBlockingModalCoordinator();
+      const pending = createDeferred<LoginOutcome>();
+      const failing: AuthCommands = {
+        login: () => pending.promise,
+        logout: () => Promise.resolve({ phone: 'told' as const }),
+        cancelLogin: () => undefined,
+      };
+      const slot = createAuthControlSlot();
+      slot.init(buildInitParams(failing, coordinator));
+      authState.set({ tag: 'Disconnected' });
+      slot.startLogin();
+      await untilPromisesSettled();
+
+      // When boot starts the controller again and the first login then fails
+      const { commands } = recordCommands({ changes: createChanges() });
+      slot.init(buildInitParams(commands, coordinator));
+      pending.reject(new Error('The paired session could not be stored'));
+      await untilPromisesSettled();
+      let promptShown = false;
+      void coordinator.createScope().enqueue(() => {
+        promptShown = true;
+        return Promise.resolve();
+      });
+      await untilPromisesSettled();
+
+      // Then the modal is closed and the next prompt showed
+      expect(getAuthModalState().open).toBe(false);
+      expect(promptShown).toBe(true);
     });
   });
 
