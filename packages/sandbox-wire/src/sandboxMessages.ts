@@ -47,6 +47,11 @@ export type SandboxRecoverMessage = {
   type: 'dotli:sandbox-recover';
 };
 
+/** The host accepted a sandbox's recover ask and will render that frame again. */
+export type SandboxRecoverAcceptedMessage = {
+  type: 'dotli:sandbox-recover-accepted';
+};
+
 export type BitswapGetMessage = {
   type: 'dotli:bitswap-get';
   id: string;
@@ -194,6 +199,13 @@ export function parseHostToSandboxMessage(data: unknown): HostToSandboxMessage |
     ...(typeof errorName === 'string' ? { errorName } : {}),
     ...(typeof code === 'number' ? { code } : {}),
   };
+}
+
+/** The host's acceptance of a recover ask, or null for anything else. The source and origin checks are the caller's. */
+export function parseRecoverAcceptedMessage(data: unknown): SandboxRecoverAcceptedMessage | null {
+  return asRecord(data)?.['type'] === 'dotli:sandbox-recover-accepted'
+    ? { type: 'dotli:sandbox-recover-accepted' }
+    : null;
 }
 
 /** To any origin, since the sandbox cannot tell which host origin framed it and nothing it sends is secret. */

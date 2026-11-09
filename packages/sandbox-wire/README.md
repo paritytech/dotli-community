@@ -39,6 +39,7 @@ flowchart LR
 - Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`, which returns the parsed
   params or throws `SandboxContractError` with the reason as its message and a `recoverable` flag.
 - Messages: `parseHostToSandboxMessage`, `postToHost`, `parseApiViolationMessage`, `ApiViolationMessage`,
+  `parseRecoverAcceptedMessage`, `SandboxRecoverAcceptedMessage` (the host's acceptance of a recover ask),
   `SandboxToHostMessage` (each member named through `SandboxMessageOf`), `HostToSandboxMessage`, `BitswapResultMessage`,
   `SandboxLoadOutcome` (how the sandbox's load of the content ended), `isLoadedOutcome`.
 - Channel: `startSandboxChannel`, its derived `StartedSandboxChannel`, `SandboxChannel` (the started channel without

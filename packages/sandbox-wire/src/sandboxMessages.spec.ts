@@ -7,6 +7,7 @@ import {
   isLoadedOutcome,
   parseApiViolationMessage,
   parseHostToSandboxMessage,
+  parseRecoverAcceptedMessage,
   parseSandboxToHostMessage,
   postToHost,
   type SandboxLoadOutcome,
@@ -116,6 +117,24 @@ describe('sandbox messages', () => {
 
     // Then
     expect(received).toBeNull();
+  });
+
+  it("As the sandbox, I read the host's acceptance of my recover ask", () => {
+    // When
+    const received = parseRecoverAcceptedMessage({ type: 'dotli:sandbox-recover-accepted', extra: 1 });
+
+    // Then
+    expect(received).toEqual({ type: 'dotli:sandbox-recover-accepted' });
+  });
+
+  it('As the sandbox, I drop any other message as no acceptance', () => {
+    // When
+    const results = [{ type: 'dotli:bitswap-result', id: 'r-1', ok: true }, null, 'dotli:sandbox-recover-accepted'].map(
+      parseRecoverAcceptedMessage,
+    );
+
+    // Then
+    expect(results).toEqual([null, null, null]);
   });
 
   it('As the sandbox, I post to my host whatever its origin', () => {
