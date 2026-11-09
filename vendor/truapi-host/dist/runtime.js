@@ -23,7 +23,9 @@ export function createNotificationReceiverCallbacks(callbacks) {
     return {
         receiverAuthority: async (productId) => {
             const authority = await callbacks.receiverAuthority?.(productId);
-            return authority === undefined ? undefined : ReceivingAuthority.enc(authority);
+            return authority === undefined
+                ? undefined
+                : ReceivingAuthority.enc(authority);
         },
         receiverConsent: async (authority, watches) => {
             if (!callbacks.receiverConsent)

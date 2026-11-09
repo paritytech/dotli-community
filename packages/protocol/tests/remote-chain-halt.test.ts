@@ -17,7 +17,12 @@ import {
 import type { RemoteChainHalt } from '../src/chain-halted.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
-// The protocol iframe's host does not exist here, so happy-dom must not fetch it, but `contentWindow` must stay.
+// Happy DOM may create the protocol frame, but child-frame navigation keeps it from fetching the absent host.
+(
+  window as unknown as {
+    happyDOM: { settings: { enableIframePageLoading: boolean; navigation: { disableChildFrameNavigation: boolean } } };
+  }
+).happyDOM.settings.enableIframePageLoading = true;
 (
   window as unknown as { happyDOM: { settings: { navigation: { disableChildFrameNavigation: boolean } } } }
 ).happyDOM.settings.navigation.disableChildFrameNavigation = true;

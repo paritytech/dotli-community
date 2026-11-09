@@ -879,10 +879,16 @@ function createWasmRawCallbacks(callbacks) {
   const pocket = callbacks.pocket;
   const profile = profileHostAdapter(callbacks.profile);
   const scanner = callbacks.scanner;
-  const hop = callbacks.hop ?? unavailableHopProvider;
+  const auth = callbacks.auth;
+  const locale = callbacks.locale;
+  const notifications = callbacks.notifications;
+  const userConfirmation = callbacks.userConfirmation;
+  const hop = { ...unavailableHopProvider, ...callbacks.hop };
   const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
-    authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
+    ...typeof auth.authStateChanged === "function" ? {
+      authStateChanged: async (state) => await auth.authStateChanged(AuthState.dec(state))
+    } : {},
     chainConnect: chainConnectAdapter(callbacks.chain),
     ...chat ? {
       createChatRoom: async (product, request) => import_truapi4.HostChatCreateRoomResponse.enc(await chat.createChatRoom(ProductContext.dec(product), import_truapi4.HostChatCreateRoomRequest.dec(request))),
@@ -911,13 +917,19 @@ function createWasmRawCallbacks(callbacks) {
       scheduleGameReminder: async (product, startsAt) => await game.scheduleGameReminder(ProductContext.dec(product), startsAt),
       cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product))
     } : {},
-    allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
-    hopConnect: hopConnectAdapter(hop),
+    ...typeof hop.allowedHopEndpoints === "function" ? {
+      allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash))
+    } : {},
+    ...typeof hop.connectHop === "function" ? {
+      hopConnect: hopConnectAdapter(hop)
+    } : {},
     ...identityBackend ? {
       identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash))
     } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi4.HostLocaleSubscribeItem.enc(item)), sendError),
-    localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request))),
+    ...typeof locale.localizeTimestamps === "function" ? {
+      localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request)))
+    } : {},
     ...typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function" ? {
       mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
       mediaBackendEvents: (product, runtimeId, sendItem, sendError) => driveResultStream(media.mediaBackendEvents(ProductContext.dec(product), runtimeId), (item) => sendItem(MediaBackendEvent.enc(item)), sendError, true),
@@ -932,16 +944,30 @@ function createWasmRawCallbacks(callbacks) {
     cancelChatFileExport: async (exportId) => await nativeChatFiles.cancelChatFileExport(exportId),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi4.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi4.HostPushNotificationRequest.dec(notification))),
-    cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
-    receiverAuthority: async (productId) => {
-      const value = await callbacks.notifications.receiverAuthority(productId);
-      return value == null ? void 0 : ReceivingAuthority.enc(value);
-    },
-    receiverConsent: async (authority, watches) => await callbacks.notifications.receiverConsent(ReceivingAuthority.dec(authority), S2.Vector(import_truapi4.ReceivingWatch).dec(watches)),
-    receiverChanged: async () => await callbacks.notifications.receiverChanged(),
-    receiverCommand: async (productId, action, payload) => await callbacks.notifications.receiverCommand(productId, action, payload),
-    activationEvents: async () => import_truapi4.NotificationActivations.enc(await callbacks.notifications.activationEvents()),
-    acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(import_truapi4.NotificationActivationAcknowledgeRequest.dec(request)),
+    ...typeof notifications.cancelNotification === "function" ? {
+      cancelNotification: async (id) => await notifications.cancelNotification(id)
+    } : {},
+    ...typeof notifications.receiverAuthority === "function" ? {
+      receiverAuthority: async (productId) => {
+        const value = await notifications.receiverAuthority(productId);
+        return value == null ? void 0 : ReceivingAuthority.enc(value);
+      }
+    } : {},
+    ...typeof notifications.receiverConsent === "function" ? {
+      receiverConsent: async (authority, watches) => await notifications.receiverConsent(ReceivingAuthority.dec(authority), S2.Vector(import_truapi4.ReceivingWatch).dec(watches))
+    } : {},
+    ...typeof notifications.receiverChanged === "function" ? {
+      receiverChanged: async () => await notifications.receiverChanged()
+    } : {},
+    ...typeof notifications.receiverCommand === "function" ? {
+      receiverCommand: async (productId, action, payload) => await notifications.receiverCommand(productId, action, payload)
+    } : {},
+    ...typeof notifications.activationEvents === "function" ? {
+      activationEvents: async () => import_truapi4.NotificationActivations.enc(await notifications.activationEvents())
+    } : {},
+    ...typeof notifications.acknowledgeActivation === "function" ? {
+      acknowledgeActivation: async (request) => await notifications.acknowledgeActivation(import_truapi4.NotificationActivationAcknowledgeRequest.dec(request))
+    } : {},
     ...permissionStatus ? {
       devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(import_truapi4.HostDevicePermissionRequest.dec(request)))
     } : {},
@@ -967,7 +993,9 @@ function createWasmRawCallbacks(callbacks) {
       scanCode: async (product, request) => HostScan.enc(await scanner.scanCode(ProductContext.dec(product), import_truapi4.HostScannerScanRequest.dec(request)))
     } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi4.HostThemeSubscribeItem.enc(item)), sendError),
-    confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
+    ...typeof userConfirmation.confirmPermission === "function" ? {
+      confirmPermission: async (review) => PermissionDecision.enc(await userConfirmation.confirmPermission(UserConfirmationReview.dec(review)))
+    } : {},
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
   };
 }
@@ -2015,7 +2043,7 @@ function liveSubscription(first, closers, register) {
   return stream;
 }
 var NOT_MODELLED_REASONS = {
-  payment: "the protocol declares payments but no host implements them; see docs/rfcs/0006-payments.md",
+  payment: "payments are served only by native and Rust hosts, since the browser host-callback bridge cannot carry the payment platforms yet",
   coinPayment: "the protocol declares coin payments but no host implements them; see docs/rfcs/0006-payments.md",
   statements: "the core owns the statement store and submits it over the people chain, so there is no host seam for the mock to record or inject through"
 };
@@ -2361,24 +2389,6 @@ function createMockHost(config = {}) {
         const entry = pushedNotifications.find((n) => n.id === id);
         if (entry)
           entry.cancelled = true;
-      },
-      async receiverAuthority() {
-        return void 0;
-      },
-      async receiverConsent() {
-        throw new Error("background receiving unsupported");
-      },
-      async receiverChanged() {
-        throw new Error("background receiving unsupported");
-      },
-      async receiverCommand() {
-        return void 0;
-      },
-      async activationEvents() {
-        throw new Error("notification activation is unsupported");
-      },
-      async acknowledgeActivation() {
-        throw new Error("notification activation is unsupported");
       }
     },
     game: {

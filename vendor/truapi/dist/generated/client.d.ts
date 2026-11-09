@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "fc7b1e7173832168";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "4d759be92c9a692a";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -291,6 +291,31 @@ export declare class ExpandedCardClient {
      */
     setFaceShown(request: T.HostExpandedCardSetFaceShownRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostExpandedCardSetFaceShownError>>;
 }
+/**
+ * Move value into or out of the user's balance and watch it to completion.
+ *
+ * The host draws the whole flow. The core decides `Delivered` and `Released`
+ * itself, from the funds that moved, never from the host's or a provider's
+ * word.
+ */
+export declare class FundingClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Open the funding modality for a direction and, optionally, an amount,
+     * under a caller-chosen `id` the session is then watched by. Returns once
+     * the user starts the session.
+     */
+    request(request: T.HostFundingRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostFundingError>>;
+    /**
+     * Watch one of the caller's funding sessions to completion.
+     *
+     * Emits the current stage, later stages, then exactly one terminal item.
+     */
+    statusSubscribe({ request }: {
+        request: T.HostFundingStatusSubscribeRequest;
+    }): ObservableLike<T.HostFundingStatusSubscribeItem, S.CallErrorValue<T.VersionedHostFundingStatusSubscribeError>>;
+}
 /** Reminders for a product's next game. */
 export declare class GameClient {
     #private;
@@ -452,6 +477,62 @@ export declare class MediaClient {
      */
     cancelOperation(request: T.HostMediaCancelOperationRequest, options?: CallOptions): ResultAsync<T.MediaOperationSnapshot, S.CallErrorValue<T.VersionedHostMediaCancelOperationError>>;
 }
+/**
+ * Purses of NFT items, each item held by its own host-derived key.
+ *
+ * A product uses the purses it created without any check. Reading a purse
+ * owned by Root or another product needs the `NftPurseRead` permission for
+ * that owner; draining one asks the user to confirm each call. Long-running
+ * operations are subscriptions whose items are the RFC status updates.
+ */
+export declare class NftPurseClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Create a purse owned by the calling product.
+     *
+     * The name is at most 64 bytes of UTF-8. A longer name fails with a
+     * generic error carrying its length.
+     */
+    createPurse(request: T.HostNftPurseCreatePurseRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreatePurseResponse, S.CallErrorValue<T.VersionedHostNftPurseCreatePurseError>>;
+    /** Create new item keys in a purse. */
+    createItems(request: T.HostNftPurseCreateItemsRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateItemsResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateItemsError>>;
+    /** Read one page of the items in a purse that are on chain and not in use. */
+    queryPurse(request: T.HostNftPurseQueryPurseRequest, options?: CallOptions): ResultAsync<T.HostNftPurseQueryPurseResponse, S.CallErrorValue<T.VersionedHostNftPurseQueryPurseError>>;
+    /**
+     * List the purses of an owner, by id.
+     *
+     * The caller's own purses need no permission. Root's purses, or another
+     * product's, need the `NftPurseRead` permission for that owner.
+     */
+    listPurses(request: T.HostNftPurseListPursesRequest, options?: CallOptions): ResultAsync<T.HostNftPurseListPursesResponse, S.CallErrorValue<T.VersionedHostNftPurseListPursesError>>;
+    /** Move items from one purse to another. */
+    rebalancePurse({ request }: {
+        request: T.HostNftPurseRebalancePurseRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseRebalancePurseError>>;
+    /** Create a one-time receive key for a payment into a purse. */
+    createReceiveKey(request: T.HostNftPurseCreateReceiveKeyRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateReceiveKeyResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateReceiveKeyError>>;
+    /** Listen for the cheque sent to a receive key. */
+    listenForPayment({ request }: {
+        request: T.HostNftPurseListenForPaymentRequest;
+    }): ObservableLike<T.HostNftPurseListenForPaymentItem, S.CallErrorValue<T.VersionedHostNftPurseListenForPaymentError>>;
+    /** Hand items off in a cheque that the product delivers. */
+    createCheque(request: T.HostNftPurseCreateChequeRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateChequeResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateChequeError>>;
+    /** Release the items of a cheque the recipient never received. */
+    revokeCheque(request: T.HostNftPurseRevokeChequeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNftPurseRevokeChequeError>>;
+    /** Deposit a received cheque into a purse. */
+    deposit({ request }: {
+        request: T.HostNftPurseDepositRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseDepositError>>;
+    /** Return the items of a deposited cheque to their original keys. */
+    refund({ request }: {
+        request: T.HostNftPurseRefundRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseRefundError>>;
+    /** Move one item to a key outside the purses. */
+    transferItem({ request }: {
+        request: T.HostNftPurseTransferItemRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseTransferItemError>>;
+}
 /** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
@@ -513,14 +594,31 @@ export declare class PaymentClient {
     balanceSubscribe({ request }: {
         request: T.HostPaymentBalanceSubscribeRequest;
     }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
-    /** Request a payment from the user. */
-    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
-    /** Subscribe to payment lifecycle updates for a specific payment. */
+    /**
+     * Request a payment from the user, followed by `id` through
+     * `statusSubscribe`. Returns once the host has accepted it.
+     */
+    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentError>>;
+    /**
+     * Subscribe to payment lifecycle updates for a specific payment. Emits
+     * the current status first, so a caller that reloads re-attaches.
+     */
     statusSubscribe({ request }: {
         request: T.HostPaymentStatusSubscribeRequest;
     }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
-    /** Top up the user's payment balance. */
+    /**
+     * Top up the user's payment balance, followed by `id` through
+     * `topUpStatusSubscribe`.
+     */
     topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
+    /**
+     * Follow one top-up to its end.
+     *
+     * Emits the current status first, so a caller that reloads re-attaches.
+     */
+    topUpStatusSubscribe({ request }: {
+        request: T.HostPaymentTopUpStatusSubscribeRequest;
+    }): ObservableLike<T.HostPaymentTopUpStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentTopUpStatusSubscribeError>>;
 }
 /** Permission request methods. */
 export declare class PermissionsClient {
@@ -825,7 +923,7 @@ export declare class SystemClient {
      * An `http` or `https` URL outside the ecosystem needs a
      * `RemotePermission::Remote` grant for the target host, and prompts for one
      * on first use. dotNS names, `localhost`, and the app-handoff schemes
-     * (`mailto:`, `tel:`, `polkadot:`, `dot:`) consume no grant. The grant is
+     * (`mailto:`, `tel:`, `polkadot:`, `polkadotapp:`) consume no grant. The grant is
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
@@ -875,10 +973,12 @@ export interface TrUApiClient {
     readonly entropy: EntropyClient;
     readonly jamPeerTransport: JamPeerTransportClient;
     readonly expandedCard: ExpandedCardClient;
+    readonly funding: FundingClient;
     readonly game: GameClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly media: MediaClient;
+    readonly nftPurse: NftPurseClient;
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;

@@ -24,14 +24,16 @@ const PRODUCT_FRAME = `#${PRODUCT_FRAME_ID}`;
 /**
  * Why the payment controls cannot be served.
  *
- * Not a seam the mock declined to implement: every method in the core's
- * `capabilities/payment.rs` returns an error and ignores its arguments, so
- * there is no behaviour for a host to model or a test to observe.
+ * The core serves payments through `TopUpPlatform`, `PaymentPlatform` and
+ * `BalancePlatform`, which only a native or Rust host can install: the browser
+ * host-callback bridge cannot carry them yet. This host therefore answers
+ * every payment call `Unsupported`, and has no payment engine to record or
+ * drive.
  */
-const NO_PAYMENT_SEAM = "is not available in the TrUAPI test host: the protocol declares payments " +
-    "but no host implements them -- every method in the core's payment " +
-    "capability returns an error and ignores its arguments, so there is nothing " +
-    "to record or simulate. See docs/rfcs/0006-payments.md.";
+const NO_PAYMENT_SEAM = "is not available in the TrUAPI test host: payments are served only by " +
+    "native and Rust hosts, since the browser host-callback bridge cannot carry " +
+    "the payment platforms yet, so this host answers every payment call " +
+    "Unsupported. See the payment platforms in rust/crates/truapi/RUNTIME.md.";
 /** Why login behaviour is fixed once the host page has booted. */
 const LOGIN_BEHAVIOR_IS_CONSTRUCTION_TIME = "cannot be changed after boot in the TrUAPI test host: the host page reads " +
     'it once at start. Pass `loginBehavior: "auto" | "manual"` to ' +

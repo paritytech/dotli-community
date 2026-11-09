@@ -419,8 +419,9 @@ export interface MockHost {
      */
     statements: never;
     /**
-     * Payments, which TrUAPI declares but no host implements. Every access
-     * throws; see {@link notModeled}.
+     * Payments, which only native and Rust hosts serve: the browser bridge
+     * cannot carry the payment platforms yet. Every access throws; see
+     * {@link notModeled}.
      */
     payment: never;
     /** Coin payments, unimplemented in the same way as {@link MockHost.payment}. */

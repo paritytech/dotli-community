@@ -898,8 +898,7 @@ ctx.addEventListener("message", (ev) => {
         case "activateLocalSessionWithIdentity": {
             identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (booted) => signingRuntime(booted, "activateLocalSessionWithIdentity")
-                .activateLocalSessionWithIdentity(secret, liteUsername));
+            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (booted) => signingRuntime(booted, "activateLocalSessionWithIdentity").activateLocalSessionWithIdentity(secret, liteUsername));
             break;
         }
         case "refreshLocalIdentity":

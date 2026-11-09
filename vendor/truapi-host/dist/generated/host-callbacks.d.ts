@@ -315,8 +315,8 @@ export type CoreStorageKey =
  * wallet and network, whichever product wrote it. The reference is a
  * bearer capability.
  *
- * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose replaces
- * the others.
+ * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose
+ * replaces the others.
  */
  | {
     tag: "ProfileDisclosure";
@@ -3185,18 +3185,18 @@ export interface HostCallbacks {
 }
 export interface RequiredHostCallbacks {
     navigation: Required<Navigation>;
-    notifications: Required<Notifications>;
+    notifications: Notifications;
     permissions: Required<Permissions>;
     features: Required<Features>;
     productStorage: Required<ProductStorage>;
     coreStorage: Required<CoreStorage>;
     chain: Required<ChainProvider>;
-    hop?: Required<HopProvider>;
+    hop?: HopProvider;
     nativeChatFiles?: Required<NativeChatFilesHost>;
-    auth: Required<AuthPresenter>;
-    userConfirmation: Required<UserConfirmation>;
+    auth: AuthPresenter;
+    userConfirmation: UserConfirmation;
     theme: Required<ThemeHost>;
-    locale: Required<LocaleHost>;
+    locale: LocaleHost;
     preimage: Required<PreimageHost>;
     productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
@@ -3207,6 +3207,6 @@ export interface RequiredHostCallbacks {
     media?: Required<MediaPlatform>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;
-    profile?: Required<ProfilePlatform>;
+    profile?: ProfilePlatform;
     scanner?: Required<ScannerPlatform>;
 }

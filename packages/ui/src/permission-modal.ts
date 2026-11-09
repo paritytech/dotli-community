@@ -4,6 +4,7 @@
 import { withActiveTld } from '@dotli/config';
 import { CALLING_ICON, iconMarkup, JAM_PEERS_ICON, PERMISSION_ICONS } from './permission-icons.js';
 import { isDevicePermission, type PromptPermissionName } from './permissions.js';
+import type { NftPurseOwner } from '@parity/truapi';
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
 
@@ -33,7 +34,9 @@ export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName | 'Calling', s
   NFC: 'Read and write nearby NFC tags',
   Clipboard: 'Read text and data from your clipboard',
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
+  Motion: 'Access device motion and orientation sensors',
   ChatAuthority: "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
+  BalanceAccess: 'See your payment balance and insufficient-funds payment refusals',
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
   ProfileDisclosure:
     "Share this app's profile with app audiences or selected contacts, including personal sharing across recipients' apps",
@@ -49,6 +52,12 @@ export const MEDIA_CONSENT_NOTICE =
 /** The question asked before an app may exchange peer messages for one JAM network. */
 export function jamPeersPermissionText(label: string, genesis: string): string {
   return `Allow ${withActiveTld(label)} to send and receive messages with app-selected peers for JAM network ${genesis.slice(0, 10)}… (no accounts or signing)?`;
+}
+
+/** The question asked before an app may inspect another owner's NFT purses. */
+export function nftPurseReadPermissionText(label: string, owner: NftPurseOwner): string {
+  const ownerName = owner.tag === 'Root' ? 'your root account' : owner.value;
+  return `Allow ${withActiveTld(label)} to view NFT purses owned by ${ownerName}?`;
 }
 
 interface PermissionPrompt {
@@ -102,6 +111,26 @@ export function showJamPeersPermissionModal(
       icon: iconMarkup(JAM_PEERS_ICON),
       description: jamPeersPermissionText(label, genesis),
       detail: genesis,
+      reloads: false,
+    },
+    signal,
+    { allowOnce: true },
+  );
+}
+
+/** The shared Solid dialog names the owner covered by the NFT purse grant. */
+export function showNftPurseReadPermissionModal(
+  label: string,
+  owner: NftPurseOwner,
+  signal?: AbortSignal,
+): Promise<PermissionPromptDecision> {
+  const ownerDetail = owner.tag === 'Root' ? 'Root account' : owner.value;
+  return showPermissionPrompt(
+    label,
+    {
+      icon: iconMarkup(PERMISSION_ICONS.BalanceAccess),
+      description: nftPurseReadPermissionText(label, owner),
+      detail: ownerDetail,
       reloads: false,
     },
     signal,

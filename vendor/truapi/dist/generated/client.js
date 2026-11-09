@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "fc7b1e7173832168";
+export const TRUAPI_WIRE_SCHEMA_HASH = "4d759be92c9a692a";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -938,6 +938,49 @@ export class ExpandedCardClient {
         });
     }
 }
+/**
+ * Move value into or out of the user's balance and watch it to completion.
+ *
+ * The host draws the whole flow. The core decides `Delivered` and `Released`
+ * itself, from the funds that moved, never from the host's or a provider's
+ * word.
+ */
+export class FundingClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Open the funding modality for a direction and, optionally, an amount,
+     * under a caller-chosen `id` the session is then watched by. Returns once
+     * the user starts the session.
+     */
+    request(request, options) {
+        return this.#transport.request({
+            ids: W.FUNDING_REQUEST,
+            payload: T.VersionedHostFundingRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostFundingResponse, S.CallError(T.VersionedHostFundingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Watch one of the caller's funding sessions to completion.
+     *
+     * Emits the current stage, later stages, then exactly one terminal item.
+     */
+    statusSubscribe({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.FUNDING_STATUS_SUBSCRIBE,
+            payload: T.VersionedHostFundingStatusSubscribeRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostFundingStatusSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostFundingStatusSubscribeError)),
+        });
+    }
+}
 /** Reminders for a product's next game. */
 export class GameClient {
     #transport;
@@ -1289,6 +1332,164 @@ export class MediaClient {
         });
     }
 }
+/**
+ * Purses of NFT items, each item held by its own host-derived key.
+ *
+ * A product uses the purses it created without any check. Reading a purse
+ * owned by Root or another product needs the `NftPurseRead` permission for
+ * that owner; draining one asks the user to confirm each call. Long-running
+ * operations are subscriptions whose items are the RFC status updates.
+ */
+export class NftPurseClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Create a purse owned by the calling product.
+     *
+     * The name is at most 64 bytes of UTF-8. A longer name fails with a
+     * generic error carrying its length.
+     */
+    createPurse(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_PURSE,
+            payload: T.VersionedHostNftPurseCreatePurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreatePurseResponse, S.CallError(T.VersionedHostNftPurseCreatePurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Create new item keys in a purse. */
+    createItems(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_ITEMS,
+            payload: T.VersionedHostNftPurseCreateItemsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateItemsResponse, S.CallError(T.VersionedHostNftPurseCreateItemsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Read one page of the items in a purse that are on chain and not in use. */
+    queryPurse(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_QUERY_PURSE,
+            payload: T.VersionedHostNftPurseQueryPurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseQueryPurseResponse, S.CallError(T.VersionedHostNftPurseQueryPurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * List the purses of an owner, by id.
+     *
+     * The caller's own purses need no permission. Root's purses, or another
+     * product's, need the `NftPurseRead` permission for that owner.
+     */
+    listPurses(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_LIST_PURSES,
+            payload: T.VersionedHostNftPurseListPursesRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseListPursesResponse, S.CallError(T.VersionedHostNftPurseListPursesError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Move items from one purse to another. */
+    rebalancePurse({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_REBALANCE_PURSE,
+            payload: T.VersionedHostNftPurseRebalancePurseRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseRebalancePurseItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseRebalancePurseError)),
+        });
+    }
+    /** Create a one-time receive key for a payment into a purse. */
+    createReceiveKey(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_RECEIVE_KEY,
+            payload: T.VersionedHostNftPurseCreateReceiveKeyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateReceiveKeyResponse, S.CallError(T.VersionedHostNftPurseCreateReceiveKeyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Listen for the cheque sent to a receive key. */
+    listenForPayment({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_LISTEN_FOR_PAYMENT,
+            payload: T.VersionedHostNftPurseListenForPaymentRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseListenForPaymentItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseListenForPaymentError)),
+        });
+    }
+    /** Hand items off in a cheque that the product delivers. */
+    createCheque(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_CHEQUE,
+            payload: T.VersionedHostNftPurseCreateChequeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateChequeResponse, S.CallError(T.VersionedHostNftPurseCreateChequeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Release the items of a cheque the recipient never received. */
+    revokeCheque(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_REVOKE_CHEQUE,
+            payload: T.VersionedHostNftPurseRevokeChequeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseRevokeChequeResponse, S.CallError(T.VersionedHostNftPurseRevokeChequeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Deposit a received cheque into a purse. */
+    deposit({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_DEPOSIT,
+            payload: T.VersionedHostNftPurseDepositRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseDepositItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseDepositError)),
+        });
+    }
+    /** Return the items of a deposited cheque to their original keys. */
+    refund({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_REFUND,
+            payload: T.VersionedHostNftPurseRefundRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseRefundItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseRefundError)),
+        });
+    }
+    /** Move one item to a key outside the purses. */
+    transferItem({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_TRANSFER_ITEM,
+            payload: T.VersionedHostNftPurseTransferItemRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseTransferItemItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseTransferItemError)),
+        });
+    }
+}
 /** Local notification scheduling and consent-scoped background receiving. */
 export class NotificationsClient {
     #transport;
@@ -1460,7 +1661,10 @@ export class PaymentClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentBalanceSubscribeError)),
         });
     }
-    /** Request a payment from the user. */
+    /**
+     * Request a payment from the user, followed by `id` through
+     * `statusSubscribe`. Returns once the host has accepted it.
+     */
     request(request, options) {
         return this.#transport.request({
             ids: W.PAYMENT_REQUEST,
@@ -1472,7 +1676,10 @@ export class PaymentClient {
             },
         });
     }
-    /** Subscribe to payment lifecycle updates for a specific payment. */
+    /**
+     * Subscribe to payment lifecycle updates for a specific payment. Emits
+     * the current status first, so a caller that reloads re-attaches.
+     */
     statusSubscribe({ request }) {
         return createObservable({
             transport: this.#transport,
@@ -1482,7 +1689,10 @@ export class PaymentClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentStatusSubscribeError)),
         });
     }
-    /** Top up the user's payment balance. */
+    /**
+     * Top up the user's payment balance, followed by `id` through
+     * `topUpStatusSubscribe`.
+     */
     topUp(request, options) {
         return this.#transport.request({
             ids: W.PAYMENT_TOP_UP,
@@ -1492,6 +1702,20 @@ export class PaymentClient {
                 const result = S.Result(T.VersionedHostPaymentTopUpResponse, S.CallError(T.VersionedHostPaymentTopUpError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
+        });
+    }
+    /**
+     * Follow one top-up to its end.
+     *
+     * Emits the current status first, so a caller that reloads re-attaches.
+     */
+    topUpStatusSubscribe({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE,
+            payload: T.VersionedHostPaymentTopUpStatusSubscribeRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentTopUpStatusSubscribeError)),
         });
     }
 }
@@ -2115,7 +2339,7 @@ export class SystemClient {
      * An `http` or `https` URL outside the ecosystem needs a
      * `RemotePermission::Remote` grant for the target host, and prompts for one
      * on first use. dotNS names, `localhost`, and the app-handoff schemes
-     * (`mailto:`, `tel:`, `polkadot:`, `dot:`) consume no grant. The grant is
+     * (`mailto:`, `tel:`, `polkadot:`, `polkadotapp:`) consume no grant. The grant is
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
@@ -2230,10 +2454,12 @@ export function createClient(transport) {
         entropy: new EntropyClient(transport),
         jamPeerTransport: new JamPeerTransportClient(transport),
         expandedCard: new ExpandedCardClient(transport),
+        funding: new FundingClient(transport),
         game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
         media: new MediaClient(transport),
+        nftPurse: new NftPurseClient(transport),
         notifications: new NotificationsClient(transport),
         payment: new PaymentClient(transport),
         permissions: new PermissionsClient(transport),

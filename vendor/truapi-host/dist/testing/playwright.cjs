@@ -850,7 +850,7 @@ async function serveFromDist(relativePath, res) {
 
 // dist/testing/playwright.js
 var PRODUCT_FRAME = `#${PRODUCT_FRAME_ID}`;
-var NO_PAYMENT_SEAM = "is not available in the TrUAPI test host: the protocol declares payments but no host implements them -- every method in the core's payment capability returns an error and ignores its arguments, so there is nothing to record or simulate. See docs/rfcs/0006-payments.md.";
+var NO_PAYMENT_SEAM = "is not available in the TrUAPI test host: payments are served only by native and Rust hosts, since the browser host-callback bridge cannot carry the payment platforms yet, so this host answers every payment call Unsupported. See the payment platforms in rust/crates/truapi/RUNTIME.md.";
 var LOGIN_BEHAVIOR_IS_CONSTRUCTION_TIME = 'cannot be changed after boot in the TrUAPI test host: the host page reads it once at start. Pass `loginBehavior: "auto" | "manual"` to createTestHostFixture instead.';
 var NO_PINNED_PRODUCT_ACCOUNT = "is not supported by the TrUAPI test host: a product account is DERIVED from (session root, product id), so it cannot be mapped to a chosen dev account. `@parity/host-api-test-sdk` could pin one because it reimplements the protocol with no core behind it. Read the address back from the host instead of pinning it, and expect `switchAccount` to change it: the next call derives from the new session root, with no reconnect needed. That is the real behaviour, not a test-host limitation.";
 var NO_DERIVATION_URI = "is not supported by the TrUAPI test host: a session activates from 32 bytes of BIP-39 entropy, not a `//Alice`-style derivation path, so the addresses differ from polkadot-js's by construction. Use a built-in name (alice, bob, charlie, dave) or pass explicit entropy.";
