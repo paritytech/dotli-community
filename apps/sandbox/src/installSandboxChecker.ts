@@ -319,8 +319,8 @@ function trapWallets(page: CheckedPage, report: ReportViolation): void {
   const globals = getGlobals(page);
   for (const name of WALLET_GLOBALS) {
     let value = globals[name];
-    // An extension that set the global before the checker ran has already registered, so a later extension that
-    // overwrites it is reported as a write.
+    // An extension that set the global before the checker ran has already registered, so the next write, the
+    // product's included, is reported.
     let firstWrite = value === undefined;
     Object.defineProperty(page, name, {
       configurable: true,
