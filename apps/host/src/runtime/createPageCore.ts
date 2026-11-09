@@ -3,7 +3,8 @@
 
 // The page's one refcounted TrUAPI core, under its product's label. The core outlives its last lease by the destroy
 // delay, so a lease taken soon after keeps it. A faulted one is never handed out again, and one that goes down while it
-// is the page's core is replaced at once when it is held. One nobody holds just goes, and the next request dials.
+// is the page's core is replaced at once when it is held. One nobody holds just goes, and the next request dials. A
+// replacement that fails to boot while nobody holds it goes too.
 
 import type { ProductId } from '@parity/truapi';
 import type { ExecutableKind, TrUApiProductProvider } from '@parity/truapi-host';
