@@ -118,11 +118,15 @@ describe('dragSheet', () => {
     dispatchPointer(head, 'pointermove', { pointerId: 7, y: 10 });
     dispatchPointer(head, 'pointerup', { pointerId: 7, y: 10 });
     const closesAfterFirstLifts = [...closes];
+    const transformAfterFirstLifts = surface.style.transform;
+    const draggingAfterFirstLifts = surface.attributes.has('data-dragging');
     dispatchPointer(head, 'pointerup', { pointerId: 8, y: 80 });
 
     // Then the second finger moved nothing and neither lift closed the sheet
     expect(transformAfterSecondMoves).toBe('');
     expect(closesAfterFirstLifts).toEqual([]);
+    expect(transformAfterFirstLifts).toBe('');
+    expect(draggingAfterFirstLifts).toBe(false);
     expect(surface.style.transform).toBe('');
     expect(surface.attributes.has('data-dragging')).toBe(false);
     expect(closes).toEqual([]);

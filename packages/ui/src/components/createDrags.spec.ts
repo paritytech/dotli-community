@@ -32,6 +32,34 @@ describe('createDrags', () => {
     expect(locks).toEqual([true, false]);
   });
 
+  it("As a component whose drag missed its release, I take the same pointer's next press and the stale drag ends unreleased", () => {
+    // Given a drag held by pointer 1 whose pointerup never came
+    const target = new FakeHandle();
+    const ends: string[] = [];
+    const { lock, locks } = createRecordedLock();
+    const drags = createDrags({ selection: lock });
+    drags.start({
+      target,
+      down: { pointerId: 1 },
+      handlers: { move: () => undefined, end: released => ends.push(`first ${String(released)}`) },
+    });
+
+    // When pointer 1 goes down again and then lifts
+    const again = drags.start({
+      target,
+      down: { pointerId: 1 },
+      handlers: { move: () => undefined, end: released => ends.push(`second ${String(released)}`) },
+    });
+    const endsAfterPress = [...ends];
+    dispatchPointer(target, 'pointerup', { pointerId: 1 });
+
+    // Then the stale drag ended unreleased, the new press was taken and ended released, with text selection back
+    expect(again).toBe(true);
+    expect(endsAfterPress).toEqual(['first false']);
+    expect(ends).toEqual(['first false', 'second true']);
+    expect(locks).toEqual([true, false, true, false]);
+  });
+
   it('As a component whose drag ended, I take the next finger', () => {
     // Given a drag that ended on its own pointerup
     const target = new FakeHandle();
@@ -101,5 +129,7 @@ describe('createDrags', () => {
     expect(locks).toEqual([true, false, true]);
     expect(captured).toEqual([broke]);
     expect(next).toBe(true);
+    dispatchPointer(target, 'pointerup', { pointerId: 2 });
+    expect(locks).toEqual([true, false, true, false]);
   });
 });
