@@ -103,7 +103,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
         }
         throw new Error('The login this call queued behind failed', { cause: asked.settled.error });
       case 'pending':
-        return asked.controller.signal.aborted || asked !== round ? CANCELLED : null;
+        return asked.controller.signal.aborted ? CANCELLED : null;
     }
   }
 
@@ -124,9 +124,9 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
           try {
             const account = authViews.getSignedInSession(auth.get());
             if (account !== null) {
-              const outcome: LoginOutcome = { kind: 'paired', account };
-              asked.settled = { kind: 'answered', outcome };
-              return outcome;
+              const signedIn: LoginOutcome = { kind: 'paired', account };
+              asked.settled = { kind: 'answered', outcome: signedIn };
+              return signedIn;
             }
             const outcome = await login({ reason, signal: asked.controller.signal });
             asked.settled = { kind: 'answered', outcome };

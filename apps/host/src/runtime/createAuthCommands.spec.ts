@@ -313,7 +313,7 @@ describe('auth commands', () => {
     expect(core.calls.cancels).toBe(1);
   });
 
-  it('As a user whose login could not store my session, I see a click queued behind it fail with the same cause', async () => {
+  it('As a user whose login could not store my session, I click Sign in twice and the queued click fails with the same cause', async () => {
     // Given two logins in one round
     const failure = new Error('The paired session could not be stored');
     const answer = createDeferred<LoginOutcome>();
@@ -331,10 +331,13 @@ describe('auth commands', () => {
 
     // Then both rejected, the queued one with the failure as its cause
     expect(settled[0]).toEqual({ status: 'rejected', reason: failure });
-    expect(settled[1]).toMatchObject({ status: 'rejected', reason: { cause: failure } });
+    expect(settled[1]).toMatchObject({ status: 'rejected' });
+    const queuedReason: unknown = settled[1].status === 'rejected' ? settled[1].reason : null;
+    expect(queuedReason).toBeInstanceOf(Error);
+    expect(queuedReason).toMatchObject({ message: 'The login this call queued behind failed', cause: failure });
   });
 
-  it('As a user who closed the modal, I see a click queued in that round answer cancelled when its login then fails', async () => {
+  it('As a user who closed the modal, I click Sign in twice and the queued click answers cancelled when the login then fails', async () => {
     // Given two logins in one round, which a close then ends
     const answer = createDeferred<LoginOutcome>();
     const commands = createAuthCommands({
