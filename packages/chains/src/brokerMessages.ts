@@ -81,7 +81,6 @@ export type Session = {
   /** Hears each message for the session, encoded for its wire mode. */
   onMessage: (message: unknown) => void;
   ownedTokens: Set<string>;
-  connected: boolean;
   wireMode: WireMode;
   /** Told once when the chain's transport halts for good. */
   onHalt: ((error?: unknown) => void) | null;

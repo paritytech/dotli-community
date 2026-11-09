@@ -128,7 +128,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       id: sessionId,
       onMessage,
       ownedTokens: new Set<string>(),
-      connected: true,
       wireMode,
       onHalt,
     });
@@ -165,7 +164,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       } catch (thrown) {
         reportHaltListener(thrown);
       }
-      session.connected = false;
       // One session's handler must not keep the others from hearing the halt.
       try {
         session.onHalt?.(error);
@@ -264,7 +262,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function sendFromSession(sessionId: string, message: unknown): void {
     const session = sessions.get(sessionId);
-    if (session?.connected !== true) {
+    if (session === undefined) {
       warn('session_not_connected', `sendFromSession: session ${sessionId} not connected, dropping message`);
       return;
     }
@@ -469,7 +467,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function answerSession(owner: Extract<RequestOwner, { kind: 'session' }>, response: JsonRpcResponse): void {
     const session = sessions.get(owner.sessionId);
-    if (session?.connected !== true) {
+    if (session === undefined) {
       warn(
         'response_disconnected_session',
         `upstream response for disconnected session: sessionId=${JSON.stringify(owner.sessionId)}, method=${owner.method}, responseId=${String(response.id)}`,
@@ -550,7 +548,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
         continue;
       }
       const session = sessions.get(owned.sessionId);
-      if (session?.connected !== true) {
+      if (session === undefined) {
         warn(
           'subscription_disconnected_session',
           `from upstream: subscription for disconnected session: ${owned.sessionId}`,
@@ -573,7 +571,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     for (const { session, owned } of recipients) {
       // An earlier delivery can end this session or release its token. A final event still reaches every token it
       // ended.
-      if (!session.connected || (!ends && !ownedTokens.has(owned.localToken))) {
+      if (sessions.get(session.id) !== session || (!ends && !ownedTokens.has(owned.localToken))) {
         continue;
       }
       logBrokerTraffic(`subscription to [${owned.sessionId}] event=${eventType} method=${String(message.method)}`);
@@ -589,7 +587,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     logBrokerTraffic(
       `disconnectSession(${sessionId}) called, pending=${String(pending.count())}, tokens=${String(session.ownedTokens.size)}`,
     );
-    session.connected = false;
     sessions.delete(sessionId);
 
     // An answer still on its way may open a subscription, which nobody would release once its session has gone.
