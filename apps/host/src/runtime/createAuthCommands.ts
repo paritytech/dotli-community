@@ -34,7 +34,8 @@ export type CoreLoginParams = LoginParams & {
 export type AuthCommands = {
   /**
    * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-   * already signed in. Rejects when the core paired but its session could not be stored or read back.
+   * already signed in. Rejects when the core paired but its session could not be stored or read back. A call queued
+   * behind a login that rejects rejects too, with that failure as its cause.
    */
   login(params?: LoginParams): Promise<LoginOutcome>;
   /**
@@ -61,10 +62,14 @@ type Params = {
   cancelPairing: () => void;
 };
 
-/** The calls of one login, which share its answer. */
+/** How a login round ended, once its login did. */
+type RoundSettled =
+  { kind: 'pending' } | { kind: 'answered'; outcome: LoginOutcome } | { kind: 'failed'; error: unknown };
+
+/** The calls of one login, which share how it ended. */
 type LoginRound = {
   readonly controller: AbortController;
-  answer: LoginOutcome | null;
+  settled: RoundSettled;
 };
 
 /** The answer of a login that a cancel or a logout ended. */
@@ -90,14 +95,21 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
   return {
     /**
      * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-     * already signed in. Rejects when the core paired but its session could not be stored or read back.
+     * already signed in. Rejects when the core paired but its session could not be stored or read back. A call queued
+     * behind a login that rejects rejects too, with that failure as its cause.
      */
     login({ reason }: LoginParams = {}): Promise<LoginOutcome> {
       const asked = round;
       return queue.call(
         async () => {
-          if (asked.answer !== null) {
-            return asked.answer;
+          if (asked.settled.kind === 'answered') {
+            return asked.settled.outcome;
+          }
+          if (asked.controller.signal.aborted) {
+            return CANCELLED;
+          }
+          if (asked.settled.kind === 'failed') {
+            throw new Error('The login this call queued behind failed', { cause: asked.settled.error });
           }
           if (asked !== round) {
             return CANCELLED;
@@ -105,11 +117,16 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
           try {
             const account = authViews.getSignedInSession(auth.get());
             if (account !== null) {
-              asked.answer = { kind: 'paired', account };
-              return asked.answer;
+              const outcome: LoginOutcome = { kind: 'paired', account };
+              asked.settled = { kind: 'answered', outcome };
+              return outcome;
             }
-            asked.answer = await login({ reason, signal: asked.controller.signal });
-            return asked.answer;
+            const outcome = await login({ reason, signal: asked.controller.signal });
+            asked.settled = { kind: 'answered', outcome };
+            return outcome;
+          } catch (error) {
+            asked.settled = { kind: 'failed', error };
+            throw error;
           } finally {
             if (round === asked) {
               round = createLoginRound();
@@ -144,5 +161,5 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
 }
 
 function createLoginRound(): LoginRound {
-  return { controller: new AbortController(), answer: null };
+  return { controller: new AbortController(), settled: { kind: 'pending' } };
 }

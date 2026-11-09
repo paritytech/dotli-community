@@ -312,4 +312,46 @@ describe('auth commands', () => {
     // Then one cancel reached the core
     expect(core.calls.cancels).toBe(1);
   });
+
+  it('As a user whose login could not store my session, I see a click queued behind it fail with the same cause', async () => {
+    // Given two logins in one round
+    const failure = new Error('The paired session could not be stored');
+    const answer = createDeferred<LoginOutcome>();
+    const commands = createAuthCommands({
+      auth: atom<DotliAuthState>({ tag: 'Disconnected' }),
+      login: () => answer.promise,
+      cancelPairing: () => undefined,
+    });
+    const first = commands.login();
+    const second = commands.login();
+
+    // When the round's login rejects
+    answer.reject(failure);
+    const settled = await Promise.allSettled([first, second]);
+
+    // Then both rejected, the queued one with the failure as its cause
+    expect(settled[0]).toEqual({ status: 'rejected', reason: failure });
+    expect(settled[1]).toMatchObject({ status: 'rejected', reason: { cause: failure } });
+  });
+
+  it('As a user who closed the modal, I see a click queued in that round answer cancelled when its login then fails', async () => {
+    // Given two logins in one round, which a close then ends
+    const answer = createDeferred<LoginOutcome>();
+    const commands = createAuthCommands({
+      auth: atom<DotliAuthState>({ tag: 'Disconnected' }),
+      login: () => answer.promise,
+      cancelPairing: () => undefined,
+    });
+    const first = commands.login();
+    const second = commands.login();
+    commands.cancelLogin();
+
+    // When the round's login rejects
+    answer.reject(new Error('The paired session could not be stored'));
+    const settled = await Promise.allSettled([first, second]);
+
+    // Then the running login rejected and the queued click answered cancelled
+    expect(settled[0].status).toBe('rejected');
+    expect(settled[1]).toEqual({ status: 'fulfilled', value: { kind: 'cancelled' } });
+  });
 });
