@@ -65,8 +65,21 @@ type Params = {
   open?: (provider: JsonRpcProvider) => ChainClient;
 };
 
-/** Where the Asset Hub client stands. A stopped follow takes it back to `idle`, and the next read builds it again. */
-type DotnsResolverStatus = 'idle' | 'connecting' | 'syncing' | 'ready' | 'failed';
+/**
+ * Where the Asset Hub client stands, with the client once it is ready. A stopped follow takes it back to `idle`, and
+ * the next read builds it again.
+ */
+type HubState =
+  | { kind: 'idle' }
+  | { kind: 'connecting' }
+  | { kind: 'syncing' }
+  | { kind: 'ready'; client: ChainClient }
+  | { kind: 'failed' };
+
+type DotnsResolverStatus = HubState['kind'];
+
+/** The People client the warm-keep holds. A stopped follow takes it back to `idle`, and the next warm builds it again. */
+type PeopleState = { kind: 'idle' } | { kind: 'ready'; client: ChainClient };
 
 const PEOPLE_CHAIN = 'People Paseo';
 /** Upper bound on the background People-chain warm for legacy-account auth. */
@@ -110,10 +123,9 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     retryIf: isChainHalt,
   });
 
-  const status = atom<DotnsResolverStatus>('idle');
+  const hub = atom<HubState>({ kind: 'idle' });
 
-  let hub: ChainClient | null = null;
-  let peopleClient: ChainClient | null = null;
+  let peopleState: PeopleState = { kind: 'idle' };
 
   function measureSpan<T>(name: string, work: () => Promise<T>): Promise<T> {
     return timed ? m.span(name, work) : work();
@@ -123,9 +135,9 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     const initStart = performance.now();
     let outcome: 'ok' | 'error' | 'timeout' = 'error';
     try {
-      status.set('connecting');
+      hub.set({ kind: 'connecting' });
       const client = open(assetHub());
-      status.set('syncing');
+      hub.set({ kind: 'syncing' });
       const syncStart = performance.now();
       let syncMs: number;
       // Kept only once ready, and torn down on failure, so no orphaned client keeps a subscription alive.
@@ -148,30 +160,37 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
         throw error;
       }
 
+      // Kept before its follow is watched, so a follow that already stopped finds the client it must drop.
+      const ready: HubState = { kind: 'ready', client };
+      try {
+        hub.set(ready);
+      } catch (error) {
+        // A listener of a store an `onPhase` callback writes threw, and no read will hold this client.
+        client.destroy();
+        throw error;
+      }
+
       // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
       client.api.onStop(() => {
         log.warn('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
-        if (hub === client) {
-          hub = null;
+        if (hub.get() === ready) {
+          hub.set({ kind: 'idle' });
           client.destroy();
-          status.set('idle');
         }
       });
 
-      hub = client;
       outcome = 'ok';
       report.log.event('Asset Hub client ready', {
         source,
         sync_ms: Math.round(syncMs),
         total_ms: Math.round(performance.now() - initStart),
       });
-      status.set('ready');
       return client.api;
     } catch (error) {
       if (error instanceof NetworkSyncTimeoutError) {
         outcome = 'timeout';
       }
-      status.set('failed');
+      hub.set({ kind: 'failed' });
       throw error;
     } finally {
       // Recorded here alone, since the SharedWorker presync and direct mode both come through here.
@@ -191,8 +210,8 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       return () => undefined;
     }
     // A caller that arrives after a phase was reached hears it too.
-    return status.subscribe(next => {
-      tellPhase(onPhase, next);
+    return hub.subscribe(next => {
+      tellPhase(onPhase, next.kind);
     });
   }
 
@@ -208,7 +227,8 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     const ready = clients.call(
       () => {
         gaveUp.signal.throwIfAborted();
-        return hub?.api ?? buildAssetHub();
+        const state = hub.get();
+        return state.kind === 'ready' ? state.client.api : buildAssetHub();
       },
       { pool: 'asset-hub' },
     );
@@ -302,14 +322,16 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       client.destroy();
       throw error;
     }
+    // Kept before its follow is watched, so a follow that already stopped finds the client it must drop.
+    const ready: PeopleState = { kind: 'ready', client };
+    peopleState = ready;
     client.api.onStop(() => {
       log.warn('[dot.li resolve] People chainHead follow stopped, invalidating warm client');
-      if (peopleClient === client) {
-        peopleClient = null;
+      if (peopleState === ready) {
+        peopleState = { kind: 'idle' };
         client.destroy();
       }
     });
-    peopleClient = client;
     report.log.event('People chain warmed', { ms: Math.round(performance.now() - initStart) });
   }
 
@@ -360,7 +382,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
         log.debug('[dot.li resolve] No People connection, so no warm-keep. People resolves on demand via the broker.');
         return;
       }
-      await clients.call(() => (peopleClient === null ? buildPeople(people) : undefined), { pool: 'people' });
+      await clients.call(() => (peopleState.kind === 'idle' ? buildPeople(people) : undefined), { pool: 'people' });
     },
   };
 }

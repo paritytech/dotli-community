@@ -31,6 +31,8 @@ type ApiShape = {
   readFails?: Error;
   /** The chain halts under the read, in the pool's order: the read is answered first, then the follow stops. */
   haltsOnRead?: boolean;
+  /** The follow stops as it reaches its first block: `whenReady` stops it, then resolves. */
+  stopsAsReady?: boolean;
 };
 
 /** Hands out clients in order, each shaped by the next entry, and plain ones once the list runs out. */
@@ -44,16 +46,29 @@ function createFakeClients(shapes: ApiShape[] = []): {
     // Connected as papi's client would, so the test sees each lease taken and released.
     const connection = provider(() => undefined);
     const stops: (() => void)[] = [];
+    let stopped = false;
     function stop(): void {
+      stopped = true;
       for (const callback of stops.splice(0)) {
         callback();
       }
     }
     const api: Api = {
-      whenReady: shape.whenReady ?? (() => Promise.resolve()),
-      withBestBlock: <T>(read: (hash: string) => Promise<T>) => read('0x01'),
+      whenReady:
+        shape.whenReady ??
+        (() => {
+          if (shape.stopsAsReady === true) {
+            stop();
+          }
+          return Promise.resolve();
+        }),
+      withBestBlock: <T>(read: (hash: string) => Promise<T>) =>
+        stopped ? Promise.reject(new ApiStoppedError()) : read('0x01'),
       resolveTrieId: () => Promise.resolve(null),
       readSlot: () => {
+        if (stopped) {
+          return Promise.reject(new ApiStoppedError());
+        }
         const answer = shape.readFails === undefined ? Promise.resolve(null) : Promise.reject(shape.readFails);
         if (shape.haltsOnRead === true) {
           stop();
@@ -61,6 +76,10 @@ function createFakeClients(shapes: ApiShape[] = []): {
         return answer;
       },
       onStop: (callback: () => void) => {
+        if (stopped) {
+          callback();
+          return () => undefined;
+        }
         stops.push(callback);
         return () => undefined;
       },
@@ -140,6 +159,19 @@ describe('createDotnsResolver', () => {
     expect(leasesBeforeStop).toBe(1);
     expect(assetHub).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a dotli user on a light client, I resolve a name on a rebuilt client when Asset Hub's follow stops just as it syncs", async () => {
+    // Given a first client whose follow stops as it reaches its first block
+    const { dotns, opened } = createResolver([{ stopsAsReady: true }]);
+
+    // When
+    const owner = await dotns.resolveOwner('alice');
+
+    // Then
+    expect(owner).toBeNull();
+    expect(assetHub).toHaveBeenCalledTimes(2);
+    expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
   });
 
   it('As the host on a cold start, I make three concurrent reads and they share one Asset Hub client', async () => {
@@ -412,6 +444,35 @@ describe('createDotnsResolver', () => {
     expect(phases).toEqual(['asset-hub-syncing', 'asset-hub-syncing', 'asset-hub-ready', 'resolving-content']);
   });
 
+  it('As the host whose store listener throws as Asset Hub turns ready, I see my read fail and the client it built let go', async () => {
+    // Given a store the phase callback writes, whose listener throws on asset-hub-ready
+    const { dotns, opened } = createResolver();
+    const phase = atom<string | null>(null);
+    onTestFinished(
+      phase.listen(next => {
+        if (next === 'asset-hub-ready') {
+          throw new Error('listener broke');
+        }
+      }),
+    );
+
+    // When
+    const failure = await dotns
+      .resolveOwner('alice', {
+        onPhase: next => {
+          phase.set(next);
+        },
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+    // Then
+    expect(failure).toEqual(new Error('listener broke'));
+    expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {
     // Given
     const { dotns } = createResolver([{ whenReady: () => Promise.reject(new Error('no peers')) }]);
@@ -511,5 +572,25 @@ describe('createDotnsResolver', () => {
     // Then
     expect(people).toHaveBeenCalledTimes(1);
     expect(fake.opened).toHaveLength(1);
+  });
+
+  it('As the protocol frame, I warm People again when its follow stopped just as it synced', async () => {
+    // Given a People client whose follow stops as it reaches its first block, warmed once
+    const people = vi.fn<() => JsonRpcProvider>(() => () => ({ send: () => undefined, disconnect: () => undefined }));
+    const { open } = createFakeClients([{ stopsAsReady: true }]);
+    const dotns = createDotnsResolver({
+      assetHub,
+      people,
+      dotns: getActiveServicesConfig().dotns,
+      source: 'light-client',
+      open,
+    });
+    await dotns.waitForPeopleFinalized();
+
+    // When
+    await dotns.waitForPeopleFinalized();
+
+    // Then
+    expect(people).toHaveBeenCalledTimes(2);
   });
 });

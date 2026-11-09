@@ -14,12 +14,14 @@ every caller checks a name against.
 
 ## Design
 
-- The resolver works over one Asset Hub client, created on first use and again after its follow stops. The connection is
-  passed in, so it reads through the follow its owner already keeps. Work runs in named `createAsyncTaskPool` pools.
-- The client's status is held in one nanostores atom and replayed to each caller's phase callback. A caller hears each
-  change with the status there is when its turn comes, so a read started inside a store's listener round can hear the
-  latest phase twice and miss an earlier one. A callback's own throw is reported and the build goes on. A throw from a
-  listener of a store the callback writes reaches the build, so such a listener catches its own errors.
+- The resolver works over one Asset Hub client, created on first use and again after its follow stops. A follow that
+  stops before the client is kept takes it back to idle too. The connection is passed in, so it reads through the follow
+  its owner already keeps. Work runs in named `createAsyncTaskPool` pools.
+- The client's state, with the client once it is ready, is held in one nanostores atom and replayed to each caller's
+  phase callback. A caller hears each change with the status there is when its turn comes, so a read started inside a
+  store's listener round can hear the latest phase twice and miss an earlier one. A callback's own throw is reported and
+  the build goes on. A throw from a listener of a store the callback writes reaches the build, so such a listener
+  catches its own errors.
 - Contract reads go straight to Revive storage slots with no runtime call. Multi-slot reads pin one block and the
   contract's trie id, so bytes are never torn across blocks. Slot math and contenthash decoding sit in their own part. A
   multi-slot read asks for its data slots at once. Each follow runs a bounded number of storage operations at a time.
