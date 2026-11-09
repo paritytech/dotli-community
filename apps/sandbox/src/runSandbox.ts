@@ -160,6 +160,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
           report.log.event('The host accepted the recover ask');
         },
         () => {
+          // The only rejection is the deadline, so the cause is always the ask the host never accepted.
           wait.abort();
           failContract({ step: 'contract_rerender', title: 'Invalid sandbox URL', reason, cause: error });
         },

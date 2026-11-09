@@ -8,7 +8,7 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { CONTENT_ERRORS } from '@dotli/content';
 import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
-import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { catchError, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
 import { runSandbox, type RunSandboxDeps, type SandboxStep } from './runSandbox.js';
@@ -270,12 +270,9 @@ describe('runSandbox contract', () => {
     });
 
     // When the run starts on a URL the reload stripped
-    let thrown: unknown;
-    try {
+    const thrown = catchError(() => {
       void runSandbox(toFramedPage('https://myapp.app.localhost/'), sandbox.deps);
-    } catch (error) {
-      thrown = error;
-    }
+    });
 
     // Then the ask's error escapes the run and no wait is started
     expect(thrown).toBe(unreachable);
