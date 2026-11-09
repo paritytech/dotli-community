@@ -363,7 +363,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
       await read();
     } else {
       permissionsChangeMetric.count({ outcome: 'ok' });
-      // Written over unread statuses, nothing shows the write yet. A product that left has its own read queued.
+      // Written over unread statuses, nothing shows the write yet. Only the product on show is read, so a write whose
+      // product left reads nothing.
       if (landed.length > 0 && !patched && getCurrentLabel() === label) {
         await read();
       }

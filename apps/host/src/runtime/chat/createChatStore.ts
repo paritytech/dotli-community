@@ -147,9 +147,11 @@ type RenderCustomMessageParams = {
   sink: RenderSink;
 };
 
-/** One custom message render: on a connection, waiting for the product's next one, completed, or disposed. */
+/** A render on a connection, with the stop that connection handed back. */
 type Rendering = { kind: 'rendering'; connection: ChatConnection; stop: () => void };
+/** A render waiting for the product's next connection, with the unsubscribe of its registration listener. */
 type Waiting = { kind: 'waiting'; stopListening: () => void };
+/** One custom message render: on a connection, waiting for the product's next one, completed, or disposed. */
 type RenderState = Rendering | Waiting | { kind: 'completed' } | { kind: 'disposed' };
 
 type StartCustomRenderParams = RenderCustomMessageParams & {
