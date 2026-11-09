@@ -217,10 +217,10 @@ export function createAuthController({
   }
 
   function closeAuthModal({ skipTruapiCancel, cancel = 'page' }: CloseAuthModalParams = {}): void {
-    const held = lease;
-    if (held.kind === 'disposed') {
+    if (isDisposed()) {
       return;
     }
+    const held = lease;
     // A disabled lease stays disabled, so a close never brings back a broken modal island.
     if (isLeaseHeld(held)) {
       lease = { kind: 'closed' };
@@ -407,9 +407,11 @@ export function createAuthController({
       return route.isValidPhrase(phrase);
     },
     /**
-     * Uses the wallet of a phrase the modal's phrase view took, which reloads the page. Rejects when it could not be
-     * saved, which the switch reported, when the phrase import has not loaded, or when the controller was disposed,
-     * which is reported here, or when the phrase is not valid, which is the user's input and goes unreported.
+     * Uses the wallet of a phrase the modal's phrase view took, which reloads the page. Rejects in these cases:
+     * - the wallet could not be saved, which the switch reported
+     * - the phrase import has not loaded, which is reported here
+     * - the controller was disposed, which is reported here
+     * - the phrase is not valid, which is the user's input and goes unreported
      */
     importPhraseInPage(phrase: string): Promise<void> {
       if (isDisposed()) {
@@ -465,10 +467,10 @@ export function createAuthController({
      * can close, stalling every later prompt. A sign-in window already open still signs in. Never throws.
      */
     disableAuthModal(): void {
-      const held = lease;
-      if (held.kind === 'disposed') {
+      if (isDisposed()) {
         return;
       }
+      const held = lease;
       lease = { kind: 'disabled' };
       if (!isLeaseHeld(held)) {
         return;
@@ -487,10 +489,10 @@ export function createAuthController({
      * and a login it left running opens no modal. Never throws.
      */
     dispose(): void {
-      const held = lease;
-      if (held.kind === 'disposed') {
+      if (isDisposed()) {
         return;
       }
+      const held = lease;
       lease = { kind: 'disposed' };
       unlisten();
       route.end('page');

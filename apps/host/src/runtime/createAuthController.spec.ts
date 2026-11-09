@@ -919,6 +919,8 @@ describe('auth controller: blocking-modal lease', () => {
     controller.retryLogin();
     controller.logout();
     controller.focusSignInWindow();
+    controller.closeAuthModal();
+    controller.disableAuthModal();
     await untilPromisesSettled();
 
     // Then the window was never asked for anything and the core heard nothing
@@ -929,6 +931,34 @@ describe('auth controller: blocking-modal lease', () => {
       cancels: handoff.cancels,
     }).toEqual({ signIns: [], signOuts: [], focuses: 0, cancels: [] });
     expect(calls).toEqual({ logins: [], logouts: 0, cancels: 0 });
+  });
+
+  it('As a user whose page dropped its sign-in controller while the modal waited for a prompt, I answer the prompt and no modal opens', async () => {
+    // Given a blocking prompt on screen, the modal asked for behind it, and the controller then disposed
+    const { controller, coordinator } = startController();
+    const scope = coordinator.createScope();
+    const held = createDeferred<undefined>();
+    const prompt = scope.enqueue(() => held.promise);
+    onTestFinished(() => {
+      scope.dispose();
+    });
+    controller.openAuthModal();
+    controller.dispose();
+
+    // When the prompt is answered and another prompt asks for the screen
+    held.resolve(undefined);
+    await prompt;
+    await untilPromisesSettled();
+    let promptShown = false;
+    void coordinator.createScope().enqueue(() => {
+      promptShown = true;
+      return Promise.resolve();
+    });
+    await untilPromisesSettled();
+
+    // Then the modal stayed closed and the later prompt showed
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(promptShown).toBe(true);
   });
 });
 
@@ -1273,8 +1303,12 @@ describe('auth controller: the sign-in window', () => {
   it("As a debug panel user whose phrase check could not load, I watch a product's pairing fail and Retry signs me in", async () => {
     // Given a failed phrase import, then a product's pairing that failed over it
     captureExceptions();
+    let loads = 0;
     const { controller, auth, calls, changes } = startController({
-      loadRecoveryPhrase: () => Promise.reject(new Error('chunk failed')),
+      loadRecoveryPhrase: () => {
+        loads++;
+        return Promise.reject(new Error('chunk failed'));
+      },
     });
     controller.importPhrase();
     await changes.until(() => getAuthModalState().view.kind === 'error');
@@ -1285,9 +1319,9 @@ describe('auth controller: the sign-in window', () => {
     controller.retryLogin();
     await untilPromisesSettled();
 
-    // Then a login was asked for and no phrase view came back
+    // Then a login was asked for and the phrase import was asked once
     expect(calls.logins).toEqual([undefined]);
-    expect(getAuthModalState().view.kind).not.toBe('phrase');
+    expect(loads).toBe(1);
   });
 
   it('As a debug panel user, I import again while the sign-in window is open and it comes to the front', () => {
@@ -1834,7 +1868,7 @@ describe('auth controller: the sign-in window', () => {
   it("As a user whose sign-in modal broke, I sign in through the window and a product's later login request still opens no modal", async () => {
     // Given a broken modal island and a window sign-in whose result was written
     const handoff = createFakeHandoff();
-    const { controller, auth, calls, changes } = startController({
+    const { controller, auth, calls } = startController({
       handoff,
       applyResult: () => Promise.resolve('applied'),
     });
@@ -1846,7 +1880,7 @@ describe('auth controller: the sign-in window', () => {
 
     // When a product asks for a login
     auth.set(PAIRING);
-    await changes.until(() => calls.cancels === 2);
+    await untilPromisesSettled();
 
     // Then the modal stayed closed and the core's login was cancelled instead
     expect(getAuthModalState().open).toBe(false);
