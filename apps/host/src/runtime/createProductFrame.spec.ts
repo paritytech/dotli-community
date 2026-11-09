@@ -187,11 +187,14 @@ function createHarness({
     listStatuses: () => frameView.statuses.slice(1),
     /** The status the frame showed last. */
     readLastStatus: () => frameView.statuses.at(-1),
-    /** Holds the next frame until the returned release, after its render read the permission policy. */
+    /**
+     * Holds the next frame, after its render read the permission policy, until the returned release. The release lets
+     * the frame through, or with a failure rejects it with that failure.
+     */
     holdNextFrame,
     /** How many frames were asked for, held or not. */
     countFramesAsked: () => asked,
-    /** Fails every frame asked for from now on, as a frame chunk that cannot load. */
+    /** Fails every frame asked for from now on, as a frame chunk that cannot load, and with `null` stops failing them. */
     failFrames,
     /** The permission store announcing a change. */
     announce,
@@ -227,15 +230,19 @@ function createHarness({
     return { iframe, dispose };
   }
 
-  function holdNextFrame(): () => void {
+  function holdNextFrame(): (failure?: Error) => void {
     const gate = createDeferred<undefined>();
     held = gate.promise;
-    return () => {
-      gate.resolve(undefined);
+    return failure => {
+      if (failure === undefined) {
+        gate.resolve(undefined);
+        return;
+      }
+      gate.reject(failure);
     };
   }
 
-  function failFrames(failure: Error): void {
+  function failFrames(failure: Error | null): void {
     failing = failure;
   }
 
@@ -1677,5 +1684,96 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.listOnScreen()).toHaveLength(1);
     expect(fakes.listOnScreen()[0]?.options.iframeUrl).toContain('cid=second-cid');
+  });
+
+  it('As a dApp user whose app could not be rebuilt after a permission change, I keep it open when its core goes down and it is rendered again on the replacement core', async () => {
+    // Given a product whose rebuild after a device permission change failed, on screen on its first core
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const first = await answerConnection(fakes, 0);
+    await rendered;
+    fakes.failFrames(new Error('frame chunk failed'));
+    fakes.announce({ label: 'product', permissions: ['Camera'] });
+    await answerConnection(fakes, 1);
+    await fakes.changes.until(() => fakes.readLastStatus() === 'failed');
+    fakes.failFrames(null);
+
+    // When its core goes down
+    crash(first);
+    await fakes.reconnect(2);
+
+    // Then it is rendered again on the replacement and the old frame and its dead core go
+    expect(fakes.listStatuses()).toEqual([
+      'connecting',
+      'connected',
+      'connecting',
+      'failed',
+      'lost',
+      'connecting',
+      'connected',
+    ]);
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user whose replacement core cannot boot, I keep my product on screen and the page lets go of its dead core', async () => {
+    // Given a product on screen whose core's redial will fail
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const dead = await answerConnection(fakes, 0);
+    await rendered;
+    fakes.nextBoots.push(() => new Error('worker fatal error: redial'));
+
+    // When its core goes down
+    crash(dead);
+    await fakes.changes.until(() => fakes.readLastStatus() === 'failed');
+
+    // Then the product stays and the dead core goes with its last lease
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user who changes a device permission while my app waits for a replacement core that cannot boot, I keep my app on screen and the page lets go of its dead core', async () => {
+    // Given a product whose core went down, with the redial held and set to fail
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const dead = await answerConnection(fakes, 0);
+    await rendered;
+    fakes.holdBoots();
+    fakes.nextBoots.push(() => new Error('worker fatal error: redial'));
+    crash(dead);
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+
+    // When a permission change starts a newer render, and the redial fails under it
+    fakes.announce({ label: 'product', permissions: ['Camera'] });
+    fakes.heldBoots[0]?.resolve(undefined);
+    await fakes.changes.until(() => fakes.readLastStatus() === 'failed');
+
+    // Then the product stays and the dead core goes with its last lease
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user whose core goes down while my app is rebuilt after a permission change and the rebuild fails, I keep my app on screen and the page lets go of its dead core', async () => {
+    // Given a product on screen whose rebuild after a device permission change has connected and waits for its frame
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const first = await answerConnection(fakes, 0);
+    await rendered;
+    const releaseFrame = fakes.holdNextFrame();
+    fakes.announce({ label: 'product', permissions: ['Camera'] });
+    await answerConnection(fakes, 1);
+    await fakes.changes.until(() => fakes.countFramesAsked() === 2);
+
+    // When its core goes down and the rebuild's frame then fails
+    crash(first);
+    releaseFrame(new Error('frame chunk failed'));
+    await fakes.changes.until(() => fakes.readLastStatus() === 'failed');
+
+    // Then the product stays and the dead core goes with its last lease
+    expect(fakes.listStatuses()).toEqual(['connecting', 'connected', 'connecting', 'failed']);
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 });

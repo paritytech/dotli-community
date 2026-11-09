@@ -160,6 +160,8 @@ type MountedHost = {
   chat: boolean;
   /** Runs `run` once the product's pending permission answer has reached it. */
   runAfterPermissionResponse: (run: () => void) => void;
+  /** Whether the core under the product reported itself down, refused or stale. Never throws. */
+  isCoreDown: () => boolean;
   /**
    * Lets go of the core under the product, which stays on screen until a render replaces it. Idempotent, and `dispose`
    * after it only removes the frame.
@@ -276,6 +278,10 @@ export function createProductFrame({
             return false;
           }
           setStatus('failed');
+          // A product whose core went down holds that core only while a render to replace it is in flight.
+          if (mounted?.isCoreDown() === true) {
+            mounted.releaseCore();
+          }
           throw error;
         },
       );
@@ -399,11 +405,12 @@ export function createProductFrame({
       // A core that goes down closes the product's connection with it, and one refused or turned stale (another tab
       // logged in with another wallet) no longer serves it, so the product is shown again on the replacement. A frame
       // still being built does that once it is up. A newer render in flight holds a lease of its own and answers for
-      // itself. A replacement that cannot boot fails the render that asked for it, and cores that keep dying use up a
-      // budget, so this never loops.
+      // itself. A frame that still hears its core while failed keeps a product whose last render failed, so it is
+      // rendered again as a connected one is. A replacement that cannot boot fails the render that asked for it, and
+      // cores that keep dying use up a budget, so this never loops.
       onCoreDown: () => {
         heard.coreDown = true;
-        if (shown !== null && shown === mounted && status === 'connected') {
+        if (shown !== null && shown === mounted && (status === 'connected' || status === 'failed')) {
           renderOnReplacement();
         }
       },
@@ -476,7 +483,11 @@ export function createProductFrame({
     const { lease, connection, chatCapable } = await attaches.call(() => attach(chat), {
       pool: debugFlowId,
     });
-    const unsubscribeDown = lease.subscribeDown(onCoreDown);
+    let coreDown = false;
+    const unsubscribeDown = lease.subscribeDown(() => {
+      coreDown = true;
+      onCoreDown();
+    });
     const coreProvider = ownCoreConnection(connection);
     const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
     const unregisterPermissions = permissions.register(label, coreProvider);
@@ -536,6 +547,7 @@ export function createProductFrame({
         productId: connection.productId,
         chat: chatCapable,
         runAfterPermissionResponse: responses.runAfterResponse,
+        isCoreDown: () => coreDown,
         // The frame's lifetime runs on, so a device grant still waiting for its answer when the frame gives up still
         // rebuilds it.
         releaseCore: releaseCoreSide,
