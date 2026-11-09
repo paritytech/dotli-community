@@ -549,6 +549,21 @@ describe('The loading bar never stands still', () => {
     // Then
     expect(readShownPercent()).toBeGreaterThan(crept);
   });
+
+  it('As a user whose network found its content peers before the download began, I wait through the download step and the bar crawls across it', () => {
+    // Given the release heard during the step before the counting one
+    const { controller } = setupController();
+    controller.initPhases(STALL_PHASES);
+    controller.advancePhase(0);
+    controller.releasePhaseProgress();
+
+    // When
+    controller.advancePhase(1);
+    vi.advanceTimersByTime(nth(STALL_PHASES, 1).expectedMs);
+
+    // Then the crawl, not the 1% floor, carried the bar most of the way
+    expect(readShownPercent()).toBeGreaterThanOrEqual(nth(STALL_PHASES, 1).target - 1);
+  });
 });
 
 describe('Restarting the loading phases', () => {

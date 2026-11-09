@@ -139,6 +139,8 @@ export function createLoadingController({
   let creepCeiling = 0;
   let creepStep = 0;
   let phaseReportsProgress = false;
+  /** Heard a release, possibly before the counting step began. Cleared with the phases. */
+  let progressReleased = false;
 
   let progressStallTimer: unknown = null;
   let progressStallListener: ((percent: number) => void) | null = null;
@@ -239,6 +241,7 @@ export function createLoadingController({
     currentProgress = 0;
     targetProgress = 0;
     phaseReportsProgress = false;
+    progressReleased = false;
     lastShown = -1;
     lastRealShown = -1;
     lastShownAt = timers.now();
@@ -363,7 +366,7 @@ export function createLoadingController({
     currentPhase = index;
 
     const { base, target, expectedMs, reportsProgress } = phase;
-    phaseReportsProgress = reportsProgress === true;
+    phaseReportsProgress = reportsProgress === true && !progressReleased;
     if (base > currentProgress) {
       setProgress(base);
     }
@@ -401,8 +404,12 @@ export function createLoadingController({
     }
   }
 
-  /** For a `reportsProgress` step that will never report. Not a timeout, which fires regardless of progress. */
+  /**
+   * Lets the bar crawl through a `reportsProgress` step that will never report, the running one or one that starts
+   * later. A real count still takes the bar back. Never throws.
+   */
   function releasePhaseProgress(): void {
+    progressReleased = true;
     phaseReportsProgress = false;
   }
 
