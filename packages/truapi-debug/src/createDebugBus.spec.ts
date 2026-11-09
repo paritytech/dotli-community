@@ -133,4 +133,52 @@ describe('debug bus delivery', () => {
     expect(watched).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
     expect(shown).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
   });
+
+  it('As a dotli developer, I open a panel before any boot event and a panel opened after it left gets no replay of what was emitted meanwhile', () => {
+    // Given a panel that subscribed before any event and then left
+    const bus = createEnabledBus();
+    const leave = bus.subscribe(() => undefined);
+    leave();
+    const listeningAfterLeave = bus.hasListeners();
+    bus.emit(createBootEvent('flow-1'));
+    bus.emit(createBootEvent('flow-2'));
+
+    // When another panel subscribes
+    const shown: DebugBusEvent[] = [];
+    bus.subscribe(event => shown.push(event));
+
+    // Then it got nothing replayed, no panel listened while none was open, and the new one listens
+    expect(shown).toEqual([]);
+    expect(listeningAfterLeave).toBe(false);
+    expect(bus.hasListeners()).toBe(true);
+  });
+
+  it('As a dotli developer, I enable buffering again after the panel opened and a panel opened later gets no replay', () => {
+    // Given a panel that got the boot replay and left, and buffering enabled again
+    const bus = createEnabledBus();
+    bus.emit(createBootEvent('flow-1'));
+    const leave = bus.subscribe(() => undefined);
+    leave();
+    bus.enableBuffering();
+    bus.emit(createBootEvent('flow-2'));
+
+    // When another panel subscribes
+    const shown: DebugBusEvent[] = [];
+    bus.subscribe(event => shown.push(event));
+
+    // Then it got nothing replayed
+    expect(shown).toEqual([]);
+  });
+
+  it('As a dotli developer, I watch a buffering bus from the host and emit sites see no panel listening', () => {
+    // Given a buffering bus with a host watcher and no panel
+    const bus = createEnabledBus();
+    bus.watch(() => undefined);
+
+    // When an emit site asks whether a panel listens
+    const listening = bus.hasListeners();
+
+    // Then none does
+    expect(listening).toBe(false);
+  });
 });

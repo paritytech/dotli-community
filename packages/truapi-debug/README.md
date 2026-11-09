@@ -18,7 +18,8 @@ flowchart LR
 
 - The bus is the single channel, one object the page keeps. It is off until buffering is enabled, so sessions that never
   open debug mode pay nothing, and `emit` does nothing before then. Boot events are held until the first listener
-  attaches, then replayed once. A throwing receiver is reported and the others still get the event.
+  attaches, which gets them replayed once and ends buffering for the session, even when nothing was held. A throwing
+  receiver is reported and the others still get the event.
 - Debug mode reads the URL and session storage through a passed-in page, so its spec runs under Node.
 
 ## Public API
