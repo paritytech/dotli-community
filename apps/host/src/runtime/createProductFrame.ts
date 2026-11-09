@@ -349,8 +349,6 @@ export function createProductFrame({
     // Read after each wait, since a newer render can abort this one at any of them.
     const isSuperseded = (): boolean => signal.aborted;
     setStatus('connecting');
-    // Written by the core's down report, which can arrive during any wait below.
-    const heard = { coreDown: false };
     let shown: MountedHost | null = null;
     const renderFlowId = createRandomId();
     const bridgeFlowId = createRandomId();
@@ -409,7 +407,6 @@ export function createProductFrame({
       // rendered again as a connected one is. A replacement that cannot boot fails the render that asked for it, and
       // cores that keep dying use up a budget, so this never loops.
       onCoreDown: () => {
-        heard.coreDown = true;
         if (shown !== null && shown === mounted && (status === 'connected' || status === 'failed')) {
           renderOnReplacement();
         }
@@ -464,7 +461,8 @@ export function createProductFrame({
       timestamp: timers.now(),
       payload: { label: product.label, mode: product.mode },
     });
-    if (heard.coreDown) {
+    // The core's down report can arrive during any wait above, before this frame was the one on screen.
+    if (host.isCoreDown()) {
       renderOnReplacement();
       return;
     }
