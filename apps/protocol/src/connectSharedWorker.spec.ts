@@ -371,6 +371,25 @@ describe('connectSharedWorker', () => {
     ]);
   });
 
+  it('As a dotli maintainer, I watch a SharedWorker fail to load after its ready wait ran out and see no failure after ready reported', async () => {
+    // Given a link whose ready wait ran out
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const timers = createManualTimers();
+    const worker = createFakeWorker();
+    const failed = link(worker, { timers }).ready.catch(() => undefined);
+    await worker.statusHeard;
+    await timers.advance(READY_TIMEOUT_MS);
+    await failed;
+
+    // When the worker's script then fails to load
+    worker.failToStart('late script error');
+
+    // Then nothing is captured, and nothing is counted as a failure after ready
+    expect(captured.map(capture => capture.step)).toEqual([]);
+    expect(metrics.counted('protocol.shared_worker_error')).toEqual([]);
+  });
+
   it('As a tab on the shared light client, I hear each beat of the worker and answer it with a heartbeat from my page load', async () => {
     // Given a tab linked while the worker still syncs, whose timers never run
     const worker = createFakeWorker();

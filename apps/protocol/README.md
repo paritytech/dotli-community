@@ -103,7 +103,8 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   so the worker releases the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports
   a failure, disposes the link's transport with that error, so the status subscription, the beats and the relay let go
   of the worker. The timeout and the load failure are init failures. A load failure after ready, which nothing waits on,
-  is captured, logged and counted.
+  is captured, logged and counted. A load failure after the wait failed is only logged, since the boot already failed
+  with the wait's error.
 - A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
   subscribe. The worker closes once every connected port has heard it. One unit owns the ports and this close, since a
   release, a port hearing why and the close each lead to the others. The close waits a task on the timers the worker is

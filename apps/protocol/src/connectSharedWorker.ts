@@ -31,6 +31,15 @@ const protocolSharedWorkerErrorMetric = defineCount<'error'>('protocol.shared_wo
  */
 const protocolWorkerHeartbeatMetric = defineCount<'error'>('protocol.worker_heartbeat');
 
+/** How a failed wait ended, as the ready wait's metric tags it. */
+type WaitFailure = { readonly outcome: 'timeout' } | { readonly outcome: 'error'; readonly reason: string };
+
+/** Where the link's wait for the worker stands. */
+type Wait =
+  | { readonly name: 'waiting' }
+  | { readonly name: 'ready' }
+  | { readonly name: 'failed'; readonly failure: WaitFailure };
+
 type Params = {
   /** The protocol SharedWorker, whose port the link speaks on. */
   worker: Pick<SharedWorker, 'port' | 'addEventListener' | 'removeEventListener'>;
@@ -75,12 +84,9 @@ export function connectSharedWorker({
     timeoutMs: null,
     onIssue,
   });
-  // Why the wait failed, for the metric. A timeout carries none.
-  let reason: string | undefined;
   const ready = createDeferred<undefined>();
-  // Until the wait settles, so what is heard after it changes nothing.
-  let waiting = true;
-  let timedOut: Error | undefined;
+  // Only a transition from waiting moves it, so the first to settle the wait wins.
+  let wait: Wait = { name: 'waiting' };
 
   worker.addEventListener('error', onWorkerError);
 
@@ -88,16 +94,19 @@ export function connectSharedWorker({
     work: ready.promise,
     ms: readyTimeoutMs,
     timeoutError() {
-      timedOut = new ProtocolInitFailedError(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
-      return timedOut;
+      if (wait.name === 'waiting') {
+        wait = { name: 'failed', failure: { outcome: 'timeout' } };
+      }
+      return new ProtocolInitFailedError(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
     },
     timers,
   }).then(
     () => {
-      m.measure(PROTOCOL_SW_READY, recordReadyWait('ok'));
+      m.measure(PROTOCOL_SW_READY, recordReadyWait({ outcome: 'ok' }));
     },
     (error: unknown) => {
-      recordReadyWait(error === timedOut ? 'timeout' : 'error');
+      // Only a transition from waiting rejects the wait, so it has failed here.
+      recordReadyWait(wait.name === 'failed' ? wait.failure : { outcome: 'error' });
       // A link whose wait failed serves nothing more, so its status subscription, its beats and every listener on
       // them go. Whoever was handed the status hears the same error, with its class kept.
       transport.dispose(toError(error));
@@ -118,7 +127,10 @@ export function connectSharedWorker({
   const status = watchWorkerStatus({
     transport,
     onReady() {
-      waiting = false;
+      if (wait.name !== 'waiting') {
+        return;
+      }
+      wait = { name: 'ready' };
       ready.resolve(undefined);
     },
   });
@@ -155,32 +167,34 @@ export function connectSharedWorker({
     const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
     const error = new ProtocolInitFailedError(`SharedWorker failed to start${detail}`);
     log.error(`${FRAME_LOG_TAG} SharedWorker error event`, error);
-    if (waiting) {
-      // Fails now with the cause instead of at the ready timeout. The failure leaves as the ready wait's rejection.
-      failReadyWait(error, 'load_failed');
+    switch (wait.name) {
+      case 'waiting':
+        // Fails now with the cause instead of at the ready timeout. The failure leaves as the ready wait's rejection.
+        failReadyWait(error, 'load_failed');
+        return;
+      case 'ready':
+        // After ready nothing waits on the worker's start, so the host would never hear of it.
+        report.capture(error, { step: 'shared_worker_error' });
+        protocolSharedWorkerErrorMetric.count({ outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+        return;
+      case 'failed':
+        // The wait already failed with its own error and was counted, so its late cause is only logged.
+        return;
+    }
+  }
+
+  function failReadyWait(error: Error, reason: string): void {
+    if (wait.name !== 'waiting') {
       return;
     }
-    // After ready nothing waits on the worker's start, so the host would never hear of it.
-    report.capture(error, { step: 'shared_worker_error' });
-    protocolSharedWorkerErrorMetric.count({ outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    wait = { name: 'failed', failure: { outcome: 'error', reason } };
+    ready.reject(error);
   }
 
-  function failReadyWait(error: Error, why: string): void {
-    if (waiting) {
-      waiting = false;
-      reason = why;
-      ready.reject(error);
-    }
-  }
-
-  /** Ends the wait and records how long it took and how it went, and returns that time. */
-  function recordReadyWait(outcome: 'ok' | 'error' | 'timeout'): number {
-    waiting = false;
+  /** Records how long the wait took and how it ended, and returns that time. */
+  function recordReadyWait(attributes: WaitFailure | { readonly outcome: 'ok' | 'error' }): number {
     const waitMs = now() - startedAt;
-    m.distribution(PROTOCOL_SW_READY, waitMs, {
-      unit: 'millisecond',
-      attributes: { outcome, ...(reason !== undefined ? { reason } : {}) },
-    });
+    m.distribution(PROTOCOL_SW_READY, waitMs, { unit: 'millisecond', attributes });
     return waitMs;
   }
 }
