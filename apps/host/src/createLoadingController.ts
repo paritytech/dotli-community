@@ -404,10 +404,7 @@ export function createLoadingController({
     }
   }
 
-  /**
-   * Lets the bar crawl through a `reportsProgress` step that will never report, the running one or one that starts
-   * later. A real count still takes the bar back. Never throws.
-   */
+  /** Not a timeout, which fires regardless of progress. */
   function releasePhaseProgress(): void {
     progressReleased = true;
     phaseReportsProgress = false;
@@ -492,7 +489,10 @@ export function createLoadingController({
      * the running one. Never throws.
      */
     nudgePhaseProgress,
-    /** Lets the bar crawl through a `reportsProgress` step that will never report. Never throws. */
+    /**
+     * Lets the bar crawl through a `reportsProgress` step that will never report, the running one or one that starts
+     * later. A real count still takes the bar back. Never throws.
+     */
     releasePhaseProgress,
     /** Stops the crawl, the stage messages and the stall watch. Never throws. */
     stopStatusTick,

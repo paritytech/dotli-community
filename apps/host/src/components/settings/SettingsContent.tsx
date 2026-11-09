@@ -52,6 +52,13 @@ const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'advanced', label: 'Advanced', testId: 'settings-category-advanced' },
 ];
 
+/** What each button reads while the page's settings reset is in each state. */
+const RESET_LABELS = {
+  idle: { apply: 'Save and apply', clear: 'Clear all caches' },
+  applying: { apply: 'Resetting…', clear: 'Clear all caches' },
+  clearing: { apply: 'Save and apply', clear: 'Clearing…' },
+} satisfies Record<SettingsResetStatus, { apply: string; clear: string }>;
+
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
 
 /**
@@ -231,7 +238,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 disabled={isResetRunning(props.reset())}
               >
                 <TrashIcon class={s['icon']} />
-                {props.reset() === 'clearing' ? 'Clearing…' : 'Clear all caches'}
+                {RESET_LABELS[props.reset()].clear}
               </Button>
             </div>
           </Stack>
@@ -263,7 +270,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
             onClick={apply}
             disabled={!dirty() || isResetRunning(props.reset())}
           >
-            {props.reset() === 'applying' ? 'Resetting…' : 'Save and apply'}
+            {RESET_LABELS[props.reset()].apply}
           </Button>
         </div>
       </SurfaceFoot>
