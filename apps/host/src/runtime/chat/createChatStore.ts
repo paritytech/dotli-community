@@ -147,6 +147,18 @@ type RenderCustomMessageParams = {
   sink: RenderSink;
 };
 
+/** One custom message render: on a connection, waiting for the product's next one, completed, or disposed. */
+type RenderState =
+  | { kind: 'rendering'; connection: ChatConnection; stop: () => void }
+  | { kind: 'waiting'; stopListening: () => void }
+  | { kind: 'completed' }
+  | { kind: 'disposed' };
+
+type StartCustomRenderParams = RenderCustomMessageParams & {
+  /** The live product connections the render follows. */
+  connections: Pick<ChatConnections, 'get' | 'onRegister'>;
+};
+
 const NOT_CONNECTED = 'Chat is not connected for this product';
 
 const NO_VIEW: ChatView = {
@@ -427,16 +439,12 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     },
 
     /**
-     * Streams replacement trees into `sink` until disposed. Without a live connection the sink fails at once, and
-     * the stored message stays for a later render. Never throws.
+     * Streams trees into `sink` until disposed, on the product's newest connection. A render its connection fails tells
+     * the sink, then goes on at once on a newer connection, or on the next one that registers for the product. Without a
+     * connection the sink fails at once and the render waits the same way. A completed render is final. Never throws.
      */
     renderCustomMessage({ productId, request, sink }: RenderCustomMessageParams): () => void {
-      const connection = connections.get(productId);
-      if (connection === undefined) {
-        sink.onError?.(new Error(NOT_CONNECTED));
-        return (): void => undefined;
-      }
-      return connection.render(request, sink);
+      return startCustomRender({ connections, productId, request, sink });
     },
 
     /**
@@ -468,3 +476,101 @@ export const chatStore = createChatStore({
   },
   connections: chatConnections,
 });
+
+/**
+ * Renders a custom message on the product's newest connection, and after a failed render on the next one, until the
+ * returned function disposes it. Never throws.
+ */
+function startCustomRender({ connections, productId, request, sink }: StartCustomRenderParams): () => void {
+  let state: RenderState;
+
+  const first = connections.get(productId);
+  if (first === undefined) {
+    wait();
+    sink.onError?.(new Error(NOT_CONNECTED));
+  } else {
+    renderOn(first);
+  }
+  return dispose;
+
+  function renderOn(connection: ChatConnection): void {
+    const rendering: Extract<RenderState, { kind: 'rendering' }> = {
+      kind: 'rendering',
+      connection,
+      stop: () => undefined,
+    };
+    state = rendering;
+    const stop = connection.render(request, followRender(rendering));
+    // A render that failed before it returned has already moved on, so its stop is not kept.
+    if (state === rendering) {
+      rendering.stop = stop;
+      return;
+    }
+    stop();
+  }
+
+  function followRender(rendering: Extract<RenderState, { kind: 'rendering' }>): RenderSink {
+    return {
+      onUpdate(node) {
+        if (state === rendering) {
+          sink.onUpdate(node);
+        }
+      },
+      onComplete() {
+        if (state !== rendering) {
+          return;
+        }
+        state = { kind: 'completed' };
+        sink.onComplete?.();
+      },
+      onError(error) {
+        if (state !== rendering) {
+          return;
+        }
+        // The sink hears the error before any tree of the next render, and may dispose the render as it hears it.
+        sink.onError?.(error);
+        if (state === rendering) {
+          moveOn(rendering.connection);
+        }
+      },
+    };
+  }
+
+  function moveOn(failed: ChatConnection): void {
+    const newest = connections.get(productId);
+    if (newest === undefined || newest === failed) {
+      wait();
+      return;
+    }
+    renderOn(newest);
+  }
+
+  function wait(): void {
+    const waiting: Extract<RenderState, { kind: 'waiting' }> = { kind: 'waiting', stopListening: () => undefined };
+    state = waiting;
+    waiting.stopListening = connections.onRegister(registered => {
+      const connection = connections.get(productId);
+      if (registered !== productId || state !== waiting || connection === undefined) {
+        return;
+      }
+      waiting.stopListening();
+      renderOn(connection);
+    });
+  }
+
+  function dispose(): void {
+    const previous = state;
+    state = { kind: 'disposed' };
+    switch (previous.kind) {
+      case 'rendering':
+        previous.stop();
+        return;
+      case 'waiting':
+        previous.stopListening();
+        return;
+      case 'completed':
+      case 'disposed':
+        return;
+    }
+  }
+}

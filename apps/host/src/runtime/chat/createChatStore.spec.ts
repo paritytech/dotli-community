@@ -9,7 +9,7 @@ import { createManualTimers } from '@dotli/shared/testing';
 import type { RendererNode } from '@parity/truapi';
 import { createChatConnections } from './createChatConnections.js';
 import { createChatStore, type ChatChange } from './createChatStore.js';
-import { createRecordingConnection } from './createChatConnections.fake.js';
+import { createRecordingConnection, type RecordedRender } from './createChatConnections.fake.js';
 import { createMemoryChatRepo } from './createChatStore.fake.js';
 
 const PRODUCT = 'chatty.dot';
@@ -40,6 +40,44 @@ function setup(): {
   chat.subscribe(change => changes.push(change));
   return { repo, chat, connections, changes, captured };
 }
+
+/** A custom message's render request and a sink that records what reaches it. */
+function openCustomMessage(chat: ReturnType<typeof createChatStore>) {
+  const heard: { updates: RendererNode[]; errors: unknown[]; completed: number } = {
+    updates: [],
+    errors: [],
+    completed: 0,
+  };
+  const stop = chat.renderCustomMessage({
+    productId: PRODUCT,
+    request: {
+      context: { tag: 'ChatMessage', value: { roomId: 'main', messageId: 'm1', messageType: 'poll' } },
+      payload: '0x01',
+    },
+    sink: {
+      onUpdate: node => heard.updates.push(node),
+      onError: error => heard.errors.push(error),
+      onComplete: () => {
+        heard.completed += 1;
+      },
+    },
+  });
+  return { heard, stop };
+}
+
+/** The connection's render at `index`, which the spec expects to exist. */
+function getRender(connection: { renders: RecordedRender[] }, index: number): RecordedRender {
+  const render = connection.renders[index];
+  if (render === undefined) {
+    throw new Error(`No render ${String(index)} on the connection`);
+  }
+  return render;
+}
+
+const TREE: RendererNode = {
+  tag: 'Text',
+  value: { modifiers: [], props: {}, children: [{ tag: 'String', value: { text: 'Poll results' } }] },
+};
 
 describe('chat store', () => {
   it('As a product developer, I create a room, register a bot and post a message and each write is stored before it is announced', async () => {
@@ -196,6 +234,172 @@ describe('chat store', () => {
 
     // Then
     expect(errors).toEqual([new Error('Chat is not connected for this product')]);
+  });
+
+  it('As a user reading a custom message, I see its frame rebuilt and the message renders again on the new connection at once', () => {
+    // Given a message rendering on the old frame's connection while the rebuilt frame registers its own
+    const { chat, connections } = setup();
+    const old = createRecordingConnection();
+    connections.register(PRODUCT, old);
+    const { heard } = openCustomMessage(chat);
+    const rebuilt = createRecordingConnection();
+    connections.register(PRODUCT, rebuilt);
+
+    // When the old provider is disposed
+    getRender(old, 0).sink.onError?.(new Error('provider disposed'));
+    getRender(rebuilt, 0).sink.onUpdate(TREE);
+
+    // Then
+    expect(heard.errors).toEqual([new Error('provider disposed')]);
+    expect(old.renders).toHaveLength(1);
+    expect(rebuilt.renders).toHaveLength(1);
+    expect(heard.updates).toEqual([TREE]);
+  });
+
+  it('As a user reading a custom message, I see its core die and the message renders again once the replacement registers', () => {
+    // Given a message whose render the dead core failed
+    const { chat, connections } = setup();
+    const dead = createRecordingConnection();
+    connections.register(PRODUCT, dead);
+    openCustomMessage(chat);
+    getRender(dead, 0).sink.onError?.(new Error('provider disposed'));
+    const rendersBeforeReplacement = dead.renders.length;
+    const replacement = createRecordingConnection();
+
+    // When
+    connections.register(PRODUCT, replacement);
+
+    // Then
+    expect(rendersBeforeReplacement).toBe(1);
+    expect(replacement.renders).toHaveLength(1);
+  });
+
+  it("As a user, I open a custom message before the product connects and it renders once the product's connection registers", () => {
+    // Given a message opened with no connection
+    const { chat, connections } = setup();
+    const { heard } = openCustomMessage(chat);
+    const errorsBeforeConnection = [...heard.errors];
+    const connection = createRecordingConnection();
+
+    // When
+    connections.register(PRODUCT, connection);
+
+    // Then
+    expect(errorsBeforeConnection).toEqual([new Error('Chat is not connected for this product')]);
+    expect(connection.renders).toHaveLength(1);
+  });
+
+  it('As a user, I read a custom message whose connections cannot render and it fails once per connection and waits', () => {
+    // Given a message opened on a connection that cannot render
+    const { chat, connections } = setup();
+    const first = createRecordingConnection({ failsRender: true });
+    connections.register(PRODUCT, first);
+    const { heard } = openCustomMessage(chat);
+    const errorsOnFirst = [...heard.errors];
+    const rendersOnFirst = first.renders.length;
+    const second = createRecordingConnection({ failsRender: true });
+
+    // When
+    connections.register(PRODUCT, second);
+
+    // Then
+    expect(errorsOnFirst).toEqual([new Error('rendering unavailable')]);
+    expect(rendersOnFirst).toBe(1);
+    expect(second.renders).toHaveLength(1);
+    expect(first.renders).toHaveLength(1);
+    expect(heard.errors).toHaveLength(2);
+  });
+
+  it('As a user, I read a custom message that completed and no later connection renders it again', () => {
+    // Given a message whose render completed
+    const { chat, connections } = setup();
+    const first = createRecordingConnection();
+    connections.register(PRODUCT, first);
+    const { heard } = openCustomMessage(chat);
+    getRender(first, 0).sink.onComplete?.();
+    const second = createRecordingConnection();
+
+    // When
+    connections.register(PRODUCT, second);
+
+    // Then
+    expect(heard.completed).toBe(1);
+    expect(second.renders).toHaveLength(0);
+  });
+
+  it('As a user, I scroll a custom message off the page and nothing renders it after while a late tree reaches no one', () => {
+    // Given a message that showed a tree
+    const { chat, connections } = setup();
+    const first = createRecordingConnection();
+    connections.register(PRODUCT, first);
+    const { heard, stop } = openCustomMessage(chat);
+    getRender(first, 0).sink.onUpdate(TREE);
+    const second = createRecordingConnection();
+
+    // When it scrolls off, then a late tree arrives and another connection registers
+    stop();
+    getRender(first, 0).sink.onUpdate(TREE);
+    connections.register(PRODUCT, second);
+
+    // Then
+    expect(getRender(first, 0).stopped).toBe(true);
+    expect(heard.updates).toEqual([TREE]);
+    expect(second.renders).toHaveLength(0);
+  });
+
+  it('As a user, I scroll a custom message off the page while it waits and no later connection renders it', () => {
+    // Given a message waiting for a connection
+    const { chat, connections } = setup();
+    const { stop } = openCustomMessage(chat);
+    const connection = createRecordingConnection();
+
+    // When it scrolls off, then a connection registers
+    stop();
+    connections.register(PRODUCT, connection);
+
+    // Then
+    expect(connection.renders).toHaveLength(0);
+  });
+
+  it('As a user, I scroll a custom message off the page as its render fails and nothing renders it after', () => {
+    // Given a message whose row stops it when it hears the error, while a rebuilt frame registered
+    const { chat, connections } = setup();
+    const first = createRecordingConnection();
+    connections.register(PRODUCT, first);
+    const stop = chat.renderCustomMessage({
+      productId: PRODUCT,
+      request: {
+        context: { tag: 'ChatMessage', value: { roomId: 'main', messageId: 'm1', messageType: 'poll' } },
+        payload: '0x01',
+      },
+      sink: {
+        onUpdate: (_node: RendererNode) => undefined,
+        onError: () => {
+          stop();
+        },
+      },
+    });
+    const rebuilt = createRecordingConnection();
+    connections.register(PRODUCT, rebuilt);
+
+    // When the old render fails
+    getRender(first, 0).sink.onError?.(new Error('provider disposed'));
+
+    // Then
+    expect(rebuilt.renders).toHaveLength(0);
+  });
+
+  it('As a user, I read a custom message while a connection registers for another product and it does not render it', () => {
+    // Given a message waiting for its product's connection
+    const { chat, connections } = setup();
+    openCustomMessage(chat);
+    const other = createRecordingConnection();
+
+    // When
+    connections.register('other.dot', other);
+
+    // Then
+    expect(other.renders).toHaveLength(0);
   });
 
   it('As a product developer, I write while a subscriber throws and my write succeeds while the failure is reported', async () => {
