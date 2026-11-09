@@ -10,7 +10,7 @@ import { createAsyncTaskPool, createLazyLoad, isRecord } from '@dotli/shared';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import {
-  type ClosedClientParams,
+  type IsClosedClientParams,
   isClosedClient,
   loadPersistedArchives,
   type PersistedArchive,
@@ -317,7 +317,7 @@ export function startAppServiceWorker({
   }
 
   /** Drops the archives and links of clients that are not open, except the sender's, which was open to send. */
-  function dropClosedClients(closed: ClosedClientParams): void {
+  function dropClosedClients(closed: IsClosedClientParams): void {
     for (const clientId of archives.byClient.keys()) {
       if (isClosedClient(clientId, closed)) {
         archives.byClient.delete(clientId);

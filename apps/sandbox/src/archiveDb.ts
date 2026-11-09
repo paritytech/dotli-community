@@ -31,7 +31,7 @@ type PersistPageArchiveParams = {
   liveClientIds: ReadonlySet<string>;
 };
 
-export type ClosedClientParams = Pick<PersistPageArchiveParams, 'clientId' | 'liveClientIds'>;
+export type IsClosedClientParams = Pick<PersistPageArchiveParams, 'clientId' | 'liveClientIds'>;
 
 type PersistWorkerPageParams = { workerId: string; pageId: string };
 
@@ -156,10 +156,9 @@ export async function loadPersistedArchives(indexedDB: IDBFactory): Promise<Pers
 }
 
 /**
- * Whether the id is of a client that is neither the sender, which was open to send, nor still open. The worker's memory
- * and the store drop the same clients by this one rule.
+ * Whether the id is of a client that is neither the sender, which was open to send, nor still open.
  */
-export function isClosedClient(id: string, { clientId, liveClientIds }: ClosedClientParams): boolean {
+export function isClosedClient(id: string, { clientId, liveClientIds }: IsClosedClientParams): boolean {
   return id !== clientId && !liveClientIds.has(id);
 }
 

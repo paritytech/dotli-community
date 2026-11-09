@@ -60,7 +60,7 @@ async function readKeys(indexedDB: IDBFactory): Promise<IDBValidKey[]> {
   return keys;
 }
 
-const pageAOnly = { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: 'page-a' };
+const PAGE_A_ONLY = { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: 'page-a' };
 
 describe('archive store', () => {
   it("As a worker, I keep two pages' archives and read both back with the newest named", async () => {
@@ -172,25 +172,25 @@ describe('archive store', () => {
       record: 'a page archive with no directory',
       key: 'client:page-b',
       value: { packed: new ArrayBuffer(1), index: [] },
-      expected: pageAOnly,
+      expected: PAGE_A_ONLY,
     },
     {
       record: 'a page archive whose index holds a bad entry',
       key: 'client:page-b',
       value: { packed: new ArrayBuffer(1), index: [{ p: 'index.html' }], directory: '/' },
-      expected: pageAOnly,
+      expected: PAGE_A_ONLY,
     },
     {
       record: 'a worker page that is not an id',
       key: 'worker:worker-1',
       value: 7,
-      expected: pageAOnly,
+      expected: PAGE_A_ONLY,
     },
     {
       record: 'a newest page that is not an id',
       key: 'newest',
       value: { id: 'page-a' },
-      expected: { ...pageAOnly, newest: null },
+      expected: { ...PAGE_A_ONLY, newest: null },
     },
   ])(
     'As a worker over a store holding $record, I skip that record and read back the rest',
