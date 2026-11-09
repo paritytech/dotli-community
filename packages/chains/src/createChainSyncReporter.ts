@@ -209,7 +209,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     }
   }
 
-  // The light client moves a chain's tap to another connection, so what a chain reported outlives the tap.
+  // A chain outlives its taps, so what it reported is kept per chain.
   const chainSyncStates = new Map<ChainRole, ChainSyncState>();
 
   function getChainSyncState(chain: ChainRole): ChainSyncState {

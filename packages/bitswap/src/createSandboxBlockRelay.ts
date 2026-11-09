@@ -255,7 +255,7 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
         }
       })
       .then(served => {
-        // An aborted request's block is not part of the load the bar shows.
+        // An aborted request's block is not part of the frame's load.
         if (!aborter.signal.aborted) {
           noteBlock(data.cid, served);
         }
