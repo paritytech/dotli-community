@@ -385,9 +385,12 @@ describe('connectSharedWorker', () => {
     // When the worker's script then fails to load
     worker.failToStart('late script error');
 
-    // Then nothing is captured, and nothing is counted as a failure after ready
+    // Then nothing is captured, nothing is counted as a failure after ready, and the ready wait holds only its one timeout
     expect(captured.map(capture => capture.step)).toEqual([]);
     expect(metrics.counted('protocol.shared_worker_error')).toEqual([]);
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      { outcome: 'timeout' },
+    ]);
   });
 
   it('As a tab on the shared light client, I hear each beat of the worker and answer it with a heartbeat from my page load', async () => {
