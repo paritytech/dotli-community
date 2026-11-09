@@ -92,8 +92,6 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
   const [category, setCategory] = createSignal<Category>('general');
-  const [applying, setApplying] = createSignal(false);
-  const [clearing, setClearing] = createSignal(false);
 
   const dirty = createMemo(() => {
     const draft = cache();
@@ -105,19 +103,17 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   });
 
   function clearAll(): void {
-    if (untrack(clearing)) {
+    if (untrack(props.reset) !== 'idle') {
       return;
     }
-    setClearing(true);
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
     void props.onApply(persisted, persisted, { forceFullWipe: true });
   }
 
   function apply(): void {
-    if (!untrack(dirty) || untrack(applying)) {
+    if (!untrack(dirty) || untrack(props.reset) !== 'idle') {
       return;
     }
-    setApplying(true);
     void props.onApply(
       {
         backend: untrack(backend),
@@ -232,10 +228,10 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 block
                 onClick={clearAll}
                 title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-                disabled={clearing()}
+                disabled={props.reset() !== 'idle'}
               >
                 <TrashIcon class={s['icon']} />
-                {clearing() ? 'Clearing…' : 'Clear all caches'}
+                {props.reset() === 'clearing' ? 'Clearing…' : 'Clear all caches'}
               </Button>
             </div>
           </Stack>
@@ -261,8 +257,13 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
         }
       >
         <div class={s['apply']} data-testid="mode-apply-row">
-          <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
-            {applying() ? 'Resetting…' : 'Save and apply'}
+          <Button
+            variant="primary"
+            block={popover.sheet()}
+            onClick={apply}
+            disabled={!dirty() || props.reset() !== 'idle'}
+          >
+            {props.reset() === 'applying' ? 'Resetting…' : 'Save and apply'}
           </Button>
         </div>
       </SurfaceFoot>

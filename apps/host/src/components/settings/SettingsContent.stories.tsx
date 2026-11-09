@@ -18,6 +18,7 @@ import {
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
   givenDebugMode,
+  givenReset,
   givenSettings,
   resetStorySettings,
   settingsAsked,
@@ -505,6 +506,53 @@ export const ClearAllUsesSaved: Story = {
     });
     await ctx.step('Then nothing more ran', async () => {
       await expect(settingsAsked.apply).toHaveBeenCalledTimes(1);
+    });
+  },
+};
+
+/** As a dotli user, I press Clear all caches, then change the network and press Save and apply, and only the clear runs. */
+export const SaveWhileClearing: Story = {
+  tags: ['!autodocs'],
+  play: async ctx => {
+    const click = ctx.userEvent.click;
+    await open(ctx);
+    await ctx.step('When I press Clear all caches, then change the network and press Save and apply', async () => {
+      await showCategory(click, 'advanced');
+      await click(query(document, '[data-testid="mode-clear-all-row"] button'));
+      await showCategory(click, 'network');
+      await click(radio('dotli-network', 'previewnet'));
+      await click(applyButton());
+    });
+    await ctx.step('Then Save and apply waits and only the clear ran', async () => {
+      const saved = { backend: DEFAULT_SETTINGS.backend, network: DEFAULT_SETTINGS.network, cache: DEFAULT_CACHE };
+      await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).toHaveTextContent('Save and apply');
+      await expect(settingsAsked.apply).toHaveBeenCalledTimes(1);
+      await expect(settingsAsked.apply).toHaveBeenCalledWith(saved, saved, { forceFullWipe: true });
+    });
+  },
+};
+
+/** As a dotli user, I open the settings while a reset runs and both buttons wait for it. */
+export const OpensWhileResetting: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    givenReset('applying');
+  },
+  play: async ctx => {
+    const click = ctx.userEvent.click;
+    await open(ctx);
+    await ctx.step('When I change the network', async () => {
+      await showCategory(click, 'network');
+      await click(radio('dotli-network', 'previewnet'));
+      await showCategory(click, 'advanced');
+    });
+    await ctx.step('Then both buttons are disabled and the running one says so', async () => {
+      const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
+      await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).toHaveTextContent('Resetting…');
+      await expect(clear).toBeDisabled();
+      await expect(clear).toHaveTextContent('Clear all caches');
     });
   },
 };
