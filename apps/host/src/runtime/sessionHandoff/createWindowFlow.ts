@@ -104,7 +104,10 @@ type StepFailure = 'view' | 'step';
  */
 type Phase = { kind: 'waiting' } | { kind: 'open'; intent: SignInIntent } | { kind: 'ended' };
 
-/** The window's own login: none under way, or one that waits on the core's answer. */
+/**
+ * The window's own login: none under way, or a running one. `running` spans a login from its request until its answer
+ * and the finish of a paired one.
+ */
 type Login = { kind: 'idle' } | { kind: 'running' };
 
 /** A view to show with what is its own, which only Continue has. */
@@ -613,7 +616,7 @@ export function createWindowFlow({
         if (getPairingOnShow() === 'failed') {
           clearPairingFailure();
           // A sign-in stored since the pairing failed is offered first, and an empty store pairs.
-          return runOnView({
+          await runOnView({
             name: 'decide',
             view: 'pairing',
             run: async () => offerOrPair(await readStored()),

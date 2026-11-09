@@ -1343,6 +1343,23 @@ describe('session window flow', () => {
     expect(calls).toEqual(['login', 'login']);
   });
 
+  it('As a user in the sign-in window whose pairing could not be stored, I see the failed view stay when my core reports a pairing after it', async () => {
+    // Given a window whose pairing could not be stored
+    const { flow, vet, auth, failLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    failLogin(new Error('The paired session could not be stored'));
+    await waitForView(flow, 'failed');
+    const shown = flow.screen.get();
+
+    // When the core reports a pairing
+    auth.set(PAIRING);
+    await flow.settled();
+
+    // Then the failed view stays
+    expect(flow.screen.get()).toBe(shown);
+  });
+
   it('As a user in the sign-in window on Continue, I see my core pick up a sign-in from elsewhere and nothing is sent by itself', async () => {
     // Given no login of mine runs
     const { flow, vet, auth, readSent, calls } = openWindow({ stored: { session: BLOB } });
@@ -1587,7 +1604,7 @@ describe('session window flow', () => {
     expect(readHost).toBe('browse.dot.li');
   });
 
-  it('As a user in the sign-in window, I see the step my core moved on to while my login runs, never the code it moved past', async () => {
+  it('As a user in the sign-in window, I see the step my core moved on to while my login runs', async () => {
     // Given a listener, registered before the flow, that moves auth on from Pairing to Authenticating
     const { flow, auth, vet } = openWindow({
       beforeFlow(source) {
@@ -1615,6 +1632,7 @@ describe('session window flow', () => {
 
     // Then the screen shows the step the core moved on to
     expect(flow.screen.get().pairing).toEqual({ kind: 'authenticating' });
+    // And no screen in between showed the code the core moved past
     expect(seen.some(pairing => pairing.kind === 'pairing')).toBe(false);
   });
 

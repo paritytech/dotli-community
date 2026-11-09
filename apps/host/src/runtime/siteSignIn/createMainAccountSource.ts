@@ -43,7 +43,10 @@ type LeasedReport = DotliAuthState | null | 'down';
 type Params = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
-  /** What the page's core itself reported last, null while no core reported. */
+  /**
+   * What the page's core itself reported last, null while no core reported. It keeps a core's last report after that
+   * core went down, until another core reports or the page's last core goes.
+   */
   coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'>;
 };
 
@@ -59,8 +62,8 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   const lifetime = new AbortController();
   // The lease held, with its own signal that aborts once its core goes down, and the removal of its down listener.
   let held: { lease: HeldLease; down: AbortSignal; unsubscribeDown: () => void } | null = null;
-  // The report on show when the last held lease went down. The page keeps the dead core's last report until its
-  // replacement reports, and a replacement is dialed before its holders hear the down.
+  // The report on show when the last held lease went down. A read skips it, since it is the dead core's and not an
+  // answer of a core that is up.
   let staleReport: DotliAuthState | null = null;
 
   /** Takes a lease unless one is held, and lets it go once its core goes down. Resolves with the lease's down signal. */
@@ -100,7 +103,10 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     lease.release();
   }
 
-  /** The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. */
+  /**
+   * The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. It
+   * answers no report for the one on show when the source's last held lease went down.
+   */
   function watchLeasedReport(down: AbortSignal): StatusSource<LeasedReport> {
     function getReport(): LeasedReport {
       if (down.aborted) {
