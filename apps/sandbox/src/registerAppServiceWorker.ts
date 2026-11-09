@@ -84,7 +84,7 @@ export async function registerAppServiceWorker(
       return;
     }
 
-    if (waitForFreshController && keepsController(registration, container)) {
+    if (waitForFreshController && isControllerKept(registration, container)) {
       report.log.event('The reset kept the worker that controls the page');
       void ensureFreshServiceWorker({ app, container, registration });
       return;
@@ -129,7 +129,7 @@ export async function registerAppServiceWorker(
 }
 
 /** Whether the registration has nothing installing or waiting and its active worker is the one controlling the page. */
-function keepsController(registration: ServiceWorkerRegistration, container: ServiceWorkerContainer): boolean {
+function isControllerKept(registration: ServiceWorkerRegistration, container: ServiceWorkerContainer): boolean {
   if (registration.installing !== null || registration.waiting !== null) {
     return false;
   }
