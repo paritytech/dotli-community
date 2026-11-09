@@ -103,7 +103,8 @@ export type WindowIntents = {
   closePhrase(): Promise<void>;
   /**
    * From the failed view, decides again what to show from the main store, and after a failed pairing pairs again.
-   * Never rejects: a failure is reported and shown on the window.
+   * After a failed pairing, a sign-in stored meanwhile is offered first. Never rejects: a failure is reported and shown
+   * on the window.
    */
   retry(): Promise<void>;
   /** Ends a round the user gave up on and closes the window. Never throws. */

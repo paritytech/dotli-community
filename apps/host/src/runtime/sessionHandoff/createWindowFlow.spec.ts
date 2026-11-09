@@ -1249,6 +1249,64 @@ describe('session window flow', () => {
     expect(calls).toEqual(['login', 'login']);
   });
 
+  it('As a user in the sign-in window whose pairing failed, I sign in on another tab and the failure stays while Retry offers that sign-in', async () => {
+    // Given a pairing whose login answered that it failed
+    const { flow, vet, auth, main, calls, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    answerLogin({ outcome: { kind: 'failed' } });
+    await waitForPairing(flow, 'error');
+
+    // When a sign-in made on another tab is stored and the window's core reports it
+    main.session = BLOB;
+    main.uiState = UI_STATE;
+    auth.set(CONNECTED);
+
+    // Then the failure stays with Retry
+    expect(flow.screen.get().pairing).toMatchObject({ kind: 'error', retry: true });
+
+    // When the user presses Retry
+    await flow.retry();
+
+    // Then the stored sign-in is offered, and no second login started
+    expect(flow.screen.get().view).toBe('continue');
+    expect(getOffer(flow)).toEqual({ wallet: 'paired', account: { publicKey: '0x01', liteUsername: 'alice.01' } });
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in the sign-in window whose pairing failed, I press Retry while the store cannot be read and am told so with Retry', async () => {
+    // Given a pairing whose login answered that it failed
+    const { flow, vet, calls, failures, metrics, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    answerLogin({ outcome: { kind: 'failed' } });
+    await waitForPairing(flow, 'error');
+
+    // When the main store cannot be read and the user presses Retry
+    failures.read = new Error('store down');
+    await flow.retry();
+
+    // Then the failed view shows with Retry, the decide step is counted, and no second login started
+    expect(flow.screen.get().view).toBe('failed');
+    expect(calls).toEqual(['login']);
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'decide' }]);
+  });
+
+  it("As a dotli integrator, I dispose a flow while its login runs and it shows nothing of the core's pairing after it", async () => {
+    // Given a window whose login runs
+    const { flow, vet, auth } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    const shown = flow.screen.get();
+
+    // When it is disposed and the core then shows its code
+    flow.dispose();
+    auth.set(PAIRING);
+
+    // Then the flow shows what it showed
+    expect(flow.screen.get()).toBe(shown);
+  });
+
   it('As a user in the sign-in window whose login failed with no word from the core, I am told so and the code goes', async () => {
     // Given a pairing whose code is on show
     const { flow, vet, auth, answerLogin } = openWindow();
@@ -1510,9 +1568,28 @@ describe('session window flow', () => {
     expect(flow.screen.get().view).toBe('failed');
   });
 
-  it("As the session window, I read the flow's new screen at once after the responder or auth changes it", () => {
+  it("As the session window, I read the flow's new screen at once after the responder vets the opener", () => {
+    // Given a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
+    const { flow, responder, vet } = openWindow();
+    let readHost: string | null | undefined;
+    onTestFinished(
+      responder.state.listen(state => {
+        if (state.kind === 'vetted') {
+          readHost = flow.screen.get().pageHost;
+        }
+      }),
+    );
+
+    // When the opener is vetted
+    vet();
+
+    // Then the reader inside the responder's delivery already saw the page it names
+    expect(readHost).toBe('browse.dot.li');
+  });
+
+  it('As a user in the sign-in window, I see the step my core moved on to while my login runs, never the code it moved past', async () => {
     // Given a listener, registered before the flow, that moves auth on from Pairing to Authenticating
-    const { flow, auth, responder, vet } = openWindow({
+    const { flow, auth, vet } = openWindow({
       beforeFlow(source) {
         onTestFinished(
           source.listen(state => {
@@ -1523,31 +1600,22 @@ describe('session window flow', () => {
         );
       },
     });
+    // And a login under way, which starts in the same turn as the pairing view
+    vet();
+    await waitForView(flow, 'pairing');
     const seen: SignInScreen['pairing'][] = [];
     onTestFinished(
       flow.screen.subscribe(screen => {
         seen.push(screen.pairing);
       }),
     );
-    // And a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
-    let readHost: string | null | undefined;
-    onTestFinished(
-      responder.state.listen(state => {
-        if (state.kind === 'vetted') {
-          readHost = flow.screen.get().pageHost;
-        }
-      }),
-    );
 
-    // When auth starts pairing and then the opener is vetted
+    // When the core starts pairing
     auth.set(PAIRING);
-    vet();
 
-    // Then the screen shows the step auth moved on to, never the code it moved past, and the reader inside the
-    // responder's delivery already saw the page it names
+    // Then the screen shows the step the core moved on to
     expect(flow.screen.get().pairing).toEqual({ kind: 'authenticating' });
     expect(seen.some(pairing => pairing.kind === 'pairing')).toBe(false);
-    expect(readHost).toBe('browse.dot.li');
   });
 
   it('As a dotli integrator, I dispose a flow twice and see no error', () => {

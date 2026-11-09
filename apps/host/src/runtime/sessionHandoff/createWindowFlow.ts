@@ -104,6 +104,9 @@ type StepFailure = 'view' | 'step';
  */
 type Phase = { kind: 'waiting' } | { kind: 'open'; intent: SignInIntent } | { kind: 'ended' };
 
+/** The window's own login: none under way, or one that waits on the core's answer. */
+type Login = { kind: 'idle' } | { kind: 'running' };
+
 /** A view to show with what is its own, which only Continue has. */
 type NextView = { view: 'continue'; offer: ContinueOffer } | { view: Exclude<SignInScreen['view'], 'continue'> };
 
@@ -164,6 +167,7 @@ export function createWindowFlow({
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   let phase: Phase = { kind: 'waiting' };
+  let login: Login = { kind: 'idle' };
   // What the Continue on show offers, as the store held it.
   let offered: SessionResult | null = null;
   // The retry of a sign-out the phone did not hear of, held only while that failure is on show.
@@ -316,6 +320,8 @@ export function createWindowFlow({
    * Retry, the core's own or one that says how it ended, so no dead code stays up. Never rejects.
    */
   async function runLogin(): Promise<void> {
+    const running: Login = { kind: 'running' };
+    login = running;
     change({ pairing: SPINNER });
     try {
       const outcome = await commands.login();
@@ -332,6 +338,10 @@ export function createWindowFlow({
     } catch (error) {
       reportStepFailure(error, 'pairing');
       showFailed();
+    } finally {
+      if (login === running) {
+        login = { kind: 'idle' };
+      }
     }
   }
 
@@ -368,7 +378,7 @@ export function createWindowFlow({
   }
 
   /**
-   * Retry asks for a fresh login over a failure, so the failure gives way to the spinner first. A code a login under
+   * Retry over a failure shows the spinner while it decides, so the failure gives way to it first. A code a login under
    * way shows stays.
    */
   function clearPairingFailure(): void {
@@ -526,10 +536,13 @@ export function createWindowFlow({
   }
   const stops = [responder.state.subscribe(handleResponderState)];
 
-  // Shown only: the login's answer, not the auth state, decides how a pairing ends.
+  // Only a running login is followed, so a failure a login left stays on show whatever the auth state does. The login's
+  // answer, not the auth state, decides how a pairing ends.
   stops.push(
     auth.listen(() => {
-      change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
+      if (login.kind === 'running') {
+        change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
+      }
     }),
   );
 
@@ -595,11 +608,17 @@ export function createWindowFlow({
       }),
     async retry() {
       if (getPairingOnShow() === 'failed') {
-        // A new login only once the one under way answered, so Retry never lands in the round of the failed one.
+        // Retry decides only once the login under way answered, so it never lands in the round of the failed one.
         await steps.settle(LOGINS);
         if (getPairingOnShow() === 'failed') {
           clearPairingFailure();
-          pair();
+          // A sign-in stored since the pairing failed is offered first, and an empty store pairs.
+          return runOnView({
+            name: 'decide',
+            view: 'pairing',
+            run: async () => offerOrPair(await readStored()),
+            failure: 'view',
+          });
         }
         return;
       }
