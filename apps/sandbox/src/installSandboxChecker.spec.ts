@@ -128,6 +128,7 @@ describe('the sandbox checker', () => {
   it('As a product developer, I overwrite a wallet global an extension set before the checker ran and my write is reported', () => {
     // Given a page whose ethereum an extension set before the checker installed
     const { page, violations, elapse } = createProductPage({ globals: { ethereum: { extension: true } } });
+    // The wallet globals are no members of the page's type, so the product reaches them by name.
     const pageGlobals = page as unknown as Record<string, unknown>;
 
     // When the page settles and the product writes ethereum

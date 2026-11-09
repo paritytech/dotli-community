@@ -96,7 +96,8 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Pa
 
   function showQueued(): void {
     if (toasts.get().items.length > 0) {
-      // Listening goes on until the UI has loaded, so a toast after a failed load starts the next try.
+      // Listening goes on until the UI has loaded, so a toast after a failed load starts the next try. Each toast change
+      // during a load queues one more try.
       showWithUi(unsubscribeToasts);
     }
   }

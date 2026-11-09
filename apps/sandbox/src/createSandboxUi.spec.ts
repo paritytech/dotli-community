@@ -55,7 +55,7 @@ describe('sandbox UI', () => {
     expect(module.mountOverlays).toHaveBeenCalledOnce();
   });
 
-  it('As a visitor, I get a toast after the page UI failed to load once, and it shows once the UI loads', async () => {
+  it('As a visitor, I get a toast after the page UI failed to load, and it shows once the UI loads', async () => {
     // Given two loads that fail and a third that succeeds, and a first toast whose failed load has settled
     const mounted = createDeferred<undefined>();
     const module = createFakeUi();
