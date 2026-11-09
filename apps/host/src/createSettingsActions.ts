@@ -5,11 +5,13 @@
 // resets through it when a URL changes the settings, before any island has loaded.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { pageLocalStorage } from '@dotli/shared';
+import { createDeferred, pageLocalStorage } from '@dotli/shared';
+import { atom, computed } from 'nanostores';
 import { markAndReload, type Continuation } from './createContinuation.js';
 import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { blockCache, cidCache } from '@dotli/storage';
 
+import type { SettingsResetStatus } from './components/settings/settings.js';
 import { pendingResets, type PendingResetTarget } from './runtime/createPendingResets.js';
 import { writeSharedSettings } from './runtime/sharedMode.js';
 import { wipeOriginState, type WipeFailure } from './wipeOriginState.js';
@@ -64,6 +66,9 @@ type ApplyParams = {
 
 export type SettingsActions = ReturnType<typeof createSettingsActions>;
 
+/** `running` never returns to `idle`, since the reload follows it. */
+type Reset = { kind: 'idle' } | { kind: 'running'; fullWipe: boolean; done: Promise<void> };
+
 type ApplyStep = 'wipe' | 'cid_cache' | 'block_cache' | 'pending_reset';
 
 /** Builds the settings actions over the given steps. Never throws. */
@@ -76,6 +81,14 @@ export function createSettingsActions({
   save,
   url,
 }: SettingsActionsParams) {
+  const resetState = atom<Reset>({ kind: 'idle' });
+  const reset = computed(resetState, (state): SettingsResetStatus => {
+    if (state.kind === 'idle') {
+      return 'idle';
+    }
+    return state.fullWipe ? 'clearing' : 'applying';
+  });
+
   async function apply({ next, prior, forceFullWipe }: ApplyParams): Promise<void> {
     const failed: ApplyStep[] = [];
     /** `expected` is the environment failure this step caught, left as a breadcrumb and a warning beside its count. */
@@ -127,13 +140,26 @@ export function createSettingsActions({
     }
   }
 
-  async function applyAndReset(
+  function applyAndReset(
     next: Settings,
     prior: Settings,
     { forceFullWipe = false, reason = 'settings_change' }: ApplyAndResetParams = {},
   ): Promise<void> {
+    const state = resetState.get();
+    if (state.kind === 'running') {
+      return state.done;
+    }
+    const finished = createDeferred<undefined>();
+    resetState.set({ kind: 'running', fullWipe: forceFullWipe, done: finished.promise });
+    void runReset({ next, prior, forceFullWipe }, reason).then(() => {
+      finished.resolve(undefined);
+    });
+    return finished.promise;
+  }
+
+  async function runReset(params: ApplyParams, reason: Continuation): Promise<void> {
     try {
-      await apply({ next, prior, forceFullWipe });
+      await apply(params);
     } catch (error: unknown) {
       // Beside the steps that count themselves. The error's class is in the capture.
       uiReport.defect(error, {
@@ -153,9 +179,14 @@ export function createSettingsActions({
      * Applies `next` over `prior` and reloads. Deletes only caches the user just turned off. The persisted
      * `skipWorkerCache` flag makes the protocol iframe purge itself on its next boot. Settings persist before the
      * deletes so the reload boots with them. Never rejects: a step that fails is counted, and the rest of the reset and
-     * the reload still run. The reload carries `reason`.
+     * the reload still run. The reload carries `reason`. A call while a reset runs saves and reloads nothing and
+     * resolves when the running one does.
      */
     applyAndReset,
+    /**
+     * The running reset, `idle` until one starts. It never returns to `idle`, since the reload follows. Never throws.
+     */
+    reset,
   };
 }
 

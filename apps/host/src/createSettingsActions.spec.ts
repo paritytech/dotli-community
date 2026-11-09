@@ -7,7 +7,8 @@ import type { Settings } from '@dotli/config';
 import type { Continuation } from './createContinuation.js';
 import { createSettingsActions, type SettingsActionsParams } from './createSettingsActions.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
+import { bindLogSink, createDeferred } from '@dotli/shared';
+import type { WipeFailure } from './wipeOriginState.js';
 
 /** The page URL the reload boots from. */
 type Page = { pathname: string; search: string; hash: string };
@@ -250,6 +251,60 @@ describe('applyAndReset', () => {
     expect(saved).toEqual([{ ...PRIOR, backend: 'rpc-gateway' }]);
     expect(readPage().search).toBe('?chainBackend=rpc-gateway');
     expect(reasons).toEqual(['switch_backend']);
+  });
+
+  it('As a user, I press Save and apply while Clear all caches runs and only the wipe runs, saves and reloads', async () => {
+    // Given a full wipe held at its wipe
+    const wipe = createDeferred<readonly WipeFailure[]>();
+    const { params, steps, saved } = setupReset({
+      wipeOrigin() {
+        steps.push('wipe origin');
+        return wipe.promise;
+      },
+    });
+    const actions = createSettingsActions(params);
+    const clearing = actions.applyAndReset(PRIOR, PRIOR, { forceFullWipe: true });
+    const draft: Settings = { ...PRIOR, network: 'previewnet' };
+
+    // When
+    const second = actions.applyAndReset(draft, PRIOR);
+    void second.then(() => {
+      steps.push('second settled');
+    });
+    await Promise.resolve();
+    wipe.resolve([]);
+    await Promise.all([clearing, second]);
+
+    // Then the second call waited for the wipe, the draft was never saved and the page reloads once
+    expect(saved).toEqual([PRIOR]);
+    expect(steps).toEqual(['wipe origin', 'schedule protocol and sandbox purge', 'reload', 'second settled']);
+  });
+
+  it('As a settings panel, I read the reset and see it clearing from the full wipe on, and never idle again', async () => {
+    // Given
+    const { params } = setupReset();
+    const actions = createSettingsActions(params);
+    const before = actions.reset.get();
+
+    // When
+    const clearing = actions.applyAndReset(PRIOR, PRIOR, { forceFullWipe: true });
+    const during = actions.reset.get();
+    await clearing;
+
+    // Then
+    expect([before, during, actions.reset.get()]).toEqual(['idle', 'clearing', 'clearing']);
+  });
+
+  it('As a settings panel, I read the reset of a save and see it applying', async () => {
+    // Given
+    const { params } = setupReset();
+    const actions = createSettingsActions(params);
+
+    // When
+    await actions.applyAndReset({ ...PRIOR, network: 'previewnet' }, PRIOR);
+
+    // Then
+    expect(actions.reset.get()).toBe('applying');
   });
 });
 
