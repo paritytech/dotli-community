@@ -38,6 +38,9 @@ const pageObjectUrls: ObjectUrls = {
   },
 };
 
+/** The read of one CID and how it went, or `null` before the first read. */
+type Reading = { cid: string; read: ArchiveRead } | null;
+
 export function ArchiveView(props: {
   active: boolean;
   load: ArchiveLoader;
@@ -51,30 +54,38 @@ export function ArchiveView(props: {
     const state = product();
     return state.status === 'loaded' ? state.cid : undefined;
   }
-  const [read, setRead] = createSignal<ArchiveRead>({ status: 'loading' });
+  // The variable is for the effect's identity checks, which must see a write at once. The signal is for the render.
+  let reading: Reading = null;
+  const [readingSignal, setReadingSignal] = createSignal<Reading>(null);
+  function setReading(next: Reading): void {
+    reading = next;
+    setReadingSignal(next);
+  }
+  function read(): ArchiveRead {
+    return readingSignal()?.read ?? { status: 'loading' };
+  }
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
-  // Read on first show, and again only for a new CID.
-  let readCid: string | null = null;
+  // Read on first show, again for a new CID, and again on the next show after a failed read.
   createEffect(
     () => (props.active ? (getCid() ?? null) : null),
     next => {
-      if (next === null || next === readCid) {
+      if (next === null || (reading?.cid === next && reading.read.status !== 'failed')) {
         return;
       }
-      readCid = next;
+      const started: Reading = { cid: next, read: { status: 'loading' } };
       setSelectedPath(null);
-      setRead({ status: 'loading' });
+      setReading(started);
       props.load(next).then(
         files => {
-          if (readCid === next) {
-            setRead(toLoadedArchive(files));
+          if (reading === started) {
+            setReading({ cid: next, read: toLoadedArchive(files) });
           }
         },
         (error: unknown) => {
-          if (readCid === next) {
-            setRead({ status: 'failed', reason: getErrorMessage(error) });
+          if (reading === started) {
+            setReading({ cid: next, read: { status: 'failed', reason: getErrorMessage(error) } });
           }
         },
       );
