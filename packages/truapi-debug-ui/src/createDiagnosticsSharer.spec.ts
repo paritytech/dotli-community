@@ -17,11 +17,11 @@ describe('the Share diagnostic button', () => {
     const built = createDeferred<string>();
     const source = fakeDiagnosticsSource({ report: () => built.promise });
     const busy: boolean[] = [];
-    const sharer = createDiagnosticsSharer({ source, rows: ROWS, onBusy: value => busy.push(value) });
+    const sharer = createDiagnosticsSharer({ source, onBusy: value => busy.push(value) });
 
     // When
-    const first = sharer.share();
-    const second = sharer.share();
+    const first = sharer.share(ROWS);
+    const second = sharer.share(ROWS);
 
     // Then
     expect(busy).toEqual([true]);
@@ -41,11 +41,11 @@ describe('the Share diagnostic button', () => {
     recordShareReports();
     const source = fakeDiagnosticsSource();
     source.report.mockRejectedValueOnce(new Error('permissions read failed'));
-    const sharer = createDiagnosticsSharer({ source, rows: ROWS, onBusy: () => undefined });
-    await sharer.share();
+    const sharer = createDiagnosticsSharer({ source, onBusy: () => undefined });
+    await sharer.share(ROWS);
 
     // When
-    await sharer.share();
+    await sharer.share(ROWS);
 
     // Then
     expect(source.report).toHaveBeenCalledTimes(2);

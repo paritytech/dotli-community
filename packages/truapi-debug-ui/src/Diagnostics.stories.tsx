@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { createDeferred } from '@dotli/shared';
@@ -227,6 +228,44 @@ export const ShareOnce: Story = {
     });
     await step('Then one issue opens and the button takes clicks again', async () => {
       await waitFor(() => expect(share).toBeEnabled());
+      await expect(source.report).toHaveBeenCalledTimes(1);
+      await expect(source.openIssue).toHaveBeenCalledTimes(1);
+    });
+  },
+};
+
+/** As a developer using the debug panel, I leave the Diagnostics tab while a share builds and come back, and one issue opens. */
+export const ShareOnceAcrossTabs: Story = {
+  tags: ['!autodocs'],
+  render: () => {
+    const [active, setActive] = createSignal(true);
+    return (
+      <PanelEffectsContext value={effects}>
+        <button type="button" onClick={() => setActive(shown => !shown)}>
+          Toggle diagnostics
+        </button>
+        <Diagnostics active={active()} source={source} />
+      </PanelEffectsContext>
+    );
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    const built = createDeferred<string>();
+    source.report.mockReturnValueOnce(built.promise);
+    const toggle = canvas.getByRole('button', { name: 'Toggle diagnostics' });
+    await step('When I click Share diagnostic, then leave the tab and come back while the report builds', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostic' }));
+      await userEvent.click(toggle);
+      await userEvent.click(toggle);
+    });
+    await step('Then the button is still disabled', async () => {
+      await expect(canvas.getByRole('button', { name: 'Share diagnostic' })).toBeDisabled();
+    });
+    await step('When I click it again and the report is built', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Share diagnostic' }));
+      built.resolve('Site: app.dot.li');
+    });
+    await step('Then one issue opens and the button takes clicks again', async () => {
+      await waitFor(() => expect(canvas.getByRole('button', { name: 'Share diagnostic' })).toBeEnabled());
       await expect(source.report).toHaveBeenCalledTimes(1);
       await expect(source.openIssue).toHaveBeenCalledTimes(1);
     });

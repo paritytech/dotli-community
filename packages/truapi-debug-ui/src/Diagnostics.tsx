@@ -3,7 +3,7 @@
 
 import { createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { DiagnosticsSource, PackageVersion } from './host.js';
+import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';
 import { createDiagnosticsSharer } from './createDiagnosticsSharer.js';
 import { Button } from './shared/Button.js';
 import { Code } from './shared/Code.js';
@@ -15,30 +15,41 @@ import { Stack } from './shared/Stack.js';
 
 /** Read afresh each time the tab opens. */
 export function Diagnostics(props: { active: boolean; source: DiagnosticsSource }): JSX.Element {
+  // The share lives here because the tab's content remounts on every show and a share outlives it.
+  const [sharing, setSharing] = createSignal(false);
+  const sharer = createDiagnosticsSharer({ source: untrack(() => props.source), onBusy: setSharing });
+
   return (
     <Pane testId="td-diagnostics" label="Diagnostics" hidden={!props.active} padded>
       <Show when={props.active}>
-        <DiagnosticsContent source={props.source} />
+        <DiagnosticsContent
+          source={props.source}
+          sharing={sharing()}
+          share={rows => {
+            void sharer.share(rows);
+          }}
+        />
       </Show>
     </Pane>
   );
 }
 
-function DiagnosticsContent(props: { source: DiagnosticsSource }): JSX.Element {
+function DiagnosticsContent(props: {
+  source: DiagnosticsSource;
+  sharing: boolean;
+  share: (rows: readonly DiagnosticsRow[]) => void;
+}): JSX.Element {
   const source = untrack(() => props.source);
   // The report is built from these same rows, so what is shared matches what is shown.
   const base = source.rows();
   const { polkadotApi, parityTruapi } = source.packages();
 
-  const [sharing, setSharing] = createSignal(false);
-  const sharer = createDiagnosticsSharer({ source, rows: base, onBusy: setSharing });
-
   return (
     <Stack gap="md">
       <Button
-        disabled={sharing()}
+        disabled={props.sharing}
         onClick={() => {
-          void sharer.share();
+          props.share(base);
         }}
         title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
       >
