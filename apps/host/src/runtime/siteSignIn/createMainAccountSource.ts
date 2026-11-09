@@ -45,7 +45,8 @@ type Params = {
   acquire: () => Promise<HeldLease>;
   /**
    * What the page's core itself reported last, null while no core reported. It keeps a core's last report after that
-   * core went down, until another core reports or the page's last core goes.
+   * core went down, until another core reports or the page's last core goes. Every report is a new object, so a report
+   * is never the same object as an earlier one.
    */
   coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'>;
 };

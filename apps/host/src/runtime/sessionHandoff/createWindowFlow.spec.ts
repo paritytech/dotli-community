@@ -1343,7 +1343,7 @@ describe('session window flow', () => {
     expect(calls).toEqual(['login', 'login']);
   });
 
-  it('As a user in the sign-in window whose pairing could not be stored, I see the failed view stay when my core reports a pairing after it', async () => {
+  it('As a user in the sign-in window whose pairing could not be stored, I hear my core report a pairing after it and the failed view stays', async () => {
     // Given a window whose pairing could not be stored
     const { flow, vet, auth, failLogin } = openWindow();
     vet();
@@ -1585,7 +1585,7 @@ describe('session window flow', () => {
     expect(flow.screen.get().view).toBe('failed');
   });
 
-  it("As the session window, I read the flow's new screen at once after the responder vets the opener", () => {
+  it("As the session window, I vet the opener and read the flow's new screen at once in the responder's delivery", () => {
     // Given a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
     const { flow, responder, vet } = openWindow();
     let readHost: string | null | undefined;
@@ -1604,7 +1604,7 @@ describe('session window flow', () => {
     expect(readHost).toBe('browse.dot.li');
   });
 
-  it('As a user in the sign-in window, I see the step my core moved on to while my login runs', async () => {
+  it('As a user in the sign-in window, I hear my core move past its code while my login runs and see the step it moved on to', async () => {
     // Given a listener, registered before the flow, that moves auth on from Pairing to Authenticating
     const { flow, auth, vet } = openWindow({
       beforeFlow(source) {
