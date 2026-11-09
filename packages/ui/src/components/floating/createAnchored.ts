@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, useContext } from 'solid-js';
-import { isPhoneViewport } from '../../page/phoneViewport.js';
+import { createEffect, createSignal, useContext } from 'solid-js';
+import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
 import { focusTrigger, isFocusLostOrInside } from '../focus.js';
 import type { CloseReason } from './closeReason.js';
 import { AnchorBoundary } from './layerContext.js';
@@ -32,6 +32,11 @@ export function createAnchored({ props, returnFocusOn }: Params) {
    */
   let current = false;
   let triggerElement: HTMLElement | undefined;
+
+  // A phone turned while the surface is open must not leave it in the other form.
+  createEffect(open, isOpen => {
+    return isOpen ? watchPhoneViewport(setSheet) : undefined;
+  });
 
   function focusBack(): void {
     focusTrigger(triggerElement, boundary?.fallbackFocus());
@@ -83,7 +88,7 @@ export function createAnchored({ props, returnFocusOn }: Params) {
     },
     /** Whether the surface is open. */
     open,
-    /** Whether this opening is a bottom sheet. */
+    /** Whether the surface is a bottom sheet, following the viewport while open. */
     sheet,
     /**
      * Opens or closes the surface and tells `onOpenChange`. A call that changes nothing does nothing. Throws only what

@@ -33,7 +33,8 @@ and no data source.
 - Every component has a CSS module beside it. Colors come only from the tokens.
 - Floating layers share one stack that tracks shown modal layers and their layout, and makes the page inert under the
   top one. The phone bar stays live under a sheet, and follows a layer that changes its layout while shown.
-- `Popover` and `DropdownMenu` render their surface from its first opening on and share the trigger wiring. A popover's
+- `Popover` and `DropdownMenu` render their surface from its first opening on and share the trigger wiring. An open one
+  follows the viewport across the phone breakpoint, anchored on a wide screen and a bottom sheet on a phone. A popover's
   heavy content is the app's to load with `lazy()`, and its `preload` runs when the browser is idle.
 - The action group measures its items and moves the lowest priority ones into More, which lists them as menu rows and
   raises their status as its badge. Items join through `ActionsContext` and say how they read as a row. The group waits

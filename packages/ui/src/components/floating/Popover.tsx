@@ -16,7 +16,7 @@ export type PopoverApi = {
   id: string;
   /** Whether the popover is open. */
   open: Accessor<boolean>;
-  /** Whether this opening is a bottom sheet. */
+  /** Whether the surface is a bottom sheet, following the viewport while open. */
   sheet: Accessor<boolean>;
   /** Closes the popover. Throws only what `onOpenChange` throws. */
   close: () => void;
