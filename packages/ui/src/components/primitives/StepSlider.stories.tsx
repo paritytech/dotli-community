@@ -13,6 +13,8 @@ type Params = {
   type: string;
   /** Where the pointer is across the track, 0 at its start and 1 at its end. */
   fraction: number;
+  /** The pointer that fires the event, 1 when left out. */
+  pointerId?: number;
 };
 
 const STOPS = [
@@ -113,6 +115,34 @@ export const DragCommitsOnRelease: Story = {
     await step('Then Max alone is committed', async () => {
       await expect(args.onCommit).toHaveBeenCalledTimes(1);
       await expect(args.onCommit).toHaveBeenCalledWith(3);
+    });
+  },
+};
+
+/** As a phone user, a second finger on the slider changes nothing, and my first finger's release commits its own stop. */
+export const SecondFingerChangesNothing: Story = {
+  render: renderOwned,
+  play: async ({ args, canvas, step }) => {
+    const track = getSlider(canvas);
+    await step('When pointer 1 goes down at the start and pointer 2 at the end', () => {
+      dispatchPointer({ target: track, type: 'pointerdown', fraction: 0, pointerId: 1 });
+      dispatchPointer({ target: track, type: 'pointerdown', fraction: 1, pointerId: 2 });
+    });
+    await step('Then the slider shows Low', async () => {
+      await waitFor(() => expect(track).toHaveAttribute('aria-valuenow', '0'));
+    });
+    await step('When pointer 1 is released at the start', () => {
+      dispatchPointer({ target: track, type: 'pointerup', fraction: 0, pointerId: 1 });
+    });
+    await step('Then Low alone is committed', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(1);
+      await expect(args.onCommit).toHaveBeenCalledWith(0);
+    });
+    await step('When pointer 2 is released at the end', () => {
+      dispatchPointer({ target: track, type: 'pointerup', fraction: 1, pointerId: 2 });
+    });
+    await step('Then nothing more is committed', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(1);
     });
   },
 };
@@ -240,9 +270,9 @@ function getSlider(canvas: { getByRole: (role: string) => HTMLElement }): HTMLEl
   return canvas.getByRole('slider');
 }
 
-function dispatchPointer({ target, type, fraction }: Params): void {
+function dispatchPointer({ target, type, fraction, pointerId = 1 }: Params): void {
   const rect = target.getBoundingClientRect();
   target.dispatchEvent(
-    new PointerEvent(type, { pointerId: 1, button: 0, clientX: rect.left + rect.width * fraction, bubbles: true }),
+    new PointerEvent(type, { pointerId, button: 0, clientX: rect.left + rect.width * fraction, bubbles: true }),
   );
 }

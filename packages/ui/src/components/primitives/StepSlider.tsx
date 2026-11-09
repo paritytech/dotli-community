@@ -74,9 +74,7 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
     if (event.button !== 0 || track === undefined) {
       return;
     }
-    track.focus();
-    follow(event.clientX);
-    drags.start({
+    const took = drags.start({
       target: track,
       down: event,
       handlers: {
@@ -94,6 +92,11 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
         },
       },
     });
+    if (!took) {
+      return;
+    }
+    track.focus();
+    follow(event.clientX);
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
