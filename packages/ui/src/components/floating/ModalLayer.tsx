@@ -6,7 +6,7 @@ import { Portal, type JSX } from '@solidjs/web';
 import { lockScroll } from '../createScrollLock.js';
 import { containTab, isFocusLostOrInside } from '../focus.js';
 import { ModalFocusFallback } from './layerContext.js';
-import { hideLayer, showLayer, topLayer } from './modalStack.js';
+import { hideLayer, setLayerLayout, showLayer, topLayer, type LayerLayout } from './modalStack.js';
 import { handOffSheetOnPress } from './SheetFrame.js';
 import s from './ModalLayer.module.css';
 
@@ -23,7 +23,7 @@ export type ModalLayerProps = {
   /** Used when it returns a connected element, else focus returns where it was at opening. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
   scrim?: 'dark' | 'light' | undefined;
-  layout: 'center' | 'sheet' | 'topbar-end';
+  layout: LayerLayout;
   /** A sheet taking another's place, so no fade or slide. */
   handedOff?: boolean | undefined;
   /** Receives the frame. */
@@ -110,7 +110,10 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         restoreTo = target;
         element.toggleAttribute('data-follows', follows);
         restoreTargets.set(element, restoreTo);
-        showLayer(element);
+        showLayer(
+          element,
+          untrack(() => props.layout),
+        );
         document.addEventListener('keydown', handleDocumentKeyDown);
         document.addEventListener('click', handleDocumentClick, true);
         unlockScroll = lockScroll();
@@ -118,6 +121,15 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
         (first ?? element.querySelector<HTMLElement>('[data-modal-surface]') ?? element).focus();
       } else if (!open && shown) {
         hide();
+      }
+    },
+  );
+  // A modal changes its layout while open, and the bar answers only under a sheet.
+  createEffect(
+    () => props.layout,
+    layout => {
+      if (shown && frame !== undefined) {
+        setLayerLayout(frame, layout);
       }
     },
   );

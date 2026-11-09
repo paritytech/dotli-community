@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, Show } from 'solid-js';
+import { Portal } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { TrashIcon } from '../icons/TrashIcon.js';
@@ -136,6 +137,61 @@ export const SwitchesFormKeepingContent: Story = {
         await waitFor(() => expect(body.queryByTestId('story-modal-sheet-head')).not.toBeInTheDocument());
         await expect(input().value).toBe('hunter2');
         await expect(input()).toHaveFocus();
+      });
+    } finally {
+      // The next story must not inherit the phone.
+      await page.viewport(wide.width, wide.height);
+    }
+  },
+};
+
+/** The phone bar, a body child the stack leaves live under a sheet, and a modal open from the start. */
+function BarHarness() {
+  const [open, setOpen] = createSignal(true);
+  return (
+    <>
+      <Portal>
+        <header data-over-sheets="" data-testid="story-bar">
+          <button type="button" data-testid="story-bar-button">
+            Bar
+          </button>
+        </header>
+      </Portal>
+      <Modal open={open()} onOpenChange={setOpen} title="Clear site data" testId="bar-modal">
+        <Modal.Body>
+          <p>The site forgets its settings and signs you out.</p>
+        </Modal.Body>
+      </Modal>
+    </>
+  );
+}
+
+/** As a phone user, I turn the screen with a dialog open and the bar answers under its sheet, and goes inert again under its card. */
+export const BarFollowsLayout: Story = {
+  render: () => <BarHarness />,
+  play: async ({ mount, step }) => {
+    const bar = () => body.getByTestId('story-bar');
+    const { page } = await import('vitest/browser');
+    const wide = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await step('Given a dialog open as a card over the bar', async () => {
+        await mount();
+        await waitFor(() => expect(body.getByTestId('bar-modal')).toBeInTheDocument());
+        await waitFor(() => expect(bar()).toHaveAttribute('inert'));
+      });
+      await step('When the window narrows to a phone', async () => {
+        await page.viewport(390, 844);
+      });
+      await step('Then the dialog is a sheet and the bar answers', async () => {
+        await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+        await waitFor(() => expect(bar()).not.toHaveAttribute('inert'));
+      });
+      await step('When the window widens back to a desktop', async () => {
+        await page.viewport(wide.width, wide.height);
+      });
+      await step('Then the dialog is a card again and the bar is inert', async () => {
+        await waitFor(() => expect(body.queryByTestId('bar-modal-sheet-head')).not.toBeInTheDocument());
+        await waitFor(() => expect(bar()).toHaveAttribute('inert'));
       });
     } finally {
       // The next story must not inherit the phone.
