@@ -73,6 +73,7 @@ describe('sandbox UI', () => {
     // When a second toast is queued
     toasts.set({ items: ['reload offer', 'stale worker'] });
     await mounted.promise;
+    await ui.loadUi();
 
     // Then the UI loaded again and the queue stopped listening
     expect(load).toHaveBeenCalledTimes(3);
