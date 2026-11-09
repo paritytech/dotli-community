@@ -305,6 +305,10 @@ export function createPageCore({
             reason: redial,
             message: '[dot.li page-core] wallet core redial failed:',
           });
+          // A redial nobody waits on has nobody to fail, and would leave the page following a dead core.
+          if (core.leases === 0) {
+            core.dispose();
+          }
           // The page core has reported it, so a caller that hears of it must not report it again.
           throw new CoreRedialError(error);
         }

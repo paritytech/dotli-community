@@ -950,6 +950,23 @@ describe('page core', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dApp user whose core went down and whose redials all fail while nobody holds it, I see the page let go of every core', async () => {
+    // Given a core under one lease, with every redial failing
+    const onCoresGone = vi.fn();
+    const { core, runtimes, nextBoots, counted, changes } = createReportingHarness({ onCoresGone });
+    const lease = await core.acquire();
+    await lease.connect();
+    nextBoots.push(createFailingBoot(), createFailingBoot(), createFailingBoot());
+
+    // When the core goes down, its holder lets it go, and the redials give up
+    nth(runtimes, 0).providers[0]?.goDown();
+    lease.release();
+    await changes.until(() => counted('wallet.core_redial').length === 1);
+
+    // Then no core is left
+    expect(onCoresGone).toHaveBeenCalledTimes(1);
+  });
+
   it('As a user, I open another product before the old core goes down and get a redial for the product on screen', async () => {
     // Given a connection on a core, and another product on screen
     const { core, runtimes, contexts } = createHarness();
