@@ -4,7 +4,7 @@
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
-import { recordLog } from '@dotli/shared/testing';
+import { createManualTimers, recordLog } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
@@ -98,6 +98,33 @@ describe('registerAppServiceWorker', () => {
 
     // Then
     expect(events.countListening()).toBe(0);
+  });
+
+  it('As a visitor after a full reset in a browser that kept the worker, I go on at once and no failure is reported', async () => {
+    // Given a page whose worker the browser kept through the reset, with nothing installing or waiting
+    const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const kept = createWorkerAt('build-1');
+    const events = createCountingEventTarget({ type: 'controllerchange' });
+    // The reset reads only these members of the container and of its registration.
+    const container = {
+      ...events,
+      controller: kept,
+      ready: new Promise<ServiceWorkerRegistration>(() => undefined),
+      register: () =>
+        Promise.resolve({ active: kept, installing: null, waiting: null, update: () => Promise.resolve() }),
+    } as unknown as ServiceWorkerContainer;
+
+    // When it registers on the reset path, on timers that never run
+    await registerAppServiceWorker(
+      { container, version: undefined, offerReload: () => undefined },
+      { waitForFreshController: true, timers: createManualTimers() },
+    );
+
+    // Then
+    expect(events.countListening()).toBe(0);
+    expect(logs).toEqual([]);
+    expect(sentry.counted('sandbox.sw_register')).toEqual([]);
   });
 
   it('As an operator, I watch the browser refuse the registration and see it logged and counted by its error name while the page goes on', async () => {

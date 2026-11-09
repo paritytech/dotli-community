@@ -36,9 +36,10 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   archive, the worker reads that directory as the archive root and looks again, whichever page or product worker asked
   and wherever its router has moved it since. An exact match always wins, and the last handoff's directory holds. Only
   on the dev server do the sandbox's own module paths skip the archive. The page side registers it and checks its
-  version. The packed archive reaches the controlling worker by a handoff.
+  version. On a full reset it waits for the fresh worker to take control, and goes on at once when the browser kept the
+  worker that already controls the page. The packed archive reaches the controlling worker by a handoff.
 - On a full reset, the first load purges the origin's stores of anything an earlier product left behind, before the
-  service worker registers, so the fresh worker starts clean. A retry keeps the state the first attempt left.
+  service worker registers, so a fresh worker starts clean. A retry keeps the state the first attempt left.
 - The password dialog comes with the sandbox's own UI. Its dialogs are `ModalView` data, with an icon component, that
   the shared dialog renders.
 - The error page and the retry screen come with that chunk. A failed chunk load is not cached, so the next need loads it

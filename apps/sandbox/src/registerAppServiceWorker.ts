@@ -8,7 +8,7 @@ import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { isRecord, withTimeout } from '@dotli/shared';
+import { isRecord, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 import { SANDBOX_ERRORS } from './errors.js';
 
@@ -49,11 +49,19 @@ type EnsureFreshServiceWorkerParams = {
  * Registers the worker and settles once it controls the page, or the page goes on without one. Never rejects: a
  * failed registration or wait is logged, captured and counted. `waitForFreshController` is for the full reset path:
  * unregistering does not detach the page's current controller, so it waits for a `controllerchange` rather than
- * proceed against the SW it just wiped.
+ * proceed against the SW it just wiped. On that path it also settles at once when the browser kept the worker that
+ * controls the page, since no `controllerchange` can come.
  */
 export async function registerAppServiceWorker(
   app: AppServiceWorker,
-  { waitForFreshController = false }: { waitForFreshController?: boolean } = {},
+  {
+    waitForFreshController = false,
+    timers = realTimers,
+  }: {
+    waitForFreshController?: boolean;
+    /** The timers the wait for the fresh worker runs on. */
+    timers?: Timers;
+  } = {},
 ): Promise<void> {
   const { container } = app;
   if (container === null) {
@@ -72,6 +80,12 @@ export async function registerAppServiceWorker(
     });
 
     if (!waitForFreshController && container.controller) {
+      void ensureFreshServiceWorker({ app, container, registration });
+      return;
+    }
+
+    if (waitForFreshController && keepsController(registration, container)) {
+      report.log.event('The reset kept the worker that controls the page');
       void ensureFreshServiceWorker({ app, container, registration });
       return;
     }
@@ -96,6 +110,7 @@ export async function registerAppServiceWorker(
         work: controlled,
         ms: SANDBOX_TIMEOUTS.SW_READY,
         timeoutError: () => new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE),
+        timers,
       });
     } finally {
       container.removeEventListener('controllerchange', onControllerChange);
@@ -111,6 +126,14 @@ export async function registerAppServiceWorker(
       tags: { surface: 'sandbox_main' },
     });
   }
+}
+
+/** Whether the registration has nothing installing or waiting and its active worker is the one controlling the page. */
+function keepsController(registration: ServiceWorkerRegistration, container: ServiceWorkerContainer): boolean {
+  if (registration.installing !== null || registration.waiting !== null) {
+    return false;
+  }
+  return container.controller !== null && registration.active === container.controller;
 }
 
 /**
