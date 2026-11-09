@@ -3,7 +3,7 @@
 
 /** The sandbox's own waits, in milliseconds. */
 export const SANDBOX_TIMEOUTS = {
-  /** A host recover reply. Exceeds the host's recover rate-limit window, so a limited request fails visibly. */
+  /** How long the host has to accept a recover ask. */
   RECOVER: 6_000,
   /** `controllerchange` after the service worker registers. */
   SW_READY: 10_000,

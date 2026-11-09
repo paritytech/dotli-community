@@ -28,6 +28,8 @@ type Harness = {
   events: string[];
   /** Presses the retry of the latest failure. Resolves once the load it asked for has settled. */
   retry: () => Promise<void>;
+  /** The host accepts the recover ask, which settles the run's wait for it. */
+  accept: () => void;
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
@@ -48,15 +50,19 @@ function createSandboxUrl({
 
 /**
  * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `timers` are the timers its
- * wait for the host runs on.
+ * wait for the host runs on, and `askRerender` replaces its ask to the host when given.
  */
 function createHarness(
   outcomes: LoadOutcome[],
-  { timers = createManualTimers() }: { timers?: ManualTimers } = {},
+  {
+    timers = createManualTimers(),
+    askRerender,
+  }: { timers?: ManualTimers; askRerender?: RunSandboxDeps['askRerender'] } = {},
 ): Harness {
   const loads: LoadInput[] = [];
   const failures: Failure[] = [];
   const events: string[] = [];
+  const acceptance = createDeferred<undefined>();
   const deps: RunSandboxDeps = {
     configure: params => {
       events.push(`configure ${params.network}`);
@@ -80,8 +86,18 @@ function createHarness(
     showRetrying: () => {
       events.push('retrying');
     },
-    askRerender: () => {
-      events.push('ask rerender');
+    askRerender:
+      askRerender ??
+      (() => {
+        events.push('ask rerender');
+      }),
+    waitForRecoverAccepted(signal) {
+      events.push('wait');
+      signal.addEventListener('abort', () => {
+        events.push('wait aborted');
+        acceptance.reject(signal.reason);
+      });
+      return acceptance.promise;
     },
     getGatewayHost: () => 'ipfs.example',
     baseDomain: 'dot.li',
@@ -94,6 +110,9 @@ function createHarness(
     failures,
     events,
     retry: retryLatest,
+    accept: () => {
+      acceptance.resolve(undefined);
+    },
   };
 
   function retryLatest(): Promise<void> {
@@ -206,7 +225,7 @@ describe('runSandbox contract', () => {
     expect(sandbox.failures).toMatchObject([{ step: 'contract_origin' }]);
   });
 
-  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see the load fail if it does not in time', async () => {
+  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see the load fail if it never accepts my ask', async () => {
     // Given a reload that stripped the params
     const timers = createManualTimers();
     const sandbox = createHarness([{ outcome: 'loaded' }], { timers });
@@ -217,12 +236,50 @@ describe('runSandbox contract', () => {
     await timers.advance(6_000);
 
     // Then
-    expect(sandbox.events).toEqual(['ask rerender', 'failed contract_rerender']);
+    expect(sandbox.events).toEqual(['ask rerender', 'wait', 'wait aborted', 'failed contract_rerender']);
     expect(failuresBeforeTheWait).toBe(0);
     expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
     expect(captured).toMatchObject([
       { error: { cause: { name: 'SandboxContractError', recoverable: true } }, context: { step: 'contract_rerender' } },
     ]);
+  });
+
+  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see no failure once it accepted, however long the rebuild takes', async () => {
+    // Given a reload that stripped the params, and the host's acceptance of the recover ask
+    const timers = createManualTimers();
+    const sandbox = createHarness([{ outcome: 'loaded' }], { timers });
+    await runSandbox(toFramedPage('https://myapp.app.localhost/'), sandbox.deps);
+    sandbox.accept();
+
+    // When the rebuild takes far longer than the deadline
+    await timers.advance(60_000);
+
+    // Then the wait ended with the acceptance and nothing failed
+    expect(sandbox.events).toEqual(['ask rerender', 'wait']);
+    expect(sandbox.failures).toEqual([]);
+    expect(captured).toEqual([]);
+  });
+
+  it('As a visitor whose sandbox reloaded without its params and cannot reach its host, I see the run throw and no wait is started', () => {
+    // Given a sandbox whose ask to the host throws
+    const unreachable = new Error('The host window is gone');
+    const sandbox = createHarness([{ outcome: 'loaded' }], {
+      askRerender: () => {
+        throw unreachable;
+      },
+    });
+
+    // When the run starts on a URL the reload stripped
+    let thrown: unknown;
+    try {
+      void runSandbox(toFramedPage('https://myapp.app.localhost/'), sandbox.deps);
+    } catch (error) {
+      thrown = error;
+    }
+
+    // Then the ask's error escapes the run and no wait is started
+    expect(thrown).toBe(unreachable);
+    expect(sandbox.events).not.toContain('wait');
   });
 
   it("As the sandbox's integrator, I run the sandbox and the contract's settings apply before the first load", async () => {

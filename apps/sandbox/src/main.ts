@@ -25,6 +25,7 @@ import { createBitswapBridge, createHostOriginRule } from './createBitswapBridge
 import { loadProduct, type BlockSource, type SandboxParams } from './loadProduct.js';
 import { purgeSandboxOriginState } from './purgeSandboxOriginState.js';
 import { runSandbox } from './runSandbox.js';
+import { waitForRecoverAccepted } from './waitForRecoverAccepted.js';
 import { listenForArchiveFailures } from './listenForArchiveFailures.js';
 import { offerReloadNotice } from './offerReloadNotice.js';
 import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
@@ -36,6 +37,8 @@ listenForChunkFailures({
 });
 
 const hostMessages = createHostMessages({ parent: window.parent });
+
+const isHostOrigin = createHostOriginRule(BASE_DOMAIN);
 
 const fallbackScreen = createFallbackScreen({ page: document, reload: reloadPage });
 
@@ -126,7 +129,7 @@ function configure(params: SandboxParams): void {
     blockSource = createBitswapBridge({
       window,
       parent: window.parent,
-      isHostOrigin: createHostOriginRule(BASE_DOMAIN),
+      isHostOrigin,
     }).requestBlock;
   }
 }
@@ -171,6 +174,7 @@ void runSandbox(
       ui.showRetryScreen();
     },
     askRerender: hostMessages.askRerender,
+    waitForRecoverAccepted: signal => waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, signal }),
     getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
     recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,

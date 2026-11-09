@@ -15,6 +15,7 @@ import {
   describeGatewayUnreachable,
   realTimers,
   setErrorName,
+  withTimeout,
   type Timers,
 } from '@dotli/shared';
 
@@ -53,16 +54,18 @@ export type RunSandboxDeps = {
   showRetrying: () => void;
   /** Asks the host to render this frame again with its params. */
   askRerender: () => void;
+  /** Resolves once the host accepted the recover ask, and rejects with `signal.reason` once `signal` aborts. */
+  waitForRecoverAccepted: (signal: AbortSignal) => Promise<void>;
   /** The IPFS gateway's host, named when it cannot be reached. */
   getGatewayHost: () => string | undefined;
   /** The host's root domain, whose `app.` subdomains serve products. */
   baseDomain: string;
-  /** How long the host has to render the frame again. */
+  /** How long the host has to accept the recover ask. */
   recoverTimeoutMs: number;
   /** The most loads in all, the first one and each retry. */
   maxAttempts?: number;
-  /** The timers the wait for the host to render the frame again runs on. */
-  timers?: Pick<Timers, 'setTimeout'>;
+  /** The timers the wait for the host to accept the recover ask runs on. */
+  timers?: Timers;
 };
 
 type FailParams = {
@@ -141,12 +144,26 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
     const { message: reason, recoverable } = error;
     if (recoverable) {
       // A reload of this window boots without the contract params, which were stripped after the last load. The host
-      // can render it again with the params it last sent, and if it does not in time, the load fails.
+      // can render it again with the params it last sent. Its rebuild can take long, so only an ask it never accepts
+      // in time fails the load.
       report.log.event('Asking the host to re-render the sandbox', { reason });
       deps.askRerender();
-      timers.setTimeout(() => {
-        failContract({ step: 'contract_rerender', title: 'Invalid sandbox URL', reason, cause: error });
-      }, deps.recoverTimeoutMs);
+      // In the same turn as the ask, since the host's answer arrives as a later message.
+      const wait = new AbortController();
+      void withTimeout({
+        work: deps.waitForRecoverAccepted(wait.signal),
+        ms: deps.recoverTimeoutMs,
+        timers,
+        timeoutError: () => new Error('The host did not accept the recover ask in time'),
+      }).then(
+        () => {
+          report.log.event('The host accepted the recover ask');
+        },
+        () => {
+          wait.abort();
+          failContract({ step: 'contract_rerender', title: 'Invalid sandbox URL', reason, cause: error });
+        },
+      );
     } else {
       failContract({ step: 'contract_params', title: 'Invalid sandbox URL', reason, cause: error });
     }
