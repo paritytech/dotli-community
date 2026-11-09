@@ -33,6 +33,7 @@ type Params = {
 };
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
+const OTHER_KEY = `0x${'b'.repeat(64)}`;
 const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 
 const CONNECTED: DotliAuthState = {
@@ -265,13 +266,38 @@ describe('main account', () => {
     core.report.set(CONNECTED);
     await core.source.read(createLiveSignal());
 
-    // When that core goes down, and the round reads again
+    // When that core goes down, the round reads again, and the replacement reports a session
     must(core.leases[0], 'a held lease').goDown();
-    await core.source.read(createLiveSignal());
+    const reading = core.source.read(createLiveSignal());
+    await core.waitForLeases(2);
+    core.report.set({ ...CONNECTED });
+    await reading;
 
     // Then the lease on the core that went down was released, and the next read took a lease on the replacement
     expect(core.leases.map(lease => lease.released)).toEqual([1, 0]);
     expect(core.countAcquires()).toBe(2);
+  });
+
+  it("As a user whose core went down after a site's round read the main account, I try again and the read waits for the replacement's own report", async () => {
+    // Given a read that settled on a core's report, and that core going down
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal());
+    must(core.leases[0], 'a held lease').goDown();
+
+    // When the round reads again, and the replacement reports another account
+    let settled = false;
+    const reading = core.source.read(createLiveSignal()).finally(() => {
+      settled = true;
+    });
+    await core.waitForLeases(2);
+    await core.waitUntilReadWaits();
+    const pendingBeforeReport = !settled;
+    core.report.set({ tag: 'Connected', session: { connected: true, publicKey: OTHER_KEY } });
+
+    // Then the read waited past the dead core's report and resolves with the replacement's account
+    expect(pendingBeforeReport).toBe(true);
+    expect((await reading).owner).toBe(toHex(hashBlake2b(fromHex(OTHER_KEY), 32)));
   });
 
   it("As a user whose core goes down while a site's round waits on the main account, I go on and the read takes the replacement's report", async () => {

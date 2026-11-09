@@ -58,6 +58,9 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   const lifetime = new AbortController();
   // The lease held, with its own signal that aborts once its core goes down, and the removal of its down listener.
   let held: { lease: HeldLease; down: AbortSignal; unsubscribeDown: () => void } | null = null;
+  // The report on show when the last held lease went down. The page keeps the dead core's last report until its
+  // replacement reports, and a replacement is dialed before its holders hear the down.
+  let staleReport: DotliAuthState | null = null;
 
   /** Takes a lease unless one is held, and lets it go once its core goes down. Resolves with the lease's down signal. */
   async function holdLease(): Promise<AbortSignal> {
@@ -78,6 +81,7 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
       if (held === current) {
         held = null;
       }
+      staleReport = coreReport.get();
       down.abort();
       lease.release();
     });
@@ -98,7 +102,11 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   /** The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. */
   function watchLeasedReport(down: AbortSignal): StatusSource<LeasedReport> {
     function getReport(): LeasedReport {
-      return down.aborted ? 'down' : coreReport.get();
+      if (down.aborted) {
+        return 'down';
+      }
+      const report = coreReport.get();
+      return report === staleReport ? null : report;
     }
     return {
       get: getReport,
@@ -159,7 +167,7 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
      * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
      * for a core that cannot boot, a core that cannot read the main session, a session without a readable key,
      * `signal` aborting first, or the source disposed while the read is open or before it starts, which then takes no
-     * new lease.
+     * new lease. After the leased core went down, the read waits for its replacement's own report.
      */
     async read(signal: AbortSignal): Promise<MainAccount> {
       const ended = AbortSignal.any([signal, lifetime.signal]);
