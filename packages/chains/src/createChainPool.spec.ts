@@ -1495,7 +1495,6 @@ describe('createChainPool pausing', () => {
     expect(built).toHaveLength(2);
     expect(must(built[1], 'transport').opened).toBe(1);
     expect(pool.status('0xaa')).toBe('connecting');
-    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
     expect(onHalt).not.toHaveBeenCalled();
     expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
   });
@@ -1611,6 +1610,7 @@ describe('createChainPool healing', () => {
     expect(built).toHaveLength(2);
     expect(must(built[1], 'transport').opened).toBe(1);
     expect(pool.status('0xaa')).toBe('connecting');
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli integrator, I connect remotely to a chain whose transport halts as it opens and my connect fails with the halt', () => {
