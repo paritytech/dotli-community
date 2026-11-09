@@ -52,8 +52,9 @@ const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
 
 /** Makes the source, which takes its lease on the first read. */
 export function createMainAccountSource({ acquire, coreReport }: Params) {
-  // One lease at a time, so overlapping reads share the one the first read takes.
-  const leases = createAsyncTaskPool({ poolSize: 1 });
+  // One lease at a time, so overlapping reads share the one the first read takes. A read whose signal aborts leaves its
+  // lease being taken in the slot, so the next read holds that lease rather than a second one.
+  const leases = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true });
   // Aborts on dispose, which ends every read open then or started after.
   const lifetime = new AbortController();
   // The lease held, with its own signal that aborts once its core goes down, and the removal of its down listener.

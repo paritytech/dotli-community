@@ -405,6 +405,28 @@ describe('main account', () => {
     expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
   });
 
+  it("As a user who ends a site's round while its read takes a lease, I read again and the source holds one lease, which dispose lets go", async () => {
+    // Given a read whose lease is still being taken, and whose round then ends
+    const boot = createDeferred<undefined>();
+    const core = createSourceOverCore({ booted: boot.promise });
+    core.report.set(CONNECTED);
+    const ended = new AbortController();
+    const aborted = core.source.read(ended.signal).catch((error: unknown) => error);
+    await core.waitForLeases(1);
+    ended.abort(new Error('The round ended'));
+    await aborted;
+
+    // When a read on another signal runs, the lease lands, and the source is disposed
+    const reading = core.source.read(createLiveSignal());
+    boot.resolve(undefined);
+    await reading;
+    core.source.dispose();
+
+    // Then one lease was taken, and dispose let it go
+    expect(core.countAcquires()).toBe(1);
+    expect(core.leases.map(lease => lease.released)).toEqual([1]);
+  });
+
   it('As a dotli integrator, I dispose the main account source while a read waits and the read fails as unavailable, with no new lease taken', async () => {
     // Given a read that waits on the report of a core
     const core = createSourceOverCore();
