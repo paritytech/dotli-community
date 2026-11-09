@@ -410,6 +410,26 @@ export const TooltipHidesOnCollapse: Story = {
   },
 };
 
+/** As a developer using the debug panel, I dock the panel elsewhere while a timeline tooltip shows and the tooltip hides. */
+export const TooltipHidesOnDockToggle: Story = {
+  play: async ({ userEvent, step }) => {
+    await showMixedTraffic();
+    await userEvent.click(getPart('td-tab', { value: 'timeline' }));
+    const box = listSegments().find(s => s.hasAttribute('data-tooltip')) ?? getTimelineBox('handshake');
+    const tooltip = getPart('td-tooltip');
+    await step('Given a tooltip shows', async () => {
+      hover(box, { type: 'pointerover', x: 30, y: 40 });
+      await expect(tooltip).toHaveAttribute('data-visible');
+    });
+    await step('When I dock the panel elsewhere without moving the pointer', () => {
+      getPart('td-dock').click();
+    });
+    await step('Then the tooltip hides', async () => {
+      await expect(tooltip).not.toHaveAttribute('data-visible');
+    });
+  },
+};
+
 /** As a developer using the debug panel, I watch a load and its elapsed time redraws on a tick, but not while the panel is collapsed. */
 export const ResolutionTicks: Story = {
   parameters: { debugPanel: { mount: false } },

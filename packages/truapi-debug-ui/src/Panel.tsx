@@ -290,8 +290,8 @@ export function Panel(props: {
     }
   }
 
+  /** Hides the tooltip, since hiding, moving or folding the pane under the cursor may fire no boundary event. */
   function hideTooltip(): void {
-    // Hiding, moving or folding the pane under the cursor may fire no boundary event, which would strand the tooltip.
     tooltipElement?.removeAttribute('data-visible');
   }
 
