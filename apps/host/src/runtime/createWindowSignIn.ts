@@ -49,7 +49,8 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
   /**
    * A product asked the core to log in, from a click inside its own frame, which cannot open a window. The prompt's
    * Sign in gives the click. A failure on show is replaced, while a prompt already up, the wait for the window and its
-   * outcome stay, so the core's later pairing updates write nothing.
+   * outcome stay, so the core's later pairing updates write nothing. The prompt ends a closed round whose failure it
+   * replaces.
    */
   function promptForWindow(state: PairingState): void {
     if (round?.open === true) {
@@ -58,6 +59,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     if (modal.getLease() !== null && modal.getViewKind() !== 'error') {
       return;
     }
+    round = null;
     if (modal.open({ label: state.hostGlobal === true ? undefined : state.label, dotSuffix: state.dotSuffix })) {
       modal.show({ kind: 'prompt', resume: elsewhere() });
     }
@@ -74,7 +76,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     round = started;
     // A prompt or a failure on show keeps its product's name. When open answers false the window still opens and its
     // result is still written. That page shows no wait, and its outcomes only write the closed modal's store: a blocked
-    // or refused view nobody sees, and for a failed write the reported failure, whose reopen gets false from open.
+    // or refused view nobody sees, while a failed write is only reported.
     if (modal.getLease() !== null || modal.open({ reason, label })) {
       modal.show({ kind: 'window' });
     }

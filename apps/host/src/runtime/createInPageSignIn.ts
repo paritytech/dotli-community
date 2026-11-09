@@ -80,6 +80,7 @@ export function createInPageSignIn({ inPagePhrase, modal, login }: Params): Sign
       return retryImportsPhrase;
     },
     pairing(state) {
+      retryImportsPhrase = false;
       modal.open({ label: state.hostGlobal === true ? undefined : state.label, dotSuffix: state.dotSuffix });
       if (state.deeplink) {
         modal.show({ kind: 'pairing', payload: state.deeplink });

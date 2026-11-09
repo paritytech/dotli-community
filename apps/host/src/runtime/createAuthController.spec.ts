@@ -1270,6 +1270,26 @@ describe('auth controller: the sign-in window', () => {
     expect(calls.logins).toEqual([]);
   });
 
+  it("As a debug panel user whose phrase check could not load, I watch a product's pairing fail and Retry signs me in", async () => {
+    // Given a failed phrase import, then a product's pairing that failed over it
+    captureExceptions();
+    const { controller, auth, calls, changes } = startController({
+      loadRecoveryPhrase: () => Promise.reject(new Error('chunk failed')),
+    });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    auth.set(PAIRING);
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'timed out' });
+
+    // When the user presses Retry
+    controller.retryLogin();
+    await untilPromisesSettled();
+
+    // Then a login was asked for and no phrase view came back
+    expect(calls.logins).toEqual([undefined]);
+    expect(getAuthModalState().view.kind).not.toBe('phrase');
+  });
+
   it('As a debug panel user, I import again while the sign-in window is open and it comes to the front', () => {
     // Given a phrase window already open
     const handoff = createFakeHandoff();
@@ -1501,6 +1521,27 @@ describe('auth controller: the sign-in window', () => {
 
     // Then the phrase window opens again
     expect(handoff.signIns).toEqual(['phrase', 'phrase']);
+  });
+
+  it("As a debug panel user whose wallet could not be written here, I get a product's login request and its Sign in opens the sign-in window", async () => {
+    // Given a phrase round whose result could not be written, then a product's login request
+    captureExceptions();
+    const handoff = createFakeHandoff();
+    const { controller, auth, changes } = startController({
+      handoff,
+      applyResult: () => Promise.reject(new Error('The local wallet from the sign-in window could not be saved')),
+    });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    handoff.end({ kind: 'result', result: RESULT });
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    auth.set(PAIRING);
+
+    // When the user presses the prompt's Sign in
+    controller.retryLogin();
+
+    // Then the sign-in window opened for a sign-in
+    expect(handoff.signIns).toEqual(['phrase', 'signin']);
   });
 
   it('As a user whose sign-in window was blocked, I close the modal and press Try again and a sign-in window opens', async () => {
