@@ -816,14 +816,53 @@ describe('app service worker', () => {
   });
 
   it('As an operator, I hand over an archive from no page and the port hears the refusal', async () => {
-    // Given
+    // Given a worker and a whole archive
     const scope = startWorker(origin);
     const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
 
-    // When
+    // When the archive is handed over on a port from no page
     const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index }, { source: null });
 
-    // Then
+    // Then the port hears the refusal
     expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE from no page' });
+  });
+
+  it("As a visitor with two tabs open, I load a chunk in one after a restarted worker heard the other's handoff and it comes from my own archive", async () => {
+    // Given two tabs that each handed over their own archive, and a restarted worker that heard only the second again
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    const restarted = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(restarted, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+
+    // When the first tab loads its chunk
+    const chunk = await request(restarted, '/late.js', { clientId: 'page-1' });
+
+    // Then it comes from the first tab's archive, read back from the store
+    expect(await chunk?.text()).toBe('first()');
+  });
+
+  it("As an operator, I start a product's worker whose link to its page the worker cannot keep and the pages hear why", async () => {
+    // Given a page that handed over its archive to a worker over storage that refuses every write
+    const scope = startWorker({ ...origin, indexedDB: createBrokenIndexedDb() });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/worker.js': 'work()' }, { clientId: 'page-1' });
+
+    // When the product starts its worker
+    const script = await request(scope, '/assets/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+
+    // Then the script still comes from the page's archive, and the pages hear why a restart would lose the link
+    expect(await script?.text()).toBe('work()');
+    expect(pageInbox).toEqual([
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'persist',
+        name: 'QuotaExceededError',
+        message: 'The quota has been exceeded.',
+      },
+    ]);
   });
 });
