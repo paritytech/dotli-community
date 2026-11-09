@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
-import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
+import { startSandboxChannel, type SandboxChannel, type SandboxMessageType } from '@dotli/sandbox-wire';
 import { createDeferred, realTimers, type Timers } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
@@ -36,7 +36,12 @@ import {
   type FakePageCore,
 } from './createPageCore.fake.js';
 import { parseH160Address } from '../h160Address.js';
-import { createFakeIframe, createFakeProductFrameView } from './createProductFrame.fake.js';
+import {
+  breakFramePosts,
+  createFakeIframe,
+  createFakeProductFrameView,
+  readFramePosts,
+} from './createProductFrame.fake.js';
 import { createFakeStoredSession } from './session/createCoreStorage.fake.js';
 
 type PageLocation = ReturnType<ProductFramePage['location']>;
@@ -59,6 +64,8 @@ type CreateHarnessParams = {
   timers?: Timers;
   /** What differs from the root of a dev host in the host page's location. */
   location?: Partial<PageLocation>;
+  /** Hears a throw of a sandbox channel handler, `rethrow` by default so a spec fails on it. */
+  reportHandlerError?: (error: unknown, type: SandboxMessageType) => void;
 };
 
 type AskToRecoverParams = {
@@ -108,6 +115,7 @@ function createHarness({
   createIframeHost,
   timers = realTimers,
   location = {},
+  reportHandlerError = rethrow,
 }: CreateHarnessParams = {}) {
   const hosts: FakeIframeHost[] = [];
   let held: Promise<undefined> | null = null;
@@ -117,7 +125,11 @@ function createHarness({
   const frameView = createFakeProductFrameView();
   /** The window the sandbox posts to. */
   const sandboxWindow = new EventTarget();
-  const started = startSandboxChannel({ target: sandboxWindow, isTrustedOrigin: isSandboxOrigin, report: rethrow });
+  const started = startSandboxChannel({
+    target: sandboxWindow,
+    isTrustedOrigin: isSandboxOrigin,
+    report: reportHandlerError,
+  });
   onTestFinished(() => {
     started.stop();
   });
@@ -983,6 +995,40 @@ describe('product frame rebuilds', () => {
     expect(fakes.connections).toHaveLength(2);
   });
 
+  it('As a dApp user whose product reloaded its frame, I get the frame told that the host accepted its ask', async () => {
+    // Given a settled subdomain product
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('accepted'), 0);
+
+    // When its frame asks to recover
+    fakes.askToRecover();
+
+    // Then the frame is told before any core connection is answered
+    expect(readFramePosts(nth(fakes.hosts, 0).iframe)).toEqual([{ type: 'dotli:sandbox-recover-accepted' }]);
+  });
+
+  it('As a dApp user whose reloaded frame cannot be told, I still get it rebuilt at its ask', async () => {
+    // Given a settled subdomain product whose frame's posts throw
+    const failure = new Error('The frame cannot be posted to');
+    const heard: [unknown, SandboxMessageType][] = [];
+    const fakes = createHarness({
+      reportHandlerError: (error, type) => {
+        heard.push([error, type]);
+      },
+    });
+    await fakes.settle(buildSubdomainProduct('untold'), 0);
+    breakFramePosts(nth(fakes.hosts, 0).iframe, failure);
+
+    // When its frame asks to recover and the next connection is answered
+    fakes.askToRecover();
+    await answerConnection(fakes, 1);
+    await fakes.changes.until(() => fakes.hosts.length === 2);
+
+    // Then the frame is rebuilt and the channel heard the post's error
+    expect(fakes.hosts).toHaveLength(2);
+    expect(heard).toEqual([[failure, 'dotli:sandbox-recover']]);
+  });
+
   it('As a dApp user whose rebuilt sandbox reloads while an older ask still waits, I see the newer ask wait out the interval and rebuild the frame on screen', async () => {
     // Given a rebuild at the sandbox's ask whose new frame is still being built
     const timers = createManualTimers();
@@ -1037,6 +1083,7 @@ describe('product frame rebuilds', () => {
     expect(fakes.readLastStatus()).toBe('connected');
     expect(fakes.countFramesAsked()).toBe(1);
     expect(fakes.connections).toHaveLength(1);
+    expect(readFramePosts(nth(fakes.hosts, 0).iframe)).toEqual([]);
   });
 
   it('As a dApp user whose rebuilt sandbox reloads again at once, I see it wait and rebuilt once the interval has passed', async () => {

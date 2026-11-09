@@ -9,7 +9,12 @@ import { createMessagePortProvider, type ProductId, type WireProvider as Provide
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { getSandboxLabel } from '@dotli/resolver';
-import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
+import {
+  SANDBOX_CONTRACT_PARAMS,
+  SANDBOX_SCHEMA_VERSION,
+  type SandboxChannel,
+  type SandboxRecoverAcceptedMessage,
+} from '@dotli/sandbox-wire';
 import { createReporter, defineCount, getResolutionId, m } from '@dotli/metrics';
 import { createAsyncTaskPool, log, noop, createRandomId, realTimers, sleep, type Timers } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
@@ -647,6 +652,9 @@ export function createProductFrame({
           reportRerenderFailure(error, 'recover');
         }
       });
+    // Told before the rebuild, which can wait a long time for a core.
+    const accepted = { type: 'dotli:sandbox-recover-accepted' } satisfies SandboxRecoverAcceptedMessage;
+    asking.iframe.contentWindow?.postMessage(accepted, { targetOrigin: origin });
   });
 
   function halt(): void {

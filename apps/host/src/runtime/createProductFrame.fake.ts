@@ -63,8 +63,46 @@ export function createFakeProductFrameView() {
   }
 }
 
+type FramePostRecord = {
+  /** The messages posted to the frame's window, in order. */
+  posts: unknown[];
+  /** What every post throws, or `null` while posts succeed. */
+  failure: Error | null;
+};
+
+const framePosts = new WeakMap<HTMLIFrameElement, FramePostRecord>();
+
 /** A frame as an opaque token: the runtime hands it on, listens for its load and compares its window by identity. */
 export function createFakeIframe(): HTMLIFrameElement {
+  const record: FramePostRecord = { posts: [], failure: null };
+  const contentWindow = {
+    postMessage(message: unknown): void {
+      if (record.failure !== null) {
+        throw record.failure;
+      }
+      record.posts.push(message);
+    },
+  };
   // The runtime reads no other member of the element, so the token stands in for it.
-  return Object.assign(new EventTarget(), { contentWindow: {} }) as unknown as HTMLIFrameElement;
+  const iframe = Object.assign(new EventTarget(), { contentWindow }) as unknown as HTMLIFrameElement;
+  framePosts.set(iframe, record);
+  return iframe;
+}
+
+function readRecord(iframe: HTMLIFrameElement): FramePostRecord {
+  const record = framePosts.get(iframe);
+  if (record === undefined) {
+    throw new Error('The iframe was not made by createFakeIframe');
+  }
+  return record;
+}
+
+/** The messages posted to the window of a frame `createFakeIframe` made, in order. Throws for any other frame. */
+export function readFramePosts(iframe: HTMLIFrameElement): unknown[] {
+  return readRecord(iframe).posts;
+}
+
+/** Makes every later post to the window of a frame `createFakeIframe` made throw `error`. Throws for any other frame. */
+export function breakFramePosts(iframe: HTMLIFrameElement, error: Error): void {
+  readRecord(iframe).failure = error;
 }
