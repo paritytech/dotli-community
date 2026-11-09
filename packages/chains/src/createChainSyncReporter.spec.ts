@@ -309,10 +309,10 @@ describe('Light client sync reporting works', () => {
 
     // Then
     expect(seen).toEqual([
-      { chain: 'relay', kind: 'peers', peers: 4, isSyncing: false },
       { chain: 'relay', kind: 'connecting' },
       { chain: 'relay', kind: 'firstPeer' },
       { chain: 'relay', kind: 'warpSyncProgress', at: 1, target: 4 },
+      { chain: 'relay', kind: 'peers', peers: 4, isSyncing: false },
       { chain: 'relay', kind: 'warpSyncFinished', finalized: 1 },
       { chain: 'relay', kind: 'bootstrapComplete' },
     ]);
@@ -413,6 +413,122 @@ describe('Light client sync reporting works', () => {
 
     // Then
     expect(pipe.closed()).toBe(true);
+  });
+
+  it('As a user, I stop a tap whose next snapshot is already on its way and it reports nothing more', async () => {
+    // Given
+    reporter.enableSyncReporting(['relay']);
+    const pipe = requirePipe('relay');
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+
+    // When
+    const pushed = pipe.push(createLifecycle({ phase: CONNECTING, peers: 1 }));
+    pipe.tap.stop();
+    await pushed;
+
+    // Then
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('A chain keeps its sync across the connections that report it', () => {
+  it('As a user whose chain stalled under one connection, I see it recovered when another connection takes over its sync', async () => {
+    // Given a stalled chain whose sync a second connection takes over
+    reporter.enableSyncReporting(['relay']);
+    const first = requirePipe('relay');
+    await first.push(
+      createLifecycle({ phase: createSyncingPhase(10, 50), peers: 0, health: createStalledHealth('noProgress') }),
+    );
+    first.tap.stop();
+    const second = requirePipe('relay');
+    await second.push(createLifecycle({ phase: createSyncingPhase(10, 50), peers: 2 }));
+
+    // When
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+
+    // Then
+    expect(seen).toContainEqual({ chain: 'relay', kind: 'recovered', reason: 'noProgress' });
+    expect(seen).not.toContainEqual(expect.objectContaining({ kind: 'stalled' }));
+  });
+
+  it('As a user, I see the first peer and the ready chain once, though a second connection takes over a chain that is up', async () => {
+    // Given a ready chain whose sync a second connection takes over, and a listener that already heard the replay
+    reporter.enableSyncReporting(['relay']);
+    const first = requirePipe('relay');
+    await first.push(createLifecycle({ phase: CONNECTING, peers: 0 }), createLifecycle({ phase: READY, peers: 3 }));
+    first.tap.stop();
+    const second = requirePipe('relay');
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+    seen.length = 0;
+
+    // When
+    await second.push(createLifecycle({ phase: READY, peers: 3 }));
+
+    // Then
+    expect(seen).toEqual([]);
+  });
+
+  it('As a user whose relay warp is taken over by a second connection, I still see where the warp landed', async () => {
+    // Given a warping chain whose sync a second connection takes over and finishes
+    reporter.enableSyncReporting(['relay']);
+    const first = requirePipe('relay');
+    await first.push(createLifecycle({ phase: createSyncingPhase(5, 10), peers: 1 }));
+    first.tap.stop();
+    const second = requirePipe('relay');
+    await second.push(createLifecycle({ phase: READY, peers: 1 }));
+
+    // When
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+
+    // Then
+    expect(seen).toContainEqual({ chain: 'relay', kind: 'warpSyncFinished', finalized: 5 });
+  });
+});
+
+describe("A late subscriber replays a chain's current run", () => {
+  it('As a user opening the loading screen while a released chain connects again, I see it connecting, not ready', async () => {
+    // Given a chain that came up, was released and connects again on a new connection
+    reporter.enableSyncReporting(['assethub']);
+    const first = requirePipe('assethub');
+    await first.push(createLifecycle({ phase: CONNECTING, peers: 0 }), createLifecycle({ phase: READY, peers: 4 }));
+    first.tap.stop();
+    const second = requirePipe('assethub');
+    await second.push(createLifecycle({ phase: CONNECTING, peers: 0 }));
+
+    // When
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+
+    // Then
+    const kinds = seen.map(event => event.kind);
+    expect(kinds).toContain('connecting');
+    expect(kinds).not.toContain('firstPeer');
+    expect(kinds).not.toContain('bootstrapComplete');
+  });
+
+  it('As a user opening the loading screen while a chain warps again, I see it syncing, not ready', async () => {
+    // Given a chain that came up and then started a new warp
+    reporter.enableSyncReporting(['relay']);
+    const pipe = requirePipe('relay');
+    await pipe.push(
+      createLifecycle({ phase: CONNECTING, peers: 0 }),
+      createLifecycle({ phase: createSyncingPhase(1, 4), peers: 1 }),
+      createLifecycle({ phase: READY, peers: 4 }),
+      createLifecycle({ phase: createSyncingPhase(5, 8), peers: 4 }),
+    );
+
+    // When
+    const seen: ChainSyncEvent[] = [];
+    reporter.onChainSync(event => seen.push(event));
+
+    // Then
+    expect(seen).toContainEqual({ chain: 'relay', kind: 'warpSyncProgress', at: 5, target: 8 });
+    expect(seen).not.toContainEqual(expect.objectContaining({ kind: 'warpSyncFinished' }));
+    expect(seen).not.toContainEqual(expect.objectContaining({ kind: 'bootstrapComplete' }));
   });
 });
 

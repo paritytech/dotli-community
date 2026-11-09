@@ -30,7 +30,8 @@ flowchart LR
   `LightClientStatus`. Finalized database blobs are kept per genesis hash so a repeat visit skips the checkpoint sync. A
   chain opened while the light client starts reads its blob while the engine loads.
 - Sync reporting turns the provider's lifecycle snapshots into the milestones and peer details the loading screen and
-  the network panel show.
+  the network panel show. A chain's sync is kept per chain across the connections that report it, and a late subscriber
+  replays the chain's current run only.
 - Gateway providers reconnect their WebSocket and replay subscriptions. They never import smoldot. They report status
   and halt through shared `ChainTransportHooks`.
 - The chain pool holds each chain's connections in a JS context, over whichever transport it is given. Each lease is a
