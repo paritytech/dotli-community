@@ -98,8 +98,9 @@ and no data source.
 - Page helpers: `focusables`, `runWhenIdle(run, timeoutMs, { scheduler, timers })` and
   `preloadWhenIdle(component, { scheduler, timers })`, `isPhoneViewport`, `watchPhoneViewport`, `prefersReducedMotion`
   and the type `StatusTone`.
-- Helpers: `createDrags({ selection })` with the type `Drags` (one owner for a component's pointer drags, which cancels
-  every drag still held when the component cleans up), `isFocusLostOrInside`, `focusTrigger`.
+- Helpers: `createDrags({ selection })` with the type `Drags` (one owner for a component's pointer drag: it holds one at
+  a time, refuses a second pointer while one is held, and cancels the held one when the component cleans up),
+  `isFocusLostOrInside`, `focusTrigger`.
 - Roots: `mountRoot({ name, container, view, removeContainer, onBroken })`, `RootBoundary`, `ensureOverlayRoot`.
 - Screens and overlays: `showErrorPage` and `showError(title, { detail, action, tips })` with the types `ErrorAction`,
   `ErrorPageContent`, `ErrorText` and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, the page's
