@@ -1003,8 +1003,11 @@ describe('product frame rebuilds', () => {
     // When its frame asks to recover
     fakes.askToRecover();
 
-    // Then the frame is told before any core connection is answered
-    expect(readFramePosts(nth(fakes.hosts, 0).iframe)).toEqual([{ type: 'dotli:sandbox-recover-accepted' }]);
+    // Then the frame is told, at the origin the ask came from, before any core connection is answered
+    const { iframe, options } = nth(fakes.hosts, 0);
+    expect(readFramePosts(iframe)).toEqual([
+      { message: { type: 'dotli:sandbox-recover-accepted' }, targetOrigin: options.allowedOrigin },
+    ]);
   });
 
   it('As a dApp user whose reloaded frame cannot be told, I still get it rebuilt at its ask', async () => {
