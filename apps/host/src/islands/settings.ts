@@ -5,7 +5,7 @@ import { createSignal, onSettled } from 'solid-js';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { ThemePreference } from '../runtime/state/themeState.js';
-import type { SavedSettings } from '../components/settings/settings.js';
+import type { SavedSettings, SettingsResetStatus } from '../components/settings/settings.js';
 import type { SettingsContentProps } from '../components/settings/SettingsContent.js';
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 
@@ -16,6 +16,8 @@ export type SettingsBinding = {
   theme: ReadableAtom<{ preference: ThemePreference }>;
   selectTheme: SettingsContentProps['onTheme'];
   apply: SettingsContentProps['onApply'];
+  /** The page's settings reset. It never returns to `idle`. */
+  reset: ReadableAtom<SettingsResetStatus>;
   /** How the page's Open settings reaches the panel. Returns the unregister. */
   registerOpener: (open: () => void) => () => void;
   version: SettingsContentProps['version'];
@@ -42,6 +44,7 @@ export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {
     }),
     onTheme: binding.selectTheme,
     onApply: binding.apply,
+    reset: useStore(binding.reset, { initial: 'idle' }),
     debugMode: binding.debugMode,
     onDebugMode: binding.openDebugMode,
   };

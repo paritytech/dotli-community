@@ -4,11 +4,11 @@
 // The settings and theme a story gives the settings button and panel, and what the views asked of the page. Plays move
 // them the way the page's settings store and theme do.
 
-import { createSignal, flush } from 'solid-js';
+import { createSignal, flush, untrack } from 'solid-js';
 import { fn } from 'storybook/test';
 import type { CacheSettings } from '@dotli/config';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings } from '../../components/settings/settings.js';
+import type { ApplySettings, SavedSettings, SettingsResetStatus } from '../../components/settings/settings.js';
 import type { SettingsItemProps } from '../../components/settings/SettingsItem.js';
 
 export const DEFAULT_CACHE: CacheSettings = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
@@ -27,6 +27,7 @@ const [settings, setSettings] = createSignal<SavedSettings | null>(DEFAULT_SETTI
 const [theme, setThemeSignal] = createSignal<ThemePreference>('system');
 const [debugMode, setDebugModeSignal] = createSignal(false);
 const [open, setOpenSignal] = createSignal(false);
+const [reset, setResetSignal] = createSignal<SettingsResetStatus>('idle');
 
 /** What the views asked of the page. */
 export const settingsAsked = {
@@ -50,7 +51,15 @@ export const storySettings: SettingsItemProps = {
     settingsAsked.themes.push(next);
     setTheme(next);
   },
-  onApply: (...args) => settingsAsked.apply(...args),
+  onApply: (...args) => {
+    // The page's reset moves before it calls out, and a second one while it runs does nothing.
+    if (untrack(reset) === 'idle') {
+      setResetSignal(args[2]?.forceFullWipe === true ? 'clearing' : 'applying');
+      flush();
+    }
+    return settingsAsked.apply(...args);
+  },
+  reset,
   debugMode,
   onDebugMode: () => {
     settingsAsked.debugMode += 1;
@@ -68,6 +77,12 @@ function setTheme(next: ThemePreference): void {
   flush();
 }
 
+/** The page's settings reset is at `next`. */
+export function givenReset(next: SettingsResetStatus): void {
+  setResetSignal(next);
+  flush();
+}
+
 /** The debug panel is on in this tab. */
 export function givenDebugMode(on: boolean): void {
   setDebugModeSignal(on);
@@ -80,7 +95,7 @@ export function resetStorySettings(): void {
   setTheme('system');
   givenDebugMode(false);
   setOpenSignal(false);
-  flush();
+  givenReset('idle');
   settingsAsked.apply.mockReset();
   settingsAsked.apply.mockResolvedValue(undefined);
   settingsAsked.themes.length = 0;

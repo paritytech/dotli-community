@@ -24,6 +24,7 @@ export function SettingsButton(): JSX.Element {
     theme: themeState.store,
     selectTheme: pageTheme.selectThemePref,
     apply: pageSettingsActions.applyAndReset,
+    reset: pageSettingsActions.reset,
     registerOpener: settingsIntent.registerOpener,
     version: getDotliVersion(),
     debugMode: isTruapiDebugEnabled,

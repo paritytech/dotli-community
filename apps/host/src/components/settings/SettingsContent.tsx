@@ -31,7 +31,7 @@ import {
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings } from './settings.js';
+import type { ApplySettings, SavedSettings, SettingsResetStatus } from './settings.js';
 import s from './SettingsContent.module.css';
 
 /** The order the transport choices are listed in. */
@@ -72,6 +72,8 @@ export type SettingsContentProps = {
   theme: Accessor<ThemePreference>;
   onTheme: (theme: ThemePreference) => void;
   onApply: ApplySettings;
+  /** The page's settings reset, which disables both buttons while it runs. */
+  reset: Accessor<SettingsResetStatus>;
   /** The debug panel is on in this tab, so Advanced offers no way to turn it on. */
   debugMode: Accessor<boolean>;
   /** Reloads the tab with the debug panel. */
