@@ -14,8 +14,8 @@ export type DebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
 export type DebugBus = ReturnType<typeof createDebugBus>;
 
-// Boot events fire while the lazily loaded panel is still loading. They are held until the first
-// subscriber attaches, replayed to it once, and then buffering ends for the session, whether or not anything was held.
+// Boot events fire while the lazily loaded panel is still loading. They are held until the first subscriber attaches,
+// replayed to it once, and then buffering ends for the session, whether or not anything was held.
 const BUFFER_MAX = 512;
 
 /** Where the bus is in the page's life. Only `buffering` holds events, for the first subscriber. */

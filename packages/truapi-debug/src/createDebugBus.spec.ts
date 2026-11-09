@@ -181,4 +181,47 @@ describe('debug bus delivery', () => {
     // Then none does
     expect(listening).toBe(false);
   });
+
+  it('As a dotli developer, I subscribe the panel from a host watcher during an emit and the panel gets the held events and then that event', () => {
+    // Given one buffered event and a watcher that subscribes the panel on its first call
+    const bus = createEnabledBus();
+    const shown: DebugBusEvent[] = [];
+    let subscribed = false;
+    bus.emit(createBootEvent('flow-1'));
+    bus.watch(() => {
+      if (!subscribed) {
+        subscribed = true;
+        bus.subscribe(event => shown.push(event));
+      }
+    });
+
+    // When another event is emitted
+    bus.emit(createBootEvent('flow-2'));
+
+    // Then the panel shows both events, in order
+    expect(shown).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
+  });
+
+  it('As a dotli developer, I open a second panel from inside the first panel replay and it gets no replay', () => {
+    // Given two buffered events
+    const bus = createEnabledBus();
+    bus.emit(createBootEvent('flow-1'));
+    bus.emit(createBootEvent('flow-2'));
+    const first: DebugBusEvent[] = [];
+    const second: DebugBusEvent[] = [];
+    let opened = false;
+
+    // When a panel subscribes and opens a second panel on its first replayed event
+    bus.subscribe(event => {
+      first.push(event);
+      if (!opened) {
+        opened = true;
+        bus.subscribe(next => second.push(next));
+      }
+    });
+
+    // Then the first panel shows both events and the second shows none
+    expect(first).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
+    expect(second).toEqual([]);
+  });
 });
