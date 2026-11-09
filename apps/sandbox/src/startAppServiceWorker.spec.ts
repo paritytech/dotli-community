@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { packArchive } from '@dotli/content';
 import { createDeferred, isRecord } from '@dotli/shared';
 
+import { loadPersistedArchives } from './archiveDb.js';
 import { startAppServiceWorker, type StartAppServiceWorkerParams } from './startAppServiceWorker.js';
 
 type WorkerScope = EventTarget;
@@ -22,6 +23,8 @@ type StartWorkerParams = {
   devServer?: boolean;
   /** Receives each message the worker posts to a page it controls. Throws what posting to that page throws. */
   postToPage?: (message: unknown) => void;
+  /** The ids of the clients open on the worker's origin. */
+  liveClients?: string[];
 };
 
 type PostFromPageParams = {
@@ -31,6 +34,26 @@ type PostFromPageParams = {
   ports?: MessagePort[];
   /** Receives each message the worker posts to the sending page. Throws what posting to that page throws. */
   postToPage?: (message: unknown) => void;
+  /** The id of the sending page's client. */
+  clientId?: string;
+  /** `null` sends the message from no page. */
+  source?: null;
+};
+
+type SetArchiveParams = {
+  /** The directory of the path the page writes the product at. */
+  directory?: string;
+  /** The id of the sending page's client. */
+  clientId?: string;
+};
+
+type RequestParams = {
+  mode?: RequestMode;
+  /** The id of the client the request comes from. */
+  clientId?: string;
+  destination?: RequestDestination;
+  /** The id of the client a worker script request starts, or empty when the browser names none. */
+  resultingClientId?: string;
 };
 
 /** The members of an IndexedDB transaction the archive store reads and sets. */
@@ -39,7 +62,7 @@ type FakeTransaction = {
   oncomplete: (() => void) | null;
   onerror: (() => void) | null;
   onabort: (() => void) | null;
-  objectStore: () => { put: () => object };
+  objectStore: () => { put: () => object; getAllKeys: () => object; delete: () => object };
   abort: () => void;
 };
 
@@ -77,14 +100,14 @@ function postToInbox(message: unknown): void {
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(
   origin: Origin,
-  { devServer = false, postToPage = postToInbox }: StartWorkerParams = {},
+  { devServer = false, postToPage = postToInbox, liveClients = ['page-1'] }: StartWorkerParams = {},
 ): WorkerScope {
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
     clients: {
       claim: () => Promise.resolve(),
-      matchAll: () => Promise.resolve([{ postMessage: postToPage }]),
+      matchAll: () => Promise.resolve(liveClients.map(id => ({ id, postMessage: postToPage }))),
     },
   });
   startAppServiceWorker({
@@ -103,13 +126,13 @@ function startWorker(
 function setArchive(
   scope: WorkerScope,
   files: Record<string, string>,
-  { directory = '/' }: { directory?: string } = {},
+  { directory = '/', clientId = 'page-1' }: SetArchiveParams = {},
 ): Promise<unknown[]> {
   const encoder = new TextEncoder();
   const { packed, index } = packArchive(
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, encoder.encode(text)])),
   );
-  return postFromPage(scope, { data: { type: 'SET_ARCHIVE', packed, index, directory } });
+  return postFromPage(scope, { data: { type: 'SET_ARCHIVE', packed, index, directory }, clientId });
 }
 
 /**
@@ -119,7 +142,7 @@ function setArchive(
 async function setArchiveOnPort(
   scope: WorkerScope,
   data: Record<string, unknown>,
-  page: Pick<PostFromPageParams, 'postToPage'> = {},
+  page: Pick<PostFromPageParams, 'postToPage' | 'source'> = {},
 ): Promise<{ portReply: Promise<unknown>; pageReplies: unknown[] }> {
   const channel = new MessageChannel();
   onTestFinished(() => {
@@ -139,20 +162,24 @@ async function setArchiveOnPort(
  */
 async function postFromPage(
   scope: WorkerScope,
-  { data, ports = [], postToPage }: PostFromPageParams,
+  { data, ports = [], postToPage, clientId = 'page-1', source }: PostFromPageParams,
 ): Promise<unknown[]> {
   const pageReplies: unknown[] = [];
   const kept: Promise<unknown>[] = [];
   const event = Object.assign(new Event('message'), {
     data,
     ports,
-    source: {
-      postMessage:
-        postToPage ??
-        ((message: unknown) => {
-          pageReplies.push(message);
-        }),
-    },
+    source:
+      source === null
+        ? null
+        : {
+            id: clientId,
+            postMessage:
+              postToPage ??
+              ((message: unknown) => {
+                pageReplies.push(message);
+              }),
+          },
     waitUntil: (promise: Promise<unknown>) => {
       kept.push(promise);
     },
@@ -200,7 +227,8 @@ function createQuotaAbortingIndexedDb(): IDBFactory {
     oncomplete: null,
     onerror: null,
     onabort: null,
-    objectStore: () => ({ put: () => ({}) }),
+    // `getAllKeys` never answers, so the abort at commit stays the only outcome.
+    objectStore: () => ({ put: () => ({}), getAllKeys: () => ({ onsuccess: null }), delete: () => ({}) }),
     abort: () => undefined,
   };
   const db = {
@@ -225,21 +253,32 @@ function createQuotaAbortingIndexedDb(): IDBFactory {
   } as unknown as IDBFactory;
 }
 
-/** `undefined` means the worker let the request through to the network. */
+/**
+ * `undefined` means the worker let the request through to the network. Resolves once every write the worker keeps
+ * alive settled too.
+ */
 async function request(
   scope: WorkerScope,
   path: string,
-  { mode = 'no-cors' }: { mode?: RequestMode } = {},
+  { mode = 'no-cors', clientId = 'page-1', destination = '', resultingClientId = '' }: RequestParams = {},
 ): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
+  const kept: Promise<unknown>[] = [];
   const event = Object.assign(new Event('fetch'), {
-    request: { url: `${ORIGIN}${path}`, mode },
+    request: { url: `${ORIGIN}${path}`, mode, destination },
+    clientId,
+    resultingClientId,
     respondWith: (response: Response | Promise<Response>) => {
       answer = response;
     },
+    waitUntil: (promise: Promise<unknown>) => {
+      kept.push(promise);
+    },
   });
   scope.dispatchEvent(event);
-  return answer === undefined ? undefined : await answer;
+  const response = answer === undefined ? undefined : await answer;
+  await Promise.all(kept);
+  return response;
 }
 
 describe('app service worker', () => {
@@ -663,5 +702,128 @@ describe('app service worker', () => {
     expect(await afterRestart?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });
+  });
+
+  it('As a visitor with the same product open in two tabs, I load a lazy chunk in the first after the second handed over its archive and it comes from my own', async () => {
+    // Given two tabs of one product, each with its own build of the chunk
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(scope, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(scope, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+
+    // When the first tab loads its chunk
+    const chunk = await request(scope, '/late.js', { clientId: 'page-1' });
+
+    // Then it comes from the first tab's archive
+    expect(await chunk?.text()).toBe('first()');
+  });
+
+  it('As a visitor with the same product open on two deep links, I load a relative asset in each and it resolves under my own directory', async () => {
+    // Given one tab written at /docs/intro and another at /guide/intro
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/x.js': 'docs()' },
+      { directory: '/docs/', clientId: 'page-1' },
+    );
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/x.js': 'guide()' },
+      { directory: '/guide/', clientId: 'page-2' },
+    );
+
+    // When each tab loads the asset beside its page
+    const docs = await request(scope, '/docs/assets/x.js', { clientId: 'page-1' });
+    const guide = await request(scope, '/guide/assets/x.js', { clientId: 'page-2' });
+
+    // Then each comes from its own archive, under its own directory
+    expect(await docs?.text()).toBe('docs()');
+    expect(await guide?.text()).toBe('guide()');
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it("As a product developer, I import a module in my dedicated worker after another tab handed over its archive and it comes from my page's archive", async () => {
+    // Given a page whose product started a dedicated worker, and another tab that handed over its archive after
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2', 'worker-1'] });
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/worker.js': 'work(1)', 'assets/lib.js': 'lib(1)' },
+      { clientId: 'page-1' },
+    );
+    const script = await request(scope, '/assets/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/worker.js': 'work(2)', 'assets/lib.js': 'lib(2)' },
+      { clientId: 'page-2' },
+    );
+
+    // When the worker imports its module
+    const lib = await request(scope, '/assets/lib.js', { clientId: 'worker-1' });
+
+    // Then the script and the module come from the page that started the worker
+    expect(await script?.text()).toBe('work(1)');
+    expect(await lib?.text()).toBe('lib(1)');
+  });
+
+  it('As a product developer whose browser names no worker client, I import a module in my worker and it comes from the newest archive', async () => {
+    // Given a page that started a worker the browser named no client for, and another tab that handed over after
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(1)' }, { clientId: 'page-1' });
+    await request(scope, '/assets/worker.js', { clientId: 'page-1', destination: 'worker' });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(2)' }, { clientId: 'page-2' });
+
+    // When the worker imports its module
+    const lib = await request(scope, '/assets/lib.js', { clientId: 'worker-1' });
+
+    // Then it comes from the archive handed last
+    expect(await lib?.text()).toBe('lib(2)');
+  });
+
+  it('As a visitor with two tabs open, I reach a restarted worker and each tab is served from its own archive', async () => {
+    // Given two tabs that each handed over their own archive to a worker the browser then stopped
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+
+    // When each tab loads its chunk from the restarted worker
+    const restarted = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    const firstChunk = await request(restarted, '/late.js', { clientId: 'page-1' });
+    const secondChunk = await request(restarted, '/late.js', { clientId: 'page-2' });
+
+    // Then each comes from its own archive
+    expect(await firstChunk?.text()).toBe('first()');
+    expect(await secondChunk?.text()).toBe('second()');
+  });
+
+  it("As a visitor who closed a tab, I hand over an archive in another and the closed tab's archive is dropped", async () => {
+    // Given a tab that handed over an archive and was then closed
+    const both = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(both, { 'index.html': '<html></html>', 'gone.js': 'gone()' }, { clientId: 'page-2' });
+    const one = startWorker(origin, { liveClients: ['page-1'] });
+
+    // When the tab still open hands over its own, and a restarted worker is asked for the closed tab's file
+    await setArchive(one, { 'index.html': '<html></html>' }, { clientId: 'page-1' });
+    const persisted = await loadPersistedArchives(origin.indexedDB);
+    const gone = await request(startWorker(origin), '/gone.js', { clientId: 'page-2' });
+
+    // Then the store keeps only the open tab's archive, and the closed tab's file reaches the network
+    expect([...persisted.pages.keys()]).toEqual(['page-1']);
+    expect(await gone?.text()).toBe('<!doctype html>shell');
+    expect(network).toHaveBeenCalledOnce();
+  });
+
+  it('As an operator, I hand over an archive from no page and the port hears the refusal', async () => {
+    // Given
+    const scope = startWorker(origin);
+    const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
+
+    // When
+    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index }, { source: null });
+
+    // Then
+    expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE from no page' });
   });
 });
