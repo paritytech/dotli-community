@@ -124,7 +124,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
       }
     },
   );
-  // A modal changes its layout while open, and the bar answers only under a sheet.
+  // A modal changes its layout while open, so its layer's layout follows.
   createEffect(
     () => props.layout,
     layout => {

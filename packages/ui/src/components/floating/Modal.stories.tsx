@@ -147,7 +147,7 @@ export const SwitchesFormKeepingContent: Story = {
 };
 
 /**
- * The phone bar, a body child the stack leaves live under a sheet, with a button that opens a popover, and a modal
+ * The phone bar, a body child that stays pressable under a sheet in these stories, with a button that opens a popover, and a modal
  * open from the start. With `mustAnswer` the modal ignores a dismiss, as a prompt the user must answer does.
  */
 function BarHarness(props: { mustAnswer?: boolean }) {
@@ -256,6 +256,7 @@ export const BarPressOverSheetHandsOff: Story = {
     await step("Then the dialog closes and the button's sheet takes its place with focus", async () => {
       const popover = () => document.getElementById('bar-popover');
       await waitFor(() => expect(popover()).toHaveAttribute('data-open'));
+      await expect(popover()).toHaveAttribute('data-handoff');
       await expect(body.getByTestId('bar-modal-backdrop')).not.toHaveAttribute('data-open');
       await waitFor(() => expect(popover()?.contains(document.activeElement)).toBe(true));
     });

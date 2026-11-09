@@ -128,28 +128,29 @@ export function handOffSheet(activate: () => void): boolean {
   }
 }
 
+type HandOffSheetOnPressParams = { frame: HTMLElement; dismiss: () => void };
+
+/** A press's hand-off waits on its click or a zero timer, then ends. */
+type PressPhase = { kind: 'pending'; timer: ReturnType<typeof setTimeout> } | { kind: 'ended' };
+
 /**
  * For a press on a bar control outside the top sheet `frame`: `dismiss` closes the sheet now and the press's click is
  * the hand-off's activation. The hand-off stays pending only while that sheet leaves. When `frame` is still the top
  * layer and no sheet is leaving, it ends at once, so a sheet the press opens slides in. Otherwise it ends when the
  * press reaches the window, or next task if a listener stopped it. Throws only what `dismiss` throws.
  */
-export function handOffSheetOnPress({ frame, dismiss }: { frame: HTMLElement; dismiss: () => void }): void {
+export function handOffSheetOnPress({ frame, dismiss }: HandOffSheetOnPressParams): void {
   pendingHandoff = 'pending';
-  let ended = false;
-  function release(): boolean {
-    if (ended) {
-      return false;
-    }
-    ended = true;
+  function release(pending: PressPhase & { kind: 'pending' }): void {
+    phase = { kind: 'ended' };
     window.removeEventListener('click', end);
-    clearTimeout(timer);
-    return true;
+    clearTimeout(pending.timer);
   }
   function end(): void {
-    if (!release()) {
+    if (phase.kind === 'ended') {
       return;
     }
+    release(phase);
     try {
       finishHandOff();
     } finally {
@@ -157,14 +158,16 @@ export function handOffSheetOnPress({ frame, dismiss }: { frame: HTMLElement; di
     }
   }
   window.addEventListener('click', end, { once: true });
-  const timer = setTimeout(end, 0);
+  let phase: PressPhase = { kind: 'pending', timer: setTimeout(end, 0) };
   dismiss();
   // Solid 2 batches the close until a microtask, and a hand-off is pending only while the pressed-over sheet leaves,
   // so a sheet the press opens over a sheet that stays slides in.
   flush();
-  if (topLayer() === frame && leaving.size === 0 && release()) {
-    endHandOff();
+  if (topLayer() !== frame || leaving.size > 0) {
+    return;
   }
+  release(phase);
+  endHandOff();
 }
 
 function finishHandOff(): boolean {
