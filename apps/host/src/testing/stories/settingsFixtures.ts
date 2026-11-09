@@ -8,7 +8,12 @@ import { createSignal, flush, untrack } from 'solid-js';
 import { fn } from 'storybook/test';
 import type { CacheSettings } from '@dotli/config';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings, SettingsResetStatus } from '../../components/settings/settings.js';
+import {
+  isResetRunning,
+  type ApplySettings,
+  type SavedSettings,
+  type SettingsResetStatus,
+} from '../../components/settings/settings.js';
 import type { SettingsItemProps } from '../../components/settings/SettingsItem.js';
 
 export const DEFAULT_CACHE: CacheSettings = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
@@ -53,7 +58,7 @@ export const storySettings: SettingsItemProps = {
   },
   onApply: (...args) => {
     // The page's reset moves before it calls out, and a second one while it runs does nothing.
-    if (untrack(reset) === 'idle') {
+    if (!isResetRunning(untrack(reset))) {
       setResetSignal(args[2]?.forceFullWipe === true ? 'clearing' : 'applying');
       flush();
     }

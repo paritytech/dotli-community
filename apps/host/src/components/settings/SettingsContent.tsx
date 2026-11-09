@@ -31,7 +31,7 @@ import {
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings, SettingsResetStatus } from './settings.js';
+import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from './settings.js';
 import s from './SettingsContent.module.css';
 
 /** The order the transport choices are listed in. */
@@ -103,7 +103,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   });
 
   function clearAll(): void {
-    if (untrack(props.reset) !== 'idle') {
+    if (isResetRunning(untrack(props.reset))) {
       return;
     }
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
@@ -111,7 +111,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   }
 
   function apply(): void {
-    if (!untrack(dirty) || untrack(props.reset) !== 'idle') {
+    if (!untrack(dirty) || isResetRunning(untrack(props.reset))) {
       return;
     }
     void props.onApply(
@@ -228,7 +228,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 block
                 onClick={clearAll}
                 title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-                disabled={props.reset() !== 'idle'}
+                disabled={isResetRunning(props.reset())}
               >
                 <TrashIcon class={s['icon']} />
                 {props.reset() === 'clearing' ? 'Clearing…' : 'Clear all caches'}
@@ -261,7 +261,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
             variant="primary"
             block={popover.sheet()}
             onClick={apply}
-            disabled={!dirty() || props.reset() !== 'idle'}
+            disabled={!dirty() || isResetRunning(props.reset())}
           >
             {props.reset() === 'applying' ? 'Resetting…' : 'Save and apply'}
           </Button>

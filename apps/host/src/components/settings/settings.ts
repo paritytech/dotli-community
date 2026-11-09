@@ -21,3 +21,8 @@ export type ApplySettings = (next: Settings, prior: Settings, options?: { forceF
  * reload follows it.
  */
 export type SettingsResetStatus = 'idle' | 'applying' | 'clearing';
+
+/** Returns whether `status` is a running reset, a save or a full wipe. Never throws. */
+export function isResetRunning(status: SettingsResetStatus): boolean {
+  return status !== 'idle';
+}
