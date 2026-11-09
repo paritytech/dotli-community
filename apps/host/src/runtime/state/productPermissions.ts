@@ -248,16 +248,18 @@ export function createProductPermissions({ registry, product, timers = realTimer
     return current.status === 'read' && current.label === label ? current.statuses : null;
   }
 
-  function patch({ label, landed, targets }: PatchParams): void {
+  /** Whether it wrote the state, which it does only over statuses read. */
+  function patch({ label, landed, targets }: PatchParams): boolean {
     const current = readStatuses(label);
     if (current === null || landed.length === 0) {
-      return;
+      return false;
     }
     land(label, {
       status: 'read',
       label,
       statuses: NAMES.map((name, i) => (landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'))),
     });
+    return true;
   }
 
   async function read(): Promise<void> {
@@ -338,14 +340,17 @@ export function createProductPermissions({ registry, product, timers = realTimer
     }
 
     const landed = names.filter(name => !failed.includes(name));
-    patch({ label, landed, targets });
+    const patched = patch({ label, landed, targets });
     const changed = landed.filter(name => getStatusBefore(name) !== targets[name]);
     if (changed.length > 0) {
       changes.emit({
         label,
         permissions: changed,
+        // A status that was never read may have held a grant, so its change asks for a rebuild.
         allowChanged: changed.some(
-          name => hasFrameDirective(name) && (getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
+          name =>
+            hasFrameDirective(name) &&
+            (getStatusBefore(name) === undefined || getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
         ),
         fromPrompt,
       });
@@ -356,6 +361,10 @@ export function createProductPermissions({ registry, product, timers = realTimer
       await read();
     } else {
       permissionsChangeMetric.count({ outcome: 'ok' });
+      // Written over unread statuses, nothing shows the write yet. A product that left has its own read queued.
+      if (landed.length > 0 && !patched && getCurrentLabel() === label) {
+        await read();
+      }
     }
     return { failed, errors };
 
@@ -393,12 +402,14 @@ export function createProductPermissions({ registry, product, timers = realTimer
     refresh,
     /**
      * A change made in the panel. A newer one supersedes it: dropped while queued, no more retries while running. Never
-     * rejects, as a failure is reported, the store read again and the failed permissions resolved.
+     * rejects, as a failure is reported, the store read again and the failed permissions resolved. A write that lands
+     * while the statuses are unread reads them again.
      */
     change,
     /**
      * A decision from the product's own prompt, never superseded. A write that still fails after the last attempt
-     * rejects, so the product hears it, and an aborted prompt changes nothing once its writes are back.
+     * rejects, so the product hears it, and an aborted prompt changes nothing once its writes are back. A write that
+     * lands while the statuses are unread reads them again.
      */
     recordPromptDecision,
     /**

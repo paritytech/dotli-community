@@ -29,6 +29,8 @@ type FakeCore = {
   holdReads: boolean;
   heldReads: (() => void)[];
   failWrite: (name: string) => Error | null;
+  /** Answers an error to fail the next read, or null to let it through. */
+  failRead: () => Error | null;
   /** Set to hold every write until it resolves. */
   writeGate: Promise<void> | null;
   /** Resolves at the next read the core is asked for, with what the core held when asked. */
@@ -756,6 +758,47 @@ describe('product permissions store', () => {
     // Then the store shows no change from before the load
     expect(shown).toEqual(before);
   });
+
+  it('As a user, I revoke the camera while a read fails before my change and the store reads again and the frame is rebuilt', async () => {
+    // Given a product whose camera is granted, and a read that fails just before the change
+    const core = createFakeCore(LABEL, { Camera: 'Authorized' });
+    const changes = recordChanges();
+    await loadProduct();
+    let failures = 1;
+    core.failRead = () => (failures-- > 0 ? new Error('core down') : null);
+    void permissions.refresh();
+
+    // When the camera is revoked
+    await permissions.change(LABEL, { Camera: 'ask' });
+
+    // Then the store shows what the core holds and the change asks for a rebuild
+    expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: buildStatuses() });
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: false }]);
+  });
+
+  it("As a user, I grant a product's prompt while a read fails before it and the store reads again", async () => {
+    // Given a read that fails just before the answer
+    const core = createFakeCore();
+    await loadProduct();
+    let failures = 1;
+    core.failRead = () => (failures-- > 0 ? new Error('core down') : null);
+    void permissions.refresh();
+
+    // When the prompt is answered
+    await permissions.recordPromptDecision({
+      label: LABEL,
+      name: 'ChainSubmit',
+      decision: 'granted',
+      signal: new AbortController().signal,
+    });
+
+    // Then the store shows the answer the core holds
+    expect(permissions.state.get()).toEqual({
+      status: 'read',
+      label: LABEL,
+      statuses: buildStatuses({ ChainSubmit: 'granted' }),
+    });
+  });
 });
 
 describe('product permissions store, as the permissions popover reads it', () => {
@@ -879,6 +922,7 @@ function createFakeCore(label = LABEL, initial: Record<string, PermissionAuthori
     holdReads: false,
     heldReads: [],
     failWrite: () => null,
+    failRead: () => null,
     writeGate: null,
     nextRead: () =>
       new Promise(resolve => {
@@ -891,6 +935,10 @@ function createFakeCore(label = LABEL, initial: Record<string, PermissionAuthori
         core.reads += 1;
         for (const woken of readWaiters.splice(0)) {
           woken(new Map(core.stored));
+        }
+        const failure = core.failRead();
+        if (failure !== null) {
+          return Promise.reject(failure);
         }
         // A snapshot taken now, as the core would answer for the moment it was asked.
         const answer = requests.map(request => core.stored.get(getPermissionName(request)) ?? 'NotDetermined');
