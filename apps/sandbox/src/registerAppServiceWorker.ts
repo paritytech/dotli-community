@@ -128,7 +128,7 @@ export async function registerAppServiceWorker(
   }
 }
 
-/** Whether the registration has nothing installing or waiting and its active worker is the one controlling the page. */
+/** Whether the browser kept the worker that controls the page through the reset, so no `controllerchange` can come. */
 function isControllerKept(registration: ServiceWorkerRegistration, container: ServiceWorkerContainer): boolean {
   if (registration.installing !== null || registration.waiting !== null) {
     return false;

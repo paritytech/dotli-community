@@ -17,6 +17,15 @@ type CreateControlledContainerParams = {
   update: () => Promise<void>;
 };
 
+type CreateFreshContainerParams = {
+  /** The worker that controls the page. */
+  controller?: ServiceWorker | null;
+  /** The registration's active worker. */
+  active?: ServiceWorker | null;
+  /** The registration's installing worker. */
+  installing?: ServiceWorker | null;
+};
+
 /** A worker that answers the version check with `version`. */
 function createWorkerAt(version: string): ServiceWorker {
   // The version check reads only `postMessage`.
@@ -48,15 +57,22 @@ function createControlledContainer({ active, update }: CreateControlledContainer
   return { controller: active, register: () => Promise.resolve(registration) } as unknown as ServiceWorkerContainer;
 }
 
-/** A page no worker controls yet, counting the `controllerchange` listeners still attached. */
-function createFreshContainer() {
+/**
+ * A page controlled by `controller` (none by default), whose registration holds `active` and an `installing` worker,
+ * counting the `controllerchange` listeners still attached.
+ */
+function createFreshContainer({
+  controller = null,
+  active = null,
+  installing = null,
+}: CreateFreshContainerParams = {}) {
   const events = createCountingEventTarget({ type: 'controllerchange' });
-  // The wait for a fresh worker reads only these members of the container.
+  // The wait for a fresh worker reads only these members of the container and of its registration.
   const container = {
     ...events,
-    controller: null,
+    controller,
     ready: new Promise<ServiceWorkerRegistration>(() => undefined),
-    register: () => Promise.resolve({ active: null, installing: null, waiting: null, update: () => Promise.resolve() }),
+    register: () => Promise.resolve({ active, installing, waiting: null, update: () => Promise.resolve() }),
   } as unknown as ServiceWorkerContainer;
   return { container, events };
 }
@@ -105,15 +121,7 @@ describe('registerAppServiceWorker', () => {
     const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const kept = createWorkerAt('build-1');
-    const events = createCountingEventTarget({ type: 'controllerchange' });
-    // The reset reads only these members of the container and of its registration.
-    const container = {
-      ...events,
-      controller: kept,
-      ready: new Promise<ServiceWorkerRegistration>(() => undefined),
-      register: () =>
-        Promise.resolve({ active: kept, installing: null, waiting: null, update: () => Promise.resolve() }),
-    } as unknown as ServiceWorkerContainer;
+    const { container, events } = createFreshContainer({ controller: kept, active: kept });
 
     // When it registers on the reset path, on timers that never run
     await registerAppServiceWorker(
@@ -130,20 +138,11 @@ describe('registerAppServiceWorker', () => {
   it('As a visitor after a full reset with a new worker installing, I wait for it to take control', async () => {
     // Given a page controlled by the old worker, whose registration has a new worker installing
     const old = createWorkerAt('build-1');
-    const events = createCountingEventTarget({ type: 'controllerchange' });
-    // The reset reads only these members of the container and of its registration.
-    const container = {
-      ...events,
+    const { container, events } = createFreshContainer({
       controller: old,
-      ready: new Promise<ServiceWorkerRegistration>(() => undefined),
-      register: () =>
-        Promise.resolve({
-          active: old,
-          installing: createWorkerAt('build-2'),
-          waiting: null,
-          update: () => Promise.resolve(),
-        }),
-    } as unknown as ServiceWorkerContainer;
+      active: old,
+      installing: createWorkerAt('build-2'),
+    });
     const registered = registerAppServiceWorker(
       { container, version: undefined, offerReload: () => undefined },
       { waitForFreshController: true, timers: createManualTimers() },
