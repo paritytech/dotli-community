@@ -350,11 +350,15 @@ export function createProtocolFrame<E extends FrameElement>({
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
       const reason = fromTransportError(toError(thrown));
       const stable = readyAt !== null && timers.now() - readyAt >= timeouts.stableMs;
+      // A frame that stayed up ends the incident, however it left, so the next loss is captured.
+      if (stable) {
+        lossCapturedSinceStable = false;
+      }
       // Still the frame, so this keeper found the failure, not a config change.
       if (slot === kept) {
         if (readyAt === null) {
           reportBootFailure({ phase, error: reason, name: thrown instanceof Error ? reason.name : 'unknown', count });
-        } else if (reportFrameLost({ error: reason, count, capture: stable || !lossCapturedSinceStable })) {
+        } else if (reportFrameLost({ error: reason, count, capture: !lossCapturedSinceStable })) {
           lossCapturedSinceStable = true;
         }
         if (reason instanceof ProtocolVersionMismatchError) {

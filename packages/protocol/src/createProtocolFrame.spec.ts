@@ -608,6 +608,69 @@ describe('createProtocolFrame', () => {
     expect(captured).toMatchObject([{ step: 'frame_lost' }, { step: 'frame_lost' }]);
   });
 
+  it('As the host, I see a frame that dies soon after ready captured when the frame before it stayed up and was reconfigured away', async () => {
+    // Given a frame that died soon after ready, and the rebuilt frame that stayed ready for the stable span
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    const first = await dom.bringUp();
+    await advance(1_000);
+    first.fail(new ProtocolFatalError('boom'));
+    await advance(2_000);
+    await dom.bringUp();
+    await advance(30_000);
+    frame.configure({ ...FRAME_CONFIG, network: 'previewnet' });
+    const third = await dom.bringUp();
+    await advance(1_000);
+
+    // When the frame booted on the new config dies soon after ready
+    third.fail(new ProtocolFatalError('boom'));
+    await advance();
+
+    // Then both quick losses are counted and captured, and the reconfigured one is neither
+    expect(metrics.counted('protocol.frame_lost')).toHaveLength(2);
+    expect(captured).toMatchObject([{ step: 'frame_lost' }, { step: 'frame_lost' }]);
+    expect(captured.map(report => report.error)).toEqual([
+      expect.any(ProtocolFatalError),
+      expect.any(ProtocolFatalError),
+    ]);
+  });
+
+  it('As the host, I see a frame that dies soon after ready captured when the frame before it stayed up and its port was released', async () => {
+    // Given a frame that died soon after ready, and the rebuilt frame that stayed ready for the stable span
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    const first = await dom.bringUp();
+    await advance(1_000);
+    first.fail(new ProtocolFatalError('boom'));
+    await advance(2_000);
+    const second = await dom.bringUp();
+    await advance(30_000);
+
+    // When the worker releases the stable frame's port, and the frame rebuilt after it dies soon after ready
+    second.interrupt(err(domain({ tag: 'released', value: 'The worker released this tab' })));
+    await advance(2_000);
+    const third = await dom.bringUp();
+    await advance(1_000);
+    third.fail(new ProtocolFatalError('boom'));
+    await advance();
+
+    // Then all three losses are counted, the release is not captured, and both quick losses are
+    expect(metrics.counted('protocol.frame_lost')).toHaveLength(3);
+    expect(captured).toMatchObject([{ step: 'frame_lost' }, { step: 'frame_lost' }]);
+    expect(captured.map(report => report.error)).toEqual([
+      expect.any(ProtocolFatalError),
+      expect.any(ProtocolFatalError),
+    ]);
+  });
+
   it('As the host, I hear a worker port release end the frame through the typed released interrupt, without a capture', async () => {
     // Given a ready frame, and a reporting pipeline that records captures, counts and breadcrumbs
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
