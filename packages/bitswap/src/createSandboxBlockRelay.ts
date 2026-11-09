@@ -286,7 +286,7 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
   return {
     /** Hears the running total after each served block. Returns the unsubscribe. */
     onProgress: progressListeners.subscribe,
-    /** Hears where each served block came from. Returns the unsubscribe. */
+    /** Hears where each block came from, for a request its frame has not aborted. Returns the unsubscribe. */
     onServed: servedListeners.subscribe,
     /** Stops answering new requests. Fetches already running still answer their frame. */
     stop(): void {

@@ -156,9 +156,7 @@ function createDeferredRead(): { cache: NonNullable<RelayParams['cache']>; relea
     };
   });
   return {
-    release: () => {
-      release();
-    },
+    release,
     cache: {
       get: cid => (cid === 'bafyOld' ? held : Promise.resolve(null)),
       put: () => Promise.resolve(),
@@ -383,7 +381,7 @@ describe('createSandboxBlockRelay', () => {
     expect(network.fetches.find(fetch => fetch.cid === 'bafyNew')?.signal.aborted).toBe(true);
   });
 
-  it('As a user, a block my frame dropped is not counted in the loading bar', async () => {
+  it("As a user, I drop a frame's request and its block is not counted in the loading bar", async () => {
     // Given a frame whose request was aborted while its cache read is pending
     const { channel, send } = createFakeChannel();
     const read = createDeferredRead();
