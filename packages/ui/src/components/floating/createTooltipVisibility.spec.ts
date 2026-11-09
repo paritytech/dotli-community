@@ -60,8 +60,23 @@ describe('createTooltipVisibility', () => {
     visibility.hide();
     await timers.advance(TOOLTIP_SHOW_MS);
 
-    // Then it never shows
+    // Then it never shows and holds no timer
     expect(opens).toEqual([]);
+    expect(timers.countPending()).toBe(0);
+  });
+
+  it('As a mouse user, I leave the trigger within the delay and the tooltip never shows', async () => {
+    // Given a mouse resting on the trigger
+    const { timers, opens, visibility } = setup();
+    visibility.rest();
+
+    // When the mouse leaves it within the delay and the delay passes
+    visibility.leave();
+    await timers.advance(TOOLTIP_SHOW_MS);
+
+    // Then it never shows and holds no timer
+    expect(opens).toEqual([]);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a mouse user, I leave the tooltip and it hides after the grace', async () => {

@@ -34,9 +34,7 @@ export function createAnchored({ props, returnFocusOn }: Params) {
   let triggerElement: HTMLElement | undefined;
 
   // A phone turned while the surface is open must not leave it in the other form.
-  createEffect(open, isOpen => {
-    return isOpen ? watchPhoneViewport(setSheet) : undefined;
-  });
+  createEffect(open, isOpen => (isOpen ? watchPhoneViewport(setSheet) : undefined));
 
   function focusBack(): void {
     focusTrigger(triggerElement, boundary?.fallbackFocus());
