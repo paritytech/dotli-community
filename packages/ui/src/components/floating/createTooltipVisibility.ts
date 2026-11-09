@@ -31,7 +31,7 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
 
   return { rest, show, hide, leave, hold, cancelShow, dispose, isOpen };
 
-  /** The mouse rests on the trigger: arms the show delay while hidden, and cancels a pending hide. Throws only what `onChange` throws. */
+  /** The mouse rests on the trigger: arms the show delay while hidden, and cancels a pending hide. Never throws. */
   function rest(): void {
     switch (state.kind) {
       case 'hidden':
@@ -65,7 +65,7 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
 
   /**
    * The mouse leaves the trigger or the tooltip: cancels a pending show, and hides a shown tooltip after the grace,
-   * restarting a grace already running. Throws only what `onChange` throws.
+   * restarting a grace already running. Never throws.
    */
   function leave(): void {
     switch (state.kind) {
@@ -82,7 +82,7 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     }
   }
 
-  /** The mouse moves onto the tooltip: cancels a pending hide and changes nothing else. Throws only what `onChange` throws. */
+  /** The mouse moves onto the tooltip: cancels a pending hide and changes nothing else. Never throws. */
   function hold(): void {
     if (state.kind !== 'hiding') {
       return;
@@ -90,7 +90,9 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     moveTo({ kind: 'shown' });
   }
 
-  /** A press on the trigger, or the trigger going away: cancels a pending show and changes nothing else. Throws only what `onChange` throws. */
+  /**
+   * A press on the trigger, or the trigger going away: cancels a pending show and changes nothing else. Never throws.
+   */
   function cancelShow(): void {
     if (state.kind !== 'showing') {
       return;

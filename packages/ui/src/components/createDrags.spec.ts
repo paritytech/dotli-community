@@ -32,7 +32,7 @@ describe('createDrags', () => {
     expect(locks).toEqual([true, false]);
   });
 
-  it("As a component whose drag missed its release, I take the same pointer's next press and the stale drag ends unreleased", () => {
+  it("As a component whose drag missed its release, I refuse the same pointer's next press and the held drag keeps it", () => {
     // Given a drag held by pointer 1 whose pointerup never came
     const target = new FakeHandle();
     const ends: string[] = [];
@@ -53,11 +53,11 @@ describe('createDrags', () => {
     const endsAfterPress = [...ends];
     dispatchPointer(target, 'pointerup', { pointerId: 1 });
 
-    // Then the stale drag ended unreleased, the new press was taken and ended released, with text selection back
-    expect(again).toBe(true);
-    expect(endsAfterPress).toEqual(['first false']);
-    expect(ends).toEqual(['first false', 'second true']);
-    expect(locks).toEqual([true, false, true, false]);
+    // Then the press was refused and ended nothing, and the held drag ended released with text selection back
+    expect(again).toBe(false);
+    expect(endsAfterPress).toEqual([]);
+    expect(ends).toEqual(['first true']);
+    expect(locks).toEqual([true, false]);
   });
 
   it('As a component whose drag ended, I take the next finger', () => {
@@ -121,15 +121,16 @@ describe('createDrags', () => {
       },
     });
 
-    // When the component cleans up and the next finger goes down
+    // When the component cleans up, and the next finger goes down and lifts
     drags.stopAll();
     const next = drags.start({ target, down: { pointerId: 2 }, handlers: { move: () => undefined } });
+    const locksWhileNext = [...locks];
+    dispatchPointer(target, 'pointerup', { pointerId: 2 });
 
-    // Then the hold is free, the throw was reported and the next finger was taken
-    expect(locks).toEqual([true, false, true]);
+    // Then the hold was free, the throw was reported, and the next finger was taken and gave text selection back
+    expect(locksWhileNext).toEqual([true, false, true]);
     expect(captured).toEqual([broke]);
     expect(next).toBe(true);
-    dispatchPointer(target, 'pointerup', { pointerId: 2 });
     expect(locks).toEqual([true, false, true, false]);
   });
 });

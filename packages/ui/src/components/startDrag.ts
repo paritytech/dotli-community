@@ -39,7 +39,7 @@ export function startDrag({ target, down, handlers, selection = bodySelection }:
   const release = selection.hold();
   let done = false;
 
-  // A move or an end of another pointer is not this drag's.
+  // Another pointer on the same handle, such as a second finger, runs its own drag.
   function handleMove(event: PointerEvent): void {
     if (event.pointerId === down.pointerId) {
       handlers.move(event);

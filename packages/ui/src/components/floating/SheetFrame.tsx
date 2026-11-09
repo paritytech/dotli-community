@@ -158,15 +158,17 @@ export function handOffSheetOnPress({ frame, dismiss }: HandOffSheetOnPressParam
     }
   }
   window.addEventListener('click', end, { once: true });
-  let phase: PressPhase = { kind: 'pending', timer: setTimeout(end, 0) };
+  const pending: PressPhase = { kind: 'pending', timer: setTimeout(end, 0) };
+  let phase: PressPhase = pending;
   dismiss();
   // Solid 2 batches the close until a microtask, and a hand-off is pending only while the pressed-over sheet leaves,
   // so a sheet the press opens over a sheet that stays slides in.
   flush();
-  if (topLayer() !== frame || leaving.size > 0) {
+  // A dismiss handler can end the press itself.
+  if (phase !== pending || topLayer() !== frame || leaving.size > 0) {
     return;
   }
-  release(phase);
+  release(pending);
   endHandOff();
 }
 

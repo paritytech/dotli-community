@@ -37,41 +37,17 @@ describe('createTooltipVisibility', () => {
     expect(visibility.isOpen()).toBe(false);
   });
 
-  it('As a mouse user, I press the trigger within the delay and the tooltip never shows', async () => {
+  it.each([
+    { input: 'cancelShow', who: 'I press the trigger' },
+    { input: 'hide', who: 'the window loses focus' },
+    { input: 'leave', who: 'I leave the trigger' },
+  ] as const)('As a mouse user, $who within the delay ($input) and the tooltip never shows', async ({ input }) => {
     // Given a mouse resting on the trigger
     const { timers, opens, visibility } = setup();
     visibility.rest();
 
-    // When the trigger is pressed within the delay and the delay passes
-    visibility.cancelShow();
-    await timers.advance(TOOLTIP_SHOW_MS);
-
-    // Then it never shows and holds no timer
-    expect(opens).toEqual([]);
-    expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a mouse user, the window loses focus within the delay and the tooltip never shows', async () => {
-    // Given a mouse resting on the trigger
-    const { timers, opens, visibility } = setup();
-    visibility.rest();
-
-    // When the window's blur hides it within the delay and the delay passes
-    visibility.hide();
-    await timers.advance(TOOLTIP_SHOW_MS);
-
-    // Then it never shows and holds no timer
-    expect(opens).toEqual([]);
-    expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a mouse user, I leave the trigger within the delay and the tooltip never shows', async () => {
-    // Given a mouse resting on the trigger
-    const { timers, opens, visibility } = setup();
-    visibility.rest();
-
-    // When the mouse leaves it within the delay and the delay passes
-    visibility.leave();
+    // When the input ends the pending show within the delay and the delay passes
+    visibility[input]();
     await timers.advance(TOOLTIP_SHOW_MS);
 
     // Then it never shows and holds no timer

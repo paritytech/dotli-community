@@ -131,6 +131,24 @@ describe('dragSheet', () => {
     expect(surface.attributes.has('data-dragging')).toBe(false);
     expect(closes).toEqual([]);
   });
+
+  it("As a phone user whose drag missed its release, I press the sheet's head again and it keeps its drag look", () => {
+    // Given a sheet dragged down by a finger whose lift never came
+    const head = new FakeHandle();
+    const surface = createFakeSurface(100);
+    const closes: string[] = [];
+    const drags = createDrags({ selection: createRecordedLock().lock });
+    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
+    dispatchPointer(head, 'pointermove', { pointerId: 7, y: 20 });
+
+    // When the same finger presses the head again
+    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
+
+    // Then the held drag keeps the sheet where it was, with its drag look, and nothing closed
+    expect(surface.style.transform).toBe('translateY(20px)');
+    expect(surface.attributes.has('data-dragging')).toBe(true);
+    expect(closes).toEqual([]);
+  });
 });
 
 /** A sheet surface that keeps what the drag writes to it. */

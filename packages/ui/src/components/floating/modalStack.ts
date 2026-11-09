@@ -24,7 +24,7 @@ export function topLayer(): HTMLElement | undefined {
 function syncInert(): void {
   const top = shownLayers.at(-1);
   for (const el of madeInert) {
-    if (top === undefined || !shouldBeInert(el, top)) {
+    if (top === undefined || !isInertUnder(el, top)) {
       el.removeAttribute('inert');
       madeInert.delete(el);
     }
@@ -33,14 +33,14 @@ function syncInert(): void {
     return;
   }
   for (const el of document.body.children) {
-    if (el instanceof HTMLElement && !el.hasAttribute('inert') && shouldBeInert(el, top)) {
+    if (el instanceof HTMLElement && !el.hasAttribute('inert') && isInertUnder(el, top)) {
       el.setAttribute('inert', '');
       madeInert.add(el);
     }
   }
 }
 
-function shouldBeInert(el: HTMLElement, top: ShownLayer): boolean {
+function isInertUnder(el: HTMLElement, top: ShownLayer): boolean {
   return (
     el !== top.element &&
     !el.hasAttribute('popover') &&
