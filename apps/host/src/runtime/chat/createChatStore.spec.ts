@@ -307,7 +307,24 @@ describe('chat store', () => {
     expect(rendersOnFirst).toBe(1);
     expect(second.renders).toHaveLength(1);
     expect(first.renders).toHaveLength(1);
+    expect(getRender(first, 0).stopped).toBe(true);
     expect(heard.errors).toHaveLength(2);
+  });
+
+  it('As a user, I read a custom message whose older connection cannot render and the newer connection renders it once', () => {
+    // Given an older connection that cannot render and a working newer one
+    const { chat, connections } = setup();
+    const older = createRecordingConnection({ failsRender: true });
+    const newer = createRecordingConnection();
+    connections.register(PRODUCT, older);
+    connections.register(PRODUCT, newer);
+
+    // When
+    openCustomMessage(chat);
+
+    // Then
+    expect(newer.renders).toHaveLength(1);
+    expect(older.renders).toHaveLength(0);
   });
 
   it('As a user, I read a custom message that completed and no later connection renders it again', () => {

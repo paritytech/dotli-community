@@ -148,11 +148,9 @@ type RenderCustomMessageParams = {
 };
 
 /** One custom message render: on a connection, waiting for the product's next one, completed, or disposed. */
-type RenderState =
-  | { kind: 'rendering'; connection: ChatConnection; stop: () => void }
-  | { kind: 'waiting'; stopListening: () => void }
-  | { kind: 'completed' }
-  | { kind: 'disposed' };
+type Rendering = { kind: 'rendering'; connection: ChatConnection; stop: () => void };
+type Waiting = { kind: 'waiting'; stopListening: () => void };
+type RenderState = Rendering | Waiting | { kind: 'completed' } | { kind: 'disposed' };
 
 type StartCustomRenderParams = RenderCustomMessageParams & {
   /** The live product connections the render follows. */
@@ -494,7 +492,7 @@ function startCustomRender({ connections, productId, request, sink }: StartCusto
   return dispose;
 
   function renderOn(connection: ChatConnection): void {
-    const rendering: Extract<RenderState, { kind: 'rendering' }> = {
+    const rendering: Rendering = {
       kind: 'rendering',
       connection,
       stop: () => undefined,
@@ -509,7 +507,7 @@ function startCustomRender({ connections, productId, request, sink }: StartCusto
     stop();
   }
 
-  function followRender(rendering: Extract<RenderState, { kind: 'rendering' }>): RenderSink {
+  function followRender(rendering: Rendering): RenderSink {
     return {
       onUpdate(node) {
         if (state === rendering) {
@@ -546,11 +544,14 @@ function startCustomRender({ connections, productId, request, sink }: StartCusto
   }
 
   function wait(): void {
-    const waiting: Extract<RenderState, { kind: 'waiting' }> = { kind: 'waiting', stopListening: () => undefined };
+    const waiting: Waiting = { kind: 'waiting', stopListening: () => undefined };
     state = waiting;
     waiting.stopListening = connections.onRegister(registered => {
+      if (registered !== productId || state !== waiting) {
+        return;
+      }
       const connection = connections.get(productId);
-      if (registered !== productId || state !== waiting || connection === undefined) {
+      if (connection === undefined) {
         return;
       }
       waiting.stopListening();

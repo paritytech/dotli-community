@@ -347,11 +347,13 @@ export function createProductPermissions({ registry, product, timers = realTimer
         label,
         permissions: changed,
         // A status that was never read may have held a grant, so its change asks for a rebuild.
-        allowChanged: changed.some(
-          name =>
+        allowChanged: changed.some(name => {
+          const statusBefore = getStatusBefore(name);
+          return (
             hasFrameDirective(name) &&
-            (getStatusBefore(name) === undefined || getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
-        ),
+            (statusBefore === undefined || statusBefore === 'granted' || targets[name] === 'granted')
+          );
+        }),
         fromPrompt,
       });
     }
