@@ -6,10 +6,12 @@
 
 /// <reference lib="webworker" />
 
-import { createLazyLoad, isRecord } from '@dotli/shared';
+import { createAsyncTaskPool, createLazyLoad, isRecord } from '@dotli/shared';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import {
+  type ClosedClientParams,
+  isClosedClient,
   loadPersistedArchives,
   type PersistedArchive,
   type PersistedArchives,
@@ -101,6 +103,9 @@ export function startAppServiceWorker({
   const archives: Archives = { byClient: new Map(), workerPages: new Map(), newest: null };
 
   let restore: Restore = { phase: 'unread' };
+
+  // One write at a time, so the store's newest archive is the last one handed over, whatever order the reads finish in.
+  const persists = createAsyncTaskPool({ poolSize: 1 });
 
   /**
    * The archives kept for restarts, read back by the first fetch whose client has none in memory. A failed read is not
@@ -292,11 +297,13 @@ export function startAppServiceWorker({
     archives.newest = archive;
     // The write matters only to the next instance, so it does not hold up the ACK. `waitUntil` keeps this one alive.
     event.waitUntil(
-      keepPageArchive(sender.id, { packed, index, directory }).catch((error: unknown) => {
-        // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-        console.error('Failed to persist the archive; a restarted worker will not serve it:', error);
-        reportArchiveFailure({ clients: [sender], stage: 'persist', error });
-      }),
+      persists
+        .call(() => keepPageArchive(sender.id, { packed, index, directory }))
+        .catch((error: unknown) => {
+          // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+          console.error('Failed to persist the archive; a restarted worker will not serve it:', error);
+          reportArchiveFailure({ clients: [sender], stage: 'persist', error });
+        }),
     );
     replyToPage(event, { type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_READY });
   }
@@ -305,19 +312,19 @@ export function startAppServiceWorker({
   async function keepPageArchive(clientId: string, archive: PersistedArchive): Promise<void> {
     const clients = await scope.clients.matchAll({ includeUncontrolled: true, type: 'all' });
     const liveClientIds = new Set(clients.map(client => client.id));
-    dropClosedClients(clientId, liveClientIds);
+    dropClosedClients({ clientId, liveClientIds });
     await persistPageArchive(indexedDB, { clientId, archive, liveClientIds });
   }
 
   /** Drops the archives and links of clients that are not open, except the sender's, which was open to send. */
-  function dropClosedClients(senderId: string, liveClientIds: ReadonlySet<string>): void {
+  function dropClosedClients(closed: ClosedClientParams): void {
     for (const clientId of archives.byClient.keys()) {
-      if (clientId !== senderId && !liveClientIds.has(clientId)) {
+      if (isClosedClient(clientId, closed)) {
         archives.byClient.delete(clientId);
       }
     }
     for (const workerId of archives.workerPages.keys()) {
-      if (workerId !== senderId && !liveClientIds.has(workerId)) {
+      if (isClosedClient(workerId, closed)) {
         archives.workerPages.delete(workerId);
       }
     }

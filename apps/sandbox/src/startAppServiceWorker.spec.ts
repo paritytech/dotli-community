@@ -25,6 +25,8 @@ type StartWorkerParams = {
   postToPage?: (message: unknown) => void;
   /** The ids of the clients open on the worker's origin. */
   liveClients?: string[];
+  /** Holds each client listing, in order, until its promise settles. A listing past the last one is not held. */
+  holdListings?: Promise<undefined>[];
 };
 
 type PostFromPageParams = {
@@ -100,14 +102,18 @@ function postToInbox(message: unknown): void {
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(
   origin: Origin,
-  { devServer = false, postToPage = postToInbox, liveClients = ['page-1'] }: StartWorkerParams = {},
+  { devServer = false, postToPage = postToInbox, liveClients = ['page-1'], holdListings = [] }: StartWorkerParams = {},
 ): WorkerScope {
+  let listings = 0;
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
     clients: {
       claim: () => Promise.resolve(),
-      matchAll: () => Promise.resolve(liveClients.map(id => ({ id, postMessage: postToPage }))),
+      matchAll: async () => {
+        await holdListings[listings++];
+        return liveClients.map(id => ({ id, postMessage: postToPage }));
+      },
     },
   });
   startAppServiceWorker({
@@ -742,25 +748,25 @@ describe('app service worker', () => {
   });
 
   it("As a product developer, I import a module in my dedicated worker after another tab handed over its archive and it comes from my page's archive", async () => {
-    // Given a page whose product started a dedicated worker, and another tab that handed over its archive after
+    // Given two tabs, the second of which handed over its archive last
     const scope = startWorker(origin, { liveClients: ['page-1', 'page-2', 'worker-1'] });
     await setArchive(
       scope,
       { 'index.html': '<html></html>', 'assets/worker.js': 'work(1)', 'assets/lib.js': 'lib(1)' },
       { clientId: 'page-1' },
     );
-    const script = await request(scope, '/assets/worker.js', {
-      clientId: 'page-1',
-      destination: 'worker',
-      resultingClientId: 'worker-1',
-    });
     await setArchive(
       scope,
       { 'index.html': '<html></html>', 'assets/worker.js': 'work(2)', 'assets/lib.js': 'lib(2)' },
       { clientId: 'page-2' },
     );
 
-    // When the worker imports its module
+    // When the first tab's product starts its dedicated worker and the worker imports its module
+    const script = await request(scope, '/assets/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
     const lib = await request(scope, '/assets/lib.js', { clientId: 'worker-1' });
 
     // Then the script and the module come from the page that started the worker
@@ -864,5 +870,29 @@ describe('app service worker', () => {
         message: 'The quota has been exceeded.',
       },
     ]);
+  });
+
+  it('As a visitor with two tabs open, I hand over in both and a restarted worker serves a client it cannot place the archive handed last', async () => {
+    // Given the first tab's handoff held back while the second tab's goes through
+    const firstListing = createDeferred<undefined>();
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'], holdListings: [firstListing.promise] });
+    const firstHandoff = setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'late.js': 'first()' },
+      { clientId: 'page-1' },
+    );
+    const secondHandoff = setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'late.js': 'second()' },
+      { clientId: 'page-2' },
+    );
+
+    // When the held handoff goes on after the later one, and a restarted worker is asked by a client it does not know
+    firstListing.resolve(undefined);
+    await Promise.all([firstHandoff, secondHandoff]);
+    const chunk = await request(startWorker(origin), '/late.js', { clientId: 'unknown' });
+
+    // Then it comes from the archive handed over last
+    expect(await chunk?.text()).toBe('second()');
   });
 });

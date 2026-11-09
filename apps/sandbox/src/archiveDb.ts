@@ -31,6 +31,8 @@ type PersistPageArchiveParams = {
   liveClientIds: ReadonlySet<string>;
 };
 
+export type ClosedClientParams = Pick<PersistPageArchiveParams, 'clientId' | 'liveClientIds'>;
+
 type PersistWorkerPageParams = { workerId: string; pageId: string };
 
 /** A record's key, read back as what the record holds. */
@@ -71,7 +73,11 @@ export async function persistPageArchive(
         const keys = store.getAllKeys();
         keys.onsuccess = () => {
           for (const key of keys.result) {
-            if (isRecordOfClosedClient(key, { clientId, liveClientIds })) {
+            const record = parseRecordKey(key);
+            if (
+              (record.kind === 'page' || record.kind === 'worker') &&
+              isClosedClient(record.id, { clientId, liveClientIds })
+            ) {
               store.delete(key);
             }
           }
@@ -149,19 +155,12 @@ export async function loadPersistedArchives(indexedDB: IDBFactory): Promise<Pers
   return { pages, workerPages, newest };
 }
 
-function isRecordOfClosedClient(
-  key: IDBValidKey,
-  { clientId, liveClientIds }: Pick<PersistPageArchiveParams, 'clientId' | 'liveClientIds'>,
-): boolean {
-  const record = parseRecordKey(key);
-  switch (record.kind) {
-    case 'page':
-    case 'worker':
-      return record.id !== clientId && !liveClientIds.has(record.id);
-    case 'newest':
-    case 'other':
-      return false;
-  }
+/**
+ * Whether the id is of a client that is neither the sender, which was open to send, nor still open. The worker's memory
+ * and the store drop the same clients by this one rule.
+ */
+export function isClosedClient(id: string, { clientId, liveClientIds }: ClosedClientParams): boolean {
+  return id !== clientId && !liveClientIds.has(id);
 }
 
 function parseStoredRecord(key: IDBValidKey, value: unknown): StoredRecord {
