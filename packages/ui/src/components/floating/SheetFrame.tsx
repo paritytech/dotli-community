@@ -8,6 +8,7 @@ import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
+import { topLayer } from './modalStack.js';
 import s from './SheetFrame.module.css';
 
 export type SheetFrameProps = {
@@ -128,20 +129,27 @@ export function handOffSheet(activate: () => void): boolean {
 }
 
 /**
- * For a press on a bar control outside the top sheet: `dismiss` closes the sheet now and the press's click is the
- * hand-off's activation. It ends when the press reaches the window, or next task if a listener stopped it. Throws only
- * what `dismiss` throws.
+ * For a press on a bar control outside the top sheet `frame`: `dismiss` closes the sheet now and the press's click is
+ * the hand-off's activation. The hand-off stays pending only while that sheet leaves. When `frame` is still the top
+ * layer and no sheet is leaving, it ends at once, so a sheet the press opens slides in. Otherwise it ends when the
+ * press reaches the window, or next task if a listener stopped it. Throws only what `dismiss` throws.
  */
-export function handOffSheetOnPress(dismiss: () => void): void {
+export function handOffSheetOnPress({ frame, dismiss }: { frame: HTMLElement; dismiss: () => void }): void {
   pendingHandoff = 'pending';
   let ended = false;
-  function end(): void {
+  function release(): boolean {
     if (ended) {
-      return;
+      return false;
     }
     ended = true;
     window.removeEventListener('click', end);
     clearTimeout(timer);
+    return true;
+  }
+  function end(): void {
+    if (!release()) {
+      return;
+    }
     try {
       finishHandOff();
     } finally {
@@ -151,6 +159,12 @@ export function handOffSheetOnPress(dismiss: () => void): void {
   window.addEventListener('click', end, { once: true });
   const timer = setTimeout(end, 0);
   dismiss();
+  // Solid 2 batches the close until a microtask, and a hand-off is pending only while the pressed-over sheet leaves,
+  // so a sheet the press opens over a sheet that stays slides in.
+  flush();
+  if (topLayer() === frame && leaving.size === 0 && release()) {
+    endHandOff();
+  }
 }
 
 function finishHandOff(): boolean {

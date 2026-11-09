@@ -9,6 +9,7 @@ import { TrashIcon } from '../icons/TrashIcon.js';
 import { Button } from '../primitives/Button.js';
 import { Callout } from '../primitives/Well.js';
 import { Modal } from './Modal.js';
+import { Popover } from './Popover.js';
 
 const onOpenChange = fn().mockName('onOpenChange');
 // The modal is portalled into the body, outside the story's canvas.
@@ -145,19 +146,36 @@ export const SwitchesFormKeepingContent: Story = {
   },
 };
 
-/** The phone bar, a body child the stack leaves live under a sheet, and a modal open from the start. */
-function BarHarness() {
+/**
+ * The phone bar, a body child the stack leaves live under a sheet, with a button that opens a popover, and a modal
+ * open from the start. With `mustAnswer` the modal ignores a dismiss, as a prompt the user must answer does.
+ */
+function BarHarness(props: { mustAnswer?: boolean }) {
   const [open, setOpen] = createSignal(true);
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <>
       <Portal>
         <header data-over-sheets="" data-testid="story-bar">
-          <button type="button" data-testid="story-bar-button">
+          <button ref={setTrigger} type="button" data-testid="story-bar-button">
             Bar
           </button>
         </header>
       </Portal>
-      <Modal open={open()} onOpenChange={setOpen} title="Clear site data" testId="bar-modal">
+      <Popover id="bar-popover" title="Account" trigger={trigger()}>
+        <p>Signed in as Alice.</p>
+      </Popover>
+      <Modal
+        open={open()}
+        onOpenChange={(next, reason) => {
+          if (props.mustAnswer === true && !next && reason === 'dismiss') {
+            return;
+          }
+          setOpen(next);
+        }}
+        title="Clear site data"
+        testId="bar-modal"
+      >
         <Modal.Body>
           <p>The site forgets its settings and signs you out.</p>
         </Modal.Body>
@@ -197,6 +215,50 @@ export const BarFollowsLayout: Story = {
       // The next story must not inherit the phone.
       await page.viewport(wide.width, wide.height);
     }
+  },
+};
+
+/** As a phone user, I press a bar button over a dialog I must answer and its sheet slides in over the dialog, which stays. */
+export const BarPressOverMustAnswerSheetSlides: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  render: () => <BarHarness mustAnswer />,
+  play: async ({ mount, step }) => {
+    await step("Given the dialog's sheet is open", async () => {
+      await mount();
+      await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+    });
+    await step('When I press the bar button', () => {
+      // Targets the button whatever covers it, since the bar has no position of its own here.
+      body.getByTestId('story-bar-button').click();
+    });
+    await step("Then the button's sheet slides in and the dialog stays", async () => {
+      const popover = () => document.getElementById('bar-popover');
+      await waitFor(() => expect(popover()).toHaveAttribute('data-open'));
+      await expect(popover()).not.toHaveAttribute('data-handoff');
+      await expect(body.getByTestId('bar-modal-backdrop')).toHaveAttribute('data-open');
+    });
+  },
+};
+
+/** As a phone user, I press a bar button over a dialog sheet and the dialog closes and the button's sheet takes its place with focus. */
+export const BarPressOverSheetHandsOff: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  render: () => <BarHarness />,
+  play: async ({ mount, step }) => {
+    await step("Given the dialog's sheet is open", async () => {
+      await mount();
+      await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+    });
+    await step('When I press the bar button', () => {
+      // Targets the button whatever covers it, since the bar has no position of its own here.
+      body.getByTestId('story-bar-button').click();
+    });
+    await step("Then the dialog closes and the button's sheet takes its place with focus", async () => {
+      const popover = () => document.getElementById('bar-popover');
+      await waitFor(() => expect(popover()).toHaveAttribute('data-open'));
+      await expect(body.getByTestId('bar-modal-backdrop')).not.toHaveAttribute('data-open');
+      await waitFor(() => expect(popover()?.contains(document.activeElement)).toBe(true));
+    });
   },
 };
 

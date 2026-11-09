@@ -67,7 +67,7 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     ) {
       return;
     }
-    handOffSheetOnPress(props.onDismiss);
+    handOffSheetOnPress({ frame, dismiss: props.onDismiss });
   }
 
   function hide(): void {
