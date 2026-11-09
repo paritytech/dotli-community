@@ -74,7 +74,7 @@ export function ArchiveView(props: {
       if (next === null || (reading?.cid === next && reading.read.status !== 'failed')) {
         return;
       }
-      const started: Reading = { cid: next, read: { status: 'loading' } };
+      const started: NonNullable<Reading> = { cid: next, read: { status: 'loading' } };
       setSelectedPath(null);
       setReading(started);
       props.load(next).then(

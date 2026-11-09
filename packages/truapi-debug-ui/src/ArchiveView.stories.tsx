@@ -200,3 +200,27 @@ export const DropsLateReadOfOldCid: Story = {
     });
   },
 };
+
+/** As a developer using the debug panel, I hide and show the archive tab while it is still being read and the archive is read once. */
+export const ReadOnceAcrossHideWhileLoading: Story = {
+  args: { load: newProductLoad },
+  render: renderToggledArchive,
+  play: async ({ canvas, userEvent, step }) => {
+    const heldRead = createDeferred<Awaited<ReturnType<ArchiveLoader>>>();
+    newProductLoad.mockImplementationOnce(() => heldRead.promise);
+    const toggle = canvas.getByRole('button', { name: 'Toggle archive' });
+    await step('Given the tab was shown and its read is still pending', async () => {
+      await userEvent.click(toggle);
+      await expect(await canvas.findByText(/Reading archive bafyroot/)).toBeVisible();
+    });
+    await step('When I hide the tab and show it again', async () => {
+      await userEvent.click(toggle);
+      await userEvent.click(toggle);
+    });
+    await step('Then the pending read lands in the archive and no second read started', async () => {
+      heldRead.resolve({ 'held.txt': encodeText('held') });
+      await expect(await canvas.findByText('held.txt')).toBeVisible();
+      await expect(newProductLoad).toHaveBeenCalledTimes(1);
+    });
+  },
+};
