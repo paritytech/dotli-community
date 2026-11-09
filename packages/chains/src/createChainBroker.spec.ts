@@ -2110,6 +2110,42 @@ describe('createChainBroker teardown', () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dotli integrator, I reopen a broker after closing every session and a late message from the closed upstream reaches no one', () => {
+    // Given a first upstream with a session's request, closed, and a second upstream with another session's request
+    const listeners: ((message: JsonRpcMessage) => void)[] = [];
+    const sent: JsonRpcRequest<unknown>[] = [];
+    const broker = createChainBroker({
+      provider: listener => {
+        listeners.push(listener);
+        return {
+          send(message) {
+            sent.push(message);
+          },
+          disconnect: () => undefined,
+        };
+      },
+    });
+    const first = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    first.send({ jsonrpc: '2.0', id: 1, method: 'system_chain', params: [] });
+    broker.disconnectAll();
+    const heard: unknown[] = [];
+    const second = broker.connect({
+      sessionId: 'b',
+      onMessage: message => {
+        heard.push(message);
+      },
+      wireMode: 'object',
+    });
+    second.send({ jsonrpc: '2.0', id: 2, method: 'system_chain', params: [] });
+    const secondId = must(sent.at(-1)?.id, 'second upstream id');
+
+    // When the first upstream answers under the second request's broker id
+    must(listeners[0], 'first listener')({ jsonrpc: '2.0', id: secondId, result: 'stale' });
+
+    // Then the second session hears nothing
+    expect(heard).toEqual([]);
+  });
+
   it('As a dotli integrator, I close every session while the upstream opens, and the next session opens a fresh one', () => {
     // Given an upstream whose first opening closes every session before its provider call returns
     const harness = createProviderHarness();

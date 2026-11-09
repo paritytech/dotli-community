@@ -259,7 +259,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     }
   }
 
-  /** Opens the upstream from `closed`. Throws what the provider throws, and leaves the state `closed` then. */
+  /** Opens the upstream from `closed`. Throws what the provider throws, and returns an unchanged `opening` to `closed`. */
   function ensureUpstream(): void {
     if (state.kind !== 'closed') {
       return;
@@ -268,9 +268,13 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     const opening: UpstreamState = { kind: 'opening' };
     state = opening;
     let connection: JsonRpcConnection;
+    // The `open` member this call writes. A message from an upstream the broker closed or abandoned is dropped.
+    const mine: { open?: UpstreamState } = {};
     try {
       connection = provider(message => {
-        handleUpstreamMessage(message);
+        if (mine.open !== undefined && state === mine.open) {
+          handleUpstreamMessage(message);
+        }
       });
     } catch (error) {
       if (state === opening) {
@@ -283,7 +287,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       closeAbandonedUpstream(connection);
       return;
     }
-    state = { kind: 'open', connection };
+    mine.open = { kind: 'open', connection };
+    state = mine.open;
     logBrokerTraffic(
       `Upstream provider connected (send=${typeof connection.send}, disconnect=${typeof connection.disconnect})`,
     );
@@ -656,7 +661,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function disconnectUpstream(): void {
     const previous = state;
-    // Written first, so a later `connect` opens a fresh upstream even when closing this one throws.
+    // Written first, so a close that throws still leaves the upstream closed.
     state = getClosedState(previous);
     releaseUpstream(previous);
   }
