@@ -4,8 +4,9 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import { createManualTimers } from '@dotli/shared/testing';
+import { bindReports } from './testing/bindReports.js';
 import { rethrow } from './testing/rethrow.js';
-import { SandboxSilentError, watchSandboxLoad, type SandboxLoad } from './watchSandboxLoad.js';
+import { SandboxSilentError, watchSandboxLoad, type SandboxLoad, type SandboxLoadReport } from './watchSandboxLoad.js';
 
 const SANDBOX_ORIGIN = 'http://myapp.app.localhost:5173';
 
@@ -93,9 +94,80 @@ describe('watchSandboxLoad', () => {
     frame.postStatus({ done: true, outcome: 'loaded' });
     frame.postStatus({ done: true, outcome: 'failed', failedStep: 'content_fetch' });
 
-    // Then the first outcome stands and nothing is left listening
+    // Then the first outcome stands
     await expect(load.outcome).resolves.toEqual({ outcome: 'loaded', failedStep: undefined });
+  });
+
+  it('As a visitor whose app frame fails and then loads on my retry, I hear both outcomes in order', () => {
+    // Given a follower of the app frame's outcomes
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeOutcomes(report => heard.push(report));
+
+    // When the first attempt fails and the retry loads
+    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'archive_fetch' });
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then
+    expect(heard).toEqual([
+      { outcome: 'failed', failedStep: 'archive_fetch' },
+      { outcome: 'loaded', failedStep: undefined },
+    ]);
+  });
+
+  it('As a visitor, I start following my app frame after it reported twice and hear its latest outcome at once, then the next one', () => {
+    // Given an app frame that failed and then loaded before anyone followed it
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'archive_fetch' });
+    frame.postStatus({ done: true, outcome: 'loaded' });
+    const heard: SandboxLoadReport[] = [];
+
+    // When a follower subscribes and the frame reports again
+    load.subscribeOutcomes(report => heard.push(report));
+    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'content_fetch' });
+
+    // Then it heard the latest outcome first and then the new one
+    expect(heard).toEqual([
+      { outcome: 'loaded', failedStep: undefined },
+      { outcome: 'failed', failedStep: 'content_fetch' },
+    ]);
+  });
+
+  it('As a visitor whose watch on the app frame stopped, I hear no outcome the frame reports after', () => {
+    // Given a follower of a watch that was stopped
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeOutcomes(report => heard.push(report));
+    load.dispose();
+
+    // When the app frame reports
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then nothing was heard and nothing is left listening
+    expect(heard).toEqual([]);
     expect(frame.countListening()).toBe(0);
+  });
+
+  it('As an operator, I watch a follower of the app frame throw and see it reported while the other followers still hear the outcome', () => {
+    // Given a follower that throws and one that records
+    const { captures } = bindReports();
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    load.subscribeOutcomes(() => {
+      throw new Error('a follower broke');
+    });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeOutcomes(report => heard.push(report));
+
+    // When the app frame loads
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then the throw was reported as a listener's and the other follower heard the outcome
+    expect(captures.exception.mock.calls.map(([, context]) => context.step)).toEqual(['listener']);
+    expect(heard).toEqual([{ outcome: 'loaded', failedStep: undefined }]);
   });
 
   it('As a visitor whose watch on the app frame stopped, I wait out the deadline and nothing the frame said after counts', async () => {

@@ -7,7 +7,7 @@
 
 import { isLoadedOutcome, type SandboxChannel, type SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import { createReporter } from '@dotli/metrics';
-import { createDeferred, realTimers, withTimeout, type Timers } from '@dotli/shared';
+import { createDeferred, createListenerSet, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 /** What the sandbox reported about how its load ended, its failed step cleaned for a tag. */
 export type SandboxLoadReport = { outcome: SandboxLoadOutcome; failedStep: string | undefined };
@@ -28,14 +28,16 @@ const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
 const report = createReporter({ flow: 'content' });
 
 /**
- * Returns the page's watch on the sandbox's load. It listens from the call, so a sandbox that speaks before the
- * deadline starts still counts, and stops once the first outcome settled or `dispose` ran. Throws only as `channel.on`
- * does.
+ * Returns the page's watch on the sandbox's load. It listens from the call until `dispose`, so a sandbox that
+ * speaks before the deadline starts still counts, and a load that ends again, such as a retry, is heard too. Throws only
+ * as `channel.on` does.
  */
 export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers = realTimers }: Params = {}) {
   const heard = createDeferred<undefined>();
   const cleared = createDeferred<undefined>();
   const outcome = createDeferred<SandboxLoadReport>();
+  const outcomes = createListenerSet<SandboxLoadReport>({ onListenerError: report.listener('sandbox_load.outcome') });
+  let latest: SandboxLoadReport | null = null;
   // Dropped at the first stop, so a later one finds nothing to undo.
   let stopListening: (() => void) | undefined = channel.on(
     'dotli:loading-status',
@@ -47,12 +49,16 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
       }
       cleared.resolve(undefined);
       if (ended !== undefined) {
-        outcome.resolve({ outcome: ended, failedStep: isLoadedOutcome(ended) ? undefined : toTagStep(failedStep) });
+        const ending: SandboxLoadReport = {
+          outcome: ended,
+          failedStep: isLoadedOutcome(ended) ? undefined : toTagStep(failedStep),
+        };
+        latest = ending;
+        outcome.resolve(ending);
+        outcomes.emit(ending);
       }
     },
   );
-  // After the subscribe has returned, since the sandbox may already have reported during it.
-  void outcome.promise.then(dispose).catch(report.listener('sandbox_load.dispose'));
 
   return {
     /** Settles at the sandbox's first message about its load. Never rejects. */
@@ -61,6 +67,12 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     cleared: cleared.promise,
     /** Settles with its first outcome. Never rejects. */
     outcome: outcome.promise,
+    /**
+     * The listener hears the latest outcome at once when one came, then every later one in order. A listener that
+     * throws is reported and does not stop the others. The returned unsubscribe is safe to call more than once. Never
+     * throws.
+     */
+    subscribeOutcomes,
     /** Settles once heard, or rejects with `SandboxSilentError` when unheard for `silenceMs` from the call. */
     expectHeardWithin: (silenceMs = SANDBOX_SILENCE_MS): Promise<void> =>
       withTimeout({
@@ -70,11 +82,19 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
         timers,
       }),
     /**
-     * Stops listening, so a later message settles nothing, and leaves each promise as it stands. Safe to call again.
+     * Stops listening, so a later message settles and delivers nothing, and leaves each promise as it stands. Safe to
+     * call again.
      * Throws only as the unsubscribe `channel.on` returned does.
      */
     dispose,
   };
+
+  function subscribeOutcomes(listener: (report: SandboxLoadReport) => void): () => void {
+    if (latest !== null) {
+      outcomes.deliver(listener, latest);
+    }
+    return outcomes.subscribe(listener);
+  }
 
   function dispose(): void {
     const stop = stopListening;
