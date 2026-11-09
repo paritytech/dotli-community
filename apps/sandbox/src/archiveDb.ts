@@ -6,7 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import { openIdb, runIdbTransaction } from '@dotli/shared';
+import { isRecord, openIdb, runIdbTransaction } from '@dotli/shared';
 
 /** Where each file sits in the packed buffer: its path, offset and length. */
 export type ArchiveIndex = { p: string; o: number; l: number }[];
@@ -35,6 +35,13 @@ type PersistWorkerPageParams = { workerId: string; pageId: string };
 
 /** A record's key, read back as what the record holds. */
 type RecordKey = { kind: 'page'; id: string } | { kind: 'worker'; id: string } | { kind: 'newest' } | { kind: 'other' };
+
+/** A record read back with its value checked against the shape its key names. */
+type StoredRecord =
+  | { kind: 'page'; id: string; archive: PersistedArchive }
+  | { kind: 'worker'; id: string; pageId: string }
+  | { kind: 'newest'; id: string }
+  | { kind: 'other' };
 
 const ARCHIVE_DB_NAME = 'dotli-app-sw';
 const ARCHIVE_DB_VERSION = 2;
@@ -96,7 +103,11 @@ export async function persistWorkerPage(
   }
 }
 
-/** Every record the store kept. Rejects when the database cannot open or the transaction fails. */
+/**
+ * Every record the store kept. A record whose value does not have the shape its key names is left out, as if it was
+ * never kept, so a damaged record costs only its own page and never the read-back. Rejects when the database cannot
+ * open or the transaction fails.
+ */
 export async function loadPersistedArchives(indexedDB: IDBFactory): Promise<PersistedArchives> {
   const pages = new Map<string, PersistedArchive>();
   const workerPages = new Map<string, string>();
@@ -114,17 +125,16 @@ export async function loadPersistedArchives(indexedDB: IDBFactory): Promise<Pers
           if (record === null) {
             return;
           }
-          // This module is the only writer of the store, so each record has the shape its key names.
-          const key = parseRecordKey(record.key);
-          switch (key.kind) {
+          const stored = parseStoredRecord(record.key, record.value);
+          switch (stored.kind) {
             case 'page':
-              pages.set(key.id, record.value as PersistedArchive);
+              pages.set(stored.id, stored.archive);
               break;
             case 'worker':
-              workerPages.set(key.id, record.value as string);
+              workerPages.set(stored.id, stored.pageId);
               break;
             case 'newest':
-              newest = record.value as string;
+              newest = stored.id;
               break;
             case 'other':
               break;
@@ -152,6 +162,39 @@ function isRecordOfClosedClient(
     case 'other':
       return false;
   }
+}
+
+function parseStoredRecord(key: IDBValidKey, value: unknown): StoredRecord {
+  const parsed = parseRecordKey(key);
+  switch (parsed.kind) {
+    case 'page':
+      return isPersistedArchive(value) ? { kind: 'page', id: parsed.id, archive: value } : { kind: 'other' };
+    case 'worker':
+      return typeof value === 'string' ? { kind: 'worker', id: parsed.id, pageId: value } : { kind: 'other' };
+    case 'newest':
+      return typeof value === 'string' ? { kind: 'newest', id: value } : { kind: 'other' };
+    case 'other':
+      return parsed;
+  }
+}
+
+function isPersistedArchive(value: unknown): value is PersistedArchive {
+  return (
+    isRecord(value) &&
+    value['packed'] instanceof ArrayBuffer &&
+    Array.isArray(value['index']) &&
+    value['index'].every(isArchiveIndexEntry) &&
+    typeof value['directory'] === 'string'
+  );
+}
+
+function isArchiveIndexEntry(value: unknown): value is ArchiveIndex[number] {
+  return (
+    isRecord(value) &&
+    typeof value['p'] === 'string' &&
+    typeof value['o'] === 'number' &&
+    typeof value['l'] === 'number'
+  );
 }
 
 function parseRecordKey(key: IDBValidKey): RecordKey {

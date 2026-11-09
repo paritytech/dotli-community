@@ -36,6 +36,30 @@ async function keepEarlierReleaseArchive(indexedDB: IDBFactory): Promise<void> {
   }
 }
 
+/** Puts a record the store's writer never would, as a damaged store holds it. */
+async function putDamagedRecord(indexedDB: IDBFactory, { key, value }: { key: string; value: unknown }): Promise<void> {
+  const db = await openIdb({
+    factory: indexedDB,
+    name: 'dotli-app-sw',
+    version: 2,
+    upgrade: next => {
+      next.createObjectStore('archive');
+    },
+  });
+  try {
+    await runIdbTransaction({
+      db,
+      stores: 'archive',
+      mode: 'readwrite',
+      body: transaction => {
+        transaction.objectStore('archive').put(value, key);
+      },
+    });
+  } finally {
+    db.close();
+  }
+}
+
 describe('archive store', () => {
   it("As a worker, I keep two pages' archives and read both back with the newest named", async () => {
     // Given a store that kept page-a's archive while both pages are open
@@ -124,4 +148,49 @@ describe('archive store', () => {
     // Then it holds no page, no worker and no newest page
     expect(persisted).toEqual({ pages: new Map(), workerPages: new Map(), newest: null });
   });
+
+  it.each([
+    {
+      record: 'a page archive with no directory',
+      key: 'client:page-b',
+      value: { packed: new ArrayBuffer(1), index: [] },
+      expected: { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: 'page-a' },
+    },
+    {
+      record: 'a page archive whose index holds a bad entry',
+      key: 'client:page-b',
+      value: { packed: new ArrayBuffer(1), index: [{ p: 'index.html' }], directory: '/' },
+      expected: { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: 'page-a' },
+    },
+    {
+      record: 'a worker page that is not an id',
+      key: 'worker:worker-1',
+      value: 7,
+      expected: { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: 'page-a' },
+    },
+    {
+      record: 'a newest page that is not an id',
+      key: 'newest',
+      value: { id: 'page-a' },
+      expected: { pages: new Map([['page-a', createArchive(1)]]), workerPages: new Map(), newest: null },
+    },
+  ])(
+    'As a worker over a store holding $record, I skip that record and read back the rest',
+    async ({ key, value, expected }) => {
+      // Given a store that kept page-a's archive and then holds a record of the wrong shape
+      const indexedDB = new IDBFactory();
+      await persistPageArchive(indexedDB, {
+        clientId: 'page-a',
+        archive: createArchive(1),
+        liveClientIds: new Set(['page-a']),
+      });
+      await putDamagedRecord(indexedDB, { key, value });
+
+      // When the store is read back
+      const persisted = await loadPersistedArchives(indexedDB);
+
+      // Then the damaged record is left out and every other record reads back
+      expect(persisted).toEqual(expected);
+    },
+  );
 });
