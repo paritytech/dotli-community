@@ -93,7 +93,7 @@ export type LoaderPorts = {
     acquirePageCore: () => Promise<Pick<CoreLease, 'release'>>;
   };
   /** What the sandbox reported about its load. */
-  sandbox: Pick<SandboxLoad, 'outcome' | 'expectHeardWithin'>;
+  sandbox: Pick<SandboxLoad, 'subscribeOutcomes' | 'expectHeardWithin'>;
   /** The content's blocks as they pass through this window. */
   content: Pick<SandboxBlockRelay, 'onProgress'>;
 };
@@ -284,10 +284,13 @@ async function loadProduct(label: string, options: Params): Promise<void> {
   let resolveFailed = false;
   // Set once the load hears a refused wire version, which a failed load no longer does.
   let stopHearingMismatch: (() => void) | null = null;
+  // Set once the load follows the sandbox's outcomes, which a failed load no longer does.
+  let stopFollowingContent: (() => void) | null = null;
   /** Reports the failure and shows its screen. Throws what the screen threw. */
   function failLoad(error: unknown): void {
     resolveFailed = true;
     stopHearingMismatch?.();
+    stopFollowingContent?.();
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
     const description = describeError(error, { readBackend: () => backend });
     // Reported before rendering, in case rendering throws, and while the trace is still open, so the error lands in it.
@@ -336,40 +339,43 @@ async function loadProduct(label: string, options: Params): Promise<void> {
       });
     }
   }
-  // The content fetch outlives the handoff, so the trace waits for the sandbox's report.
+  // The content fetch outlives the handoff, so the load follows each attempt's outcome while the trace keeps the first.
   function settleOnContent(): void {
-    void ports.sandbox.outcome
-      .then(({ outcome, failedStep }) => {
-        if (resolveFailed) {
-          return;
-        }
-        const loaded = isLoadedOutcome(outcome);
-        pageTopbarAutoHide.setContentShown(loaded);
-        if (loaded) {
-          contentReport.log.event('Content loaded');
-          endJourney();
-          trace.finish('rendered');
-          return;
-        }
-        contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
-        trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
-      })
-      .catch(contentReport.listener('product_loader.content_outcome'));
+    stopFollowingContent = ports.sandbox.subscribeOutcomes(({ outcome, failedStep }) => {
+      if (resolveFailed) {
+        return;
+      }
+      const loaded = isLoadedOutcome(outcome);
+      pageTopbarAutoHide.setContentShown(loaded);
+      if (loaded) {
+        contentReport.log.event('Content loaded');
+        endJourney();
+        trace.finish('rendered');
+        return;
+      }
+      contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
+      trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+    });
   }
   /** Resolves false when a failure heard during the render already ended the load, so nothing after it runs. */
   async function render(cid: string, manifests: ProductManifests): Promise<boolean> {
     progress.enterContentFetch();
     enterStep('render_handoff');
     await coreHold;
-    settleOnContent();
-    await ports.product.render({
-      mode: 'subdomain',
-      label,
-      cid,
-      base: options.base,
-      chat,
-      facts: getProductFacts(manifests),
-    });
+    try {
+      await ports.product.render({
+        mode: 'subdomain',
+        label,
+        cid,
+        base: options.base,
+        chat,
+        facts: getProductFacts(manifests),
+      });
+    } catch (error) {
+      // A render that failed after it mounted the product leaves it holding its core under the failure screen.
+      ports.product.halt();
+      throw error;
+    }
     // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
     // the app would sit there with no chain or store, so the reload screen replaces it.
     stopHearingMismatch = options.onProtocolVersionMismatch(error => {
@@ -378,6 +384,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     if (resolveFailed) {
       return false;
     }
+    settleOnContent();
     // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
     void ports.sandbox.expectHeardWithin().catch((error: unknown) => {
       failAfterHandoff(error, 'a silent sandbox');

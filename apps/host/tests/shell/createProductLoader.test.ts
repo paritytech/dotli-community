@@ -14,13 +14,14 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
-import { createDeferred, withTimeout } from '@dotli/shared';
+import { createDeferred, createListenerSet, withTimeout } from '@dotli/shared';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageScreen } from '@dotli/ui';
 import { beginAttempt } from '../../src/journey.js';
+import { rethrow } from '../../src/testing/rethrow.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
 import { pageLoading } from '../../src/createLoadingController.js';
 import type { NameSource } from '../../src/createNameSource.js';
@@ -303,6 +304,58 @@ describe('createProductLoader', () => {
     expect(readResolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
   });
 
+  it('As a visitor whose app failed in the sandbox, I retry it there and once it loads my journey ends, with the trace keeping the first failure', async () => {
+    // Given a load whose content failed in the sandbox
+    const { loader, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+    await reportContent('failed', 'archive_fetch');
+
+    // When the retry in the sandbox loads, and the name is opened again
+    await reportContent('loaded');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
+  });
+
+  it('As a visitor whose app frame fails to come up after its sandbox said it loaded, I see the failure screen and my journey goes on', async () => {
+    // Given a frame whose render rejects after the sandbox reported its content loaded
+    const { loader, ports, failures, reportContent, readResolution } = setupLoader({
+      published: { doom: 'bafy-base' },
+    });
+    ports.product.render.mockImplementation(async () => {
+      await reportContent('loaded');
+      throw new Error('The checker panel failed to load');
+    });
+
+    // When the name is opened, and opened again
+    await loader.load('doom');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(failures).toHaveLength(1);
+    expect(readResolution()).toMatchObject({ outcome: 'error' });
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+    expect(nextAttempt.attemptNumber).toBe(2);
+  });
+
+  it('As a visitor whose sandbox said its content loaded while the app frame came up, I see the app and my journey ends', async () => {
+    // Given a frame whose render resolves after the sandbox reported its content loaded
+    const { loader, ports, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(async () => {
+      await reportContent('loaded');
+    });
+
+    // When the name is opened, and opened again
+    await loader.load('doom');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'rendered' });
+  });
+
   it('As a visitor, I open an app whose frame never starts and see the failure screen after its deadline instead of a loading bar for good', async () => {
     // Given
     const { loader, ports, failures, reportContent, timers, captured, readResolution } = setupLoader({
@@ -496,7 +549,8 @@ function setupLoader(params: Params = {}) {
   });
   const timers = createManualTimers();
   const failures: LoadFailure[] = [];
-  const loadOutcome = createDeferred<SandboxLoadReport>();
+  const sandboxOutcomes = createListenerSet<SandboxLoadReport>({ onListenerError: rethrow });
+  let latestOutcome: SandboxLoadReport | null = null;
   const heard = createDeferred<undefined>();
   if (params.silentSandbox !== true) {
     heard.resolve(undefined);
@@ -532,7 +586,12 @@ function setupLoader(params: Params = {}) {
       ),
     },
     sandbox: {
-      outcome: loadOutcome.promise,
+      subscribeOutcomes: (listener: (report: SandboxLoadReport) => void) => {
+        if (latestOutcome !== null) {
+          listener(latestOutcome);
+        }
+        return sandboxOutcomes.subscribe(listener);
+      },
       expectHeardWithin: () =>
         withTimeout({
           work: heard.promise,
@@ -622,7 +681,7 @@ function setupLoader(params: Params = {}) {
     countMismatchListeners: () => mismatchListeners.size,
     /** A protocol frame rebuilt from a newer release refusing this page's wire. */
     refuseWire,
-    /** The sandbox reporting its content's outcome, once. Resolves after the load has handled it. */
+    /** The sandbox reporting an outcome of its content. Resolves after the load has handled it. */
     reportContent,
   };
 
@@ -634,10 +693,11 @@ function setupLoader(params: Params = {}) {
     }
   }
 
-  async function reportContent(outcome: SandboxLoadOutcome, failedStep?: string): Promise<void> {
-    loadOutcome.resolve({ outcome, failedStep });
-    // Queued after the load's own reader, so it runs once that has handled the outcome.
-    await loadOutcome.promise;
+  function reportContent(outcome: SandboxLoadOutcome, failedStep?: string): Promise<void> {
+    const report = { outcome, failedStep };
+    latestOutcome = report;
+    sandboxOutcomes.emit(report);
+    return Promise.resolve();
   }
 }
 
