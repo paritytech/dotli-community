@@ -18,7 +18,7 @@ const page = fakeDebugPanelHost();
 /** Fails its next read once a story asks, and reads one file otherwise. */
 const flakyLoad = fakeArchiveLoader({ 'index.html': encodeText('<h1>hi</h1>') });
 
-/** Reads the second product's one file, unless a story holds its first read. */
+/** Reads one file, unless a story holds its first read. */
 const newProductLoad = fakeArchiveLoader({ 'new.txt': encodeText('new') });
 
 const meta = {
@@ -213,12 +213,12 @@ export const ReadOnceAcrossHideWhileLoading: Story = {
       await userEvent.click(toggle);
       await expect(await canvas.findByText(/Reading archive bafyroot/)).toBeVisible();
     });
-    await step('When I hide the tab and show it again', async () => {
+    await step('When I hide the tab, show it again and the pending read lands', async () => {
       await userEvent.click(toggle);
       await userEvent.click(toggle);
-    });
-    await step('Then the pending read lands in the archive and no second read started', async () => {
       heldRead.resolve({ 'held.txt': encodeText('held') });
+    });
+    await step('Then the pending read is listed and no second read started', async () => {
       await expect(await canvas.findByText('held.txt')).toBeVisible();
       await expect(newProductLoad).toHaveBeenCalledTimes(1);
     });
