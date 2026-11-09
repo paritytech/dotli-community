@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "integrate/media-stack-0.26-rebase",
-  "upstreamRevision": "ae96f8334e6a6c02cb92a4a8fc16df6a12fe213c",
+  "upstreamRevision": "ae96f833460e4d72e67b029146bac92bbaad5630",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -27,6 +27,6 @@
       }
     }
   },
-  "wasmUpstreamRevision": "ae96f8334e6a6c02cb92a4a8fc16df6a12fe213c",
+  "wasmUpstreamRevision": "ae96f833460e4d72e67b029146bac92bbaad5630",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1626"
 }
