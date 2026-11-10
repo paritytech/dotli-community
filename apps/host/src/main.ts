@@ -199,11 +199,9 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
     chat: Promise.resolve(true),
   });
   pageTopbarAutoHide.setContentShown(true);
-  if (proxied) {
-    // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's
-    // life, so the cleanup goes unused.
-    startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
-  }
+  // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's life,
+  // so the cleanup goes unused.
+  startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
   history.replaceState(null, '', getLocalTargetPath(target));
   performance.mark('dotli:main:end');
   if (proxied) {

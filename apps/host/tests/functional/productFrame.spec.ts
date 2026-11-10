@@ -142,3 +142,19 @@ test('As a developer previewing a web container app, I see it in the product fra
   expect(address.pathname).toBe('/__preview');
   expect(address.searchParams.get('url')).toBe(target);
 });
+
+test('As a developer previewing a web container app, I see the topbar fold away once the app shows', async ({
+  page,
+}) => {
+  // Given
+  const product = await servePreviewProduct(page, '/');
+
+  // When
+  await page.goto(product.shellUrl);
+
+  // Then
+  await expect(page.locator('[data-product-frame]')).toHaveAttribute('data-product-frame', 'connected', {
+    timeout: 15_000,
+  });
+  await expect(page.locator('#topbar')).toHaveAttribute('data-hidden', '', { timeout: 10_000 });
+});
