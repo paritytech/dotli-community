@@ -1,55 +1,36 @@
 # `@dotli/sandbox`
 
-The per-product origin that loads and renders a product's files. It runs inside the host's iframe and does no name
-resolution. See the root [README](../../README.md) for the product as a whole.
+The per-product origin that loads and renders a product's files inside the host's iframe. See the root
+[README](../../README.md) for the product as a whole.
 
 ## Responsibility
 
-- Read the host's URL contract, fetch and verify the product's content by CID, and write its page into the window.
-- Serve the product's files to its page through a service worker.
-- Ask for a password when content is encrypted, and show a retry screen when a load fails.
-- In a checker build, inject a script first in the product's page that reports each browser API the product reaches
-  around the host.
-- Not name resolution or the chain connection: the host and the protocol iframe do that. Block requests go to the host,
-  which proxies them to the protocol iframe.
+- **Load:** read the host's URL contract, then fetch and verify the content by CID. Write the product's page from it.
+- **Serve:** serve the product's files through a service worker.
+- **Screens:** a password prompt for encrypted content and a retry screen for failed loads.
+- **Checker build:** inject a script that reports each browser API the product reaches around the host.
+- **Not owned:** name resolution and chain connections. Block requests go to the host, which proxies them to the
+  protocol iframe.
 
 ## Design
 
-- Boot starts Sentry before any other module evaluates, then listens for chunk preload errors. The sandbox's own UI
-  (toasts, dialogs, the error page, the retry screen and the password dialog) is one chunk it loads the first time
-  something needs it, so a product that loads never fetches it, and nothing loads it once the product's page is written.
-- The entry builds each page dependency once, such as the messages to the host, the fallback screen and the block
-  bridge, and passes it to the units that use it as a param. The messages to the host, the block bridge, the archive
-  handoff and the runner's wait for the host take their timers as a param too, defaulting to the page's own.
-- A runner performs the load once, and again on each retry the visitor asks for, up to a limit. Every failure is
-  reported and shown. It refuses to run as a top-level page.
-- One load fetches and verifies the content while the service worker registers, and waits for the worker before it goes
-  on. It then hands an archive to the service worker and writes the page. It never throws, so the caller learns which
-  step failed.
-- Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way. The
-  sandbox tells the host it is starting as soon as its params check out, since the host fails a sandbox that stays
-  silent.
-- The service worker serves the archive's files byte for byte and keeps the archives in IndexedDB for restarts. It keeps
-  one archive per page and answers each request from its client's archive, a product worker's from the page that started
-  it, and a client it cannot place from the newest. Each handoff drops the archives of pages that have closed.
-  Navigations go to the network, since the page writes the product's index.html into its own window. A page written at a
-  deep link resolves its relative URLs under its own directory. The handoff names the directory the page is written at,
-  and the worker keeps it beside that page's archive, for restarts too. When a request that is not a navigation misses
-  the archive, the worker reads that directory as the archive root and looks again, wherever the page's router has moved
-  it since. An exact match always wins, and each page's last handoff's directory holds. Only on the dev server do the
-  sandbox's own module paths skip the archive. The page side registers it and checks its version. On a full reset it
-  waits for the fresh worker to take control, and goes on at once when the browser kept the worker that already controls
-  the page. The packed archive reaches the controlling worker by a handoff.
-- On a full reset, the first load purges the origin's stores of anything an earlier product left behind, before the
-  service worker registers, so a fresh worker starts clean. A retry keeps the state the first attempt left.
-- The password dialog comes with the sandbox's own UI. Its dialogs are `ModalView` data, with an icon component, that
-  the shared dialog renders.
-- The error page and the retry screen come with that chunk. A failed chunk load is not cached, so the next need loads it
-  again. While it is unavailable, a failure or retry shows a message with a Reload button from the static page, which
-  needs no chunk. The retry screen draws the brand's petal mark.
-- The service worker is built by the page's own config, after the page, into one file at the root.
-- The checker is a real module inlined as a classic script, so it runs before any product script. Its reports use the
-  violation message of the wire protocol. A normal build drops it, and the page loads the injector lazily.
+- **Runner:** runs the load, and again on each retry up to a limit. It refuses to run as a top-level page.
+- **Load:** fetches and verifies content while the service worker registers. It then hands the archive to the worker and
+  writes the page. It never throws, so the caller learns which step failed.
+- **Host channel:** blocks, progress and completion pass through a bridge to the host. The sandbox reports its start at
+  once, since the host fails a silent sandbox.
+- **Full reset:** the first load purges what an earlier product left, so a fresh worker starts clean.
+- **Lazy UI:** the sandbox's own UI is one chunk, loaded only when needed. A failed chunk load falls back to a static
+  Reload message.
+- **Checker:** a module inlined as a classic script, so it runs before any product script. A normal build drops it.
+
+### Service worker
+
+- Serves archive files byte for byte, kept in IndexedDB across restarts.
+- Keeps one archive per page and answers each client from its own page's archive.
+- Navigations go to the network, since the page writes the product's `index.html` itself.
+- A miss retries under the page's directory, so deep links and client routers resolve relative URLs.
+- Built into one file at the root.
 
 ```mermaid
 flowchart LR
@@ -60,7 +41,10 @@ flowchart LR
 
 ## Entry points
 
-- The sandbox page. Dev server on port 4002.
-- The service worker, one file at the root.
-- `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.
-- Its component stories run in the one Storybook at the repo root.
+| Entry                                                             | What it is                                   |
+| ----------------------------------------------------------------- | -------------------------------------------- |
+| Sandbox page                                                      | Dev server on port 4002.                     |
+| Service worker                                                    | One file at the root.                        |
+| `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test` | Develop and build. Check and run unit tests. |
+
+Component stories run in the one Storybook at the repo root.

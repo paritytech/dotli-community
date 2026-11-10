@@ -1,13 +1,25 @@
 # `@dotli/truapi-debug`
 
-The debug event bus and debug mode, with no UI. The host and its runtime emit their events here, and the debug panel
-listens. Everything the panel shows is built inside the panel.
+## Overview
 
-## Responsibility
+The debug event bus and debug mode, with no UI. The host emits events, and the debug panel listens and builds its views.
 
-- The debug event bus and the event types that cross it.
-- Whether debug mode is on for this page, and leaving it.
-- Not the panel's views or the models behind them, and not starting the panel, which the host does.
+## Responsibilities
+
+- **Owns:** the debug bus and its event types. It also owns whether debug mode is on.
+- **Does not own:** the panel's views and models, or starting the panel.
+
+## Public API
+
+### `@dotli/truapi-debug`
+
+- **Bus:** `debugBus` (`enableBuffering`, `emit`, `hasListeners`, `watch`, `subscribe`), `DebugBus`, `DebugBusEvent`.
+- **Events:** `DotliDebugEvent`, `TruapiDebugMessageEvent`.
+- **Debug mode:** `resolveDebugMode`, `isDebugModeOn`, `leaveDebugMode`, `DebugMode`, `DebugModePage`.
+
+### `@dotli/truapi-debug/testing`
+
+- `createDebugBus`: a separate bus for specs and stories.
 
 ## Design
 
@@ -16,21 +28,6 @@ flowchart LR
   host[host and runtime] -- emit --> bus[debug bus] -- listen --> panel[debug panel]
 ```
 
-- The bus is the single channel, one object the page keeps. It is off until buffering is enabled, so sessions that never
-  open debug mode pay nothing, and `emit` does nothing before then. Boot events are held until the first listener
-  attaches, which gets them replayed once and ends buffering for the session, even when nothing was held. A throwing
-  receiver is reported and the others still get the event.
-- Debug mode reads the URL and session storage through a passed-in page, so its spec runs under Node.
-
-## Public API
-
-### `@dotli/truapi-debug`
-
-- Bus: `debugBus`, the page's bus, with `enableBuffering`, `emit`, `hasListeners`, `watch` and `subscribe`. Its types
-  are `DebugBus` and `DebugBusEvent`.
-- Events: `DotliDebugEvent`, `TruapiDebugMessageEvent`.
-- Debug mode: `resolveDebugMode`, `isDebugModeOn`, `leaveDebugMode`, `DebugMode`, `DebugModePage`.
-
-### `@dotli/truapi-debug/testing`
-
-- `createDebugBus`: a bus apart from the page's, for specs and stories.
+- **Off by default:** `emit` does nothing until buffering is enabled, so normal sessions pay nothing.
+- **Boot replay:** boot events wait for the first listener, which gets them once.
+- **Isolated receivers:** a throwing receiver is reported, and the others still get the event.

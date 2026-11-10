@@ -146,6 +146,8 @@ Comments and docs:
 - Comments say why or what constraint applies. Never restate the code.
 - JSDoc starts with one sentence. Files may open with a short purpose block.
 - No em-dashes, semicolons or Unicode arrows in prose. No decorative separators. No spec citations in comments.
+- No tail enumeration: a sentence never ends in a list of three or more items, with or without a colon. Split it into
+  short sentences, or end the lead-in with a colon and put the items in a bullet list.
 - Say "network" or "remote", not "on-chain".
 - Every interface method's JSDoc states its contract, such as whether and with what it rejects.
 - Comments never claim a relation to other code, which can change without touching the comment. When two values must
@@ -156,6 +158,8 @@ Comments and docs:
 - Every package has a `README.md` in its root: its responsibility, basic design and public API (each `exports` entry),
   or entry points for an app. It explains the package at a high level and names no files and no other packages. Diagrams
   are mermaid, not ASCII. A change to any of these updates the README in the same commit.
+- A library README's sections run in this order: Overview, Responsibilities, Public API, Design. A consumer reads the
+  public API before the design.
 
 Tests:
 

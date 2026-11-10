@@ -185,6 +185,8 @@ above the linter: semantics, data flow and naming.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A JSDoc block that does not start with one sentence.
 - **minor** (AGENTS.md § Code style, Comments and docs:): An em-dash, semicolon or Unicode arrow in prose, a decorative
   separator, or a spec citation in a comment.
+- **minor** (AGENTS.md § Code style, Comments and docs:): A sentence in prose that ends in a list of three or more
+  items instead of short sentences or a bullet list.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "On-chain" where "network" or "remote" fits.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A comment that claims a relation to other code.
 - **minor** (AGENTS.md § Code style, Comments and docs:): An interface method whose JSDoc does not state its contract,
@@ -194,6 +196,8 @@ above the linter: semantics, data flow and naming.
   component or past incident instead of a general shape.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A package `README.md` that names files or other packages, or
   draws an ASCII diagram instead of mermaid.
+- **minor** (AGENTS.md § Code style, Comments and docs:): A library `README.md` whose sections are not Overview,
+  Responsibilities, Public API, Design, in that order.
 
 ## Tests
 
