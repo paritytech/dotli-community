@@ -1,21 +1,15 @@
 # `@config/eslint`
 
+## Overview
+
 Shared ESLint flat configs and the helpers that turn package layering into import bans. Internal (`private`).
 
-## Responsibility
+## Responsibilities
 
 - **Owns:** the lint rules every package shares, and the import-ban helpers.
 - **Does not own:** a package's allow-list. Each package lists what it may import in its own lint config.
 
-## Design
-
-- **`base`:** `@eslint/js` and `typescript-eslint` recommended, Prettier compat, the Turbo env-var rule.
-- **`vite`:** extends `base` for TypeScript code. Type-aware strict rules, Solid for `.tsx`, and the repo's code-style
-  bans.
-- **`astro`:** extends `vite` with Astro rules. Type-aware rules are off in `.astro` files, where `astro check` runs.
-- **Tests and stories:** matched by file pattern, so one config covers all of them.
-
-## Entry points
+## Public API
 
 | Entry                  | Exports                        |
 | ---------------------- | ------------------------------ |
@@ -40,3 +34,11 @@ export default config;
 ```
 
 A package that bans imports adds its own `tsconfigRootDir` and spreads `importBans(...)` after `config`.
+
+## Design
+
+- **`base`:** `@eslint/js` and `typescript-eslint` recommended, Prettier compat, the Turbo env-var rule.
+- **`vite`:** extends `base` for TypeScript code. Type-aware strict rules, Solid for `.tsx`, and the repo's code-style
+  bans.
+- **`astro`:** extends `vite` with Astro rules. Type-aware rules are off in `.astro` files, where `astro check` runs.
+- **Tests and stories:** matched by file pattern, so one config covers all of them.

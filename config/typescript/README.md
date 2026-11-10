@@ -1,13 +1,15 @@
 # `@config/typescript`
 
+## Overview
+
 Shared `tsconfig` bases, so every package compiles under the same strict settings.
 
-## Responsibility
+## Responsibilities
 
 - **Owns:** the compiler options every package extends.
 - **Does not own:** a package's `include`, `paths` or project references.
 
-## Entry points
+## Public API
 
 | File                              | What it sets                                                               |
 | --------------------------------- | -------------------------------------------------------------------------- |

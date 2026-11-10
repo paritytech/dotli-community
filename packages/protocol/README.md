@@ -1,10 +1,12 @@
 # `@dotli/protocol`
 
+## Overview
+
 The host page's client for the hidden protocol frame. The frame is the page at `/p/` on the root domain. It runs the
 light client and the shared store. This package turns its postMessage traffic into promises, streams and remote chain
 connections.
 
-## Responsibility
+## Responsibilities
 
 **Owns:**
 
@@ -14,6 +16,43 @@ connections.
 - Telemetry from the frame: chain sync, peers, traffic, the light client's saved database.
 
 **Does not own:** the frame's own code, name resolution logic, the chain pool, the light client or the halt marker.
+
+## Public API
+
+One entry, `@dotli/protocol`.
+
+| Export                                                                         | What it does                                   |
+| ------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `getProtocolClient`, `ProtocolClient`                                          | The page's client.                             |
+| `ProtocolFrameConfig`, `ProtocolStatus`, `isFrameDown`                         | Frame config, status, and whether it is down.  |
+| `ProtocolFatalError`, `ProtocolInitFailedError`                                | Frame errors.                                  |
+| `ProtocolPortReleasedError`, `ProtocolVersionMismatchError`                    | Frame errors.                                  |
+| `getProtocolOrigin`                                                            | The frame's origin.                            |
+| `getBackendOfFrameMode`                                                        | The backend a frame URL's mode names.          |
+| `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`    | Remote chain checks and connection.            |
+| `SharedStoreStatus`                                                            | The shared store's status.                     |
+| `SHARED_CORE_SESSION_KEY`, `SHARED_AUTH_KEY_PREFIX`, `SHARED_MODE_KEY_PREFIX`  | Store key names.                               |
+| `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`                       | Build a store key.                             |
+| `isValidSharedAuthKey`, `isValidSharedModeKey`                                 | Check a store key.                             |
+| `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, `isSharedModeRequestMethod` | Request guards.                                |
+| `LocalWalletIdentity`, `LocalWalletRead`, `LocalWalletReadResult`              | Local wallet types.                            |
+| `isLocalWalletEntropy`, `isLocalWalletIdentity`                                | Check a wallet that did not pass the codec.    |
+| `protocolSchema`, `ProtocolSchema`, `ProtocolHello`                            | The transport schema.                          |
+| `ProtocolTransport`, `ProtocolContext`, `ProtocolServing`, `ProtocolHandler`   | A transport over the schema, and handlers.     |
+| `FrameFailure`, `RemoteFailure`, `DomainFailure`, `SubscriptionEnd`            | Typed failures and subscription ends.          |
+| `SharedAuthChange`, `TelemetryEvent`                                           | What the auth and telemetry feeds send.        |
+| `createEndListeners`                                                           | Joins a subscription's `interrupt` and `fail`. |
+
+For the frame, which serves the schema and relays calls:
+
+| Export                                                                  | What it does                                    |
+| ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `getPolicy`, `MethodPolicy`, `getBudget`                                | A method's policy and budget.                   |
+| `getCallName`, `CallName`                                               | A method's name for metrics, trail and spans.   |
+| `createFrameStatus`, `FrameStatus`, `FrameStatusSink`, `FrameStatusEnd` | The `frame.status` subscription a frame serves. |
+| `toFrameStatusEnd`, `toRemoteEnd`                                       | End a status or a call on an error.             |
+| `fromTransportError`, `getFailure`                                      | Map errors to the protocol's classes.           |
+| `createWireReport`                                                      | Hooks that count and log refused wire messages. |
 
 ## Design
 
@@ -101,40 +140,3 @@ Each outcome becomes the error host code always saw, so the error screen, metric
 - **Compare-and-clear:** `sharedAuth.clearIf` and `sharedWallet.forgetIf` clear only if the value or version still
   matches, so another tab's newer write survives.
 - **Change feed:** a `session` change carries a key and value. A `wallet` change says a site's local wallet changed.
-
-## Public API
-
-One entry, `@dotli/protocol`.
-
-| Export                                                                         | What it does                                   |
-| ------------------------------------------------------------------------------ | ---------------------------------------------- |
-| `getProtocolClient`, `ProtocolClient`                                          | The page's client.                             |
-| `ProtocolFrameConfig`, `ProtocolStatus`, `isFrameDown`                         | Frame config, status, and whether it is down.  |
-| `ProtocolFatalError`, `ProtocolInitFailedError`                                | Frame errors.                                  |
-| `ProtocolPortReleasedError`, `ProtocolVersionMismatchError`                    | Frame errors.                                  |
-| `getProtocolOrigin`                                                            | The frame's origin.                            |
-| `getBackendOfFrameMode`                                                        | The backend a frame URL's mode names.          |
-| `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`    | Remote chain checks and connection.            |
-| `SharedStoreStatus`                                                            | The shared store's status.                     |
-| `SHARED_CORE_SESSION_KEY`, `SHARED_AUTH_KEY_PREFIX`, `SHARED_MODE_KEY_PREFIX`  | Store key names.                               |
-| `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`                       | Build a store key.                             |
-| `isValidSharedAuthKey`, `isValidSharedModeKey`                                 | Check a store key.                             |
-| `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, `isSharedModeRequestMethod` | Request guards.                                |
-| `LocalWalletIdentity`, `LocalWalletRead`, `LocalWalletReadResult`              | Local wallet types.                            |
-| `isLocalWalletEntropy`, `isLocalWalletIdentity`                                | Check a wallet that did not pass the codec.    |
-| `protocolSchema`, `ProtocolSchema`, `ProtocolHello`                            | The transport schema.                          |
-| `ProtocolTransport`, `ProtocolContext`, `ProtocolServing`, `ProtocolHandler`   | A transport over the schema, and handlers.     |
-| `FrameFailure`, `RemoteFailure`, `DomainFailure`, `SubscriptionEnd`            | Typed failures and subscription ends.          |
-| `SharedAuthChange`, `TelemetryEvent`                                           | What the auth and telemetry feeds send.        |
-| `createEndListeners`                                                           | Joins a subscription's `interrupt` and `fail`. |
-
-For the frame, which serves the schema and relays calls:
-
-| Export                                                                  | What it does                                    |
-| ----------------------------------------------------------------------- | ----------------------------------------------- |
-| `getPolicy`, `MethodPolicy`, `getBudget`                                | A method's policy and budget.                   |
-| `getCallName`, `CallName`                                               | A method's name for metrics, trail and spans.   |
-| `createFrameStatus`, `FrameStatus`, `FrameStatusSink`, `FrameStatusEnd` | The `frame.status` subscription a frame serves. |
-| `toFrameStatusEnd`, `toRemoteEnd`                                       | End a status or a call on an error.             |
-| `fromTransportError`, `getFailure`                                      | Map errors to the protocol's classes.           |
-| `createWireReport`                                                      | Hooks that count and log refused wire messages. |

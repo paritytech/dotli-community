@@ -1,11 +1,22 @@
 # `@dotli/stores-persistent`
 
+## Overview
+
 Keeps a nanostores atom in web storage.
 
-## Responsibility
+## Responsibilities
 
 - **Owns:** `createPersistentAtom`.
 - **Does not own:** which values are kept, their formats or the storage. The caller passes key, storage and codec.
+
+## Public API
+
+| Export                                                            | What it does                               |
+| ----------------------------------------------------------------- | ------------------------------------------ |
+| `createPersistentAtom({ key, storage, initial, decode, encode })` | A writable atom whose `init` is `initial`. |
+| `PersistentAtomParams`                                            | Its options.                               |
+
+`decode` returns `undefined` for text that no longer parses, which gives the initial value.
 
 ## Design
 
@@ -21,12 +32,3 @@ flowchart LR
 - **Defaults are not stored:** setting the initial value removes the key.
 - **No cross-tab sync:** another tab's later write shows only after a reload.
 - **Failing storage:** the atom keeps working in memory. Pass a storage that never throws.
-
-## Public API
-
-| Export                                                            | What it does                               |
-| ----------------------------------------------------------------- | ------------------------------------------ |
-| `createPersistentAtom({ key, storage, initial, decode, encode })` | A writable atom whose `init` is `initial`. |
-| `PersistentAtomParams`                                            | Its options.                               |
-
-`decode` returns `undefined` for text that no longer parses, which gives the initial value.

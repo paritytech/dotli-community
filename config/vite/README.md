@@ -1,25 +1,15 @@
 # `@config/vite`
 
+## Overview
+
 Build plugins and options shared by the host, sandbox and protocol builds.
 
-## Responsibility
+## Responsibilities
 
 - **Owns:** Vite and Astro plugins that several apps use, or that are too large for an app config.
 - **Does not own:** an app's own config. Each app merges its port, plugins and `define` values over the shared preset.
 
-## Design
-
-- **One entry per import:** each plugin an app or tool imports is its own export. The rest stays internal.
-- **Node only:** entries run in Node, type-checked without emitting.
-- **Serving table:** one table holds the routes and headers of every local server.
-  - Each server hands in its local roots once. Routes, headers, certificate and allowed hosts all follow them.
-  - Under a local root: a subdomain is a product's shell, `app.` is the sandbox, the root is the bare host.
-  - Files resolve in nginx's order, so the release and test servers agree.
-  - A spec checks header values against nginx's snippets. Which snippet each location includes is not checked.
-- **Runtime network config:** every local server reads `$DOTLI_NETWORK` once at start. A value that is not JSON stops
-  the server.
-
-## Entry points
+## Public API
 
 | Entry                      | What it does                                                                   |
 | -------------------------- | ------------------------------------------------------------------------------ |
@@ -47,3 +37,15 @@ Build plugins and options shared by the host, sandbox and protocol builds.
 
 **`./serving`:** `createLocalServing(roots)` builds everything that depends on the roots once. What reads no roots is a
 plain export.
+
+## Design
+
+- **One entry per import:** each plugin an app or tool imports is its own export. The rest stays internal.
+- **Node only:** entries run in Node, type-checked without emitting.
+- **Serving table:** one table holds the routes and headers of every local server.
+  - Each server hands in its local roots once. Routes, headers, certificate and allowed hosts all follow them.
+  - Under a local root: a subdomain is a product's shell, `app.` is the sandbox, the root is the bare host.
+  - Files resolve in nginx's order, so the release and test servers agree.
+  - A spec checks header values against nginx's snippets. Which snippet each location includes is not checked.
+- **Runtime network config:** every local server reads `$DOTLI_NETWORK` once at start. A value that is not JSON stops
+  the server.

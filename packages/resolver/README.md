@@ -1,13 +1,31 @@
 # `@dotli/resolver`
 
+## Overview
+
 Resolves a `.dot` name to its manifests and content hash from the dotNS contracts. Owns the dotNS naming rules.
 
-## Responsibility
+## Responsibilities
 
 - **Owns** dotNS reads: Registry and ContentResolver storage, contenthash decoding, manifest records and a name's owner.
 - **Owns** the wait for chain sync before a read, and the resolution errors.
 - **Owns** the naming rules: product hosts, valid labels and names, sandbox labels and manifest kinds.
 - **Does not own** chain connections, content fetching or the label to CID cache.
+
+## Public API
+
+### `@dotli/resolver`
+
+| Export                                                                                       | What it does                               |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`      | Resolves a name.                           |
+| `toRootManifestResult`, `toExecutableManifestResult`                                         | Validate manifest text.                    |
+| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                         | Manifest types.                            |
+| `dotNsUrl`                                                                                   | Tells a product host from a website.       |
+| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult` | Name validation.                           |
+| `getSandboxLabel`                                                                            | A product's sandbox origin label.          |
+| `isExecutableKind`                                                                           | Whether a kind has an executable manifest. |
+| `ResolverErrorName`, `isApiStoppedError`                                                     | Resolution errors.                         |
+| `loadResolve`                                                                                | Lazy loader.                               |
 
 ## Design
 
@@ -31,19 +49,3 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
   label is made drops every user's data.
 - **Contracts first:** check a rule change against the dotNS contracts (paritytech/dotns). Never refuse a name they can
   register.
-
-## Public API
-
-### `@dotli/resolver`
-
-| Export                                                                                       | What it does                               |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`      | Resolves a name.                           |
-| `toRootManifestResult`, `toExecutableManifestResult`                                         | Validate manifest text.                    |
-| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                         | Manifest types.                            |
-| `dotNsUrl`                                                                                   | Tells a product host from a website.       |
-| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult` | Name validation.                           |
-| `getSandboxLabel`                                                                            | A product's sandbox origin label.          |
-| `isExecutableKind`                                                                           | Whether a kind has an executable manifest. |
-| `ResolverErrorName`, `isApiStoppedError`                                                     | Resolution errors.                         |
-| `loadResolve`                                                                                | Lazy loader.                               |

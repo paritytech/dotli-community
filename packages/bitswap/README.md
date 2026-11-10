@@ -1,12 +1,26 @@
 # `@dotli/bitswap`
 
+## Overview
+
 Fetches single blocks from the Bulletin Chain, and relays a sandbox frame's block requests to the host.
 
-## Responsibility
+## Responsibilities
 
 - **Owns:** the `bitswap_v1_get` client, the host-side relay with content progress, and the per-block check on the
   Bitswap path.
 - **Does not own:** the hash functions, the block cache or the light client.
+
+## Public API
+
+### `@dotli/bitswap`
+
+| Export                                         | What it does                                  |
+| ---------------------------------------------- | --------------------------------------------- |
+| `createBitswapClient(params)`, `BitswapClient` | A client over the caller's Bulletin provider. |
+| `createSandboxBlockRelay`, `SandboxBlockRelay` | The host-side relay.                          |
+| `BlockCache`                                   | The block cache the relay takes.              |
+| `BlockOrigin`                                  | `cache` or `network`.                         |
+| `ContentProgress`                              | Bytes fetched, total and speed.               |
 
 ## Design
 
@@ -27,15 +41,3 @@ flowchart LR
 - **Host holds blocks:** the sandbox's credentialless origin loses its storage on reload.
 - **Progress:** totals come from a hand-decoded dag-pb root, to keep the decoder out of the eager bundle.
 - **Errors:** carry stable names, since the sandbox rebuilds them across `postMessage`.
-
-## Public API
-
-### `@dotli/bitswap`
-
-| Export                                         | What it does                                  |
-| ---------------------------------------------- | --------------------------------------------- |
-| `createBitswapClient(params)`, `BitswapClient` | A client over the caller's Bulletin provider. |
-| `createSandboxBlockRelay`, `SandboxBlockRelay` | The host-side relay.                          |
-| `BlockCache`                                   | The block cache the relay takes.              |
-| `BlockOrigin`                                  | `cache` or `network`.                         |
-| `ContentProgress`                              | Bytes fetched, total and speed.               |

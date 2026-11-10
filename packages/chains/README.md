@@ -1,14 +1,39 @@
 # `@dotli/chains`
 
+## Overview
+
 Connects to the chains dotli reads. Holds the in-browser light client, the gateway providers and the chain pool.
 
-## Responsibility
+## Responsibilities
 
 - **Owns** the smoldot light client, its saved database and its sync reporting.
 - **Owns** the gateway mode providers over trusted RPC nodes.
 - **Owns** the chain pool, its lanes, its JSON-RPC broker and the watch guard.
 - **Owns** the byte meter for the chains' inbound traffic, and the error a halted chain answers with.
 - **Does not own** what is read over a chain, or the connections the host reaches through the protocol frame.
+
+## Public API
+
+### `@dotli/chains`
+
+| Export                                                                                      | What it does                       |
+| ------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `createLightClient`, `createLightClientDeps`, `LightClient`, `LightClientDeps`              | The context's light client.        |
+| `LightClientStatus`, `LightClientChange`, `SmoldotDbChain`, `SmoldotDbOutcome`              | Its state and database outcomes.   |
+| `SMOLDOT_DB_NAME`                                                                           | Its saved database's name.         |
+| `chainSync`, `ChainDetail`, `ChainPeer`, `ChainSyncEvent`, `ChainSyncKind`                  | Sync reporting.                    |
+| `byteMeter`                                                                                 | Inbound byte count.                |
+| `createCoreRpcChainTransport`, `isCoreRpcChainSupported`, `getConnectedAssetHubRpcEndpoint` | Gateway chains.                    |
+| `ChainTransport`, `ChainTransportHooks`, `ConnectionStatus`, `RPC_FOLLOW_LIMIT`             | Transport types and follow limit.  |
+| `createChainPool`, `ChainPool`, `ChainPoolControl`, `ChainPoolWatcher`, `ChainActivity`     | The chain pool.                    |
+| `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`               | A provider leased from the broker. |
+| `ChainHaltError`, `getHaltReason`, `RemoteChainHalt`, `createChainHaltedError`              | Chain halts.                       |
+| `createJsonRpcError`                                                                        | Every transport's error answer.    |
+| `loadProvider`                                                                              | Lazy loader of the light client.   |
+
+### `@dotli/chains/testing`
+
+`FakeWebSocket`: a WebSocket fake for tests.
 
 ## Design
 
@@ -40,26 +65,3 @@ flowchart LR
 - **Fixed config only:** the light client and sync reporting also run in a worker, so they read only the fixed services
   config. Lint enforces it.
 - **Halt modules** import nothing that loads the pool, so an eager client can take them.
-
-## Public API
-
-### `@dotli/chains`
-
-| Export                                                                                      | What it does                       |
-| ------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `createLightClient`, `createLightClientDeps`, `LightClient`, `LightClientDeps`              | The context's light client.        |
-| `LightClientStatus`, `LightClientChange`, `SmoldotDbChain`, `SmoldotDbOutcome`              | Its state and database outcomes.   |
-| `SMOLDOT_DB_NAME`                                                                           | Its saved database's name.         |
-| `chainSync`, `ChainDetail`, `ChainPeer`, `ChainSyncEvent`, `ChainSyncKind`                  | Sync reporting.                    |
-| `byteMeter`                                                                                 | Inbound byte count.                |
-| `createCoreRpcChainTransport`, `isCoreRpcChainSupported`, `getConnectedAssetHubRpcEndpoint` | Gateway chains.                    |
-| `ChainTransport`, `ChainTransportHooks`, `ConnectionStatus`, `RPC_FOLLOW_LIMIT`             | Transport types and follow limit.  |
-| `createChainPool`, `ChainPool`, `ChainPoolControl`, `ChainPoolWatcher`, `ChainActivity`     | The chain pool.                    |
-| `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`               | A provider leased from the broker. |
-| `ChainHaltError`, `getHaltReason`, `RemoteChainHalt`, `createChainHaltedError`              | Chain halts.                       |
-| `createJsonRpcError`                                                                        | Every transport's error answer.    |
-| `loadProvider`                                                                              | Lazy loader of the light client.   |
-
-### `@dotli/chains/testing`
-
-`FakeWebSocket`: a WebSocket fake for tests.

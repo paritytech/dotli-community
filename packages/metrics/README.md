@@ -1,22 +1,15 @@
 # `@dotli/metrics`
 
+## Overview
+
 Metrics, spans and error capture over Sentry. Every call is a no-op unless the build turns metrics on.
 
-## Responsibility
+## Responsibilities
 
 - **Owns** the `m` metrics API and `spans`, the metric names more than one package reads.
 - **Owns** `createReporter`, the one way a feature reports.
 - **Owns** Sentry setup, the global error handlers and a recording Sentry for tests.
 - **Does not own** logging, or any feature's flow, metric or outcome. Each feature declares its own.
-
-## Design
-
-- **Compile-time switch:** `VITE_METRICS` picks the live `m` or an inert one of the same type. Callers never branch.
-- **SDK isolation:** only the Sentry modules import `@sentry/browser`, behind the same flag. A build without metrics
-  drops the SDK.
-- **Sinks:** capture forwards to a bound sink. Tests bind their own instead of mocking the package.
-- **Fingerprint:** a capture's flow and snake_case `step` form the issue fingerprint.
-- **Source tag:** Sentry setup tags each event with its `source` (`host`, `protocol`, `worker`, `sandbox`).
 
 ## Public API
 
@@ -46,3 +39,12 @@ Never imported by shipped code.
 ### `@dotli/metrics/testing/setup`
 
 Import it in a test runner's setup to record Sentry for the whole run.
+
+## Design
+
+- **Compile-time switch:** `VITE_METRICS` picks the live `m` or an inert one of the same type. Callers never branch.
+- **SDK isolation:** only the Sentry modules import `@sentry/browser`, behind the same flag. A build without metrics
+  drops the SDK.
+- **Sinks:** capture forwards to a bound sink. Tests bind their own instead of mocking the package.
+- **Fingerprint:** a capture's flow and snake_case `step` form the issue fingerprint.
+- **Source tag:** Sentry setup tags each event with its `source` (`host`, `protocol`, `worker`, `sandbox`).

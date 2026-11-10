@@ -1,9 +1,11 @@
 # `@dotli/truapi-debug-ui`
 
+## Overview
+
 The TrUAPI debug panel. A docked inspector for host to product traffic, name resolution, the product's archive, the
 wallet switch and diagnostics. It loads only in debug mode.
 
-## Responsibility
+## Responsibilities
 
 **Owns:**
 
@@ -15,22 +17,13 @@ wallet switch and diagnostics. It loads only in debug mode.
 **Does not own:** event capture, the bus, and the host's stores and layers. The host passes them through
 `DebugPanelHost`.
 
-## Design
+## Public API
 
-```mermaid
-flowchart LR
-  host -- "loadTruapiDebugMount()" --> setup["setupTruapiDebugPanel({ host })"] --> panel[Panel]
-  bus --> feed[panel feed] --> store["event store and resolution recorder"] --> panel
-```
-
-- **Own chunk:** a lazy loader keeps the panel out of the main bundle.
-- **One port:** the panel imports no host module and no chain library. Everything comes through `DebugPanelHost`. Lint
-  enforces it.
-- **Early feed:** the feed subscribes to the bus at once, so the boot replay is in the store before the panel mounts.
-- **Models import no Solid:** each is one function or factory, tested under Node. Stable keys let a view update in place
-  as traffic streams in.
-- **Frame-rate reads:** the event store publishes a growing change count. The panel re-reads it at most once a frame.
-- **Dispose:** gives the product iframe its full size back through `host.reportDockInset`.
+| Entry                            | Export                                                                    | What it does                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@dotli/truapi-debug-ui`         | `loadTruapiDebugMount`, `TruapiDebugMountModule`                          | Lazy loader. Its `setupTruapiDebugPanel` installs the panel and returns a dispose. |
+| `@dotli/truapi-debug-ui`         | `DebugPanelHost`, `DiagnosticsSource`, `DiagnosticsRow`, `PackageVersion` | The port the host implements, and its diagnostics types.                           |
+| `@dotli/truapi-debug-ui/testing` | `fakeDebugPanelHost`, `FakeDebugPanelHost`                                | A host port for specs and stories.                                                 |
 
 ## Using the panel
 
@@ -63,10 +56,19 @@ Good to know:
 2. Emit it.
 3. Fix the type check: the panel's models must give the event a one-line summary and a facts row.
 
-## Public API
+## Design
 
-| Entry                            | Export                                                                    | What it does                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `@dotli/truapi-debug-ui`         | `loadTruapiDebugMount`, `TruapiDebugMountModule`                          | Lazy loader. Its `setupTruapiDebugPanel` installs the panel and returns a dispose. |
-| `@dotli/truapi-debug-ui`         | `DebugPanelHost`, `DiagnosticsSource`, `DiagnosticsRow`, `PackageVersion` | The port the host implements, and its diagnostics types.                           |
-| `@dotli/truapi-debug-ui/testing` | `fakeDebugPanelHost`, `FakeDebugPanelHost`                                | A host port for specs and stories.                                                 |
+```mermaid
+flowchart LR
+  host -- "loadTruapiDebugMount()" --> setup["setupTruapiDebugPanel({ host })"] --> panel[Panel]
+  bus --> feed[panel feed] --> store["event store and resolution recorder"] --> panel
+```
+
+- **Own chunk:** a lazy loader keeps the panel out of the main bundle.
+- **One port:** the panel imports no host module and no chain library. Everything comes through `DebugPanelHost`. Lint
+  enforces it.
+- **Early feed:** the feed subscribes to the bus at once, so the boot replay is in the store before the panel mounts.
+- **Models import no Solid:** each is one function or factory, tested under Node. Stable keys let a view update in place
+  as traffic streams in.
+- **Frame-rate reads:** the event store publishes a growing change count. The panel re-reads it at most once a frame.
+- **Dispose:** gives the product iframe its full size back through `host.reportDockInset`.

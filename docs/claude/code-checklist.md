@@ -194,6 +194,8 @@ above the linter: semantics, data flow and naming.
   component or past incident instead of a general shape.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A package `README.md` that names files or other packages, or
   draws an ASCII diagram instead of mermaid.
+- **minor** (AGENTS.md § Code style, Comments and docs:): A library `README.md` whose sections are not Overview,
+  Responsibilities, Public API, Design, in that order.
 
 ## Tests
 

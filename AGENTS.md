@@ -156,6 +156,8 @@ Comments and docs:
 - Every package has a `README.md` in its root: its responsibility, basic design and public API (each `exports` entry),
   or entry points for an app. It explains the package at a high level and names no files and no other packages. Diagrams
   are mermaid, not ASCII. A change to any of these updates the README in the same commit.
+- A library README's sections run in this order: Overview, Responsibilities, Public API, Design. A consumer reads the
+  public API before the design.
 
 Tests:
 

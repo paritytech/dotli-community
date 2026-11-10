@@ -1,8 +1,10 @@
 # `@dotli/ui`
 
+## Overview
+
 The UI that more than one dotli app shows. It has no domain and no data source.
 
-## Responsibility
+## Responsibilities
 
 **Owns:**
 
@@ -13,30 +15,6 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 - Page helpers, generic icons, design tokens, global styles and the logo.
 
 **Does not own:** domain views. ESLint refuses chain libraries and any domain package.
-
-## Design
-
-- **Stores render, others act:** `toasts`, `modals` and `pageScreen` hold their state in an atom. The overlays render
-  it. Everything else opens, pushes and settles through the stores.
-- **Overlays mount late:** toasts and dialogs queue until the app mounts `Overlays`. Its container is marked
-  `data-overlays`, so a full-page screen keeps it.
-- **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
-- **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
-  Heavy content is the app's to load with `lazy()`.
-- **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
-  `ActionsContext`.
-- **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot
-  takes markup.
-- **Text only:** the error page and the notifier take text, so nothing a visitor typed is parsed as markup.
-- **Notifier:** always shows a toast. A hidden or unfocused tab also gets a system notification when allowed.
-- **Root boundary:** a broken root is reported once and renders nothing. Mounted roots, floating layers and the apps'
-  islands all use it.
-
-Traps:
-
-- `StepSlider` commits the picked stop even when it is the current one. Its owner decides what a repeat means.
-- `Accordion` with `open` is controlled. A header press only reports the next state through `onToggle`.
-- A disabled `SegmentedControl` keeps its options focusable, so a popover around it stays open.
 
 ## Public API
 
@@ -88,3 +66,27 @@ One component per icon, named `<Thing>Icon` (`CloseIcon`, `InfoIcon` and the res
 ### `@dotli/ui/styles.css`
 
 The tokens and global styles. The apps import it once.
+
+## Design
+
+- **Stores render, others act:** `toasts`, `modals` and `pageScreen` hold their state in an atom. The overlays render
+  it. Everything else opens, pushes and settles through the stores.
+- **Overlays mount late:** toasts and dialogs queue until the app mounts `Overlays`. Its container is marked
+  `data-overlays`, so a full-page screen keeps it.
+- **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
+- **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
+  Heavy content is the app's to load with `lazy()`.
+- **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
+  `ActionsContext`.
+- **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot
+  takes markup.
+- **Text only:** the error page and the notifier take text, so nothing a visitor typed is parsed as markup.
+- **Notifier:** always shows a toast. A hidden or unfocused tab also gets a system notification when allowed.
+- **Root boundary:** a broken root is reported once and renders nothing. Mounted roots, floating layers and the apps'
+  islands all use it.
+
+Traps:
+
+- `StepSlider` commits the picked stop even when it is the current one. Its owner decides what a repeat means.
+- `Accordion` with `open` is controlled. A header press only reports the next state through `onToggle`.
+- A disabled `SegmentedControl` keeps its options focusable, so a popover around it stays open.
