@@ -191,13 +191,19 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
 
   // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
   // unconditionally for product testing.
-  await shell.productFrame.render({
-    mode: 'iframe',
-    label: target.host,
-    url: target.url,
-    productId: target.productId,
-    chat: Promise.resolve(true),
-  });
+  try {
+    await shell.productFrame.render({
+      mode: 'iframe',
+      label: target.host,
+      url: target.url,
+      productId: target.productId,
+      chat: Promise.resolve(true),
+    });
+  } catch (error: unknown) {
+    // The boot's failure screen takes over, so the frame must not show the product again on a replacement core.
+    shell.productFrame.halt();
+    throw error;
+  }
   pageTopbarAutoHide.setContentShown(true);
   // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's life,
   // so the cleanup goes unused.
