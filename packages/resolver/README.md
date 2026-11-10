@@ -6,10 +6,21 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 
 ## Responsibilities
 
-- **Owns** dotNS reads: Registry and ContentResolver storage, contenthash decoding, manifest records and a name's owner.
+- **Owns** dotNS reads:
+  - Registry and ContentResolver storage
+  - contenthash decoding
+  - manifest records
+  - a name's owner
 - **Owns** the wait for chain sync before a read, and the resolution errors.
-- **Owns** the naming rules: product hosts, valid labels and names, sandbox labels and manifest kinds.
-- **Does not own** chain connections, content fetching or the label to CID cache.
+- **Owns** the naming rules:
+  - product hosts
+  - valid labels and names
+  - sandbox labels
+  - manifest kinds
+- **Does not own**:
+  - chain connections
+  - content fetching
+  - the label to CID cache
 
 ## Public API
 
@@ -41,7 +52,7 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 
 ### Naming rules
 
-- **Label:** lowercase ASCII letters, digits and inner hyphens. A registered label has at least 2 characters.
+- **Label:** lowercase ASCII letters and digits, with inner hyphens. A registered label has at least 2 characters.
 - **No `xn--`:** a punycode label can look like another name.
 - **Subname sandbox label:** `sn--` plus a hash of the name, since a wildcard certificate covers one label. So no label
   may start with `sn--`.

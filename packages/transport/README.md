@@ -3,12 +3,17 @@
 ## Overview
 
 A generic, two-way transport between documents. A schema declares requests and subscriptions from SCALE codecs. Both
-sides call and serve them over a window or a port. The library owns the handshake, correlation, cancellation and
-failure.
+sides call and serve them over a window or a port. The library owns the handshake and correlation. It also owns
+cancellation and failure.
 
 ## Responsibilities
 
-- **Owns:** the wire format, the handshake, call ids, cancellation and failure, and the window and port providers.
+- **Owns:**
+  - the wire format
+  - the handshake
+  - call ids
+  - cancellation and failure
+  - the window and port providers
 - **Does not own:** what the schemas mean. Each consumer declares its own methods and serves them.
 
 ## Public API
@@ -23,7 +28,7 @@ failure.
 | `RequestMessage`, `RequestTypes`, `SubscriptionMessage`, `SubscriptionTypes`     | What a method's sides send                      |
 | `codec`, `Codec`                                                                 | Wrap two functions as a SCALE codec             |
 | `ResultPayload`, `ok`, `err`                                                     | scale-ts's `Result`                             |
-| `CallError`, `domain`, `callError`                                               | The call error, its builder and codec           |
+| `CallError`, `domain`, `callError`                                               | The call error, with its builder and codec      |
 | `Failure`, `denied`, `unsupported`, `malformedFrame`, `hostFailure`, `cancelled` | Library failures                                |
 | `getFailureReason`, `parseReason`                                                | An error as `"<name>: <message>"`, and back     |
 | `createTransport`, `Transport`, `TransportParams`, `CallContext`                 | The transport                                   |
@@ -50,8 +55,16 @@ failure.
 | `timers`    | The clock for both                                      |
 | `onIssue`   | Hears every `TransportIssue`                            |
 
-A `Transport` has `connect`, `whenConnected`, `request`, `handleRequest`, `subscribe`, `handleSubscription`, `forward`
-and `dispose`.
+A `Transport` has these methods:
+
+- `connect`
+- `whenConnected`
+- `request`
+- `handleRequest`
+- `subscribe`
+- `handleSubscription`
+- `forward`
+- `dispose`
 
 **Trap:** for truapi's interrupt layout, declare `interrupt: Result(_void, callError(reason))` and end with `ok()` or
 `err(...)`.
@@ -144,13 +157,21 @@ const unsubscribe = frame.subscribe({
 - **Methods carry their types.** Calls and handlers take the method itself, so payloads and answers need no type
   argument.
 - **Request:** one payload, answered with `Result<Response, CallError<Domain>>`.
-- **Subscription:** one start, then values, then the method's own `Interrupt` or the caller's stop.
-- **`CallError`** uses truapi's layout: the handler's `Domain` error, or a library `Failure` (`Denied`, `Unsupported`,
-  `MalformedFrame`, `HostFailure`, `Cancelled`).
+- **Subscription:** one start, then values. It ends with the method's own `Interrupt` or the caller's stop.
+- **`CallError`** uses truapi's layout. It holds the handler's `Domain` error or a library `Failure`. A `Failure` is one
+  of:
+  - `Denied`
+  - `Unsupported`
+  - `MalformedFrame`
+  - `HostFailure`
+  - `Cancelled`
 - **Wire ids are positions** in the schema. Add new sections and methods at the end. Limits: 256 sections of 256
   methods, version 0 to 255.
-- **Frames** are SCALE: a call id and an enum of handshake, `failed` or `call`. A message stays bytes until its method
-  decodes it. Trailing bytes are refused as malformed.
+- **Frames** are SCALE. A message stays bytes until its method decodes it. Trailing bytes are refused as malformed. A
+  frame holds a call id and an enum of three variants:
+  - handshake
+  - `failed`
+  - `call`
 - **Stable forever:** the call id, the handshake variants and the wire version, so any release can read a refusal.
 - **Call ids:** the opener numbers odd, the accepter even.
 - **The provider is the trust boundary.** It moves bytes and the transport serves whoever it delivers. The window
@@ -195,8 +216,10 @@ sequenceDiagram
   Note over C: an aborted signal settles the call as Cancelled at once
 ```
 
-- A subscriber hears values, then exactly one end: `interrupt` (the peer's own), `fail` (a library failure) or `close`
-  (the local transport closed).
+- A subscriber hears values, then exactly one end:
+  - `interrupt`, the peer's own
+  - `fail`, a library failure
+  - `close`, the local transport closed
 - A handler returns a stop function. It runs once, however the subscription ends.
 
 ```mermaid
@@ -216,7 +239,12 @@ sequenceDiagram
 
 ### Closing
 
-- A transport closes on a wrong environment, a failed handshake, a version mismatch, a failed post, or `dispose`.
+- A transport closes on any of:
+  - a wrong environment
+  - a failed handshake
+  - a version mismatch
+  - a failed post
+  - `dispose`
 - Its requests then reject with the closing error. Its subscriptions hear `close`.
 - A closing transport posts nothing. Served subscriptions run their stop. Served requests stay unanswered.
 

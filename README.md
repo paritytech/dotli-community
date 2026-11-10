@@ -23,7 +23,7 @@ resolution, with no servers in the loop.
 ## How it works
 
 The `.dot` name is the subdomain: `host-playground.paseo.li` opens `host-playground.dot`. The root `paseo.li` is a
-landing page with search, recent apps and login.
+landing page with search and recent apps. You also log in there.
 
 ```mermaid
 flowchart LR
@@ -38,8 +38,8 @@ flowchart LR
    the dotNS contracts on Asset Hub Paseo.
 2. **Fetch:** the app origin loads the content from the
    [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) by bitswap or an IPFS gateway.
-3. **Render:** the app runs in a sandboxed iframe. The TrUAPI bridge gives it accounts, signing, chain connections and
-   scoped storage.
+3. **Render:** the app runs in a sandboxed iframe. The TrUAPI bridge gives it accounts and signing. It also gives it
+   chain connections and scoped storage.
 
 ```mermaid
 sequenceDiagram
@@ -65,16 +65,29 @@ Key decisions:
 What it is not:
 
 - **Not a wallet.** Per-app keys are derived on demand. Polkadot App signs.
-- **No backends.** No RPC servers, no pinning, no hosting.
+- **No backends.** No RPC servers. No pinning or hosting.
 - **Not production-hardened.** See [Security](#security).
 
-More: [resolution design](docs/resolution-design.md), [chain connections](docs/chain-connections.md), and the README in
-each app and package.
+More:
+
+- [resolution design](docs/resolution-design.md)
+- [chain connections](docs/chain-connections.md)
+- the README in each app and package
 
 ## TrUAPI bridge
 
-Apps talk to dotli over postMessage. Handlers: `accountGet`, `getLegacyAccounts`, `signPayload`, `signRaw`,
-`chainConnection`, `localStorageRead/Write/Clear`, `navigateTo`, `featureSupported`, `connectionStatus` and `chat.*`.
+Apps talk to dotli over postMessage. Handlers:
+
+- `accountGet`
+- `getLegacyAccounts`
+- `signPayload`
+- `signRaw`
+- `chainConnection`
+- `localStorageRead/Write/Clear`
+- `navigateTo`
+- `featureSupported`
+- `connectionStatus`
+- `chat.*`
 
 **Product chat:** a product that declares `includes.chat` in its `worker.<label>.<tld>` manifest gets a chat panel in
 the topbar. Chat needs a login. Messages stay on the device.
@@ -155,10 +168,10 @@ The first run registers a test account on the network and can take a few minutes
 
 ## Debug tools
 
-| Tool                | Turn on                                                       | Shows                                 |
-| ------------------- | ------------------------------------------------------------- | ------------------------------------- |
-| TrUAPI debug panel  | `VITE_APP_DEBUG=true` builds, `?debug=true`, or Settings menu | Host events and host-product messages |
-| Sandbox API checker | `VITE_SANDBOX_CHECKER=true` at build time                     | Web APIs a dApp calls past the bridge |
+| Tool                | Turn on                                                             | Shows                                 |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------- |
+| TrUAPI debug panel  | `?debug=true` or Settings menu. On in `VITE_APP_DEBUG=true` builds. | Host events and host-product messages |
+| Sandbox API checker | `VITE_SANDBOX_CHECKER=true` at build time                           | Web APIs a dApp calls past the bridge |
 
 - **Debug panel:** auto-mounts collapsed on `paseoli.dev` and `npm run preview:debug`. The choice lasts for the tab.
   `?debug=off` ends it. See [the panel's README](packages/truapi-debug-ui/README.md).
@@ -198,7 +211,10 @@ Before you deploy it for real use, **you are responsible** for:
 
 - **Reviewing** the code. This is a reference, not a hardened build.
 - **Checking** dependencies for known vulnerabilities.
-- **Securing** your fork or deployment (keys, secrets, network configuration).
+- **Securing** your fork or deployment:
+  - keys
+  - secrets
+  - network configuration
 - **Tracking** the latest release for security fixes. Older releases get no backports.
 
 See Parity's [Bug Bounty](https://parity.io/bug-bounty). **Do not** open a public issue for a security report. Follow

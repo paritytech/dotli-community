@@ -6,7 +6,7 @@ The debug event bus and debug mode, with no UI. The host emits events, and the d
 
 ## Responsibilities
 
-- **Owns:** the debug bus, its event types, and whether debug mode is on.
+- **Owns:** the debug bus and its event types. It also owns whether debug mode is on.
 - **Does not own:** the panel's views and models, or starting the panel.
 
 ## Public API

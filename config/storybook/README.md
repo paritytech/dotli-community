@@ -6,7 +6,11 @@ Tooling for the one Storybook at the repo root. Internal.
 
 ## Responsibilities
 
-- **Owns:** the shared preview, the page frame, the browser test config and setup, and play helpers.
+- **Owns:**
+  - the shared preview
+  - the page frame
+  - the browser test config and setup
+  - play helpers
 - **Does not own:** the Storybook config at the repo root, or stories and fixtures, which live beside their components.
 
 ## Public API
@@ -20,8 +24,8 @@ Tooling for the one Storybook at the repo root. Internal.
 
 ## Design
 
-- **Preview:** dark docs, a11y failures as errors, two viewports. It commits a story's args before render, so first
-  effects see them.
+- **Preview:** dark docs and two viewports. An a11y failure is an error. It commits a story's args before render, so
+  first effects see them.
 - **Page frame:** sets each story on the dotli page. A story that draws its own page sets `parameters.pageFrame` to
   `false`.
 - **Browser tests:** kept apart from unit test configs, so `npm test` needs no browser. Stories run in Chromium.

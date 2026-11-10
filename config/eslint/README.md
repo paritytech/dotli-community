@@ -37,8 +37,8 @@ A package that bans imports adds its own `tsconfigRootDir` and spreads `importBa
 
 ## Design
 
-- **`base`:** `@eslint/js` and `typescript-eslint` recommended, Prettier compat, the Turbo env-var rule.
-- **`vite`:** extends `base` for TypeScript code. Type-aware strict rules, Solid for `.tsx`, and the repo's code-style
-  bans.
+- **`base`:** `@eslint/js` and `typescript-eslint` recommended, with Prettier compat. It adds the Turbo env-var rule.
+- **`vite`:** extends `base` for TypeScript code. It adds type-aware strict rules and Solid for `.tsx`. It also adds the
+  repo's code-style bans.
 - **`astro`:** extends `vite` with Astro rules. Type-aware rules are off in `.astro` files, where `astro check` runs.
 - **Tests and stories:** matched by file pattern, so one config covers all of them.

@@ -1,49 +1,72 @@
 # `@dotli/host`
 
-The top-level shell of dotli, built with Astro. It owns the topbar, the session and the bridge. It opens a product by
-`.dot` name inside a sandbox iframe. See the root [README](../../README.md) for the product as a whole.
+The top-level shell of dotli, built with Astro. It owns the topbar and the session. It also owns the bridge. It opens a
+product by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) for the product as a whole.
 
 ## Responsibility
 
-- **Routing:** send a page load to a product, a local or preview target, or the landing page.
+- **Routing:** send a page load to a product or the landing page. A local or preview target is routed too.
   - A product is named by its host (`<label>.<domain>`), or on the bare host by the first path segment
     (`<domain>/<name>`). It gets only the path after that.
   - A subname such as `pr16.my-app` opens by path only, since a wildcard certificate covers one label.
 - **Product load:** take a `.dot` label to a product on screen, or to a screen that says why not.
-- **Page chrome:** topbar, URL pill, product card, loading screen, settings, account, permissions and network views.
+- **Page chrome:**
+  - the topbar
+  - the URL pill
+  - the product card
+  - the loading screen
+  - the settings view
+  - the account view
+  - the permissions view
+  - the network view
 - **Building blocks:** domain views (account, chat, permission, appearance, signing, chain) and their icons. They take
-  props, read no store and report intent through callbacks.
-- **Startup:** the protocol iframe, the TrUAPI bridge and, on a page with a sign-in modal, the auth controller.
-- **TrUAPI host side and session:** the page core, the host callbacks, sign-in and sign-out with Polkadot App or a local
-  wallet, the signed-in flag, the wallet mode, and the auth, product, permission, theme and chat stores.
+  props and read no store. They report intent through callbacks.
+- **Startup:** the protocol iframe and the TrUAPI bridge. On a page with a sign-in modal, also the auth controller.
+- **TrUAPI host side:** the page core and the host callbacks.
+- **Session:** sign-in and sign-out with Polkadot App or a local wallet. It also owns the signed-in flag and the wallet
+  mode.
+- **Stores:**
+  - auth
+  - product
+  - permission
+  - theme
+  - chat
 - **Not owned:** content rendering. The sandbox does that.
 
 ## Design
 
 ### Pages and boot
 
-- Three Astro pages, each with its own entry: the shell, the landing page and the session window.
+- Three Astro pages, each with its own entry:
+  - the shell
+  - the landing page
+  - the session window
 - Every entry starts Sentry first and picks the page's role before boot reads anything. It then runs the page start and
   the host start.
 - The page start imports the shared stylesheet, so it goes first.
-- The host start reads settings and starts the protocol iframe, the bridge and, on a page with a sign-in modal, the auth
-  controller.
+- The host start reads settings and starts the protocol iframe and the bridge. On a page with a sign-in modal, it also
+  starts the auth controller.
 - Static markup is Astro. Interactive controls are Solid islands.
 
 ### Settings
 
-- Read once at boot from the link, the store every subdomain shares and this origin's storage. Written back to both.
+- Read once at boot from the link. Also read from the store every subdomain shares and from this origin's storage, and
+  written back to both.
 - A link that changes a saved choice wipes and reloads, as Save does.
-- The protocol frame lives at `/p/` on the root domain, which it shares with the landing page, the session window and
-  products opened by path. A settings wipe there clears only the host's own keys and databases.
+- The protocol frame lives at `/p/` on the root domain. The landing page, the session window and products opened by path
+  live there too. A settings wipe there clears only the host's own keys and databases.
 
 ### State
 
-- **Session layer:** the auth state, the signed-in flag, the restore rule and the session lease. It sits apart from the
-  TrUAPI host callbacks.
+- **Session layer:** sits apart from the TrUAPI host callbacks. It holds:
+  - the auth state
+  - the signed-in flag
+  - the restore rule
+  - the session lease
 - **Runtime state** (auth, product, permissions, theme, wallet mode) lives with the runtime.
 - **Page chrome state** (topbar, URL pill, product card, chat panel, network) lives with the page.
-- Each state is an entity object with a read-only store, getters and setters. Modules follow the code style guide.
+- Each state is an entity object with a read-only store. It exposes getters and setters. Modules follow the code style
+  guide.
 
 ### TrUAPI bridge and cores
 
@@ -57,9 +80,17 @@ The top-level shell of dotli, built with Astro. It owns the topbar, the session 
 
 ### Page roles
 
-Each entry picks one role: a product page, the landing page, a standalone preview, a framed preview, the sign-in window
-or the sign-out window. The role alone decides where a sign-in runs, how the page treats the signed-in flag, and whether
-it restores or offers to continue a session.
+Each entry picks one role:
+
+- a product page
+- the landing page
+- a standalone preview
+- a framed preview
+- the sign-in window
+- the sign-out window
+
+The role alone decides where a sign-in runs and how the page treats the signed-in flag. It also decides whether the page
+restores or offers to continue a session.
 
 ### Session
 
@@ -68,14 +99,15 @@ Safari keeps each product's sign-in apart, so a product's copy may not be the ma
 - **Presence flag:** a cookie on the root domain and every subdomain that says whether some sign-in exists. It holds
   presence only, never a secret. On a local root, Chromium refuses it, so it lives in the local server's store.
 - **Restore rule:** clears a paired session the flag says is gone. It never clears the local wallet. An unreadable flag
-  keeps everything. It runs on load and whenever the flag, the local wallet or page visibility changes.
+  keeps everything. It runs on load. It runs again whenever the flag or the local wallet changes, and when page
+  visibility changes.
 - **Continue:** a page that shows signed out while the flag says a sign-in exists offers to continue it.
 - **Flag writer:** pages that write the main store raise the flag before storing a sign-in and drop it after clearing
   the last one.
 - **Sign-in:** a product signs in through the sign-in window, opened in the click's turn. The result goes into the
   page's copy. The landing page and a preview pair in place.
 - **Sign-out:** opens the sign-out window and drops the flag in the same turn. In paired mode the page ends the session
-  on its own core, so the phone hears. In local mode it waits for the window, forgets the wallet and reloads.
+  on its own core, so the phone hears. In local mode it waits for the window. Then it forgets the wallet and reloads.
 - **Landing page lease:** the landing page holds a lease on its core while a paired session is stored, so it hears the
   phone end it.
 - **Auth controller:** drives the sign-in modal and holds the blocking-modal lease, so one blocking prompt shows at a
@@ -83,8 +115,8 @@ Safari keeps each product's sign-in apart, so a product's copy may not be the ma
 
 ### Session windows
 
-One page on the bare host serves `/s/auth`, `/s/signout`, `/s/manage` and `/s/sign`. It keeps its request in session
-storage, so a reload answers the same round.
+One page on the bare host serves `/s/auth` and `/s/signout`. It also serves `/s/manage` and `/s/sign`. It keeps its
+request in session storage, so a reload answers the same round.
 
 - **Trust:** it answers only an opener on an allowed origin, and replies to that origin alone.
 - **dot.li's own page:** the window decides from the main store, never from the opener.
@@ -142,8 +174,13 @@ storage, so a reload answers the same round.
 
 ### Build
 
-The Astro config adds the web manifest, the signing worker, the dev SPA fallback, a Sentry release upload and a service
-worker that retires the one earlier releases installed.
+The Astro config adds:
+
+- the web manifest
+- the signing worker
+- the dev SPA fallback
+- a Sentry release upload
+- a service worker that retires the one earlier releases installed
 
 ### Diagrams
 
@@ -175,18 +212,18 @@ sequenceDiagram
 
 ## Entry points
 
-| Entry          | Served for                                                       |
-| -------------- | ---------------------------------------------------------------- |
-| Shell page     | Product pages. Dev server on port 4001.                          |
-| Landing page   | The bare host's root.                                            |
-| Session window | The bare host's `/s/auth`, `/s/signout`, `/s/manage`, `/s/sign`. |
-| Service worker | One file at the root. Retires the earlier one.                   |
+| Entry          | Served for                                          |
+| -------------- | --------------------------------------------------- |
+| Shell page     | Product pages. Dev server on port 4001.             |
+| Landing page   | The bare host's root.                               |
+| Session window | The four session paths under the bare host's `/s/`. |
+| Service worker | One file at the root. Retires the earlier one.      |
 
-| Command                                                       | Purpose                |
-| ------------------------------------------------------------- | ---------------------- |
-| `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`     | Develop, build, check. |
-| `npm test`                                                    | Unit specs.            |
-| `test:functional`, `test:e2e`, `test:e2e:local`, `test:perf*` | Playwright suites.     |
+| Command                                                       | Purpose                                |
+| ------------------------------------------------------------- | -------------------------------------- |
+| `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`     | Develop and build. Typecheck and lint. |
+| `npm test`                                                    | Unit specs.                            |
+| `test:functional`, `test:e2e`, `test:e2e:local`, `test:perf*` | Playwright suites.                     |
 
 - **Trap:** a functional run needs the root `build:test` build, as CI does. It turns metrics on and sets a Sentry DSN.
   Without it, Sentry sends nothing and the light client gauge never reaches the preview server.

@@ -6,9 +6,14 @@ Fetches single blocks from the Bulletin Chain, and relays a sandbox frame's bloc
 
 ## Responsibilities
 
-- **Owns:** the `bitswap_v1_get` client, the host-side relay with content progress, and the per-block check on the
-  Bitswap path.
-- **Does not own:** the hash functions, the block cache or the light client.
+- **Owns:**
+  - the `bitswap_v1_get` client
+  - the host-side relay with content progress
+  - the per-block check on the Bitswap path
+- **Does not own:**
+  - the hash functions
+  - the block cache
+  - the light client
 
 ## Public API
 
@@ -20,7 +25,7 @@ Fetches single blocks from the Bulletin Chain, and relays a sandbox frame's bloc
 | `createSandboxBlockRelay`, `SandboxBlockRelay` | The host-side relay.                          |
 | `BlockCache`                                   | The block cache the relay takes.              |
 | `BlockOrigin`                                  | `cache` or `network`.                         |
-| `ContentProgress`                              | Bytes fetched, total and speed.               |
+| `ContentProgress`                              | Bytes fetched out of the total, and speed.    |
 
 ## Design
 

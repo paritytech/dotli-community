@@ -5,7 +5,7 @@ The per-product origin that loads and renders a product's files inside the host'
 
 ## Responsibility
 
-- **Load:** read the host's URL contract, fetch and verify the content by CID, and write the product's page.
+- **Load:** read the host's URL contract, then fetch and verify the content by CID. Write the product's page from it.
 - **Serve:** serve the product's files through a service worker.
 - **Screens:** a password prompt for encrypted content and a retry screen for failed loads.
 - **Checker build:** inject a script that reports each browser API the product reaches around the host.
@@ -41,10 +41,10 @@ flowchart LR
 
 ## Entry points
 
-| Entry                                                             | What it is                        |
-| ----------------------------------------------------------------- | --------------------------------- |
-| Sandbox page                                                      | Dev server on port 4002.          |
-| Service worker                                                    | One file at the root.             |
-| `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test` | Develop, build, check, unit test. |
+| Entry                                                             | What it is                                   |
+| ----------------------------------------------------------------- | -------------------------------------------- |
+| Sandbox page                                                      | Dev server on port 4002.                     |
+| Service worker                                                    | One file at the root.                        |
+| `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test` | Develop and build. Check and run unit tests. |
 
 Component stories run in the one Storybook at the repo root.

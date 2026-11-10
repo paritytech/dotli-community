@@ -2,13 +2,17 @@
 
 ## Overview
 
-Connects to the chains dotli reads. Holds the in-browser light client, the gateway providers and the chain pool.
+Connects to the chains dotli reads. Holds the in-browser light client and the gateway providers. Also holds the chain
+pool.
 
 ## Responsibilities
 
-- **Owns** the smoldot light client, its saved database and its sync reporting.
+- **Owns** the smoldot light client and its saved database. It also owns the client's sync reporting.
 - **Owns** the gateway mode providers over trusted RPC nodes.
-- **Owns** the chain pool, its lanes, its JSON-RPC broker and the watch guard.
+- **Owns** the chain pool and what it runs on:
+  - its lanes
+  - its JSON-RPC broker
+  - the watch guard
 - **Owns** the byte meter for the chains' inbound traffic, and the error a halted chain answers with.
 - **Does not own** what is read over a chain, or the connections the host reaches through the protocol frame.
 

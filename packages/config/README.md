@@ -2,14 +2,24 @@
 
 ## Overview
 
-Build-time and runtime configuration: the environment, networks, chain services, user settings and timeouts.
+Build-time and runtime configuration:
+
+- the environment
+- networks
+- chain services
+- user settings
+- timeouts
 
 ## Responsibilities
 
 - **Owns** the network table (dotNS contracts, chain services, TLD) and the active network.
 - **Owns** the local roots, read by pages and the local servers.
-- **Owns** the backend and cache settings, their storage keys and their URL form.
-- **Does not own** the host to sandbox wire, logging, metrics or product data storage.
+- **Owns** the backend and cache settings with their storage keys. It also owns the settings' URL form.
+- **Does not own**:
+  - the host to sandbox wire
+  - logging
+  - metrics
+  - product data storage
 
 ## Public API
 
@@ -61,11 +71,13 @@ The network table for Node tooling. Reads no page state.
 - **Base domain:** comes from the hostname and is never defaulted silently. The cross-origin allowlist is keyed on it.
 - **Local roots:** `localhost` and `local.host` stand for the root domain. `local.host` is a public name, so only a
   development build trusts it.
-- **Runtime config:** a build made for it reads a global that a blocking script sets. It may override endpoints, the
-  enabled networks and `baseDomain`. A bad value stops the boot, since an ignored override would run against the public
-  chain.
-- **Settings:** the network, the backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches.
-  A page resolves them once at boot. A change reloads the page.
+- **Runtime config:** a build made for it reads a global that a blocking script sets. It may override endpoints and the
+  enabled networks. It may also override `baseDomain`. A bad value stops the boot, since an ignored override would run
+  against the public chain.
+- **Settings:** a page resolves them once at boot. A change reloads the page. The settings are:
+  - the network
+  - `smoldot-direct`, `smoldot-shared-worker` or `rpc-gateway` as the backend
+  - cache switches
 - **Backend facts:** ask what a backend can do (`hasLightClient`), never compare its name.
 - **Chain roles:** a chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere.
 - **URL form:** settings travel between origins as URL params. Defaults are stripped, so a clean URL means defaults.

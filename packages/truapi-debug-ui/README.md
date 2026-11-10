@@ -2,20 +2,38 @@
 
 ## Overview
 
-The TrUAPI debug panel. A docked inspector for host to product traffic, name resolution, the product's archive, the
-wallet switch and diagnostics. It loads only in debug mode.
+The TrUAPI debug panel. It loads only in debug mode. It is a docked inspector for:
+
+- host to product traffic
+- name resolution
+- the product's archive
+- the wallet switch
+- diagnostics
 
 ## Responsibilities
 
 **Owns:**
 
 - The panel's views and their state.
-- The models behind them: event store, call and reply correlation, filters, timeline, resolution, export, payload
-  decoding, the stored dock position and section.
-- Its own components, icons, tokens and phone breakpoint.
+- The models behind them:
+  - event store
+  - call and reply correlation
+  - filters
+  - timeline
+  - resolution
+  - export
+  - payload decoding
+  - the stored dock position and section
+- Its own components and icons.
+- Its own tokens and phone breakpoint.
 
-**Does not own:** event capture, the bus, and the host's stores and layers. The host passes them through
-`DebugPanelHost`.
+**Does not own:**
+
+- event capture
+- the bus
+- the host's stores and layers
+
+The host passes them through `DebugPanelHost`.
 
 ## Public API
 
@@ -52,7 +70,11 @@ Good to know:
 
 ### Adding a host event
 
-1. Add it to the debug bus's event union with a layer, an event name, a flow id and a payload.
+1. Add it to the debug bus's event union with:
+   - a layer
+   - an event name
+   - a flow id
+   - a payload
 2. Emit it.
 3. Fix the type check: the panel's models must give the event a one-line summary and a facts row.
 

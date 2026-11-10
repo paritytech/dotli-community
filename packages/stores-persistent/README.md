@@ -7,7 +7,8 @@ Keeps a nanostores atom in web storage.
 ## Responsibilities
 
 - **Owns:** `createPersistentAtom`.
-- **Does not own:** which values are kept, their formats or the storage. The caller passes key, storage and codec.
+- **Does not own:** which values are kept, or their formats. Nor the storage, which the caller passes with a key and a
+  codec.
 
 ## Public API
 

@@ -9,10 +9,18 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 **Owns:**
 
 - The toast, dialog and page screen stores, which decide how a toast or dialog settles.
-- Primitives, floating layers and the action group.
-- The shared screens: the error page, the notifier, the prompt dialog, the modal outlet and the chunk reload offer.
+- Primitives and floating layers.
+- The action group.
+- The shared screens:
+  - the error page
+  - the notifier
+  - the prompt dialog
+  - the modal outlet
+  - the chunk reload offer
 - Mounting a view inside an error boundary, and the overlay container.
-- Page helpers, generic icons, design tokens, global styles and the logo.
+- Page helpers and generic icons.
+- Design tokens and global styles.
+- The logo.
 
 **Does not own:** domain views. ESLint refuses chain libraries and any domain package.
 
@@ -20,31 +28,35 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 
 ### `@dotli/ui`
 
-- **Primitives:** `Accordion`, `AccordionProps`, `Button`, `ButtonLink`, `ButtonVariant`, `Chip`, `IconButton`,
-  `IconTile`, `Choice`, `SegmentedControl`, `SegmentOption`, `StepSlider`, `StepSliderProps`, `StepSliderStop`,
-  `Spinner`, `StatusDot`, `Surface`, `SurfaceHead`, `SurfaceFoot`, `Hint`, `Switch`, `Well`, `Callout`, `Row`, `Stack`,
-  `SectionLabel`.
-- **Floating layers:** `Modal`, `Popover`, `usePopover`, `Tooltip`, `LayerTracker`, `ModalFocusFallback`,
-  `TrackedLayer`.
-- **Action group:** `ActionGroup`, `ActionItem`, `ActionItemProps`, `ActionsContext`, `PINNED` (never collapses),
-  `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar`, `ActionEntry`.
-- **Stores:** `modals` (the dialog queue), `toasts`, `pageScreen` (the full-page screen slot), and the types
-  `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`, `ModalButtonVariant`, `ModalHandoff`,
-  `ToastEntry`, `PageContent`.
-- **Page helpers:** `focusables`, `runWhenIdle`, `preloadWhenIdle`, `isPhoneViewport`, `watchPhoneViewport`,
-  `prefersReducedMotion`, `StatusTone`.
-- **Helpers:** `createDrags` with `Drags` (one pointer drag per component), `isFocusLostOrInside`, `focusTrigger`.
-- **Roots:** `mountRoot`, `RootBoundary`, `ensureOverlayRoot`.
-- **Screens and overlays:** `showErrorPage`, `showError`, `ErrorFrame`, `ErrorDetail`, `Overlays`, `showNotification`,
-  `createReloadOffer`, `listenForChunkFailures`, and the types `ErrorAction`, `ErrorPageContent`, `ErrorText`,
-  `ShowErrorPage`, `ErrorFrameProps`, `NotificationParams`, `ShowNotification`.
+| Export                                                                                                                        | What it does                                    |
+| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `Accordion`, `AccordionProps`, `Button`, `ButtonLink`, `ButtonVariant`, `Chip`, `IconButton`, `IconTile`                      | Primitives.                                     |
+| `Choice`, `SegmentedControl`, `SegmentOption`, `StepSlider`, `StepSliderProps`, `StepSliderStop`, `Spinner`                   | Primitives.                                     |
+| `StatusDot`, `Surface`, `SurfaceHead`, `SurfaceFoot`, `Hint`, `Switch`, `Well`, `Callout`, `Row`, `Stack`, `SectionLabel`     | Primitives.                                     |
+| `Modal`, `Popover`, `usePopover`, `Tooltip`, `LayerTracker`, `ModalFocusFallback`, `TrackedLayer`                             | Floating layers.                                |
+| `ActionGroup`, `ActionItem`, `ActionItemProps`, `ActionsContext`, `ActionGroupMorph`, `MoreIds`                               | The action group.                               |
+| `ActionAlert`, `ActionBar`, `ActionEntry`                                                                                     | The action group.                               |
+| `PINNED`                                                                                                                      | The action group priority that never collapses. |
+| `modals`                                                                                                                      | The dialog queue store.                         |
+| `toasts`                                                                                                                      | The toast store.                                |
+| `pageScreen`                                                                                                                  | The full-page screen slot store.                |
+| `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`, `ModalButtonVariant`, `ModalHandoff`                  | Store types.                                    |
+| `ToastEntry`, `PageContent`                                                                                                   | Store types.                                    |
+| `focusables`, `runWhenIdle`, `preloadWhenIdle`, `isPhoneViewport`, `watchPhoneViewport`, `prefersReducedMotion`, `StatusTone` | Page helpers.                                   |
+| `createDrags`, `Drags`                                                                                                        | One pointer drag per component.                 |
+| `isFocusLostOrInside`, `focusTrigger`                                                                                         | Helpers.                                        |
+| `mountRoot`, `RootBoundary`, `ensureOverlayRoot`                                                                              | Roots.                                          |
+| `showErrorPage`, `showError`, `ErrorFrame`, `ErrorDetail`                                                                     | Screens and overlays.                           |
+| `Overlays`, `showNotification`, `createReloadOffer`, `listenForChunkFailures`                                                 | Screens and overlays.                           |
+| `ErrorAction`, `ErrorPageContent`, `ErrorText`, `ShowErrorPage`, `ErrorFrameProps`                                            | Screen and overlay types.                       |
+| `NotificationParams`, `ShowNotification`                                                                                      | Screen and overlay types.                       |
 
 **Modal handoff:** `modals.open(view, { signal, handoff })` can return a next view once the dialog is answered. That
 view replaces it without closing it, with focus on the dialog so a second press cannot answer it at once.
 
 ### `@dotli/ui/testing`
 
-Fakes for other packages' specs, stories and functional tests. Never imported by shipped code.
+Fakes for the specs and stories of other packages. Functional tests use them too. Never imported by shipped code.
 
 | Export                                            | What it does                                       |
 | ------------------------------------------------- | -------------------------------------------------- |
@@ -56,8 +68,8 @@ Fakes for other packages' specs, stories and functional tests. Never imported by
 
 ### `@dotli/ui/brand`
 
-`LogoSymbol`, `LogoWordmark` and `PetalMark` (six petals that can `pulse`). Astro renders them at build time with no
-directive, so they ship no code there.
+`LogoSymbol`, `LogoWordmark` and `PetalMark` are the logo components. `PetalMark` draws six petals that can `pulse`.
+Astro renders them at build time with no directive, so they ship no code there.
 
 ### `@dotli/ui/icons`
 

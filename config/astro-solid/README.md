@@ -6,8 +6,10 @@ An Astro integration for Solid 2. Renders Solid components on the server and hyd
 
 ## Responsibilities
 
-- **Owns:** the Astro renderer, the integration that adds it, and passing the client asset manifest to server renders so
-  `lazy()` inside islands resolves.
+- **Owns:**
+  - the Astro renderer
+  - the integration that adds it
+  - passing the client asset manifest to server renders, so `lazy()` inside islands resolves
 - **Does not own:** the components and islands.
 
 ## Public API

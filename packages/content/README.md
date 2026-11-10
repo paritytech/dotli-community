@@ -6,25 +6,30 @@ Fetches a product's files by CID and proves they match the CID. No gateway or pe
 
 ## Responsibilities
 
-- **Owns:** fetching from a gateway or a block source, walking the UnixFS DAG, packing files, hash checks, decryption.
+- **Owns:**
+  - fetching from a gateway or a block source
+  - walking the UnixFS DAG
+  - packing files
+  - hash checks
+  - decryption
 - **Does not own:** block transport over the light client, or the block cache.
 
 ## Public API
 
 ### `@dotli/content`
 
-| Export                          | What it does                                                         |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `fetchArchive`                  | Fetches a CID's files over Bitswap or the gateway.                   |
-| `fetchFromIpfs`                 | Fetches one raw block from a gateway, unverified.                    |
-| `parseIpfsResponse`             | Turns a gateway response into `ArchiveFiles`.                        |
-| `readArchiveFiles`              | Reads a CID's files outside a product load.                          |
-| `packArchive`                   | Packs `ArchiveFiles` into one buffer plus an offset index.           |
-| `ArchiveFiles`, `FetchResult`   | A path to bytes map, and a fetch's result.                           |
-| `CONTENT_ERRORS`                | Names of the verification, gateway and wrong-password errors.        |
-| `isEncrypted`, `decryptContent` | Detect and decrypt encrypted content.                                |
-| `createCidFromHash`             | The raw-codec CIDv1 of a hex blake2b-256 hash.                       |
-| `loadVerify`                    | Loads `assertBlockMatchesCid` and `isBlockMatchingCid` on first use. |
+| Export                          | What it does                                                                |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `fetchArchive`                  | Fetches a CID's files over Bitswap or the gateway.                          |
+| `fetchFromIpfs`                 | Fetches one raw block from a gateway, unverified.                           |
+| `parseIpfsResponse`             | Turns a gateway response into `ArchiveFiles`.                               |
+| `readArchiveFiles`              | Reads a CID's files outside a product load.                                 |
+| `packArchive`                   | Packs `ArchiveFiles` into one buffer plus an offset index.                  |
+| `ArchiveFiles`, `FetchResult`   | A path to bytes map, and a fetch's result.                                  |
+| `CONTENT_ERRORS`                | Names of the verification and gateway errors. A wrong password has its own. |
+| `isEncrypted`, `decryptContent` | Detect and decrypt encrypted content.                                       |
+| `createCidFromHash`             | The raw-codec CIDv1 of a hex blake2b-256 hash.                              |
+| `loadVerify`                    | Loads `assertBlockMatchesCid` and `isBlockMatchingCid` on first use.        |
 
 ## Design
 

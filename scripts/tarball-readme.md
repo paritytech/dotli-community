@@ -1,7 +1,11 @@
 # dot.li prebuilt bundle
 
 A built dot.li you can serve locally. No Docker, no build step. It ships the three builds plus a small server with the
-production serving rules: hostname routing, security headers and precompressed assets.
+production serving rules:
+
+- hostname routing
+- security headers
+- precompressed assets
 
 ## Run it
 
@@ -36,7 +40,10 @@ DOTLI_NETWORK='{
 ```
 
 - **`enabled`:** the networks the Settings selector offers. The first is the default.
-- **Overridable:** `label`, `rpcs` and `ipfsGateways` only.
+- **Overridable:** only these fields:
+  - `label`
+  - `rpcs`
+  - `ipfsGateways`
 - **Fixed at build time:** `genesis` and the contract addresses. They are the trust root for name resolution. A forked
   chain that keeps the upstream genesis (zombie-bite and similar) needs only the endpoints above.
 - **Strict:** anything unrecognised fails at startup. A typo cannot silently leave you on the public chain.
@@ -51,7 +58,7 @@ ignore `rpcs`, so a server pointed at a dead endpoint can still look healthy. Sw
 | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
 | `PORT`          | `5173`      | Any port except 80. The shell derives the protocol iframe's origin from `window.location.port`, empty on 80. |
 | `HOST`          | `127.0.0.1` | Loopback, since the bundle works only over `*.localhost`. Set `0.0.0.0` only behind your own proxy.          |
-| `DIST`          | `./dist`    | Directory holding `host/`, `app/` and `protocol/`.                                                           |
+| `DIST`          | `./dist`    | Directory with the `host/`, `app/` and `protocol/` builds.                                                   |
 | `DOTLI_NETWORK` | unset       | Runtime network config, as above.                                                                            |
 
 ## Running it on a remote machine

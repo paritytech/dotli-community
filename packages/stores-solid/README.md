@@ -11,12 +11,12 @@ Reads a nanostores store, or any source with `get`, `listen` and `init`, in a So
 
 ## Public API
 
-| Export                                         | What it does                                     |
-| ---------------------------------------------- | ------------------------------------------------ |
-| `useStore(store, { equals, initial })`         | An accessor of the whole value.                  |
-| `useStore(store, select, { equals, initial })` | An accessor of the selected value.               |
-| `StoreSource`                                  | What `useStore` reads: `get`, `listen`, `init?`. |
-| `UseStoreParams`                               | The options: `equals` and `initial`.             |
+| Export                                         | What it does                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------- |
+| `useStore(store, { equals, initial })`         | An accessor of the whole value.                                     |
+| `useStore(store, select, { equals, initial })` | An accessor of the selected value.                                  |
+| `StoreSource`                                  | What `useStore` reads, with `get` and `listen`. `init` is optional. |
+| `UseStoreParams`                               | The options: `equals` and `initial`.                                |
 
 `useStore` throws outside a reactive owner.
 

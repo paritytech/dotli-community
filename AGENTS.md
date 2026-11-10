@@ -146,6 +146,8 @@ Comments and docs:
 - Comments say why or what constraint applies. Never restate the code.
 - JSDoc starts with one sentence. Files may open with a short purpose block.
 - No em-dashes, semicolons or Unicode arrows in prose. No decorative separators. No spec citations in comments.
+- No tail enumeration: a sentence never ends in a list of three or more items, with or without a colon. Split it into
+  short sentences, or end the lead-in with a colon and put the items in a bullet list.
 - Say "network" or "remote", not "on-chain".
 - Every interface method's JSDoc states its contract, such as whether and with what it rejects.
 - Comments never claim a relation to other code, which can change without touching the comment. When two values must

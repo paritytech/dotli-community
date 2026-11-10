@@ -2,12 +2,19 @@
 
 ## Overview
 
-The protocol between the host and a sandbox frame: the URL params, every message both ways, and the host's listener.
+The protocol between the host and a sandbox frame. It covers the URL params and every message both ways. It also holds
+the host's listener.
 
 ## Responsibilities
 
-- **Owns:** the param contract, the message shapes and parsers, and the host's one channel for sandbox messages.
-- **Does not own:** what the messages drive, such as the block relay, the product frame or the loading screen.
+- **Owns:**
+  - the param contract
+  - the message shapes and parsers
+  - the host's one channel for sandbox messages
+- **Does not own:** what the messages drive, such as:
+  - the block relay
+  - the product frame
+  - the loading screen
 
 ## Public API
 

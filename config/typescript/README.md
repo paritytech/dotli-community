@@ -7,13 +7,13 @@ Shared `tsconfig` bases, so every package compiles under the same strict setting
 ## Responsibilities
 
 - **Owns:** the compiler options every package extends.
-- **Does not own:** a package's `include`, `paths` or project references.
+- **Does not own:** a package's `include` or `paths`. Nor its project references.
 
 ## Public API
 
 | File                              | What it sets                                                               |
 | --------------------------------- | -------------------------------------------------------------------------- |
-| `@config/typescript/base.json`    | ES2022, DOM, `NodeNext`, strict plus extra checks, `noEmit`.               |
+| `@config/typescript/base.json`    | ES2022 and DOM with `NodeNext`. Strict plus extra checks, and `noEmit`.    |
 | `@config/typescript/node.json`    | The base plus `lib: ES2024` and Node types, for tooling.                   |
 | `@config/typescript/solid.json`   | JSX for Solid. Combine with the base.                                      |
 | `@config/typescript/viteEnv.d.ts` | Types the `VITE_*` keys of `import.meta.env` and `?inline-script` imports. |

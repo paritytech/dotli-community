@@ -6,12 +6,27 @@ Small helpers every package may use. Imports no framework.
 
 ## Responsibilities
 
-- **Owns** the primitives other layers build on: the async task pool, the listener set and the logger.
-- **Owns** generic helpers with no other owner: errors, encoding, formatting, timing, safe web storage, events,
-  IndexedDB and the origin wipe.
+- **Owns** the primitives other layers build on:
+  - the async task pool
+  - the listener set
+  - the logger
+- **Owns** generic helpers with no other owner:
+  - errors
+  - encoding
+  - formatting
+  - timing
+  - safe web storage
+  - events
+  - IndexedDB
+  - the origin wipe
 - **Owns** wire constants several packages share, such as the halted chain marker.
-- **Does not own** page state, dotNS rules, metrics, UI or chain access. The caller binds the log sink and reports
-  listener errors.
+- **Does not own**:
+  - page state
+  - dotNS rules
+  - metrics
+  - UI
+  - chain access
+- The caller binds the log sink and reports listener errors.
 
 ## Public API
 
@@ -56,7 +71,7 @@ Small helpers every package may use. Imports no framework.
 
 ## Design
 
-- **Task pool:** the one place for queues, concurrency limits, retries and abort.
+- **Task pool:** the one place for queues and concurrency limits. It is also the one place for retries and abort.
 - **Timeout:** counts only time the page runs, so a frozen background tab does not time out.
 - **Safe storage:** blocked or full web storage reads as empty and drops writes. No module wraps storage itself.
 - **Logger:** prints to the console only in debug builds (`VITE_APP_DEBUG`). Warn, error and event always reach the

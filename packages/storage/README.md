@@ -2,15 +2,27 @@
 
 ## Overview
 
-dotli's persistent browser data in IndexedDB: caches, local chat, the local wallet, site grants and scheduled
-notifications.
+dotli's persistent browser data in IndexedDB:
+
+- caches
+- local chat
+- the local wallet
+- site grants
+- scheduled notifications
 
 ## Responsibilities
 
-- **Owns** three databases, their schemas and one connection each: the page's "dotli", the local wallet's and the site
-  grants'.
-- **Owns** the stores on them: block cache, label to CID cache, chat, local wallet, site grants and scheduled
-  notifications.
+- **Owns** three databases, with their schemas and one connection each:
+  - the page's "dotli"
+  - the local wallet's
+  - the site grants'
+- **Owns** the stores on them:
+  - block cache
+  - label to CID cache
+  - chat
+  - local wallet
+  - site grants
+  - scheduled notifications
 - **Does not own** what to cache or when. Callers decide.
 
 ## Public API
@@ -26,13 +38,17 @@ notifications.
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                        |
 | `LocalWallet`, `LocalWalletIdentity`, `LocalWalletStore`                         | Local wallet types.                      |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                             |
-| `chat`, `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`, `ChatMessageRecord` | Chat rooms, messages and bots.           |
+| `chat`, `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`, `ChatMessageRecord` | Chat rooms and messages. Also chat bots. |
 | `scheduledNotifications`, `ScheduledNotificationRecord`                          | Scheduled notification queue.            |
 
 ### `@dotli/storage/testing`
 
-In-memory databases (fake-indexeddb) for tests: `createMemoryIdb`, `createMemoryWalletIdb`, `createMemorySiteGrantsIdb`
-and their `MemoryIdb` type.
+In-memory databases (fake-indexeddb) for tests:
+
+- `createMemoryIdb`
+- `createMemoryWalletIdb`
+- `createMemorySiteGrantsIdb`
+- their `MemoryIdb` type
 
 ## Design
 

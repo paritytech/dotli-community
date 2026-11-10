@@ -8,12 +8,17 @@ the product as a whole.
 
 **Owns:**
 
-- Running smoldot, or a trusted RPC gateway, for name, chain and block requests.
+- Running smoldot, or a trusted RPC gateway. Name, chain and block requests go to it.
 - Serving the shared auth, mode and local wallet stores to host and landing origins.
 - Sharing one light client across tabs through a SharedWorker.
 
-**Does not own:** the protocol types, the chain pool, the light client, the gateway providers or the resolution logic.
-The frame only wires them.
+**Does not own** the code behind what it runs. It only wires these:
+
+- the protocol types
+- the chain pool
+- the light client
+- the gateway providers
+- the resolution logic
 
 ## Modes
 
@@ -77,4 +82,10 @@ flowchart LR
 
 - **Iframe page** at `/p/`. Dev server on port 4003, proxied at `/p/` by the host's dev server on the bare host.
 - **SharedWorker**, for shared-worker mode.
-- **Scripts:** `npm run dev`, `build`, `build:prod` (build, then compress), `typecheck`, `lint`, `test`.
+- **Scripts**, each run with `npm run`:
+  - `dev`
+  - `build`
+  - `build:prod`, which builds, then compresses
+  - `typecheck`
+  - `lint`
+  - `test`
