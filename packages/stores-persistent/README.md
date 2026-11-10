@@ -4,9 +4,8 @@ Keeps a nanostores atom in web storage.
 
 ## Responsibility
 
-- Owns `createPersistentAtom`, an atom that reads its stored value on first start and writes each change back.
-- Does not own which values are kept, their formats or the storage itself. The caller passes the key, the storage and
-  the codec.
+- **Owns:** `createPersistentAtom`.
+- **Does not own:** which values are kept, their formats or the storage. The caller passes key, storage and codec.
 
 ## Design
 
@@ -16,20 +15,18 @@ flowchart LR
   atom -- "each change: encode, or remove at initial" --> storage
 ```
 
-- The atom is built from the initial value and reads nothing then, so a module may build it at import.
-- The stored text is read and decoded once, on the first read, listen or set. Nothing stored, or text that decodes to
-  `undefined`, gives the initial value. That read writes nothing back.
-- A set before that read applies after it, so the caller's value wins over the stored one.
-- Every change after that read is stored encoded. Setting the initial value removes the key, so a default is never
-  stored.
-- It does not follow the browser's `storage` event. Another tab's write shows when it came before this tab's first read,
-  and after a reload otherwise. This page's next write replaces it.
-- A storage that fails on every call leaves the atom working in memory. Pass a storage that never throws.
+- **Lazy read:** building the atom reads nothing, so a module may build it at import. Storage is read once, on first
+  use.
+- **Caller wins:** a set before that read applies after it.
+- **Defaults are not stored:** setting the initial value removes the key.
+- **No cross-tab sync:** another tab's later write shows only after a reload.
+- **Failing storage:** the atom keeps working in memory. Pass a storage that never throws.
 
 ## Public API
 
-- `createPersistentAtom({ key, storage, initial, decode, encode })` returns a writable atom whose `init` is `initial`.
-  It reads the storage once, on the first read, listen or set. `decode` returns `undefined` for text that no longer
-  parses, and `encode` turns a value into the stored text. It does not follow another tab's write after that read. It
-  never throws when the storage, `decode` and `encode` never throw.
-- `PersistentAtomParams`, the options `createPersistentAtom` takes.
+| Export                                                            | What it does                               |
+| ----------------------------------------------------------------- | ------------------------------------------ |
+| `createPersistentAtom({ key, storage, initial, decode, encode })` | A writable atom whose `init` is `initial`. |
+| `PersistentAtomParams`                                            | Its options.                               |
+
+`decode` returns `undefined` for text that no longer parses, which gives the initial value.

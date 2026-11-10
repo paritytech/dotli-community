@@ -1,124 +1,60 @@
 # `@dotli/protocol-app`
 
-The hidden protocol iframe that holds the light client and answers the host's requests. It is the one place that talks
-to the network on the host's behalf. Every page loads it from `/p/` on the root domain. See the root
-[README](../../README.md) for the product as a whole.
+The hidden protocol iframe. It holds the light client and answers the host's requests. It is the one place that talks to
+the network for the host. Every page loads it from `/p/` on the root domain. See the root [README](../../README.md) for
+the product as a whole.
 
 ## Responsibility
 
-- Run smoldot (or a trusted RPC gateway) and resolve names, chain requests and block fetches for host pages.
-- Serve the shared auth, mode and local wallet stores to host and landing origins of the root domain. Under a page on
-  the root domain itself (the landing page, the sign-in window, a product opened by path) these are the main store. In
-  Safari a frame under a product keeps that product's own copy, since Safari keys an embedded frame's storage by the
-  page that embeds it.
-- Share one light client across tabs through a SharedWorker in shared-worker mode.
-- Not the protocol types, the chain pool, the light client, the gateway providers or the resolution logic. The frame
-  wires them, it does not own them.
+**Owns:**
+
+- Running smoldot, or a trusted RPC gateway, for name, chain and block requests.
+- Serving the shared auth, mode and local wallet stores to host and landing origins.
+- Sharing one light client across tabs through a SharedWorker.
+
+**Does not own:** the protocol types, the chain pool, the light client, the gateway providers or the resolution logic.
+The frame only wires them.
+
+## Modes
+
+The `?mode=` query picks the backend:
+
+| `?mode=`        | What runs                           |
+| --------------- | ----------------------------------- |
+| `shared-worker` | smoldot in a cross-tab SharedWorker |
+| `direct`        | smoldot in the iframe               |
+| `rpc`           | trusted WSS RPC (gateway mode)      |
+| none            | auth-only, no chains                |
 
 ## Design
 
-- The build's base is `/p/`, so its assets, its SharedWorker and its version file sit under that path on the root
-  domain, beside the host's pages. It shares their origin, so it cleans up only its own data: a cache purge deletes the
-  chain databases by name, and the local wallet has a database of its own apart from the host's caches. The host's
-  settings wipe leaves the frame's keys and databases alone in turn.
-- The `?mode=` query picks smoldot in a cross-tab SharedWorker, smoldot in the iframe, or trusted WSS RPC for gateway
-  mode. Each chain mode loads its chains on demand, so the shared-worker mode, which only relays, loads none. The byte
-  meter is installed where the light client runs, in the iframe or the SharedWorker, before it starts, and either one
-  posts the light client's byte total for the host's speed readout. Startup reports failures to the parent without a
-  reload.
-- One ticker reads the byte meter for every telemetry subscription where the light client runs, started by the first and
-  stopped with the last. Each subscriber hears the total at once as its baseline. A subscribe whose first read or ticker
-  start fails leaves nothing behind. A read that fails on a tick is skipped and reported once per run of failures, under
-  its own metric, and a subscriber that throws is reported without stopping the others.
-- The iframe speaks to the host through the transport library over the protocol schema: one transport on a window
-  provider that admits only its parent at an allowed origin. It accepts the host's handshake, whose hello names no page
-  load, since the iframe reads that from its URL. Bytes from a page at any other origin are refused, and the first from
-  each such origin is counted as a refused wire message and logged, so a hostile page that keeps posting floods neither.
-  Objects from the parent come only from a host page of an earlier release, and are counted as not bytes.
-- What a provider or a transport drops is counted once, under the side that dropped it, the frame or the worker: a
-  message that does not decode or does not fit the call it names, data that is not bytes, which the provider drops
-  before the transport sees it, and a message the provider could not post, which is also captured and logged, under its
-  call's name when it belonged to one. A listener that throws on the transport is reported as a listener.
-- It sends nothing unsolicited: its readiness and failures reach the host on the frame status subscription, which a late
-  subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is reported and the
-  others still hear. It ends typed, as a fatal light client, a failed init, a released port or a version mismatch, so
-  the host tells them apart, and any other error ends it as that error's failure. It answers the host's heartbeat at
-  once, so the host can tell a frame that still answers from one that went silent.
-- A handler answers with a result. A resolver's sync timeout and a stopped light client are typed failures the host's
-  error screen tells apart, and any other failure is thrown, so it crosses as the handler's failure under its error's
-  name and message. A subscription a handler cannot start ends the same way.
-- No deadline crosses the wire. A name read sizes its sync budget from its method's budget, the one the host gives up
-  on, less a grace for the typed failure to cross back, counted from when the call arrives. A tester can cap it from
-  session storage.
-- The frame's boot holds the status and the telemetry together, since the host subscribes to both as soon as its
-  handshake is answered, before the mode has loaded anything. A chain mode feeds the telemetry from its light client.
-  Auth-only and gateway mode run none, so once ready they serve an idle feed that stays open and says nothing. A boot
-  that fails, or a fatal asset load, ends the status and any telemetry still waiting with that error. A ready frame that
-  dies later keeps its telemetry.
-- One engine dispatches for every mode. A scope holds one tab's chain connections and budget, while the chains are
-  shared by every scope of the engine. A chain send needs a connection id. A name read whose result or end cannot be
-  sent to the host is reported, and a result that cannot be sent ends the read with that error, so the host does not
-  wait.
-- Two handlers serve the shared stores and the local wallet under the shared-auth trust boundary: host and landing
-  origins only, never product origins. The iframe's provider holds it, since it admits no other origin, and it guards
-  every method the iframe serves. No other transport serves the stores or the wallet. What the stores refuse is counted
-  as bad input, and what the wallet refuses is logged. A write of the value a key already holds changes nothing and
-  tells no other tab. A clear that names the value it expects reads and clears in one task, and the wallet's forget that
-  names a version deletes only that record, in one transaction, so a value another tab wrote between a page's read and
-  its clear stays. Each wallet save and forget, and a forget by version that forgot, tells the other tabs on the
-  shared-auth change relay as a tagged `wallet` change, so a page on the wallet in another tab learns it went. A change
-  the relay cannot post is captured, logged and counted, and the write it follows is still answered.
-- In shared-worker mode the iframe serves the store and wallet methods itself, and its relay forwards the chain and name
-  calls to the SharedWorker through its own transport. That transport opens the handshake toward the worker, with this
-  page load's resolution id as its hello. A forwarded call crosses as its message bytes, so the iframe decodes no chain
-  or name payload, and only the host and the worker read one. The relay adds nothing to a call and passes each answer,
-  value and end on as the worker posted it. The worker reports what it refuses, so the forwarded calls skip the iframe's
-  refusal report. The telemetry is relayed decoded, since the frame's boot holds it until the worker is ready, and the
-  frame status is the iframe's own, which follows the worker's. When this tab's status from the worker ends, the relay
-  first ends the frame status: with the worker's own end as it is, or, when its transport closed under it, with the
-  closing error. The host drops the frame on that end, as the worker orders its own release. The relay then closes its
-  transport, so each call the worker still held is answered as a host failure with the closing error. The frame status
-  takes a transport's own closing error under the protocol's class, as it would from the iframe's own link, so a version
-  mismatch ends it typed.
-- The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
-  between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
-  It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
-  request, and a port that sends nothing for too many beats is released. A release ends that port's frame status as a
-  released port, then closes its transport, which posts nothing more. The tab's link ends the rest of what it holds with
-  that end, so a thawed tab rebuilds its frame and opens a new port. A released port stays open, so a frozen tab still
-  hears its release when it thaws. It closes on the beat after its tab speaks again, so the end posted at the release
-  arrives first, or when the worker closes.
-- A tab that leaves disposes its link, which closes its port and posts nothing. A port whose tab left or crashed fires
-  its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never fires the
-  event, the heartbeat release frees the tab's connections once it misses its beats, and holds its port as it holds a
-  frozen tab's.
-- The host pauses the network with `frame.pause`. A frame in direct or gateway mode and each worker port serve the pause
-  through one pool-control server. The frame pauses its own chain pool. In shared-worker mode each tab's frame forwards
-  the pause to the worker, which pauses its chains while every tab it serves asks for one, and resumes them once one tab
-  resumes or a new tab connects. A pause keeps every chain's leases, and a resume reopens the chains they hold. When the
-  last tab leaves, the worker keeps the state it had.
-- The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
-  ends. The ready wait is the link's one deadline, and its handshake has none of its own, so a worker that never answers
-  counts as a ready timeout. A heartbeat it cannot send is captured, logged and counted, and the link stops answering,
-  so the worker releases the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports
-  a failure, disposes the link's transport with that error, so the status subscription, the beats and the relay let go
-  of the worker. The timeout and the load failure are init failures. A load failure after ready, which nothing waits on,
-  is captured, logged and counted. A load failure after the wait failed is only logged, since the boot already failed
-  with the wait's error.
-- A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
-  subscribe. The worker closes once every connected port has heard it. One unit owns the ports and this close, since a
-  release, a port hearing why and the close each lead to the others. The close waits a task on the timers the worker is
-  given, so connects already queued for it are served first, and sends the worker's buffered telemetry before it. A send
-  that fails is captured, logged and counted, and the close goes on. A disposed worker closes every port at once,
-  released ones too, and never closes itself, even after a failure.
-- One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched and that
-  hold a halted chain again once the pool rebuilds it, and the name resolver, for the iframe and the SharedWorker alike.
-  Each keeps its own transport. Both warm People through the setup without holding ready, and a warm that fails is
-  logged and counted as an expected failure, since a later read retries it. Both build the telemetry they send the host
-  with one typed builder, so a change to the wire contract fails the build in both. Tester knobs come from session
-  storage and never block startup.
-- The worker core may read only the fixed services config, because the runtime network config never reaches a worker
-  that serves every tab. Lint enforces it.
+- **Shared origin:** it sits under `/p/` beside the host's pages. It removes only its own keys and databases.
+- **Safari:** a frame under a product keeps that product's own copy of the stores. Safari keys a frame's storage by the
+  page that embeds it.
+- **One link to the host:** a transport on a window provider that admits only its parent at an allowed origin.
+- **Trust boundary:** the stores and the wallet are served to host and landing origins only, never product origins.
+- **Nothing unsolicited:** readiness and failures reach the host on the frame status subscription. It ends typed, so the
+  host's error screen tells failures apart.
+- **Heartbeat:** answered at once, so the host can spot a silent frame.
+- **No deadline crosses the wire.** A name read's sync budget is its method's budget, less a grace for the failure to
+  cross back.
+- **One engine** dispatches for every mode. A scope holds one tab's connections. Chains are shared.
+- **One setup** starts the chains, idle leases and name resolver for the iframe and the SharedWorker alike.
+- **Telemetry:** a byte meter where the light client runs feeds the host's speed readout. Auth-only and gateway mode
+  serve an idle feed.
+- **Pause:** the host pauses the network with `frame.pause`. In shared-worker mode the worker pauses only while every
+  tab asks.
+- **Tester knobs** come from session storage and never block startup.
+
+### Shared-worker mode
+
+- The iframe serves the stores and wallet itself. It forwards chain and name calls to the worker as raw bytes.
+- The worker runs smoldot and serves each tab port with its own transport and engine scope.
+- The worker beats each port. A port silent for too many beats is released, and its tab rebuilds the frame on thaw.
+- A fatal light client ends every port's status, then the worker closes.
+
+**Trap:** the worker core may read only the fixed services config. The runtime network config never reaches a worker
+that serves every tab. Lint enforces it.
 
 ```mermaid
 flowchart LR
@@ -139,6 +75,6 @@ flowchart LR
 
 ## Entry points
 
-- The iframe page at `/p/`. Dev server on port 4003, which the host's dev server proxies at `/p/` on the bare host.
-- The SharedWorker.
-- `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.
+- **Iframe page** at `/p/`. Dev server on port 4003, proxied at `/p/` by the host's dev server on the bare host.
+- **SharedWorker**, for shared-worker mode.
+- **Scripts:** `npm run dev`, `build`, `build:prod` (build, then compress), `typecheck`, `lint`, `test`.

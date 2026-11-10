@@ -1,62 +1,49 @@
 # `@config/vite`
 
-Build plugins and options shared by the host, sandbox and protocol builds, plus the tests' CSS-modules naming.
+Build plugins and options shared by the host, sandbox and protocol builds.
 
 ## Responsibility
 
-- Hold the Vite and Astro plugins that more than one app uses, or that are too large to live in an app config.
-- Not an app's own config: each app merges its port, its own plugins and its own `define` values over the shared preset.
+- **Owns:** Vite and Astro plugins that several apps use, or that are too large for an app config.
+- **Does not own:** an app's own config. Each app merges its port, plugins and `define` values over the shared preset.
 
 ## Design
 
-- Each plugin or option set an app or tool imports is its own export entry. What only the preset uses stays internal.
-  The package has no side effects.
-- Entries run in Node and are type-checked without emitting.
-- Build-time rules live here as code, such as the inline-script check that fails the build when a script's text would
-  end its tag early.
-- One serving table holds the routes and headers of every local server. It does not own the local roots: each server
-  hands them in once and gets back the routing and headers built from them, so its routes, headers, certificate and
-  allowed hosts all follow the same roots. Under a local root, a subdomain is a product's shell, `app.` subdomains are
-  the sandbox and the root itself is the bare host, and a page under any local root may frame a sandbox. It also picks
-  the file that answers a path, in nginx's order, so the release and test servers agree. Its spec reads the header
-  values of nginx's snippets back against it, so a header value cannot drift from nginx unnoticed. Which snippet each
-  nginx location includes is not checked.
-- The runtime network config script has one owner for its path, headers and body. Every local server sends it with the
-  container's headers, same-origin only, and reads `$DOTLI_NETWORK` once at start, so a value that is not JSON stops the
-  server there. Its spec holds the headers to the container's nginx snippet.
+- **One entry per import:** each plugin an app or tool imports is its own export. The rest stays internal.
+- **Node only:** entries run in Node, type-checked without emitting.
+- **Serving table:** one table holds the routes and headers of every local server.
+  - Each server hands in its local roots once. Routes, headers, certificate and allowed hosts all follow them.
+  - Under a local root: a subdomain is a product's shell, `app.` is the sandbox, the root is the bare host.
+  - Files resolve in nginx's order, so the release and test servers agree.
+  - A spec checks header values against nginx's snippets. Which snippet each location includes is not checked.
+- **Runtime network config:** every local server reads `$DOTLI_NETWORK` once at start. A value that is not JSON stops
+  the server.
 
 ## Entry points
 
-Imported by the apps' Vite and Astro configs. Beyond them, test and Storybook configs take the test-defines and
-inline-script entries, a page head takes the social meta entry, the dev scripts take the mode sync, runtime network
-config and serving entries, and an app runtime takes the signing worker entry.
+| Entry                      | What it does                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `./app`                    | `createDotliApp({ appDir, site, roots })`. See below.                          |
+| `./css-modules`            | CSS-modules options with one short-name counter per build.                     |
+| `./inline-script`          | A `?inline-script` import returns a module bundled into one classic script.    |
+| `./astro-pwa`              | Astro integration for the web manifest and service worker.                     |
+| `./service-worker`         | Builds a hand-written service worker into one file at the root.                |
+| `./truapi-signing-worker`  | A second TrUAPI worker on the `testing` wasm bundle, with a signing host.      |
+| `./build-info`             | Writes the build version file and reads the release version.                   |
+| `./dependency-versions`    | Installed versions of direct workspace dependencies, for diagnostics.          |
+| `./social-meta`            | Link-unfurl meta tags with an absolute image URL.                              |
+| `./test-defines`           | Build-time values for tests and stories: the enabled networks.                 |
+| `./serving`                | The route, file and header table of the release, test and dev servers.         |
+| `./spa-fallback`           | Dev middleware that routes page loads and answers a malformed escape with 404. |
+| `./runtime-network-config` | The `/dotli-network.js` script from `$DOTLI_NETWORK`, and its plugin.          |
+| `./mode-sync`              | In-memory mode preference sync on the protocol origin, for local servers.      |
 
-- `./app`: `createDotliApp({ appDir, site, roots })`, whose `createViteConfig(own)` returns each app's Vite config: the
-  shared preset (env directory, wasm, the runtime network config, the build info, the dev isolation headers, a locally
-  trusted certificate for the dev servers (not the preview), CSS modules, the worker and build options, and the
-  compile-time values that strip the Sentry SDK's debug logger) with the app's own merged over it and the Sentry upload
-  last. Making it fills in the commit and a `dotli@semver` Sentry release. It also returns the serving table it built
-  from `roots`, for the app's own dev plugins.
-- `./css-modules`: CSS-modules options with one short-name counter across every Vite environment of a build.
-- `./inline-script`: a `?inline-script` import returns a module bundled into one classic script, as text a response
-  writes into a document dotli does not build.
-- `./astro-pwa`: an Astro integration that generates the web manifest and builds a service worker after the page is
-  written.
-- `./service-worker`: builds a hand-written service worker into one file at the root, with the app's own environment.
-- `./spa-fallback`: dev middleware that routes page loads to the landing page, the sign-in window or the shell and
-  answers a malformed escape with 404, and the decision it makes for each request. The middleware takes the app's
-  serving table, and the decision takes its route function, to tell the bare host from the others.
-- `./truapi-signing-worker`: a second TrUAPI worker on the `testing` wasm bundle, which has a signing host.
-- `./mode-sync`: in-memory mode preference sync on the protocol origin for local servers.
-- `./runtime-network-config`: the `/dotli-network.js` script, its path, its same-origin headers and its body from
-  `$DOTLI_NETWORK`, for the release and test servers, and the plugin that injects and serves it on opt-in.
-- `./serving`: the route, file and header table of the release, test and dev servers. `createLocalServing(roots)` builds
-  what depends on the local roots once (the route of a host, the frame ancestors, the security, response and dev
-  headers, the dev servers' isolation plugin and the bypass of the dev proxy to the protocol app). What reads no roots
-  is a plain export: the hostname a request names, the path rules of the three builds, the header policy of a path, the
-  headers of a policy for a given frame ancestors value, the caching headers of a path, and the file a path resolves to.
-- `./dependency-versions`: the installed version of each direct workspace dependency in a scope, for the diagnostics
-  panel.
-- `./build-info`: writes the build version file and reads the release version.
-- `./social-meta`: link-unfurl meta tags with an absolute image URL.
-- `./test-defines`: the build-time values every test and story build defines, the enabled networks.
+**`./app`:** `createDotliApp` returns `createViteConfig(own)` and the serving table built from `roots`.
+
+- The config is the shared preset, then the app's own config, then the Sentry upload.
+- The preset covers env, wasm, the runtime network config, build info, dev isolation headers, a locally trusted dev
+  certificate (not for preview), CSS modules, worker and build options, and stripping the Sentry debug logger.
+- It sets the commit and a `dotli@semver` Sentry release.
+
+**`./serving`:** `createLocalServing(roots)` builds everything that depends on the roots once. What reads no roots is a
+plain export.

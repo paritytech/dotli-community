@@ -1,61 +1,33 @@
 # @dotli/transport
 
-A generic, bi-directional transport between documents. A schema author declares requests and subscriptions from codecs,
-and both sides call and serve them over a window or a port. The library owns the handshake, correlation, cancellation
-and failure.
+A generic, two-way transport between documents. A schema declares requests and subscriptions from SCALE codecs. Both
+sides call and serve them over a window or a port. The library owns the handshake, correlation, cancellation and
+failure.
 
 ## Design
 
-- A codec is a SCALE codec. Any SCALE codec works, and `codec(encode, decode)` wraps two plain functions as one. A
-  method's payload always comes last in its message, so a wrapped decode gets exactly the payload's bytes.
-- A method is a request or a subscription, built from the codecs of what its sides send. A request carries one payload
-  and is answered with a `Result`. A subscription starts with one payload, receives values, and ends with an interrupt
-  that is the method's own interrupt reason, or with the caller's stop. A method carries its types, so the transport
-  calls and serves a method by passing the method itself, and every payload, answer and end is typed from it with no
-  type argument.
-- A schema nests sections, then methods. Wire ids are positions: a section's id is its place in the schema and a
-  method's id is its place in its section, so new sections and methods go at the end. A schema holds up to 256 sections
-  of up to 256 methods each, a version from 0 to 255, and the codec of the hello each side sends in the handshake. Each
-  method sits in one place only.
-- `Result` is scale-ts's own, `{ success, value }`. `CallError` is truapi's, a tagged union of `{ tag, value }`: the
-  handler's own `Domain` error, or a `Failure` of the library's, `Denied`, `Unsupported`, `MalformedFrame`,
-  `HostFailure` or `Cancelled`. The library's failures are an enum of their own, so it answers any call with one. A
-  method that declares no error has an empty one, `undefined`.
-- A request's answer is `Result<Response, CallError<Domain>>`. A subscription's interrupt is the method's own reason
-  `Interrupt` as a whole, and the library adds nothing to it, so a clean end is whatever `Interrupt` says. A schema that
-  wants truapi's layout declares `interrupt: Result(_void, callError(reason))`, so its handlers end with `ok()` or
-  `err(...)`.
-- A frame is a SCALE struct of a call id (`u32`) and one enum: the handshake's `handshakeOffer` and `handshakeResponse`,
-  a `failed` that answers a call with a `CallError` of the library's own, or a `call` that carries the section and
-  method ids and the method's own message. A message is its method's enum: `request` and `response` for a request, and
-  `start`, `receive`, `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from
-  its method's. A received frame keeps the message as bytes until the method it names decodes it. A message's bytes and
-  a whole frame's bytes are distinct types, so a message is never posted as a frame, nor a frame carried as a message.
-  The id, the handshake variants and the wire version that opens an offer never change, so a peer of any release reads
-  the versions it refuses.
-- A frame, a message, a hello or a failure that leaves bytes unread is refused as malformed, as truapi's `decode_all`
-  refuses it. Only a failure and a handshake refusal can end before their frame does, so only they check for bytes after
-  them. Each method builds its whole decoder once, and each transport the hello's. Reading which leg a message is reads
-  its tag only.
-- Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
-  one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
-- A transport is a composition of parts, each the one owner of its state: the numbering of this side's calls, the
-  owner's issue hook, the connection, the handshake, the calls this side makes, the calls it serves, and forwarding. The
-  connection alone holds whether the transport is open, posts to the provider and closes it. Each part gets the others
-  it needs when the transport is created, and a failure inside a part is thrown and caught where the transport turns it
-  into a frame, an issue or a rejection.
-- A provider moves bytes between two contexts and knows nothing of their meaning, and is the trust boundary: the
-  transport serves whoever its provider delivers. The window provider admits one peer window at a fixed origin, or at
-  the first origin a predicate allows, and delivers nothing from any other. The port provider speaks over a message
-  port. Both post and accept an `ArrayBuffer` between documents, the message's own buffer when it holds only the message
-  and a copy otherwise, so transferring it moves nothing else. Any object with the same four methods works.
-- One side opens the handshake and the other accepts it. The opener starts it with its first request, subscription or
-  wait for the handshake, as host-api starts it, or earlier with `connect`. It posts a fresh `handshakeOffer` every
-  `retryMs` until it is answered or `timeoutMs` passes on the running clock. An offer carries the versions, the
-  library's own wire version first, then the schema's, and the hello. Both versions must match. Each side encodes its
-  hello once, when the transport is created. The accepter answers every attempt with the outcome of the first, which is
-  its hello or its versions, and counts as connected only once that answer is posted. A hello is decoded only at the
-  same versions, since another release's may not decode. A mismatch closes both sides.
+- **Methods carry their types.** Calls and handlers take the method itself, so payloads and answers need no type
+  argument.
+- **Request:** one payload, answered with `Result<Response, CallError<Domain>>`.
+- **Subscription:** one start, then values, then the method's own `Interrupt` or the caller's stop.
+- **`CallError`** uses truapi's layout: the handler's `Domain` error, or a library `Failure` (`Denied`, `Unsupported`,
+  `MalformedFrame`, `HostFailure`, `Cancelled`).
+- **Wire ids are positions** in the schema. Add new sections and methods at the end. Limits: 256 sections of 256
+  methods, version 0 to 255.
+- **Frames** are SCALE: a call id and an enum of handshake, `failed` or `call`. A message stays bytes until its method
+  decodes it. Trailing bytes are refused as malformed.
+- **Stable forever:** the call id, the handshake variants and the wire version, so any release can read a refusal.
+- **Call ids:** the opener numbers odd, the accepter even.
+- **The provider is the trust boundary.** It moves bytes and the transport serves whoever it delivers. The window
+  provider admits one peer window at one allowed origin.
+- **Parts:** a transport composes parts, each owning its own state. Only the connection posts and closes.
+
+### Handshake
+
+- The opener starts it with its first call, or earlier with `connect`. It retries every `retryMs` until `timeoutMs`.
+- Both the wire and schema versions must match, or both sides close.
+- Calls made before the handshake wait, then go out in order.
+- A peer's call before the handshake gets `HostFailure`, and no handler runs.
 
 ```mermaid
 sequenceDiagram
@@ -69,10 +41,10 @@ sequenceDiagram
   Note over O,A: queued calls go out in call order
 ```
 
-- Calls made before the handshake wait and go out in call order once it succeeds. A request resolves to the peer's
-  `Result` or to a failure the library answered with. An answer that does not decode rejects it with
-  `TransportMalformedResponseError`, whose cause is why, as truapi's client and host-api reject it. Aborting its signal
-  resolves it as `Cancelled`, and a late answer is ignored. The peer is not told.
+### Calls
+
+- An abort settles a request as `Cancelled` at once. The peer is not told.
+- An answer that does not decode rejects with `TransportMalformedResponseError`.
 
 ```mermaid
 sequenceDiagram
@@ -88,13 +60,9 @@ sequenceDiagram
   Note over C: an aborted signal settles the call as Cancelled at once
 ```
 
-- A subscription waits with the requests and goes out in call order with them. Its subscriber hears each value, then one
-  end. `interrupt` hears the peer's own interrupt. `fail` hears a failure of the library's: one the peer answered with,
-  `Cancelled` once its signal aborts, or `MalformedFrame` when a message does not decode, after which the peer is told
-  to stop, since what was lost may be a value. An interrupt that does not decode is told no stop, since nothing follows
-  an interrupt, and a message whose leg cannot be read counts as a value. `close` hears the one local end with an error:
-  the transport closed, a post the provider threw on among the ways it does. Its `unsubscribe` tells the peer and calls
-  no listener. A start that does not encode throws.
+- A subscriber hears values, then exactly one end: `interrupt` (the peer's own), `fail` (a library failure) or `close`
+  (the local transport closed).
+- A handler returns a stop function. It runs once, however the subscription ends.
 
 ```mermaid
 sequenceDiagram
@@ -111,14 +79,11 @@ sequenceDiagram
   end
 ```
 
-- A transport closes when its provider is not in a correct environment, which it checks once at creation, when the
-  handshake fails or times out, the versions differ, its provider throws on a post, or its owner disposes it. Every
-  pending and later request then rejects with that error itself, and every subscription still queued or open, or made
-  later, hears it once through `close`, so a closed transport is never a call outcome. A post the provider throws on is
-  reported first, and closes the transport with the provider's error, as truapi's client does.
-- A closing transport posts nothing, as truapi's runtime posts nothing once disposed: no failure for the requests it
-  serves and no stop for the subscriptions it made. Each subscription it serves stops, so its stop function runs, and
-  each request it serves is never answered.
+### Closing
+
+- A transport closes on a wrong environment, a failed handshake, a version mismatch, a failed post, or `dispose`.
+- Its requests then reject with the closing error. Its subscriptions hear `close`.
+- A closing transport posts nothing. Served subscriptions run their stop. Served requests stay unanswered.
 
 ```mermaid
 sequenceDiagram
@@ -130,105 +95,56 @@ sequenceDiagram
   Note over C,P: no frame goes out
 ```
 
-- A subscription handler gets the start, the context and a sink, and returns its stop function. That function runs once,
-  on the peer's stop, an interrupt, a start that reuses its id, or a close, even when the handler interrupts before it
-  returns. The peer hears an end before the stop function runs. A handler that throws on start, or a value the wire
-  cannot carry, ends it with `HostFailure`. The sink does nothing once the subscription has ended.
-- Calls of the peer reach a handler only once the handshake told who the peer is. A request or a start before the
-  handshake is over is refused and answered at once with `HostFailure`, "The handshake is not over", and its handler
-  never runs. One after the transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame
-  that does not decode.
-- As truapi does with an id the peer reuses, a request or a start whose id is a request still in flight is refused with
-  no answer, and no handler runs for it, so the request keeps its one answer. A start on the id of a running
-  subscription replaces it: the running one stops with nothing sent, and the new one starts.
-- A transport forwards a peer's calls of chosen methods to another transport of the same schema, which places them at
-  the same ids. A forwarded call is ordinary frames on both links, so each link keeps every rule it applies to its peer,
-  and the upstream numbers the call itself. Its messages cross as the bytes they arrived as: the forwarder reads only a
-  message's leg, to follow the call's life, and only the far ends decode a payload. When the upstream closes under a
-  forwarded call, the peer's call is answered `HostFailure` with the closing error. When the forwarder closes, it posts
-  nothing to its peer and the upstream stops each forwarded subscription. A start that replaces a forwarded subscription
-  stops the old one on the upstream with a stop of the forwarder's own. A peer's stop goes on only once it reads whole,
-  so the far end never refuses a stop the forwarder acted on.
-- What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
-  cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
-  owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
-  issue is logged as one bounded error. A message on a call this side ended lately is a race, and dropped quietly. So is
-  a stop of the peer's for a subscription that is not running.
+### Forwarding and issues
+
+- **Forwarding:** passes a peer's calls of chosen methods to another transport of the same schema. Messages cross as
+  bytes, so only the far ends decode payloads. Each link keeps its own rules.
+- **Issues:** what the transport cannot handle goes to one `onIssue` hook. Without it, each issue is logged.
 
 ## Public API
 
 ### `.`
 
-- `codec(encode, decode)` wraps two functions as a `Codec<Value>`, which is a SCALE codec.
-- `ResultPayload<Value, ErrorValue>`, scale-ts's `Result`, with `ok(value)`, `ok()` and `err(error)`. `Variant<Entries>`
-  is a record's entries as a tagged union.
-- `CallError<Domain>` with the constructor `domain` and the codec `callError(domain)`, which a schema declares a
-  subscription's `interrupt` with, as `Result(_void, callError(reason))`, to keep truapi's layout, and `Failure` with
-  `denied`, `unsupported`, `malformedFrame`, `hostFailure` and `cancelled`. `hostFailure` takes a reason, or an `Error`,
-  whose reason is `"<name>: <message>"`, bounded to 500 characters.
-- `request({ request, response, error? })` declares a `Request<Payload, Response, Domain>`, and
-  `subscription({ start, receive, interrupt? })` a `Subscription<Start, Value, Interrupt>`, whose `Interrupt` is the
-  `interrupt` codec's type as a whole. Without `error` or `interrupt`, `Domain` or `Interrupt` is `undefined`.
-  `RequestMessage<Payload, Response, Domain>` and `SubscriptionMessage<Start, Value, Interrupt>` are what their sides
-  send.
-- `defineSchema({ version, hello, sections })` checks the record and returns a `Schema<Hello, Layout>`, whose `Layout`
-  is its `sections`: its `version`, `hello` codec, `sections`, `addressOf(method)`, its `Address`
-  (`{ section, method, sectionId, methodId }`), which throws for a method of another schema with an error that names
-  this schema's sections, and `methodAt(sectionId, methodId)`, the method there, or undefined. `Sections` is the record
-  it takes, of `AnyMethod`, and `MethodOf<Layout>` is any one of its methods, as a union.
-- `MethodTypes<MethodType>` is what each side of a method sends:
-  `{ request: Payload; response: ResultPayload<Response, CallError<Domain>> }` or
-  `{ start: Start; receive: Value; interrupt: Interrupt; stop: undefined }`. `DomainError<MethodType>` is its own error,
-  `Domain`, or `Interrupt` as a whole.
-- `createTransport({ schema, provider, ...options })` returns a `Transport<Hello>`, typed by
-  `TransportParams<Hello, Layout>`:
-  - `schema` is the `Schema<Hello, Layout>` it calls and serves, and `provider` the `Provider` it talks over.
-  - `handshake: 'offer' | 'respond'` sets whether this side offers the handshake or responds to it, and `hello` is this
-    side's. A hello its codec refuses throws at creation.
-  - `retryMs` (50 by default) and `timeoutMs` (10000 by default, as host-api and truapi wait) pace the opener, on
-    `timers`. A `timeoutMs` of null sets no deadline, for an owner that bounds the wait itself and disposes the
-    transport when it gives up.
-  - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause }`,
-    `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`. `describeIssue(issue)` is one as a
-    line of text, `getFailureReason(error)` an error as `"<name>: <message>"`, bounded, and `parseReason(reason)` reads
-    such a reason back as `{ name, message }`.
-- `Transport<Hello>`:
-  - `connect()` starts the handshake on the opener ahead of its first call, which starts it otherwise, and
-    `whenConnected({ signal? })` resolves once it succeeds or rejects with the closing error. An aborted `signal`
-    rejects that wait with an `AbortError` and leaves the handshake going for other callers, and the closing error of a
-    closed transport wins over it.
-  - `request(method, payload, { signal? })` resolves to `ResultPayload<Response, CallError<Domain>>`, and its options
-    are a `RequestParams`. It rejects with the closing error, with `TransportMalformedResponseError` when the answer
-    does not decode, or when the payload does not encode.
-  - `handleRequest(method, handler)` serves a request method and returns what unregisters it. A `RequestHandler` gets
-    the payload and a `CallContext` and returns a `ResultPayload`, sync or async.
-  - `subscribe({ method, start, listeners, signal? })`, typed by `SubscribeParams<Start, Value, Interrupt>`, with
-    `listeners` `{ receive, interrupt, fail, close }`, returns its `unsubscribe`. Exactly one of `interrupt(reason)`,
-    `fail(failure)` and `close(error)` is called, once, unless it is unsubscribed first.
-  - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
-    `CallContext` and a `Sink`, with `send(value)` and `interrupt(reason)`, where `reason` is the method's own interrupt
-    reason, which the subscriber hears as it is, and returns its stop function.
-  - `forward(methods, upstream)` serves each of `methods` by forwarding the peer's calls to `upstream`, another
-    `Transport` this library built, as their message bytes, and returns what stops forwarding them, which leaves the
-    open calls to run to their end. It throws for a method `upstream` places elsewhere, for a transport this library did
-    not build, and for a method that already has a handler.
-  - `dispose(reason)` closes the transport, posting nothing, and disposes the provider.
-- `CallContext<Hello>` is `{ hello }`, the peer's hello.
-- `TransportHandshakeTimeoutError` closes an opener that heard no answer in time.
-  `TransportUnsupportedProtocolVersionError` closes both sides of a mismatch. It carries `ours` and `theirs` as
-  `TransportVersions`, `{ wire, schema }`, and its message names each version that differs, with both sides' values.
-  `TransportMalformedResponseError` rejects a request whose answer does not decode, with the decode error as its
-  `cause`.
-- `Provider` is `isCorrectEnvironment()`, `postMessage(message)`, `subscribe(callback)` and `dispose()`, over
-  `Uint8Array` messages. `isCorrectEnvironment` says whether the context has a peer to talk to, and a transport over a
-  provider that has none closes at once with `Error('Environment is not correct')`. `postMessage` transfers the
-  message's buffer and never delivers to the provider's own subscribers before it returns.
-- `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })`, typed by `WindowProviderParams`, and
-  `createPortProvider({ port, closeOnDispose? })` are the two providers. Each takes only as much of a window or a port
-  as it uses: a `MessageTarget` that delivers each `WindowMessage` (`{ data, origin, source }`), a `WindowLike` to post
-  to, and a `PortLike`. A browser's own window, `MessageEvent` and `MessagePort` are each one. The window provider is
-  not in a correct environment when its peer is the window it listens on, as a page with no parent is. The port provider
-  always is.
+| Export                                                                           | What it is                                      |
+| -------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `defineSchema`, `Schema`, `Sections`, `Address`, `MethodOf`                      | Declare a schema                                |
+| `request`, `subscription`                                                        | Declare a method                                |
+| `AnyMethod`, `MethodTypes`, `DomainError`, `Variant`                             | Method types                                    |
+| `RequestMessage`, `RequestTypes`, `SubscriptionMessage`, `SubscriptionTypes`     | What a method's sides send                      |
+| `codec`, `Codec`                                                                 | Wrap two functions as a SCALE codec             |
+| `ResultPayload`, `ok`, `err`                                                     | scale-ts's `Result`                             |
+| `CallError`, `domain`, `callError`                                               | The call error, its builder and codec           |
+| `Failure`, `denied`, `unsupported`, `malformedFrame`, `hostFailure`, `cancelled` | Library failures                                |
+| `getFailureReason`, `parseReason`                                                | An error as `"<name>: <message>"`, and back     |
+| `createTransport`, `Transport`, `TransportParams`, `CallContext`                 | The transport                                   |
+| `RequestParams`, `SubscribeParams`, `SubscriptionListeners`                      | Call options                                    |
+| `RequestHandler`, `SubscriptionHandler`, `Sink`                                  | Handler types                                   |
+| `TransportIssue`, `describeIssue`                                                | An issue, and one as text                       |
+| `TransportHandshakeTimeoutError`                                                 | No handshake answer in time                     |
+| `TransportUnsupportedProtocolVersionError`, `TransportVersions`                  | Version mismatch                                |
+| `TransportMalformedResponseError`                                                | An answer that does not decode                  |
+| `Provider`, `createWindowProvider`, `WindowProviderParams`                       | The provider interface, and the window provider |
+| `createPortProvider`                                                             | The port provider                               |
+| `MessageTarget`, `WindowMessage`, `WindowLike`, `PortLike`                       | What providers take                             |
+
+`createTransport` options:
+
+| Option      | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
+| `schema`    | The schema it calls and serves                          |
+| `provider`  | The channel to the peer, disposed with the transport    |
+| `handshake` | `'offer'` or `'respond'`                                |
+| `hello`     | This side's hello, which the peer sees in `CallContext` |
+| `retryMs`   | Offer interval. Default 50                              |
+| `timeoutMs` | Handshake deadline. Default 10000. `null` for none      |
+| `timers`    | The clock for both                                      |
+| `onIssue`   | Hears every `TransportIssue`                            |
+
+A `Transport` has `connect`, `whenConnected`, `request`, `handleRequest`, `subscribe`, `handleSubscription`, `forward`
+and `dispose`.
+
+**Trap:** for truapi's interrupt layout, declare `interrupt: Result(_void, callError(reason))` and end with `ok()` or
+`err(...)`.
 
 ```ts
 import { Struct, _void, str, u32 } from 'scale-ts';
@@ -306,15 +222,9 @@ const unsubscribe = frame.subscribe({
 
 ### `./testing`
 
-Test helpers for code that uses the library.
-
-- `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` messages. They are in
-  a correct environment, deliver on a microtask, in order, and detach each buffer as a browser transfer does.
-- `readFrame(schema, data)` reads a recorded frame, bytes a provider delivered or a buffer posted between documents, as
-  a `RecordedFrame`. A call is named by its method's names and its message's tag, and keeps the message's bytes. It
-  throws a `FrameRefusedError` on data that is no frame.
-- `recordMessage(schema, data)` records a call's message as a `RecordedWireMessage`
-  (`{ id, section, method, tag, message, json }`), with its bytes as hex and the decoded message as JSON with bytes as
-  hex and big integers as text, so a page can keep and match it. It gives null for the library's own frames and data
-  that is no frame.
-- `readMessages({ schema, method, recorded })` picks the recorded messages of a method and decodes them, typed by it.
+| Export                                            | What it is                              |
+| ------------------------------------------------- | --------------------------------------- |
+| `createProviderPair`                              | Two connected in-memory providers       |
+| `readFrame`, `RecordedFrame`, `FrameRefusedError` | Read a recorded frame                   |
+| `recordMessage`, `RecordedWireMessage`            | Record a call's message as hex and JSON |
+| `readMessages`                                    | Decode a method's recorded messages     |

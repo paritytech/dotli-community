@@ -1,15 +1,11 @@
 # `@dotli/sandbox-wire`
 
-The protocol between the host and a sandbox frame: the URL params the host opens the sandbox with, every message the two
-post to each other, and the host's one listener for that traffic.
+The protocol between the host and a sandbox frame: the URL params, every message both ways, and the host's listener.
 
 ## Responsibility
 
-- Owns the param contract: the param names, the schema version and the sandbox's validation of what the host passes.
-- Owns the message shapes in both directions, the checker build's violation report among them, and the parsers each side
-  runs on what it receives.
-- Owns the host's channel, which listens for sandbox messages once and hands typed messages to its consumers.
-- Does not own what the messages carry out: the block relay, the product frame, the loading screen or the sandbox run.
+- **Owns:** the param contract, the message shapes and parsers, and the host's one channel for sandbox messages.
+- **Does not own:** what the messages drive, such as the block relay, the product frame or the loading screen.
 
 ## Design
 
@@ -20,31 +16,28 @@ flowchart LR
   host -- "postMessage, parsed on receipt" --> sandbox
 ```
 
-- The host and the sandbox are separate origins that can run different releases for a while after a deploy, so the
-  formats are additive. A change may add an optional field or a new message type, never rename or retype one.
-- The sandbox cannot read the host's settings, so the host passes every decision as a URL param. The validator throws a
-  typed contract error for any value it does not recognize instead of defaulting, and marks an absent required param
-  recoverable so the host can render the frame again.
-- A new required param bumps `SANDBOX_SCHEMA_VERSION`, so a stale host cannot feed a fresh sandbox. An explicit version
-  must match.
-- Any frame or extension can post to a window, so each side parses what it receives and drops what does not parse.
-- The host listens on one channel. It parses each message once, drops messages from untrusted origins and reports a
-  handler that throws, so one consumer cannot break the others.
-- The param names and the schema version import nothing, so tooling under Node can read them without the config barrel.
+- **Additive only:** host and sandbox may run different releases after a deploy. Add optional fields or new message
+  types. Never rename or retype.
+- **Params carry every decision:** the sandbox cannot read the host's settings.
+- **No defaults:** an unknown value throws. A missing required param is recoverable, so the host can render again.
+- **Schema version:** a new required param bumps `SANDBOX_SCHEMA_VERSION`.
+- **Parse on receipt:** any frame can post to a window, so each side drops what does not parse.
+- **One host channel:** drops untrusted origins and isolates a throwing handler.
 
 ## Public API
 
 ### `@dotli/sandbox-wire`
 
-- Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`, which returns the parsed
-  params or throws `SandboxContractError` with the reason as its message and a `recoverable` flag.
-- Messages: `parseHostToSandboxMessage`, `postToHost`, `parseApiViolationMessage`, `ApiViolationMessage`,
-  `parseRecoverAcceptedMessage`, `SandboxRecoverAcceptedMessage` (the host's acceptance of a recover ask),
-  `SandboxToHostMessage` (each member named through `SandboxMessageOf`), `HostToSandboxMessage`, `BitswapResultMessage`,
-  `SandboxLoadOutcome` (how the sandbox's load of the content ended), `isLoadedOutcome`.
-- Channel: `startSandboxChannel`, its derived `StartedSandboxChannel`, `SandboxChannel` (the started channel without
-  `stop`), `SandboxSender`, `SandboxMessageType`, `SandboxMessageOf`.
+- **Params:** `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`, `SandboxContractError` (has
+  a `recoverable` flag).
+- **Messages:** `parseHostToSandboxMessage`, `postToHost`, `HostToSandboxMessage`, `SandboxToHostMessage`,
+  `BitswapResultMessage`.
+- **Violation report:** `parseApiViolationMessage`, `ApiViolationMessage`.
+- **Recover acceptance:** `parseRecoverAcceptedMessage`, `SandboxRecoverAcceptedMessage`.
+- **Load outcome:** `SandboxLoadOutcome`, `isLoadedOutcome`.
+- **Channel:** `startSandboxChannel`, `StartedSandboxChannel`, `SandboxChannel` (without `stop`), `SandboxSender`,
+  `SandboxMessageType`, `SandboxMessageOf`.
 
 ### `@dotli/sandbox-wire/contract-params`
 
-The param contract alone, `SANDBOX_SCHEMA_VERSION` and `SANDBOX_CONTRACT_PARAMS`, for Node tooling. It imports nothing.
+`SANDBOX_SCHEMA_VERSION` and `SANDBOX_CONTRACT_PARAMS` alone. Imports nothing, for Node tooling.

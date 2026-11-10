@@ -1,47 +1,37 @@
 # `@config/eslint`
 
-Shared ESLint flat configs and the import-layer helpers that enforce the package layering. Internal, workspace-only
-(`private`).
+Shared ESLint flat configs and the helpers that turn package layering into import bans. Internal (`private`).
 
 ## Responsibility
 
-- Hold the lint rules every package shares: type-aware strict TypeScript, Solid, Astro and the repo's code-style bans.
-- Hold the helpers that turn the repo's package layering into import bans a package's lint config applies.
-- Not a package's own allow-list: each package lists what it may import in its own lint config.
+- **Owns:** the lint rules every package shares, and the import-ban helpers.
+- **Does not own:** a package's allow-list. Each package lists what it may import in its own lint config.
 
 ## Design
 
-- The base config is the minimal config: `@eslint/js` recommended, `typescript-eslint` recommended, Prettier compat and
-  the Turbo env-var rule. It ignores `dist/**`.
-- The vite config extends it for TypeScript apps and packages with `strictTypeChecked` and `stylisticTypeChecked`, the
-  project service, and error-level rules for unsafe `any`, floating promises, strict booleans, no `console`, no non-null
-  assertions and braces on every block. It also loads the Solid plugin for `.tsx`.
-- The astro config extends the vite config with `eslint-plugin-astro`. Type-aware rules are off in `.astro` files, where
-  `astro check` covers them.
-- The vite config also carries the shared bans: silent `catch {}`, error wrapping by `err.message` concatenation, and
-  `_FAILURE`, `_TIMEOUT`, `_RETRY` or `_RETRIES` metric constants. It refuses `.ts` import extensions in shipped code,
-  imports of test-only modules (specs, fakes, testing folders and `@dotli/*/testing`) from shipped code, and DOM tooling
-  in unit specs.
-- Specs, tests and stories are matched by file pattern, so one config covers all of them. Stories import their package's
-  story fixtures by path. Those fixtures run in the browser with the stories, so they may read the DOM.
+- **`base`:** `@eslint/js` and `typescript-eslint` recommended, Prettier compat, the Turbo env-var rule.
+- **`vite`:** extends `base` for TypeScript code. Type-aware strict rules, Solid for `.tsx`, and the repo's code-style
+  bans.
+- **`astro`:** extends `vite` with Astro rules. Type-aware rules are off in `.astro` files, where `astro check` runs.
+- **Tests and stories:** matched by file pattern, so one config covers all of them.
 
 ## Entry points
 
-| Entry                  | Use                                                         |
-| ---------------------- | ----------------------------------------------------------- |
-| `@config/eslint/base`  | `config`: the base config.                                  |
-| `@config/eslint/vite`  | `config` and the helpers below.                             |
-| `@config/eslint/astro` | `config`: the vite config plus Astro rules, for Astro apps. |
+| Entry                  | Exports                        |
+| ---------------------- | ------------------------------ |
+| `@config/eslint/base`  | `config`                       |
+| `@config/eslint/vite`  | `config` and the helpers below |
+| `@config/eslint/astro` | `config`, for Astro apps       |
 
-Helpers from `@config/eslint/vite`:
+| Helper                                | What it does                                                    |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `importBans(bans, within?)`           | Bans imports that cross a layer, optionally in some files only. |
+| `onlyAllowedScopes(allowed, message)` | Refuses every workspace-scope import except `allowed`.          |
+| `dynamicImportBan(pattern, message)`  | Refuses `import()` of a matching module.                        |
+| `fixedConfigOnly`                     | Limits a zone of files to the configuration's fixed entry.      |
+| `restrictedSyntax`                    | The shared syntax bans, for a package with its own rule.        |
 
-- `importBans(bans, within?)`: bans imports that cross a layer, optionally only in some files.
-- `onlyAllowedScopes(allowed, message)`: refuses every `@dotli/*`, `@config/*` and `@parity/*` import but `allowed`.
-- `dynamicImportBan(pattern, message)`: refuses `import()` of a matching module.
-- `fixedConfigOnly`: a ban for `importBans` that limits a zone of files to the configuration's fixed entry.
-- `restrictedSyntax`: the shared syntax bans, for a package that adds its own `no-restricted-syntax` rule.
-
-Each package re-exports a config from its own lint config:
+## Usage
 
 ```js
 import { config } from '@config/eslint/vite';

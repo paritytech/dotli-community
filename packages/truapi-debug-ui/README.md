@@ -1,19 +1,19 @@
 # `@dotli/truapi-debug-ui`
 
-The TrUAPI debug panel: a docked inspector that shows the host to product traffic, a timeline, name resolution, the
-product's archive, the wallet switch and diagnostics. It loads only in debug mode.
+The TrUAPI debug panel. A docked inspector for host to product traffic, name resolution, the product's archive, the
+wallet switch and diagnostics. It loads only in debug mode.
 
 ## Responsibility
 
-- The panel views and their state: event list and filters, detail pane, timeline, resolution chart, archive, wallet,
-  diagnostics.
-- The models behind the views: the event store and the correlation of a call with its answer, filters, rows and detail
-  formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
-  the stored dock position and section. They are plain modules, tested under Node.
-- Its own components, icons, tokens and phone breakpoint. From the shared UI kit it takes only the Solid glue that
-  mounts a root, and the pointer drag, so a broken root and a drag behave as everywhere else on the page. It reads
-  stores through the Solid store binding. Each icon is a Solid component that draws an `<svg>` in `currentColor`.
-- Not owned: event capture and the bus, and the host's stores and layers. The host gives them through `DebugPanelHost`.
+**Owns:**
+
+- The panel's views and their state.
+- The models behind them: event store, call and reply correlation, filters, timeline, resolution, export, payload
+  decoding, the stored dock position and section.
+- Its own components, icons, tokens and phone breakpoint.
+
+**Does not own:** event capture, the bus, and the host's stores and layers. The host passes them through
+`DebugPanelHost`.
 
 ## Design
 
@@ -23,88 +23,50 @@ flowchart LR
   bus --> feed[panel feed] --> store["event store and resolution recorder"] --> panel
 ```
 
-- A lazy loader keeps the panel in its own chunk, and the package index is a pure barrel.
-- Setup installs the panel. A second call before disposing does nothing. Dispose also gives the product iframe its full
-  size back through `host.reportDockInset`.
-- The feed subscribes to the bus at once, so the buffered boot replay is in the store before the panel mounts.
-- The models take their inputs as parameters and import no Solid, so they are tested under Node. Each is one function or
-  factory in a module of its own. Keys are stable, so a view updates a box in place as traffic streams in.
-- The stateful models are factories that return plain objects, and their types come from the factories. The event store
-  takes its clock as a parameter, defaulting to the page clock, and stamps each TrUAPI message with it at insert. It
-  publishes a count of its changes as a readable atom that only grows, and the panel re-reads the ring at most once a
-  frame, when the count has moved. The stored dock and section are each a persistent atom over a storage the caller may
-  replace. Each reads its key on first start, and going back to the default removes the key. Their page instances are
-  module constants. The panel reads them as stores and writes them with `set`.
-- `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching (opening the page's
-  phrase view and signing out), diagnostics, the archive loader (the host picks gateway or blocks), content insets, a
-  dock inset callback, and leaving debug mode, which the host does on Hide. The panel imports no host module.
-- The root renders inside an error boundary. A throwing view is reported once and the root is disposed, so timers stop.
-- Effects (clipboard, download), the bus, the view and the repeated computations are options of the mount with page
-  defaults. A caller replaces them to count work or fake the page. The views read the computations from a context the
-  mount fills.
-- The panel imports no chain library. It reads keys and chains through its port, and lint enforces it.
+- **Own chunk:** a lazy loader keeps the panel out of the main bundle.
+- **One port:** the panel imports no host module and no chain library. Everything comes through `DebugPanelHost`. Lint
+  enforces it.
+- **Early feed:** the feed subscribes to the bus at once, so the boot replay is in the store before the panel mounts.
+- **Models import no Solid:** each is one function or factory, tested under Node. Stable keys let a view update in place
+  as traffic streams in.
+- **Frame-rate reads:** the event store publishes a growing change count. The panel re-reads it at most once a frame.
+- **Dispose:** gives the product iframe its full size back through `host.reportDockInset`.
 
 ## Using the panel
 
-### Turning it on and off
+| How                                                          | Effect                                           |
+| ------------------------------------------------------------ | ------------------------------------------------ |
+| Build with `VITE_APP_DEBUG=true`                             | Panel mounts collapsed.                          |
+| Settings, Advanced, **Open in debug mode**, or `?debug=true` | Turns debug mode on for the tab, in any build.   |
+| `?debug=off` or the panel's **Hide** button                  | Leaves debug mode and reloads without the panel. |
 
-Builds made with `VITE_APP_DEBUG=true` mount the panel collapsed. Other builds keep it off until Settings, Advanced,
-**Open in debug mode**, or `?debug=true` on any URL. The choice lasts for the tab, and `?debug=off` or the panel's
-**Hide** button leaves debug mode and reloads without the panel. The panel's code loads only in debug mode.
+| Section         | Shows                                                                     |
+| --------------- | ------------------------------------------------------------------------- |
+| **TrUAPI**      | Host to product messages and host events, as a list or a timeline.        |
+| **Resolution**  | How the last page load went, phase by phase.                              |
+| **Archive**     | The loaded product's files.                                               |
+| **Diagnostics** | Site, backend and package versions, for a bug report.                     |
+| **Wallet**      | Switches every app on the domain between Polkadot App and a local wallet. |
 
-### Sections
+Good to know:
 
-The header holds the section tabs and the panel's own controls: dock, collapse and Hide. A collapsed panel selects no
-tab, and picking one opens the panel on it. A collapsed panel also stops reading traffic, and catches up once it opens.
-
-- **TrUAPI**: the messages between host and product, and the host's own boot, resolve, render, bridge and failover
-  events, as a list or a timeline beside a detail pane.
-- **Resolution**: how the last page load went, phase by phase, with the open block and the chains that never started.
-- **Archive**: the files of the loaded product.
-- **Diagnostics**: the site, backend and package versions, to paste into a bug report.
-- **Wallet**: switches every app on the domain between Polkadot App and a local wallet. A recovery phrase is typed in
-  the page's own sign-in, the sign-in window or the page's modal on a page that pairs in place, which the tab only asks
-  the host to open. Going back to Polkadot App is a sign-out.
-
-### Reading the TrUAPI section
-
-- A TrUAPI message groups with the others of its request id, a host event with the others of its flow id. Selecting an
-  event highlights its group, and the detail pane shows the group with each event's time from the first.
-- A request with no reply yet shows a pending badge that counts up and turns slow after three seconds.
-- The event count, **Pause**, **Clear**, Export and Copy sit at the end of the filter row. **Pause** stops recording new
-  events. The reply that closes a call the panel already recorded still lands, once, so that call does not read pending
-  for good. **Clear** drops the recorded events. The Resolution section has its own **Clear** for the recorded load.
-- The filters pick the kind (TrUAPI or System), the direction, the product, and the methods to include by text or
-  `/regex/`, and the methods to exclude. Export and Copy take what the filters show. Copy announces its outcome as a
-  status text for assistive technology.
-- In the timeline, time runs downwards. Each chain that is followed gets a swimlane, then the host's events, then other
-  TrUAPI traffic. A box spans a call from its request to its reply and has a dashed edge while it waits. A rail is a
-  chain head subscription, and its ticks are the subscription's block events.
-- Keyboard: the section and view tabs move focus with the left and right arrows, Home and End, and Enter or Space picks
-  one. The event list is a listbox with the selected event as its active option. The arrow keys also move the panel's
-  edge and the splitter, with Shift for a larger step.
-- Chain messages are decoded into their operation and block events. Signing, session, entropy and local storage payloads
-  show only their size. In local wallet mode the signing requests and the resource allocation request are decoded
-  instead, because the panel stands in for the phone. A frame that cannot be decoded shows as raw bytes, with their
-  length in the list and a hex preview of the first bytes in the detail pane.
-- The Resolution clock runs only while a running load is on screen.
-- The list keeps the newest 2000 events and counts the ones it dropped.
+- A collapsed panel stops reading traffic and catches up when it opens.
+- Messages group by request id, host events by flow id. A request with no reply turns slow after three seconds.
+- **Pause** stops recording, but the reply to a recorded call still lands.
+- Signing, session, entropy and local storage payloads show only their size. In local wallet mode signing is decoded,
+  since the panel stands in for the phone.
+- The list keeps the newest 2000 events.
 
 ### Adding a host event
 
-Add it to the debug bus's event union with a layer, an event name, a flow id and a payload, and emit it. The panel then
-fails the type check until its models give the event a one-line summary and a facts row: its explanation and whether it
-ends its flow.
+1. Add it to the debug bus's event union with a layer, an event name, a flow id and a payload.
+2. Emit it.
+3. Fix the type check: the panel's models must give the event a one-line summary and a facts row.
 
 ## Public API
 
-### `@dotli/truapi-debug-ui`
-
-- `loadTruapiDebugMount`, `TruapiDebugMountModule`: the lazy loader of the panel mount, whose `setupTruapiDebugPanel`
-  takes one `SetupParams` object, installs the panel and returns a dispose.
-- `DebugPanelHost`: the port the host implements, with the diagnostics types it carries (`DiagnosticsSource`,
-  `DiagnosticsRow`, `PackageVersion`).
-
-### `@dotli/truapi-debug-ui/testing`
-
-- `fakeDebugPanelHost`, `FakeDebugPanelHost`: a host port for specs and stories.
+| Entry                            | Export                                                                    | What it does                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@dotli/truapi-debug-ui`         | `loadTruapiDebugMount`, `TruapiDebugMountModule`                          | Lazy loader. Its `setupTruapiDebugPanel` installs the panel and returns a dispose. |
+| `@dotli/truapi-debug-ui`         | `DebugPanelHost`, `DiagnosticsSource`, `DiagnosticsRow`, `PackageVersion` | The port the host implements, and its diagnostics types.                           |
+| `@dotli/truapi-debug-ui/testing` | `fakeDebugPanelHost`, `FakeDebugPanelHost`                                | A host port for specs and stories.                                                 |
