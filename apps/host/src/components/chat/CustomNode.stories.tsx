@@ -8,7 +8,9 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { expectBefore } from '@config/storybook/play';
 import { CustomNode, type CustomActionHandler } from './CustomNode.js';
 
-const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+function encode(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
 
 /** Hands the next tree to the rendered node, as the product's stream does. */
 const live: { send: (node: RendererNode) => void } = {

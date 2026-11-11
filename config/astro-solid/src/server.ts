@@ -57,6 +57,7 @@ const renderer: NamedSSRLoadedRendererValue = {
 export default renderer;
 
 /** Resolves to whether `Component` renders as a Solid component. Never rejects, and caches the verdict per type. */
+// eslint-disable-next-line @typescript-eslint/max-params -- Astro's renderer `check` fixes this signature
 async function check(
   this: RendererContext,
   Component: unknown,
@@ -121,6 +122,7 @@ async function probeSolidComponent({ context, Component, props, children }: Para
  *
  * Rejects with the component's error when a real render fails. A probe render reports it through `onProbeError`.
  */
+// eslint-disable-next-line @typescript-eslint/max-params -- Astro's renderer `renderToStaticMarkup` fixes this signature
 async function renderToStaticMarkup(
   this: RendererContext,
   Component: Component<Props>,

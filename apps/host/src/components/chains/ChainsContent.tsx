@@ -32,12 +32,12 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   // Both backends produce block arrivals, so only the captions follow the backend. A memo, as it is read
   // three times per render.
   const status = createMemo(() =>
-    describeNetworkStatus(
-      props.network().verdict,
-      isNetworkOffline(props.health()),
-      props.network().chains.filter(chain => chain.state === 'live').length,
-      props.backend(),
-    ),
+    describeNetworkStatus({
+      verdict: props.network().verdict,
+      offline: isNetworkOffline(props.health()),
+      chainCount: props.network().chains.filter(chain => chain.state === 'live').length,
+      backend: props.backend(),
+    }),
   );
   const knownChains = createMemo(() => props.network().chains.filter(chain => chain.role !== null));
   const otherChains = createMemo(() => props.network().chains.filter(chain => chain.role === null));

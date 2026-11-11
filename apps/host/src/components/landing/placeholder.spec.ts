@@ -18,9 +18,9 @@ afterEach(() => {
 });
 
 /** Advances past the hold and the full erase of "browse" and the typing of "mark3t". */
-const showSecondName = (): void => {
+function showSecondName(): void {
   vi.advanceTimersByTime(HOLD_MS + ERASE_MS * 6 + TYPE_MS * 6);
-};
+}
 
 describe('animatePlaceholder', () => {
   it('As a visitor, the placeholder holds the first name, then erases it one character at a time', () => {

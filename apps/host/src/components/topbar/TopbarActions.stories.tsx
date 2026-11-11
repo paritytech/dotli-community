@@ -28,8 +28,12 @@ import { TopbarActions } from './TopbarActions.js';
 /** A phone bar with room for the account and More only, so every other item is a More row. */
 const MORE_ONLY = 80;
 
-const opened = (id: string): Promise<void> => waitFor(() => expect(byId(id)).toHaveAttribute('data-open'));
-const closed = (id: string): Promise<void> => waitFor(() => expect(byId(id)).not.toHaveAttribute('data-open'));
+function opened(id: string): Promise<void> {
+  return waitFor(() => expect(byId(id)).toHaveAttribute('data-open'));
+}
+function closed(id: string): Promise<void> {
+  return waitFor(() => expect(byId(id)).not.toHaveAttribute('data-open'));
+}
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
 
@@ -87,11 +91,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const narrow = () => (
-  <TopbarFrame maxWidth={MORE_ONLY}>
-    <Actions />
-  </TopbarFrame>
-);
+function narrow() {
+  return (
+    <TopbarFrame maxWidth={MORE_ONLY}>
+      <Actions />
+    </TopbarFrame>
+  );
+}
 
 /** As a mobile user, the lock button marks the app's grants, and the More menu's Permissions row opens its popover. */
 export const PermissionsRowShowsGrants: Story = {

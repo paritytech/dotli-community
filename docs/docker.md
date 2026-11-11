@@ -136,7 +136,7 @@ scheme or a real domain with a wildcard certificate, not a hybrid.
 
 **Do not publish on port 80.** `getProtocolOrigin` falls back to port 5173 when
 `window.location.port` is empty, which it is on the default HTTP port, so the
-protocol iframe would be looked for on the wrong port. Any explicit port is fine;
+protocol iframe would be looked for on the wrong port. Any explicit port is fine, since
 the bundle reads the port from the current location.
 
 ## Base domain
@@ -238,7 +238,7 @@ correct while the UI names your fork. Genesis checks cannot catch this. Use
 
 **Mode preferences are not shared across subdomains.** `previewServer.ts`
 implements a `/__dotli-mode/<key>` store to work around `localhost` being on the
-Public Suffix List; nginx has no equivalent. On localhost the settings
+Public Suffix List. nginx has no equivalent. On localhost the settings
 resolution (`resolveSettings`, with `preferLocal`) prefers the per-origin choice
 and the shared store only reports a read error, so each subdomain simply keeps
 its own backend and cache settings.

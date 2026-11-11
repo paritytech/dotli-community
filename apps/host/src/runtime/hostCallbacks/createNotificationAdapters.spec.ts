@@ -8,7 +8,9 @@ import { createNotificationAdapters, type NotificationScheduler } from './create
 import type { NotificationParams } from '@dotli/ui';
 
 const PRODUCT_ID = asProductId('myapp.paseo');
-const getProductId = () => PRODUCT_ID;
+function getProductId() {
+  return PRODUCT_ID;
+}
 
 describe('notification host callbacks', () => {
   it('As a product developer, I push a notification that is due now and it is scheduled under my full product id, shown with my label and answered with its id', async () => {

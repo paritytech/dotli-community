@@ -40,7 +40,9 @@ async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
 /** Sentry sends a report up to one flush interval (5 s) after it is taken. */
 const SENTRY_FLUSH_HOLD_MS = 6_000;
 
-const total = (points: readonly GaugePoint[]): number => points.reduce((sum, p) => sum + p.value, 0);
+function total(points: readonly GaugePoint[]): number {
+  return points.reduce((sum, p) => sum + p.value, 0);
+}
 
 /** Waits for the expected count, then holds for one Sentry flush. */
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {

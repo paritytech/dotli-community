@@ -31,16 +31,25 @@ const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' }
 const SEARCHING = 'Finding peers. This takes a few seconds.';
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
-const isOpen = (): boolean => document.getElementById('chains-popover')?.hasAttribute('data-open') === true;
-const content = (): HTMLElement => query(document, '#chains-popover [data-testid="chains-content"]');
-const shownBlocks = (): string[] =>
-  [...document.querySelectorAll<HTMLElement>('#chains-popover [data-block]')].map(bar => bar.dataset['block'] ?? '');
-const waitingText = (): string | null | undefined =>
-  document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
-const rowTexts = (row: Element): (string | null)[] =>
-  [...row.querySelectorAll('[data-testid="chains-transfer-label"], [data-testid="chains-transfer-value"]')].map(
+function isOpen(): boolean {
+  return document.getElementById('chains-popover')?.hasAttribute('data-open') === true;
+}
+function content(): HTMLElement {
+  return query(document, '#chains-popover [data-testid="chains-content"]');
+}
+function shownBlocks(): string[] {
+  return [...document.querySelectorAll<HTMLElement>('#chains-popover [data-block]')].map(
+    bar => bar.dataset['block'] ?? '',
+  );
+}
+function waitingText(): string | null | undefined {
+  return document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
+}
+function rowTexts(row: Element): (string | null)[] {
+  return [...row.querySelectorAll('[data-testid="chains-transfer-label"], [data-testid="chains-transfer-value"]')].map(
     cell => cell.textContent,
   );
+}
 
 type ExpectedChain = {
   label: string;

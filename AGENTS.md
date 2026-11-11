@@ -144,15 +144,21 @@ UI:
 Comments and docs:
 
 - Comments say why or what constraint applies. Never restate the code.
-- JSDoc starts with one sentence. Files may open with a short purpose block.
-- No em-dashes, semicolons or Unicode arrows in prose. No decorative separators. No spec citations in comments.
-- No tail enumeration: a sentence never ends in a list of three or more items, with or without a colon. Split it into
-  short sentences, or end the lead-in with a colon and put the items in a bullet list.
-- Say "network" or "remote", not "on-chain".
-- Every interface method's JSDoc states its contract, such as whether and with what it rejects.
+- JSDoc starts with one sentence. Files may open with a short purpose block. No spec citations in comments.
+- A method that throws or rejects says when and with what in its JSDoc. Not throwing is the default and is never
+  written. A guarantee a caller relies on that the signature does not show, such as an order or an idempotency, is
+  written too.
 - Comments never claim a relation to other code, which can change without touching the comment. When two values must
   stay in sync, share a token, variable or import, or write nothing.
+
+Markdown docs only:
+
+- No em-dashes, semicolons or Unicode arrows in prose. No decorative separators.
+- Say "network" or "remote", not "on-chain".
 - Say "imports no Solid", never "Solid-free".
+- `npm run lint:root` checks the three rules above, apart from decorative separators.
+- No tail enumeration: a sentence never ends in a list of three or more items, with or without a colon. Split it into
+  short sentences, or end the lead-in with a colon and put the items in a bullet list.
 - Examples in docs and rules are general shapes a reader can map onto their own case ("a component's CSS module", "a
   multi-step modal"), never a specific file, component or past incident.
 - Every package has a `README.md` in its root: its responsibility, basic design and public API (each `exports` entry),

@@ -23,7 +23,9 @@ type Harness = {
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
-const BLOCK_SOURCE = (): Promise<Uint8Array> => Promise.resolve(new Uint8Array());
+function BLOCK_SOURCE(): Promise<Uint8Array> {
+  return Promise.resolve(new Uint8Array());
+}
 
 function createParams(overrides: Partial<SandboxParams> = {}): SandboxParams {
   return {

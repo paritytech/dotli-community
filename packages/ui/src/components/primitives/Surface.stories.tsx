@@ -30,19 +30,21 @@ function Frame(props: { children: JSX.Element }): JSX.Element {
 const body = within(document.body);
 
 type SurfaceArgs = Parameters<typeof Surface>[0];
-const settings = (args: SurfaceArgs) => (
-  <Surface {...args} padded>
-    <SurfaceHead title="Settings" aside={<Chip tone="mono">Paseo</Chip>} />
-    <Well>
-      <Callout icon={InfoIcon}>Surfaces hold a popover's content.</Callout>
-    </Well>
-    <SurfaceFoot hint={<Hint icon={ReloadIcon}>Transport and cache changes reload the app</Hint>}>
-      <Button variant="primary" size="sm">
-        Save and apply
-      </Button>
-    </SurfaceFoot>
-  </Surface>
-);
+function settings(args: SurfaceArgs) {
+  return (
+    <Surface {...args} padded>
+      <SurfaceHead title="Settings" aside={<Chip tone="mono">Paseo</Chip>} />
+      <Well>
+        <Callout icon={InfoIcon}>Surfaces hold a popover's content.</Callout>
+      </Well>
+      <SurfaceFoot hint={<Hint icon={ReloadIcon}>Transport and cache changes reload the app</Hint>}>
+        <Button variant="primary" size="sm">
+          Save and apply
+        </Button>
+      </SurfaceFoot>
+    </Surface>
+  );
+}
 
 const meta = {
   title: 'Primitives/Surface',

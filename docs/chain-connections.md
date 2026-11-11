@@ -161,11 +161,11 @@ flowchart TB
   chain, and every extra lane closes once it is empty.
 - **Lease**: a consumer of the chain's lanes, with a home session on one lane
   and a session on another lane for each follow that overflows there. Local
-  leases are named `local:N`; remote ones `remote:<origin> <connectionId>`, so
+  leases are named `local:N` and remote ones `remote:<origin> <connectionId>`, so
   ids from different sites never collide and one site cannot reach another's
   connection.
 - **Refcount**: the pool counts leases. When the last one is returned, the
-  destroy delay starts; a new lease cancels it.
+  destroy delay starts. A new lease cancels it.
 - **Watch guard**: transaction watches cannot be safely replayed, so on a
   disconnect the guard ends each answered watch with `dropped`.
 - **Watch** (`ChainPool.watch`): reports each chain's leases, status, follow
@@ -302,7 +302,7 @@ sequenceDiagram
 ```
 
 Nothing is halted: the lease stays, and the app keeps its subscription id. The
-store sends its matching statements again after a resubscribe; consumers
+store sends its matching statements again after a resubscribe, and consumers
 dedupe them.
 
 ### …one smoldot chain dies (a halt)
@@ -332,8 +332,8 @@ sequenceDiagram
   chain's gate, and bitswap keeps only the retry of its own fetch.
 - The network panel reads the chain as "not in use" after the halt, until its
   consumer leases it again.
-- The resolver's papi clients drop themselves when their follow gets `stop`;
-  their next read takes a fresh lease. A resolution running at that moment is
+- The resolver's papi clients drop themselves when their follow gets `stop`.
+  Their next read takes a fresh lease. A resolution running at that moment is
   retried once on it (see below).
 - On the smoldot backends the host pool's remote connection hears
   `onHalt('chain')`, and the host pool halts that chain the same way. Each
@@ -371,15 +371,15 @@ sequenceDiagram
   `smoldot-shared-worker`) run them.
 - A halt reaches a read in one of three shapes, and each one is retried:
   - the pool's answer to a request in flight, `Chain transport halted` with
-    `data: 'dotli:chain-halted'`;
+    `data: 'dotli:chain-halted'`
   - `ApiStoppedError` (`chainHead follow stopped`): the follow stopped before
-    its first block;
+    its first block
   - papi's `DisjointError` (`ChainHead disjointed`): the same `stop` cut off an
     operation already running.
 - The retry gets what is left of the request's sync budget, not a new one.
 - **Once only.** If the retry halts too, the error reaches the host. Its error
   page shows the network-dropped copy: `chain-halted` for the first two
-  shapes, which needs only a reload; the existing `chainhead-disjointed` for
+  shapes, which needs only a reload, and the existing `chainhead-disjointed` for
   the third, which also purges the light client's caches.
 - A light client that keeps dying does not loop: its next connect fails, and
   that is a fatal. Nor does a single chain that halts again each time it is

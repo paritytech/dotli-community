@@ -385,12 +385,17 @@ function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsPr
  * A site asks for a transaction: its full origin heads the view, then the call by name and each argument with its
  * value on a line of its own, as text and never as markup.
  */
-function siteReviewParts(
-  origin: string,
-  call: DisplayCall,
-  account: DisplayAccount,
-  props: WindowPartsProps,
-): SignInParts {
+function siteReviewParts({
+  origin,
+  call,
+  account,
+  props,
+}: {
+  origin: string;
+  call: DisplayCall;
+  account: DisplayAccount;
+  props: WindowPartsProps;
+}): SignInParts {
   const parts = StatusScreen({
     title: origin,
     body: `asks you to sign a transaction with your ${account.product} account ${account.index}`,
@@ -461,7 +466,17 @@ function siteApprovingParts(origin: string, props: WindowPartsProps): SignInPart
 }
 
 /** A step of a site's round failed. Try again, where a step may be tried again, runs the round again. */
-function siteFailedParts(origin: string, route: SiteRoute, retry: boolean, props: WindowPartsProps): SignInParts {
+function siteFailedParts({
+  origin,
+  route,
+  retry,
+  props,
+}: {
+  origin: string;
+  route: SiteRoute;
+  retry: boolean;
+  props: WindowPartsProps;
+}): SignInParts {
   const tryAgain: SignInAction = {
     label: 'Try again',
     primary: true,
@@ -609,13 +624,13 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
     case 'site-signing':
       return siteSigningParts(step.origin, step.route, props);
     case 'site-review':
-      return siteReviewParts(step.origin, step.call, step.account, props);
+      return siteReviewParts({ origin: step.origin, call: step.call, account: step.account, props });
     case 'site-sharing':
       return siteSharingParts(step.origin, props);
     case 'site-approving':
       return siteApprovingParts(step.origin, props);
     case 'site-failed':
-      return siteFailedParts(step.origin, step.route, step.retry, props);
+      return siteFailedParts({ origin: step.origin, route: step.route, retry: step.retry, props });
     case 'sites':
       return siteListParts(step.sites, props);
     case 'sites-loading':

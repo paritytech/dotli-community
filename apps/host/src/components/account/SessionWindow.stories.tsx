@@ -124,11 +124,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const windowView = (): HTMLElement => byTestId('session-window');
-const card = (): HTMLElement => byTestId('session-window-card');
-const status = (): HTMLElement => byTestId('session-window-status');
-const buttonNames = (): string[] =>
-  [...windowView().querySelectorAll('button')].map(button => button.textContent.trim());
+function windowView(): HTMLElement {
+  return byTestId('session-window');
+}
+function card(): HTMLElement {
+  return byTestId('session-window-card');
+}
+function status(): HTMLElement {
+  return byTestId('session-window-status');
+}
+function buttonNames(): string[] {
+  return [...windowView().querySelectorAll('button')].map(button => button.textContent.trim());
+}
 
 /** As a user whose window waits for the page that opened it, I see only Connecting in the card and can close it. */
 export const Connecting: Story = {
@@ -375,7 +382,7 @@ export const PairingQrOneSize: Story = {
   play: async ({ canvas, step }) => {
     const { page } = await import('vitest/browser');
     const wide = { width: window.innerWidth, height: window.innerHeight };
-    const drawnWidths = (): number[] => drawQr.mock.calls.map(([, , options]) => options.width);
+    const drawnWidths = (): number[] => drawQr.mock.calls.map(([{ options }]) => options.width);
     try {
       await step('Given the code drawn at 300 px on a wide screen', async () => {
         await canvas.findByRole('img', { name: 'Sign-in QR code' });
@@ -485,10 +492,11 @@ const SITE_ACCOUNT = { product: 'myapp.dot', index: '0' };
 const SITE_GETS = ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
 
 /** What the consent view lists that a site gets, one list item each. */
-const siteGets = (): string[] =>
-  within(byTestId('session-window-site-gets'))
+function siteGets(): string[] {
+  return within(byTestId('session-window-site-gets'))
     .getAllByRole('listitem')
     .map(item => item.textContent.trim());
+}
 
 /** As a user a site asks to sign in, I see the header, its full origin, what it gets and the buttons, and answer it. */
 export const SiteConsent: Story = {
@@ -599,13 +607,14 @@ const LONG_CALL = {
 };
 
 /** Each argument the review shows, as its name and its value. */
-const reviewedArgs = (): { name: string; value: string }[] =>
-  within(byTestId('session-window-call'))
+function reviewedArgs(): { name: string; value: string }[] {
+  return within(byTestId('session-window-call'))
     .getAllByTestId('session-window-call-arg')
     .map(arg => ({
       name: within(arg).getByTestId('session-window-call-arg-name').textContent,
       value: within(arg).getByTestId('session-window-call-arg-value').textContent,
     }));
+}
 
 /** As a user a site asks to sign a long call, I read its origin, its name and every argument whole, and sign it. */
 export const SiteReview: Story = {
@@ -682,13 +691,14 @@ const SITES = [
 ];
 
 /** A date as the site list writes it, in the reader's locale. */
-const shownDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+function shownDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
 
 /** The rows of the site list, each one site. */
-const siteRows = (): HTMLElement[] => [
-  ...byTestId('session-window-sites').querySelectorAll<HTMLElement>('[data-testid="session-window-site"]'),
-];
+function siteRows(): HTMLElement[] {
+  return [...byTestId('session-window-sites').querySelectorAll<HTMLElement>('[data-testid="session-window-site"]')];
+}
 
 /** As a user, I open my site list, read each site's origin and uses, and revoke one. */
 export const SiteList: Story = {

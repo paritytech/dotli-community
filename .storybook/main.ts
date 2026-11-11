@@ -12,11 +12,15 @@ import { cssModules } from '@config/vite/css-modules';
 import { inlineScript } from '@config/vite/inline-script';
 import { TEST_DEFINES } from '@config/vite/test-defines';
 
-const shared = (entry: string): string => fileURLToPath(import.meta.resolve(`@config/storybook/${entry}`));
+function shared(entry: string): string {
+  return fileURLToPath(import.meta.resolve(`@config/storybook/${entry}`));
+}
 
 // Called once for the page and once for each worker build, since a plugin instance serves one build. The sandbox
 // checker stories frame a product page that inlines its script, bundled as the build does.
-const plugins = () => [inlineScript()];
+function plugins() {
+  return [inlineScript()];
+}
 
 const config: StorybookConfig = {
   framework: 'storybook-solidjs-vite',

@@ -38,26 +38,41 @@ function row(name: string): HTMLElement {
   return found;
 }
 
-const segment = (name: string, status: PermissionStatus): HTMLElement =>
-  within(row(name)).getByTestId(`permissions-popover-segment-${status}`);
+function segment(name: string, status: PermissionStatus): HTMLElement {
+  return within(row(name)).getByTestId(`permissions-popover-segment-${status}`);
+}
 
-const statusOf = (name: string): PermissionStatus | undefined =>
-  STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
+function statusOf(name: string): PermissionStatus | undefined {
+  return STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
+}
 
-const reset = (): HTMLButtonElement => byTestId('permissions-popover-reset', document, HTMLButtonElement);
+function reset(): HTMLButtonElement {
+  return byTestId('permissions-popover-reset', document, HTMLButtonElement);
+}
 
-const hint = (): string | null | undefined =>
-  document.querySelector('#permissions-popover-list [data-testid="permissions-popover-hint"]')?.textContent;
+function hint(): string | null | undefined {
+  return document.querySelector('#permissions-popover-list [data-testid="permissions-popover-hint"]')?.textContent;
+}
 
-const presets = (): HTMLElement => byTestId('permissions-presets', document, HTMLElement);
+function presets(): HTMLElement {
+  return byTestId('permissions-presets', document, HTMLElement);
+}
 
-const slider = (): HTMLElement => within(presets()).getByRole('slider');
+function slider(): HTMLElement {
+  return within(presets()).getByRole('slider');
+}
 
-const stop = (id: string): HTMLElement => byTestId(`permissions-preset-stop-${id}`, document, HTMLElement);
+function stop(id: string): HTMLElement {
+  return byTestId(`permissions-preset-stop-${id}`, document, HTMLElement);
+}
 
-const errorLine = (): Element | null => document.querySelector('[data-testid="permissions-popover-error"]');
+function errorLine(): Element | null {
+  return document.querySelector('[data-testid="permissions-popover-error"]');
+}
 
-const advanced = (): HTMLDetailsElement => byTestId('permissions-advanced', document, HTMLDetailsElement);
+function advanced(): HTMLDetailsElement {
+  return byTestId('permissions-advanced', document, HTMLDetailsElement);
+}
 
 async function openAdvanced(userEvent: UserEvent): Promise<void> {
   if (!advanced().open) {

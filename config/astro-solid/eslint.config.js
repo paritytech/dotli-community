@@ -26,4 +26,10 @@ export default defineConfig([
       'no-restricted-imports': ['error', { patterns: [TOOLING_SCOPES] }],
     },
   },
+  {
+    // Astro loads this package's entries, an integration and its renderer, by their default export.
+    rules: {
+      'no-restricted-exports': 'off',
+    },
+  },
 ]);

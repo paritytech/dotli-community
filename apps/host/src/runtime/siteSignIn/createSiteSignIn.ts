@@ -11,7 +11,7 @@ import { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';
 type Params = Omit<SiteRoundParams<SiteSignInResult, 'granted'>, 'action'>;
 
 /** A site's sign-in in the session window: the site's round with the sign-in as its action. */
-export function createSiteSignIn({ ...round }: Params): SiteRound {
+export function createSiteSignIn(round: Params): SiteRound {
   return createSiteRound({ ...round, action: getSiteSignInAction() });
 }
 

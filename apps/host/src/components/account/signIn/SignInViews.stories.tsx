@@ -48,9 +48,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const frame = (): HTMLElement => byTestId('session-window');
-const buttonNames = (): string[] => [...frame().querySelectorAll('button')].map(button => button.textContent.trim());
-const qrImage = (): HTMLElement | null => frame().querySelector('[role="img"][aria-label="Sign-in QR code"]');
+function frame(): HTMLElement {
+  return byTestId('session-window');
+}
+function buttonNames(): string[] {
+  return [...frame().querySelectorAll('button')].map(button => button.textContent.trim());
+}
+function qrImage(): HTMLElement | null {
+  return frame().querySelector('[role="img"][aria-label="Sign-in QR code"]');
+}
 
 async function expectGetApp(text: string): Promise<void> {
   const link = within(frame()).getByRole('link', { name: text });
@@ -202,8 +208,8 @@ export const ApprovingPhone: Story = {
   },
 };
 
-const declined = (): ReturnType<typeof StatusScreen> =>
-  StatusScreen({
+function declined(): ReturnType<typeof StatusScreen> {
+  return StatusScreen({
     mark: { icon: CircleXIcon, tone: 'err' },
     title: 'Sign-in was declined',
     body: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
@@ -212,6 +218,7 @@ const declined = (): ReturnType<typeof StatusScreen> =>
     testId: 'status',
     titleId: 'status-title',
   });
+}
 
 /** As a user whose sign-in was declined, I see why in the failure's tone, with the raw reason, and try again. */
 export const StatusDeclined: Story = {
@@ -375,10 +382,13 @@ export const ContinueFailure: Story = {
 };
 
 /** The phrase form as the window gives it to the screen, with every intent recorded. */
-const phraseParts = (): ReturnType<typeof PhraseScreen> =>
-  PhraseScreen({ isValid, onImport, onBack, backLabel: 'Back', testId: 'session-window-phrase' });
+function phraseParts(): ReturnType<typeof PhraseScreen> {
+  return PhraseScreen({ isValid, onImport, onBack, backLabel: 'Back', testId: 'session-window-phrase' });
+}
 
-const phraseInput = (): HTMLElement => byTestId('session-window-phrase-input');
+function phraseInput(): HTMLElement {
+  return byTestId('session-window-phrase-input');
+}
 
 /** As a developer with a recovery phrase, I am told words that are not a phrase are not valid, and nothing is imported. */
 export const PhraseInvalid: Story = {

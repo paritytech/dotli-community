@@ -60,7 +60,7 @@ function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()
   const drawn: string[] = [];
   return {
     deps: {
-      drawQr: (canvas, payload, options, signal) => {
+      drawQr: ({ canvas, payload, options, signal }) => {
         const draw = { canvas, payload, options, signal };
         draws.push(draw);
         return answer(draw);

@@ -15,6 +15,7 @@ type MountIsland = (
   props: Props,
   slotted: Record<string, string>,
   directive: { client: string },
+  // eslint-disable-next-line @typescript-eslint/max-params -- Astro's island hydrator call fixes this signature
 ) => void;
 
 const alreadyInitializedElements = new WeakMap<Element, (props: Props) => void>();
@@ -28,6 +29,7 @@ const alreadyInitializedElements = new WeakMap<Element, (props: Props) => void>(
 export default function hydrateIsland(element: HTMLElement): MountIsland {
   return mountIsland;
 
+  // eslint-disable-next-line @typescript-eslint/max-params -- Astro's island hydrator call fixes this signature
   function mountIsland(
     Component: Component<never>,
     props: Props,

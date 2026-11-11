@@ -89,7 +89,17 @@ function at<T>(list: readonly T[], index: number): T {
   return item;
 }
 
-function pointer(target: HTMLElement, type: string, pointerId: number, clientY = 0): void {
+function pointer({
+  target,
+  type,
+  pointerId,
+  clientY = 0,
+}: {
+  target: HTMLElement;
+  type: string;
+  pointerId: number;
+  clientY?: number;
+}): void {
   target.dispatchEvent(new PointerEvent(type, { pointerId, clientY, bubbles: true }));
 }
 
@@ -175,9 +185,9 @@ export const ShowCollapseExpandResizesFrame: Story = {
     });
     await step('When I drag the handle of the collapsed panel, nothing resizes', () => {
       const handle = canvas.getByTestId('sc-resize-handle');
-      pointer(handle, 'pointerdown', 1, 100);
-      pointer(handle, 'pointermove', 1, 100);
-      pointer(handle, 'pointerup', 1);
+      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: 100 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: 100 });
+      pointer({ target: handle, type: 'pointerup', pointerId: 1 });
     });
     await step('When I expand it, it opens at its own height and the frame follows', async () => {
       await userEvent.click(toggle);
@@ -228,26 +238,26 @@ export const DragHandleResizes: Story = {
     await waitFor(() => expect(panel(canvasElement)).toBeVisible());
     const handle = canvas.getByTestId('sc-resize-handle');
     await step('When I drag the handle up, the panel follows the pointer', async () => {
-      pointer(handle, 'pointerdown', 1, viewport - 168);
-      pointer(handle, 'pointermove', 1, viewport - 200);
+      pointer({ target: handle, type: 'pointerdown', pointerId: 1, clientY: viewport - 168 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
       await waitFor(() => expect(height()).toBe(200));
     });
     await step('When I drag past either end, it stops at 40 px and at 80 % of the viewport', async () => {
-      pointer(handle, 'pointermove', 1, viewport - 8);
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 8 });
       await waitFor(() => expect(height()).toBe(40));
-      pointer(handle, 'pointermove', 1, 0);
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: 0 });
       await waitFor(() => expect(height()).toBeCloseTo(viewport * 0.8, 0));
     });
     await step('When the pointer is cancelled, later moves change nothing', async () => {
-      pointer(handle, 'pointercancel', 1);
-      pointer(handle, 'pointermove', 1, viewport - 200);
+      pointer({ target: handle, type: 'pointercancel', pointerId: 1 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
       await expect(height()).toBeCloseTo(viewport * 0.8, 0);
     });
     await step('When a new drag is released, later moves change nothing', async () => {
-      pointer(handle, 'pointerdown', 2, viewport - 168);
-      pointer(handle, 'pointermove', 2, viewport - 200);
-      pointer(handle, 'pointerup', 2);
-      pointer(handle, 'pointermove', 2, viewport - 300);
+      pointer({ target: handle, type: 'pointerdown', pointerId: 2, clientY: viewport - 168 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 2, clientY: viewport - 200 });
+      pointer({ target: handle, type: 'pointerup', pointerId: 2 });
+      pointer({ target: handle, type: 'pointermove', pointerId: 2, clientY: viewport - 300 });
       await waitFor(() => expect(height()).toBe(200));
     });
   },

@@ -42,11 +42,13 @@ function mount() {
   return { panel, dispose, intents, given, pending };
 }
 
-const read = (statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState => ({
-  status: 'read',
-  label,
-  statuses,
-});
+function read(statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState {
+  return {
+    status: 'read',
+    label,
+    statuses,
+  };
+}
 
 describe('usePermissionsPanel', () => {
   it.each<[string, ShownProduct, ProductPermissionsState, string | undefined]>([

@@ -29,15 +29,23 @@ import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
 
-const isOpen = (): boolean => document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
-const applyButton = (): HTMLButtonElement =>
-  query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
-const toggle = (label: string): HTMLButtonElement =>
-  query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
-const radio = (name: string, value: string): HTMLInputElement =>
-  query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
-const selectedCategory = (): string | null | undefined =>
-  document.querySelector('[data-testid="settings-categories"] [aria-pressed="true"]')?.getAttribute('data-testid');
+function isOpen(): boolean {
+  return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
+}
+function applyButton(): HTMLButtonElement {
+  return query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
+}
+function toggle(label: string): HTMLButtonElement {
+  return query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
+}
+function radio(name: string, value: string): HTMLInputElement {
+  return query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
+}
+function selectedCategory(): string | null | undefined {
+  return document
+    .querySelector('[data-testid="settings-categories"] [aria-pressed="true"]')
+    ?.getAttribute('data-testid');
+}
 
 type Category = 'general' | 'network' | 'advanced';
 

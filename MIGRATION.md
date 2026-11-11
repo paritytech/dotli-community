@@ -14,11 +14,11 @@ dotli still has two protocol layers:
 
 The active launch path is `apps/host/src/runtime/bridge.ts`:
 
-- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
-- starts a Web Worker that owns the `truapi-server` WASM core;
-- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/createHostCallbacks.ts`;
-- creates a product-scoped provider with `runtime.createProvider({ productId })`;
+- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`
+- starts a Web Worker that owns the `truapi-server` WASM core
+- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`
+- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/createHostCallbacks.ts`
+- creates a product-scoped provider with `runtime.createProvider({ productId })`
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
 
 Product frames enter the Rust core through the iframe `MessageChannel`. Account, signing, statement-store, SSO pairing,

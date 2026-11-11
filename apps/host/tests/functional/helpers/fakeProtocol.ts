@@ -13,7 +13,9 @@ import { FAKE_PROTOCOL_BUNDLE_PATH } from './wireBundles.js';
 const FAKE_SCRIPT_PATH = '/p/__dotli-e2e/fake-protocol-frame.js';
 
 /** HTML attribute text for `value`, which may hold any character. */
-const attribute = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+function attribute(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+}
 
 /** Serves the fake protocol frame for every protocol frame the page builds, the frame's rebuilds included. */
 export async function fakeProtocol(page: Page, options: FakeProtocolOptions): Promise<void> {
@@ -34,16 +36,24 @@ export async function fakeProtocol(page: Page, options: FakeProtocolOptions): Pr
 }
 
 /** A frame whose boot cannot start. */
-export const initFailed = (message: string): FakeProtocolOptions => ({ initFailed: message });
+export function initFailed(message: string): FakeProtocolOptions {
+  return { initFailed: message };
+}
 
 /** A frame whose light client crashes once a name is asked for. */
-export const fatalOnResolve = (message: string): FakeProtocolOptions => ({ resolve: { kind: 'fatal', message } });
+export function fatalOnResolve(message: string): FakeProtocolOptions {
+  return { resolve: { kind: 'fatal', message } };
+}
 
-export const errorResolveResponse = (message: string, delayMs = 0): FakeProtocolOptions => ({
-  resolve: { kind: 'error', message, delayMs },
-});
+export function errorResolveResponse(message: string, delayMs = 0): FakeProtocolOptions {
+  return {
+    resolve: { kind: 'error', message, delayMs },
+  };
+}
 
-export const successfulResolveResponse = (cid: string): FakeProtocolOptions => ({ resolve: { kind: 'cid', cid } });
+export function successfulResolveResponse(cid: string): FakeProtocolOptions {
+  return { resolve: { kind: 'cid', cid } };
+}
 
 /** The protocol frame the page has now, waited for. */
 async function protocolFrame(page: Page): Promise<Frame> {

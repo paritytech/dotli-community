@@ -19,7 +19,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 /** The panel's own root, which says whether it starts collapsed. */
-const panel = (page: Page) => page.locator('#truapi-debug-panel');
+function panel(page: Page) {
+  return page.locator('#truapi-debug-panel');
+}
 
 /** Settings' Advanced category, where the debug row shows only while the tab is out of debug mode. */
 async function openAdvancedSettings(page: Page): Promise<void> {

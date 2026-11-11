@@ -119,6 +119,36 @@ export const restrictedSyntax = [
     message:
       'Parallel _FAILURE / _TIMEOUT / _RETRY metric constants are forbidden. Use one name + `{ outcome, reason }`.',
   },
+  {
+    selector: "CallExpression[callee.property.name='forEach']",
+    message: 'Loop with `for...of`, which supports `break`, `continue`, `return` and `await`.',
+  },
+  {
+    selector: 'ForInStatement',
+    message: 'Loop with `for...of` over `Object.keys` or `Object.entries`. `for...in` walks prototype keys.',
+  },
+  {
+    selector: 'TSEnumDeclaration',
+    message: 'Model a closed set as a string literal union.',
+  },
+  {
+    selector: 'ExportAllDeclaration',
+    message: 'List every public name. The barrel is the package API, readable in one place.',
+  },
+  {
+    selector:
+      ':matches(Program, ExportNamedDeclaration) > VariableDeclaration > VariableDeclarator[init.type=/^(ArrowFunctionExpression|FunctionExpression)$/]:not([id.typeAnnotation])',
+    message:
+      'A top-level function is a `function` declaration, so the file reads top-down. An arrow typed by its variable, such as a handler of a declared type, may stay.',
+  },
+  {
+    selector: "TSIndexedAccessType[objectType.type='TSTypeQuery'][indexType.type='TSNumberKeyword']",
+    message: 'Write the union first and type the list by it. Never derive a union from an `as const` list.',
+  },
+  {
+    selector: ':function > ObjectPattern.params[properties.length=1] > RestElement',
+    message: 'Destructure the params you read, or take the object whole. Copying it with `{ ...params }` hides both.',
+  },
 ];
 
 export const config = defineConfig([
@@ -162,8 +192,11 @@ export const config = defineConfig([
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
-      '@typescript-eslint/no-confusing-void-expression': 'error',
+      '@typescript-eslint/no-confusing-void-expression': 'off',
       '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+      '@typescript-eslint/consistent-type-exports': 'error',
+      'max-params': 'off',
+      '@typescript-eslint/max-params': ['error', { max: 3 }],
       'no-console': 'error',
       eqeqeq: ['error', 'always'],
       'no-var': 'error',
@@ -194,6 +227,14 @@ export const config = defineConfig([
     },
   },
   {
+    // Named exports only. Stories, and the entries a tool loads by its default export, turn this off.
+    files: ['**/src/**/*.ts', '**/src/**/*.tsx'],
+    ignores: storyFiles,
+    rules: {
+      'no-restricted-exports': ['error', { restrictDefaultExports: { direct: true, named: true, defaultFrom: true } }],
+    },
+  },
+  {
     // Stories never ship and their plays are tests, so they may reach `./testing` entries such as the store reset.
     files: storyFiles,
     rules: {
@@ -221,10 +262,12 @@ export const config = defineConfig([
     },
   },
   {
-    // Test doubles and best-effort Playwright steps are deliberate no-ops.
+    // Test doubles and best-effort Playwright steps are deliberate no-ops. A test's helpers and table rows take their
+    // inputs positionally.
     files: ['tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
       '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/max-params': 'off',
     },
   },
   {
@@ -233,6 +276,7 @@ export const config = defineConfig([
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/max-params': 'off',
       'no-restricted-imports': ['error', domToolingImports],
       'no-restricted-globals': ['error', ...domGlobals.map(name => ({ name, message: noDomMessage }))],
       // `globalThis.document` reaches the same globals past the rule above.

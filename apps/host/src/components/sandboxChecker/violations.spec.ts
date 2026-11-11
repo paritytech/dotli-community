@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 
 const product = { name: 'product window' };
-const now = (): number => 42;
+function now(): number {
+  return 42;
+}
 
 describe('sandbox checker violations', () => {
   it('As a dotli developer, a violation from the product reads as its API and its details', () => {

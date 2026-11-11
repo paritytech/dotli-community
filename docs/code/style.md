@@ -118,13 +118,15 @@ const normalize = (item: string) => item.trim().toLowerCase();
 export const parseList = (source: string) => source.split(',').map(normalize);
 ```
 
-### Params object for factories, two positional inputs at most
+### Params object for factories, three parameters at most
 
 - A factory that builds a stateful unit takes its dependencies and options in one destructured object, typed by a local
   `Params`, with defaults in the destructuring.
-- Any other function, including a `createX` that builds a value (`createAccountId(raw)`), takes at most two positional
-  inputs. Optional inputs go in one trailing options object (`withRetry(load, { retries })`). Past two required inputs,
-  everything goes in one object.
+- Any other function, including a `createX` that builds a value (`createAccountId(raw)`), takes at most three
+  parameters, a trailing options object included. Optional inputs go in that options object
+  (`withRetry(load, { retries })`). Past three, everything goes in one object. ESLint's `max-params` checks the count.
+  A function whose signature a third-party interface fixes keeps it, and disables the rule naming that interface. Test
+  code is exempt, since its helpers and table rows take their inputs positionally.
 
 Why: call sites name their arguments, order stops mattering, and adding an option breaks no caller.
 
@@ -159,14 +161,14 @@ Why: the name tells the reader what kind of thing it is before they read the bod
 
 ### One job per function
 
-A function does one job. When a part of its body needs a comment to say what it does, that part is a separate named
-function, and the outer body reads as a list of steps.
+A function's body reads top to bottom as the flow it implements. Extract a step only when another place calls it, or
+when its name tells the reader what a block of several lines does that the code does not show. A step of one or two
+lines stays inline, with a comment when its reason is not obvious.
 
 A function that only forwards to another, renames a call or passes its arguments through is inlined at its call site.
-A step earns its own function only when its name saves the reader from working out what a block does.
+So is a helper called once whose body is no harder to read than its call.
 
-Why: a reader can follow the outer flow without reading every step, and without hopping through functions that do no
-work of their own.
+Why: a reader follows the flow in one place. Each hop to a helper costs more than the lines it hides.
 
 ## Composition
 
@@ -244,7 +246,7 @@ Use a DI framework (slots, pipelines, feature injection) only when the project h
 layers expose injection points and which inject into them. Then extend only along those paths.
 
 Without such a framework, compose conventionally. The composition root lists the variants and passes them in as params,
-and a closed set that one module owns is a `switch` (see "Branch on a union in its own function"). Never build an ad-hoc
+and a closed set that one module owns is a `switch` (see "Branch on a union with a `switch`"). Never build an ad-hoc
 registry that modules fill as a side effect of being imported.
 
 Why: injection hides who calls whom. A defined architecture makes that hidden link predictable. Without one, explicit
@@ -309,8 +311,8 @@ function isValidAmount(amount: number, { context, allowZero }: { context: Contex
 
 ### Name repeated control flow as a combinator
 
-A control-flow pattern used in two places (first non-empty result, pipe, memo, sequence) becomes a small named
-combinator in a library, and callers compose it.
+A control-flow pattern longer than a few lines and used in three or more places (first non-empty result, pipe, memo,
+sequence) becomes a small named combinator in a library, and callers compose it.
 
 Why: the composed form says what happens. The inline form makes the reader work it out.
 
@@ -490,11 +492,11 @@ Loop with `for...of`. Use `map` and `filter` for pure transforms. Never `forEach
 
 Why: `for...of` supports `break`, `continue`, `return` and `await`, and does not walk prototype keys.
 
-### Branch on a union in its own function
+### Branch on a union with a `switch`
 
-Handle each member of a union in a function that returns from a `switch` over it, one `case` per member. Leave out
-`default`, so a new member fails the type check. A set that other modules extend is composed instead (see "Inject
-through a framework only where the architecture defines it").
+Map a union with a `switch`, one `case` per member, and no `default`, so a new member fails the type check. A mapping
+used in one place stays where it is used. It becomes a named function when a second place needs it. A set that other
+modules extend is composed instead (see "Inject through a framework only where the architecture defines it").
 
 Only the module that owns the union compares its raw tag. A union read outside its owner gets named views or predicates
 exported beside it, and readers outside ask those. A reader that holds facts of its own for every member, such as its own

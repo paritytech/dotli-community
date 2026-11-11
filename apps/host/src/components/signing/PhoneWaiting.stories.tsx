@@ -34,18 +34,19 @@ type Story = StoryObj<typeof meta>;
 // The dialog is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 
-const assertWaiting = async (lead: string): Promise<void> => {
+async function assertWaiting(lead: string): Promise<void> {
   await expect(await body.findByTestId('phone-waiting-lead')).toHaveTextContent(lead);
   await expect(body.getByTestId('phone-waiting-status')).toHaveTextContent('Waiting for your phone');
   await expect(body.getByTestId('phone-waiting')).toHaveTextContent('Polkadot App');
   await waitFor(() => expect(body.getByRole('button', { name: 'Wait in background' })).toBeVisible());
-};
+}
 
 /** The phone's own buttons, as the illustration labels them. */
-const phoneButtons = (): (string | null)[] =>
-  ['phone-illustration-reject', 'phone-illustration-primary'].map(id => body.getByTestId(id).textContent);
+function phoneButtons(): (string | null)[] {
+  return ['phone-illustration-reject', 'phone-illustration-primary'].map(id => body.getByTestId(id).textContent);
+}
 
-const assertAnnounced = async (lead: string): Promise<void> => {
+async function assertAnnounced(lead: string): Promise<void> {
   const region = body.getByRole('status');
   await expect(region).toHaveTextContent(lead);
   await expect(region).toHaveTextContent('Waiting for your phone');
@@ -53,7 +54,7 @@ const assertAnnounced = async (lead: string): Promise<void> => {
   const surface = body.getByTestId('prompt-dialog');
   await expect(surface).toHaveAccessibleDescription(expect.stringContaining(lead));
   await expect(surface).toHaveAccessibleDescription(expect.stringContaining('Waiting for your phone'));
-};
+}
 
 /** As a user signing, I am told to open Polkadot App and tap Sign or Reject while the request waits. */
 export const Signing: Story = {

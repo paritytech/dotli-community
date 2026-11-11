@@ -30,12 +30,21 @@ const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c
 const ALICE: AccountSession = { fullUsername: 'Alice Smith' };
 const PG: AccountSession = { liteUsername: 'pgherveou.04' };
 
-const button = (): HTMLElement => byId('auth-button');
-const signInLabel = (): HTMLElement => byTestId('auth-button-label', button());
-const badge = (): HTMLElement => byTestId('user-badge', button());
-const isOpen = (): boolean => document.getElementById('user-popover')?.hasAttribute('data-open') === true;
-const popupAria = (): (string | null)[] =>
-  ['aria-haspopup', 'aria-expanded', 'aria-controls'].map(name => button().getAttribute(name));
+function button(): HTMLElement {
+  return byId('auth-button');
+}
+function signInLabel(): HTMLElement {
+  return byTestId('auth-button-label', button());
+}
+function badge(): HTMLElement {
+  return byTestId('user-badge', button());
+}
+function isOpen(): boolean {
+  return document.getElementById('user-popover')?.hasAttribute('data-open') === true;
+}
+function popupAria(): (string | null)[] {
+  return ['aria-haspopup', 'aria-expanded', 'aria-controls'].map(name => button().getAttribute(name));
+}
 
 /** The button as the page binds it, to the story's account and sign-in. */
 function StoryButton(props: { idPrefix?: string; showName?: boolean; sitesUrl?: string }): JSX.Element {

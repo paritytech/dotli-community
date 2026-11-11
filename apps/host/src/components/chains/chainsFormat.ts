@@ -68,12 +68,17 @@ const GATEWAY = {
  * The network menu's status line.
  * Offline wins, as for the capsule and the network badge, so the three never disagree.
  */
-export function describeNetworkStatus(
-  verdict: LiveVerdict,
-  offline: boolean,
+export function describeNetworkStatus({
+  verdict,
+  offline,
   chainCount = 0,
-  backend?: Backend,
-): NetworkStatusLine {
+  backend,
+}: {
+  verdict: LiveVerdict;
+  offline: boolean;
+  chainCount?: number;
+  backend?: Backend | undefined;
+}): NetworkStatusLine {
   const captions: Captions = backend === undefined || hasLightClient(backend) ? LIGHT_CLIENT : GATEWAY;
   const tone: NetworkHealth = offline ? 'err' : verdict.tone;
   return {

@@ -84,7 +84,7 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 
 ## Re-runs and follow-ups
 
-- `make provision` is idempotent; re-run it to pick up nginx config or build changes.
+- `make provision` is idempotent. Re-run it to pick up nginx config or build changes.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
 - For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the **Deploy nginx** workflow from the Actions tab: pick
   the environment and it runs the same target against that environment's box, behind that environment's protection

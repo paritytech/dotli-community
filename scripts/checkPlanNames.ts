@@ -187,11 +187,11 @@ export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches:
     | { indent: number; kind: 'breaks' }
     | undefined;
 
-  lines.forEach((line, index) => {
+  for (const [index, line] of lines.entries()) {
     const at = { line: index + 1, task: labels[index] ?? '' };
     if (line.trimStart().startsWith('```')) {
       fence = fence ? undefined : { isCode: CODE_LANGUAGES.has(line.trim().slice(3).trim().split(/\s/)[0] ?? '') };
-      return;
+      continue;
     }
     if (fence) {
       const imported = IMPORT.exec(line);
@@ -209,7 +209,7 @@ export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches:
       if (fence.isCode) {
         addTypeNames(code, at);
       }
-      return;
+      continue;
     }
     if (HEADING.test(line)) {
       section = '';
@@ -217,7 +217,7 @@ export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches:
       if (TASK_HEADING.test(line)) {
         plan.tasks.push({ ...at, hasRead: false });
       }
-      return;
+      continue;
     }
     const label = /^\*\*([^*]+?):?\*\*/.exec(line);
     if (label) {
@@ -302,7 +302,7 @@ export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches:
         }
       }
     }
-  });
+  }
 
   const packages = new Set(plan.imported.values());
   for (const [name, from] of saidFrom) {
@@ -326,17 +326,19 @@ export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches:
   return plan;
 }
 
+type CheckParams = {
+  plan: PlanNames;
+  base: Tree;
+  head: Tree;
+  disk: Disk;
+  builtins: ReadonlySet<string>;
+};
+
 /**
  * Looks up every name of the plan in the base and HEAD trees, and on disk for a path git ignores. `builtins` holds the
  * type names TypeScript declares itself. Throws when a tree throws.
  */
-export function checkPlanNames(
-  plan: PlanNames,
-  base: Tree,
-  head: Tree,
-  disk: Disk,
-  builtins: ReadonlySet<string>,
-): Report {
+export function checkPlanNames({ plan, base, head, disk, builtins }: CheckParams): Report {
   const notFound = new Map<string, Entry>();
   const foundElsewhere = new Map<string, Entry>();
   const definedByPlan = new Map<string, Entry>();
@@ -365,7 +367,7 @@ export function checkPlanNames(
   const named = (name: string): string[] => both(tree => tree.listFilesNamed(name));
   const creations = plan.declared.filter(file => file.verb === 'Create' || file.verb === 'Test');
 
-  plan.declared.forEach((file, index) => {
+  for (const [index, file] of plan.declared.entries()) {
     if (file.verb === 'Create') {
       // A bare name with no folder before it gives no path that must be absent.
       if (file.path !== file.bareName && base.hasPath(file.path)) {
@@ -387,7 +389,7 @@ export function checkPlanNames(
           : `\`${file.bareName}\` matches no tracked file name`;
       add(notFound, file, `${file.verb} ${fact}, and no earlier task creates it.`);
     }
-  });
+  }
 
   for (const mention of plan.paths) {
     if (exists(mention.path)) {
@@ -746,7 +748,13 @@ if (import.meta.main) {
         'found no "- Create|Modify|Test|Delete|Rename|Move:" bullet, so the plan does not follow the plan format',
       );
     }
-    const report = checkPlanNames(plan, baseTree, headTree, createDisk(), loadBuiltinTypeNames());
+    const report = checkPlanNames({
+      plan,
+      base: baseTree,
+      head: headTree,
+      disk: createDisk(),
+      builtins: loadBuiltinTypeNames(),
+    });
     process.stdout.write(formatReport(report, { plan: planPath, base: base.slice(0, 12), head: head.slice(0, 12) }));
   } catch (error) {
     console.error(`checkPlanNames: ${error instanceof Error ? error.message : String(error)}`);
