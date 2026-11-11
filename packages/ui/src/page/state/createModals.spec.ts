@@ -113,24 +113,27 @@ describe('modal store', () => {
 });
 
 describe('dialogs that cannot be shown', () => {
-  it('As a product, I wait on overlays that cannot render and my request is refused at once', async () => {
-    // Given
-    const asked = modals.open({
-      title: 'Allow camera?',
-      fields: [],
-      buttons: [
-        { label: 'Deny', variant: 'danger', result: 'deny' },
-        { label: 'Allow', variant: 'primary', result: 'allow' },
-      ],
-      dismissOnBackdrop: false,
-    });
+  it.each<{ second: ModalView<string>['buttons'][number]; refusal: string }>([
+    { second: { label: 'Allow', variant: 'primary', result: 'allow' }, refusal: 'deny' },
+    { second: { label: 'Cancel', variant: 'cancel', result: 'cancel' }, refusal: 'cancel' },
+  ])(
+    'As a product, I wait on overlays that cannot render with a danger then a $second.variant button and my request is refused at once with $refusal',
+    async ({ second, refusal }) => {
+      // Given
+      const asked = modals.open({
+        title: 'Allow camera?',
+        fields: [],
+        buttons: [{ label: 'Deny', variant: 'danger', result: 'deny' }, second],
+        dismissOnBackdrop: false,
+      });
 
-    // When
-    onTestFinished(modals.refuseAll());
+      // When
+      onTestFinished(modals.refuseAll());
 
-    // Then
-    await expect(asked).resolves.toEqual({ result: 'deny' });
-  });
+      // Then
+      await expect(asked).resolves.toEqual({ result: refusal });
+    },
+  );
 
   it('As a page, I refuse all open dialogs while another opens, and every dialog settles with its refusal', async () => {
     // Given

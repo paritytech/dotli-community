@@ -18,8 +18,15 @@ export type DebugBus = ReturnType<typeof createDebugBus>;
 // replayed to it once, and then buffering ends for the session, whether or not anything was held.
 const BUFFER_MAX = 512;
 
-/** Where the bus is in the page's life. Only `buffering` holds events, for the first subscriber. */
-type Phase = { kind: 'off' } | { kind: 'buffering'; held: DebugBusEvent[] } | { kind: 'live' };
+/**
+ * Where the bus is in the page's life. `buffering` holds events for the first subscriber, and `replaying` queues the
+ * events emitted while that subscriber hears the held ones, so none overtakes the replay.
+ */
+type Phase =
+  | { kind: 'off' }
+  | { kind: 'buffering'; held: DebugBusEvent[] }
+  | { kind: 'replaying'; queued: DebugBusEvent[] }
+  | { kind: 'live' };
 
 /** Builds a debug bus that shares no state with any other, off until `enableBuffering`. */
 export function createDebugBus() {
@@ -83,6 +90,9 @@ export function createDebugBus() {
           phase.held.shift();
         }
         return;
+      case 'replaying':
+        phase.queued.push(event);
+        return;
       case 'live':
         listeners.emit(event);
         return;
@@ -90,7 +100,14 @@ export function createDebugBus() {
   }
 
   function hasListeners(): boolean {
-    return phase.kind === 'live' && listeners.size > 0;
+    switch (phase.kind) {
+      case 'off':
+      case 'buffering':
+        return false;
+      case 'replaying':
+      case 'live':
+        return listeners.size > 0;
+    }
   }
 
   function watch(callback: (event: DebugBusEvent) => void): () => void {
@@ -103,13 +120,22 @@ export function createDebugBus() {
         return noop;
       case 'buffering': {
         const { held } = phase;
-        phase = { kind: 'live' };
+        const queued: DebugBusEvent[] = [];
+        phase = { kind: 'replaying', queued };
         const unsubscribe = listeners.subscribe(callback);
         for (const event of held) {
           replays.deliver(callback, event);
         }
+        // A listener may emit again while it hears a queued event, so the queue is drained until it stays empty.
+        let next = queued.shift();
+        while (next !== undefined) {
+          listeners.emit(next);
+          next = queued.shift();
+        }
+        phase = { kind: 'live' };
         return unsubscribe;
       }
+      case 'replaying':
       case 'live':
         return listeners.subscribe(callback);
     }

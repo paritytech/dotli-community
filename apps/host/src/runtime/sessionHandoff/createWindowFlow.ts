@@ -390,6 +390,12 @@ export function createWindowFlow({
     }
   }
 
+  /** Shows Continue with what the store held, kept so a Continue of the same session sends the account on show. */
+  function showContinue(stored: SessionResult, offer: ContinueOffer): void {
+    offered = stored;
+    show({ view: 'continue', offer });
+  }
+
   /**
    * Offers what the store holds, else pairs. With nothing stored, a flag left set claims a sign-in that is gone, and
    * the keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
@@ -397,8 +403,7 @@ export function createWindowFlow({
   async function offerOrPair(stored: SessionResult): Promise<void> {
     const offer = getContinueOffer(stored);
     if (offer !== null) {
-      offered = stored;
-      show({ view: 'continue', offer });
+      showContinue(stored, offer);
       return;
     }
     await signIns.clear();
@@ -424,7 +429,14 @@ export function createWindowFlow({
     } catch (error) {
       // The wallet is still stored, so the flag stays up for it.
       reportLocalWalletFailure(new Error('Local wallet could not be forgotten', { cause: error }), 'forget');
-      await offerOrPair(await readStored());
+      const stored = await readStored();
+      const offer = getContinueOffer(stored);
+      // A wallet that cannot be read may still be stored, so the window starts no pairing over it.
+      if (offer === null) {
+        showFailed();
+        return;
+      }
+      showContinue(stored, offer);
       fail('sign-out');
       return;
     }

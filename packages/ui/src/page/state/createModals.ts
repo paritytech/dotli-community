@@ -334,10 +334,13 @@ function abandonDropped(entry: Pending): void {
   }
 }
 
-/** A dialog's refusal: its dismiss result, else its cancel or reject button's. */
+/** A dialog's refusal: its dismiss result, else its cancel button's, else its danger button's. */
 function findRefusal(view: ModalView<string>): string | undefined {
   return (
     view.dismissResult ??
-    view.buttons.find(button => button.variant === 'cancel' || button.variant === 'danger')?.result
+    (
+      view.buttons.find(button => button.variant === 'cancel') ??
+      view.buttons.find(button => button.variant === 'danger')
+    )?.result
   );
 }

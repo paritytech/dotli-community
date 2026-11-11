@@ -186,4 +186,23 @@ describe('debug bus delivery', () => {
     expect(first).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2')]);
     expect(second).toEqual([]);
   });
+
+  it('As a dotli developer, I open a panel that emits on the first replayed boot event and it hears every held event before its own', () => {
+    // Given two buffered events
+    const bus = createEnabledBus();
+    bus.emit(createBootEvent('flow-1'));
+    bus.emit(createBootEvent('flow-2'));
+    const shown: DebugBusEvent[] = [];
+
+    // When a panel subscribes and emits a third event on its first replayed event
+    bus.subscribe(event => {
+      shown.push(event);
+      if (shown.length === 1) {
+        bus.emit(createBootEvent('flow-3'));
+      }
+    });
+
+    // Then the panel shows the held events and then its own, in order
+    expect(shown).toEqual([createBootEvent('flow-1'), createBootEvent('flow-2'), createBootEvent('flow-3')]);
+  });
 });

@@ -218,7 +218,9 @@ export function createPageSignOut({
   async function dropPairedCopy(): Promise<void> {
     const read = await copy.readSession();
     if (read.status === 'failed') {
-      reportSignOutFailure(read.error, 'drop');
+      // Core storage reported the read, so it is counted here and not captured again.
+      report.log.event('local sign-out could not read the paired copy to drop it');
+      walletLogoutMetric.count({ outcome: 'error', reason: 'drop' });
       return;
     }
     if (read.blob === null) {

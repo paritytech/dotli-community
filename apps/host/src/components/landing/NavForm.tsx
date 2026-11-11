@@ -89,7 +89,7 @@ export function NavForm(props: NavFormProps): JSX.Element {
           placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
           autocomplete="off"
-          aria-label={`Search a ${suffix() ?? ''} name`}
+          aria-label={['Search a', suffix(), 'name'].filter(Boolean).join(' ')}
           aria-describedby={invalid() ? 'dotli-nav-error' : undefined}
           aria-invalid={invalid() ? 'true' : undefined}
           disabled={suffix() === null}

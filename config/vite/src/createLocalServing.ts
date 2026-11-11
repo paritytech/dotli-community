@@ -68,7 +68,7 @@ export function createLocalServing(roots: readonly string[]) {
     if (root !== undefined && name === `host.${root}`) {
       return { site: 'protocol', bare: false };
     }
-    if (name.includes('.app.')) {
+    if (root !== undefined && name.endsWith(`.app.${root}`)) {
       return { site: 'app', bare: false };
     }
     return { site: 'host', bare: root === undefined };

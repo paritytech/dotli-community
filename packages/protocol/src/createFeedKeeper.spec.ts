@@ -151,6 +151,20 @@ describe('createFeedKeeper', () => {
     expect(captured).toEqual([]);
   });
 
+  it('As the host, I follow a feed while the frame is lost before it answers, and no warning is logged', async () => {
+    // Given
+    const lines = recordLog({ onFinished: onTestFinished });
+    const refused = Promise.reject(new Error('Frame lost'));
+    const keeper = createKeeper('telemetry', { frame: createFrame(() => refused) });
+
+    // When
+    keeper.follow();
+    await refused.catch(() => undefined);
+
+    // Then
+    expect(lines.filter(line => line.level === 'warn')).toEqual([]);
+  });
+
   it('As the host, I keep my feed on each frame that boots, and the feed held on the old one is unsubscribed', async () => {
     // Given one feed held, and following the same transport again
     const keeper = createKeeper('shared_auth');

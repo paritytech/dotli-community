@@ -36,8 +36,8 @@ const sharedSessionReadMetric = defineCount<'error' | 'hit' | 'miss'>('shared_se
 
 /**
  * The at-rest key of the core's secret slots. Tagged `outcome` (error) and `reason`: `ephemeral_key` when IndexedDB
- * cannot keep it, so this session's secrets will not decrypt after a reload, or `undecryptable` for a slot dropped
- * because it no longer decrypts.
+ * cannot keep it, so this session's secrets will not decrypt after a reload, `undecryptable` for a slot dropped
+ * because it no longer decrypts, or `reencrypt` for a legacy plaintext slot that could not be written back encrypted.
  */
 const coreStorageSecretMetric = defineCount<'error'>('core_storage.secret');
 
@@ -235,7 +235,18 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
         return undefined;
       }
       walletReport.log.event('re-encrypting legacy plaintext core storage', { slot: key.tag });
-      local().setItem(getCoreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));
+      const encoded = await encodeCoreStorageValue(key, bytes);
+      try {
+        local().setItem(getCoreLocalStorageKey(key), encoded);
+      } catch (error) {
+        // A full or blocked storage cannot take the migration. The slot stays plain and migrates on a later read.
+        storageReport.expected(error, {
+          step: 'core_secret_reencrypt',
+          metric: coreStorageSecretMetric,
+          reason: 'reencrypt',
+          message: `[dot.li] keeping legacy plaintext core storage ${key.tag}, its re-encrypt failed:`,
+        });
+      }
       return bytes;
     }
     const bytes = decodeStoredBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length), `core storage ${key.tag}`);

@@ -157,11 +157,19 @@ describe('parseApiViolationMessage', () => {
     expect(parsed).toEqual({ type: 'DOTLI_API_VIOLATION', api: 'fetch' });
   });
 
-  it('As the host of a checker build, I drop anything that is not a violation', () => {
+  it('As the host of a checker build, I drop anything that is not a violation or names no API', () => {
     // When
-    const parsed = [{ type: 'dotli:loading-status' }, 'DOTLI_API_VIOLATION', null, 42].map(parseApiViolationMessage);
+    const parsed = [
+      { type: 'dotli:loading-status' },
+      'DOTLI_API_VIOLATION',
+      null,
+      42,
+      { type: 'DOTLI_API_VIOLATION' },
+      { type: 'DOTLI_API_VIOLATION', api: '' },
+      { type: 'DOTLI_API_VIOLATION', api: { name: 'fetch' } },
+    ].map(parseApiViolationMessage);
 
     // Then
-    expect(parsed).toEqual([null, null, null, null]);
+    expect(parsed).toEqual([null, null, null, null, null, null, null]);
   });
 });

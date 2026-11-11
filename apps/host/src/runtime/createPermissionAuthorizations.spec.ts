@@ -97,6 +97,37 @@ describe('getStatus / setStatus', () => {
     expect(status).toBe('ask');
   });
 
+  it.each<{ answers: string; answered: PermissionAuthorizationStatus[]; statuses: string[] }>([
+    { answers: 'none', answered: [], statuses: ['ask', 'ask'] },
+    {
+      answers: 'more than asked',
+      answered: ['Authorized', 'Denied', 'NotDetermined'],
+      statuses: ['granted', 'denied'],
+    },
+  ])(
+    "As the host, I ask a product's statuses of a connection that answers $answers and get one status per permission",
+    async ({ answered, statuses }) => {
+      // Given an `oddapp` connection whose answer does not match the permissions asked
+      const { permissions } = createHarness();
+      onTestFinished(
+        permissions.register('oddapp', {
+          getPermissionAuthorizationStatuses() {
+            return Promise.resolve(answered);
+          },
+          setPermissionAuthorizationStatus() {
+            return Promise.resolve();
+          },
+        }),
+      );
+
+      // When
+      const asked = await permissions.getStatuses('oddapp', ['Camera', 'Microphone']);
+
+      // Then
+      expect(asked).toEqual(statuses);
+    },
+  );
+
   it('As a dApp user, I decide my permissions and find them in the core authorization store', async () => {
     // Given
     const { permissions, store } = createHarness();

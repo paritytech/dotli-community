@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Chip, Stack } from '@dotli/ui';
+import { Chip, prefersReducedMotion, Stack } from '@dotli/ui';
 import type { ChainSummary } from './chain.js';
 import {
   describeBlockDelay,
@@ -26,16 +26,18 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   if (shift <= 0) {
     return;
   }
-  for (const node of Array.from(strip.children).slice(-landed)) {
-    const mark = node as HTMLElement;
-    mark.setAttribute('data-new', '');
-    mark.addEventListener(
-      'animationend',
-      () => {
-        mark.removeAttribute('data-new');
-      },
-      { once: true },
-    );
+  if (!prefersReducedMotion()) {
+    for (const node of Array.from(strip.children).slice(-landed)) {
+      const mark = node as HTMLElement;
+      mark.setAttribute('data-new', '');
+      mark.addEventListener(
+        'animationend',
+        () => {
+          mark.removeAttribute('data-new');
+        },
+        { once: true },
+      );
+    }
   }
   strip.removeAttribute('data-sliding');
   strip.style.transform = `translateX(${String(shift)}px)`;

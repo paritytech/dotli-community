@@ -107,11 +107,18 @@ function openWindow(options: OpenWindowParams = {}) {
   const calls: string[] = [];
   // Each login the window asked for, which the test answers in place of the command layer.
   const logins: ReturnType<typeof createDeferred<LoginOutcome>>[] = [];
-  const failures: { phone: boolean; save: Error | null; forget: Error | null; read: Error | null } = {
+  const failures: {
+    phone: boolean;
+    save: Error | null;
+    forget: Error | null;
+    read: Error | null;
+    walletRead: Error | null;
+  } = {
     phone: false,
     save: null,
     forget: null,
     read: null,
+    walletRead: null,
   };
   const signIns = createOwnerSignInFlag({
     presence,
@@ -168,10 +175,14 @@ function openWindow(options: OpenWindowParams = {}) {
       },
     },
     wallet: {
-      read: (): Promise<LocalWalletReadResult> =>
-        Promise.resolve(
+      read(): Promise<LocalWalletReadResult> {
+        if (failures.walletRead !== null) {
+          return Promise.reject(failures.walletRead);
+        }
+        return Promise.resolve(
           main.wallet === null ? { status: 'none' } : { status: 'ok', ...main.wallet, version: Uint8Array.of(1) },
-        ),
+        );
+      },
       save(entropy, identity) {
         calls.push('save');
         if (failures.save !== null) {
@@ -662,6 +673,25 @@ describe('session window flow', () => {
     expect(flow.screen.get().failure).toBe('sign-out');
     expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'forget' }]);
     expect(errors).toHaveLength(1);
+  });
+
+  it('As a user who leaves an account whose wallet can be neither forgotten nor read, I see the window failed and no pairing started', async () => {
+    // Given a window on Continue whose wallet can be neither forgotten nor read
+    const { flow, vet, calls, failures } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.forget = new Error('frame down');
+    failures.walletRead = new Error('frame down');
+
+    // When the user presses Use another account
+    await flow.useAnotherAccount();
+
+    // Then the window fails and starts no pairing
+    expect(calls).not.toContain('login');
+    expect(flow.screen.get().view).toBe('failed');
   });
 
   it('As a user in the sign-in window whose Continue failed, I see the failed view with Try again and the failure is reported', async () => {

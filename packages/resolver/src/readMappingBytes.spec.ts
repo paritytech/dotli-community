@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDeferred } from '@dotli/shared';
 import { OperationInaccessibleError } from '@polkadot-api/substrate-client';
+import { CorruptBytesSlotError } from './corruptBytesSlotError.js';
 import { createRawApi, type Api } from './createRawApi.js';
 import { PartialStorageReadError } from './partialStorageReadError.js';
 import { readMappingBytes } from './readMappingBytes.js';
@@ -65,6 +66,27 @@ describe('readMappingBytes', () => {
     // Then
     await expect(read).rejects.toBeInstanceOf(PartialStorageReadError);
     await expect(read).rejects.toHaveProperty('context', { mappingKind: 'mapping bytes' });
+  });
+
+  it('As a dotli user on a light client, I read a value whose slot claims a length no read can hold and the read fails as a corrupt slot', async () => {
+    // Given a base slot that decodes to a length whose slot count passes the largest array length
+    const { client, follow } = createFakeSubstrateClient();
+    const api = createRawApi({ client });
+    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+    follow.storage
+      .mockImplementationOnce(() => Promise.resolve(CONTRACT_ACCOUNT_INFO))
+      .mockImplementationOnce(() => Promise.resolve(`0x${'ff'.repeat(32)}`));
+
+    // When
+    const read = readMappingBytes({
+      api,
+      contractAddress: CONTRACT_ADDRESS,
+      mappingKey: `0x${'00'.repeat(32)}`,
+      mappingSlot: 0,
+    });
+
+    // Then
+    await expect(read).rejects.toBeInstanceOf(CorruptBytesSlotError);
   });
 
   it('As a dotli user on a light client, I read a long value and every data slot is asked before any answers', async () => {

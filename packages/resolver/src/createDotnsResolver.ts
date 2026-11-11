@@ -339,8 +339,9 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     /**
      * Reads the IPFS CID a label's contenthash points at, or `null` when the name has none. Rejects with
      * `UnsupportedContenthashCodecError` or `ContenthashDecodeError` for a contenthash dotli cannot fetch,
-     * `PartialStorageReadError` when the read stops partway, `NetworkSyncTimeoutError` when Asset Hub does not sync
-     * within the budget, and the read's own error when it fails for any other reason or the chain keeps halting.
+     * `PartialStorageReadError` when the read stops partway, `CorruptBytesSlotError` when a stored value's length
+     * cannot be read, `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own
+     * error when it fails for any other reason or the chain keeps halting.
      */
     resolveDotName: (label: string, options: ResolveOptions = {}): Promise<string | null> =>
       read(options, (api, attempt) => readDotName({ api, label, options: attempt })),
@@ -353,15 +354,17 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       read(options, api => readNameOwner({ api, dotns, label })),
     /**
      * Reads the manifest a label publishes for `kind`, as a result the caller branches on. Rejects with
-     * `PartialStorageReadError` when the read stops partway, `NetworkSyncTimeoutError` when Asset Hub does not sync
-     * within the budget, and the read's own error when it fails for any other reason or the chain keeps halting.
+     * `PartialStorageReadError` when the read stops partway, `CorruptBytesSlotError` when a stored value's length
+     * cannot be read, `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own
+     * error when it fails for any other reason or the chain keeps halting.
      */
     resolveExecutableManifest: (label: string, kind: ExecutableKind, options: ResolveOptions = {}) =>
       read(options, api => readExecutableManifest({ api, dotns, label, kind })),
     /**
      * Reads a label's root manifest, as a result the caller branches on. Rejects with `PartialStorageReadError` when
-     * the read stops partway, `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's
-     * own error when it fails for any other reason or the chain keeps halting.
+     * the read stops partway, `CorruptBytesSlotError` when a stored value's length cannot be read,
+     * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it
+     * fails for any other reason or the chain keeps halting.
      */
     resolveRootManifest: (label: string, options: ResolveOptions = {}) =>
       read(options, api => readRootManifest({ api, dotns, label })),

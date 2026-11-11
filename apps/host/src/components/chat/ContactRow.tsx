@@ -35,6 +35,7 @@ export function ContactRow(props: {
         <Show when={props.unread > 0}>
           <span
             class={s['roomUnread']}
+            role="img"
             data-testid="chat-room-unread"
             aria-label={`${String(props.unread)} unread message${props.unread === 1 ? '' : 's'}`}
           >

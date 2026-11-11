@@ -11,9 +11,7 @@ describe('isSandboxOrigin', () => {
     `https://name.app.${BASE_DOMAIN}`,
     `https://my-app.app.${BASE_DOMAIN}`,
     'http://name.app.localhost:5174',
-    'http://app.localhost',
     'https://name.app.local.host:4322',
-    'https://app.local.host',
   ])('As the host, I check %s and accept it as a sandbox origin', origin => {
     // When
     const accepted = isSandboxOrigin(origin);
@@ -25,6 +23,8 @@ describe('isSandboxOrigin', () => {
   it.each([
     `https://name.${BASE_DOMAIN}`,
     `https://app.${BASE_DOMAIN}`,
+    'http://app.localhost',
+    'https://app.local.host',
     `https://${BASE_DOMAIN}`,
     `http://name.app.${BASE_DOMAIN}`,
     'https://evil.com',

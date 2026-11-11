@@ -52,7 +52,10 @@ export type Api = {
   ): Promise<Uint8Array | null>;
   /** Calls `callback` once the follow stops, at once if it already has. Fires at most once. Returns the unsubscribe. */
   onStop(callback: () => void): () => void;
-  /** Ends the follow and never throws. Leaves the owning `SubstrateClient` alive. */
+  /**
+   * Ends the follow as a stop, so `onStop` listeners fire and a pending `whenReady` rejects with `ApiStoppedError`.
+   * Never throws. Leaves the owning `SubstrateClient` alive.
+   */
   destroy(): void;
 };
 
@@ -288,6 +291,8 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       } catch {
         /* already stopped */
       }
+      // `unfollow` stops the follow without calling its error callback.
+      markStopped();
     },
   };
 }

@@ -14,6 +14,7 @@ import {
   type FakeRemoteChains,
 } from './createHostChainPool.fake.js';
 import { createChainConnect } from './createChainConnect.js';
+import { ERRORS } from '../errors.js';
 import { createHostChainPool, type FrameStatusSource } from './createHostChainPool.js';
 import { yielded } from '../../testing/fixtures.js';
 
@@ -96,6 +97,20 @@ describe('createChainConnect', () => {
 
     // Then
     expect(must(sources.upstreams[0], 'upstream').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a product, I send a chain request that is not JSON and it is refused as an invalid JSON-RPC request', async () => {
+    // Given
+    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
+
+    // When
+    const refusal = catchThrown(() => {
+      connection.send('not json');
+    });
+
+    // Then
+    expect(refusal).toMatchObject({ message: ERRORS.INVALID_JSON_RPC_REQUEST });
+    expect(refusal).toHaveProperty('cause', expect.any(SyntaxError));
   });
 
   it('As a dotli integrator, I connect to a chain the RPC backend cannot reach and it is refused before any transport is built', () => {

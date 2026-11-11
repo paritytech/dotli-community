@@ -13,14 +13,14 @@ export function isSandboxOrigin(origin: string): boolean {
     const url = new URL(origin);
     const { hostname, protocol } = url;
     const root = getLocalRoot(hostname);
+    // A sandbox is served only on a product's own `<label>.app.<root>`, never on `app.<root>` itself, which serves
+    // the shell.
     if (root !== null) {
-      return getHostPlace(hostname, root) === 'app';
+      return getHostPlace(hostname, root) === 'app' && hostname !== `app.${root}`;
     }
     if (protocol !== 'https:') {
       return false;
     }
-    // A deployed sandbox is served only on a product's own `<label>.app.<root>`. The shell serves `app.<root>` itself,
-    // so that host is never a sandbox.
     return hostname.endsWith(`.app.${BASE_DOMAIN}`);
   } catch {
     return false;

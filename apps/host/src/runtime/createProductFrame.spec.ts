@@ -506,9 +506,10 @@ describe('product frame renders', () => {
     expect(url.hostname).toMatch(/^sn--[0-9a-f]{59}\.app\.localhost$/);
   });
 
-  it("As a visitor, I open a link carrying the sandbox's own params and get the host's values only, with my own params intact", async () => {
+  it("As a visitor, I open a link carrying the sandbox's own params and get the host's values only, with my own params byte for byte ahead of them", async () => {
     // Given
-    const search = '?fullReset=1&cid=forged&v=0&network=forged&chainBackend=forged&resolutionId=forged&a=b';
+    const search =
+      '?fullReset=1&cid=forged&v=0&network=forged&chainBackend=forged&resolutionId=forged&q=a%20b&path=/x&flag';
     const fakes = createHarness({
       location: { href: `http://localhost:3000/foo%20bar${search}`, pathname: '/foo%20bar', search },
     });
@@ -526,7 +527,7 @@ describe('product frame renders', () => {
     expect(url.searchParams.getAll('network')).not.toContain('forged');
     expect(url.searchParams.getAll('chainBackend')).not.toContain('forged');
     expect(url.searchParams.getAll('resolutionId')).not.toContain('forged');
-    expect(url.searchParams.get('a')).toBe('b');
+    expect(url.search).toMatch(/^\?q=a%20b&path=\/x&flag&cid=real-cid&/);
   });
 
   it('As a visitor, I open a link that says fullReset=0 after the host scheduled a reset and the sandbox is purged once, by the host', async () => {

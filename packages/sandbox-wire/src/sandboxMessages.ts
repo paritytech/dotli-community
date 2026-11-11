@@ -168,11 +168,15 @@ export function parseApiViolationMessage(data: unknown): ApiViolationMessage | n
   if (record?.['type'] !== 'DOTLI_API_VIOLATION') {
     return null;
   }
+  const api = record['api'];
+  if (!isNonEmptyString(api)) {
+    return null;
+  }
   const details = asRecord(record['details']);
   const timestamp = record['timestamp'];
   return {
     type: 'DOTLI_API_VIOLATION',
-    api: String(record['api']),
+    api,
     ...(details !== null ? { details } : {}),
     ...(typeof timestamp === 'number' ? { timestamp } : {}),
   };

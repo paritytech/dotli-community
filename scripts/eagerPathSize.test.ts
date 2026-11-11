@@ -61,6 +61,17 @@ describe('listEagerChunkPaths', () => {
     assert.deepEqual(paths, ['/assets/index-AAAAAAAA.js']);
   });
 
+  it('As a dotli maintainer measuring the eager path, I measure a page whose module entry carries a data-src and single-quoted attributes and only its src is counted', () => {
+    // Given
+    const html = `<script data-src="/assets/lazy-EEEEEEEE.js" type='module' src='/assets/index-AAAAAAAA.js'></script>`;
+
+    // When
+    const paths = listEagerChunkPaths(html);
+
+    // Then
+    assert.deepEqual(paths, ['/assets/index-AAAAAAAA.js']);
+  });
+
   it('As a dotli maintainer measuring the eager path, I measure a page with no module entry and it fails instead of reporting 0 bytes', () => {
     // Given a page with no module script
     const html = '<html><body></body></html>';

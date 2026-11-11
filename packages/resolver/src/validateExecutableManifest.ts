@@ -70,11 +70,16 @@ function validateWidgetFields(input: Record<string, unknown>, prefix: string): s
   return errors;
 }
 
+/** Whether a path leaves its directory once a URL resolver reads a backslash as a slash and `%2e` as `.`. */
+function isEscapingPath(path: string): boolean {
+  return /^[/\\]/.test(path) || path.split(/[/\\]/).some(segment => segment.replace(/%2e/gi, '.') === '..');
+}
+
 function validateWorkerFields(input: Record<string, unknown>, prefix: string): string[] {
   const errors: string[] = [];
   if (!isNonEmptyString(input['entrypoint'])) {
     errors.push(`${prefix}entrypoint must be a non-empty string`);
-  } else if (input['entrypoint'].startsWith('/') || input['entrypoint'].split('/').includes('..')) {
+  } else if (isEscapingPath(input['entrypoint'])) {
     errors.push(`${prefix}entrypoint must be a relative path with no '..' segments`);
   }
   if (!isRecord(input['includes'])) {

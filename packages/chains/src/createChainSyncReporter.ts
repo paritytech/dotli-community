@@ -5,13 +5,16 @@
 // The peer list the watch lacks goes over the chain's JSON-RPC under a reserved string id.
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
-import { createReporter, m } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { createListenerSet, getErrorMessage, isRecord, log } from '@dotli/shared';
 import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 import { SYSTEM_PEERS } from './jsonRpcMethods.js';
 
 const resolveReport = createReporter({ flow: 'resolve' });
 const protocolReport = createReporter({ flow: 'protocol' });
+
+/** Tagged `outcome` (error) and `reason` (`refused` or `ended`). */
+const chainLifecycleWatchMetric = defineCount<'error'>('chain_sync.lifecycle_watch');
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export type ChainSyncKind =
@@ -400,8 +403,12 @@ export function createChainSyncReporter({ askPeers }: Params) {
     try {
       watch = watchLifecycle();
     } catch (error: unknown) {
-      // The loading screen falls back to its own timings, so this is progress, not a failure.
-      protocolReport.log.event('Chain lifecycle watch unavailable', { chain, reason: getErrorMessage(error) });
+      // The loading screen falls back to its own timings, so the visitor never notices.
+      protocolReport.expected(error, {
+        step: 'chain_lifecycle_watch',
+        metric: chainLifecycleWatchMetric,
+        reason: 'refused',
+      });
       return { intercept, stop: () => undefined };
     }
 
@@ -419,7 +426,11 @@ export function createChainSyncReporter({ askPeers }: Params) {
         }
       } catch (error: unknown) {
         // As when the watch is refused, the loading screen falls back to its own timings.
-        protocolReport.log.event('Chain lifecycle watch ended', { chain, reason: getErrorMessage(error) });
+        protocolReport.expected(error, {
+          step: 'chain_lifecycle_watch',
+          metric: chainLifecycleWatchMetric,
+          reason: 'ended',
+        });
       }
     }
 

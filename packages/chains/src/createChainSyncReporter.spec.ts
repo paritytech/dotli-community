@@ -7,8 +7,7 @@ import type { ChainLifecycle } from '@parity/truapi-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import type { ChainRole } from '@dotli/config/fixed';
 import { bindCaptureSink } from '@dotli/metrics';
-import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
+import { bindRecordingSentry, recordReports, type RecordingSentry } from '@dotli/metrics/testing';
 
 import {
   createChainSyncReporter,
@@ -547,35 +546,21 @@ describe('Light client sync reporting is opt-in', () => {
   });
 });
 
-/** Every line the logger hands its sink, until the test ends. `next` resolves on the next one. */
-function recordLogLines(): {
-  lines: { level: LogLevel; message: string; attrs: Record<string, unknown> | undefined }[];
-  next: () => Promise<void>;
-} {
-  const lines: { level: LogLevel; message: string; attrs: Record<string, unknown> | undefined }[] = [];
-  let heard: (() => void) | null = null;
-  onTestFinished(
-    bindLogSink({
-      emit: ({ level, message, attrs }) => {
-        lines.push({ level, message, attrs });
-        heard?.();
-      },
-    }),
-  );
-  return {
-    lines,
-    next: () =>
-      new Promise(resolve => {
-        heard = resolve;
-      }),
-  };
-}
-
-describe('An expected lifecycle watch state is a breadcrumb', () => {
-  it('As a maintainer, I watch a lifecycle watch end in an error and see a flow event, not a warning', async () => {
-    // Given sync reporting on the relay chain, and a watch whose stream fails
-    const log = recordLogLines();
-    const logged = log.next();
+describe('An ended or refused lifecycle watch is counted', () => {
+  it('As a maintainer, I watch a lifecycle watch end in an error and see it counted', async () => {
+    // Given sync reporting on the relay chain, a sink that hears the first report, and a watch whose stream fails
+    const firstReport = new Promise<{ kind: 'exception' | 'expected'; step: string }>(resolve => {
+      onTestFinished(
+        bindCaptureSink({
+          exception: (_error, { step }) => {
+            resolve({ kind: 'exception', step });
+          },
+          expected: (_error, { step }) => {
+            resolve({ kind: 'expected', step });
+          },
+        }),
+      );
+    });
     reporter.enableSyncReporting(['relay']);
 
     // When the chain attaches and its watch fails
@@ -587,16 +572,28 @@ describe('An expected lifecycle watch state is a breadcrumb', () => {
         close: () => undefined,
       }),
     });
-    await logged;
+    const report = await firstReport;
 
-    // Then the failure is recorded as progress, not as a warning
-    expect(log.lines).toMatchObject([
-      {
-        level: 'info',
-        message: 'Chain lifecycle watch ended',
-        attrs: { chain: 'relay', reason: 'chain removed' },
+    // Then the failure is counted as an expected one
+    expect(report).toEqual({ kind: 'expected', step: 'chain_lifecycle_watch' });
+  });
+
+  it('As a maintainer, I attach a chain that refuses a lifecycle watch and see it counted', () => {
+    // Given sync reporting on the relay chain, and a chain that refuses a watch
+    const reports = recordReports({ onFinished: onTestFinished });
+    reporter.enableSyncReporting(['relay']);
+
+    // When the chain attaches
+    reporter.attachChainSync({
+      chain: 'relay',
+      send: () => undefined,
+      watchLifecycle: () => {
+        throw new Error('chain is not connected');
       },
-    ]);
+    });
+
+    // Then the refusal is counted as an expected failure
+    expect(reports.expected).toMatchObject([{ step: 'chain_lifecycle_watch' }]);
   });
 });
 

@@ -24,8 +24,8 @@ export type DebugModePage = {
 };
 
 /**
- * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the
- * stored choice, then `buildDefault`.
+ * `?debug=true|off` wins, stripped from the URL so the sandbox's strict validator never sees it. It persists where
+ * tab storage works and wins for this load alone where storage throws. Then the stored choice, then `buildDefault`.
  */
 export function resolveDebugMode(page: DebugModePage, buildDefault: boolean): DebugMode {
   let param: string | null = null;
@@ -49,9 +49,12 @@ export function resolveDebugMode(page: DebugModePage, buildDefault: boolean): De
     if (stored === '1' || stored === '0') {
       return { enabled: stored === '1', explicit: true };
     }
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable, as in Safari private mode, so fall through to the build's default.
   } catch {
-    /* ignore */
+    // sessionStorage may be unavailable, as in Safari private mode, so the param wins for this load alone, and without
+    // one the build's default applies.
+    if (param === 'true' || param === 'off') {
+      return { enabled: param === 'true', explicit: true };
+    }
   }
   return { enabled: buildDefault, explicit: false };
 }

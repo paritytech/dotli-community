@@ -91,6 +91,33 @@ describe('toast store', () => {
     expect(readLeaving()).toEqual([true]);
   });
 
+  it('As a dotli user, I get a persistent toast given a dismiss time and it leaves once that time is out', async () => {
+    // Given
+    const id = toasts.push(buildInput({ dismissMs: 0 }));
+
+    // When
+    toasts.setDismissMs(id, 1000);
+    await timers.advance(1000);
+
+    // Then
+    expect(readLeaving()).toEqual([true]);
+  });
+
+  it('As a dotli user, I close a persistent toast and a dismiss time given after it leaves it leaving', async () => {
+    // Given
+    const onDismiss = vi.fn();
+    const id = toasts.push(buildInput({ dismissMs: 0, onDismiss }));
+    toasts.dismiss(id);
+
+    // When
+    toasts.setDismissMs(id, 1000);
+    await timers.advance(1000);
+
+    // Then
+    expect(readLeaving()).toEqual([true]);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   it('As a dotli user, I hide the tab and the countdown pauses, and resumes from what was left once I come back', async () => {
     // Given
     toasts.push(buildInput());

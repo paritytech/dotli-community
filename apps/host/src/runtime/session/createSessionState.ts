@@ -5,7 +5,7 @@
 // and whether a sign-in made elsewhere waits for the page.
 
 import type { AuthState as CoreAuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAsyncTaskPool, registerAtomReset } from '@dotli/shared';
+import { createAsyncTaskPool, noop, registerAtomReset } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import { isResumeOffered, pageRole } from '../pageRole.js';
 import { authState, type AuthState } from '../state/authState.js';
@@ -59,6 +59,9 @@ export type PairingPresentation = {
   hostGlobal?: boolean | undefined;
 };
 
+/** Where session state is in its life. Only a started state follows the copy, and a disposed one never starts again. */
+type Lifecycle = { kind: 'idle' } | { kind: 'started'; stop: () => void } | { kind: 'disposed' };
+
 /** The page's session state, as its factory builds it. */
 export type SessionState = ReturnType<typeof createSessionState>;
 
@@ -103,7 +106,7 @@ export function createSessionState({
   registerAtomReset(coreReportStore);
   const coreReport: ReadableAtom<DotliAuthState | null> = coreReportStore;
 
-  let stop: (() => void) | null = null;
+  let lifecycle: Lifecycle = { kind: 'idle' };
 
   function hasSignInElsewhere(tag: DotliAuthState['tag']): boolean {
     return flag === 'present' && isShowingSignedOut(tag) && isResumeOffered();
@@ -227,9 +230,74 @@ export function createSessionState({
     auth.set(next);
   }
 
+  /** Follows the shared store and the saved copy, and returns the stop that ends it. */
+  function follow(): () => void {
+    const stops: (() => void)[] = [];
+    const started: Lifecycle = { kind: 'started', stop: stopState };
+
+    function stopState(): void {
+      for (const stop of stops.splice(0)) {
+        stop();
+      }
+      // A stop that runs after dispose leaves the state disposed.
+      if (lifecycle === started) {
+        lifecycle = { kind: 'idle' };
+      }
+    }
+
+    // A stop or dispose that re-enters from a call below has already run, so what it missed ends at once.
+    function keep(stop: () => void): void {
+      if (lifecycle !== started) {
+        stop();
+        return;
+      }
+      stops.push(stop);
+    }
+
+    // Written before any call out, so a call that re-enters finds the state started.
+    lifecycle = started;
+    keep(
+      store.getStatusStore().listen(status => {
+        if (status === 'unavailable') {
+          markUnreachable();
+        }
+      }),
+    );
+    // The load's own read, which the restore rule already made, with the flag it read beside a copy that held
+    // nothing.
+    void savedSessionReads.call(() => {
+      // The restore rule clears the cached account only with the session it drops, which makes the cache unused, so
+      // the read starts beside the rule. It never rejects.
+      const cachedAccount = store.readUiCache();
+      return applySavedSession(
+        restored => {
+          if (hasHeldNothing(restored)) {
+            reportFlag(restored.presence);
+          }
+          const { session } = restored;
+          return Promise.resolve(session.status === 'ok' ? session.blob : null);
+        },
+        () => cachedAccount,
+      );
+    });
+    // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
+    keep(
+      store.subscribeStoredSession(() => {
+        if (isCopyAllowedToShow()) {
+          void refresh();
+        }
+      }),
+    );
+    return stopState;
+  }
+
   function dispose(): void {
+    const ended = lifecycle;
+    lifecycle = { kind: 'disposed' };
     stopSessionReads();
-    stop?.();
+    if (ended.kind === 'started') {
+      ended.stop();
+    }
   }
 
   return {
@@ -241,49 +309,18 @@ export function createSessionState({
     /**
      * Shows the session the load's restore left, reads the saved copy again whenever it changes, such as by a sign-in
      * from the window or the shared store coming back, and shows `Unreachable` while the shared store is down. The copy
-     * speaks for the page only while no core does. A second call returns the first one's stop.
+     * speaks for the page only while no core does. A second call returns the first one's stop. A disposed state
+     * follows nothing and returns a stop that does nothing.
      */
     start(): () => void {
-      if (stop !== null) {
-        return stop;
+      switch (lifecycle.kind) {
+        case 'idle':
+          return follow();
+        case 'started':
+          return lifecycle.stop;
+        case 'disposed':
+          return noop;
       }
-      const stopStatus = store.getStatusStore().listen(status => {
-        if (status === 'unavailable') {
-          markUnreachable();
-        }
-      });
-      // The load's own read, which the restore rule already made, with the flag it read beside a copy that held
-      // nothing.
-      void savedSessionReads.call(() => {
-        // The restore rule clears the cached account only with the session it drops, which makes the cache unused, so
-        // the read starts beside the rule. It never rejects.
-        const cachedAccount = store.readUiCache();
-        return applySavedSession(
-          restored => {
-            if (hasHeldNothing(restored)) {
-              reportFlag(restored.presence);
-            }
-            const { session } = restored;
-            return Promise.resolve(session.status === 'ok' ? session.blob : null);
-          },
-          () => cachedAccount,
-        );
-      });
-      // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
-      const stopChanges = store.subscribeStoredSession(() => {
-        if (isCopyAllowedToShow()) {
-          void refresh();
-        }
-      });
-
-      function stopState(): void {
-        stopStatus();
-        stopChanges();
-        stop = null;
-      }
-
-      stop = stopState;
-      return stop;
     },
     /** The page's last core went, so the saved copy speaks for the page again, read at once and on each change. */
     reportCoresGone(): void {

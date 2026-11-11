@@ -114,7 +114,12 @@ function createConnection({ genesisHash, pool }: CreateConnectionParams): Platfo
 
   return {
     send(request: string): void {
-      const parsed: unknown = JSON.parse(request);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(request);
+      } catch (error) {
+        throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST, { cause: error });
+      }
       if (!isJsonRpcRequest(parsed)) {
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }

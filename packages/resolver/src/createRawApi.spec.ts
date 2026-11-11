@@ -288,6 +288,28 @@ describe('createRawApi', () => {
     });
   });
 
+  it('As the resolver, I destroy the raw API twice before its follow is ready and the wait fails as stopped and stop listeners hear it once', async () => {
+    // Given
+    const { client } = createFakeSubstrateClient();
+    const api = createRawApi({ client });
+    const waited = api.whenReady().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    let heard = 0;
+    api.onStop(() => {
+      heard += 1;
+    });
+
+    // When
+    api.destroy();
+    api.destroy();
+
+    // Then
+    expect(await waited).toBeInstanceOf(ApiStoppedError);
+    expect(heard).toBe(1);
+  });
+
   it('As a dotli user, I let finality move on after the follow stopped and the refused unpin is not reported', async () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;

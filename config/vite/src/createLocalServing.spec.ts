@@ -49,6 +49,17 @@ describe('getRoute', () => {
     expect(route.site).toBe('app');
   });
 
+  it('As a visitor, I open a host outside the local roots that holds .app. and get the bare host build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a public host that holds .app. is routed
+    const route = serving.getRoute('myapp.app.example.com', '/');
+
+    // Then the bare host build serves it
+    expect(route).toEqual({ site: 'host', bare: true });
+  });
+
   it('As a page on localhost, I load /p/assets/x.js and get the protocol build', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);

@@ -507,6 +507,27 @@ describe('calls', () => {
     expect(issues).toEqual([matchRefusedIssue('malformed', matchInstance(RangeError))]);
   });
 
+  it('As a caller, I hear an answer whose outcome is neither success nor failure and my call fails as malformed', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectRawRig();
+    const call = captureOutcome(transport.request(notes.read, 'note'));
+    await timers.advance(0);
+    const asked = must(peer.find('request:notes.read')[0], 'the call');
+
+    // When the answer's outcome tag is 2, sent as a receive, whose leg index is the response's
+    peer.call({
+      method: rawWatch,
+      id: asked.id,
+      message: { tag: 'receive', value: Uint8Array.of(2, 1) },
+      at: notes.read,
+    });
+    await timers.advance(0);
+
+    // Then
+    expect(await call).toBeInstanceOf(TransportMalformedResponseError);
+    expect(issues).toEqual([matchRefusedIssue('malformed')]);
+  });
+
   it('As a caller, I hear an answer and a failure that leave bytes unread and both are refused as malformed, as truapi refuses them', async () => {
     // Given
     const { transport, timers, peer, issues } = await connectRawRig();

@@ -13,7 +13,7 @@ import { createChanges } from '../../testing/changes.js';
 import { recordNotified } from '../../testing/recordNotified.js';
 import type { LocalWalletBoot } from '../createWalletBoot.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { waitForStatus } from '@dotli/shared';
+import { noop, waitForStatus } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import type { DotliAuthState, Presence } from './types.js';
@@ -439,6 +439,43 @@ describe('session state', () => {
 
     // Then the page stays signed out and no listener of the store's status or stored-session changes is left
     expect(auth.get()).toEqual({ tag: 'Disconnected' });
+    expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As the host, I start session state disposed before it ever started and it subscribes to nothing', () => {
+    // Given session state disposed before it ever started
+    session.dispose();
+
+    // When it starts
+    session.start();
+
+    // Then no listener of the store's status is left
+    expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As the host, I dispose session state from within its start and it follows nothing', () => {
+    // Given session state whose restore disposes it as the start reads it
+    const reentered = createSessionState({
+      store: coreStorage,
+      restore: () => {
+        reentered.dispose();
+        return new Promise<never>(noop);
+      },
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
+      setElsewhere: noop,
+      isLocalWallet: () => false,
+      isResumeOffered: () => isResumeOffered(role),
+    });
+
+    // When it starts
+    reentered.start();
+
+    // Then no listener of the store's status or stored-session changes is left
     expect(shared.statusListenerCount()).toBe(0);
   });
 

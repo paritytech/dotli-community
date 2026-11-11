@@ -67,7 +67,10 @@ export function createPermissionAuthorizations() {
       return permissions.map(() => 'ask');
     }
     const answered = await provider.getPermissionAuthorizationStatuses(permissions.map(getAuthorizationRequest));
-    return answered.map(fromAuthorizationStatus);
+    return permissions.map((_, index) => {
+      const status = answered.at(index);
+      return status === undefined ? 'ask' : fromAuthorizationStatus(status);
+    });
   }
 
   async function getStatus(label: string, permission: EnforceablePermissionName): Promise<PermissionStatus> {

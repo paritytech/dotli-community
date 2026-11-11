@@ -360,6 +360,29 @@ describe('core storage', () => {
     expect(Array.from(reread ?? [])).toEqual([1, 2, 3, 4]);
   });
 
+  it('As a returning user whose storage is full, I read my legacy allowance keys and get them, with the failed re-encrypt counted', async () => {
+    // Given a plain-hex slot written before at-rest encryption shipped, and a storage that refuses every write
+    const { counted, captures, coreStorage: reporting } = createReportingCoreStorage(shared);
+    const storage = reporting.createAdapters();
+    const key = { tag: 'AllowanceKeys', value: { sessionId: 'legacy' } } satisfies CoreStorageKey;
+    local.setItem('dotli:core:allowance-keys:legacy', '0x01020304');
+    const backing = local;
+    local = Object.assign(createMemoryStorage(), {
+      getItem: (name: string) => backing.getItem(name),
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+    });
+
+    // When
+    const bytes = await storage.readCoreStorage(key);
+
+    // Then
+    expect(Array.from(bytes ?? [])).toEqual([1, 2, 3, 4]);
+    expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'reencrypt' }]);
+    expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_secret_reencrypt' }]]);
+  });
+
   it('As a dotli integrator, I read an allowance slot that no longer decrypts and it is dropped instead of returning ciphertext', async () => {
     // Given: an encrypted slot whose ciphertext no longer authenticates, the
     // same shape as a key lost to an IndexedDB wipe or tampered bytes

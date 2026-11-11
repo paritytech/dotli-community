@@ -20,7 +20,7 @@ import {
 } from './createLightClient.js';
 import type { ChainSyncReporter } from './createChainSyncReporter.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
-import type { ChainTransportHooks } from './transportHooks.js';
+import type { ChainTransport, ChainTransportHooks } from './transportHooks.js';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 const waiting = new Set<() => void>();
@@ -383,6 +383,40 @@ describe('createLightClient', () => {
     expect(metrics.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'light_client.halt' },
     ]);
+  });
+
+  it('As a dotli integrator, I see a halt listener that throws when the connection cannot connect called once and reported', async () => {
+    // Given a chain that cannot connect and a halt listener that throws
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    engine.connect = () => Promise.reject(new Error('catalog has no such chain'));
+    const chainHooks = createMockHooks();
+    chainHooks.onHalt.mockImplementation(() => {
+      throw new Error('listener failed');
+    });
+
+    // When
+    open(chainHooks);
+
+    // Then
+    await waitUntil(() => captured.length > 0);
+    expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'light_client.halt' } }]);
+  });
+
+  it('As a dotli integrator, I disconnect while a response is on its way and it never reaches my listener', async () => {
+    // Given a connected chain whose responses a listener records
+    const onMessage = vi.fn<Parameters<ChainTransport['provider']>[0]>();
+    const chainHooks = createMockHooks();
+    const connection = client.createChainTransport(people, chainHooks)?.provider(onMessage);
+    await chainHooks.reported('connected');
+
+    // When a response arrives in the same turn as the disconnect
+    engine.connections[0]?.respond('{"jsonrpc":"2.0","id":1,"result":null}');
+    connection?.disconnect();
+    await engine.connections[0]?.lastRead;
+
+    // Then
+    expect(onMessage).not.toHaveBeenCalled();
   });
 
   it('As a dotli integrator, I close a light-client connection and it does not halt', async () => {

@@ -167,6 +167,25 @@ describe('session window responder', () => {
     ]);
   });
 
+  it("As a product the rule rejects, I am told I am refused before the window's round ends", () => {
+    // Given an open window, and a listener noting what the opener was told when the state turns refused
+    const window = openWindow();
+    const opener = must(window.opener, 'an opener');
+    let postedWhenRefused: unknown[] = [];
+    const stop = window.responder.state.listen(state => {
+      if (state.kind === 'refused') {
+        postedWhenRefused = getPostedTypes(opener);
+      }
+    });
+    onTestFinished(stop);
+
+    // When the product origin says hello
+    window.post({ data: createHello('r1'), origin: PRODUCT, source: opener });
+
+    // Then the opener was told it is refused before the state turned refused
+    expect(postedWhenRefused).toContain('dotli:s:refused');
+  });
+
   it('As a user in a sign-in window with no opener, I open it and it goes to the no-opener flow', () => {
     // Given no opener
     const opener = null;

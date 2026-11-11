@@ -342,6 +342,14 @@ export function createLightClient({
         hooks?.onStatus('disconnected');
         hooks?.onHalt(error);
       }
+      function halt(error: unknown): void {
+        try {
+          fail(error);
+        } catch (thrown) {
+          // Nothing awaits the read loop to hear it.
+          report.listener('light_client.halt')(thrown);
+        }
+      }
       function releaseSync(): void {
         if (state.sync === null) {
           return;
@@ -400,6 +408,10 @@ export function createLightClient({
           syncTaps.join(key, source);
           for (;;) {
             const response = await candidate.nextResponse();
+            // A response read before `disconnect()` must not reach a listener that already left.
+            if (isClosed()) {
+              break;
+            }
             if (response === undefined) {
               streamEnded = true;
               break;
@@ -415,7 +427,7 @@ export function createLightClient({
         } catch (error) {
           reportFailure(error, connected);
           if (!isClosed()) {
-            fail(error);
+            halt(error);
           }
         } finally {
           // A stream that ended or broke hands the chain's tap to another of its connections.
@@ -423,12 +435,7 @@ export function createLightClient({
         }
         // Only `disconnect()` ends the stream in order. Otherwise the transport died or overflowed its send budget.
         if (streamEnded && !isClosed()) {
-          try {
-            fail(new Error(`chain ${key} stopped responding`));
-          } catch (error) {
-            // Nothing awaits this loop to hear it.
-            report.listener('light_client.halt')(error);
-          }
+          halt(new Error(`chain ${key} stopped responding`));
         }
       }
 

@@ -113,8 +113,8 @@ export function createTransport<Hello, T extends Sections>({
      * Calls the peer, and starts the handshake on the opener, as `connect` does. Resolves to its `Result`, or to
      * `Cancelled` once the signal aborts. Calls made before the handshake wait and go out in call order once it
      * succeeds. Rejects with the error the transport closed with, a post the provider throws on among them, with
-     * `TransportMalformedResponseError` when the answer does not decode, or when the payload does not encode. Throws
-     * at once, before any promise, for a method this schema lacks.
+     * `TransportMalformedResponseError` when the answer does not decode, and with its codec's error when the payload
+     * does not encode. Throws at once, before any promise, for a method this schema lacks.
      */
     request: outgoing.request,
     /**

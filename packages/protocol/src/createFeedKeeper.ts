@@ -152,7 +152,8 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         }
       },
       (error: unknown) => {
-        log.warn(`[dot.li protocol] Failed to reach the frame for the ${feed} feed:`, error);
+        // The frame reports its own loss and boot failure, and a config change that drops a frame is no failure.
+        report.log.event('protocol feed ask failed', { feed, reason: getErrorName(error) ?? 'unknown' });
       },
     );
   }

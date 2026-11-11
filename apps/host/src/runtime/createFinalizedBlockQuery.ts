@@ -13,7 +13,7 @@ const report = createReporter({ flow: 'ui' });
 
 /**
  * One finalized height the diagnostics report asks a chain for. Tagged `outcome` (ok, error or timeout) and, on
- * failure, `reason`, as a failed one prints n/a.
+ * failure, `reason`, and a failed query prints n/a.
  */
 const diagnosticsFinalizedBlockMetric = defineCount<'error' | 'ok' | 'timeout'>('diagnostics.finalized_block');
 
@@ -52,6 +52,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
       new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`),
       'TimeoutError',
     );
+    let answered: number | null = null;
     try {
       const provider = await source.provider(genesisHash);
       if (provider === null) {
@@ -66,6 +67,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
           timeoutError: () => timeout,
           timers,
         });
+        answered = block.number;
       } finally {
         client.destroy();
       }
@@ -91,7 +93,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
           tags: { reason },
         });
       }
-      return null;
+      return answered;
     }
   }
 

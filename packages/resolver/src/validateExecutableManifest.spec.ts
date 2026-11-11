@@ -75,13 +75,27 @@ describe('validateExecutableManifest', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('As the host validating an executable manifest, I refuse a worker entrypoint with a leading slash', () => {
-    // When
-    const result = validateExecutableManifest({ ...VALID_WORKER, entrypoint: '/index.js' });
+  it.each(['/index.js', '\\x.js', 'a\\..\\..\\x.js', '%2e%2E/x.js'])(
+    'As the host validating an executable manifest, I refuse a worker entrypoint that escapes its directory as %s',
+    entrypoint => {
+      // When
+      const result = validateExecutableManifest({ ...VALID_WORKER, entrypoint });
 
-    // Then
-    expect(result.ok).toBe(false);
-  });
+      // Then
+      expect(result.ok).toBe(false);
+    },
+  );
+
+  it.each(['./a.js', 'a..b.js'])(
+    'As the host validating an executable manifest, I accept a worker entrypoint %s',
+    entrypoint => {
+      // When
+      const result = validateExecutableManifest({ ...VALID_WORKER, entrypoint });
+
+      // Then
+      expect(result.ok).toBe(true);
+    },
+  );
 
   it.each([
     ['every surface off, a background-only worker', { chat: false, pocket: false, input: false }],

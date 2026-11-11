@@ -103,6 +103,11 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     /** Adds a toast as the newest and returns its id. Its countdown starts while a view shows the stack. Never throws. */
     push,
     /**
+     * Gives the toast a new countdown of `dismissMs`, which runs while a view shows the stack. 0 keeps it until closed. A
+     * toast unknown or leaving is ignored. Never throws.
+     */
+    setDismissMs,
+    /**
      * Marks the toast leaving and calls its `onDismiss` once, reporting a throw from it. A toast unknown or already
      * leaving is ignored. Never throws.
      */
@@ -172,6 +177,16 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     state.set({ ...current, items: [...current.items, entry] });
     start(id);
     return id;
+  }
+
+  function setDismissMs(id: number, dismissMs: number): void {
+    const countdown = countdowns.get(id);
+    if (countdown === undefined) {
+      return;
+    }
+    pause(id);
+    countdown.remaining = dismissMs;
+    start(id);
   }
 
   function dismiss(id: number): void {

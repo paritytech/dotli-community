@@ -561,6 +561,19 @@ describe('local sign-out', () => {
     expect(fakes.endSession).not.toHaveBeenCalled();
   });
 
+  it('As a user signing out locally on a product whose flag is unreadable, I see a copy that cannot be read counted once and not captured again', async () => {
+    // Given a copy whose read fails, which core storage already reported
+    const fakes = createHarness({ local: true, flag: 'unknown' });
+    fakes.copy.readFailure = new Error('frame unreachable');
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the failed read is counted once and no defect is captured
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+    expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
+  });
+
   it('As a user in local mode signed in again elsewhere meanwhile, I sign out and the paired copy stays', async () => {
     // Given a local page whose flag is present again
     const fakes = createHarness({ local: true, flag: 'present' });

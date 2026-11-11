@@ -27,10 +27,9 @@ export const OpensById: Story = {};
 export const UnreadBadge: Story = {
   args: { unread: 12 },
   play: async ({ canvas, step }) => {
-    await step('Then the badge shows 9+ and is named with the full count', async () => {
-      const badge = canvas.getByTestId('chat-room-unread');
+    await step('Then the badge is an image named with the full count that shows 9+', async () => {
+      const badge = canvas.getByRole('img', { name: '12 unread messages' });
       await expect(badge).toHaveTextContent('9+');
-      await expect(badge).toHaveAttribute('aria-label', '12 unread messages');
     });
   },
 };

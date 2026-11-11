@@ -67,6 +67,29 @@ describe('waitForStatus', () => {
     expect(heard).toEqual(['idle', 'booting', 'down']);
   });
 
+  it('As a layer above, I wait with a verdict that throws on a later status and the wait fails with that error and hears no later status', async () => {
+    // Given
+    const cell = createStatus('idle');
+    const broken = new Error('the verdict broke');
+    let calls = 0;
+    const wait = waitForStatus(cell, status => {
+      calls += 1;
+      if (status === 'booting') {
+        throw broken;
+      }
+      return false;
+    });
+    const settled = wait.catch((error: unknown) => error);
+
+    // When
+    cell.set('booting');
+    cell.set('up');
+
+    // Then
+    await expect(settled).resolves.toBe(broken);
+    expect(calls).toBe(2);
+  });
+
   it("As a layer above, I abort a pending wait and it fails with the signal's reason and hears no later status", async () => {
     // Given
     const cell = createStatus('idle');

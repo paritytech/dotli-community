@@ -23,14 +23,24 @@ function createDist(context: TestContext): string {
 
 describe('stripHash', () => {
   it('As a reviewer reading the bundle size report, I read hashed file names and see each without the 8-character content hash after a dot or a dash', () => {
-    // Given a hash after a dash, one after a dot and an unhashed name
-    const hashed = ['host/assets/fetch-CMRV9u5T.js', 'host/assets/client.BIMa48MH.js', 'host/index.html'];
+    // Given a hash after a dash, one after a dot, an unhashed name, and a name outside assets ending in an 8-letter word
+    const hashed = [
+      'host/assets/fetch-CMRV9u5T.js',
+      'host/assets/client.BIMa48MH.js',
+      'host/index.html',
+      'host/icons/icon-portrait.png',
+    ];
 
     // When
     const names = hashed.map(name => stripHash(name));
 
     // Then
-    assert.deepEqual(names, ['host/assets/fetch.js', 'host/assets/client.js', 'host/index.html']);
+    assert.deepEqual(names, [
+      'host/assets/fetch.js',
+      'host/assets/client.js',
+      'host/index.html',
+      'host/icons/icon-portrait.png',
+    ]);
   });
 });
 

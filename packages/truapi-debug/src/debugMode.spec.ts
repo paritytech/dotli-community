@@ -90,7 +90,7 @@ describe('debug mode', () => {
 
   it('As a visitor in Safari private mode, I get what the build decides', () => {
     // Given
-    const tab = createPageWithoutStorage('https://app.dot.li/?debug=true');
+    const tab = createPageWithoutStorage('https://app.dot.li/');
 
     // When
     const mode = resolveDebugMode(tab, false);
@@ -99,14 +99,15 @@ describe('debug mode', () => {
     expect(mode).toEqual({ enabled: false, explicit: false });
   });
 
-  it('As a visitor whose storage throws, I open a page with ?debug=true and the param still leaves the URL', () => {
+  it('As a visitor whose storage throws, I open a page with ?debug=true and get the panel while the param leaves the URL', () => {
     // Given
     const tab = createPageWithoutStorage('https://app.dot.li/path?x=1&debug=true#top');
 
     // When
-    resolveDebugMode(tab, false);
+    const mode = resolveDebugMode(tab, false);
 
     // Then
+    expect(mode).toEqual({ enabled: true, explicit: true });
     expect(tab.replaceState).toHaveBeenCalledWith(null, '', '/path?x=1#top');
   });
 

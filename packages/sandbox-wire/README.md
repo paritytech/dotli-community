@@ -20,8 +20,8 @@ the host's listener.
 
 ### `@dotli/sandbox-wire`
 
-- **Params:** `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`, `SandboxContractError` (has
-  a `recoverable` flag).
+- **Params:** `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `removeContractParams`, `validateSandboxParams`,
+  `SandboxContractError` (has a `recoverable` flag).
 - **Messages:** `parseHostToSandboxMessage`, `postToHost`, `HostToSandboxMessage`, `SandboxToHostMessage`,
   `BitswapResultMessage`.
 - **Violation report:** `parseApiViolationMessage`, `ApiViolationMessage`.
@@ -32,7 +32,7 @@ the host's listener.
 
 ### `@dotli/sandbox-wire/contract-params`
 
-`SANDBOX_SCHEMA_VERSION` and `SANDBOX_CONTRACT_PARAMS` alone. Imports nothing, for Node tooling.
+`SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS` and `removeContractParams` alone. Imports nothing, for Node tooling.
 
 ## Design
 

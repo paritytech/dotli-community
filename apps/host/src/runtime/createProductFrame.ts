@@ -10,6 +10,7 @@ import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { getSandboxLabel } from '@dotli/resolver';
 import {
+  removeContractParams,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
   type SandboxChannel,
@@ -777,20 +778,20 @@ function buildSandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, 
   }
   // Only the host writes the sandbox's params. A visitor's link that carried them could purge the sandbox origin or
   // name a resolution.
-  for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
-    url.searchParams.delete(key);
-  }
-  url.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, product.cid);
-  url.searchParams.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
-  url.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, getBackend());
-  url.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, getNetwork());
+  const contract = new URLSearchParams();
+  contract.set(SANDBOX_CONTRACT_PARAMS.cid, product.cid);
+  contract.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
+  contract.set(SANDBOX_CONTRACT_PARAMS.chainBackend, getBackend());
+  contract.set(SANDBOX_CONTRACT_PARAMS.network, getNetwork());
   if (pendingResets.take('sandbox')) {
-    url.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
+    contract.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
   }
   const resolutionId = getResolutionId();
   if (resolutionId !== null) {
-    url.searchParams.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
+    contract.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
   }
+  const productQuery = removeContractParams(url.search);
+  url.search = [productQuery, contract.toString()].filter(part => part !== '').join('&');
   return url;
 }
 

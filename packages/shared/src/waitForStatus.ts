@@ -18,7 +18,7 @@ type Params = {
 
 /**
  * Waits on the source's status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
- * signal's reason when `signal` aborts first.
+ * signal's reason when `signal` aborts first. A `verdict` that throws fails the wait with what it threw.
  *
  * @example
  * await waitForStatus(store, shown => shown.phase === 'ready', { signal });
@@ -39,7 +39,13 @@ export function waitForStatus<T>(
 
     /** Whether `status` settled the wait. */
     function settleOn(status: T): boolean {
-      const outcome = verdict(status);
+      let outcome: boolean | Error;
+      try {
+        outcome = verdict(status);
+      } catch (error) {
+        settle.reject(error);
+        return true;
+      }
       if (outcome === false) {
         return false;
       }
