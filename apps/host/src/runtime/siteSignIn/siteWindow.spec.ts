@@ -20,7 +20,6 @@ import { createOwnerSignInFlag } from '../session/signInFlag.js';
 import { findLeakedSecrets, MAIN_BLOB, WALLET_ACCOUNT, WALLET_ENTROPY } from '../../testing/findLeakedSecrets.js';
 import { MAIN_KEY } from '../../testing/siteRoundConstants.js';
 import { MainAccountError, getMainAccount, type MainAccount } from './createMainAccountSource.js';
-import { parsePublicSuffixList } from './parsePublicSuffixList.js';
 import type { SignInScreen } from '../../state/sessionWindowState.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteChain } from './createSiteChain.js';
@@ -487,27 +486,6 @@ describe('site window screen chain', () => {
   });
 });
 
-describe('site group window', () => {
-  it("As a user, I open the window from a site of a group and its consent names the site's registrable domain", async () => {
-    // Given the window's parts with a suffix list that loads
-    const parts = createWindowParts();
-    const suffixes = parsePublicSuffixList('com\nli\n');
-
-    // When a site asks to sign in under a group token
-    const watched = watchWindow(
-      openSiteSignIn({
-        ...parts.params,
-        groups: { registrable: hostname => Promise.resolve(suffixes.registrable(hostname)) },
-        request: { round: 'r1', siteToken: null, groupToken: 'my group' },
-      }),
-    );
-    await watched.waitForView('consent');
-
-    // Then the consent names the site's origin and its group's registrable domain
-    expect(watched.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
-  });
-});
-
 describe('site transaction window', () => {
   it("As a user, I open a site's transaction and see it go from Signing to its consent for the site I opened the window from", async () => {
     // Given a site's request that carries its call and a token whose grant is still being read
@@ -580,20 +558,5 @@ describe('site transaction window', () => {
     expect(page.metrics.counted('session_pages.site_transaction')).toEqual([
       { outcome: 'refused', reason: 'bad_request' },
     ]);
-  });
-
-  it("As a dotli integrator, I dispose a site's transaction window before its consent and it shows none of its round's views after it", async () => {
-    // Given a site's transaction window whose token's grant is still being read
-    const grantRead = createDeferred<undefined>();
-    const page = openTransactionWindow(CALL, { grantRead: grantRead.promise });
-    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
-
-    // When it is disposed and the round then reaches its consent view
-    watched.dispose();
-    grantRead.resolve(undefined);
-    await waitForStatus(watched.site.screen, current => current.view === 'consent');
-
-    // Then the window still shows only what it showed as it opened
-    expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }]);
   });
 });

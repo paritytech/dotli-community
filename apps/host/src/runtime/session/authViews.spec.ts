@@ -206,17 +206,4 @@ describe('authViews', () => {
       expect(answer).toBe(loggedIn);
     },
   );
-
-  it('As the host, I ask for the login step while the core pairs and get the pairing itself, not a copy', () => {
-    // Given a pairing on show
-    const shown = PAIRING;
-
-    // When the host asks for the login step on show and reads the pairing it carries
-    const answer = authViews.getLoginStep(shown);
-    const carried = answer?.step === 'pairing' ? answer.pairing : null;
-
-    // Then the step carries the pairing state whole
-    expect(answer).toEqual({ step: 'pairing', pairing: PAIRING });
-    expect(carried).toBe(PAIRING);
-  });
 });

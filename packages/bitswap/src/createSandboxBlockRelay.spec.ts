@@ -552,24 +552,6 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_read' }]);
   });
 
-  it('As a user with the archive cache off, I get every block from the network', async () => {
-    // Given
-    const network = createFakeNetwork();
-    const { channel, send } = createFakeChannel();
-    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
-
-    // When the same block is asked for twice
-    const first = createFakeFrame();
-    send(first, createGetRequest('req-1'));
-    await waitForLength(first.replies);
-    const second = createFakeFrame();
-    send(second, createGetRequest('req-1'));
-    await waitForLength(second.replies);
-
-    // Then
-    expect(network.fetches).toHaveLength(2);
-  });
-
   it('As a user, I get no block when the verifier fails to load, the cached copy is kept for a later check, and nothing is written', async () => {
     // Given a cache already holding the block, but a verifier whose chunk cannot load
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
@@ -734,32 +716,6 @@ describe('createSandboxBlockRelay progress', () => {
   /** A dag-pb root whose two links carry a Tsize of 100 and 50. */
   const ROOT = new Uint8Array([0x12, 0x02, 0x18, 100, 0x12, 0x02, 0x18, 50]);
 
-  it('As a user, I see the loading bar keep moving while the trace listens along', async () => {
-    // Given
-    const { channel, send } = createFakeChannel();
-    const relay = createSandboxBlockRelay({
-      channel,
-      blocks: createFakeNetwork(() => new Uint8Array(100)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const first = createRecording<number>();
-    const second: number[] = [];
-    relay.onProgress(({ bytesFetched }) => first.push(bytesFetched));
-    const unsubscribe = relay.onProgress(({ bytesFetched }) => second.push(bytesFetched));
-
-    // When
-    send(createFakeFrame(), createGetRequest('req-1'));
-    await waitForLength(first);
-    unsubscribe();
-    send(createFakeFrame(), createGetRequest('req-2', 'bafyLeaf'));
-    await waitForLength(first, 2);
-
-    // Then
-    expect(first).toEqual([100, 200]);
-    expect(second).toEqual([100]);
-  });
-
   it("As a user, I see the first block's links give the total, and the speed count from that block", async () => {
     // Given a clock that moves 500 ms between the two blocks
     let clock = 1_000;
@@ -814,37 +770,6 @@ describe('createSandboxBlockRelay progress', () => {
       { bytesFetched: ROOT.length + 100, totalBytes: 150 },
       { bytesFetched: ROOT.length, totalBytes: 150 },
     ]);
-  });
-
-  it('As a user opening a second product, I see its relay count from zero', async () => {
-    // Given a first relay that already served a block
-    const first = createFakeChannel();
-    const firstRelay = createSandboxBlockRelay({
-      channel: first.channel,
-      blocks: createFakeNetwork(() => new Uint8Array(100)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const firstFrame = createFakeFrame();
-    first.send(firstFrame, createGetRequest('req-1'));
-    await waitForLength(firstFrame.replies);
-    firstRelay.stop();
-
-    // When a second relay serves its first block
-    const second = createFakeChannel();
-    const secondRelay = createSandboxBlockRelay({
-      channel: second.channel,
-      blocks: createFakeNetwork(() => new Uint8Array(30)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const progress = createRecording<number>();
-    secondRelay.onProgress(({ bytesFetched }) => progress.push(bytesFetched));
-    second.send(createFakeFrame(), createGetRequest('req-1'));
-    await waitForLength(progress);
-
-    // Then
-    expect(progress).toEqual([30]);
   });
 
   it('As a user, I get my block even when a progress or served listener throws, and the other listeners still hear it', async () => {

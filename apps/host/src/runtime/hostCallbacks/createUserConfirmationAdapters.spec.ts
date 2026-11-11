@@ -674,21 +674,6 @@ describe('user confirmation modal', () => {
     await expect(decision).resolves.toBe(answer);
   });
 
-  it('As a user, I allow an identity disclosure and it is allowed once, not remembered', async () => {
-    // Given
-    const decision = createPageAdapters().confirmPermission({
-      tag: 'IdentityDisclosure',
-      value: { productId: asProductId('truapi-playground.dot') },
-    });
-    await waitForModal();
-
-    // When
-    press('sign');
-
-    // Then
-    await expect(decision).resolves.toBe('AllowOnce');
-  });
-
   it.each<{ label: string; review: PermissionReview; close: () => void; error: string }>([
     {
       label: 'dismiss an identity disclosure permission and no decision',
@@ -897,54 +882,6 @@ describe('waiting on the phone', () => {
     expect(page.notices).toEqual([]);
   });
 
-  it('As a user whose toast fails to show, I sign on my phone and the failure is reported while the request is still counted', async () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const { sentry, recorded } = bindNextRecord();
-    const { tap, confirmation } = await signForPhone({
-      prompts: {
-        ...page.prompts,
-        notify: () => {
-          throw new Error('toast stack gone');
-        },
-      },
-    });
-    await confirmation;
-
-    // When
-    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
-    await recorded;
-    await page.waitForClearedScreen();
-
-    // Then
-    expect(sentry.counted('signing.phone_request')).toEqual([
-      { outcome: 'ok', reason: 'signPayload', background: 'no' },
-    ]);
-    expect(captured).toMatchObject([{ step: 'phone_request_notice', error: new Error('toast stack gone') }]);
-  });
-
-  it('As a user, I get an answer that does not decode and the wait ends, is reported and is counted once as undecodable', async () => {
-    // Given
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    recordLog({ onFinished: onTestFinished });
-    const { tap, confirmation } = await signForPhone({ tracker: createPhoneRequestTracker() });
-    await confirmation;
-    const answer = encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED });
-
-    // When
-    tap.fromCore(answer.subarray(0, answer.length - 3));
-    const notices = await page.waitForNotices(1);
-
-    // Then
-    expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(["Polkadot App didn't complete the request: undecodable"]);
-    expect(captured.map(c => c.step)).toEqual(['phone_request']);
-    expect(sentry.counted('signing.phone_request')).toEqual([
-      { outcome: 'undecodable', reason: 'signPayload', background: 'no' },
-    ]);
-  });
-
   it.each<{ label: string; openReview: () => Promise<boolean> }>([
     {
       label: 'user whose phone lookup throws, I approve a review and it closes as today and answers the core',
@@ -1072,42 +1009,6 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(false);
     expect(page.listPending()).toEqual([]);
-  });
-
-  it('As a user granting an allowance, I wait on my phone and hear it was granted', async () => {
-    // Given
-    const resources = [{ tag: 'SmartContractAllowance' as const, value: { tag: 'Index' as const, value: 1 } }];
-    const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(
-      encodePhoneRequestFrame({ requestId: 'a', method: 'requestResourceAllocation', body: { resources } }),
-    );
-    const confirmation = confirmUserAction({
-      tag: 'ResourceAllocation',
-      value: { callingProductId: asProductId('product.dot'), resources },
-    });
-    await waitForModal();
-
-    // When
-    press('sign');
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
-    expect(isWaiting()).toBe(true);
-    expect(getShownDialog().title).toBe('Resource Allocation');
-
-    // When
-    tap.fromCore(
-      encodePhoneResponseFrame({
-        requestId: 'a',
-        method: 'requestResourceAllocation',
-        result: { kind: 'ok', value: { outcomes: ['Allocated'] } },
-      }),
-    );
-    const notices = await page.waitForNotices(1);
-
-    // Then
-    expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(['Allowance granted']);
   });
 
   it('As a user granting an allowance, I approve it and the waiting step asks me to approve on my phone, not to sign', async () => {

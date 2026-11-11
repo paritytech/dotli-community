@@ -294,14 +294,6 @@ describe('chat panel state', () => {
     expect(notified.map(state => state.width)).toEqual([400]);
   });
 
-  it('As a user, I hide the topbar and see the chat panel know it is hidden', () => {
-    // When
-    topbarState.setVisible(false);
-
-    // Then
-    expect(chatPanelState.store.get().topbarVisible).toBe(false);
-  });
-
   it('As a user whose page stopped its shell state, I hide the topbar and the chat panel no longer follows it', () => {
     // Given the panel state, wired and then stopped
     remove();
@@ -324,43 +316,6 @@ describe('chat panel state', () => {
 
     // Then
     expect(chatPanelState.store.get().unreadByRoom).toEqual({ a: 1 });
-  });
-
-  it('As a user whose page started the chat panel state twice, I see one start stop and the panel still follow the topbar', () => {
-    // Given
-    const stopSecond = chatPanelState.start({ chat, storage: local });
-
-    // When
-    stopSecond();
-    topbarState.setVisible(false);
-
-    // Then
-    expect(chatPanelState.store.get().topbarVisible).toBe(false);
-  });
-
-  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
-    // Given a follow whose chat subscription counts its unsubscribes
-    remove();
-    let unsubscribes = 0;
-    const counting: typeof chat = {
-      ...chat,
-      subscribe(listener) {
-        const unsubscribe = chat.subscribe(listener);
-        return () => {
-          unsubscribes += 1;
-          unsubscribe();
-        };
-      },
-    };
-    remove = chatPanelState.start({ chat: counting, storage: local });
-
-    // When the stores reset, then the stop left from the ended follow runs
-    resetStores();
-    const afterReset = unsubscribes;
-    remove();
-
-    // Then the reset ended the follow once and the stop added nothing
-    expect({ afterReset, total: unsubscribes }).toEqual({ afterReset: 1, total: 1 });
   });
 
   it('As a user who logged in and hid the topbar early, I wait for the chat panel state to start and see it know both at once', () => {

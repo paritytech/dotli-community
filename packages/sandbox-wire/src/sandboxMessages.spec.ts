@@ -4,13 +4,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  isLoadedOutcome,
   parseApiViolationMessage,
   parseHostToSandboxMessage,
   parseRecoverAcceptedMessage,
   parseSandboxToHostMessage,
-  postToHost,
-  type SandboxLoadOutcome,
   type SandboxToHostMessage,
 } from './sandboxMessages.js';
 
@@ -138,22 +135,6 @@ describe('sandbox messages', () => {
     // Then
     expect(received).toBeNull();
   });
-
-  it('As the sandbox, I post to my host whatever its origin', () => {
-    // Given
-    const posted: [unknown, string][] = [];
-    const host = {
-      postMessage: (message: unknown, targetOrigin: string) => {
-        posted.push([message, targetOrigin]);
-      },
-    } as Pick<Window, 'postMessage'>;
-
-    // When
-    postToHost(host, { type: 'dotli:sandbox-recover' });
-
-    // Then
-    expect(posted).toEqual([[{ type: 'dotli:sandbox-recover' }, '*']]);
-  });
 });
 
 describe('parseApiViolationMessage', () => {
@@ -182,21 +163,5 @@ describe('parseApiViolationMessage', () => {
 
     // Then
     expect(parsed).toEqual([null, null, null, null]);
-  });
-});
-
-describe('sandbox load outcome', () => {
-  it.each<{ outcome: SandboxLoadOutcome; loaded: boolean }>([
-    { outcome: 'loaded', loaded: true },
-    { outcome: 'failed', loaded: false },
-  ])('As the host, I ask whether the load $outcome succeeded and hear $loaded', ({ outcome, loaded }) => {
-    // Given
-    const ended: SandboxLoadOutcome = outcome;
-
-    // When
-    const answer = isLoadedOutcome(ended);
-
-    // Then
-    expect(answer).toBe(loaded);
   });
 });

@@ -10,7 +10,6 @@ import { SignIcon } from '../icons/SignIcon.js';
 import { phoneWaitingView } from './phoneWaitingView.js';
 
 const SIGN_LEAD = 'Open Polkadot App on your phone, then tap Sign or Reject';
-const APPROVE_LEAD = 'Open Polkadot App on your phone, then Approve or Reject';
 
 const meta = {
   title: 'Host/Signing/PhoneWaiting',
@@ -70,13 +69,6 @@ export const Signing: Story = {
 /** As a user granting an allowance, I am told to open Polkadot App and Approve or Reject. */
 export const Approving: Story = {
   args: { ask: 'approve', title: 'Allowance' },
-  play: async ({ step }) => {
-    await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(APPROVE_LEAD));
-    await step('And the phone drawn shows Reject and Approve, as the lead says', async () => {
-      await expect(phoneButtons()).toEqual(['Reject', 'Approve']);
-    });
-    await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(APPROVE_LEAD));
-  },
 };
 
 /** As a phone user, I see the step as a sheet that has no close button, only Wait in background. */
@@ -84,15 +76,4 @@ export const Phone: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ step }) => {
-    await step('Then the sheet leads with the title and has no close button', async () => {
-      const head = await body.findByTestId('prompt-dialog-sheet-head');
-      await expect(within(head).getByTestId('prompt-dialog-sheet-title')).toHaveTextContent('Sign Transaction');
-      await expect(body.queryByTestId('prompt-dialog-sheet-close')).toBeNull();
-    });
-    await step('And the step still names the phone and offers to wait in the background', () =>
-      assertWaiting(SIGN_LEAD),
-    );
-    await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(SIGN_LEAD));
-  },
 };

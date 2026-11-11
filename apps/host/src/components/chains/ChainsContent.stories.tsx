@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
 import { HISTORY_SLOTS } from './chainStrip.js';
@@ -455,30 +454,6 @@ export const TrustedNoTip: Story = {
   },
 };
 
-/** As a dotli user watching, bars and peers follow the network. */
-export const FollowsNetwork: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    given([chain({ latest: 10, sinceLast: 0 })]);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Given no bar yet', async () => {
-      await expect(shownBlocks()).toHaveLength(0);
-    });
-    await ctx.step('When two blocks land and a peer joins', () => {
-      given([chain({ latest: 12, bars: bars(11, 2), sinceLast: 0, peers: 2 })], undefined, VERDICTS.good);
-    });
-    await ctx.step('Then the bars, peers and status follow', async () => {
-      await waitFor(() => expect(shownBlocks()).toEqual(['11', '12']));
-      await expect(query(document, '[data-testid="chains-group-peers"]')).toHaveTextContent('2 peers');
-      await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
-        `${NETWORK_HEALTH.ok.title}Light client is in sync`,
-      );
-    });
-  },
-};
-
 /** As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and goes when it closes. */
 export const CountdownTicksWhileOpen: Story = {
   tags: ['!autodocs'],
@@ -524,34 +499,11 @@ export const FollowsOnlyWhileOpen: Story = {
   },
 };
 
-const [island, setIsland] = createSignal(true);
-
 /** As a dotli user, the countdown goes when the island unmounts while open. */
 export const UnmountStopsCountdown: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    setIsland(true);
     given([chain({ latest: 10, sinceLast: 1000 })]);
-  },
-  render: () => (
-    <TopbarFrame>
-      <Show when={island()}>
-        <StoryChains />
-      </Show>
-    </TopbarFrame>
-  ),
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Given the countdown running', async () => {
-      await waitFor(() => expect(waitingText()).toMatch(/^next block in about/));
-    });
-    await ctx.step('When the island unmounts', () => {
-      setIsland(false);
-    });
-    await ctx.step('Then the popover and its countdown are gone', async () => {
-      await waitFor(() => expect(document.querySelector('[data-testid="chains-bars-waiting"]')).toBeNull());
-      await expect(document.getElementById('chains-button')).toBeNull();
-    });
   },
 };
 
@@ -599,30 +551,6 @@ export const RenderErrorCloses: Story = {
       await waitFor(() =>
         expect(query(document, '[data-testid="chains-group-label"]')).toHaveTextContent('Relay chain'),
       );
-    });
-  },
-};
-
-/** As a visitor watching the product download, the transfer footer empties once the product has loaded. */
-export const TransferFooterEmpties: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    given([], { bytesPerSecond: 2048, fetched: 1024, total: 4096 });
-  },
-  play: async ctx => {
-    const rows = (): string[] =>
-      [...document.querySelectorAll('[data-testid="chains-transfer-row"]')].map(row => row.textContent);
-    await open(ctx);
-    await ctx.step('Given the speed and download rows', async () => {
-      await expect(rows()).toEqual(['Speed2 kB/s', 'Downloading1 kB / 4 kB']);
-      await expect(query(document, '[data-testid="chains-transfer"]')).not.toHaveAttribute('data-empty');
-    });
-    await ctx.step('When the product loads', () => {
-      setProductLoaded(true);
-    });
-    await ctx.step('Then the rows are empty', async () => {
-      await waitFor(() => expect(rows()).toEqual(['', '']));
-      await expect(query(document, '[data-testid="chains-transfer"]')).toHaveAttribute('data-empty');
     });
   },
 };

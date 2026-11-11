@@ -6,12 +6,9 @@ import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testin
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import { RAW } from './codecs.js';
 import { fetchArchive } from './fetchArchive.js';
-import { createBitswapBlockSource } from './testing/createBitswapBlockSource.js';
 import { createGatewayFetch } from './testing/createGatewayFetch.js';
 import { createPackedSite } from './testing/createPackedSite.js';
 import { createSha256Cid } from './testing/createSha256Cid.js';
-import { createUnixFsDirectory } from './testing/createUnixFsDirectory.js';
-import { listReportedNames } from './testing/listReportedNames.js';
 import { encodeText } from './testing/textCodec.js';
 
 /** The metrics, measurements and tags the page reports, recorded for each test. */
@@ -22,23 +19,6 @@ beforeEach(() => {
 });
 
 describe('fetchArchive', () => {
-  it('As an operator, I watch a product load over bitswap and it reports its fetch timing and block count', async () => {
-    // Given
-    const { root, blocks } = createUnixFsDirectory({ 'index.html': '<h1>hi</h1>', 'app.js': 'run()' });
-
-    // When
-    await fetchArchive(root.toString(), { bitswapBlockSource: createBitswapBlockSource(blocks) });
-
-    // Then
-    expect(listReportedNames(metrics)).toEqual(
-      expect.arrayContaining(['dotli.content.fetch', 'dotli.content.bitswap_rpc', 'dotli.content.bitswap_blocks']),
-    );
-    expect(metrics.distributions).toContainEqual(
-      expect.objectContaining({ name: 'dotli.content.bitswap_blocks', value: 3 }),
-    );
-    expect(metrics.counts.map(({ name }) => name)).not.toContain('dotli.content.bitswap_blocks');
-  });
-
   it('As an operator, I watch a block fail and it is counted as an error under its error name and logged', async () => {
     // Given a block no peer holds
     const logged: LogLevel[] = [];

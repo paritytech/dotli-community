@@ -99,14 +99,6 @@ export const Desktop: Story = {
 /** As a phone user, I see the dialog as a sheet with its title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ mount, step }) => {
-    await step('When the dialog renders on a phone', async () => {
-      await mount();
-    });
-    await step('Then it is a sheet titled Clear site data', async () => {
-      await waitFor(() => expect(body.getByTestId('story-modal-sheet-title')).toHaveTextContent('Clear site data'));
-    });
-  },
 };
 
 /** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */

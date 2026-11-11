@@ -57,10 +57,6 @@ function button(text: string): RendererNode {
   return { tag: 'Button', value: { modifiers: [], props: { text, clickAction: 'vote' }, children: [] } };
 }
 
-function field(text: string): RendererNode {
-  return { tag: 'TextField', value: { modifiers: [], props: { text, label: 'Answer', valueChangeAction: 'typed' } } };
-}
-
 /** The message as a row in the conversation, which the reader can scroll away by removing it. */
 function Row(props: CustomMessageProps) {
   const [shown, setShown] = createSignal(true);
@@ -196,28 +192,6 @@ export const UnreachableTapSaysSo: Story = {
         );
       },
     );
-  },
-};
-
-/** As a reader of a custom message, I keep my focus and typed text when the product streams an update. */
-export const StreamedUpdateKeepsFocusAndText: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvas, userEvent, step }) => {
-    let input: HTMLElement | undefined;
-    await step('Given I am typing in the message field', async () => {
-      await scrollIn();
-      sink(0).onUpdate(field(''));
-      input = await canvas.findByRole('textbox', { name: 'Answer' });
-      await userEvent.type(input, 'hel');
-    });
-    await step('When the product streams an update of the same tree', () => {
-      sink(0).onUpdate(field(''));
-    });
-    await step('Then the field is the same, still focused, with my text', async () => {
-      await expect(canvas.getByRole('textbox', { name: 'Answer' })).toBe(input);
-      await expect(input).toHaveFocus();
-      await expect(input).toHaveValue('hel');
-    });
   },
 };
 

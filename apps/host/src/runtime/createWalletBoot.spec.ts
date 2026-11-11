@@ -341,17 +341,6 @@ describe('wallet boot', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
   });
 
-  it("As a user in the session window for dot.li's own page, I boot and the stored wallet stays data while the window pairs", async () => {
-    // Given the sign-in window's boot over a stored local wallet, serving no site
-    const { walletBoot } = createBootHarness({ answer: () => buildReconciled(WALLET), role: 'signin-window' });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then it pairs
-    expect(boot).toBeNull();
-  });
-
   it('As a dotli integrator, I boot a page and a window and the page applies the rule as a load while the window applies it as a window', async () => {
     // Given a page's boot and a sign-out window's boot
     const page = createBootHarness({ answer: () => buildReconciled({ status: 'none' }) });
@@ -421,36 +410,5 @@ describe('wallet boot', () => {
     expect([gone.flag.renew, unreadable.flag.renew, empty.flag.renew].map(renew => renew.mock.calls.length)).toEqual([
       0, 0, 0,
     ]);
-  });
-
-  it('As a user on the landing page, I load it and the rule applies as a load while a stored local wallet boots local mode', async () => {
-    // Given the landing page's boot over a stored local wallet
-    const { mode, reconcile, walletBoot } = createBootHarness({
-      answer: () => buildReconciled(WALLET),
-      role: 'landing',
-    });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then the rule applies as a load and the page boots local mode
-    expect(reconcile).toHaveBeenCalledWith('load');
-    expect(boot).toEqual(WALLET);
-    expect(mode.get().mode).toBe('local');
-  });
-
-  it('As a user on a preview its preview host frames, I boot with a stored local wallet and get local mode', async () => {
-    // Given a framed preview's boot over a stored local wallet
-    const { mode, walletBoot } = createBootHarness({
-      answer: () => buildReconciled(WALLET, { presence: 'unknown' }),
-      role: 'framed-preview',
-    });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then the page boots local mode
-    expect(boot).toEqual(WALLET);
-    expect(mode.get().mode).toBe('local');
   });
 });

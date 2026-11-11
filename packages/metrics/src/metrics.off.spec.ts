@@ -20,17 +20,6 @@ describe('metrics in a build without metrics', () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
-  it('As a visitor on a build without metrics, I await an async span and it resolves with my value', async () => {
-    // Given
-    const fn = vi.fn(() => Promise.resolve('ok'));
-
-    // When
-    const result = await m.span('test.async', fn);
-
-    // Then
-    expect(result).toBe('ok');
-  });
-
   it('As a visitor on a build without metrics, I stop a timer and it reads zero', () => {
     // When
     const stop = m.timer('test.timer');

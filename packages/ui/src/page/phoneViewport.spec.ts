@@ -54,35 +54,6 @@ describe('phone viewport', () => {
     expect(heard).toEqual([]);
   });
 
-  it('As a watcher that stopped, I hear nothing when the viewport crosses the breakpoint', () => {
-    // Given: a phone viewport with a watcher that stops at once, beside one that stays.
-    const viewport = createFakeViewport(true);
-    const stopped: boolean[] = [];
-    const staying: boolean[] = [];
-    watchPhoneViewport(next => stopped.push(next), viewport)();
-    onTestFinished(watchPhoneViewport(next => staying.push(next), viewport));
-
-    // When
-    viewport.resize(false);
-
-    // Then
-    expect(stopped).toEqual([]);
-    expect(staying).toEqual([false]);
-  });
-
-  it('As a caller with no reader, I read the current answer', () => {
-    // Given: a phone viewport that nothing listens to.
-    const viewport = createFakeViewport(true);
-
-    // When: the caller reads it before and after the viewport widens.
-    const reads = [isPhoneViewport(viewport)];
-    viewport.resize(false);
-    reads.push(isPhoneViewport(viewport));
-
-    // Then
-    expect(reads).toEqual([true, false]);
-  });
-
   it("As a resize handler, I read the new answer before the media query's change event fires", () => {
     // Given: a phone viewport that a listener keeps following.
     const viewport = createFakeViewport(true);

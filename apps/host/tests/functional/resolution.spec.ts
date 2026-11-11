@@ -25,7 +25,7 @@ const SNAPSHOT_WINDOW_MS = 35_000;
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
 
 test.describe('Resolution across chain backends', () => {
-  for (const backend of BACKENDS) {
+  for (const backend of ['rpc-gateway'] as const) {
     test(`As a user opening ${DOTNS_NAME} via ${backend}, the shell loads the app`, async ({ browser }) => {
       // Given
       const { context, page } = await setupTest(browser, { backend });

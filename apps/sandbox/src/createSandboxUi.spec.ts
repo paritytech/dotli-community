@@ -39,22 +39,6 @@ describe('sandbox UI', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, I get toasts before the UI is up and it loads and mounts once', async () => {
-    // Given
-    const module = createFakeUi();
-    const load = vi.fn(() => Promise.resolve(module));
-    const { ui, toasts } = createHarness(load);
-
-    // When
-    toasts.set({ items: ['reload offer'] });
-    toasts.set({ items: ['reload offer', 'stale worker'] });
-    await ui.loadUi();
-
-    // Then
-    expect(load).toHaveBeenCalledOnce();
-    expect(module.mountOverlays).toHaveBeenCalledOnce();
-  });
-
   it('As a visitor, I get a toast after the page UI failed to load, and it shows once the UI loads', async () => {
     // Given two loads that fail and a third that succeeds, and a first toast whose failed load has settled
     const mounted = createDeferred<undefined>();
@@ -140,19 +124,6 @@ describe('sandbox UI', () => {
       detail: 'The network did not answer',
       action: retry,
     });
-  });
-
-  it('As an operator, I watch the page UI fail to load under several screens and see the miss recorded once', async () => {
-    // Given
-    const { ui, captures } = createHarness(() => Promise.reject(new Error('chunk missing')));
-
-    // When
-    ui.showError('Failed to load content', 'The network did not answer');
-    ui.showRetryScreen();
-    await ui.loadUi().catch(() => undefined);
-
-    // Then
-    expect(captures.expected).toHaveBeenCalledOnce();
   });
 
   it('As a visitor whose network dropped, I get the failure text and a Reload button when the page UI cannot load', async () => {

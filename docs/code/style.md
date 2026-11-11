@@ -890,6 +890,64 @@ export default createLoader;
 
 ## Tests
 
+A test documents a behaviour or guards an edge case. Confidence comes from the types and the code flow, so a test that
+only pins the current code goes.
+
+Keep a test that:
+
+- documents a public behaviour of its module that the types do not show, told as what a caller sees
+- guards an edge case: a failure path, a race or overlap, idempotency or dedupe, retry and recovery, a boundary input, a
+  cleanup that releases a resource, a limit that keeps a repeated failure from flooding the log, or Safari's storage
+  partition
+- is the regression test of a real bug: it guards the defect that the commit or issue adding it names. A commit that
+  only creates, moves or renames the spec, or groups review fixes, makes no case a regression test
+
+Cut a test that:
+
+- restates the types: a shape, a field's presence, or a value passed through unchanged
+- pins implementation detail: a call count or argument on an internal fake, internal step order, or a breadcrumb or log
+  line. A count is the contract when the case is about doing the work once
+- repeats a case another kept test asserts. When two layers assert one behaviour, the spec of the module that owns it
+  keeps it, and a caller keeps its copy only as the only test of a parameter it passes on. A case that re-tests a shared
+  helper's contract, such as a listener set that survives a throwing listener, repeats the helper's own spec when its
+  module adds only the wiring
+- tests a getter, a constant, a re-export, a one-line helper its callers' specs cover, or a third-party library's own
+  behaviour
+
+A cut never removes the only test of a failure path, a race or a recovery. A regression test keeps its bug guarded, not
+its case: when a kept test asserts the same failing input and outcome, the regression case goes. A one-line helper keeps
+one case for a boundary input its callers' specs miss. Siblings merge into one `it.each` table only when one assertion,
+with its expected value taken from the row, covers them all. A metric is a contract in a failure-path case, or when
+emitting it is the documented job of the dependency it goes through. In a race case, the absence of a warning is how the
+test shows the late message was expected. A parser or validator whose input the types leave open, such as `unknown`, a
+string or URL params, keeps one case for each shape it accepts in its own spec, even when its callers' specs cover it,
+since the types do not show what passes. A case that checks a type with `@ts-expect-error` guards that type, so it does
+not restate it.
+
+A test never looks like this:
+
+- **The same case over equal inputs.** It runs a case again with another input that takes the same branch, such as a
+  second local root or a second backend. One input per branch.
+- **A wrapper retesting its inner module.** A caller's spec asserts what the module it wraps already asserts in its own
+  spec. The caller tests only what it adds.
+- **A regression test that passes without its fix.** A regression test fails when its fix is reverted. One that still
+  passes guards nothing, so it goes, and the gap is recorded instead.
+- **A regression test bigger than its bug.** One bug gets one case, the smallest that fails without the fix. It has:
+  - no second direction of the same bug
+  - no table rows beyond the one that shows it
+  - no setup the bug does not need
+- **A name that claims more than its Then.** The name states only what `// Then` asserts.
+- **Copy or markup with no behaviour behind it.** It asserts a label's exact text or an `aria-label` string. It asserts
+  the order of elements. Assert the role or state a user acts on instead.
+- **A story play that adds no behaviour.** A play that only checks copy or DOM order goes, and so does one that checks a
+  styling hook. The story stays as a visual doc. A story that shows the same state as another story in its file goes.
+- **A browser case a unit spec covers.** A Playwright or e2e suite keeps one case per host branch that needs a real
+  browser, for its storage, its frames or its network. It never repeats what a unit spec asserts.
+- **A disabled test left in place.** A `test.fixme` or `it.skip` waiting on an upstream fix is switched back on once the
+  fix lands, or deleted. It never stays disabled without a tracking issue.
+
+How a test is written:
+
 - Test through the module's public API. Pass fakes through params, never mock modules.
 - Use a table (`it.each`) when the same behaviour runs over three or more inputs.
 - For a stream of events, collect them into an array and assert the whole sequence once.

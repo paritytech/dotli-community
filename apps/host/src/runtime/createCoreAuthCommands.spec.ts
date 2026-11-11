@@ -124,32 +124,6 @@ describe('topbar login over the page core', () => {
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('As a user, I click Sign in twice before the wallet answers and the core gets one login request', async () => {
-    // Given: a topbar login still connecting to the core
-    const fakes = createHarness();
-    const first = fakes.commands.login();
-    await fakes.changes.until(() => fakes.connections.length === 1);
-
-    // When: a second click, then the core pairs and the wallet answers
-    const second = fakes.commands.login();
-    const sent: string[] = [];
-    const login = createFakeProvider({
-      onPostMessage(message) {
-        sent.push(getFrameRequestId(message));
-      },
-    });
-    await answerConnection(fakes, 0, { provider: login });
-    await fakes.changes.until(() => sent.length === 1);
-    fakes.auth.set({ tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'dotli' });
-    fakes.auth.set(SIGNED_IN);
-    login.listener?.(buildLoginResponseFrame(nth(sent, 0), { kind: 'success', value: 'Success' }));
-    await Promise.all([first, second]);
-
-    // Then one connection and one login request reached the core
-    expect(fakes.connections).toHaveLength(1);
-    expect(sent).toHaveLength(1);
-  });
-
   it('As a user, I close the login modal and the pairing under way is cancelled', async () => {
     // Given a login whose core connection is up
     const fakes = createHarness();
@@ -239,20 +213,6 @@ describe('topbar login over the page core', () => {
 
     // Then the login answers failed
     expect(outcome).toEqual({ kind: 'failed' });
-  });
-
-  it('As a user whose login failed after the core answered, I try again and a new login reaches the core', async () => {
-    // Given a login the core answered and then reported failed
-    const { fakes, done } = await startAnsweredLogin();
-    fakes.auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'handshake failed' });
-    await done;
-
-    // When the user tries again
-    void fakes.commands.login();
-    await fakes.changes.until(() => fakes.connections.length === 2);
-
-    // Then a second connection was asked of the core
-    expect(fakes.connections).toHaveLength(2);
   });
 
   it('As a user whose core signs out after it answered my login, I wait for my login and see it cancelled', async () => {

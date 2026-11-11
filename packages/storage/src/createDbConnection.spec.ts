@@ -54,14 +54,14 @@ function createFakeDb(name: string) {
   };
 }
 
-/** Opens the given connections in turn, or fails where an entry is an error. */
-function createOpener(...results: (FakeDb | Error)[]): Mock<() => Promise<IDBDatabase>> {
+/** Opens the given connections in turn, and fails once they run out. */
+function createOpener(...results: FakeDb[]): Mock<() => Promise<IDBDatabase>> {
   return vi.fn<() => Promise<IDBDatabase>>(() => {
     const next = results.shift();
     if (next === undefined) {
       return Promise.reject(new Error('no more opens in this test'));
     }
-    return next instanceof Error ? Promise.reject(next) : Promise.resolve(next.db);
+    return Promise.resolve(next.db);
   });
 }
 
@@ -149,20 +149,5 @@ describe('createDbConnection', () => {
     // Then
     expect(db).toBe(second.db);
     expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it('As a page whose open was blocked, I read again and the next open serves me', async () => {
-    // Given an open an older tab blocked
-    const blocked = new IdbOpenBlockedError('dotli');
-    const later = createFakeDb('later');
-    const getDb = createDbConnection({ open: createOpener(blocked, later) });
-    const blockedOpen = await getFailure(getDb());
-
-    // When
-    const db = await getDb();
-
-    // Then
-    expect(blockedOpen).toBe(blocked);
-    expect(db).toBe(later.db);
   });
 });

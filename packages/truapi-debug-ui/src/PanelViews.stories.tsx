@@ -264,21 +264,6 @@ export const TimelineClickShowsGroup: Story = {
     }),
 };
 
-/** As a developer using the debug panel, I keep the timeline open and a new message shows in it. */
-export const TimelineLive: Story = {
-  play: async ({ userEvent, step }) => {
-    await step('Given the timeline is open', async () => {
-      await userEvent.click(getPart('td-tab', { value: 'timeline' }));
-    });
-    await step('When a message arrives', () => {
-      getDebugPanel().emitTruapi({ tag: 'late_request', requestId: 'late-1' });
-    });
-    await step('Then the timeline shows it', async () => {
-      await waitFor(() => expect(listSegments()).toHaveLength(1));
-    });
-  },
-};
-
 /** As a developer using the debug panel, I hover and click a timeline box while traffic streams in and the box, its tooltip and my click hold. */
 export const StreamingKeepsHoverAndClick: Story = {
   play: async ({ userEvent, step }) => {

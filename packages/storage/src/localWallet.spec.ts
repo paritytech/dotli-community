@@ -71,17 +71,6 @@ describe('local wallet record', () => {
     expect(wallet).toBeNull();
   });
 
-  it('As a page, I save a wallet with its identity through the frame and read both back', async () => {
-    // Given a wallet saved with its identity
-    await store.save(ENTROPY, IDENTITY);
-
-    // When it is loaded
-    const wallet = await store.load();
-
-    // Then the entropy and identity come back
-    expect(wallet).toMatchObject({ entropy: ENTROPY, identity: IDENTITY });
-  });
-
   it('As a user, I keep the identity the network reported beside the entropy', async () => {
     // Given
     await store.save(ENTROPY, null);

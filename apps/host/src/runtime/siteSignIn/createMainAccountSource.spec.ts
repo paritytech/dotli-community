@@ -146,17 +146,6 @@ describe('main account', () => {
     expect(read).toEqual([null, null]);
   });
 
-  it("As a site, I sign in for a main account and its owner is the blake2b-256 hex of the account's key", () => {
-    // Given a session with a key
-    const session = { connected: true, publicKey: MAIN_KEY };
-
-    // When the window reads the session's main account
-    const main = getMainAccount(session);
-
-    // Then its owner is the hash of the key
-    expect(main?.owner).toBe(toHex(hashBlake2b(fromHex(MAIN_KEY), 32)));
-  });
-
   it("As a user, I start a site's round and the main account read waits for the core's own report, never the saved copy", async () => {
     // Given a source whose core has not reported yet
     const core = createSourceOverCore();
@@ -349,23 +338,6 @@ describe('main account', () => {
     // Then the lease was let go once, and the source keeps no down listener on it
     expect(lease.released).toBe(1);
     expect(lease.countListeners()).toBe(0);
-  });
-
-  it('As a dotli integrator, I dispose the main account source after its core could not boot and see no error', async () => {
-    // Given a source whose read failed because its core could not boot
-    const boot = new Error('The wallet core could not boot');
-    const core = createSourceOverCore({ acquireFailures: [boot] });
-    core.report.set(CONNECTED);
-    await core.source.read(createLiveSignal()).catch((error: unknown) => error);
-
-    // When the source is disposed
-    const thrown = catchError(() => {
-      core.source.dispose();
-    });
-
-    // Then nothing threw, and no lease was taken
-    expect(thrown).toBeUndefined();
-    expect(core.leases).toEqual([]);
   });
 
   it('As a dotli integrator, I dispose the main account source twice and see no error, and its lease is let go once', async () => {

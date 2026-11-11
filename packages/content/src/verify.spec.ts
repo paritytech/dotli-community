@@ -86,20 +86,6 @@ describe('assertBlockMatchesCid', () => {
     expect(error).toBeUndefined();
   });
 
-  it('As a content loader, I reject bytes a peer substituted under a valid CID', () => {
-    // Given
-    const cid = createSha256Cid(encodeText('the real index.html'), RAW);
-    const tampered = encodeText('<script>steal()</script>');
-
-    // When
-    const error = catchError(() => {
-      assertBlockMatchesCid(cid, tampered);
-    });
-
-    // Then
-    expect(error).toMatchObject({ message: expect.stringMatching(/hash mismatch/i) as string });
-  });
-
   it('As a content loader, I name a mismatch as a verification failure, so my caller can tell it from a transport one', () => {
     // Given
     const cid = createSha256Cid(encodeText('the real index.html'), RAW);

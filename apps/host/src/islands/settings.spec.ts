@@ -17,15 +17,6 @@ type Params = {
   reset?: WritableAtom<SettingsResetStatus>;
 };
 
-const SAVED: SavedSettings = {
-  backend: 'smoldot-direct',
-  cache: { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false },
-  network: 'paseo-next-v2',
-  enabledNetworks: ['paseo-next-v2'],
-  sharedWorkerAvailable: true,
-  verified: true,
-};
-
 afterEach(() => {
   resetAllStoresForTests();
 });
@@ -52,7 +43,7 @@ function mount({ intent = createSettingsIntent(), reset = atom<SettingsResetStat
     dispose: d,
   }));
   flush();
-  return { panel, dispose, settings, theme, intent, reset };
+  return { panel, dispose, intent, reset };
 }
 
 describe('useSettingsPanel', () => {
@@ -92,18 +83,6 @@ describe('useSettingsPanel', () => {
     expect(panel.open()).toBe(false);
   });
 
-  it('As the settings button, I show no settings and the system theme before boot has read them', () => {
-    // Given a page whose boot has not read the settings
-
-    // When the settings button mounts
-    const { panel, dispose } = mount();
-    onTestFinished(dispose);
-
-    // Then it shows no settings and the system theme
-    expect(panel.settings()).toBeNull();
-    expect(panel.theme()).toBe('system');
-  });
-
   it("As the settings button, I follow the page's reset once it starts clearing", () => {
     // Given a panel bound to an idle reset
     const { panel, reset, dispose } = mount();
@@ -115,21 +94,5 @@ describe('useSettingsPanel', () => {
 
     // Then the panel reads it
     expect(panel.reset()).toBe('clearing');
-  });
-
-  it('As the settings button, I follow the settings once boot has read them, and the theme the page applies', () => {
-    // Given a mounted settings button
-    const { panel, dispose, settings, theme } = mount();
-    onTestFinished(dispose);
-
-    // When boot reads the settings and the page applies a dark theme
-    settings.set(SAVED);
-    theme.set({ preference: 'dark' });
-    flush();
-
-    // Then the button follows both
-    expect(panel.settings()).toEqual(SAVED);
-    expect(panel.theme()).toBe('dark');
-    expect(panel.version).toBe('1.2.3');
   });
 });

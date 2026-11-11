@@ -36,21 +36,6 @@ describe('createPendingReplies', () => {
     expect(late).toBe(false);
   });
 
-  it('As a channel that died, I fail every open wait and each fails with its own error, none left open', async () => {
-    // Given
-    const replies = createPendingReplies<string, string>();
-    const firstReply = replies.wait('a');
-    const secondReply = replies.wait('b');
-
-    // When
-    replies.rejectAll(id => new Error(`lost ${id}`));
-
-    // Then
-    await expect(firstReply).rejects.toThrow('lost a');
-    await expect(secondReply).rejects.toThrow('lost b');
-    expect(replies.listIds()).toEqual([]);
-  });
-
   it('As a channel closing down, I fail every wait while one error factory throws and none is left open', async () => {
     // Given
     const replies = createPendingReplies<string, string>();

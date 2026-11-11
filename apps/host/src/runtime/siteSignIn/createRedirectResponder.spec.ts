@@ -3,7 +3,7 @@
 
 import { createDeferred } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { ResponderState } from '../sessionHandoff/createResponder.js';
 import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './createRedirectResponder.js';
 import type { sealRedirect } from './siteSeal.js';
@@ -240,23 +240,6 @@ describe('redirect responder', () => {
     expect(events).toEqual(['forget', `navigate ${SEALED}`]);
   });
 
-  it('As a site, I am refused and every watcher of the round is told of the state the refusal sets', () => {
-    // Given a redirect responder with a follower
-    const { responder } = openRedirectResponder();
-    const seen: string[] = [];
-    onTestFinished(
-      responder.state.listen(state => {
-        seen.push(state.kind);
-      }),
-    );
-
-    // When the round refuses the site
-    responder.refuse('declined');
-
-    // Then the follower saw the refusal
-    expect(seen).toEqual(['refused']);
-  });
-
   it('As a site whose answer is still sealing when the responder is disposed, I still get that answer', async () => {
     // Given a redirect responder whose seal has not finished
     const seal = createDeferred<string>();
@@ -271,22 +254,6 @@ describe('redirect responder', () => {
     // Then the window forgot its request and navigated with the answer
     expect(events).toEqual(['forget', `navigate ${SEALED}`]);
     expect(responder.delivery()).toBe('sent');
-  });
-
-  it('As a dotli integrator, I dispose a redirect responder whose seal failed and see no error', async () => {
-    // Given a redirect responder whose seal failed
-    const { responder, failure } = openRedirectResponder(() => Promise.reject(new Error('seal failed')));
-    responder.send({ account: 'a' });
-    await failure;
-
-    // When it is disposed
-    const thrown = catchError(() => {
-      responder.dispose();
-    });
-
-    // Then nothing threw, and the delivery stays failed
-    expect(thrown).toBeUndefined();
-    expect(responder.delivery()).toBe('failed');
   });
 
   it('As a dotli integrator, I dispose a redirect responder twice and see no error', () => {

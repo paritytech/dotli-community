@@ -14,18 +14,6 @@ describe('auth store', () => {
     resetStores();
   });
 
-  it('As a user opening the page, I see the session restoring and count as logged out', () => {
-    // Given a page as it opens
-
-    // When
-    const state = authState.store.get();
-    const loggedIn = authState.loggedInStore.get();
-
-    // Then
-    expect(state).toEqual({ tag: 'Restoring' });
-    expect(loggedIn).toBe(false);
-  });
-
   it('As the auth controller, I hear two steps set in one listener round in order, each once', () => {
     // Given a store whose listener sets two steps in one round
     const trigger = atom(0);
@@ -101,16 +89,6 @@ describe('logged-in session', () => {
     resetStores();
   });
 
-  it('As a user whose wallet connects, I reach Connected and am logged in', () => {
-    // Given a page as it opens, not yet logged in
-
-    // When
-    authState.set(CONNECTED);
-
-    // Then
-    expect(authState.loggedInStore.get()).toBe(true);
-  });
-
   it.each([{ tag: 'Disconnected' }, { tag: 'Unreachable' }] as const)(
     'As a logged-in user, I reach $tag and am logged out',
     state => {
@@ -136,23 +114,6 @@ describe('logged-in session', () => {
 
     // Then
     expect(authState.loggedInStore.get()).toBe(true);
-  });
-
-  it('As a user, I change auth state and the session already matches each state announced', () => {
-    // Given
-    const seen: boolean[] = [];
-    onTestFinished(
-      authState.store.listen(() => {
-        seen.push(authState.loggedInStore.get());
-      }),
-    );
-
-    // When
-    authState.set(CONNECTED);
-    authState.set({ tag: 'Disconnected' });
-
-    // Then
-    expect(seen).toEqual([true, false]);
   });
 
   it('As an auth store follower, I hear each distinct step and the session already matches the step I hear', () => {
@@ -199,22 +160,5 @@ describe('logged-in session', () => {
       { loggedIn: true, step: 'Connected' },
       { loggedIn: false, step: 'Disconnected' },
     ]);
-  });
-
-  it('As a logged-in user, I connect again and the session announces nothing new', () => {
-    // Given
-    authState.set(CONNECTED);
-    let notified = 0;
-    onTestFinished(
-      authState.loggedInStore.listen(() => {
-        notified += 1;
-      }),
-    );
-
-    // When
-    authState.set(CONNECTED);
-
-    // Then
-    expect(notified).toBe(0);
   });
 });

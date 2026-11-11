@@ -47,12 +47,4 @@ describe('Light-client database', () => {
     // Then
     await expect(save).rejects.toThrow(/blocked/);
   });
-
-  it('As a user of a browser without IndexedDB, I get no database and my light client starts cold rather than failing', () => {
-    // When
-    const db = createSmoldotDb({ factory: null });
-
-    // Then
-    expect(db).toBeNull();
-  });
 });

@@ -43,7 +43,7 @@ export function computeMappingSlot(key: `0x${string}`, slot: number | `0x${strin
 }
 
 /** `bytes` longer than 31 start at `keccak256(baseSlot)` and span consecutive slots. */
-export function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
+function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
   return toHex(new Uint8Array(keccak_256(fromHex(baseSlot))));
 }
 

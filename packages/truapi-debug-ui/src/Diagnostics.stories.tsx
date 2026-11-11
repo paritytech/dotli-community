@@ -209,31 +209,6 @@ export const CopyRefused: Story = {
   },
 };
 
-/** As a developer using the debug panel, I click Share diagnostic twice while the report builds and one issue opens. */
-export const ShareOnce: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvas, userEvent, step }) => {
-    const built = createDeferred<string>();
-    source.report.mockReturnValueOnce(built.promise);
-    const share = canvas.getByRole('button', { name: 'Share diagnostic' });
-    await step('When I click Share diagnostic twice while the report builds', async () => {
-      await userEvent.click(share);
-      await userEvent.click(share);
-    });
-    await step('Then the button is disabled', async () => {
-      await expect(share).toBeDisabled();
-    });
-    await step('When the report is built', () => {
-      built.resolve('Site: app.dot.li');
-    });
-    await step('Then one issue opens and the button takes clicks again', async () => {
-      await waitFor(() => expect(share).toBeEnabled());
-      await expect(source.report).toHaveBeenCalledTimes(1);
-      await expect(source.openIssue).toHaveBeenCalledTimes(1);
-    });
-  },
-};
-
 /** As a developer using the debug panel, I leave the Diagnostics tab while a share builds and come back, and one issue opens. */
 export const ShareOnceAcrossTabs: Story = {
   tags: ['!autodocs'],

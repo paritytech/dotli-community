@@ -96,19 +96,4 @@ describe('Loading screen island', () => {
     expect(loadingState.get().progress).toBeGreaterThan(before);
     expect(byId('loading-progress-pct').textContent).toBe(`${String(Math.round(loadingState.get().progress))}%`);
   });
-
-  it('As the shell, content written over `#app` leaves the live screen, which still follows the store', async () => {
-    // Given
-    await mountScreen();
-    const screen = byId('app-loading');
-
-    // When the bridge clears `#app` for the product frame
-    app().innerHTML = '';
-    loadingState.update({ progress: 80 });
-    await settle();
-
-    // Then
-    expect(byId('app-loading')).toBe(screen);
-    expect(byId('loading-progress-pct').textContent).toBe('80%');
-  });
 });

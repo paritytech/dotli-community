@@ -56,46 +56,6 @@ function createFollow(id: number): Record<string, unknown> {
 }
 
 describe('createLaneRouter', () => {
-  it('As a consumer, I connect and my session opens on my home lane under my own id', () => {
-    // Given a home lane
-    const home = createFakeLane({ id: 1 });
-    const onMessage = (): void => {};
-
-    // When I connect
-    createLaneRouter({
-      sessionId: 'consumer-1',
-      onMessage,
-      wireMode: 'object',
-      home: home.lane,
-      pickFollowLane: () => home.lane,
-      getLaneSessionId: lane => `consumer-1@${String(lane.id)}`,
-    });
-
-    // Then one session opens on home, under my id, with my handler and wire mode
-    expect(home.sessions.map(s => [s.params.sessionId, s.params.onMessage, s.params.wireMode])).toEqual([
-      ['consumer-1', onMessage, 'object'],
-    ]);
-  });
-
-  it('As a consumer, I send a request and it goes to my home lane as an object', () => {
-    // Given a router on its home lane
-    const home = createFakeLane({ id: 1 });
-    const router = createLaneRouter({
-      sessionId: 'consumer-1',
-      onMessage: () => {},
-      home: home.lane,
-      pickFollowLane: () => home.lane,
-      getLaneSessionId: lane => `consumer-1@${String(lane.id)}`,
-    });
-    const request = { jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] };
-
-    // When I send it as JSON text
-    router.send(JSON.stringify(request));
-
-    // Then home hears the parsed object
-    expect(home.sessions[0]?.sent).toEqual([request]);
-  });
-
   it('As a consumer whose home lane is full, I follow and my follow goes to the lane picked for it, under the session id given for that lane', () => {
     // Given a home lane with no room and an overflow lane
     const home = createFakeLane({ id: 1 });

@@ -5,17 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CACHE, parseCacheSettings } from './cacheSettings.js';
 
 describe('parseCacheSettings', () => {
-  it('As a returning visitor, I bring stored cache switches and each applies', () => {
-    // Given
-    const stored = JSON.stringify({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: true });
-
-    // When
-    const cache = parseCacheSettings(stored);
-
-    // Then
-    expect(cache).toEqual({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: true });
-  });
-
   it('As a visitor from an older build, I bring an object missing a switch and the missing one is the default', () => {
     // Given
     const stored = JSON.stringify({ skipCidCache: true, skipArchiveCache: 'yes' });

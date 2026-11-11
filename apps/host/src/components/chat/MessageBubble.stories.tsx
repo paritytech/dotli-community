@@ -4,7 +4,6 @@
 import { For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, within } from 'storybook/test';
-import { expectBefore } from '@config/storybook/play';
 import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import { MessageBubble } from './MessageBubble.js';
 
@@ -23,7 +22,9 @@ function record(content: unknown, author: 'product' | 'user' = 'product'): ChatM
 }
 
 /** The page's custom body, standing in for the product's live render. */
-const customBody = fn(() => <div data-testid="chat-custom-root">poll</div>);
+function customBody() {
+  return <div data-testid="chat-custom-root">poll</div>;
+}
 
 const meta = {
   title: 'Entities/Chat/MessageBubble',
@@ -64,11 +65,6 @@ export const TextWithRelativeTime: Story = {
 /** As a reader, I see my own message marked as mine. */
 export const OwnMessage: Story = {
   args: { record: record({ tag: 'Text', value: { text: 'me' } }, 'user') },
-  play: async ({ canvas, step }) => {
-    await step('Then my own message is marked as mine', async () => {
-      await expect(canvas.getByTestId('chat-msg')).toHaveAttribute('data-author', 'user');
-    });
-  },
 };
 
 const RICH_KINDS = [
@@ -127,22 +123,6 @@ export const ActionButtonsReportTaps: Story = {
       },
     }),
   },
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given the actions lay out as a grid of secondary buttons', async () => {
-      await expect(canvas.getByTestId('chat-msg-actions')).toHaveAttribute('data-layout', 'grid');
-      const buttons = within(canvas.getByTestId('chat-msg-actions')).getAllByRole('button');
-      await expect(buttons.map(b => [b.textContent, b.dataset['variant']])).toEqual([
-        ['Yes', 'secondary'],
-        ['No', 'secondary'],
-      ]);
-    });
-    await step('When I press Yes', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Yes' }));
-    });
-    await step('Then the page hears which action I chose', async () => {
-      await expect(args.onAction).toHaveBeenCalledWith('yes');
-    });
-  },
 };
 
 /** As a reader, I see a custom message as the page's custom body beside its time. */
@@ -150,16 +130,5 @@ export const CustomBodyBeforeTimestamp: Story = {
   tags: ['!autodocs'],
   args: {
     record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
-  },
-  play: async ({ args, canvas, step }) => {
-    await step('Then the page renders the custom body once, before the timestamp', async () => {
-      const bubble = canvas.getByTestId('chat-msg-bubble');
-      await expect(bubble).toHaveAttribute('data-custom');
-      await expect(within(bubble).getByTestId('chat-custom-root')).toBeVisible();
-      await expect(within(bubble).getByTestId('chat-msg-time')).toBeVisible();
-      await expectBefore(within(bubble).getByTestId('chat-custom-root'), within(bubble).getByTestId('chat-msg-time'));
-      await expect(args.custom).toHaveBeenCalledTimes(1);
-      await expect(args.custom).toHaveBeenCalledWith({ messageType: 'poll', payload: '0x01' });
-    });
   },
 };

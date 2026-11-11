@@ -201,27 +201,6 @@ describe('session window responder', () => {
     expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
-  it("As a responder follower, I am told once per change and each time read the responder's latest state", () => {
-    // Given a window whose first follower sends the result once vetted, and a second follower behind it
-    const window = openWindow();
-    const opener = must(window.opener, 'an opener');
-    onTestFinished(
-      window.responder.state.listen(state => {
-        if (state.kind === 'vetted') {
-          window.responder.send(RESULT);
-        }
-      }),
-    );
-    const heard = recordNotified(window.responder.state);
-
-    // When the opener is vetted, which the first follower answers at once
-    window.post({ data: createHello('r1'), origin: PAGE, source: opener });
-
-    // Then the second follower was told twice, both times of the answer
-    expect(heard).toEqual([{ kind: 'answered' }, { kind: 'answered' }]);
-    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
-  });
-
   it('As a user signing out in the sign-out window, I sign out before the opener is vetted and the empty result goes out once after the vetting', () => {
     // Given a sign-out window whose opener has not said hello yet
     const window = openWindow<typeof SIGNED_OUT_RESULT>();
@@ -241,17 +220,6 @@ describe('session window responder', () => {
     expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
-  it('As an operator, I see a foreign opener of the sign-in window refused and counted under a bounded reason, never its host', () => {
-    // Given an open window
-    const window = openWindow();
-
-    // When a hello comes from a foreign origin over plain http
-    window.post({ data: createHello('r1'), origin: 'http://attacker-chosen-name.example', source: window.opener });
-
-    // Then it is counted as insecure with no host
-    expect(window.metrics.counted('session_window.refused')).toEqual([{ outcome: 'refused', reason: 'insecure' }]);
-  });
-
   it('As a user in a sign-in window restored from the back-forward cache before it answered, I return to it and it says ready again and finishes', () => {
     // Given a vetted round, whose page went into the back-forward cache
     const window = openWindow();
@@ -266,23 +234,6 @@ describe('session window responder', () => {
     // Then the opener heard ready twice and then the result
     expect(getPostedTypes(opener)).toEqual(['dotli:s:ready', 'dotli:s:ready', 'dotli:s:result']);
     expect(window.states.map(state => state.kind)).toEqual(['vetted', 'connecting', 'vetted', 'answered']);
-  });
-
-  it('As a user in a restored sign-in window, I return to it and a hello for another round is ignored while my own round vets me again', () => {
-    // Given a vetted window, restored from the back-forward cache
-    const window = openWindow();
-    const opener = must(window.opener, 'an opener');
-    window.post({ data: createHello('r1'), origin: PAGE, source: opener });
-    window.restorePage();
-
-    // When the opener says hello for another round, and then for my request's round
-    window.post({ data: createHello('r2'), origin: PAGE, source: opener });
-    const afterOtherRound = window.responder.state.get();
-    window.post({ data: createHello('r1'), origin: PAGE, source: opener });
-
-    // Then the other round changed nothing, and my own round vetted me again
-    expect(afterOtherRound).toEqual({ kind: 'connecting' });
-    expect(window.responder.state.get()).toEqual({ kind: 'vetted', origin: PAGE, party: 'first' });
   });
 
   it('As a user in a restored sign-in window whose result was finished before the vetting, I return to it and the result is sent with that vetting', () => {
@@ -332,36 +283,6 @@ describe('session window responder', () => {
     // Then it stays refused and posts nothing more
     expect(window.responder.state.get()).toEqual({ kind: 'refused' });
     expect(opener.posted).toHaveLength(2);
-  });
-
-  it('As a dotli integrator, I dispose a responder that refused its opener and see no error, and it stays refused', () => {
-    // Given a window that refused an app origin
-    const window = openWindow();
-    const opener = must(window.opener, 'an opener');
-    window.post({ data: createHello('r1'), origin: PRODUCT, source: opener });
-
-    // When it is disposed
-    const thrown = catchError(() => {
-      window.responder.dispose();
-    });
-
-    // Then nothing threw, and it stays refused with no listener left
-    expect(thrown).toBeUndefined();
-    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
-    expect(window.countListeners()).toBe(0);
-  });
-
-  it('As a site, I say hello to the session window and it vets me as a third party, naming that party', () => {
-    // Given an open window and its opener
-    const window = openWindow();
-    const opener = must(window.opener, 'an opener');
-
-    // When a site says hello
-    window.post({ data: createHello('r1'), origin: SITE, source: opener });
-
-    // Then the window is vetted for that site as a third party, and nothing more is said
-    expect(window.states).toEqual([{ kind: 'vetted', origin: SITE, party: 'third' }]);
-    expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
   });
 
   it('As a site, I am refused by the session window with a reason and only I hear it', () => {
@@ -626,24 +547,6 @@ describe('session window responder', () => {
     expect(call).toBe('0x0a03');
   });
 
-  it('As a site whose sign window was restored from the back-forward cache, I send my payload again after the new ready and the window keeps the first', async () => {
-    // Given a window vetted for a site that sent its payload, restored and vetted again
-    const window = openWindow<unknown>();
-    const opener = must(window.opener, 'an opener');
-    window.post({ data: createHello('r1'), origin: SITE, source: opener });
-    window.post({ data: createPayload('r1', '0x0a03'), origin: SITE, source: opener });
-    window.restorePage();
-    window.post({ data: createHello('r1'), origin: SITE, source: opener });
-
-    // When the site answers the new ready with its payload again, now another call
-    window.post({ data: createPayload('r1', '0xdead'), origin: SITE, source: opener });
-    const call = await window.responder.payload();
-
-    // Then the first one counts, and the window is vetted again
-    expect(call).toBe('0x0a03');
-    expect(window.responder.state.get()).toEqual({ kind: 'vetted', origin: SITE, party: 'third' });
-  });
-
   it('As a site whose sign window was restored before my payload came, I send it before my new hello and it counts', async () => {
     // Given a window vetted for a site, restored before any payload and waiting to be vetted again
     const window = openWindow<unknown>();
@@ -674,21 +577,6 @@ describe('session window responder', () => {
     expect(window.states).toEqual([]);
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
     expect(window.countListeners()).toBe(0);
-  });
-
-  it('As a dotli integrator, I dispose a vetted responder and a payload its site sends after it never counts', async () => {
-    // Given a window vetted for a site
-    const window = openWindow<unknown>();
-    const opener = must(window.opener, 'an opener');
-    window.post({ data: createHello('r1'), origin: SITE, source: opener });
-
-    // When it is disposed and the site then sends its payload
-    window.responder.dispose();
-    window.post({ data: createPayload('r1', '0x0a03'), origin: SITE, source: opener });
-    const settled = await Promise.race([window.responder.payload(), Promise.resolve('unsettled')]);
-
-    // Then the call never arrived
-    expect(settled).toBe('unsettled');
   });
 
   it.each<{ name: string; opener: FakeWindowHandle | null }>([

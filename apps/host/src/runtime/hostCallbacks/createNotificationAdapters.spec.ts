@@ -42,35 +42,6 @@ describe('notification host callbacks', () => {
     expect(shown).toEqual([{ text: 'hello', deeplink: undefined, label: 'myapp' }]);
   });
 
-  it('As a product developer, I push a later notification and cancel it and both go through the shared scheduler', async () => {
-    // Given
-    const { scheduler, schedule, cancel } = createFakeScheduler();
-    const { pushNotification, cancelNotification } = createNotificationAdapters({
-      label: 'myapp',
-      getProductId,
-      scheduler,
-      notify: () => undefined,
-    });
-
-    // When
-    await pushNotification({
-      text: 'later',
-      deeplink: 'dot://open',
-      scheduledAt: 123n,
-    });
-    await cancelNotification(7);
-
-    // Then
-    expect(schedule).toHaveBeenCalledWith({
-      productId: PRODUCT_ID,
-      title: 'myapp',
-      text: 'later',
-      deeplink: 'dot://open',
-      scheduledAt: 123,
-    });
-    expect(cancel).toHaveBeenCalledWith(PRODUCT_ID, 7);
-  });
-
   it('As a product developer, I push or cancel a notification before the core parsed my product id and both reject without touching the scheduler', async () => {
     // Given a core that has not parsed the product id yet
     const { scheduler, schedule, cancel } = createFakeScheduler();

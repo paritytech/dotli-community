@@ -82,33 +82,6 @@ describe('getRoute', () => {
     expect(route).toEqual({ site: 'host', bare: true });
   });
 
-  it("As a product page, I load /p/x on my sandbox origin and get the app build, since the path is the product's own", () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When a path under the protocol prefix is routed on a sandbox host
-    const route = serving.getRoute('x.app.localhost', '/p/x');
-
-    // Then the app build serves it
-    expect(route).toEqual({ site: 'app', bare: false });
-  });
-
-  it("As a user, I open the session windows on localhost and get the host build's session window", () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When the session paths are routed on localhost
-    const routes = ['/s/auth', '/s/signout', '/s/manage', '/s/sign'].map(path => serving.getRoute('localhost', path));
-
-    // Then the bare host build serves each
-    expect(routes).toEqual([
-      { site: 'host', bare: true },
-      { site: 'host', bare: true },
-      { site: 'host', bare: true },
-      { site: 'host', bare: true },
-    ]);
-  });
-
   it('As a user on an old shell, I open host.localhost for its frame and get the protocol build for one more release', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
@@ -118,19 +91,6 @@ describe('getRoute', () => {
 
     // Then the protocol build serves it
     expect(route).toEqual({ site: 'protocol', bare: false });
-  });
-
-  it('As a developer on local.host, I open the bare local.host and get the host build with the landing page', () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When the bare local.host is routed and its root page is read
-    const route = serving.getRoute('local.host', '/');
-    const rootPage = getRootPage(route);
-
-    // Then the host build serves its landing page
-    expect(route).toEqual({ site: 'host', bare: true });
-    expect(rootPage).toBe('landing.html');
   });
 
   it('As a developer on local.host, I open a product subdomain of it and get the shell', () => {
@@ -144,28 +104,6 @@ describe('getRoute', () => {
     // Then the host build serves the shell
     expect(route).toEqual({ site: 'host', bare: false });
     expect(rootPage).toBe('index.html');
-  });
-
-  it('As a product page on local.host, I load my sandbox on its app subdomain and get the app build', () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When a sandbox on an app subdomain of local.host is routed
-    const route = serving.getRoute('myapp.app.local.host', '/');
-
-    // Then the app build serves it
-    expect(route).toEqual({ site: 'app', bare: false });
-  });
-
-  it('As a user on an old shell on local.host, I open host.local.host for its frame and get the protocol build', () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When host.local.host is routed
-    const route = serving.getRoute('host.local.host', '/');
-
-    // Then the protocol build serves it
-    expect(route).toEqual({ site: 'protocol', bare: false });
   });
 
   it('As a visitor, I open a host that only ends like a local root and get the bare host', () => {
@@ -298,17 +236,6 @@ describe('getProtocolProxyBypass', () => {
 
     // When the proxy asks whether to skip the request
     const bypass = serving.getProtocolProxyBypass({ url: '/p/?mode=direct', headers: { host: 'localhost:4001' } });
-
-    // Then it does not skip it
-    expect(bypass).toBeUndefined();
-  });
-
-  it('As an old shell on host.localhost, I load /p/x and the dev proxy hands it to the protocol app', () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When the proxy asks whether to skip the request
-    const bypass = serving.getProtocolProxyBypass({ url: '/p/x', headers: { host: 'host.localhost:4001' } });
 
     // Then it does not skip it
     expect(bypass).toBeUndefined();

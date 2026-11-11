@@ -122,20 +122,6 @@ describe('createReporter', () => {
     ]);
   });
 
-  it('As a feature, I log an event through my reporter and the line carries my flow beside its own attributes', () => {
-    // Given a recorder and a reporter for one flow
-    const reports = recordReporterOutput();
-    const report = createReporter({ flow: 'content' });
-
-    // When the feature logs an event with its own attributes
-    report.log.event('content.block_fetched', { step: 'block_fetch' });
-
-    // Then the line carries the flow and the event's attributes
-    expect(reports.lines).toEqual([
-      { level: 'info', message: 'content.block_fetched', attrs: { flow: 'content', step: 'block_fetch' } },
-    ]);
-  });
-
   it('As a feature, I cannot report a defect without an outcome under a metric that does not declare error', () => {
     // Given a recorder, a reporter and a metric whose outcomes leave out `error`
     const reports = recordReporterOutput();

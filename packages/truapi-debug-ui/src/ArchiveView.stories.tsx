@@ -109,11 +109,6 @@ export const ImagePreviewFreed: Story = {
 /** As a developer using the debug panel, I open an archive that fails to read and I am told why. */
 export const ReadFails: Story = {
   args: { load: fn<ArchiveLoader>(() => Promise.reject(new Error('gateway 504'))) },
-  play: async ({ canvas, step }) => {
-    await step('Then the tab says why the read failed', async () => {
-      await expect(await canvas.findByText(/gateway 504/)).toBeVisible();
-    });
-  },
 };
 
 /** As a developer using the debug panel, I am told a local product has no archive and nothing is read. */

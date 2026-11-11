@@ -90,16 +90,4 @@ describe('waitForStatus', () => {
     await expect(wait).rejects.toBe(lost);
     expect(heard).toBe(1);
   });
-
-  it("As a layer above, I wait with a signal that aborted already and fail with the signal's reason", async () => {
-    // Given
-    const cell = createStatus('up');
-    const lost = new Error('the layer was lost');
-
-    // When
-    const wait = waitForStatus(cell, () => true, { signal: AbortSignal.abort(lost) });
-
-    // Then
-    await expect(wait).rejects.toBe(lost);
-  });
 });

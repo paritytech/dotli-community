@@ -104,31 +104,6 @@ describe('reportExpected', () => {
     expect(reports.counted('product.icon')).toEqual([{ outcome: 'error', reason: 'unknown' }]);
   });
 
-  it('As a dotli developer, I report through my own logger and the warning goes through it alone', () => {
-    // Given a recorder and a logger that records its warnings
-    const reports = recordReports();
-    const warned: unknown[][] = [];
-    const logger = {
-      warn: (...args: unknown[]) => {
-        warned.push(args);
-      },
-    };
-    const failure = new Error('storage refused');
-
-    // When the failure is reported through that logger
-    reportExpected(failure, {
-      flow: 'storage',
-      step: 'ui_cache',
-      metric: 'shared_session.ui_cache',
-      message: '[test] cache read failed:',
-      logger,
-    });
-
-    // Then the warning went through the given logger and not the root log
-    expect(warned).toEqual([['[test] cache read failed:', failure]]);
-    expect(reports.warnings).toEqual([]);
-  });
-
   it("As a dotli developer, I pass attributes named outcome and reason and the report's own win", () => {
     // Given a recorder
     const reports = recordReports();

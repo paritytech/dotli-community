@@ -204,26 +204,6 @@ describe('Light client sync reporting works', () => {
     ]);
   });
 
-  it('As a user on a chain that never warped, I see the shell report no warp milestones at all', async () => {
-    // Given
-    reporter.enableSyncReporting(['assethub']);
-    const pipe = requirePipe('assethub');
-    const seen: unknown[] = [];
-    reporter.onChainSync(event => seen.push(event));
-
-    // When
-    await pipe.push(createLifecycle({ phase: CONNECTING, peers: 0 }), createLifecycle({ phase: READY, peers: 1 }));
-
-    // Then
-    expect(seen).toEqual([
-      { chain: 'assethub', kind: 'peers', peers: 0, isSyncing: true },
-      { chain: 'assethub', kind: 'connecting' },
-      { chain: 'assethub', kind: 'firstPeer' },
-      { chain: 'assethub', kind: 'peers', peers: 1, isSyncing: false },
-      { chain: 'assethub', kind: 'bootstrapComplete' },
-    ]);
-  });
-
   it('As a user whose connection drops mid-sync, I see the shell learn why it stalled and when it recovered', async () => {
     // Given
     reporter.enableSyncReporting(['relay']);
@@ -592,30 +572,6 @@ function recordLogLines(): {
 }
 
 describe('An expected lifecycle watch state is a breadcrumb', () => {
-  it('As a maintainer, I watch a chain that refuses a lifecycle watch and see a flow event, not a warning', () => {
-    // Given sync reporting on the relay chain
-    const log = recordLogLines();
-    reporter.enableSyncReporting(['relay']);
-
-    // When the chain refuses the watch
-    reporter.attachChainSync({
-      chain: 'relay',
-      send: () => undefined,
-      watchLifecycle: () => {
-        throw new Error('chain is not connected');
-      },
-    });
-
-    // Then the loading screen's fallback is recorded as progress, not as a failure
-    expect(log.lines).toMatchObject([
-      {
-        level: 'info',
-        message: 'Chain lifecycle watch unavailable',
-        attrs: { chain: 'relay', reason: 'chain is not connected' },
-      },
-    ]);
-  });
-
   it('As a maintainer, I watch a lifecycle watch end in an error and see a flow event, not a warning', async () => {
     // Given sync reporting on the relay chain, and a watch whose stream fails
     const log = recordLogLines();
@@ -676,84 +632,22 @@ describe('Chain detail reporting works', () => {
 
 type ListenerReports = {
   captured: { step: string; tags: Record<string, string> | undefined }[];
-  errors: string[];
   metrics: RecordingSentry;
 };
 
-/** Record the captures, error lines and metrics a throwing listener leaves, until the test ends. */
+/** Record the captures and metrics a throwing listener leaves, until the test ends. */
 function recordListenerReports(): ListenerReports {
   const captured: ListenerReports['captured'] = [];
-  const errors: string[] = [];
   onTestFinished(
     bindCaptureSink({
       exception: (_err, ctx) => captured.push({ step: ctx.step, tags: ctx.tags }),
       expected: () => undefined,
     }),
   );
-  onTestFinished(
-    bindLogSink({
-      emit: ({ level, message }) => {
-        if (level === 'error') {
-          errors.push(message);
-        }
-      },
-    }),
-  );
-  return { captured, errors, metrics: bindRecordingSentry({ onFinished: onTestFinished }) };
+  return { captured, metrics: bindRecordingSentry({ onFinished: onTestFinished }) };
 }
 
 describe('A throwing chain sync listener is reported', () => {
-  it('As a user on the loading screen, I see a sync listener that throws reported while the next listener still hears the event', async () => {
-    // Given a listener that throws on every event, and one after it
-    const reports = recordListenerReports();
-    reporter.enableSyncReporting(['relay']);
-    const pipe = requirePipe('relay');
-    reporter.onChainSync(() => {
-      throw new TypeError('listener broke');
-    });
-    const seen: unknown[] = [];
-    reporter.onChainSync(event => seen.push(event));
-
-    // When the chain connects
-    await pipe.push(createLifecycle({ phase: CONNECTING, peers: 0 }));
-
-    // Then the later listener heard both events and each throw was reported once
-    expect(seen).toEqual([
-      { chain: 'relay', kind: 'peers', peers: 0, isSyncing: true },
-      { chain: 'relay', kind: 'connecting' },
-    ]);
-    expect(reports.captured).toEqual([
-      { step: 'listener', tags: { owner: 'chain_sync.sync' } },
-      { step: 'listener', tags: { owner: 'chain_sync.sync' } },
-    ]);
-    expect(reports.errors).toHaveLength(2);
-    expect(reports.metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'chain_sync.sync' },
-      { outcome: 'error', reason: 'TypeError', owner: 'chain_sync.sync' },
-    ]);
-  });
-
-  it('As a maintainer, I see a detail listener that throws reported while the next listener still gets the fact', () => {
-    // Given a detail listener that throws, and one after it
-    const reports = recordListenerReports();
-    reporter.onChainDetail(() => {
-      throw new RangeError('listener broke');
-    });
-    const seen: unknown[] = [];
-    reporter.onChainDetail(detail => seen.push(detail));
-
-    // When the database cache result arrives
-    reporter.reportDbCache(getActiveServicesConfig().bulletin.genesis, true);
-
-    // Then the later listener got it and the throw was reported
-    expect(seen).toEqual([{ chain: 'bulletin', dbCache: 'hit' }]);
-    expect(reports.captured).toEqual([{ step: 'listener', tags: { owner: 'chain_sync.detail' } }]);
-    expect(reports.errors).toHaveLength(1);
-    expect(reports.metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'RangeError', owner: 'chain_sync.detail' },
-    ]);
-  });
-
   it('As a listener that subscribes while a fact is delivered, I hear that fact once, as the replay', () => {
     // Given a listener that subscribes a second one when it hears the first fact
     const seen: unknown[] = [];

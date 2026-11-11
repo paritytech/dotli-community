@@ -33,7 +33,7 @@ const meta = {
   title: 'Host/SignInViews',
   parameters: { chrome: true },
   beforeEach: () => {
-    for (const mock of [onCancel, onRetry, onClose, onContinue, onUseAnotherAccount]) {
+    for (const mock of [onCancel, onRetry, onContinue, onUseAnotherAccount]) {
       mock.mockClear();
     }
     drawQr.mockClear();
@@ -42,7 +42,6 @@ const meta = {
     isValid.mockImplementation(phrase => phrase === PHRASE);
     onImport.mockReset();
     onImport.mockImplementation(() => Promise.resolve());
-    onBack.mockReset();
   },
 } satisfies Meta;
 
@@ -69,29 +68,6 @@ export const Pairing: Story = {
     const parts = PairingScreen({ payload: DEEPLINK, host: HOST, reason: null, mobile: false, drawQr });
     return <WindowShell view="pairing" parts={parts} />;
   },
-  play: async ({ canvas, step }) => {
-    await step('Then the code is drawn once and shown under the heading that names the page', async () => {
-      await waitFor(() => expect(qrImage()).not.toBeNull());
-      await expect(drawQr).toHaveBeenCalledTimes(1);
-      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in with Polkadot App');
-      await expect(byTestId('auth-modal-hint')).toHaveTextContent(
-        'Scan the code to continue to host-playground.dot. One sign-in works across every app.',
-      );
-      await expect(byTestId('auth-modal-reason')).not.toBeVisible();
-      await expect(canvas.getByTestId('auth-modal-qr-tile')).toContainElement(qrImage());
-      await expect(qrImage()).toHaveAttribute('data-qr-payload', DEEPLINK);
-      await expect(canvas.getByTestId('auth-modal-qr-badge')).toHaveAttribute('aria-hidden', 'true');
-    });
-    await step('Then the two steps follow the code, with the install link and nothing to press', async () => {
-      const steps = canvas.getAllByRole('listitem');
-      await expect(steps).toHaveLength(2);
-      await expect(steps[0]).toHaveTextContent('Scan QR code with your phone');
-      await expect(steps[1]).toHaveTextContent('Approve');
-      await expectBefore(canvas.getByTestId('auth-modal-qr-tile'), canvas.getByRole('list'));
-      await expectGetApp('Get it for iPhone or Android');
-      await expect(buttonNames()).toEqual([]);
-    });
-  },
 };
 
 /** As a desktop user, I see the code being made in its place, with no steps until it is ready. */
@@ -100,16 +76,6 @@ export const PairingPreparing: Story = {
   render: () => {
     const parts = PairingScreen({ payload: null, host: HOST, reason: null, mobile: false, drawQr });
     return <WindowShell view="pairing" parts={parts} />;
-  },
-  play: async ({ canvas, step }) => {
-    await step('Then a spinner holds the code place and the body says the code is being made', async () => {
-      await expect(byTestId('auth-modal-hint')).toHaveTextContent('Getting a sign-in code ready.');
-      await expect(canvas.getByTestId('auth-modal-spinner')).toBeVisible();
-      await expect(byTestId('auth-modal-qr')).toContainElement(canvas.getByTestId('auth-modal-spinner'));
-      await expect(qrImage()).toBeNull();
-      await expect(canvas.queryAllByRole('listitem')).toHaveLength(0);
-      await expect(drawQr).not.toHaveBeenCalled();
-    });
   },
 };
 
@@ -234,20 +200,6 @@ export const ApprovingPhone: Story = {
     const parts = ApprovingScreen({ closesCopy: "This closes when you're done.", onCancel });
     return <WindowShell view="pairing" parts={parts} />;
   },
-  play: async ({ canvas, userEvent, step }) => {
-    await expectPhone(step);
-    await step('Then the body ends in what closes when I am done', async () => {
-      await expect(frame()).toHaveTextContent(
-        "Check your phone and approve the sign-in. This closes when you're done.",
-      );
-    });
-    await step('When I press Cancel', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
-    });
-    await step('Then the sign-in was asked to cancel once', async () => {
-      await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
-    });
-  },
 };
 
 const declined = (): ReturnType<typeof StatusScreen> =>
@@ -298,18 +250,6 @@ export const StatusDeclinedPhone: Story = {
     const parts = declined();
     return <WindowShell view="pairing" parts={parts} />;
   },
-  play: async ({ canvas, userEvent, step }) => {
-    await expectPhone(step);
-    await step('Then the failure shows in its tone', async () => {
-      await expect(canvas.getByTestId('status')).toHaveAttribute('data-tone', 'err');
-    });
-    await step('When I press Try again', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Try again' }));
-    });
-    await step('Then one new try was asked for', async () => {
-      await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
-    });
-  },
 };
 
 /** As a user whose window waits, I see a spinner over where it stands and can close it, as a page heading. */
@@ -321,24 +261,8 @@ export const StatusWaiting: Story = {
       title: 'Connecting',
       body: 'Waiting for the page that opened this window.',
       actions: [{ label: 'Close', onPress: onClose }],
-      testId: 'status',
-      spinnerTestId: 'status-spinner',
     });
     return <WindowShell view="connecting" parts={parts} />;
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    await step('Then a spinner shows with the title as the page heading and Close alone', async () => {
-      await expect(canvas.getByTestId('status-spinner')).toBeVisible();
-      await expect(canvas.getByTestId('status')).not.toHaveAttribute('data-tone');
-      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Connecting');
-      await expect(buttonNames()).toEqual(['Close']);
-    });
-    await step('When I press Close', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Close' }));
-    });
-    await step('Then a close was asked for once', async () => {
-      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    });
   },
 };
 
@@ -351,17 +275,8 @@ export const StatusDonePhone: Story = {
       mark: { icon: CircleCheckIcon, tone: 'ok' },
       title: "You're signed in",
       body: 'Return to the app.',
-      testId: 'status',
     });
     return <WindowShell view="done-no-opener" parts={parts} />;
-  },
-  play: async ({ canvas, step }) => {
-    await expectPhone(step);
-    await step('Then the status shows in the done tone with no button', async () => {
-      await expect(canvas.getByTestId('status')).toHaveAttribute('data-tone', 'ok');
-      await expect(canvas.getByTestId('status')).toHaveTextContent('Return to the app.');
-      await expect(canvas.queryByRole('button')).toBeNull();
-    });
   },
 };
 
@@ -409,15 +324,6 @@ export const ContinuePhone: Story = {
   render: () => {
     const parts = ContinueScreen({ offer: PAIRED, host: HOST, failure: null, onContinue, onUseAnotherAccount });
     return <WindowShell view="continue" parts={parts} />;
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I press Continue to host-playground.dot', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Continue to host-playground.dot' }));
-    });
-    await step('Then continuing was asked for once', async () => {
-      await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
-    });
   },
 };
 
@@ -541,13 +447,5 @@ export const PhraseBack: Story = {
   render: () => {
     const parts = phraseParts();
     return <WindowShell view="phrase" parts={parts} />;
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    await step('When I press Back', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Back' }));
-    });
-    await step('Then going back was asked for once', async () => {
-      await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
-    });
   },
 };

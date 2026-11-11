@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { protocolSchema } from '@dotli/protocol';
-import { catchError } from '@dotli/shared/testing';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
 import { createMemoryWalletIdb } from '@dotli/storage/testing';
 import { err, hostFailure, ok, unsupported, type MethodTypes } from '@dotli/transport';
@@ -59,18 +58,6 @@ describe('the local wallet', () => {
 
     // Then
     expect(result).toEqual(ok({ tag: 'none', value: undefined }));
-  });
-
-  it('As a host page, I read the wallet and get back the entropy another app saved', async () => {
-    // Given
-    const { host } = serveWallet();
-    await host.request(wallet.save, { siteId: SITE_ID, entropy: ENTROPY, identity: null });
-
-    // When the page reads the wallet
-    const result = await host.request(wallet.read, { siteId: SITE_ID });
-
-    // Then it gets the entropy with no identity
-    expect(result).toMatchObject(ok({ tag: 'ok', value: { entropy: ENTROPY, identity: null } }));
   });
 
   it('As a host page, I save a wallet with its identity and read both back', async () => {
@@ -216,17 +203,5 @@ describe('the local wallet', () => {
     expect(saved).toEqual(err(unsupported()));
     expect(await store.load()).toBeNull();
     expect(walletChanges).toEqual([]);
-  });
-
-  it('As a frame that stops serving the wallet twice, I stop it again and nothing throws', () => {
-    // Given a wallet that was stopped
-    const { stop } = serveWallet();
-    stop();
-
-    // When the frame stops it again
-    const thrown = catchError(stop);
-
-    // Then nothing throws
-    expect(thrown).toBeUndefined();
   });
 });

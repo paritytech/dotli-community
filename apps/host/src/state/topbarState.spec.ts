@@ -6,39 +6,6 @@ import { topbarState } from './topbarState.js';
 import { recordNotified } from '../testing/recordNotified.js';
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
-describe('topbar store', () => {
-  afterEach(() => {
-    resetStores();
-  });
-
-  it('As a user opening dotli, I find the topbar absent, visible, pinned and unblocked with nothing waiting', () => {
-    // When
-    const state = topbarState.get();
-
-    // Then
-    expect(state).toEqual({
-      present: false,
-      visible: true,
-      autoHide: false,
-      blockingModalActive: false,
-      blockingModalsWaiting: 0,
-    });
-  });
-
-  it('As a user, I hide the topbar while one prompt is open and another waits, and the topbar state holds all three', () => {
-    // When
-    topbarState.setVisible(false);
-    topbarState.reportBlockingModals({ waiting: 1, active: true });
-
-    // Then
-    expect(topbarState.store.get()).toMatchObject({
-      visible: false,
-      blockingModalActive: true,
-      blockingModalsWaiting: 1,
-    });
-  });
-});
-
 // The store skips a write that would not change it.
 describe('topbar store equality', () => {
   afterEach(() => {
@@ -57,17 +24,5 @@ describe('topbar store equality', () => {
 
     // Then
     expect(notified).toEqual([{ ...topbarState.store.init, visible: false }]);
-  });
-
-  it('As a user with a prompt open, I get the same prompt report again and the topbar does not redraw', () => {
-    // Given
-    topbarState.reportBlockingModals({ waiting: 0, active: true });
-    const notified = recordNotified(topbarState.store);
-
-    // When
-    topbarState.reportBlockingModals({ waiting: 0, active: true });
-
-    // Then
-    expect(notified).toEqual([]);
   });
 });

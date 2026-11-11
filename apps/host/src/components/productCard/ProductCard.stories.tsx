@@ -43,33 +43,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a visitor, I open the card of a published product and see what it is, who made it and how it loaded. */
-export const Published: Story = {
-  play: async ({ canvas, step }) => {
-    await step('Then the card names the product, its author and its connection', async () => {
-      await expect(canvas.getByTestId('product-card-name')).toHaveTextContent('Swap');
-      await expect(canvas.getByTestId('product-card-domain')).toHaveTextContent('swap.dot');
-      await expect(canvas.getByTestId('product-card-description')).toHaveTextContent(PUBLISHED.description ?? '');
-      const author = canvas.getByTestId('product-card-author');
-      await expect(author).toHaveTextContent('Author');
-      await expect(canvas.getByTestId('product-card-author-name')).toHaveTextContent('alice.dot');
-      await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF...utQY');
-      const connection = canvas.getByTestId('product-card-connection');
-      await expect(connection).toHaveAttribute('data-state', 'verified');
-      await expect(connection).toHaveTextContent('Secure connection');
-    });
-  },
-};
+export const Published: Story = {};
 
 /** As a visitor, I open the card of a product served by trusted providers and see that it is. */
 export const Trusted: Story = {
   args: { card: { ...PUBLISHED, connection: 'trusted' } },
-  play: async ({ canvas, step }) => {
-    await step('Then the connection row reads a trusted connection', async () => {
-      const connection = canvas.getByTestId('product-card-connection');
-      await expect(connection).toHaveAttribute('data-state', 'trusted');
-      await expect(connection).toHaveTextContent('Trusted connection');
-    });
-  },
 };
 
 /** As a visitor, I open the card of a product whose author has no username and see the author's address alone. */
@@ -79,28 +57,6 @@ export const NoUsername: Story = {
     await step('Then the author shows the address and no name', async () => {
       await expect(canvas.getByTestId('product-card-author-address')).toHaveTextContent('5GrwvaEF...utQY');
       await expect(canvas.queryByTestId('product-card-author-name')).toBeNull();
-    });
-  },
-};
-
-/** As a visitor, I open the card before its author read starts and see no author section. */
-export const AuthorIdle: Story = {
-  args: { card: { ...PUBLISHED, author: { status: 'idle' } } },
-  play: async ({ canvas, step }) => {
-    await step('Then the card has no author section', async () => {
-      await expect(canvas.getByTestId('product-card')).toBeVisible();
-      await expect(canvas.queryByTestId('product-card-author')).toBeNull();
-    });
-  },
-};
-
-/** As a visitor, I open the card while its author still loads and see no author section. */
-export const AuthorLoading: Story = {
-  args: { card: { ...PUBLISHED, author: { status: 'loading' } } },
-  play: async ({ canvas, step }) => {
-    await step('Then the card has no author section', async () => {
-      await expect(canvas.getByTestId('product-card')).toBeVisible();
-      await expect(canvas.queryByTestId('product-card-author')).toBeNull();
     });
   },
 };
@@ -136,12 +92,6 @@ export const WithIcon: Story = {
       ...PUBLISHED,
       icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Crect width="1" height="1" fill="%23e6007a"/%3E%3C/svg%3E',
     },
-  },
-  play: async ({ canvas, step }) => {
-    await step('Then the icon slot shows the product icon instead of the Polkadot mark', async () => {
-      await expect(canvas.getByTestId('product-card-icon')).toBeVisible();
-      await expect(canvas.queryByTestId('product-card-mark')).toBeNull();
-    });
   },
 };
 

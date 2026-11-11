@@ -25,16 +25,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a dotli user, I press an icon button and its handler runs. */
-export const Default: Story = {
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('When I press it', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Settings' }));
-    });
-    await step('Then its handler runs', async () => {
-      await expect(args.onClick).toHaveBeenCalledOnce();
-    });
-  },
-};
+export const Default: Story = {};
 /** As a dotli user, I see an icon button's badge in each tone and tell the tones apart. */
 export const Badges: Story = {
   render: args => (

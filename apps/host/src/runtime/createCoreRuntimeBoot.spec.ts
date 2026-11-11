@@ -14,9 +14,7 @@ import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js
 import type { CoreContext } from './createPageCore.js';
 import { createPhoneRequestTracker } from './createPhoneRequestTracker.js';
 import type { BootLocalWalletCore } from './localWalletCore.js';
-import { atom } from 'nanostores';
-import type { WalletModeState } from './state/walletModeState.js';
-import { createWalletBoot, type LocalWalletBoot } from './createWalletBoot.js';
+import type { LocalWalletBoot } from './createWalletBoot.js';
 import { ERRORS } from './errors.js';
 import { createDeferred } from '@dotli/shared';
 import { catchRejection } from '@dotli/shared/testing';
@@ -115,18 +113,6 @@ describe('core runtime boot', () => {
     expect(bootLocalWalletCore).not.toHaveBeenCalled();
   });
 
-  it("As a Polkadot App user, I boot my core and its callbacks get the core's own context", async () => {
-    // Given a boot with no stored wallet
-    const { params, callbackOptions } = createHarness({ reads: [null] });
-    const boot = createCoreRuntimeBoot(params);
-
-    // When a core boots
-    await boot(context);
-
-    // Then the callbacks hold the context the core was booted with
-    expect(callbackOptions[0]?.core).toBe(context);
-  });
-
   it('As a user in the sign-out window, I open it and it boots a pairing core whose session stays in memory', async () => {
     // Given a boot with no stored wallet
     const { params, callbackOptions, pairing } = createHarness({ reads: [null] });
@@ -157,24 +143,6 @@ describe('core runtime boot', () => {
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
     expect(callbackOptions[0]?.core).toBe(context);
     expect(create).not.toHaveBeenCalled();
-  });
-
-  it('As a user on the landing page, I pair and the core uses the name the page asked for', async () => {
-    // Given a boot with no stored wallet
-    const { params, callbackOptions } = createHarness({ reads: [null] });
-    const boot = createCoreRuntimeBoot(params);
-
-    // When a core boots for the landing page's pairing name
-    await boot({
-      ...context,
-      product: { label: 'dotli', pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true } },
-    });
-
-    // Then the callbacks carry the pairing name
-    expect(callbackOptions[0]?.core.product).toEqual({
-      label: 'dotli',
-      pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true },
-    });
   });
 
   it.each([
@@ -270,32 +238,4 @@ describe('core runtime boot', () => {
       expect(fakes[runtime].dispose).toHaveBeenCalledOnce();
     },
   );
-
-  it('As a user in the sign-in window, I open it over a stored wallet and it boots a pairing core', async () => {
-    // Given the window's wallet boot over a stored local wallet
-    const mode = atom<WalletModeState>({ mode: 'app', failure: null });
-    const walletBoot = createWalletBoot({
-      reconcile: () =>
-        Promise.resolve({
-          presence: 'present',
-          session: { status: 'ok', blob: null },
-          wallet: WALLET,
-          dead: null,
-        }),
-      report: value => {
-        mode.set(value);
-      },
-      flag: { renew: () => undefined },
-      role: 'signin-window',
-    });
-    const fakes = createHarness();
-
-    // When a core boots
-    const booted = await createCoreRuntimeBoot({ ...fakes.params, readWallet: () => walletBoot.read() })(context);
-
-    // Then the core pairs and the page stays out of local mode
-    expect(booted.local).toBe(false);
-    expect(fakes.bootLocalWalletCore).not.toHaveBeenCalled();
-    expect(mode.get().mode).toBe('app');
-  });
 });

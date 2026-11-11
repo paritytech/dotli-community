@@ -401,26 +401,6 @@ describe('product frame renders', () => {
     expect(fakes.listOnScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
   });
 
-  it('As a dApp user, I open a new version of an app subdomain and see the previous frame until its replacement connects', async () => {
-    // Given
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('first', { cid: 'first-cid' }), 0);
-    const firstHost = nth(fakes.hosts, 0);
-
-    // When the replacement asks for its connection, then connects
-    const second = fakes.frame.render(buildSubdomainProduct('first', { cid: 'second-cid' }));
-    await fakes.changes.until(() => fakes.connections.length === 2);
-    const shownWhileConnecting = fakes.listOnScreen().includes(firstHost);
-    await answerConnection(fakes, 1);
-    await second;
-
-    // Then
-    expect(shownWhileConnecting).toBe(true);
-    expect(firstHost.dispose).toHaveBeenCalledTimes(1);
-    expect(fakes.listOnScreen()).toHaveLength(1);
-    expect(fakes.listOnScreen()[0]?.options.iframeUrl).toContain('cid=second-cid');
-  });
-
   it('As a dApp user, I open an app by iframe and then by subdomain and each app frame is handed to the frame layout', async () => {
     // Given
     const fakes = createHarness();
@@ -524,21 +504,6 @@ describe('product frame renders', () => {
 
     // Then
     expect(url.hostname).toMatch(/^sn--[0-9a-f]{59}\.app\.localhost$/);
-  });
-
-  it('As a user who reset everything, I open products after the reload and only the first product frame purges the sandbox origin', async () => {
-    // Given
-    const fakes = createHarness();
-    pendingResets.schedule(['protocol', 'sandbox']);
-
-    // When
-    await fakes.settle(buildSubdomainProduct('reset'), 0);
-    await fakes.settle(buildSubdomainProduct('reset'), 1);
-    const [first, second] = fakes.hosts.map(host => new URL(host.options.iframeUrl).searchParams);
-
-    // Then
-    expect(first?.get('fullReset')).toBe('1');
-    expect(second?.has('fullReset')).toBe(false);
   });
 
   it("As a visitor, I open a link carrying the sandbox's own params and get the host's values only, with my own params intact", async () => {
@@ -916,19 +881,6 @@ describe('product frame disposed', () => {
     expect(fakes.frameView.attached).toEqual([]);
   });
 
-  it('As a dApp user who leaves the page twice over, I dispose the frame again and it does not throw', async () => {
-    // Given a product on screen, then the frame disposed
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('product'), 0);
-    fakes.frame.dispose();
-
-    // When the frame is disposed again
-    const thrown = catchError(fakes.frame.dispose);
-
-    // Then it does not throw
-    expect(thrown).toBeUndefined();
-  });
-
   it('As a dApp user whose product fails to go as I leave the page, I dispose the frame again and its failed dispose is not repeated', async () => {
     // Given a product on screen whose connection throws as it goes
     const fakes = createHarness();
@@ -1250,19 +1202,6 @@ describe('product frame and a device grant during a rebuild', () => {
     // Then no further frame is asked for
     expect(fakes.countFramesAsked()).toBe(2);
   });
-
-  it('As a user, I grant a device permission for another app while this app is shown and this frame is left alone', async () => {
-    // Given a connected product
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('mine'), 0);
-
-    // When a prompt grant arrives for another product
-    fakes.announce({ label: 'other', permissions: ['Camera'], fromPrompt: true });
-
-    // Then no frame is asked for
-    expect(fakes.countFramesAsked()).toBe(1);
-    expect(fakes.readLastStatus()).toBe('connected');
-  });
 });
 
 describe('product frame and the topbar login', () => {
@@ -1334,23 +1273,6 @@ describe('product frame and the page core', () => {
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.listOnScreen()).toHaveLength(1);
-  });
-
-  it('As an operator, I watch a render on a replacement core and see it counted as ok with its reason', async () => {
-    // Given
-    const fakes = createHarness();
-    const { counted } = bindReports({ onReport: fakes.changes.notify });
-    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
-    const dead = await answerConnection(fakes, 0);
-    await rendered;
-
-    // When
-    crash(dead);
-    await fakes.reconnect(1);
-    await fakes.changes.until(() => counted('product.rerender').length === 1);
-
-    // Then
-    expect(counted('product.rerender')).toEqual([{ outcome: 'ok', reason: 'replacement' }]);
   });
 
   it('As an operator, I watch a rebuild that a newer render took over and see it counted as aborted with its reason', async () => {

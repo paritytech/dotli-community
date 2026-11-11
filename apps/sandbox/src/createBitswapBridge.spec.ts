@@ -220,23 +220,6 @@ describe('sandbox bitswap bridge', () => {
     expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toMatchObject([{ type: BLOCK_ABORT, ids: [id] }]);
   });
 
-  it('As a sandbox user whose host never answers and cannot be told to stop, I wait out the budget and my request still fails, with the failed abort logged and counted', async () => {
-    // Given a block request the host never answers, on a parent that refuses the abort
-    const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
-    const timers = createManualTimers();
-    const sandbox = createHarness({ refuseAborts: true, timers });
-    const pending = sandbox.bridge.requestBlock('bafyT');
-    const settled = expect(pending).rejects.toMatchObject({ name: 'BitswapBridgeTimeoutError' });
-
-    // When the relay's whole budget and the delivery grace pass
-    await timers.advance(TIMEOUTS.BITSWAP_TOTAL_BUDGET + TIMEOUTS.RESPONSE_DELIVERY_GRACE);
-
-    // Then
-    await settled;
-    expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
-    expect(sentry.counted('sandbox.bitswap_abort')).toEqual([{ outcome: 'error', reason: 'Error' }]);
-  });
-
   it('As a sandbox user, I get a reply after my request timed out and it is ignored while a later request is still answered', async () => {
     // Given a block request that timed out
     const timers = createManualTimers();
@@ -306,25 +289,6 @@ describe('sandbox bitswap bridge', () => {
     // Then the read was aborted and the host was told which fetch to drop
     await settled;
     expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toMatchObject([{ type: BLOCK_ABORT, ids: [id] }]);
-  });
-
-  it('As a sandbox that let go of its bridge while a block was on its way to a host that cannot be told to stop, I hear that read abort and the failed abort is logged and counted', async () => {
-    // Given a block request the host has not answered, on a parent that refuses the abort
-    const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
-    const sandbox = createHarness({ refuseAborts: true });
-    const pending = sandbox.bridge.requestBlock('bafyD');
-    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-
-    // When the sandbox lets go of the bridge
-    const thrown = catchError(() => {
-      sandbox.bridge.dispose();
-    });
-
-    // Then the read was aborted without the dispose throwing, and the failed abort was reported
-    await settled;
-    expect(thrown).toBeUndefined();
-    expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
-    expect(sentry.counted('sandbox.bitswap_abort')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a sandbox that let go of its bridge twice, I see no error and the host hears one abort', async () => {

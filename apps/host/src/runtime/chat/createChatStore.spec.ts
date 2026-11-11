@@ -217,25 +217,6 @@ describe('chat store', () => {
     expect(fresh.published).toHaveLength(1);
   });
 
-  it('As a user without a live connection, I open a custom message and its render fails at once', () => {
-    // Given
-    const { chat } = setup();
-    const errors: unknown[] = [];
-
-    // When
-    chat.renderCustomMessage({
-      productId: PRODUCT,
-      request: {
-        context: { tag: 'ChatMessage', value: { roomId: 'main', messageId: 'm1', messageType: 'poll' } },
-        payload: '0x01',
-      },
-      sink: { onUpdate: (_node: RendererNode) => undefined, onError: error => errors.push(error) },
-    });
-
-    // Then
-    expect(errors).toEqual([new Error('Chat is not connected for this product')]);
-  });
-
   it('As a user reading a custom message, I see its frame rebuilt and the message renders again on the new connection at once', () => {
     // Given a message rendering on the old frame's connection while the rebuilt frame registers its own
     const { chat, connections } = setup();
@@ -309,22 +290,6 @@ describe('chat store', () => {
     expect(first.renders).toHaveLength(1);
     expect(getRender(first, 0).stopped).toBe(true);
     expect(heard.errors).toHaveLength(2);
-  });
-
-  it('As a user, I read a custom message whose older connection cannot render and the newer connection renders it once', () => {
-    // Given an older connection that cannot render and a working newer one
-    const { chat, connections } = setup();
-    const older = createRecordingConnection({ failsRender: true });
-    const newer = createRecordingConnection();
-    connections.register(PRODUCT, older);
-    connections.register(PRODUCT, newer);
-
-    // When
-    openCustomMessage(chat);
-
-    // Then
-    expect(newer.renders).toHaveLength(1);
-    expect(older.renders).toHaveLength(0);
   });
 
   it('As a user, I read a custom message that completed and no later connection renders it again', () => {

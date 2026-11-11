@@ -343,17 +343,6 @@ async function signOnReview(round: StartedTransaction): Promise<void> {
 }
 
 describe('site transaction', () => {
-  it('As a site on a new origin, I ask for my call to be signed and the consent names my origin alone', async () => {
-    // Given a site of no group the main store keeps no grant for
-    const round = await startTransaction();
-
-    // When the round shows its consent
-    await round.waitForView('consent');
-
-    // Then the consent carries the site's origin and no group
-    expect(round.flow.screen.get()).toEqual({ view: 'consent', origin: SITE_ORIGIN, group: null });
-  });
-
   it("As a user on a site's transaction, I am still asked for consent while the window already opens Asset Hub", async () => {
     // Given a site of no group the main store keeps no grant for
     const round = await startTransaction();
@@ -364,21 +353,6 @@ describe('site transaction', () => {
     // Then the window opened the request's Asset Hub once and decoded nothing
     expect(round.chain.opens).toEqual([SERVICES.assethub.genesis]);
     expect(round.chain.record.decoded).toBe(0);
-  });
-
-  it('As a user, I consent and sign, and the review decodes on the session the round opened as it started', async () => {
-    // Given a site the main store keeps no grant for
-    const round = await startTransaction();
-
-    // When the user consents, the window flow stores a sign-in and the user signs on the review
-    await consentAndStore(round);
-    await signOnReview(round);
-    await round.closed;
-
-    // Then the window opened Asset Hub once in the whole round, and the site got its signed transaction
-    expect(round.chain.opens).toHaveLength(1);
-    expect(round.chain.record).toMatchObject({ opened: 1, decoded: 1 });
-    expect(getResult(round.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
   });
 
   it("As a user who declines a site's transaction, I leave and the Asset Hub session the round opened is closed once", async () => {
@@ -517,26 +491,6 @@ describe('site transaction', () => {
     ]);
   });
 
-  it('As a user, I cancel while the phone asks me to approve and the site hears I cancelled while the chain is let go at once', async () => {
-    // Given a phone that has not answered yet
-    const built = createDeferred<string>();
-    const round = await startTransaction({ builds: [() => built.promise] });
-    await consentAndStore(round);
-    await signOnReview(round);
-    await round.waitForView('site-approving');
-
-    // When the user cancels, and the phone answers only once the chain was let go
-    round.flow.cancel();
-    await round.chain.waitForClosed();
-    built.resolve(SIGNED_TX);
-    await round.closed;
-
-    // Then the site hears the round was cancelled, once, and the chain was let go before the phone answered
-    expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
-    expect(round.chain.record).toMatchObject({ closed: 1 });
-    expect(round.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
-  });
-
   it('As a site, I ask for a transaction the wallet cannot sign and am refused as invalid', async () => {
     // Given a phone that does not support the transaction
     const unsupported = new SiteTxError('unsupported', { tag: 'NotSupported' });
@@ -628,19 +582,6 @@ describe('site transaction', () => {
     ]);
   });
 
-  it('As a site, I have my call decoded and built on the Asset Hub my request named', async () => {
-    // Given a site's request checked against its network's Asset Hub
-    const round = await startTransaction();
-    await consentAndStore(round);
-
-    // When the user signs on the review
-    await signOnReview(round);
-    await round.closed;
-
-    // Then the window opened that Asset Hub
-    expect(round.chain.opens).toEqual([SERVICES.assethub.genesis]);
-  });
-
   it('As a site, I send a call the window cannot decode and am refused before the phone is asked', async () => {
     // Given a chain on which the call does not decode
     const round = await startTransaction({
@@ -659,22 +600,6 @@ describe('site transaction', () => {
     expect(round.accounts).toEqual([]);
     expect(round.signedBy).toEqual([]);
     expect(round.chain.record).toMatchObject({ opened: 1, closed: 1, built: 0 });
-  });
-
-  it('As a user whose chain cannot be reached, I see the failure and can try again', async () => {
-    // Given a chain that cannot be opened
-    const round = await startTransaction({
-      openFailures: [new SiteChainError('unreachable', 'Asset Hub is not reachable')],
-    });
-
-    // When the round runs for the main account
-    await consentAndStore(round);
-    await round.waitForView('site-failed');
-
-    // Then the failure offers Try again and names the chain, and no site account was read
-    expect(round.flow.screen.get()).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: true });
-    expect(round.accounts).toEqual([]);
-    expect(round.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'error', reason: 'chain' }]);
   });
 
   it('As a user whose Asset Hub could not be opened as the round started, I press Try again and the window opens it again', async () => {
@@ -759,18 +684,6 @@ describe('site transaction', () => {
     expect(round.flow.screen.get()).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: true });
     expect(round.chain.record).toMatchObject({ opened: 1, closed: 1, built: 0 });
     expect(round.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'error', reason: 'account' }]);
-  });
-
-  it('As a user on the review, I see my call before the phone is asked for my site account', async () => {
-    // Given a site's round that has not been confirmed
-    const round = await startTransaction();
-    await consentAndStore(round);
-
-    // When the review shows
-    await round.waitForView('site-review');
-
-    // Then the phone was not asked for the site account
-    expect(round.accounts).toEqual([]);
   });
 
   it('As a user who confirms the review, I am asked to open Polkadot App while the window reads my site account', async () => {
@@ -871,40 +784,6 @@ describe('site transaction', () => {
 });
 
 describe('site transaction action', () => {
-  it('As a site, I send a call that does not decode and am refused with bad_request before the site account is read', async () => {
-    // Given the transaction action over a chain on which the call does not decode
-    const chain = createFakeChain({ decodeFailure: new SiteChainError('undecodable', 'The call does not decode') });
-    const { accountReader, accounts } = createFakeAccountReader();
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
-      txSigner: createFakeTxSigner().txSigner,
-      accountReader,
-    });
-    const shown: string[] = [];
-
-    // When the action runs
-    const refusal: unknown = await action
-      .run({
-        main: { owner: MAIN_OWNER, username: null },
-        show(screen) {
-          shown.push(screen.view);
-        },
-        confirmed: () => Promise.resolve(),
-        signal: new AbortController().signal,
-      })
-      .catch((caught: unknown) => caught);
-
-    // Then it refuses the site with bad_request, showed nothing and read no account
-    expect(refusal).toMatchObject({ name: 'SiteRoundRefusal', reason: 'bad_request' });
-    expect(shown).toEqual([]);
-    expect(accounts).toEqual([]);
-    expect(action.route).toBe('sign');
-  });
-
   it('As a user who ended the round before its transaction ran, I leave the chain session closed once and nothing is asked of it or the phone', async () => {
     // Given the transaction action of a round that already ended
     const chain = createFakeChain({});

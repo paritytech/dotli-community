@@ -5,7 +5,7 @@ import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, SolidRenderer, StoryObj } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
-import { expect, waitFor, within } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { RecentList } from './RecentList.js';
 
@@ -54,33 +54,6 @@ const labelsShown = (canvas: { queryAllByTestId: (id: string) => HTMLElement[] }
  */
 export const Recents: Story = {
   beforeEach: visited('alpha', 'beta'),
-  play: async ({ canvas, step }) => {
-    await step('Then my recent names show as a group under a Recent heading', async () => {
-      const heading = await canvas.findByRole('heading', { level: 2, name: 'Recent' });
-      await waitFor(() => expect(heading).toBeVisible());
-      await expect(canvas.getByRole('group', { name: 'Recent' })).toBe(canvas.getByTestId('landing-recent-list'));
-      await expect(labelsShown(canvas)).toEqual(['alpha', 'beta']);
-    });
-    await step('And each links to its site, with the TLD beside the name and a button to remove it', async () => {
-      const link = canvas.getByRole('link', { name: `alpha${SUFFIX}` });
-      await expect(link.getAttribute('href')).toMatch(/^https?:\/\/alpha\./);
-      await expect(within(link).getByTestId('landing-tld')).toHaveTextContent(SUFFIX);
-      const remove = canvas.getByRole('button', { name: `Remove alpha${SUFFIX} from recently visited` });
-      await expect(remove).toHaveAttribute('type', 'button');
-      await expect(remove).toHaveAttribute('title', 'Remove');
-    });
-  },
-};
-
-/** As a first-time visitor, I see no recents row. */
-export const NoRecents: Story = {
-  beforeEach: visited(),
-  play: async ({ canvas, step }) => {
-    await step('Then no recents row shows', async () => {
-      await expect(canvas.queryByRole('heading', { name: 'Recent' })).toBeNull();
-      await expect(canvas.queryByTestId('landing-recent-list')).toBeNull();
-    });
-  },
 };
 
 /** As a returning visitor, I see a recent name that holds markup as text. */

@@ -20,7 +20,7 @@ export type SystemEventFacts = {
 };
 
 /** One row per host event, keyed by `layer:event`. */
-export const SYSTEM_EVENT_FACTS = {
+const SYSTEM_EVENT_FACTS = {
   'boot:started': {
     explanation: {
       title: 'Host boot started',

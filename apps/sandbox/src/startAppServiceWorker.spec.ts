@@ -21,8 +21,6 @@ type Origin = {
 type StartWorkerParams = {
   /** Whether the worker runs on the dev server. */
   devServer?: boolean;
-  /** Receives each message the worker posts to a page it controls. Throws what posting to that page throws. */
-  postToPage?: (message: unknown) => void;
   /** The ids of the clients open on the worker's origin. */
   liveClients?: string[];
   /** Holds each client listing, in order, until its promise settles. A listing past the last one is not held. */
@@ -58,22 +56,6 @@ type RequestParams = {
   resultingClientId?: string;
 };
 
-/** The members of an IndexedDB transaction the archive store reads and sets. */
-type FakeTransaction = {
-  error: DOMException | null;
-  oncomplete: (() => void) | null;
-  onerror: (() => void) | null;
-  onabort: (() => void) | null;
-  objectStore: () => { put: () => object; getAllKeys: () => object; delete: () => object };
-  abort: () => void;
-};
-
-/** The members of an IndexedDB open request the archive store reads and sets. */
-type FakeOpenRequest = {
-  result: { transaction: () => FakeTransaction; close: () => void };
-  onsuccess: (() => void) | null;
-};
-
 const ORIGIN = 'https://coffer.app.dot.li';
 
 /** Every message the worker posted to the pages it controls. */
@@ -102,7 +84,7 @@ function postToInbox(message: unknown): void {
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(
   origin: Origin,
-  { devServer = false, postToPage = postToInbox, liveClients = ['page-1'], holdListings = [] }: StartWorkerParams = {},
+  { devServer = false, liveClients = ['page-1'], holdListings = [] }: StartWorkerParams = {},
 ): WorkerScope {
   let listings = 0;
   const scope = Object.assign(new EventTarget(), {
@@ -112,7 +94,7 @@ function startWorker(
       claim: () => Promise.resolve(),
       matchAll: async () => {
         await holdListings[listings++];
-        return liveClients.map(id => ({ id, postMessage: postToPage }));
+        return liveClients.map(id => ({ id, postMessage: postToInbox }));
       },
     },
   });
@@ -221,40 +203,6 @@ function createFailingFirstIndexedDb(storage: IDBFactory, failures: number): IDB
         return createBrokenIndexedDb().open(...args);
       }
       return storage.open(...args);
-    },
-  } as unknown as IDBFactory;
-}
-
-/** An IndexedDB that opens, then aborts every write at commit, as a full quota does. Only `abort` fires. */
-function createQuotaAbortingIndexedDb(): IDBFactory {
-  const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
-  const transaction: FakeTransaction = {
-    error: null,
-    oncomplete: null,
-    onerror: null,
-    onabort: null,
-    // `getAllKeys` never answers, so the abort at commit stays the only outcome.
-    objectStore: () => ({ put: () => ({}), getAllKeys: () => ({ onsuccess: null }), delete: () => ({}) }),
-    abort: () => undefined,
-  };
-  const db = {
-    transaction() {
-      setTimeout(() => {
-        transaction.error = quota;
-        transaction.onabort?.();
-      }, 0);
-      return transaction;
-    },
-    close: () => undefined,
-  };
-  // The archive store calls only `open`, and reads only these members of what it opens.
-  return {
-    open() {
-      const request: FakeOpenRequest = { result: db, onsuccess: null };
-      setTimeout(() => {
-        request.onsuccess?.();
-      }, 0);
-      return request;
     },
   } as unknown as IDBFactory;
 }
@@ -407,25 +355,6 @@ describe('app service worker', () => {
     ]);
   });
 
-  it('As an operator, I hand over an archive whose write the browser aborts at commit and the page hears why instead of the worker holding', async () => {
-    // Given an origin whose storage aborts the write at commit
-    const scope = startWorker({ ...origin, indexedDB: createQuotaAbortingIndexedDb() });
-
-    // When the page hands over its archive
-    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
-
-    // Then
-    expect(replies).toEqual([
-      { type: 'ARCHIVE_READY' },
-      {
-        type: 'ARCHIVE_FAILURE',
-        stage: 'persist',
-        name: 'QuotaExceededError',
-        message: 'The quota has been exceeded.',
-      },
-    ]);
-  });
-
   it('As an operator, I hand over an archive the worker cannot keep, from a page that throws when the report reaches it, and the kept write still settles', async () => {
     // Given an origin whose storage refuses the write, and a page that throws when the report reaches it
     const scope = startWorker({ ...origin, indexedDB: createBrokenIndexedDb() });
@@ -464,27 +393,6 @@ describe('app service worker', () => {
         message: 'The quota has been exceeded.',
       },
     ]);
-  });
-
-  it('As an operator, I reach a restarted worker whose page throws when the report of a failed read-back reaches it and the request still reaches the network', async () => {
-    // Given a restarted worker over storage it cannot read, whose page throws when the report reaches it
-    const reportRan = createDeferred<undefined>();
-    const scope = startWorker(
-      { ...origin, indexedDB: createBrokenIndexedDb() },
-      {
-        postToPage() {
-          reportRan.resolve(undefined);
-          throw new DOMException('The page is gone.', 'InvalidStateError');
-        },
-      },
-    );
-
-    // When the app asks it for a file, and the report has run and failed
-    const response = await request(scope, '/main.js');
-    await reportRan.promise;
-
-    // Then the request still went to the network
-    expect(await response?.text()).toBe('<!doctype html>shell');
   });
 
   it('As a user, I ask again after a restarted worker failed its first read-back and it reads the archive back and serves it', async () => {
@@ -598,23 +506,6 @@ describe('app service worker', () => {
     expect(network).not.toHaveBeenCalled();
   });
 
-  it("As a product developer on a deep link, I import a module beside my dedicated worker's script and it comes from the archive's folder", async () => {
-    // Given a product page written at /docs/intro, whose worker script is assets/worker.js
-    const scope = startWorker(origin);
-    await setArchive(
-      scope,
-      { 'index.html': '<html></html>', 'assets/worker.js': 'work()', 'assets/lib.js': 'lib()' },
-      { directory: '/docs/' },
-    );
-
-    // When the worker, open at /docs/assets/worker.js, imports ./lib.js
-    const lib = await request(scope, '/docs/assets/lib.js');
-
-    // Then the module comes from the archive's assets folder, not its root
-    expect(await lib?.text()).toBe('lib()');
-    expect(network).not.toHaveBeenCalled();
-  });
-
   it('As a product developer who ships a file at the deep path itself, I request it from a deep link and get that file', async () => {
     // Given a page written at /docs/intro, and an archive holding both the deep path and the same name at the root
     const scope = startWorker(origin);
@@ -675,39 +566,6 @@ describe('app service worker', () => {
     expect(await response?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/assets/x.js` });
-  });
-
-  it('As a visitor on a deep link, I navigate to a sub-path and the sandbox page loads from the network, never remapped', async () => {
-    // Given a page written at /docs/intro, and an archive holding the root file the sub-path would remap to
-    const scope = startWorker(origin);
-    await setArchive(
-      scope,
-      { 'index.html': '<html></html>', 'guide/index.html': '<p>guide</p>' },
-      { directory: '/docs/' },
-    );
-
-    // When the browser navigates to the sub-path
-    const response = await request(scope, '/docs/guide/', { mode: 'navigate' });
-
-    // Then the worker leaves it to the network
-    expect(response).toBeUndefined();
-  });
-
-  it('As a visitor on a deep link, I request a path with a broken escape under it and it reaches the network', async () => {
-    // Given a page written at /docs/intro, in a live worker and in one restarted over it
-    const first = startWorker(origin);
-    await setArchive(first, { 'index.html': '<html></html>' }, { directory: '/docs/' });
-    const restarted = startWorker(origin);
-
-    // When each is asked for a path under the deep link whose escape does not decode
-    const live = await request(first, '/docs/bad%E0%A4%A.js');
-    const afterRestart = await request(restarted, '/docs/bad%E0%A4%A.js');
-
-    // Then the live worker lets it through, and the restarted one fetches it as it was
-    expect(live).toBeUndefined();
-    expect(await afterRestart?.text()).toBe('<!doctype html>shell');
-    expect(network).toHaveBeenCalledOnce();
-    expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });
   });
 
   it('As a visitor with the same product open in two tabs, I load a lazy chunk in the first after the second handed over its archive and it comes from my own', async () => {

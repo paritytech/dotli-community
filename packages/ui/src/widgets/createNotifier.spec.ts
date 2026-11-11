@@ -70,18 +70,6 @@ describe('showNotification', () => {
     expect(items[0]?.deeplink).toBeUndefined();
   });
 
-  it('As a dotli user, I wait out the default delay and the notification leaves', async () => {
-    // Given a toast view is mounted
-    toasts.show();
-    showNotification({ label: 'Timed', text: 'Body' });
-
-    // When
-    await timers.advance(NOTIFICATION_DISMISS_MS);
-
-    // Then
-    expect(readLeaving()).toEqual([true]);
-  });
-
   it('As a dotli user with the tab hidden, I get a notification and a system one too when permission is granted', () => {
     // Given
     const created = grantSystem();
@@ -97,19 +85,6 @@ describe('showNotification', () => {
 
     // Then
     expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
-  });
-
-  it('As a dotli user with the window behind other windows, I get a notification and a system one too', () => {
-    // Given the tab still reports visible, but its window has lost focus
-    const created = grantSystem();
-    focused = false;
-
-    // When
-    showNotification({ label: 'Ping', text: 'Behind' });
-
-    // Then
-    expect(created).toEqual([{ title: 'Ping', body: 'Behind' }]);
-    expect(toasts.store.get().items.map(toast => toast.text)).toEqual(['Behind']);
   });
 
   it('As a dotli user looking at the page, I get a notification and only the in-page one', () => {
@@ -179,22 +154,6 @@ describe('showNotification', () => {
 
     // Then
     expect(readLeaving()).toEqual([true]);
-  });
-
-  it('As a dotli user, I get notifications and each keeps the icon it was given and carries none otherwise', () => {
-    // Given
-    const ownIcon = (): null => null;
-
-    // When
-    showNotification({ label: 'Plain', text: 'Body' });
-    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
-    showNotification({ label: 'Blocked', text: 'Body', tone: 'idle' });
-    showNotification({ label: 'Own', text: 'Body', tone: 'err', icon: ownIcon });
-
-    // Then
-    const items = toasts.store.get().items;
-    expect(items.map(toast => toast.tone)).toEqual(['info', 'err', 'idle', 'err']);
-    expect(items.map(toast => toast.icon)).toEqual([undefined, undefined, undefined, ownIcon]);
   });
 });
 

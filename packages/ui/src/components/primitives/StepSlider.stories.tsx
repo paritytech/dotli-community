@@ -228,25 +228,6 @@ export const DragFollowsPointer: Story = {
 /** As a screen reader or sighted user, a marked slider says its value is a stop only approximately. */
 export const Marked: Story = {
   args: { marked: true },
-  play: async ({ canvas, mount, step }) => {
-    await step('When a marked slider renders', async () => {
-      await mount();
-    });
-    await step('Then the track carries the marked attribute', async () => {
-      await expect(getSlider(canvas)).toHaveAttribute('data-marked');
-    });
-  },
-};
-
-export const NotMarked: Story = {
-  play: async ({ canvas, mount, step }) => {
-    await step('When an unmarked slider renders', async () => {
-      await mount();
-    });
-    await step('Then the track does not carry the marked attribute', async () => {
-      await expect(getSlider(canvas)).not.toHaveAttribute('data-marked');
-    });
-  },
 };
 
 // The owner takes each commit.

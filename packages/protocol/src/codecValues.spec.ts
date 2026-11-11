@@ -3,55 +3,14 @@
 
 import { str, type Codec } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import type { ChainSyncKind, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import type { ChainRole } from '@dotli/config';
-import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import {
-  executableManifestCodec,
-  manifestResultCodec,
-  resolvePhaseCodec,
-  rootManifestCodec,
-  telemetryEventCodec,
-  type TelemetryEvent,
-} from './codecValues.js';
+import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
+import { executableManifestCodec, manifestResultCodec, rootManifestCodec } from './codecValues.js';
 
 function roundTrip<T>(codec: Codec<T>, value: T): T {
   return codec.dec(codec.enc(value));
 }
 
 describe('codec values', () => {
-  it('As the frame, I send every chain role, sync kind, resolve phase and db outcome and the host reads the same value', () => {
-    // Given
-    const roles: ChainRole[] = ['relay', 'assethub', 'bulletin', 'people'];
-    const dbChains: SmoldotDbChain[] = ['relay', 'assethub', 'bulletin'];
-    const outcomes: SmoldotDbOutcome[] = ['hit', 'miss', 'unavailable'];
-    const kinds: ChainSyncKind[] = [
-      'firstPeer',
-      'bootstrapComplete',
-      'stalled',
-      'recovered',
-      'peers',
-      'connecting',
-      'warpSyncProgress',
-      'warpSyncFinished',
-    ];
-    const phases: ResolvePhase[] = [
-      'asset-hub-connecting',
-      'asset-hub-syncing',
-      'asset-hub-ready',
-      'resolving-content',
-    ];
-
-    const events: TelemetryEvent[] = [
-      ...roles.flatMap(chain => kinds.map(kind => ({ tag: 'chainSync' as const, value: { chain, kind, peers: 1 } }))),
-      ...dbChains.flatMap(chain => outcomes.map(outcome => ({ tag: 'smoldotDb' as const, value: { chain, outcome } }))),
-    ];
-
-    // When / Then
-    expect(events.map(value => roundTrip(telemetryEventCodec, value))).toEqual(events);
-    expect(phases.map(value => roundTrip(resolvePhaseCodec, value))).toEqual(phases);
-  });
-
   it('As the frame, I send a root manifest with and without trusted products unchanged', () => {
     // Given
     const base = { $v: 1, displayName: 'App', description: 'An app', icon: { cid: 'bafy', format: 'png' } } as const;
@@ -109,19 +68,5 @@ describe('codec values', () => {
 
     // Then
     expect(decoded).toStrictEqual(results);
-  });
-
-  it('As the frame, I send a sync event with only the fields it has', () => {
-    // Given
-    const event: TelemetryEvent = {
-      tag: 'chainSync',
-      value: { chain: 'assethub', kind: 'peers', peers: 4, isSyncing: false },
-    };
-
-    // When
-    const decoded = roundTrip(telemetryEventCodec, event);
-
-    // Then
-    expect(decoded).toEqual(event);
   });
 });

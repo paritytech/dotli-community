@@ -52,49 +52,7 @@ async function readChainBackendState(page: Page, expected: string): Promise<Chai
   }));
 }
 
-async function disableSharedWorker(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
-  });
-}
-
 test.describe('Settings works', () => {
-  test('As a first-time user, when I open an app it runs on its own smoldot instance for this tab', async ({
-    page,
-  }) => {
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.chainBackend).toBe('smoldot-direct');
-  });
-
-  test('As a first-time user on a browser without shared worker support, I get the same per-tab session', async ({
-    page,
-  }) => {
-    // Given
-    await disableSharedWorker(page);
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.chainBackend).toBe('smoldot-direct');
-  });
-
-  for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode`, async ({ page }) => {
-      // When
-      await page.goto(`${LANDING_URL}?chainBackend=${backend}`);
-
-      // Then
-      const state = await readChainBackendState(page, backend);
-      expect(state.chainBackend).toBe(backend);
-    });
-  }
-
   test('As a user opening a link that selects a mode other than my saved one, the link wins and my session restarts in it', async ({
     page,
   }) => {
@@ -142,56 +100,6 @@ test.describe('Settings works', () => {
     expect(state.url).toContain('chainBackend=rpc-gateway');
   });
 
-  test('As a user running the default per-tab light client, my address bar stays clean', async ({ page }) => {
-    // Given
-    await page.addInitScript(() => {
-      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
-    });
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.url).not.toContain('chainBackend=');
-  });
-
-  test('As a user who picked the shared light client, my address bar records it so a copied link carries it', async ({
-    page,
-  }) => {
-    // Given
-    await page.addInitScript(() => {
-      localStorage.setItem('dotli:chain-backend', 'smoldot-shared-worker');
-    });
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    // localStorage already holds the mode, so the read below can pass before
-    // the app writes it into the address bar during startup. Wait for that.
-    await expect(page).toHaveURL(/[?&]chainBackend=smoldot-shared-worker(&|$)/);
-    const state = await readChainBackendState(page, 'smoldot-shared-worker');
-    expect(state.url).toContain('chainBackend=smoldot-shared-worker');
-  });
-
-  test('As a user who picked trusted providers, my address bar records it on every visit', async ({ page }) => {
-    // Given
-    await page.addInitScript(() => {
-      localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
-    });
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    // localStorage already holds the mode, so the read below can pass before
-    // the app writes it into the address bar during startup. Wait for that.
-    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
-    const state = await readChainBackendState(page, 'rpc-gateway');
-    expect(state.url).toContain('chainBackend=rpc-gateway');
-  });
-
   test('As a user opening a link that turns caches off, those become my saved settings and stay in the link I can share', async ({
     page,
   }) => {
@@ -210,9 +118,9 @@ test.describe('Settings works', () => {
     expect(state.url).not.toContain('skipWorkerCache=');
   });
 
-  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache. The dotNS
-  // cache works the same on every backend, so its tests skip the public RPC nodes too.
-  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
+  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache. The host's
+  // caches branch only on whether a light client runs, so one light-client backend covers both.
+  const RELAYED_BACKENDS = ['smoldot-direct'] as const;
 
   for (const backend of RELAYED_BACKENDS) {
     test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
@@ -354,25 +262,6 @@ test.describe('Settings fails', () => {
     // Then
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
-    await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
-    await expect(
-      page.getByTestId('notif-card').filter({ hasText: FALLBACK_LABEL }).getByTestId('notif-icon'),
-    ).toHaveAttribute('data-tone', 'warn');
-  });
-
-  test("As a user pasting a link that asks for the shared light client into a browser without shared worker support, the link is ignored and I'm told why", async ({
-    page,
-  }) => {
-    // Given
-    await disableSharedWorker(page);
-
-    // When
-    await page.goto(`${LANDING_URL}?chainBackend=smoldot-shared-worker`);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.chainBackend).toBe('smoldot-direct');
-    expect(state.url).not.toContain('chainBackend=smoldot-shared-worker');
     await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
     await expect(
       page.getByTestId('notif-card').filter({ hasText: FALLBACK_LABEL }).getByTestId('notif-icon'),

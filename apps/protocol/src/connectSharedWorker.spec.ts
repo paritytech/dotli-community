@@ -441,23 +441,6 @@ describe('connectSharedWorker', () => {
     expect(worker.heartbeats).toHaveLength(1);
   });
 
-  it('As a tab kept in the back-forward cache, I hide my page and keep my worker transport', async () => {
-    // Given a tab on a ready worker
-    const page = createFakePage();
-    const worker = createFakeWorker();
-    const linked = link(worker, { page });
-    worker.status.markReady();
-    await linked.ready;
-    const { transport } = linked;
-
-    // When its page enters the back-forward cache, and the tab then sends a heartbeat
-    page.hide(true);
-    const answer = transport.request(frame.heartbeat, undefined);
-
-    // Then its transport still reaches the worker
-    await expect(answer).resolves.toEqual(ok());
-  });
-
   it('As a tab that leaves for good, I hide my page and my worker transport is disposed', async () => {
     // Given a tab on a ready worker
     const page = createFakePage();

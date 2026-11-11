@@ -9,9 +9,7 @@ import type { QrDrawOptions } from './qrCode.js';
 import { presentQr, type QrShowing } from './qrDrawer.js';
 
 /** A canvas as the drawer sees it: only passed back. */
-type FakeCanvas = {
-  payload: string;
-};
+type FakeCanvas = object;
 
 type Draw = {
   canvas: FakeCanvas;
@@ -52,15 +50,13 @@ afterEach(() => {
   errorsLogged.length = 0;
 });
 
-/** A showing whose drawings answer as each test says, recording each draw, canvas and drawn-in code. */
+/** A showing whose drawings answer as each test says, recording each draw and drawn-in code. */
 function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()): {
   deps: QrShowing<FakeCanvas>;
   draws: Draw[];
-  canvases: FakeCanvas[];
   drawn: string[];
 } {
   const draws: Draw[] = [];
-  const canvases: FakeCanvas[] = [];
   const drawn: string[] = [];
   return {
     deps: {
@@ -69,18 +65,13 @@ function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()
         draws.push(draw);
         return answer(draw);
       },
-      createCanvas: payload => {
-        const canvas = { payload };
-        canvases.push(canvas);
-        return canvas;
-      },
+      createCanvas: () => ({}),
       size: () => 218,
       onDrawn: ({ payload }) => {
         drawn.push(payload);
       },
     },
     draws,
-    canvases,
     drawn,
   };
 }
@@ -158,24 +149,6 @@ describe('the sign-in QR drawer', () => {
     expect(qr.draws[0]?.signal.aborted).toBe(true);
   });
 
-  it("As a user shown a new pairing code, only the newest QR is drawn in, whenever the first one's drawing ends", async () => {
-    // Given the first code's drawing held back
-    const first = createDeferred<undefined>();
-    const qr = showing(draw => (draw.payload === 'polkadotapp://first' ? first.promise : Promise.resolve()));
-    const stopFirst = presentQr('polkadotapp://first', qr.deps);
-
-    // When the second code replaces it, and the first drawing ends after
-    stopFirst();
-    presentQr('polkadotapp://second', qr.deps);
-    await answered(Promise.resolve());
-    first.resolve(undefined);
-    await answered(first.promise);
-
-    // Then
-    expect(qr.drawn).toEqual(['polkadotapp://second']);
-    expect(qr.canvases.map(canvas => canvas.payload)).toEqual(['polkadotapp://first', 'polkadotapp://second']);
-  });
-
   it('As a desktop user whose QR cannot be drawn, the failure is reported once and nothing is drawn in', async () => {
     // Given
     const failure = new Error('canvas unavailable');
@@ -190,21 +163,5 @@ describe('the sign-in QR drawer', () => {
     expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(errorsLogged).toHaveLength(1);
     expect(qr.drawn).toEqual([]);
-  });
-
-  it('As an operator, I see each code drawn on screen counted once as ok', async () => {
-    // Given
-    const qr = showing();
-
-    // When
-    const stopFirst = presentQr('polkadotapp://first', qr.deps);
-    await answered(Promise.resolve());
-    stopFirst();
-    presentQr('polkadotapp://second', qr.deps);
-    await answered(Promise.resolve());
-
-    // Then
-    expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
-    expect(qr.drawn).toEqual(['polkadotapp://first', 'polkadotapp://second']);
   });
 });

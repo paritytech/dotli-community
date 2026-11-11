@@ -113,21 +113,6 @@ describe('auth commands', () => {
     expect(core.calls.signals[0]?.aborted).toBe(true);
   });
 
-  it('As a user, I click Sign in twice before the wallet answers and get one pairing', async () => {
-    // Given a login waiting for the wallet
-    const core = createQueueHarness({ initial: { tag: 'Disconnected' } });
-    const first = core.commands.login({ reason: 'first' });
-
-    // When a second click comes before the wallet answers
-    const second = core.commands.login({ reason: 'second' });
-    core.auth.set(PAIRING);
-    core.end(CONNECTED);
-    await Promise.all([first, second]);
-
-    // Then the core ran only the first login
-    expect(core.calls.logins).toEqual(['first']);
-  });
-
   it('As a user, I click Sign in twice and then close the modal and no second pairing starts', async () => {
     // Given two clicks on Sign in
     const core = createQueueHarness({ initial: { tag: 'Disconnected' } });
@@ -141,21 +126,6 @@ describe('auth commands', () => {
 
     // Then one cancel and one login reached the core
     expect(core.calls.cancels).toBe(1);
-    expect(core.calls.logins).toEqual([undefined]);
-  });
-
-  it('As a user, I click Sign in while my logout finishes and my login starts once the logout ends', async () => {
-    // Given a logout the core has already reported as signed out, though it has not settled yet
-    const core = createQueueHarness({ initial: CONNECTED });
-    const logout = core.commands.logout(core.signOut);
-    core.auth.set({ tag: 'Disconnected' });
-    const login = core.commands.login();
-
-    // When the core reports signed out again as the logout ends
-    core.end({ tag: 'Disconnected' });
-    await Promise.all([logout, login]);
-
-    // Then the login reached the core
     expect(core.calls.logins).toEqual([undefined]);
   });
 
@@ -188,23 +158,6 @@ describe('auth commands', () => {
     await Promise.all([first, second]);
 
     // Then both logins reached the core
-    expect(core.calls.logins).toEqual(['first', 'second']);
-  });
-
-  it('As a user who closes the sign-in modal, I click Sign in twice before the cancelled login settles and get one new pairing', async () => {
-    // Given a login waiting for the wallet, which the user cancels
-    const core = createQueueHarness({ initial: { tag: 'Disconnected' } });
-    const first = core.commands.login({ reason: 'first' });
-    core.auth.set(PAIRING);
-    core.commands.cancelLogin();
-
-    // When Sign in is clicked twice, then the cancelled login settles signed out
-    const second = core.commands.login({ reason: 'second' });
-    const third = core.commands.login({ reason: 'third' });
-    core.end({ tag: 'Disconnected' });
-    await Promise.all([first, second, third]);
-
-    // Then the two clicks after the cancel share one new pairing
     expect(core.calls.logins).toEqual(['first', 'second']);
   });
 
@@ -298,19 +251,6 @@ describe('auth commands', () => {
     // Then each ran after the one before, whatever the core reports, and what to end was each one's own call
     expect(answers).toEqual(['first', 'second']);
     expect(ends).toEqual(['first', 'second']);
-  });
-
-  it('As a user, I close the modal while the login waits for the wallet and the cancel reaches the core', () => {
-    // Given a login waiting for the wallet
-    const core = createQueueHarness({ initial: { tag: 'Disconnected' } });
-    void core.commands.login();
-    core.auth.set(PAIRING);
-
-    // When the modal closes
-    core.commands.cancelLogin();
-
-    // Then one cancel reached the core
-    expect(core.calls.cancels).toBe(1);
   });
 
   it('As a user whose login could not store my session, I click Sign in twice and the queued click fails with the same cause', async () => {

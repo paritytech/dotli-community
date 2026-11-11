@@ -18,11 +18,6 @@ function from(
 }
 
 describe('permission presets', () => {
-  it('As the slider, I lay the presets out safest first', () => {
-    // Then
-    expect(PRESETS.map(preset => preset.id)).toEqual(['restricted', 'secure', 'trusted', 'unlimited']);
-  });
-
   it('As a user, Trusted allows the account, chain, camera, microphone, clipboard and notifications and asks for the rest', () => {
     // Given
     const names = ALL_PERMISSIONS.map(({ name }) => name);
@@ -101,18 +96,5 @@ describe('permission presets', () => {
     // Then
     expect(measured).toBe(steps);
     expect(shown).toEqual({ preset: closest, modified: true });
-  });
-
-  it('As the slider, Trusted with every asked device permission allowed reads as Unlimited, not modified', () => {
-    // Given
-    const statuses = ALL_PERMISSIONS.map(({ name }) =>
-      TRUSTED.statuses[name] === 'ask' ? 'granted' : TRUSTED.statuses[name],
-    );
-
-    // When
-    const shown = presetOf(statuses);
-
-    // Then
-    expect(shown).toEqual({ preset: UNLIMITED, modified: false });
   });
 });

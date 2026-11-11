@@ -83,23 +83,4 @@ describe('product card view', () => {
     // Then the label names it and there is no description
     expect(view).toMatchObject({ name: 'swap', description: null });
   });
-
-  it('As a visitor of a product whose shield has not settled, I see the card with no connection row', () => {
-    // Given a loaded product and a pill whose shield is not known yet
-    const product: ProductState = {
-      status: 'loaded',
-      loadId: 1,
-      label: 'swap',
-      productId: PRODUCT_ID,
-      cid: 'bafy',
-      facts: {},
-    };
-    const pill: UrlPillState = { ...PRODUCT_PILL, shield: null };
-
-    // When the card's view is taken
-    const view = getProductCardView({ product, pill, card: CARD });
-
-    // Then the view has no connection
-    expect(view).toMatchObject({ connection: null });
-  });
 });

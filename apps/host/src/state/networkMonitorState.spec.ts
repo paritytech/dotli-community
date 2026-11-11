@@ -7,14 +7,12 @@ import {
   classifyGap,
   createNetworkMonitorState,
   MAX_BARS,
-  type ChainPhase,
   type ChainStatus,
   type NetworkMonitor,
 } from './networkMonitorState.js';
 import { describeLiveNetwork } from '../networkVerdict.js';
 import { buildChainActivity } from '../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../testing/getRelayGenesis.js';
-import { recordNotified } from '../testing/recordNotified.js';
 import { createManualTimers, must, nth, type ManualTimers } from '@dotli/shared/testing';
 
 const EXTRA = `0x${'ab'.repeat(32)}`;
@@ -180,20 +178,6 @@ describe('The network monitor tracks blocks', () => {
     expect(monitor.getNetworkStatus()[0]?.bars.map(bar => bar.number)).toEqual([101, 102]);
   });
 
-  it('As a user on a degraded chain, I get a slow block and see its bar is not green', async () => {
-    // Given
-    use(getRelayGenesis());
-    const genesis = getRelayGenesis();
-    monitor.recordBestBlock(genesis, 1);
-
-    // When
-    await timers.advance(60_000);
-    monitor.recordBestBlock(genesis, 2);
-
-    // Then
-    expect(monitor.getNetworkStatus()[0]?.bars[0]?.health).toBe('veryLate');
-  });
-
   it('As a user with the panel open all day, I keep getting blocks and see memory stay bounded', async () => {
     // Given
     use(getRelayGenesis());
@@ -207,21 +191,6 @@ describe('The network monitor tracks blocks', () => {
 
     // Then
     expect(monitor.getNetworkStatus()[0]?.bars.length).toBe(MAX_BARS);
-  });
-
-  it('As a user who kept the panel open, I get 61 blocks and see every block after the first stay as a bar', async () => {
-    // Given
-    use(getRelayGenesis());
-    const genesis = getRelayGenesis();
-
-    // When the first block only sets the baseline
-    for (let blockNumber = 0; blockNumber < 61; blockNumber += 1) {
-      await timers.advance(6000);
-      monitor.recordBestBlock(genesis, blockNumber);
-    }
-
-    // Then
-    expect(monitor.getNetworkStatus()[0]?.bars.length).toBe(60);
   });
 
   it('As a user on a chain that republishes its head, I get one block three times and see one bar', async () => {
@@ -287,31 +256,9 @@ describe('The network monitor tracks blocks', () => {
     // Then
     expect(calls).toBe(1);
   });
-
-  it('As a user hovering a bar, I read the gap that produced it and see it recorded', async () => {
-    // Given
-    use(getRelayGenesis());
-    const genesis = getRelayGenesis();
-    monitor.recordBestBlock(genesis, 1);
-
-    // When
-    await timers.advance(15_000);
-    monitor.recordBestBlock(genesis, 2);
-
-    // Then
-    expect(monitor.getNetworkStatus()[0]?.bars[0]?.gapMs).toBe(15_000);
-  });
 });
 
 describe('The network monitor tracks peers', () => {
-  it('As a user, I open the panel before any sample and see no chain claim a peer count', () => {
-    // When
-    const chains = monitor.getNetworkStatus();
-
-    // Then
-    expect(chains.map(c => c.peers)).toEqual([null, null, null, null]);
-  });
-
   it('As a user watching the panel, I get peer samples and see each chain report the peers it actually holds', () => {
     // When
     monitor.recordPeerCount('relay', 7);
@@ -328,18 +275,6 @@ describe('The network monitor tracks peers', () => {
 });
 
 describe('The network monitor tracks the connection', () => {
-  it('As a user, I open the panel before anything moves and see nothing claimed about the connection', () => {
-    // When
-    const transfer = monitor.getTransfer();
-
-    // Then
-    expect(transfer).toEqual({
-      bytesPerSecond: null,
-      fetched: null,
-      total: null,
-    });
-  });
-
   it('As a user watching a download, I get a new speed and see the progress survive it', () => {
     // Given
     monitor.recordTransfer({ bytesPerSecond: 962_560 });
@@ -355,55 +290,9 @@ describe('The network monitor tracks the connection', () => {
       total: 14_600_000,
     });
   });
-
-  it('As a user on a load that declared no size, I watch it download and see no progress invented', () => {
-    // When
-    monitor.recordTransfer({ fetched: 900_000, total: null });
-
-    // Then
-    expect(monitor.getTransfer().total).toBeNull();
-  });
-});
-
-describe('The network monitor tracks the phase of each chain', () => {
-  it('As a user, I open the panel before the light client speaks and see no phase claimed', () => {
-    // When
-    const chains = monitor.getNetworkStatus();
-
-    // Then
-    expect(chains.map(c => c.phase)).toEqual([null, null, null, null]);
-  });
-
-  it('As a user watching a chain come up, I get each phase and see the panel follow it through to ready', () => {
-    // Given
-    const phases: ChainPhase[] = ['connecting', 'syncing', 'ready'];
-    const seen: (ChainPhase | null | undefined)[] = [];
-
-    // When
-    for (const phase of phases) {
-      monitor.recordChainPhase('relay', phase);
-      seen.push(monitor.getNetworkStatus().find(c => c.role === 'relay')?.phase);
-    }
-
-    // Then
-    expect(seen).toEqual(['connecting', 'syncing', 'ready']);
-  });
 });
 
 describe('The network monitor repaints the panel only on a change', () => {
-  it('As a follower, I hear the version bump once per changed record, and not for an unchanged one', () => {
-    // Given
-    const versions = recordNotified(monitor.version);
-
-    // When
-    monitor.recordTransfer({ bytesPerSecond: 10 });
-    monitor.recordTransfer({ bytesPerSecond: 10 });
-    monitor.recordTransfer({ bytesPerSecond: 20 });
-
-    // Then
-    expect(versions).toEqual([1, 2]);
-  });
-
   it.each<{ reports: string; send: () => void; sendChanged: () => void }>([
     {
       reports: 'peer counts',
@@ -609,17 +498,6 @@ describe('The network monitor after a return', () => {
 
     // When
     monitor.recordBestBlock(getRelayGenesis(), 100);
-    monitor.recordChainPhase('relay', 'connecting');
-
-    // Then
-    expect(getChainByKey('relay').alarm).toBe(true);
-  });
-
-  it('As a user whose light client drops back with no return, I still see it as Waiting', () => {
-    // Given
-    monitor.recordChainPhase('relay', 'ready');
-
-    // When
     monitor.recordChainPhase('relay', 'connecting');
 
     // Then

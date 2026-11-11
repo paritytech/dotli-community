@@ -13,12 +13,6 @@ import type { FrameStatusSource, HostChainSources } from './createHostChainPool.
 
 /** One transport a fake source built, as the test drives it. */
 export type Upstream = {
-  /** The requests sent over it, in order. */
-  sent: JsonRpcRequest[];
-  /** Delivers a message to its lease. */
-  emit: (message: JsonRpcMessage) => void;
-  /** The chain dies, as its transport reports it. */
-  halt: () => void;
   /** Called when its lease closes it. */
   disconnect: Mock<() => void>;
   /** How many leases opened it. */
@@ -60,26 +54,17 @@ export function createFakeHostChainSources() {
     isRemoteChainConnectable: vi.fn<HostChainSources['isRemoteChainConnectable']>(() => true),
     /** Serves every chain unless a test says otherwise. */
     isRpcChainSupported: vi.fn<HostChainSources['isRpcChainSupported']>(() => true),
-    /** Builds a light client transport whose `halt` reports a chain halt. */
+    /** Builds a light client transport. */
     createRemoteChain: vi.fn<HostChainSources['createRemoteChain']>(() => {
       const upstream = createUpstream();
       upstreams.push(upstream);
-      return (onMessage, onHalt) => {
-        upstream.halt = () => {
-          onHalt?.('chain');
-        };
-        return connectUpstream(upstream, onMessage);
-      };
+      return () => connectUpstream(upstream);
     }),
-    /** Builds a Trusted Providers transport whose `halt` reports the socket gone. */
-    createRpcChain: vi.fn<HostChainSources['createRpcChain']>((_genesisHash, hooks) => {
+    /** Builds a Trusted Providers transport. */
+    createRpcChain: vi.fn<HostChainSources['createRpcChain']>(() => {
       const upstream = createUpstream();
-      upstream.halt = () => {
-        hooks.onStatus('disconnected');
-        hooks.onHalt(new Error('socket gone'));
-      };
       upstreams.push(upstream);
-      return { provider: onMessage => connectUpstream(upstream, onMessage), followLimit: RPC_FOLLOW_LIMIT };
+      return { provider: () => connectUpstream(upstream), followLimit: RPC_FOLLOW_LIMIT };
     }),
   };
 }
@@ -141,16 +126,13 @@ export function createFakeSocketChain(
 }
 
 function createUpstream(): Upstream {
-  return { sent: [], emit: () => undefined, halt: () => undefined, disconnect: vi.fn<() => void>(), opened: 0 };
+  return { disconnect: vi.fn<() => void>(), opened: 0 };
 }
 
-function connectUpstream(upstream: Upstream, onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
+function connectUpstream(upstream: Upstream): JsonRpcConnection {
   upstream.opened += 1;
-  upstream.emit = onMessage;
   return {
-    send(message) {
-      upstream.sent.push(message);
-    },
+    send: () => undefined,
     disconnect: upstream.disconnect,
   };
 }

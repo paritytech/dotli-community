@@ -27,15 +27,4 @@ describe('readSessionTuning', () => {
     expect(session).toBeNull();
     expect(expected).toEqual(['session_tuning']);
   });
-
-  it('As a tester, I tune my session and my light client reads that tuning', () => {
-    // Given
-    const store = { getItem: (key: string) => (key === 'dotli:truapi-provider-log' ? 'debug' : null) };
-
-    // When
-    const session = readSessionTuning(() => store);
-
-    // Then
-    expect(session?.getItem('dotli:truapi-provider-log')).toBe('debug');
-  });
 });

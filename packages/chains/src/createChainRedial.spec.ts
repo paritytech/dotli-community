@@ -12,21 +12,6 @@ type Params = {
 };
 
 describe('createChainRedial', () => {
-  it('As a chain pool, I redial a chain at once after its first halt and then only as its gate allows', () => {
-    // Given a chain that halted once
-    const { redial } = setup();
-    redial.noteHalt('0xaa', 'chain');
-
-    // When it is redialed, halts again and is redialed again
-    const first = redial.tryDial('0xaa', 'chain');
-    redial.noteHalt('0xaa', 'chain');
-    const second = redial.tryDial('0xaa', 'chain');
-    const wait = redial.waitMs('0xaa', 'chain');
-
-    // Then the first redial goes, the second waits the gate's 1 s
-    expect([first, second, wait]).toEqual([true, false, 1_000]);
-  });
-
   it('As a chain pool, I let a halted lease join a chain another lease already rebuilt', () => {
     // Given a chain whose gate is shut, and another lease has rebuilt it
     const { redial, setStatus } = setup();

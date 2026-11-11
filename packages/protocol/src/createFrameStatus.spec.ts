@@ -100,17 +100,4 @@ describe('the frame status', () => {
       ok(),
     ]);
   });
-
-  it("As a relay, I end the status with another frame's end as it is", () => {
-    // Given
-    const status = createFrameStatus();
-    const heard = subscribe(status);
-    const workerEnd = err(hostFailure('ProtocolRequestError: the worker gave up'));
-
-    // When
-    status.interrupt(workerEnd);
-
-    // Then
-    expect(heard.ends).toEqual([workerEnd]);
-  });
 });

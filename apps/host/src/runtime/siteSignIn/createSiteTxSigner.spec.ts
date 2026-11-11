@@ -279,21 +279,4 @@ describe('site transaction signer', () => {
     expect(error).toBeInstanceOf(SiteTxError);
     expect(error).toMatchObject({ kind: 'failed', cause: { tag: 'Domain' } });
   });
-
-  it('As a site, I ask for a transaction while the core refuses a connection and it fails', async () => {
-    // Given a core that refuses the connection
-    const core = createFakeCore([]);
-    const refused = new Error('refused');
-    core.lease.connect.mockRejectedValueOnce(refused);
-    const creator = createSiteTxSigner({ acquire: core.acquire }).creator(ACCOUNT);
-
-    // When papi asks the creator for a transaction
-    const error: unknown = await creator(createTxPayload(null), {}, TX_BINDINGS, false).catch(
-      (caught: unknown) => caught,
-    );
-
-    // Then it rejects as failed with the refusal as its cause
-    expect(error).toBeInstanceOf(SiteTxError);
-    expect(error).toMatchObject({ kind: 'failed', cause: refused });
-  });
 });

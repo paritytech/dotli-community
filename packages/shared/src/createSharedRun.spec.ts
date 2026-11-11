@@ -6,18 +6,6 @@ import { createSharedRun } from './createSharedRun.js';
 import { catchError } from './testing/catchError.js';
 
 describe('createSharedRun', () => {
-  it('As a first caller, I join the run and it begins once with my params', () => {
-    // Given
-    const fake = createFakeBegin<string>();
-    const run = createSharedRun<string>({ begin: fake.begin });
-
-    // When
-    run.join('first');
-
-    // Then
-    expect(fake.params).toEqual(['first']);
-  });
-
   it('As a second caller, I join a running run and my params are ignored', () => {
     // Given a run the first caller began
     const fake = createFakeBegin<string>();
@@ -80,21 +68,6 @@ describe('createSharedRun', () => {
 
     // Then
     expect(fake.params).toHaveLength(2);
-    expect(fake.ends).toEqual([1, 0]);
-  });
-
-  it('As a caller whose run ended with my last stop, I stop again after a new run began and it keeps going', () => {
-    // Given a run that ended with my stop, and a new run another caller began
-    const fake = createFakeBegin();
-    const run = createSharedRun({ begin: fake.begin });
-    const stopMine = run.join();
-    stopMine();
-    run.join();
-
-    // When
-    stopMine();
-
-    // Then
     expect(fake.ends).toEqual([1, 0]);
   });
 

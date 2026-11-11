@@ -44,20 +44,6 @@ describe('capture sink', () => {
     expect(outer.exception).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user, I hit a failure before error reporting starts and the page carries on while the capture is dropped', () => {
-    // Given no sink is bound
-
-    // When the page reports a failure and an expected one
-    const completed: string[] = [];
-    captureException(new Error('early'), { flow: 'boot', step: 'early' });
-    completed.push('exception');
-    recordExpected('not an error', { flow: 'boot', step: 'early' });
-    completed.push('expected');
-
-    // Then both reports returned and the code after each ran
-    expect(completed).toEqual(['exception', 'expected']);
-  });
-
   it('As a dotli user, I hit a failure while the capture sink throws and the page still recovers', () => {
     // Given a sink that throws on every capture
     const tried: string[] = [];

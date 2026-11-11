@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   getActiveCoreGatewayChains,
   getActiveGatewayChains,
@@ -81,18 +81,5 @@ describe('gateway-supported chains (rpc-gateway mode)', () => {
 
     // Then
     expect(hashes.has(paseo.bulletin.genesis.toLowerCase())).toBe(true);
-  });
-});
-
-describe('getActiveSupportedGenesisHashes', () => {
-  it('As a product on Paseo, I target an unknown genesis hash and it is not supported', () => {
-    // Given
-    onTestFinished(setSettings({ ...getSettings(), network: 'paseo-next-v2' }));
-
-    // When
-    const hashes = getActiveSupportedGenesisHashes();
-
-    // Then
-    expect(hashes.has('0xdeadbeef')).toBe(false);
   });
 });

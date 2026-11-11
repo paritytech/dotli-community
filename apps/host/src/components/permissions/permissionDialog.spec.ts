@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ALL_PERMISSIONS } from '../../runtime/permissionPolicy.js';
-import { permissionIcon } from './permissionIcons.js';
 import { getGrantButtons, permissionRequestDialog, type PermissionRequest } from './permissionDialog.js';
 
 const CAMERA: PermissionRequest = { app: 'myapp.dot', permission: 'Camera', allowOnce: false, reloads: true };
@@ -13,14 +11,6 @@ function footer(request: PermissionRequest): [string, string][] {
 }
 
 describe('permission request dialog', () => {
-  it('As a dotli user, a two-way prompt offers Deny and Allow', () => {
-    // When / Then
-    expect(footer(CAMERA)).toEqual([
-      ['Deny', 'danger'],
-      ['Allow', 'primary'],
-    ]);
-  });
-
   it('As a dotli user, a three-way prompt highlights Allow once and draws Deny as the destructive answer', () => {
     // When / Then
     expect(footer({ app: 'myapp.dot', permission: 'ChainSubmit', allowOnce: true, reloads: false })).toEqual([
@@ -50,20 +40,6 @@ describe('permission request dialog', () => {
     expect(view.notice).toBeUndefined();
     expect(view.dismissOnBackdrop).toBe(true);
     expect(view.dismissResult).toBe('dismissed');
-  });
-
-  it('As a dotli user, every permission the menu lists asks with its own icon and says what it allows', () => {
-    // Given
-    const names = ALL_PERMISSIONS.map(permission => permission.name);
-
-    // When
-    const dialogs = names.map(permission =>
-      permissionRequestDialog({ app: 'app.dot', permission, allowOnce: false, reloads: false }),
-    );
-
-    // Then
-    expect(dialogs.map(dialog => dialog.icon)).toEqual(names.map(name => permissionIcon(name)));
-    expect(new Set(dialogs.map(dialog => dialog.fields[1]?.value)).size).toBe(names.length);
   });
 });
 

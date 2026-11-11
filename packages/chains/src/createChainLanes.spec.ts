@@ -188,9 +188,12 @@ function listWatchEvents(consumer: Consumer): unknown[] {
 }
 
 describe('createChainLanes', () => {
-  it('As a chain with no follow limit, I put every consumer and follow on one lane', () => {
-    // Given lanes over a transport with no follow limit, and five consumers
-    const { createTransport, built } = createTransports({ followLimit: Infinity });
+  it.each([
+    { chain: 'a chain with no follow limit', followLimit: Infinity, perLane: [5] },
+    { chain: 'an RPC chain', followLimit: RPC_FOLLOW_LIMIT, perLane: [4, 1] },
+  ])('As $chain, I spread five follows over my lanes as $perLane', ({ followLimit, perLane }) => {
+    // Given lanes over a transport with this follow limit, and five consumers
+    const { createTransport, built } = createTransports({ followLimit });
     const { lanes } = createLanes({ createTransport });
     const consumers = ['a', 'b', 'c', 'd', 'e'].map(name => connectConsumer(lanes, `local:${name}`));
 
@@ -199,26 +202,8 @@ describe('createChainLanes', () => {
       consumer.connection.send(createFollow(1));
     }
 
-    // Then one lane is built and it sends all five follows
-    expect(built).toHaveLength(1);
-    expect(listSent(nth(built, 0), CHAIN_HEAD_FOLLOW)).toHaveLength(5);
-  });
-
-  it('As an RPC chain, I open a second lane for the fifth follow and send it there', () => {
-    // Given lanes over an RPC transport, and five consumers
-    const { createTransport, built } = createTransports();
-    const { lanes } = createLanes({ createTransport });
-    const consumers = ['a', 'b', 'c', 'd', 'e'].map(name => connectConsumer(lanes, `local:${name}`));
-
-    // When each follows
-    for (const consumer of consumers) {
-      consumer.connection.send(createFollow(1));
-    }
-
-    // Then four follows go out on lane 0 and the fifth on a second lane
-    expect(built).toHaveLength(2);
-    expect(listSent(nth(built, 0), CHAIN_HEAD_FOLLOW)).toHaveLength(4);
-    expect(listSent(nth(built, 1), CHAIN_HEAD_FOLLOW)).toHaveLength(1);
+    // Then each lane sends its share of the five follows
+    expect(built.map(record => listSent(record, CHAIN_HEAD_FOLLOW).length)).toEqual(perLane);
   });
 
   it('As an RPC chain, I send two follows together into a lane with one slot left and only the first takes it', () => {

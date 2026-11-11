@@ -9,21 +9,6 @@ import type { ThemeState } from '../state/themeState.js';
 import { yielded } from '../../testing/fixtures.js';
 
 describe('theme host callbacks', () => {
-  it('As a product developer, I subscribe to the theme and get the current one at once', async () => {
-    // Given
-    const subscribeTheme = createThemeSubscribe({ theme: createTheme('light') });
-    const iterator = subscribeTheme()[Symbol.asyncIterator]();
-    onTestFinished(async () => {
-      await iterator.return?.();
-    });
-
-    // When
-    const first = await iterator.next();
-
-    // Then
-    expect(yielded(first)._unsafeUnwrap()).toEqual({ name: { tag: 'Default' }, variant: 'Light' });
-  });
-
   it('As a product developer, I subscribe to the theme and get each change until I unsubscribe', async () => {
     // Given
     const theme = createTheme('dark');

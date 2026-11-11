@@ -181,15 +181,4 @@ describe('serializeError', () => {
     // Then
     expect(serialized).toBe('[object Object]');
   });
-
-  it('As an operator reading a failure, I serialize anything thrown and never read an empty string', () => {
-    // Given
-    const inputs: unknown[] = [null, undefined, '', 0, false, {}, [], new Error(''), new Error(), { message: '' }];
-
-    // When
-    const serialized = inputs.map(value => serializeError(value));
-
-    // Then
-    expect(serialized).not.toContain('');
-  });
 });

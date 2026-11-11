@@ -64,18 +64,4 @@ describe('sleep', () => {
     await ended;
     expect(pending()).toBe(0);
   });
-
-  it('As a caller with an aborted signal, I never start the wait', async () => {
-    // Given
-    const { timers, pending } = countingTimers();
-    const controller = new AbortController();
-    controller.abort();
-
-    // When
-    const wait = sleep(1_000, { signal: controller.signal, timers });
-
-    // Then
-    await expect(wait).rejects.toMatchObject({ name: 'AbortError' });
-    expect(pending()).toBe(0);
-  });
 });

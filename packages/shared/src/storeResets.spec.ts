@@ -36,17 +36,4 @@ describe('storeResets', () => {
     // Then
     expect(value).toBe('initial');
   });
-
-  it('As a test, I mix atom and plain resets and they run in registration order', () => {
-    // Given
-    const calls: string[] = [];
-    registerStoreStateReset(() => calls.push('plain'));
-    registerAtomReset({ init: 'atom', set: next => calls.push(next) });
-
-    // When
-    resetAllStoresForTests();
-
-    // Then
-    expect(calls.slice(-2)).toEqual(['plain', 'atom']);
-  });
 });

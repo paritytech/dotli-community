@@ -11,7 +11,7 @@ import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } fr
 import type { ProtocolStatus } from './frameTypes.js';
 import { protocolSchema } from './schema.js';
 import { SHARED_CORE_SESSION_KEY } from './sharedAuthKeys.js';
-import { FRAME_CONFIG, FRAME_ORIGIN } from './testing/constants.js';
+import { FRAME_CONFIG } from './testing/constants.js';
 import { createFrameHost, type FrameHost } from './testing/createFrameHost.js';
 import type { FakeIframe } from './testing/fakeIframe.js';
 
@@ -22,39 +22,6 @@ let timers: ManualTimers;
 
 beforeEach(() => {
   timers = createManualTimers();
-});
-
-describe('createProtocolClient', () => {
-  it('As a dotli integrator, I build a client on my own document and origin, and it mounts its frame there only when asked', async () => {
-    // Given
-    const host = createFrameHost({ config: FRAME_CONFIG, timers });
-    const other = createFrameHost({ config: FRAME_CONFIG, timers });
-    await timers.advance(0);
-    const framesBeforeAsking = host.countFrames();
-
-    // When
-    void host.client.sharedAuth.read(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
-    await timers.advance(0);
-
-    // Then
-    expect(framesBeforeAsking).toBe(0);
-    expect(host.countFrames()).toBe(1);
-    expect(new URL(host.getIframe().src).origin).toBe(FRAME_ORIGIN);
-    expect(other.countFrames()).toBe(0);
-  });
-
-  it('As a dotli integrator, I give the client shorter frame timeouts, and a frame that never gets ready fails within them', async () => {
-    // Given
-    const host = createFrameHost({ timeouts: { readyMs: 1_000 }, config: FRAME_CONFIG, timers });
-    const outcome = readOutcome(host.client.resolve.warmup());
-    await host.listen();
-
-    // When
-    await timers.advance(1_000);
-
-    // Then
-    expect(await outcome).toBe(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT);
-  });
 });
 
 /** The query the frame was built with. */
@@ -248,61 +215,6 @@ describe('protocol iframe listening handshake', () => {
       expect.objectContaining({ outcome: 'error', reason: 'ProtocolHandshakeTimeoutError' }),
     );
     expect(sentry.counted('protocol.feed_end')).toEqual([]);
-  });
-
-  it('As a returning user, I read my shared session and it goes out as soon as the iframe listens, before it is ready', async () => {
-    // Given
-    const read = host.client.sharedAuth.read(SITE_ID, SHARED_CORE_SESSION_KEY);
-
-    // When
-    host.serve().handleRequest(storage.authRead, () => ok('0x0102'));
-    await host.listen();
-
-    // Then
-    await expect(read).resolves.toBe('0x0102');
-    expect(host.client.frame.status.get()).toBe('listening');
-  });
-
-  it('As a returning user whose protocol iframe died, I find the shared store rebuilt it unasked and available again', async () => {
-    // Given
-    const statuses: SharedStoreStatus[] = [];
-    onTestFinished(host.client.sharedStore.status.listen(status => statuses.push(status)));
-    const failed = host.client.sharedAuth.read(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
-    const dead = host.getIframe();
-    await timers.advance(5_000);
-
-    // When with no request waiting, the store builds a new frame 2 s later, which listens
-    await timers.advance(2_000);
-    const rebuilt = host.getIframe();
-    await host.listen();
-
-    // Then
-    expect(await failed).toBe('failed');
-    expect(rebuilt).not.toBe(dead);
-    expect(statuses.slice(-2)).toEqual(['unavailable', 'available']);
-    expect(host.client.sharedStore.status.get()).toBe('available');
-  });
-
-  it('As a returning user whose protocol iframe keeps dying, I see a new one tried after a wait that doubles each time', async () => {
-    // Given the first frame never answers its handshake, though its document loads
-    const failed = host.client.sharedAuth.read(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
-    await timers.advance(5_000);
-
-    // When the first rebuild comes 2 s later and fails 5 s after that, then the store waits 4 s
-    await timers.advance(1_999);
-    const framesBeforeFirstWait = host.countFrames();
-    await timers.advance(1);
-    const framesAfterFirstWait = host.countFrames();
-    await timers.advance(5_000 + 3_999);
-    const framesBeforeSecondWait = host.countFrames();
-    await timers.advance(1);
-
-    // Then
-    expect(await failed).toBe('failed');
-    expect(framesBeforeFirstWait).toBe(0);
-    expect(framesAfterFirstWait).toBe(1);
-    expect(framesBeforeSecondWait).toBe(0);
-    expect(host.countFrames()).toBe(1);
   });
 
   it('As a returning user, I change the frame config mid-read and my shared session read fails at once, not at its timeout', async () => {

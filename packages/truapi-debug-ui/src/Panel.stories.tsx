@@ -247,23 +247,6 @@ export const SystemRows: Story = {
   },
 };
 
-/** As a developer using the debug panel, I look at a chain message row and it shows the decoded method label instead of the raw tag. */
-export const ChainMethodLabel: Story = {
-  play: async ({ step }) => {
-    await step('When a chain message arrives', () => {
-      getDebugPanel().emitTruapi({
-        tag: 'remote_chain_head_follow_start',
-        requestId: 'follow-1',
-        value: { genesisHash: '0x' + 'ab'.repeat(32), withRuntime: true },
-      });
-    });
-    await step('Then its row shows the decoded method label instead of the raw tag', async () => {
-      await waitFor(() => expect(listRowTags()).toEqual(['chainHead.follow']));
-      await expect(within(listRows()[0] ?? getPanel()).getByTestId('td-tag')).toHaveAttribute('data-kind', 'request');
-    });
-  },
-};
-
 /** As a developer using the debug panel, I select a failed chain response and the detail shows its summary and decoded annotations. */
 export const ChainResponseDetail: Story = {
   play: async ({ userEvent, step }) => {
@@ -608,26 +591,6 @@ export const ProductChips: Story = {
   },
 };
 
-/** As a dotli developer, I let a known product send more traffic and the product chips keep their nodes. */
-export const ProductChipsStableAndText: Story = {
-  play: async ({ step }) => {
-    const { emitTruapi } = getDebugPanel();
-    await showFilterTraffic();
-    const before = within(getPart('td-filters')).getAllByTestId('td-product-chip');
-    await step('When a known product sends more traffic', async () => {
-      emitTruapi({ tag: 'more_request', requestId: 'm1', productId: 'a.dot' });
-      await waitFor(() => expect(listRows()).toHaveLength(6));
-    });
-    await step('Then the chips are the same nodes', async () => {
-      const after = within(getPart('td-filters')).getAllByTestId('td-product-chip');
-      await expect(after).toHaveLength(before.length);
-      for (const [index, node] of after.entries()) {
-        await expect(node).toBe(before[index]);
-      }
-    });
-  },
-};
-
 /** As a developer using the debug panel, I type include and exclude filters and the matching rows show, while a regex that does not parse is flagged and inert. */
 export const TextFiltersFlagInvalid: Story = {
   play: async ({ userEvent, step }) => {
@@ -877,25 +840,6 @@ export const ListAnnouncesSelection: Story = {
     await step('Then the list points at no option', async () => {
       await waitFor(() => expect(listRowTags()).toEqual(['boot.started']));
       await expect(list).not.toHaveAttribute('aria-activedescendant');
-    });
-  },
-};
-
-/** As a developer using the debug panel, I see a small list keep only the newest messages and count the dropped ones. */
-export const SmallCapacity: Story = {
-  parameters: { debugPanel: { capacity: 5 } },
-  play: async ({ step }) => {
-    await step('When eight messages arrive', async () => {
-      for (let index = 0; index < 8; index++) {
-        getDebugPanel().emitTruapi({ tag: `ev${String(index)}_request`, requestId: `r${String(index)}` });
-        await waitFor(() => expect(listRowTags().at(-1)).toBe(`ev${String(index)}_request`));
-      }
-    });
-    await step('Then the newest five show and the dropped ones are counted', async () => {
-      await waitFor(() =>
-        expect(listRowTags()).toEqual(['ev3_request', 'ev4_request', 'ev5_request', 'ev6_request', 'ev7_request']),
-      );
-      await expect(readCounts()).toBe('5 events (+3 dropped)');
     });
   },
 };

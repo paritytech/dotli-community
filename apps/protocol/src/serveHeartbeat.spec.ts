@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { protocolSchema } from '@dotli/protocol';
-import { err, ok, unsupported } from '@dotli/transport';
+import { ok } from '@dotli/transport';
 import { serveHeartbeat } from './serveHeartbeat.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 
@@ -22,18 +22,5 @@ describe('serving the heartbeat', () => {
 
     // Then the frame answers ok
     expect(answer).toEqual(ok());
-  });
-
-  it("As a frame that stopped serving the heartbeat, I refuse the host's heartbeat as unsupported", async () => {
-    // Given a heartbeat served to a host
-    const { serving, host } = linkHost();
-    const stop = serveHeartbeat({ serving });
-
-    // When the frame stops serving it and the host sends a heartbeat anyway
-    stop();
-    const refused = await host.request(frame.heartbeat, undefined);
-
-    // Then the host is refused as unsupported
-    expect(refused).toEqual(err(unsupported()));
   });
 });

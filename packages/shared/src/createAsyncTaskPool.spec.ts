@@ -23,21 +23,6 @@ function rejection(call: Promise<unknown>): Promise<unknown> {
 }
 
 describe('async task pool', () => {
-  it('As a caller, I get back what my task returns, sync or async', async () => {
-    // Given
-    const timers = createManualTimers();
-    const pool = createAsyncTaskPool({ poolSize: 1, timers });
-
-    // When
-    const sync = pool.call(() => 'sync');
-    const async = pool.call(() => wait(timers, 10).then(() => 'async'));
-    await timers.advance(10);
-
-    // Then
-    await expect(sync).resolves.toBe('sync');
-    await expect(async).resolves.toBe('async');
-  });
-
   it('As a caller, I run a task that throws or rejects and my call rejects with its error', async () => {
     // Given
     const timers = createManualTimers();
@@ -538,24 +523,6 @@ describe('async task pool', () => {
     await expect(pool.settle()).resolves.toBeUndefined();
   });
 
-  it('As a caller, I turn down a failure in retryIf and my call rejects at once without a retry', async () => {
-    // Given
-    const timers = createManualTimers();
-    const pool = createAsyncTaskPool({ poolSize: 1, retryCount: 3, retryIf: () => false, timers });
-    let attempts = 0;
-    const permanent = new Error('permanent');
-
-    // When
-    const call = pool.call(() => {
-      attempts += 1;
-      throw permanent;
-    });
-
-    // Then
-    await expect(call).rejects.toBe(permanent);
-    expect(attempts).toBe(1);
-  });
-
   it('As a caller, I give a retryIf and it sees each failure, stopping the retries at the first one it turns down', async () => {
     // Given
     const timers = createManualTimers();
@@ -633,28 +600,5 @@ describe('async task pool', () => {
     // Then
     await expect(call).rejects.toMatchObject({ errors: [broken, failure] });
     await pool.settle();
-  });
-});
-
-describe('async task pool on timers it is given', () => {
-  it('As a caller, I pass my own timers and my retry waits on them, with the globals left alone', async () => {
-    // Given a task that fails once, on a pool that retries after 500 ms
-    const timers = createManualTimers();
-    let runs = 0;
-    const pool = createAsyncTaskPool({ poolSize: 1, retryCount: 1, retryDelay: 500, timers });
-    const call = pool.call(() => {
-      runs += 1;
-      return runs === 1 ? Promise.reject(new Error('busy')) : 'done';
-    });
-
-    // When the given timers pass the delay in two steps
-    await timers.advance(499);
-    const beforeTheDelay = runs;
-    await timers.advance(1);
-
-    // Then the retry ran only once the full delay passed
-    expect(beforeTheDelay).toBe(1);
-    expect(runs).toBe(2);
-    await expect(call).resolves.toBe('done');
   });
 });

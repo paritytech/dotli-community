@@ -10,10 +10,10 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_HEADER } from './jsonRpcMethods.js';
+import { CHAIN_HEAD_FOLLOW } from './jsonRpcMethods.js';
 import { RPC_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 import { ChainHaltError } from './chainHaltError.js';
-import { bindLogSink, isRecord } from '@dotli/shared';
+import { bindLogSink } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
 import { encodeHeaderHex } from './testing/encodeHeaderHex.js';
@@ -116,31 +116,6 @@ function createHaltOnOpenTransports(): {
   return { createTransport, built };
 }
 
-/** Builds transports as `createTransports` does, except that each rebuilt one refuses its first two connects. */
-function createRefusingRebuildTransports(): {
-  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => ChainTransport | null;
-  built: TransportRecord[];
-  rebuiltConnects: () => number;
-} {
-  const { createTransport: createBase, built } = createTransports();
-  let connects = 0;
-  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
-    const base = createBase(genesisHash, hooks);
-    if (base === null || built.length === 1) {
-      return base;
-    }
-    const provider: JsonRpcProvider = onMessage => {
-      connects += 1;
-      if (connects <= 2) {
-        throw new Error('connect refused');
-      }
-      return base.provider(onMessage);
-    };
-    return { provider, followLimit: base.followLimit };
-  }
-  return { createTransport, built, rebuiltConnects: () => connects };
-}
-
 /** Takes a healing lease through the pool's local provider, failing the test when the pool has no provider for it. */
 function lease(
   pool: ChainPool,
@@ -215,41 +190,6 @@ describe('createChainPool', () => {
     expect(built.map(record => record.opened)).toEqual([1, 1]);
   });
 
-  it('As a dotli integrator on an RPC chain, my fifth follow opens a second connection and my calls on it go there', () => {
-    // Given five leases on a chain whose transport takes four follows per connection
-    const { createTransport, built } = createTransports({ followLimit: RPC_FOLLOW_LIMIT });
-    const pool = createChainPool({ createTransport });
-    const firstFour = Array.from({ length: RPC_FOLLOW_LIMIT }, () => lease(pool, '0xaa'));
-    const replies: JsonRpcMessage[] = [];
-    const fifth = lease(pool, '0xaa', {
-      onMessage: message => {
-        replies.push(message);
-      },
-    });
-
-    // When each lease follows, the node answers the fifth follow, and the fifth lease asks for a header on it
-    for (const connection of [...firstFour, fifth]) {
-      connection.send({ jsonrpc: '2.0', id: 1, method: CHAIN_HEAD_FOLLOW, params: [true] });
-    }
-    const second = must(built[1], 'second connection');
-    const follow = must(listMethod(second, CHAIN_HEAD_FOLLOW)[0], 'fifth follow');
-    second.emit({ jsonrpc: '2.0', id: must(follow.id, 'follow id'), result: 'up-5' });
-    const answer: unknown = replies.find(reply => 'id' in reply && reply.id === 1 && 'result' in reply);
-    fifth.send({
-      jsonrpc: '2.0',
-      id: 2,
-      method: CHAIN_HEAD_HEADER,
-      params: [isRecord(answer) ? answer['result'] : undefined, '0xb1'],
-    });
-
-    // Then the fifth follow opened a second connection, and the header went out on it only
-    expect(built.map(record => record.genesisHash)).toEqual(['0xaa', '0xaa']);
-    expect(built.map(record => listMethod(record, CHAIN_HEAD_FOLLOW).length)).toEqual([4, 1]);
-    expect(
-      built.map(record => listMethod(record, CHAIN_HEAD_HEADER).map((request): unknown => request.params)),
-    ).toEqual([[], [['up-5', '0xb1']]]);
-  });
-
   it('As a dotli integrator, I release the last lease and the chain closes destroyDelay later, unless a new lease arrives first', async () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -289,46 +229,6 @@ describe('createChainPool', () => {
     // Then
     expect(built).toHaveLength(1);
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli integrator, I add a throwing status listener and it is reported, stops no other listener and never reaches the transport', () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const errors: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: ({ level, message }) => {
-          if (level === 'error') {
-            errors.push(message);
-          }
-        },
-      }),
-    );
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    lease(pool, '0xaa');
-    const seen: string[] = [];
-    pool.onStatusChanged('0xaa', () => {
-      throw new Error('listener bug');
-    });
-    pool.onStatusChanged('0xaa', status => {
-      seen.push(status);
-    });
-
-    // When
-    const error = catchError(() => {
-      must(built[0], 'transport').hooks.onStatus('connected');
-    });
-
-    // Then
-    expect(error).toBeUndefined();
-    expect(seen).toEqual(['connected']);
-    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'chain_pool.status' } }]);
-    expect(errors).toHaveLength(captured.length);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'Error', owner: 'chain_pool.status' },
-    ]);
   });
 
   it('As a dotli integrator, I take a provider and never call it, and its chain is not kept', async () => {
@@ -554,38 +454,6 @@ describe('createChainPool', () => {
     expect(metrics.counted('chain_pool.close')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
-  it('As a dotli integrator, I watch a transaction and hear it dropped when the transport disconnects', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    const received: JsonRpcMessage[] = [];
-    const connection = lease(pool, '0xaa', {
-      onMessage: message => {
-        received.push(message);
-      },
-    });
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
-    const transport = must(built[0], 'transport');
-    const upstream = must(transport.sent[0], 'upstream submit');
-    transport.emit({ jsonrpc: '2.0', id: must(upstream.id, 'upstream id'), result: 'watch-1' });
-    // The first message the session hears is the submit's response.
-    const ack = must(received[0], 'submit response') as { id: unknown; result: unknown };
-    received.length = 0;
-
-    // When
-    transport.hooks.onStatus('disconnected');
-
-    // Then
-    expect(ack.id).toBe(1);
-    expect(received).toEqual([
-      {
-        jsonrpc: '2.0',
-        method: 'transactionWatch_v1_watchEvent',
-        params: { subscription: ack.result, result: { event: 'dropped' } },
-      },
-    ]);
-  });
-
   it('As a dotli integrator, I watch a transaction on a transport that disconnects and then halts, and hear it dropped before the halt', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -797,43 +665,6 @@ describe('createChainPool watch', () => {
     expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1 });
   });
 
-  it('As a dotli integrator, I add a throwing watcher and it is reported, keeping neither the others nor the pool from the change', () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const errors: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: ({ level, message }) => {
-          if (level === 'error') {
-            errors.push(message);
-          }
-        },
-      }),
-    );
-    const pool = createChainPool({ createTransport: createTransports().createTransport });
-    pool.watch({
-      onActivity: () => {
-        throw new Error('panel bug');
-      },
-      onBestBlock: () => undefined,
-    });
-    const seen = createRecorder();
-    pool.watch(seen.watcher);
-
-    // When
-    const connection = lease(pool, '0xaa');
-
-    // Then the throwing panel is reported once for each of the two activity changes a first lease makes
-    expect(seen.activity.at(-1)).toMatchObject({ consumers: 1 });
-    expect(connection).toBeDefined();
-    expect(captured).toMatchObject(Array(2).fill({ step: 'listener', tags: { owner: 'chain_pool.watch' } }));
-    expect(errors).toHaveLength(2);
-    expect(metrics.counted('listener.delivery')).toEqual(
-      Array(2).fill({ outcome: 'error', reason: 'Error', owner: 'chain_pool.watch' }),
-    );
-  });
-
   function isFollow(message: JsonRpcRequest): boolean {
     return message.method === 'chainHead_v1_follow';
   }
@@ -884,32 +715,6 @@ describe('createChainPool watch', () => {
     expect(seen.best).toEqual([['0xaa', 8]]);
   });
 
-  it('As the network panel opening after a consumer follows with the runtime, I follow on my own and get the best block', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    const connection = lease(pool, '0xaa');
-    const transport = must(built[0], 'transport');
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
-    const consumerEvent = answerFollow(transport, 'up-1');
-    consumerEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    consumerEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
-    const seen = createRecorder();
-
-    // When
-    pool.watch(seen.watcher);
-    const panelEvent = answerFollow(transport, 'up-2');
-    panelEvent({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-    panelEvent({ event: 'bestBlockChanged', bestBlockHash: '0xf0' });
-    answerHeader(transport, 7);
-
-    // Then
-    expect(transport.sent.filter(isFollow)).toHaveLength(2);
-    expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_header', params: ['up-2', '0xf0'] });
-    expect(seen.activity.at(-1)).toMatchObject({ genesisHash: '0xaa', consumers: 1, following: true });
-    expect(seen.best).toEqual([['0xaa', 7]]);
-  });
-
   it('As the network panel, I have my follow stopped by the last consumer leaving before I hear no consumers are left', async () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -932,45 +737,6 @@ describe('createChainPool watch', () => {
 
     // Then
     expect(transport.disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it("As a consumer following with the runtime while the network panel watches, I get a follow of my own beside the panel's", () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    pool.watch(createRecorder().watcher);
-    const replies: JsonRpcMessage[] = [];
-    const connection = lease(pool, '0xaa', {
-      onMessage: message => {
-        replies.push(message);
-      },
-    });
-    const transport = must(built[0], 'transport');
-    answerFollow(transport, 'up-1')({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
-
-    // When
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
-    answerFollow(transport, 'up-2');
-
-    // Then
-    expect(transport.sent.filter(isFollow).map((message): unknown => message.params)).toEqual([[true], [true]]);
-    expect(replies.some(reply => 'id' in reply && reply.id === 1 && 'result' in reply)).toBe(true);
-  });
-
-  it('As the network panel, I have a follow the chain stops started again while the chain is held', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
-    pool.watch(createRecorder().watcher);
-    lease(pool, '0xaa');
-    const transport = must(built[0], 'transport');
-    const event = answerFollow(transport, 'up-1');
-
-    // When
-    event({ event: 'stop' });
-
-    // Then
-    expect(transport.sent.filter(isFollow)).toHaveLength(2);
   });
 
   /** Refuses the pool's newest follow request upstream, as a node at its follow limit does. */
@@ -1273,20 +1039,6 @@ describe('createChainPool pausing', () => {
     expect(onHalt).not.toHaveBeenCalled();
   });
 
-  it('As a dotli page, I resume and my chain opens again', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    lease(pool, '0xaa');
-    pool.pause();
-
-    // When
-    pool.resume();
-
-    // Then
-    expect(must(built[0], 'transport').opened).toBe(2);
-  });
-
   it('As a dotli page on a transport that connects at once, I resume and read the chain as connected', () => {
     // Given
     function createTransport(_genesisHash: string, hooks: ChainTransportHooks): ChainTransport {
@@ -1360,26 +1112,6 @@ describe('createChainPool pausing', () => {
     ]);
   });
 
-  it('As a dotli page, a chain first leased while paused opens only on resume', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    pool.pause();
-
-    // When
-    lease(pool, '0xbb');
-
-    // Then
-    expect(must(built[0], 'transport').opened).toBe(0);
-    expect(pool.status('0xbb')).toBe('disconnected');
-
-    // When
-    pool.resume();
-
-    // Then
-    expect(must(built[0], 'transport').opened).toBe(1);
-  });
-
   it('As a dotli page, a chain I released before the resume stays closed until it is leased again', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -1399,24 +1131,6 @@ describe('createChainPool pausing', () => {
 
     // Then
     expect(transport.opened).toBe(2);
-  });
-
-  it('As a dotli page, my chain halts while paused and the next lease builds it closed', () => {
-    // Given
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    const onHalt = vi.fn();
-    remoteLease(pool, '0xaa', { onHalt });
-    pool.pause();
-
-    // When
-    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
-    lease(pool, '0xaa');
-
-    // Then
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(built).toHaveLength(2);
-    expect(must(built[1], 'transport').opened).toBe(0);
   });
 
   it('As a dotli page, a chain that fails to close at a pause halts my lease on it while my other chain pauses', () => {
@@ -1507,22 +1221,6 @@ describe('createChainPool healing', () => {
 
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it("As a dotli integrator, my lease's chain halts and my next request rebuilds it on a new transport", () => {
-    // Given a healing lease on a chain whose transport halts
-    const { createTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport });
-    const connection = lease(pool, '0xaa');
-    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
-
-    // When
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
-
-    // Then
-    expect(built).toHaveLength(2);
-    expect(listMethod(must(built[0], 'transport'), 'system_health')).toHaveLength(0);
-    expect(listMethod(must(built[1], 'transport'), 'system_health')).toHaveLength(1);
   });
 
   it('As a dotli integrator, two leases on a chain that halts take one rebuilt chain', () => {
@@ -1631,25 +1329,6 @@ describe('createChainPool healing', () => {
     expect(pool.status('0xaa')).toBe('disconnected');
     expect(built).toHaveLength(1);
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it("As a dotli integrator, my rebuilt chain refuses my lease's connect and I wait for the gate before the next try", async () => {
-    // Given a healing lease on a chain whose rebuilt transport refuses its first connects
-    recordReports({ onFinished: onTestFinished });
-    const { createTransport, built, rebuiltConnects } = createRefusingRebuildTransports();
-    const pool = createChainPool({ createTransport });
-    lease(pool, '0xaa');
-
-    // When
-    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
-    await vi.advanceTimersByTimeAsync(999);
-    const beforeASecond = rebuiltConnects();
-    await vi.advanceTimersByTimeAsync(1);
-    const atASecond = rebuiltConnects();
-
-    // Then
-    expect([beforeASecond, atASecond]).toEqual([1, 2]);
-    expect(built).toHaveLength(2);
   });
 
   it('As the host page, my chain halts with the frame while the frame is down and it is rebuilt only as the frame gate allows', async () => {

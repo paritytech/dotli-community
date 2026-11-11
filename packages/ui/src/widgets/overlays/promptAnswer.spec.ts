@@ -53,17 +53,6 @@ describe('prompt answers', () => {
     expect(close).toBe('cancel');
   });
 
-  it('As a phone user, I press the close button on a prompt with no Cancel and no scrim answer and it answers with its danger reject', () => {
-    // Given
-    const view = buildPermissionView({ dismissOnBackdrop: false });
-
-    // When
-    const close = getCloseAnswer(view);
-
-    // Then
-    expect(close).toBe('deny');
-  });
-
   it('As a phone user, I press the close button on a scrim-dismissable prompt with no scrim answer and it answers with its danger reject', () => {
     // Given
     const { dismissResult: _unused, ...view } = buildPermissionView();

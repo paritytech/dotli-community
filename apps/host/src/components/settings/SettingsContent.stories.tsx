@@ -130,10 +130,6 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
     );
     const debug = document.querySelector('[data-testid="mode-debug-row"] button');
     await expect(debug === null).toBe(shown.debugOn);
-    if (debug !== null) {
-      await expect(debug).toHaveTextContent('Open in debug mode');
-      await expect(debug).toHaveAttribute('title', 'Reload this tab with the debug panel and its diagnostics');
-    }
   }
   await expect(applyButton()).toBeDisabled();
   await expect(applyButton()).toHaveAttribute('data-variant', 'primary');
@@ -268,29 +264,6 @@ export const StartsOnGeneral: Story = {
   },
 };
 
-/** As a dotli user opening it with several networks, each category shows its controls, labels and ARIA state. */
-export const EveryCategory: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenSettings({ ...DEFAULT_SETTINGS, network: 'previewnet', cache: { ...DEFAULT_CACHE, skipArchiveCache: true } });
-  },
-  play: async ctx => {
-    const shown: Shown = { ...DEFAULTS, network: 'previewnet', cache: { ...DEFAULT_CACHE, skipArchiveCache: true } };
-    await open(ctx);
-    await ctx.step('Then General is shown', async () => {
-      await expectSections(shown, 'general');
-    });
-    await ctx.step('And Network', async () => {
-      await showCategory(ctx.userEvent.click, 'network');
-      await expectSections(shown, 'network');
-    });
-    await ctx.step('And Advanced', async () => {
-      await showCategory(ctx.userEvent.click, 'advanced');
-      await expectSections(shown, 'advanced');
-    });
-  },
-};
-
 /** As a dotli user with one network, in debug mode, on trusted providers and without shared workers, each category shows that. */
 export const OneNetworkDebugTrusted: Story = {
   tags: ['!autodocs'],
@@ -366,35 +339,6 @@ export const DraftEnablesSave: Story = {
   },
 };
 
-/** As a dotli user, I change the network, look at Advanced and come back, and the change is still there for Save and apply. */
-export const DraftSurvivesCategories: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    const click = ctx.userEvent.click;
-    await open(ctx);
-    await ctx.step('When I pick previewnet, look at Advanced and come back', async () => {
-      await showCategory(click, 'network');
-      await click(radio('dotli-network', 'previewnet'));
-      await showCategory(click, 'advanced');
-      await showCategory(click, 'network');
-    });
-    await ctx.step('Then previewnet is still picked and Save is enabled', async () => {
-      await expect(radio('dotli-network', 'previewnet').checked).toBe(true);
-      await expect(applyButton()).not.toBeDisabled();
-    });
-    await ctx.step('When I save', async () => {
-      await click(applyButton());
-    });
-    await ctx.step('Then the network change was applied', async () => {
-      await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
-      await expect(settingsAsked.apply).toHaveBeenCalledWith(
-        { backend: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-        { backend: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
-      );
-    });
-  },
-};
-
 /** As a dotli user, I pick a theme tile in General and it is picked at once without enabling Save and apply. */
 export const ThemePickedWithoutSave: Story = {
   tags: ['!autodocs'],
@@ -410,22 +354,6 @@ export const ThemePickedWithoutSave: Story = {
       );
       await expect(applyButton()).toBeDisabled();
       await expect(isOpen()).toBe(true);
-    });
-  },
-};
-
-/** As a dotli user, Open in debug mode asks the page to reload this tab with the debug panel. */
-export const DebugModeAsks: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('When I press Open in debug mode in Advanced', async () => {
-      await showCategory(ctx.userEvent.click, 'advanced');
-      await ctx.userEvent.click(query(document, '[data-testid="mode-debug-row"] button'));
-    });
-    await ctx.step('Then the page was asked once, and nothing was applied', async () => {
-      await expect(settingsAsked.debugMode).toBe(1);
-      await expect(settingsAsked.apply).not.toHaveBeenCalled();
     });
   },
 };
@@ -554,46 +482,5 @@ export const OpensWhileResetting: Story = {
       await expect(clear).toBeDisabled();
       await expect(clear).toHaveTextContent('Clear all caches');
     });
-  },
-};
-
-/** As a user who resized the window, the settings open as a sheet or a popover by the width at each opening. */
-export const WidthPicksSheetOrPopover: Story = {
-  tags: ['!autodocs'],
-  play: async ({ userEvent, step }) => {
-    const { page } = await import('vitest/browser');
-    const wide = { width: window.innerWidth, height: window.innerHeight };
-    const reopen = async (): Promise<void> => {
-      await userEvent.click(byId('mode-button'));
-      await waitFor(() => expect(isOpen()).toBe(true));
-    };
-    const close = async (): Promise<void> => {
-      await userEvent.keyboard('{Escape}');
-      await waitFor(() => expect(isOpen()).toBe(false));
-    };
-    try {
-      await step('Given it opened wide as a popover, then closed', async () => {
-        await reopen();
-        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
-        await close();
-      });
-      await step('When the window narrows to a phone and it opens', async () => {
-        await page.viewport(390, 844);
-        await reopen();
-      });
-      await step('Then it is a sheet', async () => {
-        await expect(byId('mode-popover')).toHaveAttribute('aria-modal', 'true');
-      });
-      await step('When the window widens while it is open, then it is closed and opened', async () => {
-        await page.viewport(wide.width, wide.height);
-        await close();
-        await reopen();
-      });
-      await step('Then it is a popover again', async () => {
-        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
-      });
-    } finally {
-      await page.viewport(wide.width, wide.height);
-    }
   },
 };

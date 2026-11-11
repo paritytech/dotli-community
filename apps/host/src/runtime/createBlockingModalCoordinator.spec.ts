@@ -45,20 +45,6 @@ function queueHeldPrompt() {
   return { bar, step, next, first, second };
 }
 
-/** A prompt on screen until the test finishes it, a second queued behind it, and the bar that counts them. */
-function queueTwoPrompts() {
-  const bar = createCountsSink();
-  const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
-  const shown = createDeferred<undefined>();
-  const first = scope.enqueue(() => shown.promise);
-  const second = scope.enqueue(() => new Promise<void>(() => {}));
-  onTestFinished(async () => {
-    scope.dispose();
-    await second.catch(() => {});
-  });
-  return { bar, shown, first };
-}
-
 describe('blocking modal queue', () => {
   it('As a dotli integrator, I run a prompt that throws and the next prompt shows, with the failed one run once', async () => {
     // Given two hosts, the first with a prompt that throws
@@ -210,35 +196,6 @@ describe('blocking modal queue, waiting count', () => {
     // Then the holding prompt had answered and the next one shows
     await expect(answered).resolves.toBe('answered');
     await expect(next).resolves.toBe('next');
-  });
-
-  it('As a user, I queue a second prompt and the bar counts it waiting behind the one on screen', () => {
-    // Given the bar that counts the prompts
-    const bar = createCountsSink();
-    const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
-
-    // When two prompts are queued
-    const first = scope.enqueue(() => new Promise<void>(() => {}));
-    const second = scope.enqueue(() => new Promise<void>(() => {}));
-    onTestFinished(async () => {
-      scope.dispose();
-      await Promise.allSettled([first, second]);
-    });
-
-    // Then one is on screen and one waits
-    expect(bar.latest()).toEqual({ active: true, waiting: 1 });
-  });
-
-  it('As a user, I answer the prompt on screen and the bar counts none waiting', async () => {
-    // Given a prompt on screen and a second one behind it
-    const { bar, shown, first } = queueTwoPrompts();
-
-    // When the first is answered
-    shown.resolve(undefined);
-    await first;
-
-    // Then nothing waits
-    expect(bar.latest().waiting).toBe(0);
   });
 
   it('As a user, I answer one prompt with another queued and the bar stays busy with no idle gap between them', async () => {

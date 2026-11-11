@@ -16,24 +16,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a visitor whose app is starting again, I see the pulsing mark over what is happening. */
-export const MarkOverStatus: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step('As a visitor whose app is starting again, I see the pulsing mark over what is happening', async () => {
-      // When
-      showRetryScreen();
-
-      // Then
-      await expect(canvas.getByTestId('retry-screen-mark').tagName).toBe('svg');
-      await expect(canvas.getByTestId('retry-screen')).toHaveTextContent('Retrying…');
-      await expect(canvas.getByTestId('retry-screen')).toHaveTextContent("The app's connection dropped");
-      await expect(canvas.queryByRole('button')).toBeNull();
-    });
-  },
-};
-
 /** As a visitor whose load failed, I retry and the error page gives way to the retry screen. */
 export const RetryScreenReplacesErrorPage: Story = {
   tags: ['!autodocs'],

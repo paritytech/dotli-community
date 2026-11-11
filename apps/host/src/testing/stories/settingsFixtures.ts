@@ -39,7 +39,6 @@ export const settingsAsked = {
   /** Stands in for the page's apply, which would wipe storage and reload. */
   apply: fn<ApplySettings>(),
   themes: new Array<ThemePreference>(),
-  debugMode: 0,
 };
 
 /** The props a page gives the settings button. A theme pick applies as the page's theme would. */
@@ -66,9 +65,7 @@ export const storySettings: SettingsItemProps = {
   },
   reset,
   debugMode,
-  onDebugMode: () => {
-    settingsAsked.debugMode += 1;
-  },
+  onDebugMode: () => undefined,
 };
 
 /** The settings as boot read them, or null before it has. */
@@ -104,5 +101,4 @@ export function resetStorySettings(): void {
   settingsAsked.apply.mockReset();
   settingsAsked.apply.mockResolvedValue(undefined);
   settingsAsked.themes.length = 0;
-  settingsAsked.debugMode = 0;
 }

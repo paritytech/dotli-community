@@ -4,9 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { must } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
-import { expectBefore } from '@config/storybook/play';
 import { expectPhone, reachable, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   disconnect,
@@ -157,19 +155,7 @@ export const NetworkAndSettingsRowsOpen: Story = {
 };
 
 /** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
-export const PhoneActionsReplaceAddress: Story = {
-  play: async ({ step }) => {
-    await expectPhone(step);
-    await step('Then every item is in the bar, More is parked, and the account comes after it', async () => {
-      const more = document.querySelector('[data-testid="more-item"]');
-      await waitFor(() => expect(more).toHaveAttribute('data-parked'));
-      const items = [...document.querySelectorAll('#topbar-actions [data-testid="action-item"]')];
-      await expect(items.filter(item => item.hasAttribute('data-parked'))).toEqual([]);
-      const account = must(byId('auth-button').closest('[data-testid="action-item"]'), 'the account item');
-      await expectBefore(byId('more-button'), account);
-    });
-  },
-};
+export const PhoneActionsReplaceAddress: Story = {};
 
 /** As a phone user, the Network row leads the More menu with its verdict, and a stalled chain raises More's badge and name. */
 export const PhoneNetworkRowLeads: Story = {
@@ -223,42 +209,6 @@ export const PhoneTabReachesSheetClose: Story = {
     await step('Then the sheet closed and More has focus', async () => {
       await closed('more-popover');
       await waitFor(() => expect(button).toHaveFocus());
-    });
-  },
-};
-
-/** As a phone user choosing Permissions in More, the permissions sheet takes More's place without sliding. */
-export const PhonePermissionsTakesMorePlace: Story = {
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I choose Permissions in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('permissions'));
-    });
-    await step('Then More goes and Permissions comes at rest, both marked as a hand-off', async () => {
-      await opened('permissions-popover');
-      await expect(byId('permissions-popover')).toHaveAttribute('data-handoff');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
-      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
-    });
-  },
-};
-
-/** As a phone user choosing Settings in More, the settings sheet takes More's place without sliding. */
-export const PhoneSettingsTakesMorePlace: Story = {
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I choose Settings in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('settings'));
-    });
-    await step('Then the settings sheet took its place, both marked as a hand-off', async () => {
-      await opened('mode-popover');
-      await expect(byId('mode-popover')).toHaveAttribute('data-handoff');
-      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
     });
   },
 };

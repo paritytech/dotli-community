@@ -17,25 +17,6 @@ describe('theme state', () => {
     expect(theme).toEqual({ preference: 'system', resolved: 'dark' });
   });
 
-  it('As a user, I pick the same theme twice and it is announced once', () => {
-    // Given
-    const { store, selectPreference } = createThemeState({ storage: createMemoryStorage() });
-    let heard = 0;
-    onTestFinished(
-      store.listen(() => {
-        heard += 1;
-      }),
-    );
-
-    // When
-    selectPreference('light');
-    selectPreference('light');
-
-    // Then
-    expect(heard).toBe(1);
-    expect(store.get()).toEqual({ preference: 'light', resolved: 'light' });
-  });
-
   it('As a user with Light chosen, I see the OS turn light and nobody is told', () => {
     // Given Light chosen on a dark OS
     const { store, selectPreference, showSystemScheme } = createThemeState({ storage: createMemoryStorage() });

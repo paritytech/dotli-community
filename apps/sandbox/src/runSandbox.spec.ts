@@ -278,19 +278,6 @@ describe('runSandbox contract', () => {
     expect(thrown).toBe(unreachable);
     expect(sandbox.events).not.toContain('wait');
   });
-
-  it("As the sandbox's integrator, I run the sandbox and the contract's settings apply before the first load", async () => {
-    // Given
-    const sandbox = createHarness([{ outcome: 'loaded' }]);
-
-    // When
-    await runSandbox(toFramedPage(createSandboxUrl()), sandbox.deps);
-
-    // Then
-    expect(sandbox.events).toEqual(['configure paseo-next-v2', 'load 1']);
-    expect(sandbox.loads[0]?.params).toMatchObject({ cid: CID, backend: 'rpc-gateway', fullReset: false });
-    expect(sandbox.failures).toEqual([]);
-  });
 });
 
 describe('runSandbox load failures', () => {

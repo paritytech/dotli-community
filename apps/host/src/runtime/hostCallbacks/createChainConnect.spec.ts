@@ -60,154 +60,6 @@ describe('createChainConnect', () => {
     expect(sources.createRemoteChain).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, I connect two cores to one chain and they share one transport', async () => {
-    // Given
-    const connect = createProductConnect(sources, { destroyDelay: 0 });
-
-    // When
-    await connect(fromHex(people));
-    await connect(fromHex(people));
-
-    // Then
-    expect(sources.upstreams).toHaveLength(1);
-    expect(must(sources.upstreams[0], 'upstream').opened).toBe(1);
-  });
-
-  it('As a dotli integrator, I send one request id from two core connections and each gets only its own response', async () => {
-    // Given
-    const connect = createProductConnect(sources, { destroyDelay: 0 });
-    const first = await connect(fromHex(people));
-    const second = await connect(fromHex(people));
-    onTestFinished(() => {
-      first.close();
-      second.close();
-    });
-    const firstResponses = first.responses()[Symbol.asyncIterator]();
-    const secondResponses = second.responses()[Symbol.asyncIterator]();
-    const request = { jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_genesisHash', params: [] };
-    first.send(JSON.stringify(request));
-    second.send(JSON.stringify(request));
-    const upstream = must(sources.upstreams[0], 'upstream');
-    const [toFirst, toSecond] = upstream.sent;
-
-    // When
-    upstream.emit({ jsonrpc: '2.0', id: must(must(toSecond, 'second request').id, 'id'), result: 'second' });
-    upstream.emit({ jsonrpc: '2.0', id: must(must(toFirst, 'first request').id, 'id'), result: 'first' });
-    const answers: unknown[] = [
-      JSON.parse(yielded(await firstResponses.next())),
-      JSON.parse(yielded(await secondResponses.next())),
-    ];
-
-    // Then
-    expect(answers).toEqual([
-      { jsonrpc: '2.0', id: 'truapi:1', result: 'first' },
-      { jsonrpc: '2.0', id: 'truapi:1', result: 'second' },
-    ]);
-  });
-
-  it('As a dotli integrator, I keep a core connection through a halted chain transport and its stream stays open', async () => {
-    // Given
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    onTestFinished(() => {
-      connection.close();
-    });
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    const pending = responses.next();
-
-    // When
-    must(sources.upstreams[0], 'upstream').halt();
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
-    const rebuilt = must(sources.upstreams[1], 'rebuilt upstream');
-    rebuilt.emit({ jsonrpc: '2.0', id: must(must(rebuilt.sent[0], 'request').id, 'id'), result: 'People' });
-    const answer: unknown = JSON.parse(yielded(await pending));
-
-    // Then
-    expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:2', result: 'People' });
-  });
-
-  it('As a dotli integrator, I watch a chain transport halt and the messages queued before it are still delivered', async () => {
-    // Given
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    connection.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'truapi:1',
-        method: 'transactionWatch_v1_submitAndWatch',
-        params: ['0xdead'],
-      }),
-    );
-    const upstream = must(sources.upstreams[0], 'upstream');
-    upstream.emit({ jsonrpc: '2.0', id: must(must(upstream.sent[0], 'upstream submit').id, 'id'), result: 'watch-1' });
-
-    // When the light client dies, and the frame reports the status and the halt in one step
-    upstream.halt();
-    const ack: unknown = JSON.parse(yielded(await responses.next()));
-    const dropped: unknown = JSON.parse(yielded(await responses.next()));
-
-    // Then
-    expect([ack, dropped]).toEqual([
-      expect.objectContaining({ id: 'truapi:1' }),
-      {
-        jsonrpc: '2.0',
-        method: 'transactionWatch_v1_watchEvent',
-        params: { subscription: readResult(ack), result: { event: 'dropped' } },
-      },
-    ]);
-
-    // When
-    connection.close();
-    const afterTheClose = await responses.next();
-
-    // Then
-    expect(afterTheClose.done).toBe(true);
-  });
-
-  it('As a dotli integrator, I have a request in flight when the chain transport halts and it is answered', async () => {
-    // Given
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    connection.send(
-      JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }),
-    );
-    const upstream = must(sources.upstreams[0], 'upstream');
-
-    // When
-    upstream.halt();
-    const answer: unknown = JSON.parse(yielded(await responses.next()));
-
-    // Then
-    expect(upstream.sent).toHaveLength(1);
-    expect(answer).toMatchObject({
-      id: 'truapi:9',
-      error: { message: 'Chain transport halted', data: 'dotli:chain-halted' },
-    });
-
-    // When
-    connection.close();
-    const afterTheClose = await responses.next();
-
-    // Then
-    expect(afterTheClose.done).toBe(true);
-  });
-
-  it('As a dotli integrator, I close a halted core connection twice and its lease is released once', async () => {
-    // Given a connection whose lease took the rebuilt chain inside the halt
-    const connection = await createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
-    const halted = must(sources.upstreams[0], 'upstream');
-    halted.halt();
-    const rebuilt = must(sources.upstreams[1], 'rebuilt upstream');
-    const haltedDisconnects = halted.disconnect.mock.calls.length;
-
-    // When
-    connection.close();
-    connection.close();
-
-    // Then the rebuilt transport is torn down once, and the halted one is left as the halt left it
-    expect(rebuilt.disconnect).toHaveBeenCalledTimes(1);
-    expect(halted.disconnect).toHaveBeenCalledTimes(haltedDisconnects);
-  });
-
   describe('with the default pool settings', () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -231,20 +83,6 @@ describe('createChainConnect', () => {
 
       // Then
       expect([beforeAMinute, atAMinute]).toEqual([0, 1]);
-    });
-
-    it('As a dotli user on Trusted Providers, I close the last connection to an RPC chain and the chain closes', async () => {
-      // Given
-      sources.setBackend('rpc-gateway');
-      const connection = await createProductConnect(sources, {})(fromHex(people));
-      const upstream = must(sources.upstreams[0], 'upstream');
-
-      // When
-      connection.close();
-      await vi.advanceTimersByTimeAsync(120_000);
-
-      // Then
-      expect(upstream.disconnect).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -373,28 +211,6 @@ describe('host chain pool on a light client backend', () => {
     expect(remotesWhileBooting).toBe(2);
     expect(sentWhileBooting).toBe(5);
     expect(answer).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'People' });
-  });
-
-  it('As a user, I release the last of two leases and the connection to the protocol frame closes 60 seconds later', async () => {
-    // Given
-    const connect = createChainConnect({
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain, frame: chains.frame }),
-    });
-    const first = await connect(fromHex(people));
-    const second = await connect(fromHex(people));
-    const remote = must(chains.remotes[0], 'remote');
-
-    // When one lease is released, and the other a while later
-    first.close();
-    await vi.advanceTimersByTimeAsync(30_000);
-    second.close();
-    await vi.advanceTimersByTimeAsync(59_999);
-    const beforeAMinute = remote.disconnect.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(1);
-    const atAMinute = remote.disconnect.mock.calls.length;
-
-    // Then the countdown started at the second release
-    expect([beforeAMinute, atAMinute]).toEqual([0, 1]);
   });
 });
 

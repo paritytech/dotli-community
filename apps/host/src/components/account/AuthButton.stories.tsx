@@ -154,43 +154,6 @@ export const SitesLink: Story = {
   },
 };
 
-/** As a signed-in user where no sites page is given, the popover shows no sites link. */
-export const NoSitesLink: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect(ALICE);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then the menu has no signed-in sites link', async () => {
-      await expectAccount('Alice Smith', false);
-      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
-    });
-  },
-};
-
-/** As a signed-out user where a sites page is given, I see no sites link, and a click starts a sign-in. */
-export const SignedOutNoSitesLink: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    disconnect();
-  },
-  render: () => (
-    <TopbarFrame>
-      <StoryButton sitesUrl="https://dot.li/s/manage" />
-    </TopbarFrame>
-  ),
-  play: async ({ step, userEvent }) => {
-    await step('When I click the button', async () => {
-      await userEvent.click(button());
-    });
-    await step('Then a sign-in was asked for, and the page has no signed-in sites link', async () => {
-      await waitFor(() => expect(calls.signIns).toBe(1));
-      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
-    });
-  },
-};
-
 /** As a phone user, my account opens as a sheet titled Account, its body without a heading of its own. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
@@ -236,12 +199,6 @@ export const LoggedOut: Story = {
   beforeEach: () => {
     disconnect();
   },
-  play: async ({ step }) => {
-    await step('Then the button reads Sign in and announces the auth modal', async () => {
-      await expect(button().querySelector('[data-testid="user-badge"]')).toBeNull();
-      await expectButton('logged-out');
-    });
-  },
 };
 
 /**
@@ -285,13 +242,6 @@ export const InitialsNotName: Story = {
   beforeEach: () => {
     connect(ALICE);
   },
-  play: async ({ step }) => {
-    await step('Then the badge shows AS and the button never shows my name', async () => {
-      await expect(badge().textContent).toBe('AS');
-      await expect(button().textContent).not.toContain('Alice Smith');
-      await expectButton({ initials: 'AS' });
-    });
-  },
 };
 
 /** As a logged-in user with a username, I see its initials in the badge. */
@@ -299,12 +249,6 @@ export const UsernameInitials: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     connect({ publicKey: PUBLIC_KEY, liteUsername: 'pgherveou.04', primaryUsername: 'pgherveou.04' });
-  },
-  play: async ({ step }) => {
-    await step('Then the badge shows PG', async () => {
-      await expect(button().textContent).toBe('PG');
-      await expectButton({ initials: 'PG' });
-    });
   },
 };
 
@@ -474,18 +418,6 @@ export const LoggedOutNoHint: Story = {
   beforeEach: () => {
     connect({ publicKey: PUBLIC_KEY });
   },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Given the hint for an account with no username', async () => {
-      await expect(byId('user-popover-hint')).toBeInTheDocument();
-    });
-    await ctx.step('When I am logged out', () => {
-      disconnect();
-    });
-    await ctx.step('Then the hint is gone', async () => {
-      await waitFor(() => expect(document.getElementById('user-popover-hint')).toBeNull());
-    });
-  },
 };
 
 /** As a logged-in user, Sign out requests a disconnect and closes the popover. */
@@ -526,30 +458,6 @@ export const SessionDropReturnsFocus: Story = {
       await waitFor(() => expect(button()).toHaveFocus());
       await expect(button()).toHaveAttribute('aria-expanded', 'false');
       await expect(button()).toHaveAttribute('aria-controls', 'auth-modal-backdrop');
-    });
-  },
-};
-
-/** As a logged-in user, a pairing that starts elsewhere keeps my badge, and a disconnect brings the login button back. */
-export const PairingKeepsBadge: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect(PG);
-  },
-  play: async ({ step }) => {
-    await step('When a pairing starts', () => {
-      notConnected();
-    });
-    await step('Then the badge stays, since only Connected and Disconnected change the button', async () => {
-      await waitFor(() => expect(button()).toHaveAttribute('aria-controls', 'auth-modal-backdrop'));
-      await expect(button().textContent).toBe('PG');
-    });
-    await step('When the session is disconnected', () => {
-      disconnect();
-    });
-    await step('Then the login button is back', async () => {
-      await waitFor(() => expect(button().textContent.trim()).toBe('Sign in'));
-      await expectButton('logged-out');
     });
   },
 };

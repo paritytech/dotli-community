@@ -29,31 +29,6 @@ describe('createPortProvider', () => {
     expect(left.isCorrectEnvironment()).toBe(true);
   });
 
-  it('As a port owner, I am disposed by a listener and the message stops reaching the others', async () => {
-    // Given
-    const { port1, port2 } = new MessageChannel();
-    const provider = createPortProvider({ port: port1 });
-    const sender = createPortProvider({ port: port2 });
-    onTestFinished(() => {
-      sender.dispose();
-    });
-    const sibling = vi.fn();
-    const disposed = new Promise<void>(resolve => {
-      provider.subscribe(() => {
-        provider.dispose();
-        resolve();
-      });
-    });
-    provider.subscribe(sibling);
-
-    // When
-    sender.postMessage(new Uint8Array(1));
-    await disposed;
-
-    // Then
-    expect(sibling).not.toHaveBeenCalled();
-  });
-
   it('As a port owner, I post after I dispose and am refused', () => {
     // Given
     const { port1, port2 } = new MessageChannel();

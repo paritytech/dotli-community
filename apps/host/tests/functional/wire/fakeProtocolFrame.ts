@@ -6,7 +6,6 @@
 // script tag carries as JSON.
 
 import type { ManifestResult, RootManifest } from '@dotli/resolver';
-import { setErrorName } from '@dotli/shared';
 import {
   createFrameStatus,
   ProtocolFatalError,
@@ -26,13 +25,12 @@ type ChainMessage = MethodTypes<typeof chain.connect>['receive'];
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
 
 /**
- * What the fake answers `resolve.dotName` with. `none` is a name with no content, `error` ends the resolution with an
- * error of that name after `delayMs`, and `fatal` ends the frame's status as a crash.
+ * What the fake answers `resolve.dotName` with. `error` ends the resolution with an error after `delayMs`, and `fatal`
+ * ends the frame's status as a crash.
  */
 export type FakeResolve =
   | { kind: 'cid'; cid: string }
-  | { kind: 'none' }
-  | { kind: 'error'; message: string; name?: string; delayMs?: number }
+  | { kind: 'error'; message: string; delayMs?: number }
   | { kind: 'fatal'; message: string };
 
 export type FakeProtocolOptions = {
@@ -144,8 +142,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     }
     switch (resolution.kind) {
       case 'cid':
-      case 'none':
-        sink.send({ tag: 'resolved', value: resolution.kind === 'cid' ? resolution.cid : null });
+        sink.send({ tag: 'resolved', value: resolution.cid });
         sink.interrupt(ok());
         return stopNothing;
       case 'fatal':
@@ -153,7 +150,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(err(toRemoteEnd(setErrorName(new Error(resolution.message), resolution.name ?? 'Error'))));
+          sink.interrupt(err(toRemoteEnd(new Error(resolution.message))));
         }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);

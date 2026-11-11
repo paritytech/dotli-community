@@ -293,21 +293,6 @@ test.describe('Signing in on the landing page', () => {
     expect(windows).toEqual([]);
   });
 
-  test('As a visitor on the landing page with a flag over an empty main store, I open it and am offered a plain sign-in', async ({
-    page,
-    request,
-  }) => {
-    // Given the flag set over an empty main store
-    await setSessionFlag(request);
-
-    // When the landing page opens
-    await openLanding(page);
-
-    // Then Sign in shows and Continue does not
-    await expect(signInButton(page)).toBeVisible({ timeout: TIMEOUT_MS });
-    await expect(continueButton(page)).toHaveCount(0);
-  });
-
   test('As a user signed in with a local wallet beside a paired session, I sign out on the landing page, no window opens and every app is signed out', async ({
     page,
     context,
@@ -343,34 +328,6 @@ test.describe('Signing in on the landing page', () => {
 });
 
 test.describe('Signing in through the window', () => {
-  test('As a signed-out user on a product, I press Sign in and the sign-in window shows the code for that product', async ({
-    page,
-  }) => {
-    // Given a product open
-    await openProduct(page);
-
-    // When the user presses Sign in
-    const window = await openSessionWindow(page, () => signInButton(page).click());
-
-    // Then the window pairs under the product's host
-    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'pairing', { timeout: TIMEOUT_MS });
-    await expect(window.getByText(`browse.localhost:${PORT}`)).toBeVisible();
-  });
-
-  test('As a signed-out user on a product, I sign in through the sign-in window and see my account', async ({
-    page,
-  }) => {
-    // Given a product open with the debug panel
-    await openProduct(page, { debug: true });
-
-    // When the user signs in with a phrase in the window
-    const window = await openPhraseWindow(page);
-    await Promise.all([page.waitForEvent('load'), submitPhraseInWindow(window)]);
-
-    // Then the product shows the local wallet account
-    await expect(page.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local', { timeout: TIMEOUT_MS });
-  });
-
   test('As a user signed in on one page, I continue with my account from another through the sign-in window', async ({
     page,
     context,
@@ -528,23 +485,6 @@ test.describe('Signing in through the window fails', () => {
     }
   });
 
-  test('As a user on a product, I close the wait for the sign-in window and the window closes too', async ({
-    page,
-  }) => {
-    // Given a product waiting on an open sign-in window
-    await openProduct(page);
-    const backdrop = page.getByTestId('auth-modal-backdrop');
-    const window = await openSessionWindow(page, () => signInButton(page).click());
-    await expect(backdrop).toHaveAttribute('data-open');
-    await expect(page.getByTestId('auth-modal-window')).toHaveAttribute('data-view', 'window');
-
-    // When the user closes the wait
-    await Promise.all([untilClosed(window), page.getByTestId('auth-modal-close').click()]);
-
-    // Then the modal closes
-    await expect(backdrop).not.toHaveAttribute('data-open');
-  });
-
   test('As a user, I close the sign-in window and the page stops waiting and stays signed out', async ({ page }) => {
     // Given a product with its sign-in window pairing
     await openProduct(page);
@@ -629,21 +569,6 @@ test.describe('Signing a site in', () => {
   });
 });
 
-test.describe('Refusing a site request', () => {
-  test('As a site, I leave out the account on a transaction and the window refuses my request', async ({ page }) => {
-    // Given a site's page whose transaction request names no account
-    await page.goto(await serveSiteOpener(page, { route: 'sign', account: 'none' }));
-
-    // When the site opens the sign-in window
-    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
-
-    // Then the window shows refused and the site was refused as a bad request
-    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'refused', { timeout: TIMEOUT_MS });
-    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
-    await expect(siteReply(page)).toHaveAttribute('data-reason', 'bad_request');
-  });
-});
-
 test.describe('Signing a site in by redirect', () => {
   test('As a site that cannot keep a popup, I sign in by redirect, the user cancels on the consent screen and I get back refused with declined', async ({
     page,
@@ -663,42 +588,9 @@ test.describe('Signing a site in by redirect', () => {
     await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
     expect(page.url().split('#')[0]).toBe(SITE_RETURN_URL);
   });
-
-  test('As a site whose well-known file does not list my return address, I sign in by redirect and the window says I did not allow it', async ({
-    page,
-  }) => {
-    // Given a site whose well-known file lists another address
-    await page.goto(await serveSiteRedirect(page, { listed: false }));
-
-    // When it goes to the sign-in window by redirect
-    await page.getByTestId('opener-sign-in').click();
-
-    // Then the window stays, saying the site did not allow this return address
-    await expect(sessionWindow(page)).toHaveAttribute('data-view', 'site-not-allowed', { timeout: TIMEOUT_MS });
-    expect(new URL(page.url()).pathname).toBe('/s/auth');
-  });
 });
 
 test.describe("Signing a site's transaction", () => {
-  test('As a site, I open the sign window without a grant, the user cancels on the consent screen and I get refused with declined', async ({
-    page,
-  }) => {
-    // Given a site's page on its own https origin, whose sign window asks the user's consent under its full origin
-    await page.goto(await serveSiteOpener(page, { route: 'sign' }));
-    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
-    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
-    await expect(window.getByTestId('session-window-title')).toHaveText('Sign in with Polkadot');
-    await expect(window.getByTestId('session-window-site')).toHaveText(SITE_ORIGIN);
-
-    // When the user cancels on the consent screen
-    await Promise.all([untilClosed(window), window.getByTestId('session-window-decline').click()]);
-
-    // Then the window closed and the site was refused as declined
-    expect(window.isClosed()).toBe(true);
-    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
-    await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
-  });
-
   test("As dot.li's own page, I open the sign window and am refused as a bad request", async ({ page }) => {
     // Given a page on a product host of the root domain that asks for a transaction as a site would
     await page.goto(await serveSiteOpener(page, { origin: OPENER_ORIGIN, route: 'sign' }));
@@ -803,24 +695,5 @@ test.describe('Signing out', () => {
     // Then the page shows signed out
     await expect(signInButton(page)).toBeVisible({ timeout: TIMEOUT_MS });
     await expect(page.getByTestId('user-badge')).toHaveCount(0);
-  });
-
-  test('As a developer on a local wallet whose flag is gone, I come back to a page left open and load another and both keep me signed in on it', async ({
-    page,
-    context,
-    request,
-  }) => {
-    // Given a local wallet sign-in on a product whose flag another page deleted
-    await signInOnProduct(page);
-    await clearSessionFlag(request);
-
-    // When the open tab checks again, and another page loads
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    const product = await context.newPage();
-    await product.goto(PRODUCT_URL);
-
-    // Then only a sign-out forgets the wallet
-    await expect(product.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local', { timeout: TIMEOUT_MS });
-    await expect(page.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local');
   });
 });

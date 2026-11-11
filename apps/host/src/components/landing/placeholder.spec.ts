@@ -23,17 +23,6 @@ const showSecondName = (): void => {
 };
 
 describe('animatePlaceholder', () => {
-  it('As a visitor, the placeholder starts on the first example name', () => {
-    // Given
-    const input = { placeholder: '', value: '' };
-
-    // When
-    animatePlaceholder(input, false);
-
-    // Then
-    expect(input.placeholder).toBe('browse');
-  });
-
   it('As a visitor, the placeholder holds the first name, then erases it one character at a time', () => {
     // Given
     const input = { placeholder: '', value: '' };

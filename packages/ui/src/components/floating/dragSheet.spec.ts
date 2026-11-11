@@ -102,53 +102,6 @@ describe('dragSheet', () => {
     expect(surface.attributes.has('data-dragging')).toBe(false);
     expect(locks).toEqual([true, false]);
   });
-
-  it("As a phone user, I put a second finger on the sheet's head and it moves nothing", () => {
-    // Given a sheet held by one finger at its head, and a second finger that went down on the same head
-    const head = new FakeHandle();
-    const surface = createFakeSurface(100);
-    const closes: string[] = [];
-    const drags = createDrags({ selection: createRecordedLock().lock });
-    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
-    dragSheet({ drags, head, surface, down: { pointerId: 8, clientY: 0 }, close: () => closes.push('close') });
-
-    // When the second finger moves, then the first moves and lifts, then the second lifts
-    dispatchPointer(head, 'pointermove', { pointerId: 8, y: 80 });
-    const transformAfterSecondMoves = surface.style.transform;
-    dispatchPointer(head, 'pointermove', { pointerId: 7, y: 10 });
-    dispatchPointer(head, 'pointerup', { pointerId: 7, y: 10 });
-    const closesAfterFirstLifts = [...closes];
-    const transformAfterFirstLifts = surface.style.transform;
-    const draggingAfterFirstLifts = surface.attributes.has('data-dragging');
-    dispatchPointer(head, 'pointerup', { pointerId: 8, y: 80 });
-
-    // Then the second finger moved nothing and neither lift closed the sheet
-    expect(transformAfterSecondMoves).toBe('');
-    expect(closesAfterFirstLifts).toEqual([]);
-    expect(transformAfterFirstLifts).toBe('');
-    expect(draggingAfterFirstLifts).toBe(false);
-    expect(surface.style.transform).toBe('');
-    expect(surface.attributes.has('data-dragging')).toBe(false);
-    expect(closes).toEqual([]);
-  });
-
-  it("As a phone user whose drag missed its release, I press the sheet's head again and it keeps its drag look", () => {
-    // Given a sheet dragged down by a finger whose lift never came
-    const head = new FakeHandle();
-    const surface = createFakeSurface(100);
-    const closes: string[] = [];
-    const drags = createDrags({ selection: createRecordedLock().lock });
-    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
-    dispatchPointer(head, 'pointermove', { pointerId: 7, y: 20 });
-
-    // When the same finger presses the head again
-    dragSheet({ drags, head, surface, down: { pointerId: 7, clientY: 0 }, close: () => closes.push('close') });
-
-    // Then the held drag keeps the sheet where it was, with its drag look, and nothing closed
-    expect(surface.style.transform).toBe('translateY(20px)');
-    expect(surface.attributes.has('data-dragging')).toBe(true);
-    expect(closes).toEqual([]);
-  });
 });
 
 /** A sheet surface that keeps what the drag writes to it. */

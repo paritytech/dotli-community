@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainPoolControl } from '@dotli/chains';
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { createFakePage, createManualTimers, recordLog, type FakePage, type ManualTimers } from '@dotli/shared/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createFakePage, createManualTimers, type FakePage, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkPause, NETWORK_PAUSE_GRACE_MS, type NetworkPause } from './createNetworkPause.js';
 import { createManualPoll } from '../testing/createManualPoll.js';
 
@@ -387,20 +387,6 @@ describe('The network pause', () => {
 
     // Then
     expect([calls, late]).toEqual([['pause', 'resume'], []]);
-  });
-
-  it('As a dotli maintainer, I see a breadcrumb when the network pauses and resumes', async () => {
-    // Given
-    const lines = recordLog({ onFinished: onTestFinished, level: 'info' });
-    pause.start({ visibility: page.document });
-    page.setVisibility('hidden');
-
-    // When
-    await timers.advance(NETWORK_PAUSE_GRACE_MS);
-    page.setVisibility('visible');
-
-    // Then
-    expect(lines).toMatchObject([{ message: 'Network paused' }, { message: 'Network resumed' }]);
   });
 });
 

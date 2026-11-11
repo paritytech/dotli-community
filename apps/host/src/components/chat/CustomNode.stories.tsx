@@ -173,19 +173,6 @@ export const ButtonReportsAction: Story = {
       },
     },
   },
-  play: async ({ args, canvas, userEvent, step }) => {
-    const vote = canvas.getByRole('button', { name: 'Vote' });
-    await step('Given a primary button that can be pressed', async () => {
-      await expect(vote).toHaveAttribute('data-variant', 'primary');
-      await expect(vote).toBeEnabled();
-    });
-    await step('When I tap it', async () => {
-      await userEvent.click(vote);
-    });
-    await step('Then its click action is reported', async () => {
-      await expect(args.onAction).toHaveBeenCalledWith('vote:1');
-    });
-  },
 };
 
 /** As a user, I tap a disabled or loading product button and no action fires. */
@@ -231,20 +218,6 @@ export const FieldReportsTypedValue: Story = {
         },
       },
     },
-  },
-  play: async ({ args, canvas, userEvent, step }) => {
-    const input = canvas.getByRole('textbox', { name: 'Name' });
-    await step('Given the field shows the product text under its label', async () => {
-      await expect(input).toHaveValue('start');
-      await expect(input).toHaveAttribute('placeholder', 'Your name');
-    });
-    await step('When I replace it with my name', async () => {
-      await userEvent.clear(input);
-      await userEvent.type(input, 'Alice');
-    });
-    await step('Then the typed value is reported', async () => {
-      await expect(args.onAction).toHaveBeenLastCalledWith('name-changed', encode('Alice'));
-    });
   },
 };
 
@@ -303,16 +276,6 @@ export const ProductTextReplacesValue: Story = {
 export const DroppedModifierIsRemoved: Story = {
   tags: ['!autodocs'],
   args: { node: form('Sign up', field('')) },
-  play: async ({ canvas, step }) => {
-    const shown = canvas.getByTestId('chat-custom-column');
-    await step('When the next tree drops the padding and the children', () => {
-      live.send({ tag: 'Column', value: { modifiers: [], props: {}, children: [] } });
-    });
-    await step('Then the same element stays, empty', async () => {
-      await waitFor(() => expect(shown.children).toHaveLength(0));
-      await expect(canvas.getByTestId('chat-custom-column')).toBe(shown);
-    });
-  },
 };
 
 /** As a user, I see a node replaced when the product changes its kind. */
@@ -399,13 +362,6 @@ export const UpdatedButtonKeepsElement: Story = {
 export const NilRendersNothing: Story = {
   tags: ['!autodocs'],
   args: { node: { tag: 'Nil' } },
-  play: async ({ canvas, step }) => {
-    await step('Then nothing renders', async () => {
-      const root = canvas.getByTestId('story-root');
-      await expect(root.children).toHaveLength(0);
-      await expect(root.textContent).toBe('');
-    });
-  },
 };
 
 /** As a screen-reader user, I hear each text field named by its own label. */

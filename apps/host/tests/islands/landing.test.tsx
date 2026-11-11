@@ -7,7 +7,6 @@
 
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
 import { authState } from '../../src/runtime/state/authState.js';
@@ -92,21 +91,5 @@ describe('landing page', () => {
     expect(document.getElementById('more-button')).toBeNull();
     expect(document.querySelectorAll('[id="landing-auth-button"]')).toHaveLength(1);
     expect(captures.exception).not.toHaveBeenCalled();
-  });
-
-  it('As a visitor, leaving the landing page takes its corner button and its menu with it', async () => {
-    // Given
-    mount();
-    await appears('#landing-auth-button');
-
-    // When
-    page?.dispose();
-    page = null;
-    flush();
-
-    // Then
-    for (const id of ['landing-auth-button', 'landing-user-popover']) {
-      expect(document.getElementById(id)).toBeNull();
-    }
   });
 });

@@ -194,17 +194,6 @@ describe('describeNetworkStatus with nothing in use', () => {
       detail: 'Chains appear here once the app connects to them.',
     });
   });
-
-  it('As a user with no chain in use, I go offline and the menu says I am offline, not that none is in use', () => {
-    // Given
-    const verdict: LiveVerdict = { tone: 'quiet' };
-
-    // When
-    const line = describeNetworkStatus(verdict, true, 0, 'smoldot-direct');
-
-    // Then
-    expect(line).toEqual({ tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' });
-  });
 });
 
 /** A chain in use, between its blocks unless told otherwise. */

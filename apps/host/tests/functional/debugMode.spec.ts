@@ -48,21 +48,6 @@ test('As a developer, I open a tab with ?debug=true and keep the panel open acro
   await expect(page.getByTestId('td-header')).toBeVisible();
 });
 
-test('As a developer, I leave debug mode with ?debug=off and get the Settings entry back', async ({ page }) => {
-  // Given
-  await page.goto(`${HOST_URL}?debug=true`);
-  await expect(page.getByTestId('td-header')).toBeVisible();
-
-  // When
-  await page.goto(`${HOST_URL}?debug=off`);
-  await openAdvancedSettings(page);
-
-  // Then
-  await expect(page.getByTestId('mode-debug-row')).toBeVisible();
-  await expect(page.getByTestId('td-header')).toHaveCount(0);
-  expect(debugParam(page)).toBeNull();
-});
-
 test('As a user, I open debug mode from Settings and the tab reloads with the panel open', async ({ page }) => {
   // Given
   await page.goto(HOST_URL);

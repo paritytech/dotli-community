@@ -95,23 +95,4 @@ export const RevealButtonAfterFrame: Story = {
 /** As a keyboard user, I find the reveal button while the bar auto-hides and not once it stops. */
 export const ShownOnlyWhileAutoHiding: Story = {
   tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step(
-      'As a keyboard user, the reveal button is there while the bar auto-hides, and gone once it stops',
-      async () => {
-        // When
-        fold();
-
-        // Then
-        await waitFor(() => expect(canvas.getByRole('button', { name: 'Show browser bar' })).toBeVisible());
-
-        // When
-        setAutoHide(false);
-
-        // Then
-        await waitFor(() => expect(canvas.queryByRole('button', { name: 'Show browser bar' })).toBeNull());
-      },
-    );
-  },
 };

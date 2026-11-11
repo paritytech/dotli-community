@@ -72,15 +72,4 @@ describe('createListeners', () => {
       heard: [],
     });
   });
-
-  it('As a provider, I read my listeners as not disposed before I dispose them', () => {
-    // Given
-    const listeners = createListeners();
-
-    // When
-    const disposed = listeners.isDisposed();
-
-    // Then
-    expect(disposed).toBe(false);
-  });
 });

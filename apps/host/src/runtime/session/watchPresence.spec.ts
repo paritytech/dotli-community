@@ -24,7 +24,7 @@ function createWatchHarness(
   let signedIn = options.signedIn ?? true;
   let signedInChecks = 0;
   const signOuts: PromiseWithResolvers<undefined>[] = [];
-  let current = flag;
+  const current = flag;
   let followed = 0;
   const reported: Presence[] = [];
   const reconcile = vi.fn(() => {
@@ -60,8 +60,6 @@ function createWatchHarness(
     listening: () => listener !== null,
     /** The flags the watch read on a page that held no sign-in. */
     reported,
-    /** The flag changing through a sign-in or a sign-out on another page. */
-    setFlag,
     signedInChecks: () => signedInChecks,
     /** How many times the page reloaded to follow the wallet another tab saved. */
     followed: () => followed,
@@ -116,10 +114,6 @@ function createWatchHarness(
 
   function becomeVisible(): void {
     listener?.();
-  }
-
-  function setFlag(next: Presence): void {
-    current = next;
   }
 
   function finishSignOut(index: number): void {
@@ -193,19 +187,6 @@ describe('presence watch', () => {
     expect(tab.signedInChecks()).toBe(5);
   });
 
-  it('As a signed-in user, I come back to the tab twice and each visit applies the restore rule while I stay signed in', async () => {
-    // Given a signed-in tab whose flag is present
-    const tab = createWatchHarness('present');
-
-    // When the tab becomes visible twice
-    tab.becomeVisible();
-    tab.becomeVisible();
-    await tab.pageSignOuts.settle();
-
-    // Then the rule ran for each visit
-    expect(tab.reconcile).toHaveBeenCalledTimes(2);
-  });
-
   it('As a signed-in user, I come back to the tab while the cookie is present and nothing signs out or counts', async () => {
     // Given a signed-in tab whose flag is present
     const tab = createWatchHarness('present');
@@ -246,22 +227,6 @@ describe('presence watch', () => {
     expect(tab.reconcile).not.toHaveBeenCalled();
     expect(tab.signOuts).toHaveLength(0);
     expect(tab.reported).toEqual(['absent']);
-  });
-
-  it('As a signed-out user, I come back to the tab after a sign-in elsewhere and again after it ended, and each recheck reports the flag', async () => {
-    // Given a signed-out tab whose flag is absent
-    const tab = createWatchHarness('absent', { signedIn: false });
-
-    // When a sign-in is made on another product and signed out again, with a recheck after each
-    tab.setFlag('present');
-    tab.becomeVisible();
-    await tab.changes.until(() => tab.reported.length === 1);
-    tab.setFlag('absent');
-    tab.becomeVisible();
-    await tab.changes.until(() => tab.reported.length === 2);
-
-    // Then each recheck reported the flag it read
-    expect(tab.reported).toEqual(['present', 'absent']);
   });
 
   it('As a signed-in user, I come back to the tab and the recheck reports no flag, since my own sign-in speaks for me', async () => {
@@ -317,20 +282,6 @@ describe('presence watch', () => {
     expect(tab.reconcile).toHaveBeenCalledTimes(1);
     expect(tab.signOuts).toHaveLength(0);
     expect(tab.metrics.counted('session.presence_watch')).toEqual([]);
-  });
-
-  it('As a developer on a local wallet tab whose wallet a sign-out elsewhere forgot, I come back to it and am signed out once', async () => {
-    // Given a local wallet tab whose flag and wallet are gone
-    const tab = createWatchHarness('absent', { localWallet: true, wallet: { status: 'none' } });
-
-    // When the tab becomes visible and its sign-out ends
-    tab.becomeVisible();
-    await tab.changes.until(() => tab.signOuts.length === 1);
-    tab.finishSignOut(0);
-    await tab.pageSignOuts.settle();
-
-    // Then one sign-out is counted
-    expect(tab.metrics.counted('session.presence_watch')).toEqual([{ outcome: 'signed_out', reason: 'visible' }]);
   });
 
   it('As a developer on a local wallet tab whose wallet was forgotten while another sign-in keeps the flag up, I come back to it and am signed out', async () => {

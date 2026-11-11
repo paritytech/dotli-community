@@ -5,18 +5,8 @@ import { recordLog } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { countMetric, type CountSink } from '@dotli/metrics';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
-import {
-  createTransport,
-  createWindowProvider,
-  type MessageTarget,
-  type WindowLike,
-  type WindowMessage,
-} from '@dotli/transport';
-import { isSharedAuthOriginAllowed } from './isSharedAuthOriginAllowed.js';
-import { protocolSchema } from './schema.js';
 import { createWireReport } from './createWireReport.js';
 
-const HOST_ORIGIN = 'http://host-playground.localhost:5173';
 const PRODUCT_ORIGIN = 'http://bafy.app.localhost:5173';
 const STRANGER = 'https://evil.example';
 
@@ -140,63 +130,6 @@ describe('the wire report', () => {
     expect(sinks.warned).toEqual([
       [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${STRANGER}`],
       [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${PRODUCT_ORIGIN}`],
-    ]);
-  });
-
-  it("As a dotli operator, I see what the frame's provider and transport drop counted once each, under the frame's side", () => {
-    // Given the frame's provider and transport on one report, as the frame wires them
-    const sinks = createRecordingSinks();
-    const report = createWireReport({ side: 'frame', count: sinks.count, warn: sinks.warn });
-    const listeners = new Set<(event: WindowMessage) => void>();
-    const page: MessageTarget = {
-      addEventListener: (_type, listener) => listeners.add(listener),
-      removeEventListener: (_type, listener) => listeners.delete(listener),
-    };
-    const parent: WindowLike = { postMessage: () => undefined };
-    createTransport({
-      schema: protocolSchema,
-      provider: createWindowProvider({
-        listen: page,
-        peer: () => parent,
-        origin: isSharedAuthOriginAllowed,
-        onNotBytes: report.onNotBytes,
-        onRefusedOrigin: report.onRefusedOrigin,
-      }),
-      handshake: 'respond',
-      hello: { resolutionId: null },
-      onIssue: report.onIssue,
-    });
-    function deliver(message: WindowMessage): void {
-      for (const listener of [...listeners]) {
-        listener(message);
-      }
-    }
-
-    // When the host sends an object, a stranger sends bytes twice, and the host sends bytes that are no message
-    deliver({ data: { legacy: true }, origin: HOST_ORIGIN, source: parent });
-    deliver({ data: new ArrayBuffer(8), origin: STRANGER, source: {} });
-    deliver({ data: new ArrayBuffer(8), origin: STRANGER, source: {} });
-    deliver({ data: new ArrayBuffer(2), origin: HOST_ORIGIN, source: parent });
-
-    // Then each is counted once, under its reason
-    expect(sinks.counted.map(([, attributes]) => attributes)).toEqual([
-      { outcome: 'refused', reason: 'not_bytes', side: 'frame' },
-      { outcome: 'refused', reason: 'origin', side: 'frame' },
-      { outcome: 'refused', reason: 'malformed', side: 'frame' },
-    ]);
-  });
-
-  it("As a dotli operator, I see what the worker's transport refuses counted under the worker's side", () => {
-    // Given
-    const sinks = createRecordingSinks();
-    const report = createWireReport({ side: 'worker', count: sinks.count, warn: sinks.warn });
-
-    // When
-    report.onIssue({ kind: 'refused', reason: 'invalid', cause: new Error('A stop came before the handshake') });
-
-    // Then
-    expect(sinks.counted).toEqual([
-      ['protocol.wire_refused', { outcome: 'refused', reason: 'invalid', side: 'worker' }],
     ]);
   });
 });

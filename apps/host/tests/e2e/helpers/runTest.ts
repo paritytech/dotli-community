@@ -7,10 +7,6 @@ type PageLike = Page | Frame;
 
 // The playground prepends new log entries, so the newest is `.first()`.
 
-export async function waitForPlaygroundReady(page: PageLike, timeout = 60_000): Promise<void> {
-  await expect(page.locator('h1:has-text("Host Playground")').first()).toBeVisible({ timeout });
-}
-
 /** The entry's text on one line, which carries the product's own reason. Empty when the frame went away. */
 export async function entryText(entry: Locator): Promise<string> {
   const text = await entry.innerText({ timeout: 2_000 }).catch(() => '');

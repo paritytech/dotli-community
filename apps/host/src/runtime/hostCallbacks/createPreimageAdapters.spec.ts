@@ -95,21 +95,6 @@ describe('preimage host callbacks', () => {
     expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'preimage_verify_load' }]);
   });
 
-  it('As a product developer, I look up an uncached preimage and get a miss at once', async () => {
-    // Given
-    const { lookupPreimage } = createPreimageAdapters('myapp', { fetchBlock: createMissingFetch() });
-    const iterator = lookupPreimage(new Uint8Array(32))[Symbol.asyncIterator]();
-    onTestFinished(async () => {
-      await iterator.return?.();
-    });
-
-    // When
-    const first = await iterator.next();
-
-    // Then
-    expect(yielded(first)._unsafeUnwrap()).toBeUndefined();
-  });
-
   it('As a product developer, I look up a preimage while its backend fails once and the lookup retries it', async () => {
     // Given
     const data = new TextEncoder().encode('retried preimage');

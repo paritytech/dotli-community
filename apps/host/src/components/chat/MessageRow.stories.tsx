@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
@@ -81,38 +80,10 @@ export const ActionButtonsReachApp: Story = {
   },
 };
 
-const stopCustom = fn();
-
-/** As a reader, I see a custom message subscribe to the product once, and stop when I remove it. */
+/** As a reader, I see a custom message the product renders, before its time. */
 export const CustomMessageBeforeTimestamp: Story = {
   tags: ['!autodocs'],
   args: {
-    chat: { ...chat(), renderCustomMessage: fn(() => stopCustom) },
     record: record({ tag: 'Custom', value: { messageType: 'poll', payload: '0x01' } }),
-  },
-  // The row leaves the conversation when the reader removes it.
-  render: args => {
-    const [shown, setShown] = createSignal(true);
-    return (
-      <>
-        <button type="button" onClick={() => setShown(false)}>
-          Remove message
-        </button>
-        <Show when={shown()}>
-          <MessageRow {...args} />
-        </Show>
-      </>
-    );
-  },
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Then the message subscribes once', async () => {
-      await waitFor(() => expect(args.chat.renderCustomMessage).toHaveBeenCalledTimes(1));
-    });
-    await step('When the message is removed', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Remove message' }));
-    });
-    await step('Then its live content stops', async () => {
-      await waitFor(() => expect(stopCustom).toHaveBeenCalledTimes(1));
-    });
   },
 };

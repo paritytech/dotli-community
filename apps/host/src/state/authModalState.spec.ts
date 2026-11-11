@@ -31,21 +31,6 @@ describe('auth modal state', () => {
     });
   });
 
-  it('As a user signing in, I see the modal change its view and redraw once with the rest kept', () => {
-    // Given
-    const notified = recordNotified(authModalState.store);
-
-    // When
-    authModalState.update({
-      view: { kind: 'pairing', payload: 'polkadotapp://pair?x' },
-    });
-
-    // Then
-    expect(notified).toEqual([
-      { open: false, productLabel: null, reason: null, view: { kind: 'pairing', payload: 'polkadotapp://pair?x' } },
-    ]);
-  });
-
   it('As a user who finished signing in, I see the modal reset and close with its product and reason cleared', () => {
     // Given
     authModalState.update({ open: true, productLabel: 'foo.dot', reason: 'why' });

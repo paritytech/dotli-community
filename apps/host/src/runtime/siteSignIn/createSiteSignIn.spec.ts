@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
-import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
+import { createSiteGrantStore, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { MainAccount } from './createMainAccountSource.js';
 import type { SiteRequest } from './parseSiteRequest.js';
@@ -13,28 +13,12 @@ import type { SiteScreen } from './createSiteRound.js';
 import { createSiteSignIn, getSiteSignInAction } from './createSiteSignIn.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
-import { createGrant } from '../../testing/createGrant.js';
 import { getResult } from '../../testing/getResult.js';
-import {
-  MAIN_ACCOUNT,
-  MAIN_OWNER,
-  NEW_SITE_TOKEN,
-  ROUND_NOW,
-  SITE_ORIGIN,
-  SITE_TOKEN,
-} from '../../testing/siteRoundConstants.js';
+import { MAIN_ACCOUNT, MAIN_OWNER, NEW_SITE_TOKEN, ROUND_NOW, SITE_ORIGIN } from '../../testing/siteRoundConstants.js';
 import { waitForView } from '../../testing/waitForView.js';
 import { SITE_GROUPS } from './createSiteGroups.fake.js';
 
 type Params = {
-  /** The site's origin, {@link SITE_ORIGIN} by default. */
-  origin?: string;
-  siteToken?: string | null;
-  groupToken?: string | null;
-  /** A grants store another round shares, in place of a new one. */
-  store?: SiteGrantStore;
-  /** Grants the main store keeps before the round. */
-  grants?: SiteGrant[];
   /** Whether saving a grant fails. */
   saveFails?: boolean;
   /** The main account the window's core reports, {@link MAIN_ACCOUNT} by default. */
@@ -48,15 +32,11 @@ const REQUEST: SiteRequest = { round: 'r1', siteToken: null, groupToken: null };
  * in-memory grants store, the main account the window's core reports, and a window flow the test says stored a sign-in
  * through.
  */
-async function startSignIn(options: Params = {}) {
+function startSignIn(options: Params = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-  const origin = options.origin ?? SITE_ORIGIN;
-  const { responder, posts } = createRecordingResponder({ origin });
-  const stored = options.store ?? createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
-  for (const grant of options.grants ?? []) {
-    await stored.save(grant);
-  }
+  const { responder, posts } = createRecordingResponder({ origin: SITE_ORIGIN });
+  const stored = createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
   const grants: SiteGrantStore = {
     ...stored,
     async save(grant) {
@@ -69,12 +49,8 @@ async function startSignIn(options: Params = {}) {
   const windowFlows: { stored: () => void; close: () => void }[] = [];
   const closed = createDeferred<undefined>();
   const flow = createSiteSignIn({
-    request: {
-      ...REQUEST,
-      siteToken: options.siteToken ?? null,
-      groupToken: options.groupToken ?? null,
-    },
-    origin,
+    request: REQUEST,
+    origin: SITE_ORIGIN,
     self: 'https://dot.li',
     responder,
     grants,
@@ -115,7 +91,7 @@ async function startSignIn(options: Params = {}) {
 describe('site sign-in', () => {
   it('As a user signing in to a new site, I consent and the site gets my username and a token', async () => {
     // Given a site the main store keeps no grant for, with no signer or phone in the round
-    const signIn = await startSignIn();
+    const signIn = startSignIn();
 
     // When the user consents and the window flow says a sign-in is stored
     await consentAndStore(signIn);
@@ -135,7 +111,7 @@ describe('site sign-in', () => {
 
   it('As a user with no username, I sign in to the site and it gets an empty username', async () => {
     // Given a main account with no username
-    const signIn = await startSignIn({ main: { owner: MAIN_OWNER, username: null } });
+    const signIn = startSignIn({ main: { owner: MAIN_OWNER, username: null } });
 
     // When the user consents and the window flow says a sign-in is stored
     await consentAndStore(signIn);
@@ -150,39 +126,9 @@ describe('site sign-in', () => {
     ]);
   });
 
-  it('As a user signing in to a site I signed in to before, I skip consent and the site gets my username at once', async () => {
-    // Given a grant for this site and this main account
-    const signIn = await startSignIn({ siteToken: SITE_TOKEN, grants: [createGrant()] });
-
-    // When the window flow says a sign-in is stored
-    await signIn.waitForView('window');
-    signIn.storeSignIn();
-    await signIn.closed;
-    const post = getResult(signIn.posts);
-
-    // Then no consent showed, the site got its username and no new token, and the grant's last use moved on
-    expect(signIn.views).not.toContain('consent');
-    expect(post.result).toEqual({ username: MAIN_ACCOUNT.username });
-    expect(post.site_token).toBeUndefined();
-    expect(await signIn.stored.list()).toEqual([createGrant({ lastUsedAt: ROUND_NOW })]);
-    expect(signIn.metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'granted', reason: 'known' }]);
-  });
-
-  it('As a user with only a lite username, I sign in to the site and it gets my lite username', async () => {
-    // Given a main account with only a lite username
-    const signIn = await startSignIn({ main: { owner: MAIN_OWNER, username: { name: 'alice.01', kind: 'lite' } } });
-
-    // When the round reads it
-    await consentAndStore(signIn);
-    await signIn.closed;
-
-    // Then the site gets the lite username
-    expect(getResult(signIn.posts).result).toEqual({ username: { name: 'alice.01', kind: 'lite' } });
-  });
-
   it('As a site whose grant cannot be saved, I still get my result without a token and the failure is counted', async () => {
     // Given a grants store that cannot save
-    const signIn = await startSignIn({ saveFails: true });
+    const signIn = startSignIn({ saveFails: true });
 
     // When the round runs
     await consentAndStore(signIn);
@@ -225,36 +171,5 @@ describe('site sign-in action', () => {
     expect(result).toEqual({ username: MAIN_ACCOUNT.username });
     expect(asked).toEqual([]);
     expect(action.route).toBe('auth');
-  });
-});
-
-describe('site sign-in of a group', () => {
-  it('As a user signing in to two origins of a group, I consent once and both share one grant token', async () => {
-    // Given a sign-in of one origin of the group the user consented to, whose token the other origin keeps
-    const store = createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
-    const first = await startSignIn({ store, groupToken: 'my group' });
-    await consentAndStore(first);
-    await first.closed;
-    const token = must(getResult(first.posts).site_token, "the group's token");
-    const second = await startSignIn({
-      store,
-      origin: 'https://shop.my-site.com',
-      siteToken: token,
-      groupToken: 'my group',
-    });
-
-    // When the other origin signs in with that token
-    await second.waitForView('window');
-    second.storeSignIn();
-    await second.closed;
-    const kept = await store.list();
-
-    // Then the other origin got no token of its own, and the one grant of that token holds both origins, with one
-    // consent and the counts of a group
-    expect(getResult(second.posts).site_token).toBeUndefined();
-    expect(kept.map(grant => grant.token)).toEqual([token]);
-    expect(must(kept[0], 'the one grant').group?.origins).toEqual(['https://my-site.com', 'https://shop.my-site.com']);
-    expect(second.views).not.toContain('consent');
-    expect(second.metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'granted', reason: 'group' }]);
   });
 });

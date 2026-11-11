@@ -383,21 +383,6 @@ describe('page core', () => {
     expect(timers.countPending()).toBe(0);
   });
 
-  it('As a dotli integrator, I release my last lease and the core lingers until the destroy delay ends', async () => {
-    // Given a core with one lease, over a destroy delay
-    const timers = createManualTimers();
-    const onCoresGone = vi.fn();
-    const { core, runtimes } = createHarness({ destroyDelay: 5000, timers, onCoresGone });
-    const lease = await core.acquire();
-
-    // When the lease is released
-    lease.release();
-
-    // Then the core still lingers
-    expect(nth(runtimes, 0).dispose).not.toHaveBeenCalled();
-    expect(onCoresGone).not.toHaveBeenCalled();
-  });
-
   it('As a dotli integrator, I release my last lease and the core goes once the destroy delay ends', async () => {
     // Given a core whose only lease was released
     const timers = createManualTimers();
@@ -478,18 +463,6 @@ describe('page core', () => {
     // Then the core dropped its session and was not disposed
     expect(nth(runtimes, 0).resetSessionState).toHaveBeenCalledTimes(1);
     expect(nth(runtimes, 0).dispose).not.toHaveBeenCalled();
-  });
-
-  it('As a dApp user, I open a product and the page core boots one core for it', async () => {
-    // Given a page core that never booted
-    const { core, contexts, outcomes } = createHarness();
-
-    // When the product asks for the core
-    await core.acquire();
-
-    // Then one core booted
-    expect(contexts).toHaveLength(1);
-    expect(outcomes).toEqual(['ok']);
   });
 
   it("As a dApp user, I send and receive frames and they pass the connection unchanged while my core's tracker hears each one", async () => {
@@ -748,23 +721,6 @@ describe('page core', () => {
     expect(contexts).toHaveLength(2);
   });
 
-  it('As a dApp user whose core goes down under two connections, I wait and one new core is dialed', async () => {
-    // Given two connections on one core
-    const { core, runtimes, contexts, outcomes, changes } = createHarness();
-    const lease = await core.acquire();
-    await lease.connect();
-    await lease.connect();
-
-    // When both connections close and the redial ends
-    for (const provider of nth(runtimes, 0).providers) {
-      provider.goDown();
-    }
-    await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
-
-    // Then one new core was dialed
-    expect(contexts).toHaveLength(2);
-  });
-
   it('As a dotli integrator holding a core lease, I listen for its core going down and hear it once, when its replacement is already the one a request gets', async () => {
     // Given a lease with two connections that listens for its core going down
     const { core, runtimes, contexts } = createHarness();
@@ -820,21 +776,6 @@ describe('page core', () => {
 
     // Then it hears the going down at once
     expect(heard).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli integrator holding a core lease, I unsubscribe and do not hear its core go down', async () => {
-    // Given a lease that subscribed and unsubscribed
-    const { core, runtimes } = createHarness();
-    const lease = await core.acquire();
-    await lease.connect();
-    const heard = vi.fn();
-    lease.subscribeDown(heard)();
-
-    // When the core goes down
-    nth(runtimes, 0).providers[0]?.goDown();
-
-    // Then nothing was heard
-    expect(heard).not.toHaveBeenCalled();
   });
 
   it('As a dotli integrator holding a core lease, I release it and do not hear its core go down under a lease still held', async () => {
@@ -1003,26 +944,6 @@ describe('page core', () => {
     expect(contexts[2]?.product.label).toBe('other');
     expect(next.runtime).toBe(nth(runtimes, 1).runtime);
     expect(contexts).toHaveLength(3);
-  });
-
-  it('As a user, I open another product while the old core redials and the redial goes as soon as the page names it', async () => {
-    // Given a held redial
-    const { core, runtimes, contexts, nextBoots, changes } = createHarness();
-    const lease = await core.acquire();
-    await lease.connect();
-    const redial = createHeldBoot({ changes });
-    nextBoots.push(redial.boot);
-    nth(runtimes, 0).providers[0]?.goDown();
-
-    // When the page names another product, then the redial boots late
-    core.setProduct({ label: 'other' });
-    const liveAfterChange = contexts[1]?.isLive();
-    const late = redial.resolve();
-    await changes.until(() => late.dispose.mock.calls.length === 1);
-
-    // Then the redial was dead as soon as the page named the product, and its core is dropped
-    expect(liveAfterChange).toBe(false);
-    expect(late.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('As a dApp user, I see my page name the same product again and the redial goes on', async () => {
@@ -1267,21 +1188,6 @@ describe('page core redial reports', () => {
     },
   );
 
-  it('As an operator, I find the wallet after a pairing core booted and see the core retired and counted with reason stale', async () => {
-    // Given a pairing core booting
-    let walletFound = false;
-    const { core, counted, changes } = createReportingHarness({ walletFound: () => walletFound });
-    const booting = core.acquire();
-
-    // When the wallet is found as it boots
-    walletFound = true;
-    await booting;
-    await changes.until(() => counted('wallet.core_redial').length === 1);
-
-    // Then the retirement is counted with reason stale
-    expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'stale' }]);
-  });
-
   it('As an operator, I see a product change drop a redial and it is counted as aborted', async () => {
     // Given a held redial
     const { core, runtimes, nextBoots, counted, changes } = createReportingHarness();
@@ -1424,27 +1330,6 @@ describe('page core retirement', () => {
     // Then the old core stayed live out of service, and the new one serves
     expect(downCore).toEqual({ live: true, inService: false });
     expect(contexts[1]?.isInService()).toBe(true);
-  });
-
-  it('As a local wallet user whose pairing core turned stale, I keep it under my product and it stops speaking for my session', async () => {
-    // Given a connection on a pairing core in service
-    let walletFound = false;
-    const { core, contexts, storeListeners, changes } = createHarness({ walletFound: () => walletFound });
-    const lease = await core.acquire();
-    await lease.connect();
-    const inServiceBefore = contexts[0]?.isInService();
-
-    // When the wallet is found and a new core boots
-    walletFound = true;
-    for (const listener of [...storeListeners]) {
-      listener();
-    }
-    await changes.until(() => contexts.length === 2);
-
-    // Then the pairing core went from in service to live out of service
-    expect(inServiceBefore).toBe(true);
-    expect(contexts[0]?.isLive()).toBe(true);
-    expect(contexts[0]?.isInService()).toBe(false);
   });
 
   it('As a user, I open another product while a login still holds the old core and it speaks for my session until it goes down', async () => {

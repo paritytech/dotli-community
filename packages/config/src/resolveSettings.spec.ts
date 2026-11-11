@@ -112,29 +112,6 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('rpc-gateway');
   });
 
-  it('As a visitor whose browser lacks SharedWorker, I follow a link naming the shared light client and run per tab', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'rpc-gateway' } });
-    const url = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, url, sharedWorkerAvailable: false });
-
-    // Then
-    expect(settings.backend).toBe('smoldot-direct');
-  });
-
-  it('As a visitor whose stored cache settings are malformed, I return and every cache is on', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [CACHE_KEY]: '{"skipCidCache":' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.cache).toEqual(DEFAULT_CACHE);
-  });
-
   it('As a first-time visitor on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
     const { settings } = resolveSettings({

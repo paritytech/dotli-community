@@ -6,21 +6,6 @@ import { runEvery } from './runEvery.js';
 import { catchError } from './testing/catchError.js';
 
 describe('runEvery', () => {
-  it('As a dotli integrator, I run every step and nothing throws when none fails', () => {
-    // Given two steps that do not throw
-    const ran: string[] = [];
-    const steps = [() => ran.push('a'), () => ran.push('b')];
-
-    // When they run
-    const run = () => {
-      runEvery(steps, 'running failed');
-    };
-
-    // Then nothing throws and both ran
-    expect(run).not.toThrow();
-    expect(ran).toEqual(['a', 'b']);
-  });
-
   it('As a dotli integrator, I run every step past one that throws and get that error back', () => {
     // Given three steps, the second of which throws
     const ran: string[] = [];

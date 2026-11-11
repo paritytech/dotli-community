@@ -94,20 +94,6 @@ function connection(opened: FakeConnection[], index: number): FakeConnection {
 }
 
 describe('createPausableTransport', () => {
-  it('As a chain consumer, my messages pass through untouched while nothing is paused', () => {
-    // Given
-    const { opened, received, consumer } = setup();
-    const message = request(1, 'system_health');
-
-    // When
-    consumer.send(message);
-    connection(opened, 0).emit(answer(1, { peers: 3 }));
-
-    // Then
-    expect(connection(opened, 0).sent).toEqual([message]);
-    expect(received).toEqual([answer(1, { peers: 3 })]);
-  });
-
   it('As a chain consumer following a chain, a pause stops my follow and fails my chainHead call in flight', () => {
     // Given
     const { pausable, opened, received, consumer } = setup();

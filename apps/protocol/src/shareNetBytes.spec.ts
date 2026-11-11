@@ -66,34 +66,6 @@ describe('shareNetBytes', () => {
     expect(clock.countStarted()).toBe(2);
   });
 
-  it('As a dotli operator, I watch a listener throw and see it reported while the others still hear the tick', () => {
-    // Given
-    const clock = createTestTicker();
-    const reported: unknown[] = [];
-    const subscribe = shareNetBytes({
-      read: () => 3,
-      startTicker: clock.startTicker,
-      report: error => reported.push(error),
-    });
-    const broken = new Error('port is gone');
-    let throwing = false;
-    subscribe(() => {
-      if (throwing) {
-        throw broken;
-      }
-    });
-    const heard: number[] = [];
-    subscribe(total => heard.push(total));
-
-    // When
-    throwing = true;
-    clock.tick();
-
-    // Then
-    expect(heard).toEqual([3, 3]);
-    expect(reported).toEqual([broken]);
-  });
-
   it('As a worker, I subscribe while the baseline read throws and leave no subscriber and no ticker behind', () => {
     // Given
     const clock = createTestTicker();

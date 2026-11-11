@@ -13,7 +13,6 @@ import { productState } from './productState.js';
 import {
   createProductPermissions,
   getRead,
-  hasGrant,
   isUnreadable,
   type PermissionsChange,
   type PermissionsRead,
@@ -297,22 +296,6 @@ describe('product permissions store', () => {
     ]);
   });
 
-  it('As a user, I move from Restricted to Secure and twelve writes land while the frame is left as it is', async () => {
-    // Given
-    createFakeCore(LABEL, Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, 'Denied'])));
-    const changes = recordChanges();
-    await loadProduct();
-
-    // When
-    await permissions.change(LABEL, buildAllTargets('ask'));
-
-    // Then
-    expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses() });
-    expect(changes).toEqual([
-      { label: LABEL, permissions: ALL_PERMISSIONS.map(({ name }) => name), allowChanged: false, fromPrompt: false },
-    ]);
-  });
-
   it('As a user, I make a change the core refuses once and the write is retried alone after 300 ms and announced once', async () => {
     // Given
     const timers = createManualTimers();
@@ -508,25 +491,6 @@ describe('product permissions store', () => {
     ]);
   });
 
-  it("As a user, I deny a product's prompt and the denial is stored and announced while the frame is left as it is", async () => {
-    // Given
-    const core = createFakeCore();
-    const changes = recordChanges();
-    await loadProduct();
-
-    // When
-    await permissions.recordPromptDecision({
-      label: LABEL,
-      name: 'Camera',
-      decision: 'denied',
-      signal: new AbortController().signal,
-    });
-
-    // Then
-    expect(core.writes).toEqual([{ name: 'Camera', status: 'Denied' }]);
-    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: false, fromPrompt: true }]);
-  });
-
   it("As a user, I answer a product's prompt the core cannot store after three attempts and the answer fails, is reported once and changes nothing", async () => {
     // Given
     const timers = createManualTimers();
@@ -699,45 +663,6 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Camera: 'granted' }) });
   });
 
-  it('As one of two callers following the product, I stop and the other still reads on each load', async () => {
-    // Given two callers following, with the setup's follow ended
-    stopSetupFollow();
-    createFakeCore(LABEL);
-    createFakeCore('other');
-    const stopFirst = permissions.start();
-    const stopSecond = permissions.start();
-    cleanups.push(stopFirst, stopSecond);
-
-    // When the first caller stops and a product loads
-    stopFirst();
-    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
-    const shown = permissions.state.get();
-    await permissions.refresh();
-
-    // Then the store shows it reading the other product
-    expect(shown).toEqual({ status: 'reading', label: 'other' });
-  });
-
-  it('As a caller holding a stop from an earlier follow, I call it and the newer follow keeps reading', async () => {
-    // Given a follow stopped and a newer one started
-    stopSetupFollow();
-    createFakeCore(LABEL);
-    createFakeCore('other');
-    const stopEarlier = permissions.start();
-    stopEarlier();
-    const stopNewer = permissions.start();
-    cleanups.push(stopEarlier, stopNewer);
-
-    // When the old stop is called again and a product loads
-    stopEarlier();
-    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
-    const shown = permissions.state.get();
-    await permissions.refresh();
-
-    // Then the store shows it reading the other product
-    expect(shown).toEqual({ status: 'reading', label: 'other' });
-  });
-
   it('As the last caller, I stop and the store stops following loads', async () => {
     // Given two callers following, with the setup's follow ended
     stopSetupFollow();
@@ -892,25 +817,6 @@ describe('product permissions views', () => {
       expect(unreadable).toBe(expected);
     },
   );
-
-  it.each<{ story: string; state: ProductPermissionsState; expected: boolean }>([
-    { story: 'a granted status read', state: READ, expected: true },
-    {
-      story: 'no granted status read',
-      state: { status: 'read', label: LABEL, statuses: ['ask', 'denied'] },
-      expected: false,
-    },
-    { story: 'a failed read', state: { status: 'failed', label: LABEL }, expected: false },
-    { story: 'nothing on show', state: { status: 'none' }, expected: false },
-  ])('As the permissions button, I ask for a grant with $story and am told $expected', ({ state, expected }) => {
-    // Given the row's store state, from the table
-
-    // When
-    const granted = hasGrant(state);
-
-    // Then
-    expect(granted).toBe(expected);
-  });
 });
 
 function createFakeCore(label = LABEL, initial: Record<string, PermissionAuthorizationStatus> = {}): FakeCore {

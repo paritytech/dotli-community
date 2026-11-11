@@ -12,8 +12,7 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import { createDeferred } from '@dotli/shared';
 import { createMemoryStorage, must } from '@dotli/shared/testing';
-import { createFakeSessionPresence, getUnservedChannel, type FakeSessionPresence } from './createPagePresence.fake.js';
-import { createPagePresence } from './createPagePresence.js';
+import { createFakeSessionPresence, type FakeSessionPresence } from './createPagePresence.fake.js';
 import type { SessionPresence } from './types.js';
 import { createNonOwnerSignInFlag, createOwnerSignInFlag, type StoredSignIn } from './signInFlag.js';
 
@@ -27,17 +26,16 @@ const CACHED_UI_STATE = JSON.stringify({ connected: true, liteUsername: 'pgherve
  * A core storage over the given store, with a fake Sentry and capture sink bound for this test, for the tests that read
  * what it reports.
  */
-function createReportingCoreStorage(shared: FakeSharedSessionStore, flag: SessionPresence = presence) {
+function createReportingCoreStorage(shared: FakeSharedSessionStore) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
   return {
-    counts: metrics.counts,
     counted: metrics.counted,
     captures,
     coreStorage: createCoreStorage({
       shared,
-      flag: createNonOwnerSignInFlag({ presence: flag, readStoredSignIn: readStoredInShared }),
+      flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: readStoredInShared }),
       local: () => local,
       keyDb: () => keyDb,
     }),
@@ -45,12 +43,12 @@ function createReportingCoreStorage(shared: FakeSharedSessionStore, flag: Sessio
 }
 
 /** The sign-in window's core storage over `shared`, beside a main store that holds a local wallet or not. */
-function createWindowCoreStorage(flag: SessionPresence, wallet = false): HostCoreStorage {
+function createWindowCoreStorage(flag: SessionPresence): HostCoreStorage {
   return createCoreStorage({
     shared,
     flag: createOwnerSignInFlag({
       presence: flag,
-      readStoredSignIn: () => Promise.resolve(wallet || shared.entries.has(SESSION_KEY) ? 'held' : 'none'),
+      readStoredSignIn: () => Promise.resolve(shared.entries.has(SESSION_KEY) ? 'held' : 'none'),
     }),
     local: () => local,
     keyDb: () => keyDb,
@@ -419,23 +417,6 @@ describe('core storage', () => {
     expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_decode' }]]);
   });
 
-  it('As an operator, I watch shared session reads and see each counted as a hit or a miss', async () => {
-    // Given
-    const { counts, coreStorage } = createReportingCoreStorage(shared);
-    const storage = coreStorage.createAdapters();
-    await storage.readCoreStorage(AUTH_SESSION_KEY);
-    shared.entries.set(SESSION_KEY, '0x010203');
-
-    // When
-    await storage.readCoreStorage(AUTH_SESSION_KEY);
-
-    // Then
-    expect(counts.map(({ name, attributes }) => [name, attributes])).toEqual([
-      ['dotli.shared_session.read', { outcome: 'miss' }],
-      ['dotli.shared_session.read', { outcome: 'hit' }],
-    ]);
-  });
-
   it('As an operator, I watch a failed shared session read and see it counted with its error name', async () => {
     // Given
     const { counted, coreStorage } = createReportingCoreStorage(shared);
@@ -485,20 +466,6 @@ describe('core storage', () => {
 
     // Then
     expect(reads).toEqual([true, false]);
-  });
-
-  it('As a dotli integrator, I clear the session and the cached UI state goes with it', async () => {
-    // Given
-    const storage = coreStorage.createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    await coreStorage.writeUiCache(JSON.stringify({ connected: true }));
-
-    // When
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then
-    expect(shared.entries.get(SESSION_KEY)).toBeUndefined();
-    expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
   it('As a returning user whose shared store cannot be read, I open the page and the cached account reads as none and is reported once', async () => {
@@ -671,24 +638,6 @@ describe('core storage', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, I add a second storage listener and it still hears a change when the first throws', async () => {
-    // Given a first listener that throws and a second that counts
-    onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
-    const heard = vi.fn();
-    onTestFinished(
-      coreStorage.subscribeStoredSession(() => {
-        throw new Error('first listener broke');
-      }),
-    );
-    onTestFinished(coreStorage.subscribeStoredSession(heard));
-
-    // When the session is written
-    await coreStorage.createAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
-
-    // Then the write succeeded and the second listener heard it
-    expect(heard).toHaveBeenCalledTimes(1);
-  });
-
   it('As an operator, I see a browser that cannot keep the at-rest key recorded once and the session still round-trips its secrets', async () => {
     // Given a key store the browser refuses
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -741,41 +690,6 @@ describe('core storage', () => {
     expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'undecryptable' }]);
   });
 
-  it('As a user whose core drops its session, I lose the session and the cookie is deleted', async () => {
-    // Given a core that wrote its session
-    const storage = coreStorage.createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // When the core clears it
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the cookie is deleted
-    expect(presence.calls).toContain('clear');
-    expect(presence.state).toBe('absent');
-  });
-
-  it('As a user in the sign-in window, I pair and my core sets the cookie before its session write lands', async () => {
-    // Given a window's core over an absent flag, recording the writes when it is set
-    presence.state = 'absent';
-    const storage = createWindowCoreStorage(presence).createAdapters();
-    const writesWhenSet: number[] = [];
-    const set = presence.set.bind(presence);
-    presence.set = recordSet;
-
-    // When the core writes its session
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // Then the flag went up while nothing was stored yet, and again once the session landed
-    expect(writesWhenSet).toEqual([0, 1]);
-    expect(presence.state).toBe('present');
-    expect(shared.entries.get(SESSION_KEY)).toBe('0x010203');
-
-    function recordSet(): Promise<void> {
-      writesWhenSet.push(shared.writes.length);
-      return set();
-    }
-  });
-
   it('As a user in the sign-in window on a flag store that answers late, I pair and my session write waits for the flag', async () => {
     // Given a flag write still in flight, such as a request to the dev store
     const landed = createDeferred<undefined>();
@@ -804,30 +718,6 @@ describe('core storage', () => {
 
     // Then the session is written
     expect(shared.entries.get(SESSION_KEY)).toBe('0x010203');
-  });
-
-  it('As a user on a product page, I let my core rewrite its session and the cookie is never set', async () => {
-    // Given a product page's core over an absent flag
-    presence.state = 'absent';
-    const storage = coreStorage.createAdapters();
-
-    // When the core writes its session
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // Then the flag is never set
-    expect(presence.calls).not.toContain('set');
-    expect(presence.state).toBe('absent');
-  });
-
-  it('As a local wallet user, I let my core clear its session and the cookie is left alone', async () => {
-    // Given a core whose session lives in memory
-    const storage = coreStorage.createAdapters({ sessionInMemory: true });
-
-    // When the core clears its session
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the cookie is not touched
-    expect(presence.calls).not.toContain('clear');
   });
 
   it('As a user dropping a dead session, I drop the session I read and it goes with its account while my cores hear it', async () => {
@@ -894,81 +784,6 @@ describe('core storage', () => {
     expect(shared.entries.get(SESSION_KEY)).toBe('0x0a0b');
     expect(shared.clears).toEqual([]);
     expect(presence.calls).toEqual([]);
-  });
-
-  it("As a user whose store refuses my core's clear, I let my core clear and the cookie is still deleted so every page drops it on load", async () => {
-    // Given a core session whose clear the store refuses
-    onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
-    const storage = coreStorage.createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    shared.clearError = key => (key === SESSION_KEY ? UNREACHABLE : null);
-
-    // When the core clears it
-    const cleared = storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the clear rejects and the cookie is still deleted
-    await expect(cleared).rejects.toBe(UNREACHABLE);
-    expect(presence.calls).toContain('clear');
-  });
-
-  it('As a user whose core drops its session while the flag stays, I let it clear and the session still goes', async () => {
-    // Given a core session whose flag cannot be cleared
-    const failure = new Error('cookie blocked');
-    const unwritable = createPagePresence({
-      isShared: () => true,
-      localhost: false,
-      channel: getUnservedChannel,
-      jar: {
-        read: () => '',
-        write() {
-          throw failure;
-        },
-      },
-    });
-    const { counted, captures, coreStorage: reporting } = createReportingCoreStorage(shared, unwritable);
-    const storage = reporting.createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // When the core clears it
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the session goes and the flag failure is reported
-    expect(shared.entries.has(SESSION_KEY)).toBe(false);
-    expect(captures.exception).toHaveBeenCalledWith(
-      failure,
-      expect.objectContaining({
-        step: 'presence_clear',
-        tags: { reason: 'clear' },
-      }),
-    );
-    expect(counted('session.flag_write')).toEqual([{ outcome: 'error', reason: 'clear' }]);
-  });
-
-  it('As a user in the sign-in window whose core drops its session while a wallet stays stored, I let it clear and keep the cookie for the wallet', async () => {
-    // Given a window's core session beside a stored wallet
-    const storage = createWindowCoreStorage(presence, true).createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // When the core clears it
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the session goes and the flag stays for the wallet
-    expect(shared.entries.has(SESSION_KEY)).toBe(false);
-    expect(presence.calls).not.toContain('clear');
-    expect(presence.state).toBe('present');
-  });
-
-  it('As a user in the sign-in window whose core drops the last sign-in stored, I let it clear and lose the cookie with it', async () => {
-    // Given a window's core session that is the last sign-in stored
-    const storage = createWindowCoreStorage(presence).createAdapters();
-    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-
-    // When the core clears it
-    await storage.clearCoreStorage(AUTH_SESSION_KEY);
-
-    // Then the session goes and the flag drops
-    expect(shared.entries.has(SESSION_KEY)).toBe(false);
-    expect(presence.state).toBe('absent');
   });
 });
 

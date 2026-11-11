@@ -72,17 +72,6 @@ describe('the shared auth store', () => {
     expect(read).toEqual(ok('abc'));
   });
 
-  it('As a host page, I read a key nobody wrote and get null', async () => {
-    // Given
-    const { link } = serveStores();
-
-    // When
-    const read = await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
-
-    // Then
-    expect(read).toEqual(ok(null));
-  });
-
   it("As a host page in another tab, I listen on the relay and hear this tab's auth writes and clears", async () => {
     // Given
     const { link, channel } = serveStores();

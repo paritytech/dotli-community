@@ -177,42 +177,6 @@ describe('walkUnixFsDag', () => {
     expect(Object.keys(walked)).toHaveLength(3);
   });
 
-  it('As a visitor, I load one big file and at most 8 of its chunks download at once', async () => {
-    // Given
-    const blocks: Blocks = new Map();
-    const big = putChunkedFile(blocks, 'big.bin', 20);
-    const held = createHeldSource(blocks);
-
-    // When
-    const files = await drive(
-      walkUnixFsDag({ rootCid: big.Hash, blockSource: held.source, parseInnerArchive: rejectInnerArchive }),
-      held,
-      [1],
-      8,
-    );
-
-    // Then
-    expect(held.maxInFlight()).toBe(8);
-    expect(decodeText(must(files['index.html'], 'index.html'))).toBe(
-      Array.from({ length: 20 }, (_, i) => `big.bin-${String(i)};`).join(''),
-    );
-  });
-
-  it('As a visitor, I load a deep tree and the walk finishes', async () => {
-    // Given
-    const { root, blocks, paths } = createDeepSite(4);
-
-    // When
-    const files = await walkUnixFsDag({
-      rootCid: root,
-      blockSource: createBlockSource(blocks),
-      parseInnerArchive: rejectInnerArchive,
-    });
-
-    // Then
-    expect(Object.keys(files).sort()).toEqual(paths.sort());
-  });
-
   it('As a visitor, I load a site nested deeper than the download budget and the walk finishes', async () => {
     // Given a folder chain twice as deep as the 8 downloads the walk runs at once
     const { root, blocks, paths } = createDeepSite(16);

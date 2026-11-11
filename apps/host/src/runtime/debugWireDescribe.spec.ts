@@ -12,7 +12,6 @@ import {
   type MethodIds,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
-  VersionedRemoteChainHeadHeaderRequest,
   VersionedRemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadUnpinError,
   VersionedHostSignRawRequest,
@@ -136,21 +135,6 @@ describe('describeWireFrame', () => {
     });
   });
 
-  it('As a dotli integrator, I describe a chain request and its payload keeps the correlation fields', () => {
-    // Given a chain header request frame
-    const bytes = encodePayload(VersionedRemoteChainHeadHeaderRequest, {
-      tag: 'V1',
-      value: { genesisHash, followSubscriptionId: 'follow_0', hash: blockHash },
-    });
-
-    // When it is described
-    const described = describeWireFrame(getWireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST), bytes);
-
-    // Then it carries the legacy tag and its follow subscription id
-    expect(described.tag).toBe('remote_chain_head_header_request');
-    expect(described.value).toMatchObject({ value: { followSubscriptionId: 'follow_0' } });
-  });
-
   it('As a dotli integrator, I describe a non-chain frame and it is named from the wire table without decoding', () => {
     // Given: a system handshake frame (not in the codec registry).
     const bytes = new Uint8Array([1, 2, 3]);
@@ -239,27 +223,6 @@ describe('describeWireFrame', () => {
       expect(described).toEqual({ tag, value });
     },
   );
-
-  it('As a dotli integrator, I describe chainHead.follow stop and interrupt frames and they land in the chain swimlane with their raw bytes', () => {
-    // Given: control frames with no payload worth decoding.
-    const stopBytes = new Uint8Array([1, 2, 3]);
-    const interruptBytes = new Uint8Array([4, 5, 6]);
-    const stopFrame = getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_STOP);
-    const interruptFrame = getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_INTERRUPT);
-
-    // When both are described
-    const described = [describeWireFrame(stopFrame, stopBytes), describeWireFrame(interruptFrame, interruptBytes)];
-
-    // Then: legacy `remote_chain_*` tags so the swimlane layout keys on them,
-    // raw bytes preserved since there's no codec for these.
-    expect(described).toEqual([
-      { tag: 'remote_chain_head_follow_stop', value: { wireId: getWireFrameKey(stopFrame), bytes: stopBytes } },
-      {
-        tag: 'remote_chain_head_follow_interrupt',
-        value: { wireId: getWireFrameKey(interruptFrame), bytes: interruptBytes },
-      },
-    ]);
-  });
 
   it('As a local wallet user, I watch my wallet receive a signing request and see it decoded', () => {
     // Given a sign raw request frame

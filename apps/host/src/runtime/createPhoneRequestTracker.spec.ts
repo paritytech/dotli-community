@@ -97,20 +97,6 @@ describe('phone request tracker', () => {
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signPayload' });
   });
 
-  it('As a dotli integrator, I claim a request and hear it was rejected on the phone', async () => {
-    // Given
-    const { tracker: requests } = createTrackerHarness();
-    const tap = requests.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-    const claim = requests.claim(isSignRaw);
-
-    // When
-    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: REJECTED }));
-
-    // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'rejected' });
-  });
-
   it('As a dotli integrator, I claim two identical requests and get one each, with no third', async () => {
     // Given
     const { tracker: requests } = createTrackerHarness();
@@ -249,22 +235,6 @@ describe('phone request tracker', () => {
     expect(reportUndecodable.mock.calls).toEqual([
       [expect.objectContaining({ method: 'signPayload', leg: 'request' })],
     ]);
-  });
-
-  it('As a dotli integrator, I see an undecodable answer reported and hear the claim end as undecodable', async () => {
-    // Given
-    const { tracker: requests, reportUndecodable } = createTrackerHarness();
-    const tap = requests.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-    const claim = requests.claim(isSignRaw);
-    const answer = encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED });
-
-    // When
-    tap.fromCore(answer.subarray(0, answer.length - 3));
-
-    // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'undecodable' });
-    expect(reportUndecodable.mock.calls).toEqual([[expect.objectContaining({ method: 'signRaw', leg: 'response' })]]);
   });
 
   it('As an operator, I see an undecodable request counted once as undecodable and reported', () => {

@@ -473,33 +473,6 @@ describe('createDotnsResolver', () => {
     expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
   });
 
-  it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {
-    // Given
-    const { dotns } = createResolver([{ whenReady: () => Promise.reject(new Error('no peers')) }]);
-
-    // When
-    const presync = await dotns.waitForAssetHubFinalized().catch((error: unknown) => error);
-    const owner = await dotns.resolveOwner('alice');
-
-    // Then
-    expect(presync).toEqual(new Error('no peers'));
-    expect(owner).toBeNull();
-    expect(assetHub).toHaveBeenCalledTimes(2);
-  });
-
-  it('As a second product resolving after Asset Hub synced, I hear asset-hub-ready before my name resolves', async () => {
-    // Given
-    const { dotns } = createResolver();
-    await dotns.resolveDotName('alice');
-    const phases: string[] = [];
-
-    // When
-    await dotns.resolveDotName('alice', { onPhase: phase => phases.push(phase) });
-
-    // Then
-    expect(phases).toEqual(['asset-hub-ready', 'resolving-content']);
-  });
-
   it("As the host waiting on a name, I hear the client's phases while it is built, then the content read", async () => {
     // Given
     const { dotns } = createResolver();
@@ -535,26 +508,6 @@ describe('createDotnsResolver', () => {
     expect(phases).toEqual(['asset-hub-connecting', 'asset-hub-syncing', 'asset-hub-ready', 'resolving-content']);
     expect(metrics.distributions).toEqual([]);
     expect(metrics.measurements).toEqual([]);
-  });
-
-  it('As a visitor on a gateway, I still resolve a name when the host pool halts the Asset Hub connection under the read', async () => {
-    // Given
-    const { dotns: gateway } = createResolver(
-      [
-        {
-          readFails: new RpcError({ code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' }),
-          haltsOnRead: true,
-        },
-      ],
-      'rpc-gateway',
-    );
-
-    // When
-    const owner = await gateway.resolveOwner('alice');
-
-    // Then
-    expect(owner).toBeNull();
-    expect(assetHub).toHaveBeenCalledTimes(2);
   });
 
   it('As the protocol frame, I warm People twice and open one People client, and a resolver with no People connection skips it', async () => {

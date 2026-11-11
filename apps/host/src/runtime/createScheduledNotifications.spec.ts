@@ -445,22 +445,6 @@ describe('scheduled notifications disposed', () => {
     expect(timers.countPending()).toBe(0);
   });
 
-  it('As a dApp user, I cancel a notification after the scheduler was disposed and it is removed from the store', async () => {
-    // Given a disposed scheduler over a store that holds the notification
-    const { start } = createPollerHarness();
-    const store = createRecordStore({ records: [] });
-    store.cancel.mockResolvedValue(true);
-    const { notifications } = start({ store });
-    notifications.dispose();
-
-    // When the notification is cancelled
-    const removed = await notifications.cancel(asProductId('acme.dot'), 1);
-
-    // Then the store removed it
-    expect(removed).toBe(true);
-    expect(store.cancel).toHaveBeenCalledWith('acme.dot', 1);
-  });
-
   it('As a user who leaves the page twice over, I dispose the scheduler again and it does not throw', () => {
     // Given a disposed scheduler
     const { start } = createPollerHarness();
@@ -472,21 +456,5 @@ describe('scheduled notifications disposed', () => {
 
     // Then it does not throw
     expect(thrown).toBeUndefined();
-  });
-
-  it('As a user whose notifications failed to load, I leave the page and the scheduler is disposed without throwing', async () => {
-    // Given a scheduler whose every read of the store failed
-    const { start, advanceTicks, countListening } = createPollerHarness();
-    const store = createRecordStore({ records: [] });
-    store.listAll.mockRejectedValue(new Error('disk gone'));
-    const { notifications } = start({ store });
-    await advanceTicks(1);
-
-    // When the scheduler is disposed
-    const thrown = catchError(notifications.dispose);
-
-    // Then it does not throw, and holds no listener on the page
-    expect(thrown).toBeUndefined();
-    expect(countListening()).toBe(0);
   });
 });

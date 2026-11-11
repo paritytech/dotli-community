@@ -5,7 +5,7 @@
 // Each tab is a real transport on its own port pair, so the worker is driven over the wire as an iframe drives it.
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { catchError, createManualTimers, must } from '@dotli/shared/testing';
+import { catchError, createManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
@@ -41,7 +41,6 @@ type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], Re
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];
-type ResolverParams = Parameters<WorkerResolver['createDotnsResolver']>[0];
 type SpanOpen = typeof m.open;
 
 type LogLine = {
@@ -146,7 +145,6 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   const opened: string[] = [];
   const syncReporting: { chains: readonly string[]; openBefore: number }[] = [];
   let fatal: string | null = null;
-  let resolverParams: ResolverParams | null = null;
   let peopleWarms = 0;
   let disconnectFailure: Error | null = null;
   const defaultPresync = Promise.resolve();
@@ -200,8 +198,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
       }
       return () => undefined;
     },
-    createDotnsResolver(params) {
-      resolverParams = params;
+    createDotnsResolver() {
       return {
         resolveDotName: resolveDotName ?? (() => Promise.resolve(null)),
         resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
@@ -241,8 +238,6 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
     chains,
     /** The genesis hash of each connection the worker opened, in order, a resume's included. */
     opened,
-    /** What the worker built its name resolver on. Throws before the worker built it. */
-    readResolverParams: (): ResolverParams => must(resolverParams, 'resolver params'),
     /** Each sync reporting call, with how many chains were already open when it came. */
     syncReporting,
     /** The pre-sync the worker awaited, or an already settled promise where the test holds it. */
@@ -869,47 +864,6 @@ describe('protocol SharedWorker', () => {
     expect(light.countPeopleWarms()).toBe(0);
   });
 
-  it("As a dotli user on the shared light client, I watch my tab's loading screen and it hears how the shared chains sync", async () => {
-    // Given a tab hearing telemetry while pre-sync is under way
-    const light = createFakeLightClient({ presync: () => new Promise<void>(() => undefined) });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    const telemetry = record({ transport: tab.transport, method: frame.telemetry, start: undefined });
-    await tab.transport.request(frame.heartbeat, undefined);
-
-    // When the relay reports its warp progress
-    for (const listener of light.syncListeners) {
-      listener({ chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 });
-    }
-
-    // Then the tab hears it as direct mode sends it
-    await telemetry.waitFor(1);
-    expect(telemetry.events).toEqual([
-      { tag: 'chainSync', value: { chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 } },
-    ]);
-  });
-
-  it("As a dotli user on the shared light client, I resolve names and they read the light client's own Asset Hub and People", async () => {
-    // Given
-    const light = createFakeLightClient();
-    await bootWorker(light);
-    const resolverParams = light.readResolverParams();
-    const services = getActiveServicesConfig();
-
-    // When
-    resolverParams.assetHub()(() => undefined);
-    must(resolverParams.people, 'people')()(() => undefined);
-
-    // Then
-    expect(light.chains).toEqual([
-      services.relay.genesis,
-      services.bulletin.genesis,
-      services.assethub.genesis,
-      services.people.genesis,
-    ]);
-    expect(resolverParams.dotns).toEqual(services.dotns);
-  });
-
   it('As a dotli user on the shared light client, I start the worker and the relay and Bulletin sync shows before any product asks for them', async () => {
     // Given
     const light = createFakeLightClient();
@@ -1073,20 +1027,6 @@ describe('protocol SharedWorker', () => {
     // tab's link ends the rest of what it holds with that end
     await expect(status.ended).resolves.toEqual(RELEASED_STATUS);
     expect(connected.events).toEqual([{ tag: 'connected', value: undefined }]);
-  });
-
-  it('As a frozen tab, I stay silent past the heartbeat and my released port stays open so I hear the release whenever I thaw', async () => {
-    // Given a tab on a synced worker
-    const worker = await bootWorker(createFakeLightClient());
-    const tab = worker.connect();
-    const status = await waitForReady(tab);
-
-    // When it sends nothing for longer than the heartbeat allows
-    outlastHeartbeat(worker);
-
-    // Then the worker let it go without closing its port
-    await expect(status.ended).resolves.toEqual(RELEASED_STATUS);
-    expect(tab.countCloses()).toBe(0);
   });
 
   it('As a thawed tab, I speak on a released port and the worker closes that port on its next beat', async () => {
@@ -1287,25 +1227,6 @@ describe('protocol SharedWorker', () => {
     // Then no beat runs after the close
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(worker.isBeating()).toBe(false);
-  });
-
-  it('As a dotli user on the shared light client, I subscribe to telemetry and hear the light client byte total for my speed readout', async () => {
-    // Given a tab hearing telemetry on a worker whose light client has received bytes
-    let total = 1_000;
-    const worker = await bootWorker(createFakeLightClient(), { readNetBytes: () => total });
-    const telemetry = record({ transport: worker.connect().transport, method: frame.telemetry, start: undefined });
-    await telemetry.waitFor(1);
-
-    // When the next report interval passes
-    total = 4_000;
-    worker.tickNetBytes();
-
-    // Then the tab hears the baseline, then the cumulative total
-    await telemetry.waitFor(2);
-    expect(telemetry.events).toEqual([
-      { tag: 'netBytes', value: 1_000 },
-      { tag: 'netBytes', value: 4_000 },
-    ]);
   });
 
   it('As a dotli user with many tabs on the shared light client, I subscribe in every tab and each hears the byte total from one meter', async () => {
@@ -1664,21 +1585,6 @@ describe('worker lifecycle', () => {
 
     // Then the release of the silent tab left every tab paused
     expect(everyTabPaused).toEqual([true]);
-  });
-
-  it('As the shared worker whose last paused tab left, I hear the pause end when a new tab connects', () => {
-    // Given a lifecycle whose only tab asked for a pause and left
-    const { lifecycle, everyTabPaused } = startLifecycle();
-    const session = openSession(lifecycle);
-    lifecycle.markPaused(session, true);
-    lifecycle.closePort(session);
-
-    // When a new tab connects
-    openSession(lifecycle);
-
-    // Then the pause ended
-    expect(everyTabPaused).toEqual([true, false]);
-    expect(lifecycle.isEveryTabPaused()).toBe(false);
   });
 
   it('As the shared worker whose last tab left, I keep my pause state', () => {

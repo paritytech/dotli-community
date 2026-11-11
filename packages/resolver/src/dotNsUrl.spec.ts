@@ -91,23 +91,18 @@ describe('parseDotNsDomain', () => {
       '  mytestapp.paseo/path  ',
       { identifier: 'mytestapp.paseo', pathname: 'path' },
     ],
+    [
+      'a polkadot:// URL in capitals',
+      'it opens as the lowercase product',
+      'polkadot://MyApp.PASEO/x',
+      { identifier: 'myapp.paseo', pathname: 'x' },
+    ],
   ])('As a visitor, I type %s and %s', (_typed, _outcome, input, expected) => {
     // When
     const parsed = dotNsUrl.parseDotNsDomain(input);
 
     // Then
     expect(parsed).toEqual(expected);
-  });
-
-  it('As a visitor, I type a polkadot:// URL in capitals and it opens as the lowercase product', () => {
-    // When
-    const parsed = dotNsUrl.parseDotNsDomain('polkadot://MyApp.PASEO/x');
-
-    // Then the name is lowercased and the path kept
-    expect(parsed).toEqual({
-      identifier: 'myapp.paseo',
-      pathname: 'x',
-    });
   });
 
   it.each([

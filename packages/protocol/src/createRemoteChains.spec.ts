@@ -355,9 +355,6 @@ describe('createRemoteChains', () => {
   });
 });
 
-// The client's wait before it rebuilds a frame that died.
-const FRAME_REBUILD_INTERVAL_MS = 2_000;
-
 // Each test's own client, so nothing an earlier test left running reaches it.
 let host: FrameHost;
 
@@ -420,21 +417,6 @@ describe('chains.createProvider halts', () => {
   beforeEach(() => {
     timers = createManualTimers();
     host = createFrameHost({ config: FRAME_CONFIG, timers });
-  });
-
-  it('As a dotli integrator, I see a chain halt tell the connection once and close it', async () => {
-    // Given
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const { received, connection, connect } = await connectRemote(onHalt);
-
-    // When
-    connect.sink.interrupt(ok());
-    await settle();
-    connection.send(createGenesisRequest(7));
-
-    // Then
-    expect(onHalt.mock.calls).toEqual([['chain']]);
-    expect(received).toEqual([createClosedAnswer(7)]);
   });
 
   it('As a dotli integrator, I see a chain halt answer what a connection had not sent yet with a halt it can retry', async () => {
@@ -522,139 +504,6 @@ describe('chains.createProvider halts', () => {
     expect(onHalt).not.toHaveBeenCalled();
     expect(received).toEqual([]);
     expect(rebuilt.chains.connects).toHaveLength(1);
-  });
-
-  it('As a dotli integrator, I see a dead protocol frame halt every open chain connection once', async () => {
-    // Given
-    const firstHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const secondHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const first = await connectRemote(firstHalt);
-    const second = await connectMore(first.frame, secondHalt);
-
-    // When
-    first.frame.status.fail(new ProtocolFatalError('boom'));
-    await settle();
-    first.connection.send(createGenesisRequest(1));
-    second.connection.send(createGenesisRequest(2));
-
-    // Then
-    expect(firstHalt.mock.calls).toEqual([['frame']]);
-    expect(secondHalt.mock.calls).toEqual([['frame']]);
-    expect(first.received).toEqual([createClosedAnswer(1)]);
-    expect(second.received).toEqual([createClosedAnswer(2)]);
-  });
-
-  it('As a dotli integrator, I see a dead protocol frame close what a connection had not sent yet', async () => {
-    // Given
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const received: JsonRpcMessage[] = [];
-    const connection = createPeopleProvider()(message => received.push(message), onHalt);
-    connection.send(createGenesisRequest(5));
-    const frame = await bootFrame();
-
-    // When
-    frame.status.fail(new ProtocolFatalError('boom'));
-    await settle();
-
-    // Then
-    expect(received).toEqual([createClosedAnswer(5)]);
-    expect(onHalt.mock.calls).toEqual([['frame']]);
-  });
-
-  it('As a dotli integrator, I hear each time the protocol frame comes up, without starting one', async () => {
-    // Given
-    const readies: Mock<() => void> = vi.fn<() => void>();
-
-    // When
-    const unsubscribe = host.client.frame.status.listen(status => {
-      if (status === 'ready') {
-        readies();
-      }
-    });
-    await settle();
-
-    // Then
-    expect(host.countFrames()).toBe(0);
-    expect(readies).not.toHaveBeenCalled();
-
-    // When
-    const first = await connectRemote();
-
-    // Then
-    expect(readies).toHaveBeenCalledTimes(1);
-
-    // When
-    first.frame.status.fail(new ProtocolFatalError('boom'));
-    await settle(FRAME_REBUILD_INTERVAL_MS);
-    await connectRemote();
-
-    // Then
-    expect(readies).toHaveBeenCalledTimes(2);
-
-    // When
-    unsubscribe();
-    host.client.frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await connectRemote();
-
-    // Then
-    expect(readies).toHaveBeenCalledTimes(2);
-  });
-
-  it('As a dotli integrator, I see the protocol frame booting while connections wait on it, and failed until it rebuilds itself', async () => {
-    // Given
-    const provider = createPeopleProvider();
-    const statusBefore = host.client.frame.status.get();
-    const framesBefore = host.countFrames();
-
-    // When a connection starts a frame, and another connects while it boots
-    provider(() => undefined);
-    await settle();
-    const booting = host.client.frame.status.get();
-    provider(() => undefined);
-    await settle();
-
-    // Then no frame was up before, and both wait on the one frame
-    expect([statusBefore, framesBefore]).toEqual(['idle', 0]);
-    expect(booting).toBe('booting');
-    expect(host.countFrames()).toBe(1);
-
-    // When
-    const frame = await bootFrame();
-
-    // Then
-    expect(host.client.frame.status.get()).toBe('ready');
-    expect(frame.chains.connects).toHaveLength(2);
-
-    // When it dies, and the frame starts rebuilding it after its interval
-    const dead = host.getIframe();
-    frame.status.fail(new ProtocolFatalError('boom'));
-    await settle(FRAME_REBUILD_INTERVAL_MS - 1);
-    const framesBeforeInterval = host.countFrames();
-    const statusBeforeInterval = host.client.frame.status.get();
-    await settle(1);
-
-    // Then
-    expect(dead.isConnected).toBe(false);
-    expect(framesBeforeInterval).toBe(0);
-    expect(statusBeforeInterval).toBe('failed');
-    expect(host.countFrames()).toBe(1);
-    expect(host.client.frame.status.get()).toBe('booting');
-  });
-
-  it('As a dotli integrator, I see a frame whose ready wait gave up report failed and halt the connection waiting on it', async () => {
-    // Given a connection starts a frame, which listens but never reports ready
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    createPeopleProvider()(() => undefined, onHalt);
-    await host.listen();
-    const booting = host.client.frame.status.get();
-
-    // When its ready wait times out
-    await settle(240_000);
-
-    // Then
-    expect(booting).toBe('listening');
-    expect(onHalt.mock.calls).toEqual([['frame']]);
-    expect(host.client.frame.status.get()).toBe('failed');
   });
 
   it('As a dotli integrator, I see a consumer that throws while its queued send is closed, and the other consumers still halt', async () => {

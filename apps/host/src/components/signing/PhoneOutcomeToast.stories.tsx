@@ -15,8 +15,8 @@ const body = within(document.body);
 
 type Args = {
   outcome: PhoneOutcome;
-  /** The toast's text, or undefined when the outcome shows none. */
-  text: string | undefined;
+  /** The toast's text. */
+  text: string;
   tone?: NonNullable<NotificationParams['tone']>;
 };
 
@@ -35,12 +35,6 @@ const meta = {
       notice = getPhoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
     });
     const { text, tone } = args;
-    if (text === undefined) {
-      await step('Then there is no toast to show', async () => {
-        await expect(notice).toBeUndefined();
-      });
-      return;
-    }
     await step('And its toast goes to the page', () => {
       if (notice === undefined) {
         throw new Error('the outcome gave no toast');
@@ -118,9 +112,4 @@ export const Failed: Story = {
     text: "Polkadot App didn't complete the request: Phone went offline",
     tone: 'err',
   },
-};
-
-/** As a user, my request went away with the page and there is no toast to show. */
-export const Gone: Story = {
-  args: { outcome: { kind: 'gone' }, text: undefined },
 };

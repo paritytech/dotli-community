@@ -257,23 +257,6 @@ describe('toast store', () => {
     expect(readLeaving()).toEqual([true]);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
-
-  it('As a dotli integrator, I clear an empty stack and nobody is notified', () => {
-    // Given
-    let notified = 0;
-    onTestFinished(
-      toasts.store.listen(() => {
-        notified += 1;
-      }),
-    );
-
-    // When
-    toasts.clear();
-    toasts.clear();
-
-    // Then
-    expect(notified).toBe(0);
-  });
 });
 
 describe('toast views', () => {
@@ -290,24 +273,6 @@ describe('toast views', () => {
     // When
     toasts.show();
     await timers.advance(1000);
-
-    // Then
-    expect(readLeaving()).toEqual([true]);
-  });
-
-  it('As a visitor, I see a toast in a mounted view and it dismisses itself after its time', async () => {
-    // Given
-    toasts.show();
-
-    // When
-    toasts.push(buildInput({ dismissMs: 1000 }));
-    await timers.advance(999);
-
-    // Then
-    expect(readLeaving()).toEqual([false]);
-
-    // When
-    await timers.advance(1);
 
     // Then
     expect(readLeaving()).toEqual([true]);

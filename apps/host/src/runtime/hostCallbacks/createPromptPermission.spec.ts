@@ -26,7 +26,7 @@ type Params = {
 
 type Store = Map<string, PermissionAuthorizationStatus>;
 
-type PromptButton = 'Deny' | 'Allow' | 'Always allow' | 'Allow once';
+type PromptButton = 'Deny' | 'Always allow' | 'Allow once';
 
 const PRODUCT: ProductContext = {
   productId: asProductId('myapp.paseo'),
@@ -35,7 +35,6 @@ const PRODUCT: ProductContext = {
 
 const DECISIONS: Record<PromptButton, GrantAnswer> = {
   Deny: 'denied',
-  Allow: 'granted',
   'Always allow': 'granted',
   'Allow once': 'granted-once',
 };
@@ -71,43 +70,9 @@ describe('device permission prompts', () => {
     expect(answer).toBe('AllowOnce');
     expect(page.listPending()).toEqual([]);
   });
-
-  it.each<{ permission: 'Camera' | 'Notifications'; button: PromptButton; announced: string; allowChanged: boolean }>([
-    { permission: 'Notifications', button: 'Always allow', announced: 'not a device change', allowChanged: false },
-    { permission: 'Camera', button: 'Allow', announced: 'a device change', allowChanged: true },
-  ])(
-    'As a product developer, I get $permission granted from the prompt and the grant is announced as $announced',
-    async ({ permission, button, allowChanged }) => {
-      // Given
-      const changes = recordChanges();
-
-      // When
-      const response = createPrompts().devicePermission(PRODUCT, permission);
-      await clickPromptButton(button);
-      const answer = await response;
-
-      // Then
-      expect(answer).toBe('AllowAlways');
-      expect(changes).toEqual([{ label: 'myapp', permissions: [permission], allowChanged, fromPrompt: true }]);
-    },
-  );
 });
 
 describe('remote permissions without a prompt', () => {
-  it.each<RemotePermission>([{ tag: 'Remote', value: { domains: ['example.com'] } }, { tag: 'WebRtc' }])(
-    'As a product, I ask for the $tag permission and it is granted once without a prompt',
-    async permission => {
-      // Given a product with no stored permissions and no prompt on show
-
-      // When
-      const answer = await createPrompts().remotePermission(PRODUCT, { permission });
-
-      // Then
-      expect(answer).toBe('AllowOnce');
-      expect(page.listPending()).toEqual([]);
-    },
-  );
-
   it.each<RemotePermission>([{ tag: 'BalanceAccess' }, { tag: 'NftPurseRead', value: { owner: { tag: 'Root' } } }])(
     'As a product, I ask for $tag and the host refuses it unstored',
     async permission => {
@@ -159,20 +124,6 @@ describe('three-way permission prompts', () => {
     },
   );
 
-  it('As a user, I allow a single notification and only that one is granted', async () => {
-    // Given
-    const response = createPrompts().devicePermission(PRODUCT, 'Notifications');
-
-    // When
-    await clickPromptButton('Allow once');
-    const answer = await response;
-    const stored = await registry.getStatus('myapp', 'Notifications');
-
-    // Then
-    expect(answer).toBe('AllowOnce');
-    expect(stored).toBe('ask');
-  });
-
   it('As a user, I see a camera prompt and it offers no one-time grant because granting reloads the app', async () => {
     // Given a product with no stored camera permission
 
@@ -190,21 +141,6 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-  });
-
-  it('As a product developer, I ask with an existing grant and get it answered without a lasting upgrade', async () => {
-    // Given the status can reflect a pending one-time grant, so answering
-    // AllowAlways here would quietly make it permanent
-    await registry.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
-
-    // When
-    const response = createPrompts().remotePermission(PRODUCT, {
-      permission: { tag: 'ChainSubmit' },
-    });
-
-    // Then
-    await expect(response).resolves.toBe('AllowOnce');
-    expect(page.listPending()).toEqual([]);
   });
 
   it('As a user with a stored notification denial, I am asked for notifications and it is denied with a quiet blocked notice and no prompt', async () => {
@@ -385,7 +321,7 @@ function getRequestKey(request: PermissionAuthorizationRequest): string {
 
 /** The permission dialog's buttons: a one-time grant splits the lasting one into always and once. */
 function isOffered(allowOnce: boolean, text: PromptButton): boolean {
-  return allowOnce ? text !== 'Allow' : text === 'Deny' || text === 'Allow';
+  return allowOnce || text === 'Deny';
 }
 
 /** Presses the permission dialog's button with this label, once a prompt that offers it is up. */

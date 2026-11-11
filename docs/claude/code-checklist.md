@@ -201,6 +201,11 @@ above the linter: semantics, data flow and naming.
 
 ## Tests
 
+- **major** (docs/code/style.md § Tests): A test that only restates the types, pins implementation detail, repeats a
+  kept case, or tests a getter, a constant, a re-export, a covered one-line helper or a third-party library, and guards
+  no failure path, race, recovery or real bug.
+- **major** (docs/code/style.md § Tests): A test shaped as that section's "A test never looks like this" list says, such
+  as a regression test that passes without its fix or a story play that checks only copy.
 - **major** (docs/code/placement.md § Inside a package): A unit test that does not sit beside its module as
   `src/foo.spec.ts`, or a DOM-mocked test outside `<pkg>/tests/`.
 - **major** (AGENTS.md § Code style, Tests:): A component's behaviour tested anywhere but a play function in its

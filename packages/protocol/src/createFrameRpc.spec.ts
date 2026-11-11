@@ -92,24 +92,6 @@ describe('createFrameRpc', () => {
     expect(served).toEqual(['authStorageRead', 'resolveOwner']);
   });
 
-  it('As a dotli integrator, I make a request and it resolves with what the frame answers', async () => {
-    // Given
-    const fake = createFakeFrame({
-      serve: serving => {
-        serving.handleRequest(resolve.owner, ({ label }) => ok(label === 'doom' ? '5Grw' : null));
-      },
-      timers,
-    });
-    const rpc = createFrameRpc({ frame: fake.frame, timers });
-
-    // When
-    const owner = rpc.request(resolve.owner, { label: 'doom' });
-    await settle();
-
-    // Then
-    await expect(owner).resolves.toBe('5Grw');
-  });
-
   it('As a dotli integrator, I read a failed answer under the name it crossed with, and a bare Error as a protocol response error', async () => {
     // Given
     class DotNsError extends Error {
@@ -220,26 +202,6 @@ describe('createFrameRpc', () => {
 
     // Then
     await expect(read).rejects.toThrow('boom');
-  });
-
-  it('As a dotli integrator, I make a request on an idle frame and it asks for the frame and goes out once it is ready', async () => {
-    // Given a frame nobody has asked for yet
-    const served: string[] = [];
-    const fake = createFakeFrame({ serve: createSilentFrame(served), status: 'idle', timers });
-    const rpc = createFrameRpc({ frame: fake.frame, timers });
-
-    // When a request is made, and the frame then comes up
-    void rpc.request(resolve.owner, { label: 'doom' });
-    await settle();
-    const statusWhileWaiting = fake.frame.status.get();
-    const servedWhileWaiting = [...served];
-    fake.setStatus('ready');
-    await settle();
-
-    // Then the frame boots, and the request waits for it instead of failing
-    expect(statusWhileWaiting).toBe('booting');
-    expect(servedWhileWaiting).toEqual([]);
-    expect(served).toEqual(['resolveOwner']);
   });
 
   it.each([

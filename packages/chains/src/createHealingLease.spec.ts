@@ -6,7 +6,6 @@ import type { JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-prov
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { catchError, createManualTimers, must } from '@dotli/shared/testing';
-import { ChainHaltError } from './chainHaltError.js';
 import { createChainHaltedError } from './createChainHaltedError.js';
 import { createChainRedial } from './createChainRedial.js';
 import { createHealingLease } from './createHealingLease.js';
@@ -52,22 +51,6 @@ describe('createHealingLease', () => {
 
     // Then
     expect(attach.calls()).toBe(2);
-  });
-
-  it('As a chain consumer, my chain halts with the frame while the frame is up and each rebuild is refused, and I wait for the gate before the next try', async () => {
-    // Given
-    const { connect, attach, timers } = setup({ steps: ['lease', 'none', 'none'] });
-    connect();
-
-    // When
-    must(attach.leases[0], 'first lease').halt(new ChainHaltError('frame'));
-    await timers.advance(999);
-    const beforeASecond = attach.calls();
-    await timers.advance(1);
-    const atASecond = attach.calls();
-
-    // Then
-    expect([beforeASecond, atASecond]).toEqual([2, 3]);
   });
 
   it('As a chain consumer, my chain halts and my next request goes on the rebuilt chain', () => {

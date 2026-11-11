@@ -95,59 +95,6 @@ export const NoEmptyTipsOrActions: Story = {
   },
 };
 
-/** As a visitor, I click a button that opens a panel and it gets the click, so it can leave the panel open. */
-export const ButtonGetsClickEvent: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step(
-      'As a visitor, clicking a button that opens a panel hands it the click, so it can leave the panel open',
-      async () => {
-        // Given
-        let got: MouseEvent | null = null;
-        showErrorPage({
-          title: 't',
-          actions: [
-            {
-              label: 'A',
-              onClick: event => {
-                got = event;
-              },
-            },
-          ],
-        });
-
-        // When
-        canvas.getByRole('button', { name: 'A' }).click();
-
-        // Then
-        await expect(got).toBeInstanceOf(MouseEvent);
-      },
-    );
-  },
-};
-
-/** As a visitor, I see the warning mark only on a screen that warns me. */
-export const WarningGlyphOnlyWhenWarning: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step('As a visitor, I see the warning mark only on a screen that warns me', async () => {
-      // When
-      showErrorPage({ title: 't', glyph: 'warning' });
-
-      // Then
-      await expect(canvas.getByTestId('error-page-glyph')).toHaveAttribute('data-warning');
-
-      // When
-      showErrorPage({ title: 't' });
-
-      // Then
-      await expect(canvas.getByTestId('error-page-glyph')).not.toHaveAttribute('data-warning');
-    });
-  },
-};
-
 /** As a screen reader user, I hear the new screen announced when it replaces the old one and its title takes no tab stop. */
 export const TitleTakesFocusWithoutTabStop: Story = {
   tags: ['!autodocs'],

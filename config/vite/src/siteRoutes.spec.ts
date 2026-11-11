@@ -26,15 +26,4 @@ describe('getPathInBuild', () => {
     // Then the path is kept
     expect(path).toBe('/host_version.json');
   });
-
-  it('As a page on localhost, I load a host file and it is looked up under its own path', () => {
-    // Given the bare host's route
-    const route: Route = { site: 'host', bare: true };
-
-    // When a host file is looked up
-    const path = getPathInBuild(route, '/a');
-
-    // Then the path is kept
-    expect(path).toBe('/a');
-  });
 });

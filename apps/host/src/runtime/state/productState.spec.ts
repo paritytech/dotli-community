@@ -11,33 +11,6 @@ describe('product store', () => {
     resetStores();
   });
 
-  it('As a user opening the page, I read the product state and see no product and no load yet', () => {
-    // Given a page as it opens
-
-    // When
-    const state = productState.store.get();
-
-    // Then
-    expect(state).toEqual({ status: 'none', loadId: 0 });
-  });
-
-  it('As a user, I load a product from a CID and see its label, product id and CID', () => {
-    // Given a page as it opens, with no product loaded
-
-    // When
-    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot'), details: { cid: 'bafyroot' } });
-
-    // Then
-    expect(productState.store.get()).toEqual({
-      status: 'loaded',
-      loadId: 1,
-      label: 'myapp',
-      productId: 'myapp.dot',
-      cid: 'bafyroot',
-      facts: {},
-    });
-  });
-
   it('As a user, I reload the same product and every load is announced', () => {
     // Given
     productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
@@ -62,16 +35,5 @@ describe('product store', () => {
       productId: 'myapp.dot',
       facts: {},
     });
-  });
-
-  it('As a user, I hit a failed load and no product is left on show', () => {
-    // Given
-    productState.setLoaded({ label: 'myapp', productId: asProductId('myapp.dot') });
-
-    // When
-    productState.setError();
-
-    // Then
-    expect(productState.store.get()).toEqual({ status: 'error', loadId: 2 });
   });
 });

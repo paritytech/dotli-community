@@ -320,27 +320,6 @@ describe('session window round answer', () => {
     expect(metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
   });
 
-  it('As a site, I open the sign-in window with a request of another version and am refused with that reason, counted', async () => {
-    // Given a booted sign-in window with a site's request of version 2
-    const { metrics, responder, sayHello, readAnswers } = openWindow();
-    const answered = answerSignIn({
-      responder,
-      request: readRequest('auth', { v: 2, net: 'paseo-next-v2' }),
-      enabled: ENABLED,
-      booted: Promise.resolve('bridge'),
-    });
-
-    // When a site says hello
-    sayHello(SITE);
-    await answered;
-
-    // Then the site is refused for the version, and so counted
-    expect(readAnswers()).toEqual([{ type: 'dotli:s:refused', round: 'r1', reason: 'unsupported_version' }]);
-    expect(metrics.counted('session_pages.site_sign_in')).toEqual([
-      { outcome: 'refused', reason: 'unsupported_version' },
-    ]);
-  });
-
   it('As a user signing in on a dot.li page with a request the window cannot read, I am refused and no site sign-in is counted', async () => {
     // Given a booted sign-in window with a request that has no intent
     const { metrics, responder, sayHello, readAnswers } = openWindow();
@@ -424,27 +403,6 @@ describe('session window round answer', () => {
     expect(round).toBeNull();
     expect(readAnswers()).toEqual([{ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' }]);
     expect(metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
-    expect(metrics.counted('session_pages.site_sign_in')).toEqual([]);
-  });
-
-  it('As a user on a dot.li page, I open the sign window and am refused as a bad request with no site round counted', async () => {
-    // Given a booted sign window with a request a site could send
-    const { metrics, responder, sayHello, readAnswers } = openWindow();
-    const answered = answerSignIn({
-      responder,
-      request: readRequest('sign', { v: 1, net: 'paseo-next-v2', chain: HUB, call: CALL, account: `${PRODUCT}/0` }),
-      enabled: ENABLED,
-      booted: Promise.resolve('bridge'),
-    });
-
-    // When dot.li's own page says hello
-    sayHello(PAGE);
-    const round = await answered;
-
-    // Then the page is refused as a bad request, with no site round counted
-    expect(round).toBeNull();
-    expect(readAnswers()).toEqual([{ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' }]);
-    expect(metrics.counted('session_pages.site_transaction')).toEqual([]);
     expect(metrics.counted('session_pages.site_sign_in')).toEqual([]);
   });
 });

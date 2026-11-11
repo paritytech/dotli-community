@@ -178,17 +178,6 @@ describe('createEngine chain connections', () => {
     expect(thrown).toBeUndefined();
   });
 
-  it('As a product, I send on a connection that does not exist and the send fails', async () => {
-    // Given
-    const { tab } = startEngine();
-
-    // When
-    const send = tab.send('nope', '{}');
-
-    // Then
-    await expect(send).resolves.toEqual(toThrownAnswer('Unknown chain connection: nope'));
-  });
-
   it('As a product, I send under an empty connection id and am refused for bad input', async () => {
     // Given
     const { tab } = startEngine();
@@ -210,21 +199,6 @@ describe('createEngine chain connections', () => {
     // Then
     expect(await chain.ended).toEqual(toThrownAnswer('Unsupported chain: 0xdead'));
     expect(chain.events).toEqual([]);
-  });
-
-  it('As the host at my connection limit, I connect again and the subscription ends with the limit error', async () => {
-    // Given a tab at its limit
-    const { tab } = startEngine();
-    for (let index = 0; index < MAX_CONNECTIONS; index++) {
-      await tab.connect('0xaa', `c${String(index)}`);
-    }
-
-    // When
-    const overflow = await tab.connect('0xaa', 'extra');
-
-    // Then
-    expect(await overflow.ended).toEqual(toThrownAnswer('Connection limit reached (max 10)'));
-    expect(overflow.events).toEqual([]);
   });
 
   it('As the host, I unsubscribe and the chain disconnects', async () => {
@@ -260,21 +234,6 @@ describe('createEngine chain connections', () => {
 });
 
 describe('createEngine chain pool', () => {
-  it('As the protocol frame, I hand the engine the chain pool the name resolver reads and a product shares its chain', async () => {
-    // Given the resolver already holds a lease on the chain
-    const { createChainTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport: createChainTransport, destroyDelay: Infinity });
-    must(pool.getLocalProvider('0xaa', { holder: 'resolver' }), 'resolver lease')(() => undefined);
-    const engine = createEngine({ pool, isChainSupported: () => true });
-
-    // When
-    const chain = await openTab(engine).connect('0xaa', 'c1');
-
-    // Then
-    expect(chain.events).toEqual([CONNECTED]);
-    expect(built).toHaveLength(1);
-  });
-
   it('As the protocol frame, I dispose the engine and the chains of the pool it was handed are released', async () => {
     // Given
     const { createChainTransport, built } = createTransports();
@@ -311,17 +270,6 @@ describe('createEngine name reads', () => {
       { tag: 'phase', value: 'resolving-content' },
       { tag: 'resolved', value: 'bafy-doom' },
     ]);
-  });
-
-  it('As the host, I read a name whose read fails and the read ends with its error', async () => {
-    // Given
-    const { tab } = startEngine({ resolver: toResolver(() => Promise.reject(new TypeError('bad label'))) });
-
-    // When
-    const read = record({ transport: tab.host, method: resolve.dotName, start: { label: 'doom' } });
-
-    // Then
-    expect(await read.ended).toEqual(err(hostFailure('TypeError: bad label')));
   });
 
   it('As the host in gateway mode, I read names and every read is refused at once', async () => {

@@ -3,15 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { fromHex } from '@dotli/shared';
-import {
-  computeNamehash,
-  computeMappingSlot,
-  computeBytesDataSlot,
-  addToSlot,
-  readWordAsBigInt,
-  extractAddress,
-  decodeBytesSlot,
-} from './storageSlots.js';
+import { computeNamehash, computeMappingSlot, addToSlot, readWordAsBigInt, decodeBytesSlot } from './storageSlots.js';
 
 describe('computeNamehash', () => {
   // eth and foo.eth are well-known ENS test vectors.
@@ -99,31 +91,6 @@ describe('computeMappingSlot', () => {
   });
 });
 
-describe('computeBytesDataSlot', () => {
-  // Pinned from an independent keccak256 of the base slot over @noble/hashes, outside the repo code.
-  it('As the resolver reading dotNS storage, I compute where long bytes start as keccak256 of the zero slot', () => {
-    // Given
-    const slot = '0x0000000000000000000000000000000000000000000000000000000000000000';
-
-    // When
-    const dataSlot = computeBytesDataSlot(slot);
-
-    // Then
-    expect(dataSlot).toBe('0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563');
-  });
-
-  it('As the resolver reading dotNS storage, I compute where long bytes start for another base slot and hash that slot', () => {
-    // Given
-    const slot = '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
-
-    // When
-    const dataSlot = computeBytesDataSlot(slot);
-
-    // Then
-    expect(dataSlot).toBe('0x8f0af42555406ff9bab0485545772d9e31b44053cf31ffbfb75ac5a8554d81fe');
-  });
-});
-
 describe('addToSlot', () => {
   it.each([
     [
@@ -185,32 +152,6 @@ describe('readWordAsBigInt', () => {
   });
 });
 
-describe('extractAddress', () => {
-  it('As the resolver reading dotNS storage, I read the address from the right of a 32-byte word', () => {
-    // Given
-    const data = new Uint8Array(32);
-    const address = [
-      0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xdd,
-      0xee,
-    ];
-    data.set(address, 12);
-
-    // When
-    const extracted = extractAddress(data);
-
-    // Then
-    expect(extracted).toBe('0xaabbccddee11223344556677889900aabbccddee');
-  });
-
-  it('As the resolver reading dotNS storage, I read an all-zero word as the zero address', () => {
-    // When
-    const extracted = extractAddress(new Uint8Array(32));
-
-    // Then
-    expect(extracted).toBe('0x0000000000000000000000000000000000000000');
-  });
-});
-
 describe('decodeBytesSlot', () => {
   const dummySlot = '0x0000000000000000000000000000000000000000000000000000000000000001';
 
@@ -252,17 +193,5 @@ describe('decodeBytesSlot', () => {
       // keccak256 of dummySlot, derived independently of the repo code
       dataSlot: '0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6',
     });
-  });
-
-  it('As the resolver reading dotNS storage, I read zero-length short bytes as no bytes', () => {
-    // Given
-    const data = new Uint8Array(32);
-    data[31] = 0;
-
-    // When
-    const result = decodeBytesSlot(data, dummySlot);
-
-    // Then
-    expect(result).toBeNull();
   });
 });

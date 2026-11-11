@@ -38,18 +38,6 @@ describe('AuthModal island binding', () => {
     dispose();
   });
 
-  it('As a dApp user, a sign-in still waiting behind another prompt leaves the bar alone', () => {
-    // Given
-    const { reveal, write, dispose } = mount(false);
-
-    // When: the controller fills it in while it waits for the lease, so it stays closed
-    write(false);
-
-    // Then
-    expect(reveal).not.toHaveBeenCalled();
-    dispose();
-  });
-
   it('As a user whose sign-in opened before the island hydrated, the bar comes back as it hydrates', () => {
     // Given a sign-in already open
     const opened = true;
@@ -60,18 +48,6 @@ describe('AuthModal island binding', () => {
     // Then
     expect(reveal).toHaveBeenCalledTimes(1);
     dispose();
-  });
-
-  it('As the island, once disposed I no longer bring the bar back', () => {
-    // Given
-    const { reveal, write, dispose } = mount(false);
-
-    // When
-    dispose();
-    write(true);
-
-    // Then
-    expect(reveal).not.toHaveBeenCalled();
   });
 
   it('As a user, closing an open sign-in closes it, and a close after the controller closed it does nothing', () => {

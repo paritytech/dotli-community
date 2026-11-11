@@ -17,17 +17,6 @@ describe('getProtocolOrigin', () => {
     expect(origin).toBe(`https://${BASE_DOMAIN}`);
   });
 
-  it('As a page in development, I get the host dev port on localhost on my own scheme', () => {
-    // Given a development page on localhost
-    const env = { localRoot: 'localhost', dev: true, protocol: 'https:', port: DEV_HOST_PORT };
-
-    // When the frame origin is read
-    const origin = getProtocolOrigin(env);
-
-    // Then it is localhost on the page's scheme and port
-    expect(origin).toBe(`https://localhost:${DEV_HOST_PORT}`);
-  });
-
   it("As a page in development on a port other than the host's, I still get the host's dev port for the frame", () => {
     // Given a development page served on another port
     const env = { localRoot: 'localhost', dev: true, protocol: 'https:', port: '9999' };
@@ -48,16 +37,5 @@ describe('getProtocolOrigin', () => {
 
     // Then it is localhost on the preview port
     expect(origin).toBe('http://localhost:5180');
-  });
-
-  it('As a page in development on local.host, I get the host dev port there on my own scheme', () => {
-    // Given a development page on local.host
-    const env = { localRoot: 'local.host', dev: true, protocol: 'https:', port: DEV_HOST_PORT };
-
-    // When the frame origin is read
-    const origin = getProtocolOrigin(env);
-
-    // Then it is local.host on the page's scheme and port
-    expect(origin).toBe(`https://local.host:${DEV_HOST_PORT}`);
   });
 });

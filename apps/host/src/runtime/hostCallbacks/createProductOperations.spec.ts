@@ -26,15 +26,4 @@ describe('product operations', () => {
     // Then
     expect(new Set([first.id, second.id, third.id]).size).toBe(3);
   });
-
-  it('As a product developer with a worker product, I end an unknown operation and it succeeds', async () => {
-    // Given
-    const operations = createProductOperations();
-
-    // When
-    const ending = operations.endOperation(PRODUCT, 42);
-
-    // Then
-    await expect(ending).resolves.toBeUndefined();
-  });
 });

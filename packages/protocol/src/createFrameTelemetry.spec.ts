@@ -116,22 +116,6 @@ describe('createFrameTelemetry', () => {
     ]);
   });
 
-  it('As the network panel, I lose a frame under its telemetry feed and the feed is neither reopened there nor reported', async () => {
-    // Given
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const fake = createFakeFrame({ serve: createReportingFrame(sinks), timers });
-    createFrameTelemetry({ frame: fake.frame, timers });
-    await settle();
-
-    // When
-    fake.lose(new Error('boom'));
-    await timers.advance(30_000);
-
-    // Then
-    expect(sinks).toHaveLength(1);
-    expect(metrics.counted('protocol.feed_end')).toEqual([]);
-  });
-
   it('As the network panel, I lose a frame while its telemetry is asked for and it is neither reported nor heard again', async () => {
     // Given a frame that boots and is dropped in the same turn, before its transport is handed over
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });

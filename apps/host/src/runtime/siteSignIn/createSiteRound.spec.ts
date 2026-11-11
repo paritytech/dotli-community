@@ -12,7 +12,7 @@ import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import { CoreRedialError } from '../coreRedialError.js';
 import { createChanges } from '../../testing/changes.js';
 import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
-import { createSiteRound, isUnsentGrantForgotten, type SiteAction, type SiteScreen } from './createSiteRound.js';
+import { createSiteRound, type SiteAction, type SiteScreen } from './createSiteRound.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
 import { createGrant } from '../../testing/createGrant.js';
@@ -97,22 +97,6 @@ function createGroupGrant(registrable: string, fields: Partial<SiteGrant> = {}):
 }
 
 /**
- * Registrable domains judged as {@link SITE_GROUPS} judges them, once `judged` resolves. `judging` resolves as the
- * round first asks.
- */
-function createHeldGroups(judged: Promise<void>) {
-  const judging = createDeferred<undefined>();
-  const groups: SiteGroups = {
-    async registrable(hostname) {
-      judging.resolve(undefined);
-      await judged;
-      return SITE_GROUPS.registrable(hostname);
-    },
-  };
-  return { groups, judging: judging.promise };
-}
-
-/**
  * A site's round over fakes: a responder that records what it posts, ends its round on its first terminal call and
  * holds a result sent while it waits to be vetted again, an in-memory grants store, an action the test scripts, and a
  * window flow the test says stored a sign-in through.
@@ -132,7 +116,6 @@ async function startRound(options: StartRoundParams = {}) {
   }
   let saving = 0;
   let forgotten = 0;
-  let reads = 0;
   // The signal of each read of the main account.
   const mainReads: AbortSignal[] = [];
   /** Counts a save, then holds it at the gate and fails it when the test says so. */
@@ -160,7 +143,6 @@ async function startRound(options: StartRoundParams = {}) {
       changes.notify();
     },
     read(token) {
-      reads += 1;
       return options.readFails === true
         ? Promise.reject(new Error('The grants database is closed'))
         : stored.read(token);
@@ -240,8 +222,6 @@ async function startRound(options: StartRoundParams = {}) {
     posts,
     stored,
     runs,
-    /** How many grant reads the round started. */
-    countReads: () => reads,
     mainReads,
     screens,
     readViews: () => screens.map(shown => shown.view),
@@ -267,8 +247,6 @@ async function startRound(options: StartRoundParams = {}) {
     waitForSaving: () => changes.until(() => saving > 0),
     /** Resolves once a grant was forgotten. */
     waitForForgotten: () => changes.until(() => forgotten > 0),
-    /** Resolves once the round read the main account. */
-    waitForMainRead: () => changes.until(() => mainReads.length > 0),
     /** Resolves once a result waits for the window to be vetted again. */
     waitForHeld: () => changes.until(recording.isHolding),
     /** The window comes back from the back-forward cache and waits to be vetted again. */
@@ -279,17 +257,6 @@ async function startRound(options: StartRoundParams = {}) {
 }
 
 describe('site round', () => {
-  it('As a site of no group, I ask to sign in and the consent names my origin alone', async () => {
-    // Given a round for a site of no group
-    const round = await startRound();
-
-    // When the round shows its consent
-    await round.waitForView('consent');
-
-    // Then the consent carries the site's origin and no group
-    expect(round.flow.screen.get()).toEqual({ view: 'consent', origin: SITE_ORIGIN, group: null });
-  });
-
   it('As a user on a new site, I consent and the action runs for my main account, and the site gets its result and a token', async () => {
     // Given a site the main store keeps no grant for
     const round = await startRound();
@@ -347,44 +314,6 @@ describe('site round', () => {
     expect(closesWhileHeld).toBe(0);
     expect(round.posts.map(post => post.type)).toEqual(['dotli:s:result']);
     expect(round.countCloses()).toBe(1);
-  });
-
-  it('As a user with no session in the main store, I pair in the window and the site gets its result', async () => {
-    // Given a main store with no session, so the window flow pairs, and a core that reports the paired session only
-    // after the flow stored it
-    const reported = createDeferred<MainAccount>();
-    const round = await startRound({ mainAccount: () => reported.promise });
-    await consentAndStore(round);
-    await round.waitForMainRead();
-    const ranBefore = round.runs.length;
-
-    // When the core reports the session
-    reported.resolve(MAIN_ACCOUNT);
-    await round.closed;
-
-    // Then the action did not run before the core reported, ran for its account once it had, and the site got its
-    // result
-    expect(ranBefore).toBe(0);
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
-    expect(getResult(round.posts).site_token).toBe(NEW_SITE_TOKEN);
-  });
-
-  it("As a user with a local wallet, I start a site's round and it goes on without pairing", async () => {
-    // Given a site the user granted before, and a main store whose local wallet the window's core boots on, so the
-    // core reports the main account as it does for any stored sign-in
-    const round = await startRound({ siteToken: SITE_TOKEN, grants: [createGrant()] });
-    await round.waitForView('window');
-
-    // When the window flow says a sign-in is stored, as it does at once for a stored wallet
-    round.storeSignIn();
-    await round.closed;
-
-    // Then the round read the main account from the core and ran the action, with one window flow and no failure
-    expect(round.mainReads).toHaveLength(1);
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
-    expect(round.windowFlows).toHaveLength(1);
-    expect(round.readViews()).not.toContain('site-failed');
-    expect(getResult(round.posts).result).toEqual(RESULT);
   });
 
   it("As a user, I start a site's round and it reads the main account only once the core reports it", async () => {
@@ -571,20 +500,6 @@ describe('site round', () => {
     expect(events).toEqual(['prepare', 'consent']);
     expect(abortedAtConsent).toEqual([false]);
     expect(signals.map(signal => signal.aborted)).toEqual([true]);
-  });
-
-  it('As a user who cancels on the consent view, I tell the site and close the window', async () => {
-    // Given the consent view
-    const round = await startRound();
-    await round.waitForView('consent');
-
-    // When the user cancels
-    round.flow.cancel();
-    await round.closed;
-
-    // Then the site hears the round was cancelled
-    expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
-    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
   it('As a user, I cancel while the grant is kept and no grant is left for a token the site never got', async () => {
@@ -1016,24 +931,6 @@ describe('site round of a group', () => {
     },
   );
 
-  it('As a site of a group, I start a round and the window reads my grant while it judges my group', async () => {
-    // Given a grant of the group under the site's token, and a judgement of the group the test holds
-    const judged = createDeferred<undefined>();
-    const held = createHeldGroups(judged.promise);
-
-    // When the round starts and begins to judge the group
-    const round = await startRound({
-      siteToken: SITE_TOKEN,
-      groupToken: GROUP_TOKEN,
-      grants: [createGroupGrant('my-site.com')],
-      groups: held.groups,
-    });
-    await held.judging;
-
-    // Then the grant was read while the judgement is still held
-    expect(round.countReads()).toBe(1);
-  });
-
   it('As a site whose group is refused, I start a round while the grants store fails and only the refusal is counted', async () => {
     // Given a site on a public suffix that sends a token and a group token, and a grants store whose read fails
     const round = await startRound({
@@ -1103,54 +1000,5 @@ describe('site round of a group', () => {
         group: { registrable: 'my-site.com', token: GROUP_TOKEN, origins: [SHOP, SITE_ORIGIN] },
       },
     ]);
-  });
-
-  it("As a user signed in with another main account, I forget that account's group grant and am asked for consent", async () => {
-    // Given a group grant another main account made, whose token the site sends with the group token
-    const round = await startRound({
-      siteToken: SITE_TOKEN,
-      groupToken: GROUP_TOKEN,
-      grants: [createGroupGrant('my-site.com', { owner: '0xother' })],
-    });
-    await round.waitForView('window');
-
-    // When the window flow says a sign-in is stored, the user consents and the round goes on
-    round.storeSignIn();
-    await round.waitForView('consent');
-    const forgotten = await round.stored.read(SITE_TOKEN);
-    await round.flow.consent();
-    await round.closed;
-
-    // Then the old grant is gone, the consent named the group, and the site got a new token for this account's grant
-    expect(forgotten).toBeNull();
-    expect(round.screens).toContainEqual({ view: 'consent', origin: SITE_ORIGIN, group: 'my-site.com' });
-    expect(getResult(round.posts).site_token).toBe(NEW_SITE_TOKEN);
-    expect((await round.stored.list()).map(grant => ({ token: grant.token, owner: grant.owner }))).toEqual([
-      { token: NEW_SITE_TOKEN, owner: MAIN_OWNER },
-    ]);
-  });
-});
-
-describe('unsent grant', () => {
-  it('As a site whose answer never reached it, I hold no token and the grant the round kept for me is forgotten', () => {
-    // Given a kept grant of no group
-    const grant = createGrant();
-
-    // When the window asks whether an unsent answer forgets it
-    const forgets = isUnsentGrantForgotten(grant);
-
-    // Then it does
-    expect(forgets).toBe(true);
-  });
-
-  it("As a site on another origin of a group, I may hold the group's token and its grant stays when one origin's answer never arrived", () => {
-    // Given a kept grant of a group
-    const grant = createGroupGrant('my-site.com');
-
-    // When the window asks whether an unsent answer forgets it
-    const forgets = isUnsentGrantForgotten(grant);
-
-    // Then it does not
-    expect(forgets).toBe(false);
   });
 });

@@ -228,17 +228,6 @@ export const SignTransaction: Story = {
       dismissResult: 'dismissed',
     }),
   },
-  play: async ({ mount, step }) => {
-    await step('When the dialog renders', async () => {
-      await mount();
-    });
-    await step('Then the answer that rejects the request is drawn destructive', async () => {
-      await expect(readFooter()).toEqual([
-        ['Reject', 'danger'],
-        ['Sign', 'primary'],
-      ]);
-    });
-  },
 };
 
 /** As a dotli user, I read a sign-message prompt with the code in monospace and the warning marked. */
@@ -259,19 +248,6 @@ export const SignMessage: Story = {
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
     }),
-  },
-  play: async ({ mount, step }) => {
-    await step('When the dialog renders', async () => {
-      await mount();
-    });
-    await step('Then the code value is mono and the warning is marked', async () => {
-      const fields = body.getAllByTestId('prompt-dialog-field');
-      await expect(fields.map(field => field.hasAttribute('data-warning'))).toEqual([false, false, false, true]);
-      const mono = fields.filter(field => field.hasAttribute('data-mono'));
-      await expect(mono.map(field => within(field).getByTestId('prompt-dialog-field-value').textContent)).toEqual([
-        `0x${'48656c6c6f'.repeat(4)}`,
-      ]);
-    });
   },
 };
 

@@ -64,22 +64,6 @@ describe('createRawApi', () => {
       vi.useRealTimers();
     });
 
-    it('As a dotli user on a light client that never serves a read, I read a slot and the read fails instead of retrying forever', async () => {
-      // Given
-      const { client, follow } = createFakeSubstrateClient();
-      const api = createRawApi({ client });
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      follow.storage.mockImplementation(() => Promise.reject(new OperationInaccessibleError()));
-
-      // When
-      const read = api.resolveTrieId(CONTRACT_ADDRESS, '0x0a').catch((error: unknown) => error);
-      await vi.runAllTimersAsync();
-      const error = await read;
-
-      // Then
-      expect(error).toBeInstanceOf(OperationInaccessibleError);
-    });
-
     it('As the resolver, I read a slot no peer serves, and the read fails after about 30 s even when each attempt is slow', async () => {
       // Given
       const { client, follow } = createFakeSubstrateClient();

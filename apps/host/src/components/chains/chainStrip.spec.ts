@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { HISTORY_SLOTS, landedBars, pendingBar, sameBars, slideShift, slotOpacity } from './chainStrip.js';
+import { HISTORY_SLOTS, landedBars, pendingBar, sameBars, slotOpacity } from './chainStrip.js';
 
 const RELAY = { blockTimeMs: 6000, phase: null };
 
@@ -32,12 +32,6 @@ describe('the bar strip motion', () => {
     // When / Then
     expect(landedBars([], bars(101))).toBe(0);
     expect(landedBars([], bars(101, 102))).toBe(0);
-  });
-
-  it('As a user watching a chain, the strip starts one bar and gap to the right per landed bar', () => {
-    // When / Then
-    expect(slideShift(1, 4, 2)).toBe(6);
-    expect(slideShift(3, 4, 2)).toBe(18);
   });
 });
 

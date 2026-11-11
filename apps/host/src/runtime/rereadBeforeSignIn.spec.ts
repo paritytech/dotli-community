@@ -18,25 +18,6 @@ const UNREACHABLE_VIEW: AuthModalView = {
 };
 
 describe('rereadBeforeSignIn', () => {
-  it('As a user whose saved sign-in cannot be reached, I click and see a spinner while it is read again', async () => {
-    // Given
-    const modal = createFakeModal();
-    const auth = atom<DotliAuthState>({ tag: 'Unreachable' });
-
-    // When
-    await rereadBeforeSignIn({
-      open: modal.open,
-      modal,
-      rereadSession: settleAs(auth, { tag: 'Unreachable' }),
-      auth,
-      proceed: null,
-      elsewhere: () => false,
-    });
-
-    // Then
-    expect(modal.shown[0]).toEqual({ kind: 'spinner' });
-  });
-
   it('As a user whose saved sign-in still cannot be reached, I am told so and can try again', async () => {
     // Given
     const modal = createFakeModal();

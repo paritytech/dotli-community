@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, waitFor } from 'storybook/test';
-import { byId } from '@dotli/ui/testing';
 import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatButton } from './ChatButton.js';
@@ -33,22 +31,4 @@ type Story = StoryObj<typeof meta>;
 /** As a user, I see the chat button only while the page has chat for me. */
 export const HiddenWithoutChat: Story = {
   tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a user, the chat button shows only while the page has chat for me', async () => {
-      // Then, before the page has chat
-      await expect(byId('chat-button')).not.toBeVisible();
-
-      // When chat becomes available
-      stage.update({ available: true });
-
-      // Then
-      await waitFor(() => expect(byId('chat-button')).toBeVisible());
-
-      // When it goes away, as when the product fails
-      stage.update({ available: false });
-
-      // Then
-      await waitFor(() => expect(byId('chat-button')).not.toBeVisible());
-    });
-  },
 };

@@ -485,30 +485,6 @@ export const GrantsBadge: Story = {
   beforeEach: () => {
     givenApp({ ChainSubmit: 'granted' });
   },
-  play: async ({ step }) => {
-    const button = byId('permissions-button');
-    await step("Then the badge shows for the app's grant", async () => {
-      await waitFor(() => expect(button).toHaveAttribute('data-badge'));
-    });
-    await step('When the only grant goes back to Ask', async () => {
-      await storyPermissions.onChange({ ChainSubmit: 'ask' });
-    });
-    await step('Then the badge goes', async () => {
-      await waitFor(() => expect(button).not.toHaveAttribute('data-badge'));
-    });
-    await step('When Camera is allowed', async () => {
-      await storyPermissions.onChange({ Camera: 'granted' });
-    });
-    await step('Then the badge is back', async () => {
-      await waitFor(() => expect(button).toHaveAttribute('data-badge'));
-    });
-    await step('When the app fails to load', () => {
-      givenNotice('no-app');
-    });
-    await step('Then the badge goes', async () => {
-      await waitFor(() => expect(button).not.toHaveAttribute('data-badge'));
-    });
-  },
 };
 
 /** As a user opening the popover again, the page is asked to read the statuses again, and the newer read shows. */

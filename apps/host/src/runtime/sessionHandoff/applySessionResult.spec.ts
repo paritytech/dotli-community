@@ -3,13 +3,10 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
-import { atom } from 'nanostores';
-import type { DotliAuthState } from '../session/types.js';
 import { createCoreStorage } from '../session/createCoreStorage.js';
 import { createNonOwnerSignInFlag } from '../session/signInFlag.js';
 import { createFakeSharedSessionStore } from '../session/createCoreStorage.fake.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
-import { createSessionState } from '../session/createSessionState.js';
 import { applySessionResult } from './applySessionResult.js';
 import type { SessionResult } from './parseSessionResult.js';
 
@@ -23,10 +20,7 @@ const UI_STATE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const IDENTITY: LocalWalletIdentity = { identityAccountId: '5Alice', liteUsername: 'alice.dot' };
 
-/**
- * A page whose copy holds `stored`, with the session written through its real core storage over a fake store, and
- * session state started over it with no core booted, as on the landing page.
- */
+/** A page whose copy holds `stored`, with the session written through its real core storage over a fake store. */
 function createPage(stored: Params = {}) {
   const shared = createFakeSharedSessionStore({ status: 'available' });
   if (stored.blob !== undefined) {
@@ -42,23 +36,6 @@ function createPage(stored: Params = {}) {
       readStoredSignIn: () => Promise.resolve('none'),
     }),
   });
-  const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
-  const session = createSessionState({
-    store: storage,
-    async restore() {
-      return { local: null, session: await storage.readSession(), wallet: { status: 'none' }, presence: 'present' };
-    },
-    auth: {
-      store: auth,
-      set: next => {
-        auth.set(next);
-      },
-    },
-    setElsewhere: () => undefined,
-    isLocalWallet: () => false,
-    isResumeOffered: () => true,
-  });
-  onTestFinished(session.start());
   const sessionChanges = vi.fn();
   onTestFinished(storage.subscribeStoredSession(sessionChanges));
   const saved: [Uint8Array, LocalWalletIdentity | null][] = [];
@@ -72,7 +49,7 @@ function createPage(stored: Params = {}) {
     },
     reload,
   };
-  return { shared, auth, sessionChanges, saved, reload, params };
+  return { shared, sessionChanges, saved, reload, params };
 }
 
 describe('applying a sign-in window result', () => {
@@ -110,35 +87,6 @@ describe('applying a sign-in window result', () => {
     expect(page.saved).toEqual([]);
     expect(applied).toBe('reloading');
     expect(page.reload).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a signed-out user on a page with no core, I receive a session and am shown signed in without a reload', async () => {
-    // Given a signed-out page with no core and a result with a paired session
-    const page = createPage();
-    const result: SessionResult = { session: { blob: BLOB, uiState: UI_STATE }, localWallet: null };
-
-    // When the result is applied
-    await applySessionResult(result, page.params);
-
-    // Then the page shows the account signed in with no reload
-    // A load that read the cached account before the window wrote it shows the sign-in without a name first.
-    await expect.poll(() => page.auth.get()).toEqual({ tag: 'Connected', session: ACCOUNT });
-    expect(page.reload).not.toHaveBeenCalled();
-  });
-
-  it('As a signed-out Chrome user on a page with no core, I receive a session my copy already holds and am shown signed in with my name', async () => {
-    // Given a copy that is the main store, which the window already wrote, with no account cached yet
-    const page = createPage({ blob: BLOB });
-    const result: SessionResult = { session: { blob: BLOB, uiState: UI_STATE }, localWallet: null };
-
-    // When the result is applied
-    await applySessionResult(result, page.params);
-
-    // Then the page and its cores are told, and the page shows the account the window sent
-    expect(page.shared.entries.get(UI_STATE_KEY)).toBe(UI_STATE);
-    expect(page.sessionChanges).toHaveBeenCalledTimes(1);
-    // A load that read the cached account before the window wrote it shows the sign-in without a name first.
-    await expect.poll(() => page.auth.get()).toEqual({ tag: 'Connected', session: ACCOUNT });
   });
 
   it('As a user signing in on a dot.li page, I get a wallet with its identity from the window and the page saves both and reloads', async () => {

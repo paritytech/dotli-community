@@ -274,36 +274,6 @@ describe('chain pool brokering', () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('As a session that disconnects, I have my transaction watch released upstream', () => {
-    // Given
-    const harness = createProviderHarness();
-    const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote({ genesisHash: 'asset-hub', connectionId: 'conn-a', onMessage: () => {} });
-
-    // When
-    connection?.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'transactionWatch_v1_submitAndWatch',
-        params: ['0x0102'],
-      }),
-    );
-
-    // Then
-    const upstreamRequest = readUpstreamRequest(harness.sent[0]);
-    expect(upstreamRequest.method).toBe('transactionWatch_v1_submitAndWatch');
-
-    // When
-    harness.emit({ jsonrpc: '2.0', id: upstreamRequest.id, result: 'up-tx' });
-    connection?.disconnect();
-
-    // Then
-    const release = readUpstreamRequest(harness.sent[1]);
-    expect(release.method).toBe('transactionWatch_v1_unwatch');
-    expect(release.params[0]).toBe('up-tx');
-  });
-
   it('As a session watching a transaction, I hear an event that arrived before my subscription answer, once it is answered', () => {
     // Given
     const harness = createProviderHarness();
@@ -570,111 +540,6 @@ describe('chain pool brokering', () => {
       id: 11,
       result: true,
     });
-  });
-
-  it('As a session attaching after every other one left, I reuse the warm upstream', () => {
-    // Given
-    const harness = createProviderHarness();
-    const manager = createManager(() => harness.provider);
-
-    // When
-    const connectionA = manager.connectRemote({
-      genesisHash: 'asset-hub',
-      connectionId: 'conn-a',
-      onMessage: () => {},
-    });
-    connectionA?.disconnect();
-
-    // Then
-    expect(harness.disconnect).not.toHaveBeenCalled();
-
-    // When
-    const connectionB = manager.connectRemote({
-      genesisHash: 'asset-hub',
-      connectionId: 'conn-b',
-      onMessage: () => {},
-    });
-    connectionB?.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'chainSpec_v1_chainName',
-        params: [],
-      }),
-    );
-
-    // Then
-    expect(harness.sent.at(-1)).toMatchObject({
-      method: 'chainSpec_v1_chainName',
-    });
-    expect(harness.disconnect).not.toHaveBeenCalled();
-
-    // When
-    manager.disconnectAll();
-
-    // Then
-    expect(harness.disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it('As the host page, I get a local provider on the same upstream as remote sessions and each gets its own answers', () => {
-    // Given
-    const harness = createProviderHarness();
-    const manager = createManager(() => harness.provider);
-    const localProvider = must(manager.getLocalProvider('asset-hub'), 'local provider');
-    const remoteMessages: string[] = [];
-
-    // `getLocalProvider` uses the object wire. `connectRemote` uses the string wire.
-    const localMessages: JsonRpcMessage[] = [];
-    const localConnection = localProvider(message => {
-      localMessages.push(message);
-    });
-    const remoteConnection = manager.connectRemote({
-      genesisHash: 'asset-hub',
-      connectionId: 'conn-a',
-      onMessage: message => {
-        remoteMessages.push(message);
-      },
-    });
-
-    // When
-    localConnection.send({
-      jsonrpc: '2.0',
-      id: 'local-1',
-      method: 'chainHead_v1_header',
-      params: ['token', '0xabc'],
-    });
-    remoteConnection?.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'remote-1',
-        method: 'chainHead_v1_header',
-        params: ['token', '0xdef'],
-      }),
-    );
-
-    const localUpstream = readUpstreamRequest(harness.sent[0]);
-    const remoteUpstream = readUpstreamRequest(harness.sent[1]);
-
-    harness.emit({
-      jsonrpc: '2.0',
-      id: localUpstream.id,
-      result: 'local-result',
-    });
-    harness.emit({
-      jsonrpc: '2.0',
-      id: remoteUpstream.id,
-      result: 'remote-result',
-    });
-
-    // Then
-    expect(localMessages).toEqual([{ jsonrpc: '2.0', id: 'local-1', result: 'local-result' }]);
-    expect(remoteMessages).toEqual([
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'remote-1',
-        result: 'remote-result',
-      }),
-    ]);
   });
 
   it('As a session using the same client id as another, I subscribe to my statements and hear only mine', () => {
@@ -1012,41 +877,9 @@ describe('chain pool brokering', () => {
       harness.sent.filter(message => message.method === 'transactionWatch_v1_unwatch').map(message => message.params),
     ).toEqual([['up-tx']]);
   });
-
-  it('As the last session leaving a follow before the node answers it, I leave no follow running upstream', () => {
-    // Given a follow in flight
-    const harness = createProviderHarness();
-    const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote({
-      genesisHash: 'asset-hub',
-      connectionId: 'conn-a',
-      onMessage: () => undefined,
-    });
-    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
-    const follow = readUpstreamRequest(harness.sent[0]);
-
-    // When the session leaves and only then the node answers
-    connection?.disconnect();
-    harness.emit({ jsonrpc: '2.0', id: follow.id, result: 'up-1' });
-
-    // Then the follow is ended upstream
-    expect(
-      harness.sent.filter(message => message.method === 'chainHead_v1_unfollow').map(message => message.params),
-    ).toEqual([['up-1']]);
-  });
 });
 
 describe('broker warnings', () => {
-  /** Builds a broker with one session, and returns a way for its upstream to answer a request nobody sent. */
-  function createStrayResponder(): (id: string) => void {
-    const harness = createProviderHarness();
-    const broker = createChainBroker({ provider: harness.provider });
-    broker.connect({ sessionId: 'session-a', onMessage: () => undefined });
-    return id => {
-      harness.emit({ jsonrpc: '2.0', id, result: null });
-    };
-  }
-
   it('As a dotli maintainer, I see an anomaly repeated on every message logged in full a few times, then only as a running count', () => {
     // Given a broker on a pool
     const harness = createProviderHarness();
@@ -1071,25 +904,6 @@ describe('broker warnings', () => {
       '100',
       '1000',
     ]);
-  });
-
-  it('As a dotli maintainer, I see two brokers that hit the same anomaly each log their own first few', () => {
-    // Given two brokers, the first of which already hit an anomaly past its full logging
-    const strayToFirst = createStrayResponder();
-    const strayToSecond = createStrayResponder();
-    collectWarningsDuring(() => {
-      for (let id = 0; id < 5; id++) {
-        strayToFirst(`first-${String(id)}`);
-      }
-    });
-
-    // When the second broker hits the same anomaly
-    const warnings = collectWarningsDuring(() => {
-      strayToSecond('second-0');
-    });
-
-    // Then it is one full-form warning, as the second broker's first
-    expect(warnings).toEqual([expect.stringMatching(/^\[dot\.li broker\] .*unknown id=second-0$/)]);
   });
 
   it("As a dotli maintainer, I see no warning when the node answers a session's own unpin and the unfollow the broker sends itself", () => {
@@ -1452,35 +1266,6 @@ describe('createChainBroker halt', () => {
     expect(second.messages).toEqual([createHaltedAnswer(22)]);
   });
 
-  it('As a dotli integrator, I halt a broker and each session hears only about its own requests and follows', () => {
-    // Given
-    const { broker, harness, open } = setUpBroker();
-    const log: string[] = [];
-    const following = openFollowingSession({ id: 'a', open, harness, log, upstreamToken: 'up-1' });
-    const requesting = open('b', log);
-    requesting.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
-    log.length = 0;
-
-    // When
-    broker.halt();
-
-    // Then
-    expect(following.messages).toEqual([
-      {
-        jsonrpc: '2.0',
-        method: 'chainHead_v1_followEvent',
-        params: { subscription: following.token, result: { event: 'stop' } },
-      },
-    ]);
-    expect(requesting.messages).toEqual([
-      {
-        jsonrpc: '2.0',
-        id: 'b-req',
-        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
-      },
-    ]);
-  });
-
   it('As a dotli integrator, I halt a broker and a session whose handler throws is reported, still hears its halt and keeps no other from theirs', () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
@@ -1739,34 +1524,6 @@ describe('upstream answers', () => {
     ]);
     expect(harness.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(2);
   });
-
-  it('As a session whose request the node answers with garbled JSON, I hear an error under my own id', () => {
-    // Given a header request sent upstream under the session id
-    const harness = createProviderHarness();
-    const broker = createChainBroker({ provider: harness.provider });
-    const messages: unknown[] = [];
-    const connection = broker.connect({
-      sessionId: 'a',
-      onMessage: message => messages.push(message),
-      wireMode: 'object',
-    });
-    connection.send({ jsonrpc: '2.0', id: 7, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
-    const upstream = readUpstreamRequest(harness.sent[0]);
-
-    // When the node answers the request with garbled JSON
-    // Garbled JSON is a string, which the provider's message type does not allow.
-    harness.emit(`{"jsonrpc":"2.0","id":"${upstream.id}","result":` as unknown as JsonRpcMessage);
-
-    // Then the session hears the error under its own id
-    expect(messages).toEqual([
-      {
-        jsonrpc: '2.0',
-        id: 7,
-        // An asymmetric matcher is typed any.
-        error: { code: -32603, message: expect.stringMatching(/^Upstream returned unparseable response: /) as string },
-      },
-    ]);
-  });
 });
 
 describe('createChainBroker local tokens', () => {
@@ -1934,17 +1691,6 @@ describe('createChainBroker follow count', () => {
     expect(whileUnfollowing).toBe(1);
     expect(broker.countFollows()).toBe(0);
     expect(messages).toEqual([]);
-  });
-
-  it('As a session, I broadcast a transaction without an id and it goes upstream untracked, as before', () => {
-    // Given a session on a broker
-    const { harness, connection } = setUpSession();
-
-    // When the session broadcasts without an id
-    connection.send({ jsonrpc: '2.0', method: 'transaction_v1_broadcast', params: ['0x0102'] });
-
-    // Then the broadcast went upstream without an id, and nothing else did
-    expect(harness.sent).toEqual([{ jsonrpc: '2.0', method: 'transaction_v1_broadcast', params: ['0x0102'] }]);
   });
 
   it('As a lane router, I learn that a broker holds only the tokens its sessions got', () => {

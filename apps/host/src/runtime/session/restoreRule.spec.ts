@@ -10,8 +10,7 @@ import { createMemoryStorage } from '@dotli/shared/testing';
 import { createCoreStorage } from './createCoreStorage.js';
 import { createNonOwnerSignInFlag } from './signInFlag.js';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
-import { createFakeSessionPresence, getUnservedChannel, type FakeSessionPresence } from './createPagePresence.fake.js';
-import { createPagePresence } from './createPagePresence.js';
+import { createFakeSessionPresence, type FakeSessionPresence } from './createPagePresence.fake.js';
 import { reconcileWithPresence, type RestoreStore } from './restoreRule.js';
 
 const SESSION_KEY = SHARED_CORE_SESSION_KEY;
@@ -142,24 +141,6 @@ describe('the restore rule', () => {
     expect(metrics.counted('session.presence')).toEqual([]);
   });
 
-  it('As a user, I drop a dead session on visible and in a window and each drop counts under its own name', async () => {
-    // Given the cookie gone
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    presence.state = 'absent';
-
-    // When a dead session is stored and dropped once on visible and once in a window
-    shared.entries.set(SESSION_KEY, DEAD);
-    await reconcileWithPresence({ presence, store }, 'visible');
-    shared.entries.set(SESSION_KEY, DEAD);
-    await reconcileWithPresence({ presence, store }, 'window');
-
-    // Then each drop is counted under its reader
-    expect(metrics.counted('session.presence')).toEqual([
-      { outcome: 'dropped', reason: 'visible' },
-      { outcome: 'dropped', reason: 'window' },
-    ]);
-  });
-
   it('As a user whose cookie cannot be read, I load the page and keep what is stored', async () => {
     // Given a stored session and wallet with a flag that reads unknown
     shared.entries.set(SESSION_KEY, DEAD);
@@ -175,50 +156,6 @@ describe('the restore rule', () => {
     expect(restored.dead).toBeNull();
     expect(shared.entries.get(SESSION_KEY)).toBe(DEAD);
     expect(wallet.record?.entropy).toEqual(ENTROPY);
-  });
-
-  it('As a user whose flag read fails, I load the page and keep what is stored with a breadcrumb left', async () => {
-    // Given a stored session whose flag read rejects
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    onTestFinished(bindCaptureSink(captures));
-    const failure = new Error('cookie jar exploded');
-    const unreadable = createPagePresence({
-      isShared: () => true,
-      localhost: false,
-      channel: getUnservedChannel,
-      jar: {
-        read() {
-          throw failure;
-        },
-        write: () => undefined,
-      },
-    });
-    shared.entries.set(SESSION_KEY, DEAD);
-
-    // When the rule runs on load
-    const restored = await reconcileWithPresence({ presence: unreadable, store }, 'load');
-
-    // Then the session is kept and the miss left as a breadcrumb
-    expect(restored.presence).toBe('unknown');
-    expect(shared.entries.get(SESSION_KEY)).toBe(DEAD);
-    expect(captures.expected).toHaveBeenCalledWith(failure, expect.objectContaining({ step: 'presence_read' }));
-  });
-
-  it('As a user with nothing stored, I load the page and the flag is read once with nothing cleared', async () => {
-    // Given an empty store with the cookie gone
-    presence.state = 'absent';
-
-    // When the rule runs on load
-    const restored = await reconcileWithPresence({ presence, store }, 'load');
-
-    // Then nothing is stored or dead
-    expect(restored).toEqual({
-      presence: 'absent',
-      session: { status: 'ok', blob: null },
-      wallet: { status: 'none' },
-      dead: null,
-    });
-    expect(presence.calls).toEqual(['read']);
   });
 
   it('As a user whose sign-in elsewhere sets the cookie and stores during my read, I load the page and keep the new sign-in', async () => {

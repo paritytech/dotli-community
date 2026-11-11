@@ -147,7 +147,7 @@ export const PERMISSION_GROUPS = {
  * Navigation via anchor or window.open has no host-side enforcement point, so these always resolve
  * `true` and stay out of the menu, where a control that cannot block would mislead.
  */
-export const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<DevicePermissionName> = new Set<AutoGrantDevicePermission>([
+const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<DevicePermissionName> = new Set<AutoGrantDevicePermission>([
   'OpenUrl',
 ]);
 

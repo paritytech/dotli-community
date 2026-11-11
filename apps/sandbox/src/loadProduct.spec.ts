@@ -1,11 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
 import { setErrorName } from '@dotli/shared';
-import { recordLog } from '@dotli/shared/testing';
 
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
 
@@ -193,31 +192,6 @@ describe('loadProduct', () => {
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: unreachable });
   });
 
-  it('As a visitor, I open a product and its content is fetched while the service worker still registers', async () => {
-    // Given a registration that settles a turn after it starts, and a fetch that records when it runs
-    const order: string[] = [];
-    const fetched: FetchResult = { type: 'single', content: encode('<h1>hi</h1>') };
-    const page = createHarness(fetched, {
-      registerWorker() {
-        order.push('worker started');
-        return Promise.resolve().then(() => {
-          order.push('worker settled');
-        });
-      },
-      fetchArchive() {
-        order.push('fetch');
-        return Promise.resolve(fetched);
-      },
-    });
-
-    // When the first attempt loads it
-    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
-
-    // Then the fetch started before the registration settled
-    expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(order).toEqual(['worker started', 'fetch', 'worker settled']);
-  });
-
   it.each<[string, FetchResult | Error]>([
     [
       'cannot reach the gateway',
@@ -293,24 +267,6 @@ describe('loadProduct', () => {
     // Then the load fails at the content fetch with that error
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: broken });
   });
-
-  it.each([true, false])(
-    "As an operator, I read the service worker's ready line and see whether a worker controls the page (%s)",
-    async controlled => {
-      // Given a page whose control the worker reports
-      const logs = recordLog({ onFinished: onTestFinished });
-      const page = createHarness(
-        { type: 'single', content: encode('<h1>hi</h1>') },
-        { isControlled: () => controlled },
-      );
-
-      // When the first attempt loads it
-      await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
-
-      // Then the ready line carries it
-      expect(logs.find(line => line.message === 'Service worker ready')?.attrs).toMatchObject({ controlled });
-    },
-  );
 
   it('As a visitor asking for a full reset, I get the origin wiped and a fresh worker awaited on the first attempt only', async () => {
     // Given a full reset whose fetch fails

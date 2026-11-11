@@ -13,7 +13,7 @@ type Params = {
  * last unlock runs. An unlock acts once. Returns the lock function, and neither it nor an unlock throws unless
  * `setLocked` does.
  */
-export function createScrollLock({ setLocked }: Params): () => () => void {
+function createScrollLock({ setLocked }: Params): () => () => void {
   const run = createSharedRun({ begin: lockPage });
 
   function lockPage(): () => void {

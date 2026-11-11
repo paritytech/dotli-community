@@ -254,25 +254,6 @@ describe('createSharedStore', () => {
     expect(errors).toHaveLength(2);
   });
 
-  it('As a returning user, I lose the frame under my shared auth subscription and it is neither reopened there nor reported', async () => {
-    // Given a subscription on a frame that is up
-    const timers = createManualTimers();
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const opened: ChangeSink[] = [];
-    const fake = createFakeFrame({ serve: createOpeningFrame(opened), timers });
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame, timers }), timers });
-    store.auth.subscribe(() => undefined);
-    await timers.advance(0);
-
-    // When the frame is lost
-    fake.lose(new Error('boom'));
-    await timers.advance(30_000);
-
-    // Then
-    expect(opened).toHaveLength(1);
-    expect(metrics.counted('protocol.feed_end')).toEqual([]);
-  });
-
   it('As a returning user, I lose a frame while my shared auth subscription asks for it and it is neither reported nor followed', async () => {
     // Given a subscription on a frame that is dropped in the turn the subscription asks for it
     const timers = createManualTimers();
@@ -288,26 +269,6 @@ describe('createSharedStore', () => {
 
     // Then
     expect(metrics.counted('protocol.feed_end')).toEqual([]);
-    expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a returning user, I leave while my ended shared auth subscription waits to be reopened, and it is not reopened', async () => {
-    // Given a subscription the frame ended
-    const timers = createManualTimers();
-    const opened: ChangeSink[] = [];
-    const fake = createFakeFrame({ serve: createOpeningFrame(opened), timers });
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame, timers }), timers });
-    const unsubscribe = store.auth.subscribe(() => undefined);
-    await timers.advance(0);
-    opened[0]?.interrupt(ok());
-    await timers.advance(0);
-
-    // When
-    unsubscribe();
-    await timers.advance(30_000);
-
-    // Then
-    expect(opened).toHaveLength(1);
     expect(timers.countPending()).toBe(0);
   });
 

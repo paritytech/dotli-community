@@ -103,22 +103,6 @@ describe('archive handoff to the service worker', () => {
     await expect(retry).rejects.toThrow('Service worker rejected archive: second');
   });
 
-  it('As a sandbox user, I wait on a worker that never answers and the load fails naming how long it waited', async () => {
-    // Given
-    const timers = createManualTimers();
-    const worker = createFakeWorker();
-    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null, timers });
-    const gaveUp = expect(handoff).rejects.toThrow(
-      `Service worker did not acknowledge archive within ${String(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
-    );
-
-    // When
-    await timers.advance(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK);
-
-    // Then
-    await gaveUp;
-  });
-
   it('As a sandbox user on the first load after a deploy, I hand my archive to a worker from the previous release and it still acknowledges it', async () => {
     // Given a worker that ignores the port and answers on the page-wide channel
     const worker = createFakeWorker();

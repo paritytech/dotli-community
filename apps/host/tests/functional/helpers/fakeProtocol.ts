@@ -39,11 +39,9 @@ export const initFailed = (message: string): FakeProtocolOptions => ({ initFaile
 /** A frame whose light client crashes once a name is asked for. */
 export const fatalOnResolve = (message: string): FakeProtocolOptions => ({ resolve: { kind: 'fatal', message } });
 
-export const errorResolveResponse = (message: string, delayMs = 0, name?: string): FakeProtocolOptions => ({
-  resolve: name === undefined ? { kind: 'error', message, delayMs } : { kind: 'error', message, delayMs, name },
+export const errorResolveResponse = (message: string, delayMs = 0): FakeProtocolOptions => ({
+  resolve: { kind: 'error', message, delayMs },
 });
-
-export const nullResolveResponse: FakeProtocolOptions = { resolve: { kind: 'none' } };
 
 export const successfulResolveResponse = (cid: string): FakeProtocolOptions => ({ resolve: { kind: 'cid', cid } });
 

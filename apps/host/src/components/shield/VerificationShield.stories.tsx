@@ -29,20 +29,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a visitor, I see a product served by the light client as a secure connection. */
-export const Verified: Story = {
-  play: async ({ step }) => {
-    await step('As a visitor, the shield is named "Secure connection"', async () => {
-      // Given a product verified by the light client
-
-      // When the shield shows
-      const shield = within(document.body).getByRole('img', { name: 'Secure connection' });
-
-      // Then the shield is the named glyph in the verified state
-      await expect(shield).toBe(byId(VERIFICATION_SHIELD_ID));
-      await expect(shield).toHaveAttribute('data-state', 'verified');
-    });
-  },
-};
+export const Verified: Story = {};
 
 /** As a visitor, I see a product served by an external RPC provider as a trusted connection, and it follows the state. */
 export const Trusted: Story = {

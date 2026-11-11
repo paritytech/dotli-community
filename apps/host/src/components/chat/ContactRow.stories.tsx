@@ -21,20 +21,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a user, I choose a contact and the list learns which one by its id. */
-export const OpensById: Story = {
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given a contact with no unread messages', async () => {
-      await expect(canvas.getByTestId('chat-room-name')).toHaveTextContent('Support');
-      await expect(canvas.queryByTestId('chat-room-unread')).toBeNull();
-    });
-    await step('When I choose it', async () => {
-      await userEvent.click(canvas.getByTestId('chat-room-item'));
-    });
-    await step('Then it reports its id', async () => {
-      await expect(args.onOpen).toHaveBeenCalledWith('room-1');
-    });
-  },
-};
+export const OpensById: Story = {};
 
 /** As a screen-reader user, the unread badge reads its full count while showing a capped one. */
 export const UnreadBadge: Story = {

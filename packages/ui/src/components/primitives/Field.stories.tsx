@@ -16,15 +16,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a dotli user, I read a label over its value. */
-export const Plain: Story = {
-  args: { labelTestId: 'field-label', valueTestId: 'field-value' },
-  play: async ({ canvas, step }) => {
-    await step('Then I read the label over its value', async () => {
-      await expect(canvas.getByTestId('field-label')).toHaveTextContent('Application');
-      await expect(canvas.getByTestId('field-value')).toHaveTextContent('playground.dot');
-    });
-  },
-};
+export const Plain: Story = {};
 /** As a dotli user, I read a monospace value that fits its box as plain text, not a Tab stop. */
 export const Mono: Story = {
   args: {

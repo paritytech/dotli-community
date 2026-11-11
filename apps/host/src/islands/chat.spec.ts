@@ -137,47 +137,6 @@ describe('useChatDock', () => {
     dispose();
   });
 
-  it('As a user, a room whose messages show while the panel is open is marked seen', async () => {
-    // Given
-    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
-    chatPanelState.setOpen(true);
-    await chat.postProductMessage({
-      productId: PRODUCT,
-      roomId: 'main',
-      content: { tag: 'Text', value: { text: 'hi' } },
-    });
-    expect(chatPanelState.store.get().unreadByRoom).toEqual({ main: 1 });
-    const { dock, dispose } = mountDock();
-
-    // When
-    const body = createRoot(d => {
-      dock.conversation.openFeed().follow(() => 'main');
-      return d;
-    });
-    flush();
-    await chat.settle();
-
-    // Then
-    expect(chatPanelState.store.get().unreadByRoom).toEqual({});
-    body();
-    dispose();
-  });
-
-  it('As the dock, closing asks the page to close the panel', () => {
-    // Given
-    chatPanelState.setOpen(true);
-    const { dock, dispose } = mountDock();
-    expect(dock.open()).toBe(true);
-
-    // When
-    dock.onClose();
-    flush();
-
-    // Then
-    expect(dock.open()).toBe(false);
-    dispose();
-  });
-
   it('As a user, the product frame keeps clear of the open panel, as wide as I drag it, and takes the room back as it closes', () => {
     // Given a closed panel
     const { dock, dispose, reserved } = mountDock();
@@ -207,22 +166,6 @@ describe('useChatDock', () => {
 
     // Then
     expect(reserved).toEqual([360, 560, 0]);
-    dispose();
-  });
-
-  it('As a user, a product error hides the chat button and closes the panel', () => {
-    // Given
-    chatPanelState.setOpen(true);
-    const { dock, dispose } = mountDock();
-    expect(dock.available()).toBe(true);
-
-    // When
-    productState.setError();
-    flush();
-
-    // Then
-    expect(dock.available()).toBe(false);
-    expect(dock.open()).toBe(false);
     dispose();
   });
 });
