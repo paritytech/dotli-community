@@ -7,7 +7,8 @@ section when flagging. Severity:
 - **major**: breaks any other documented rule. Rows from the `Tools:` label under `## Architecture` are major.
 - **minor**: comment, prose and naming.
 
-Severity only orders the work. Every finding is fixed in this branch.
+Severity only orders the work. Every finding is fixed in this branch, unless a minor one is closed with a reason that
+holds (.claude/skills/architecture/SKILL.md § Step 8: Fix).
 
 This file is the citable index. The rules and their reasons live in the docs each row cites. It lists only rules ESLint
 does not enforce. The imports each package may make are in its `eslint.config.js`, and `config/eslint/vite.js` refuses

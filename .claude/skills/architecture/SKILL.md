@@ -34,8 +34,8 @@ Project agent. Otherwise:
 3. Tell the owner in one line that the change runs in the project agent, then stop.
 
 **The `architect` agent** runs every step from the frame to `DONE`, in one context. That context holds the frame, the
-probe, the design decisions and the rejected options, and step 6 rules on findings with it. In a staged change its
-change is the roadmap or one stage (see "A staged change").
+goal, the probe, the design decisions and the rejected options, and step 6 rules on findings with it. In a staged change
+its change is the roadmap or one stage (see "A staged change").
 
 - Each "ask the owner", "stop" or "owner approves" in this skill is a message with the matching tag of its agent
   definition.
@@ -45,14 +45,23 @@ change is the roadmap or one stage (see "A staged change").
 
 ### A staged change
 
-When the owner stages a change at step 2, the architect writes `docs/_plans/<topic>-roadmap.md` before any design: the
-stages in order, each as one frame sentence with its layers, and a `Carries` section for what a later stage needs to
-know. The roadmap is a gate the owner approves. The agent that wrote it then ends with `DONE`.
+When the owner stages a change at step 2, the architect writes `docs/_plans/<topic>-roadmap.md` before any design. It
+holds:
+
+- the goal (step 1)
+- the stages in order, each as one frame sentence with its layers and its share of the goal
+- a `Rules` section for the owner's decisions that bind every stage (see "An owner decision has a scope")
+- a `Carries` section for facts a later stage needs to know
+
+The roadmap is a gate the owner approves. The agent that wrote it then ends with `DONE`.
 
 Each stage is its own change with its own `architect`, which runs steps 1 to 9 for that stage alone. Its first message
 names the roadmap and the stage, with the owner's roadmap approval. That approval starts the stage and passes none of
-its gates. Before `DONE` it marks the stage done in the roadmap and adds to `Carries` what later stages need. The main
-session then starts the next stage without asking the owner, who approved the roadmap (`CLAUDE.md` § Project agent).
+its gates. The roadmap's `Rules` bind it, and its goal is its share of the roadmap's goal. Before `DONE` it marks the
+stage done in the roadmap, which needs its share met or accepted by the owner (step 1), and adds to `Carries` the facts
+later stages need. A decision the owner made in this stage goes under `Rules` only when the owner asks for it there. The
+main session then starts the next stage without asking the owner, who approved the roadmap (`CLAUDE.md` § Project
+agent).
 
 One context per stage keeps every turn small. A context that spans stages is re-sent on every turn and rebuilt after
 every long wait, so each stage costs more than the last.
@@ -63,7 +72,7 @@ every long wait, so each stage costs more than the last.
 flowchart TD
     Trivial{"Trivial edit as<br/>docs/code/glossary.md defines it?"}
     Direct["Write the edit directly,<br/>no skill run"]
-    Frame["Step 1: frame the change in one sentence<br/>(event storming when it does not fit)"]
+    Frame["Step 1: frame the change in one sentence<br/>and write its goal<br/>(event storming when it does not fit)"]
     Probe{"Step 2: size probe.<br/>Radius contradicts the frame,<br/>or the change adds braid?"}
     ProbeStop{"STOP: 2 or 3 options with costs,<br/>owner decides"}
     Place{"Step 3: a home found<br/>in docs/code/placement.md?"}
@@ -85,8 +94,8 @@ flowchart TD
         Implement["Implement the batch's tasks"]
         DevGate{"A discovery breaks the plan<br/>beyond a ruling?"}
         BatchReview["Fresh batch review"]
-        BatchGate{"Findings open?"}
-        BatchFix["Next fix round"]
+        BatchGate{"Verified findings open?"}
+        BatchFix["Next fix round<br/>round 4 rewrites the unit"]
         More{"More batches?"}
     end
 
@@ -96,13 +105,13 @@ flowchart TD
 
     subgraph ReviewLoop["Steps 7 and 8, at most 4 reviewer runs, full and scoped"]
         Review["Full reviewer run"]
-        ReviewGate{"Findings?"}
+        ReviewGate{"Verified findings?"}
         Beyond{"A fix beyond a ruling?"}
         Fix["Fix all findings of the run<br/>in one fresh dispatch"]
         MinorOnly{"Only minor findings?"}
         DocsOnly{"The sweep changed<br/>only docs or comments?"}
         Scoped["Scoped re-review<br/>of the fix's diff"]
-        ScopedGate{"Findings?"}
+        ScopedGate{"Verified findings?"}
     end
 
     ReviewStop{"STOP: owner decides<br/>fix once or accept"}
@@ -138,9 +147,9 @@ flowchart TD
     DevGate -- yes --> Amend
     DevGate -- no --> BatchReview
     BatchReview --> BatchGate
-    BatchGate -- "yes, under round 5" --> BatchFix
+    BatchGate -- "yes, under round 4" --> BatchFix
     BatchFix --> BatchReview
-    BatchGate -- "yes, after round 5" --> BatchStop
+    BatchGate -- "yes, after round 4" --> BatchStop
     BatchStop -- amend --> Amend
     BatchStop -- accept --> More
     BatchGate -- no --> More
@@ -177,11 +186,24 @@ sends to an amendment, and a step 7 finding whose fix goes beyond a ruling. Each
 options, amend the plan, review it, re-approve, implement. Every plan change passes the same approval gate, so the loop
 is not autonomous.
 
-## Step 1: Frame
+## Step 1: Frame and goal
 
 State the change in one sentence in the vocabulary of one package or app. If you cannot (two vocabularies, or the actor,
 trigger or resulting state is unclear), run event storming with the owner first (docs/abstract/event-storming.md § For
 Claude). Do not guess the package.
+
+Then write the goal: the end state the owner's request asks for, as a check a reader can run against the code once the
+change is done, such as "no module the audit names keeps a lifecycle phase outside one state value". Quote the owner's
+words beside it. Never narrow it to what is easy to prove, such as fixing only what has a confirmed bug. The design
+opens with the frame and the goal, and the goal stays fixed for the whole change:
+
+- The plan review (criterion 7) and the `reviewer` check the plan and the code against it.
+- `DONE` reports each item of the goal as met or not met.
+- Only the owner narrows it. A cut is a `QUESTION` that shows the goal before and after, never a ruling or a carry. The
+  design records the cut with the owner's words.
+- In a staged change the roadmap holds the goal, and each stage states its share of it. A stage's step 1 copies its
+  share from the roadmap and never rewrites it. A stage is not done while its share is unmet, unless the owner accepted
+  that item by name.
 
 ## Step 2: Size
 
@@ -325,9 +347,10 @@ Each pass checks `docs/_plans/<topic>-plan.md` against the actual repo:
    threaded through callers that don't use it. Step 2 measured the radius from the frame, and here it is enumerated
    (docs/abstract/simple-vs-easy.md § The classification). Flag a task that rewrites more than four files by hand, and a
    `Model: sonnet` tag on a task whose Context entry does not fully define its scope.
-7. **Faithful to the approved design?** A plan can be self-contained, real, complete and sound while solving a different
-   problem. Flag every divergence: a dropped requirement, an added one, a swapped approach, a design value (copy, px,
-   tokens) not copied verbatim.
+7. **Faithful to the approved design and its goal?** A plan can be self-contained, real, complete and sound while
+   solving a different problem. Flag every divergence: a dropped requirement, an added one, a swapped approach, a design
+   value (copy, px, tokens) not copied verbatim. Flag every item of the goal (step 1), or of the stage's share of it,
+   that executing the plan leaves unmet without a cut the owner made.
 
 **Scope of a pass.** Pass 1 audits the whole plan against every criterion. A later pass is scoped like a batch
 re-review, because a full audit costs ten minutes and finds new nits in text that already passed. Before revising, copy
@@ -459,7 +482,8 @@ controller types stays in its context for the rest of the stage.
 - An implementer brief names the plan path and the task's heading, and the file that holds the bans above. It lists in a
   few lines what earlier tasks and batch reviews found that this task needs. An implementer reads no other task's report
   and no batch review.
-- A fix brief names the review file and the IDs of the findings to fix.
+- A fix brief names the review file and the IDs of the findings to fix. A finding names a defect, so the fix covers
+  every instance of it in the change, not only the line the finding cites.
 - No brief retypes text a file already holds, and no brief bans scripts for a repeated rewrite.
 
 ### Review batches
@@ -480,12 +504,17 @@ Batches replace the per-task review of `superpowers:subagent-driven-development`
   package, from the head before the batch's first task to the head after its last. The brief names by hash any commit in
   that range that no task of this change made, such as one by the owner or the main session.
 - Batch reviews send back only blocking and major findings. Minor ones are collected for step 8.
-- The fix loop runs per batch, up to five rounds. Rounds 1 to 3 resume the implementer of the task a finding points at,
-  and rounds 4 and 5 dispatch a fresh one. A finding across tasks goes to a fresh implementer with the briefs of those
-  tasks. The re-review covers only the fix diff.
+- Every blocking and major finding is verified before a fix round starts ("Verify before fixing").
+- The fix loop runs per batch, up to four rounds. Rounds 1 to 3 resume the implementer of the task a finding points at.
+  A finding across tasks goes to a fresh implementer with the briefs of those tasks.
+- A finding still open after three rounds says the unit's approach is wrong, not its details. Round 4 is a fresh
+  implementer that rewrites the unit the open findings point at from its plan task, keeping its interface, instead of
+  patching it again. A rewrite that needs a new interface or file is a hard stop ("Ruling or hard stop").
+- The re-review covers only the fix diff. It raises no finding that an earlier round of the batch raised, dropped or the
+  owner accepted.
 - A fix made only for a reviewer-run finding, an amendment included, skips the batch review, since the next reviewer run
   covers it.
-- Findings still open after round 5 are not parked, unlike that skill's breaker. They go to the owner with your read on
+- Findings still open after round 4 are not parked, unlike that skill's breaker. They go to the owner with your read on
   each, and the owner amends the plan or accepts them. Record an accepted finding in the ledger with the owner's words.
 
 ### Ruling or hard stop
@@ -519,6 +548,22 @@ On a hard stop:
 
 ## Reviewing and fixing
 
+### Verify before fixing
+
+A fix round costs a dispatch, a re-review and controller context. A finding that is not real spends all three, and its
+fix makes the code worse. So the blocking and major findings of every batch review, `reviewer` run and scoped re-review
+are verified before any fix is dispatched. Minor findings are not, since their sweep is cheap.
+
+- One fresh verifier per review gets the review file and the IDs of its blocking and major findings. It reads the code
+  each one cites and tries to refute it. A finding is confirmed only when the code shows the defect at its `file:line`,
+  and the verifier quotes those lines.
+- The verifier marks each finding confirmed or dropped in the review file, with one line why. A dropped finding is never
+  fixed and never raised again.
+- Only confirmed findings go to a fix round. A review whose blocking and major findings are all dropped counts as having
+  none of them.
+- The verifier rules on the finding as written. It never adds a finding of its own, and never changes a severity.
+- A verifier is not a reviewer run and does not count toward a cap.
+
 ### Step 7: Review
 
 After the last task and the minor sweep, dispatch a fresh subagent that runs the project `reviewer` skill. This agent
@@ -539,8 +584,9 @@ accept them.
 
 ### Step 8: Fix
 
-Every finding is fixed in this branch, minor included. Nothing is parked as a follow-up or handed to the owner as a
-list. The one exception is the open findings at a cap, which only the owner can accept. Severity only orders the work:
+Every finding is fixed in this branch, minor included, unless a minor one is closed with a reason that holds. Nothing is
+parked as a follow-up or handed to the owner as a list, except the open findings at a cap, which only the owner can
+accept. Severity only orders the work:
 
 1. The minor findings collected from batch reviews are fixed in one sweep after the last task. That sweep always goes on
    to step 7.
@@ -551,6 +597,12 @@ list. The one exception is the open findings at a cap, which only the owner can 
 4. A run with only minor findings gets one sweep. A sweep that changes only docs or comments gets no re-review. Any
    other sweep gets a scoped re-review.
 
+**Closing a minor finding.** Fixing is the default. The fixer may close a minor finding instead when the fix would make
+the code worse, or when the finding misreads what the code is for. It writes the reason in one line under the finding in
+the review file. "It is minor" and "out of scope" are not reasons. The controller reads each closure and sends back any
+whose reason does not hold. A blocking or major finding is never closed this way: only verification drops it, and only
+the owner accepts it at a cap.
+
 **Scoped re-review.** A full run takes ten minutes to re-audit a branch that already passed, so a fix gets a re-review
 of its own diff. A fresh subagent runs the `reviewer` skill on the fix's commit range, with the findings the fix answers
 as a file. It checks that each finding is fixed and audits the fix's diff against both checklists. After a blocking or
@@ -559,8 +611,25 @@ fix can open a hole outside its own diff. After a minor sweep it checks only the
 blocking or major findings go through item 2 or 3, and its minor ones get one more sweep and re-review. Every scoped
 re-review counts toward the four-run cap.
 
+**A finding that comes back.** A scoped re-review raises no finding the review file already holds, whether it was fixed,
+dropped, closed or accepted. A confirmed blocking or major finding on a unit that an earlier fix of this step already
+changed says the patch approach failed. Its fix is a rewrite of that unit from its plan task, keeping its interface, not
+another patch.
+
 The lifecycle ends at a step 7 run with no findings, a docs-only sweep, a clean scoped re-review, or the owner's
 decision at the step 7 cap. Step 9 follows. Finishing the branch (merge or PR) is a separate step the owner starts.
+
+**The outcome record.** When the lifecycle ends, the controller appends `### Outcome` to the review file. It records
+what happened and judges nothing:
+
+- the fix rounds of each batch, and the reviewer runs, full and scoped
+- every finding of the batch reviews and the reviewer runs, by ID, with its outcome: fixed, rewritten, dropped by
+  verification, closed with its reason, or accepted by the owner
+- the count of each outcome
+
+Records from many runs show where the review costs more than it catches. Many dropped findings mean a noisy review. Many
+rounds or rewrites mean the patch approach failed, and a closed finding that recurs across runs points at a rule that
+needs changing.
 
 ## Step 9: Rule extraction
 
@@ -582,6 +651,17 @@ and batch reviewer brief states it outright:
 - calls across layers are idempotent
 
 Where a fix would add a special case, move the responsibility to the layer that owns it.
+
+### An owner decision has a scope
+
+An owner's decision holds for the change or stage it was made in, unless the owner says it holds wider. The design or
+plan records it with the owner's words and that scope. A later stage or change never applies it as precedent.
+
+- To make it bind later stages, ask the owner to make it a roadmap rule. It then goes under the roadmap's `Rules`, with
+  the owner's words.
+- To make it bind every change, run rule extraction (step 9).
+- `Carries` holds facts, such as a contract, a seam or a measured cost. A decision noted there names the stage it was
+  made in and binds no other stage.
 
 ### A request that breaks a convention
 
@@ -606,8 +686,9 @@ review seat stays on it, since a review needs judgment. `sonnet` is only for wor
   criteria and the severities. From pass 2 also the previous pass's plan copy and findings file.
 - **Step 6, an implementer**: the task's `Model` tag. Inputs as "Briefs" sets: the plan path and the task's heading, the
   file of bans, and what earlier tasks found.
-- **Step 6, a fix round**: rounds 1 to 3 resume the implementer of the finding's task, which keeps its model. Rounds 4
-  and 5, and a finding across tasks, go to a fresh one on session. Inputs: the review file and the IDs of the open
+- **Steps 6 to 8, a verifier**: session. Inputs: the review file and the IDs of its blocking and major findings.
+- **Step 6, a fix round**: rounds 1 to 3 resume the implementer of the finding's task, which keeps its model. The round
+  4 rewrite, and a finding across tasks, go to a fresh one on session. Inputs: the review file and the IDs of the open
   findings, and for a fresh one the plan path and the headings of the tasks they point at.
 - **Step 6, a batch review or re-review**: session. Inputs: the plan path and the headings of the batch's tasks, the
   report path of each, the review package path and the global constraints.
@@ -652,7 +733,7 @@ Every rule above binds on its own. These are the moves and thoughts that slip pa
 - **Re-implementing clarify, design or plan prose inside this skill.** Superpowers owns that process.
 - **Restating a list or definition that a doc owns** (the trivial criteria, the peer files, the placement rules, the
   import rules). Cite the doc. Copied lists drift silently when the doc changes.
-- **Running past a cap**: a fourth plan pass, a sixth fix round on a batch, a fifth `reviewer` run. Past the cap, the
+- **Running past a cap**: a fourth plan pass, a fifth fix round on a batch, a fifth `reviewer` run. Past the cap, the
   owner decides.
 - **Amending the plan for a plain code bug.** A step 7 finding amends the plan only when its fix goes beyond a ruling.
 - **Treating the one-sentence frame as an estimate.** The cost is the braid it sits in. Measure the radius with

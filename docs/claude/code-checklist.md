@@ -11,7 +11,8 @@ Walk this for every file the diff touches. Cite the doc and section when flaggin
 
 Each row carries its severity.
 
-Severity only orders the work. Every finding is fixed in this branch.
+Severity only orders the work. Every finding is fixed in this branch, unless a minor one is closed with a reason that
+holds (.claude/skills/architecture/SKILL.md § Step 8: Fix).
 
 This checklist lists only rules ESLint does not enforce. `config/eslint/vite.js` catches `console`, an empty `catch`, an
 `Error` built by concatenating `err.message`, exported `_FAILURE`, `_TIMEOUT` and `_RETRY` constants, `.ts` import
