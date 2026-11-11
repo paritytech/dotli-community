@@ -27,6 +27,19 @@ function createStatus(initial: Status) {
 }
 
 describe('waitForStatus', () => {
+  it('As a layer above, I wait past the statuses my verdict leaves open and get the one that settled it', async () => {
+    // Given
+    const cell = createStatus('idle');
+    const wait = waitForStatus(cell, status => status === 'up' || status === 'down');
+
+    // When
+    cell.set('booting');
+    cell.set('down');
+
+    // Then
+    await expect(wait).resolves.toBe('down');
+  });
+
   it('As a layer above, I wait on the status there is now and settle without listening', async () => {
     // Given
     const cell = createStatus('up');
@@ -43,7 +56,7 @@ describe('waitForStatus', () => {
     const wait = waitForStatus(counting, status => status === 'up');
 
     // Then
-    await expect(wait).resolves.toBeUndefined();
+    await expect(wait).resolves.toBe('up');
     expect(listened).toBe(0);
   });
 

@@ -18,7 +18,8 @@ type Params = {
 
 /**
  * Waits on the source's status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
- * signal's reason when `signal` aborts first. A `verdict` that throws fails the wait with what it threw.
+ * signal's reason when `signal` aborts first. Resolves with the status that settled it. A `verdict` that throws fails
+ * the wait with what it threw.
  *
  * @example
  * await waitForStatus(store, shown => shown.phase === 'ready', { signal });
@@ -27,10 +28,10 @@ export function waitForStatus<T>(
   source: StatusSource<T>,
   verdict: (status: T) => boolean | Error,
   { signal }: Params = {},
-): Promise<void> {
+): Promise<T> {
   return raceAbort({ signal, start });
 
-  function start(settle: Settle<void>): () => void {
+  function start(settle: Settle<T>): () => void {
     // The status there is now settles the wait at once, so a status already there costs no listener.
     if (settleOn(source.get())) {
       return noop;
@@ -50,7 +51,7 @@ export function waitForStatus<T>(
         return false;
       }
       if (outcome === true) {
-        settle.resolve();
+        settle.resolve(status);
       } else {
         settle.reject(outcome);
       }

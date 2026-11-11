@@ -162,7 +162,11 @@ Why: the name tells the reader what kind of thing it is before they read the bod
 A function does one job. When a part of its body needs a comment to say what it does, that part is a separate named
 function, and the outer body reads as a list of steps.
 
-Why: a reader can follow the outer flow without reading every step.
+A function that only forwards to another, renames a call or passes its arguments through is inlined at its call site.
+A step earns its own function only when its name saves the reader from working out what a block does.
+
+Why: a reader can follow the outer flow without reading every step, and without hopping through functions that do no
+work of their own.
 
 ## Composition
 
@@ -406,6 +410,9 @@ when it returns only while the unit still holds that same state. Compare by iden
 Work that runs on after its signal aborts stops on the signal, or checks that it still owns the state before it writes.
 A pool whose works must never overlap, even across an abort, holds its slots on abort.
 
+A caller that waits for a unit's outcome waits on the unit's own state, such as with `waitForStatus`. It never waits
+on a promise, a reply or a pending call kept beside that state.
+
 Why: one value names every phase, each transition has one place, and a stale callback is told apart by identity instead
 of by a flag that drifts.
 
@@ -592,6 +599,26 @@ enum Status {
   Failed,
 }
 type State = { status: Status; data?: Data; error?: Error };
+```
+
+### `null` for a known empty value
+
+A value the code knows is empty is `null`. That covers a slot with nothing in it yet and a lookup that found nothing.
+It also covers a return with no result. `undefined` means only "not given", such as an optional parameter or property
+left out. Turn an `undefined` from a platform or library API into `null` where it enters the code.
+
+Why: `null` is set on purpose, so a reader tells "known to be empty" apart from "never set".
+
+```ts
+// Do
+function findAccount(id: AccountId): Account | null {
+  return accounts.get(id) ?? null;
+}
+
+// Don't
+function findAccount(id: AccountId): Account | undefined {
+  return accounts.get(id);
+}
 ```
 
 ### Per-member facts in one table

@@ -12,8 +12,7 @@ import { getTrustedProviderHosts } from './describeError.js';
 import { pageSettingsActions } from './createSettingsActions.js';
 import { settingsIntent } from './createSettingsIntent.js';
 import { sessionErrorSightings } from './createSessionErrorSightings.js';
-import { presentLoadFailure } from './presentLoadFailure.js';
-import type { LoaderFailureScreen } from './createProductLoader.js';
+import { presentLoadFailure, type LoadFailure } from './presentLoadFailure.js';
 import { pendingResets } from './runtime/createPendingResets.js';
 
 const report = createReporter({ flow: 'resolve' });
@@ -25,8 +24,9 @@ const report = createReporter({ flow: 'resolve' });
 const pendingResetScheduleMetric = defineCount<'error'>('pending_reset.schedule');
 
 /** This page's failure screen. */
-export const loadFailureScreen: LoaderFailureScreen = {
-  show(failure) {
+export const loadFailureScreen = {
+  /** Shows the screen for `failure`. Throws when the screen cannot be shown. */
+  show(failure: LoadFailure): void {
     presentLoadFailure(failure, {
       showErrorPage,
       openSettings: settingsIntent.open,
@@ -38,6 +38,7 @@ export const loadFailureScreen: LoaderFailureScreen = {
       emit: debugBus.emit,
     });
   },
+  /** Records that the previous attempt's failure is behind the visitor. */
   forget: sessionErrorSightings.forget,
 };
 

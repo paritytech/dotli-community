@@ -36,6 +36,8 @@ above the linter: semantics, data flow and naming.
   unit with positional params, or any function with more than two positional inputs.
 - **major** (docs/code/style.md § One job per function): A block inside a function that needs a comment to say what it
   does, instead of a named function.
+- **major** (docs/code/style.md § One job per function): A function that only forwards to another, renames a call or
+  passes its arguments through, instead of being inlined at its call site.
 - **major** (docs/code/style.md § Dependencies come in through parameters): A unit that imports a network client,
   storage, a timer, the clock or a randomness source instead of taking it through its params.
 - **major** (docs/code/style.md § Pass collaborators whole, grouped by owner): A forwarded param restated where its
@@ -63,6 +65,8 @@ above the linter: semantics, data flow and naming.
   ladder inline, a `switch` over a closed union with a `default` unless it reads only some members and gives a one-line
   reason, or, outside the module that owns a union, one member picked out with `===` or members grouped in one `case` to
   answer a question the owner could name.
+- **major** (docs/code/style.md § `null` for a known empty value): A known empty value, such as an empty slot, a
+  lookup miss or a return with no result, typed or set as `undefined` instead of `null`.
 - **major** (docs/code/style.md § Per-member facts in one table): A member's facts written outside the table beside its
   union, or a fixture or story that copies the table instead of importing it.
 - **major** (docs/code/style.md § A variant flag is a predicate): A mode or kind compared at a use site where its owner
@@ -145,6 +149,8 @@ above the linter: semantics, data flow and naming.
 - **major** (docs/code/style.md § A lifecycle is one state value): A lifecycle phase held in flags or nullable slots
   beside each other, a transition that calls out before it writes the next state, or work that acts after an `await` or
   an abort without checking it still holds the state it started in.
+- **major** (docs/code/style.md § A lifecycle is one state value): A caller that waits for a unit's outcome through a
+  promise, a reply or a pending call kept beside the unit's state, instead of waiting on that state.
 
 ## UI and styles
 

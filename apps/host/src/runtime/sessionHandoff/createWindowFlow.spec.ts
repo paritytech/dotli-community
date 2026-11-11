@@ -292,7 +292,7 @@ function openWindow(options: OpenWindowParams = {}) {
 }
 
 /** Waits until the flow shows a screen that `met` accepts. */
-function waitForScreen(flow: WindowFlow, met: (screen: SignInScreen) => boolean): Promise<void> {
+function waitForScreen(flow: WindowFlow, met: (screen: SignInScreen) => boolean): Promise<SignInScreen> {
   return waitForStatus(flow.screen, met);
 }
 
@@ -303,12 +303,12 @@ function getOffer(flow: WindowFlow): ContinueOffer | null {
 }
 
 /** Waits until the flow shows `view`. */
-function waitForView(flow: WindowFlow, view: WindowView): Promise<void> {
+function waitForView(flow: WindowFlow, view: WindowView): Promise<SignInScreen> {
   return waitForScreen(flow, current => current.view === view);
 }
 
 /** Waits until the flow's pairing is of `kind`. */
-function waitForPairing(flow: WindowFlow, kind: SignInScreen['pairing']['kind']): Promise<void> {
+function waitForPairing(flow: WindowFlow, kind: SignInScreen['pairing']['kind']): Promise<SignInScreen> {
   return waitForScreen(flow, current => current.pairing.kind === kind);
 }
 

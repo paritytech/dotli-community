@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainPoolControl } from '@dotli/chains';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { createFakePage, createManualTimers, type FakePage, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkPause, NETWORK_PAUSE_GRACE_MS, type NetworkPause } from './createNetworkPause.js';
 import { createManualPoll } from '../testing/createManualPoll.js';
@@ -238,6 +239,23 @@ describe('The network pause', () => {
     expect([whileHeld, duringGrace, calls]).toEqual([[], [], ['pause']]);
   });
 
+  it('As a page hidden again within its grace, my network pauses one grace after the second hide', async () => {
+    // Given
+    pause.start({ visibility: page.document });
+    page.setVisibility('hidden');
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+    page.setVisibility('visible');
+    page.setVisibility('hidden');
+
+    // When the first grace's timer fires during the second grace, and then the second's
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+    const afterFirstGrace = [...calls];
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+
+    // Then
+    expect([afterFirstGrace, calls]).toEqual([[], ['pause']]);
+  });
+
   it('As a page that removes a target and a return listener, neither hears the network again', async () => {
     // Given
     const removed: string[] = [];
@@ -290,25 +308,6 @@ describe('The network pause', () => {
 
     // Then
     expect(calls).toEqual(['pause']);
-  });
-
-  it('As a page whose target stops following visibility while it pauses, my network resumes', async () => {
-    // Given
-    let stop = (): void => undefined;
-    pause.addTarget({
-      pause: () => {
-        stop();
-      },
-      resume: () => undefined,
-    });
-    stop = pause.start({ visibility: page.document });
-    page.setVisibility('hidden');
-
-    // When
-    await timers.advance(NETWORK_PAUSE_GRACE_MS);
-
-    // Then
-    expect(calls).toEqual(['pause', 'resume']);
   });
 
   it('As a page shown while a target pauses, my network resumes and the monitor starts over', async () => {
@@ -387,6 +386,26 @@ describe('The network pause', () => {
 
     // Then
     expect([calls, late]).toEqual([['pause', 'resume'], []]);
+  });
+
+  it('As an operator, I see a pause target that throws reported, and the page keeps serving the network', async () => {
+    // Given a target whose pause throws, told after the recording one
+    pause.addTarget({
+      pause: () => {
+        throw new Error('pause failed');
+      },
+      resume: () => undefined,
+    });
+    const reports = recordReports({ onFinished: onTestFinished });
+    pause.start({ visibility: page.document });
+
+    // When
+    page.setVisibility('hidden');
+    await timers.advance(NETWORK_PAUSE_GRACE_MS);
+    page.setVisibility('visible');
+
+    // Then
+    expect([reports.exceptions, calls]).toMatchObject([[{ step: 'transition' }], ['pause', 'resume']]);
   });
 });
 

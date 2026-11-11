@@ -14,7 +14,7 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
-import { createDeferred, createListenerSet, withTimeout } from '@dotli/shared';
+import { createDeferred, createListenerSet, waitForStatus, withTimeout } from '@dotli/shared';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -25,7 +25,9 @@ import { rethrow } from '../../src/testing/rethrow.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
 import { pageLoading } from '../../src/createLoadingController.js';
 import type { NameSource } from '../../src/createNameSource.js';
-import { createProductLoader, type LoaderCidCache, type LoaderPorts } from '../../src/createProductLoader.js';
+import { createProductLoader } from '../../src/createProductLoader.js';
+import type { PageCidCache } from '../../src/createPageCidCache.js';
+import type { ProductFrame } from '../../src/runtime/createProductFrame.js';
 import { SandboxSilentError, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { urlPillState } from '../../src/state/urlPillState.js';
@@ -47,6 +49,8 @@ type Params = {
   latchedMismatch?: ProtocolVersionMismatchError;
   /** What the product's core fails to boot with. It boots without it. */
   coreBootError?: Error;
+  /** Thrown as the loader subscribes to the sandbox's outcomes. */
+  outcomesUnfollowable?: Error;
 };
 
 const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
@@ -220,10 +224,28 @@ describe('createProductLoader', () => {
     // When the name is loaded
     await loader.load('doom');
 
-    // Then only the render handoff is reported, the failure screen shows, and the app is not rendered
+    // Then only the render handoff is reported, the failure screen shows, and the app is neither rendered nor halted
     expect(captured.map(context => context.step)).toEqual(['render_handoff']);
     expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
     expect(ports.product.render).not.toHaveBeenCalled();
+    expect(ports.product.halt).not.toHaveBeenCalled();
+  });
+
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and see the failure screen, and the operator gets one report naming the step", async () => {
+    // Given
+    const cause = new Error('the sandbox outcomes cannot be followed');
+    const { loader, failures, captured } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: cause,
+    });
+
+    // When
+    const loaded = loader.load('doom');
+
+    // Then
+    await expect(loaded).resolves.toBeUndefined();
+    expect(captured.map(context => context.step)).toEqual(['render_handoff']);
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
   });
 
   it.each<{ outcome: string; params: Params; steps: string[] }>([
@@ -433,6 +455,7 @@ describe('createProductLoader', () => {
     // When
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
     await reportContent('loaded');
+    await waitForStatus(productState.store, product => product.status === 'error');
 
     // Then
     expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
@@ -450,6 +473,7 @@ describe('createProductLoader', () => {
 
     // When the frame refuses the wire and the failure screen throws
     refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await waitForStatus(productState.store, product => product.status === 'error');
 
     // Then the throw is captured once and counted with its error name
     expect(captured.filter(context => context.step === 'failure_screen')).toEqual([
@@ -515,6 +539,25 @@ describe('createProductLoader', () => {
     expect(names.resolveProduct).toHaveBeenCalledTimes(1);
     expect(ports.product.render).toHaveBeenCalledTimes(1);
   });
+
+  it('As a visitor whose page core is not set up, I open a name and the load rejects with that error and shows no screen', async () => {
+    // Given
+    const error = new Error('the page core is not set up');
+    const { loader, ports, failures } = setupLoader();
+    vi.mocked(ports.core.setPageProduct).mockImplementation(() => {
+      throw error;
+    });
+
+    // When
+    const first = loader.load('doom');
+    const second = loader.load('doom');
+
+    // Then
+    await expect(first).rejects.toBe(error);
+    await expect(second).resolves.toBeUndefined();
+    expect(failures).toEqual([]);
+    expect(ports.core.setPageProduct).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**
@@ -576,12 +619,12 @@ function setupLoader(params: Params = {}) {
   };
   const ports = {
     product: {
-      render: vi.fn<LoaderPorts['product']['render']>(() => Promise.resolve()),
+      render: vi.fn<ProductFrame['render']>(() => Promise.resolve()),
       halt: vi.fn(),
     },
     core: {
       setPageProduct: vi.fn(),
-      acquirePageCore: vi.fn<LoaderPorts['core']['acquirePageCore']>(() =>
+      acquirePageCore: vi.fn(() =>
         params.coreBootError !== undefined
           ? Promise.reject(params.coreBootError)
           : Promise.resolve({ release: releaseCore }),
@@ -589,6 +632,9 @@ function setupLoader(params: Params = {}) {
     },
     sandbox: {
       subscribeOutcomes: (listener: (report: SandboxLoadReport) => void) => {
+        if (params.outcomesUnfollowable !== undefined) {
+          throw params.outcomesUnfollowable;
+        }
         if (latestOutcome !== null) {
           sandboxOutcomes.deliver(listener, latestOutcome);
         }
@@ -603,25 +649,28 @@ function setupLoader(params: Params = {}) {
         }),
     },
     content: { onProgress: () => () => undefined },
-  } satisfies LoaderPorts;
+  };
   const cidCache = {
-    get: vi.fn<LoaderCidCache['get']>(() => Promise.resolve(params.cached ?? null)),
+    get: vi.fn<PageCidCache['get']>(() => Promise.resolve(params.cached ?? null)),
     storeLater({ label, cid }) {
       stored.push(`${label} ${cid}`);
     },
     revalidateLater({ label, servedCid, onScreen }) {
       revalidated.push([label, servedCid, onScreen]);
     },
-  } satisfies LoaderCidCache;
+  } satisfies PageCidCache;
   const loader = createProductLoader({
     backend: params.backend ?? 'smoldot-direct',
     skipCidCache: params.skipCidCache ?? false,
     flowId: 'boot-1',
     startedAt: 0,
     names,
-    ports,
+    productFrame: ports.product,
+    bridge: ports.core,
+    sandboxLoad: ports.sandbox,
+    blockRelay: ports.content,
     cidCache,
-    fetchBlock: () => new Promise<Uint8Array>(() => undefined),
+    bitswap: { get: () => new Promise<Uint8Array>(() => undefined) },
     recents: {
       record(label) {
         recents.push(label);

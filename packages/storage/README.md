@@ -34,7 +34,7 @@ dotli's persistent browser data in IndexedDB:
 | `WALLET_DB_NAME`, `SITE_GRANTS_DB_NAME`                                          | Databases an origin wipe keeps.          |
 | `isExpectedDbError`                                                              | Whether a database error is not a fault. |
 | `blockCache`                                                                     | Bitswap block cache.                     |
-| `cidCache`, `CachedManifests`                                                    | Label to CID cache.                      |
+| `cidCache`, `CachedCid`, `CachedManifests`                                       | Label to CID cache.                      |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                        |
 | `LocalWallet`, `LocalWalletIdentity`, `LocalWalletStore`                         | Local wallet types.                      |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                             |

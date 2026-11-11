@@ -147,6 +147,8 @@ request in session storage, so a reload answers the same round.
 
 ### Product load
 
+- The load is one state machine whose states are its steps. Its reports are side effects that one runner turns into the
+  page's telemetry.
 - The CID cache read and the product's core start early, so the core boots while the name resolves.
 - A cached copy that revalidation finds cleared is evicted, then the page reloads onto the cold path.
 - A redeploy is offered as soon as its new contenthash is known.

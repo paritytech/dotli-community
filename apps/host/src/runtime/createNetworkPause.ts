@@ -5,22 +5,25 @@
 // timers stop while the device sleeps, so a tick that comes late reads as a return too.
 
 import type { ChainPoolControl } from '@dotli/chains';
-import { createReporter } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createListenerSet,
   createSharedRun,
+  createStateMachine,
   listen,
   realTimers,
+  type MachineTypes,
   type Timers,
   type VisibilitySource,
 } from '@dotli/shared';
 import { pagePoll, type Poll } from '../pagePoll.js';
 
 const report = createReporter({ flow: 'protocol' });
+const networkPauseTransitionMetric = defineCount<'error'>('network_pause.transition');
 
 type Params = {
   /** The clock and timers the grace runs on. The page's own unless given. */
-  timers?: Pick<Timers, 'now' | 'setTimeout' | 'clearTimeout'>;
+  timers?: Pick<Timers, 'now' | 'setTimeout'>;
   /** The tick the sleep check runs on. The page's own unless given. */
   poll?: Poll;
 };
@@ -30,8 +33,9 @@ type StartParams = {
   visibility?: VisibilitySource;
 };
 
-/** `pausing` covers the pass over the targets, which may change what the page wants, so only the pass's end settles. */
-type PauseState = { kind: 'awake' } | { kind: 'grace'; timer: unknown } | { kind: 'pausing' } | { kind: 'paused' };
+type PauseState = { kind: 'awake' } | { kind: 'grace' } | { kind: 'paused' };
+type GraceState = Extract<PauseState, { kind: 'grace' }>;
+type PauseEvent = { kind: 'networkWantChanged' } | { kind: 'graceEnded'; grace: GraceState };
 
 /** The page's network pause, as its factory builds it. */
 export type NetworkPause = ReturnType<typeof createNetworkPause>;
@@ -44,7 +48,6 @@ const SLEEP_SLACK_MS = 30_000;
 
 /** The page's network pause: a grace after the page hides, holds that keep it awake, and a check for a sleep. */
 export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Params = {}) {
-  let state: PauseState = { kind: 'awake' };
   /** The page followed since `start`, none before it. */
   let page: VisibilitySource | null = null;
   let held = false;
@@ -53,6 +56,64 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
   let lastTickAt = 0;
   const targets = new Set<ChainPoolControl>();
   const returns = createListenerSet<undefined>({ onListenerError: report.listener('network_pause.return') });
+  const pause = createStateMachine<MachineTypes<PauseState, PauseEvent>>({
+    initial: { kind: 'awake' },
+    handlers: {
+      awake: {
+        networkWantChanged(_state, _event, { emitState }) {
+          if (isNetworkWanted()) {
+            return;
+          }
+          const grace: GraceState = { kind: 'grace' };
+          emitState(grace);
+          timers.setTimeout(() => {
+            pause.update({ kind: 'graceEnded', grace });
+          }, NETWORK_PAUSE_GRACE_MS);
+        },
+      },
+      grace: {
+        networkWantChanged(_state, _event, { emitState }) {
+          if (isNetworkWanted()) {
+            emitState({ kind: 'awake' });
+          }
+        },
+        graceEnded(state, event, { emitState }) {
+          // A timer from a grace that was left ends nothing.
+          if (event.grace !== state) {
+            return;
+          }
+          if (!isNetworkWanted()) {
+            emitState({ kind: 'paused' });
+            tellTargets('pause');
+            report.log.event('Network paused');
+            return;
+          }
+          emitState({ kind: 'awake' });
+          // A frozen page fires its timer late, and may be visible by then with its event still to come.
+          if (page?.visibilityState === 'visible') {
+            returnToPage();
+          }
+        },
+      },
+      paused: {
+        networkWantChanged(_state, _event, { emitState }) {
+          if (!isNetworkWanted()) {
+            return;
+          }
+          emitState({ kind: 'awake' });
+          tellTargets('resume');
+          report.log.event('Network resumed');
+        },
+      },
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: networkPauseTransitionMetric,
+        message: '[dot.li] A network pause transition threw',
+      });
+    },
+  });
   const following = createSharedRun<VisibilitySource>({ begin: beginFollowing });
   const holds = createSharedRun({ begin: beginHold });
 
@@ -76,8 +137,8 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
 
   function addTarget(target: ChainPoolControl): () => void {
     targets.add(target);
-    // A target runs until told otherwise, so only a pause in force, or one under way, is news to it.
-    if (state.kind === 'paused' || state.kind === 'pausing') {
+    // A target runs until told otherwise, so only a pause in force is news to it.
+    if (pause.state.get().kind === 'paused') {
       target.pause();
     }
     return () => {
@@ -99,7 +160,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     if (visibility.visibilityState === 'visible') {
       startTick();
     } else {
-      startGrace();
+      pause.update({ kind: 'networkWantChanged' });
     }
     return stopFollowing;
 
@@ -107,7 +168,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
       stopListening();
       stopSleepCheck();
       page = null;
-      wake();
+      pause.update({ kind: 'networkWantChanged' });
     }
   }
 
@@ -117,7 +178,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
       return;
     }
     stopSleepCheck();
-    startGrace();
+    pause.update({ kind: 'networkWantChanged' });
   }
 
   function returnToPage(): void {
@@ -125,75 +186,25 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     if (stopTick !== null) {
       return;
     }
-    wake();
+    pause.update({ kind: 'networkWantChanged' });
     startTick();
     returns.emit(undefined);
   }
 
   function beginHold(): () => void {
     held = true;
-    wake();
+    pause.update({ kind: 'networkWantChanged' });
     return releaseHolds;
   }
 
   function releaseHolds(): void {
     held = false;
-    if (page !== null && page.visibilityState !== 'visible') {
-      startGrace();
-    }
+    pause.update({ kind: 'networkWantChanged' });
   }
 
-  function startGrace(): void {
-    if (held || state.kind !== 'awake') {
-      return;
-    }
-    state = { kind: 'grace', timer: timers.setTimeout(endGrace, NETWORK_PAUSE_GRACE_MS) };
-  }
-
-  function endGrace(): void {
-    state = { kind: 'awake' };
-    // A frozen page fires its timer late, and may be visible by then with its event still to come.
-    if (page?.visibilityState === 'visible') {
-      returnToPage();
-      return;
-    }
-    // A hold wakes the network as it begins, so this only guards against a state that slipped past that.
-    if (held) {
-      return;
-    }
-    // A target may open a hold, stop the following or show the page while it pauses, so every target is paused before
-    // any of that is heard.
-    state = { kind: 'pausing' };
-    tellTargets('pause');
-    state = { kind: 'paused' };
-    report.log.event('Network paused');
-    if (isNetworkWanted()) {
-      wake();
-    }
-  }
-
-  /**
-   * Reads the hold and the page afresh, since a call out to a target may have changed them where the type checker sees
-   * no write.
-   */
+  /** Reads the hold and the page afresh. */
   function isNetworkWanted(): boolean {
     return held || page === null || page.visibilityState === 'visible';
-  }
-
-  function wake(): void {
-    if (state.kind === 'pausing') {
-      return;
-    }
-    if (state.kind === 'grace') {
-      timers.clearTimeout(state.timer);
-    }
-    const wasPaused = state.kind === 'paused';
-    state = { kind: 'awake' };
-    if (!wasPaused) {
-      return;
-    }
-    tellTargets('resume');
-    report.log.event('Network resumed');
   }
 
   /**

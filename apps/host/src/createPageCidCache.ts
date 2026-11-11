@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getNetwork } from '@dotli/config';
-import { cidCache } from '@dotli/storage';
+import { cidCache, type CachedCid } from '@dotli/storage';
 import { showNotification } from '@dotli/ui';
-import type { CachedCopy, LoaderCidCache } from './createProductLoader.js';
 import type { NameSource } from './createNameSource.js';
-import { revalidateCachedCopy } from './revalidateCachedCopy.js';
+import { revalidateCachedCopy, type CachedCopy, type ServedCopy } from './revalidateCachedCopy.js';
 import { markAndReload } from './createContinuation.js';
 
 /** A CID cache read started before the shell was up, for the name the page opens. */
-export type EarlyCidRead = { label: string; read: ReturnType<LoaderCidCache['get']> };
+export type EarlyCidRead = { label: string; read: Promise<CachedCid | null> };
+
+export type PageCidCache = ReturnType<typeof createPageCidCache>;
 
 type Params = {
   /** The source the load itself reads, which a check against the network reads too. */
@@ -26,12 +27,13 @@ type Params = {
  * for the early read's name is that read. Its writes and its check against the network wait until the page is idle,
  * so they never hold a render back.
  */
-export function createPageCidCache({ names, cidRead, runWhenIdle }: Params): LoaderCidCache {
+export function createPageCidCache({ names, cidRead, runWhenIdle }: Params) {
   let early = cidRead;
   const set = ({ label, cid, manifests }: CachedCopy): Promise<void> =>
     cidCache.set({ label, network: getNetwork(), cid, manifests });
   return {
-    get(label) {
+    /** Resolves the label's content, or null when none is kept. Rejects when the read fails. */
+    get(label: string): Promise<CachedCid | null> {
       if (early?.label === label) {
         const { read } = early;
         early = null;
@@ -39,12 +41,14 @@ export function createPageCidCache({ names, cidRead, runWhenIdle }: Params): Loa
       }
       return cidCache.get(label, getNetwork());
     },
-    storeLater(copy) {
+    /** Keeps the label's content for the next load. */
+    storeLater(copy: CachedCopy): void {
       runWhenIdle(() => {
         void set(copy);
       });
     },
-    revalidateLater(copy) {
+    /** Checks a served copy against the network. */
+    revalidateLater(copy: ServedCopy): void {
       runWhenIdle(() => {
         void revalidateCachedCopy({
           ...copy,

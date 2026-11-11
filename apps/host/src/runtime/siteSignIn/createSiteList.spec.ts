@@ -59,7 +59,7 @@ async function openSiteList(options: OpenSiteListParams = {}) {
   };
   const list = createSiteList({ grants });
   /** Resolves once the list's screen meets `verdict`. */
-  function waitForScreen(verdict: (screen: SiteListScreen) => boolean): Promise<void> {
+  function waitForScreen(verdict: (screen: SiteListScreen) => boolean): Promise<SiteListScreen> {
     return waitForStatus(list.screen, verdict);
   }
   return { list, stored, metrics, errors, waitForScreen };

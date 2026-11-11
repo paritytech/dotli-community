@@ -29,7 +29,7 @@ type Params = {
   /** Shows the icon in the product card. The page's product card state by default. */
   showIcon?: (href: string) => void;
   /** The timers the icon's budget runs on. The page's own by default. */
-  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'> | undefined;
 };
 
 const ICON_FETCH_BUDGET_MS = 10_000;

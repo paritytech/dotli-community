@@ -5,11 +5,11 @@
 // without holding the render back.
 
 import { createReporter, defineCount, m } from '@dotli/metrics';
+import type { CachedCid } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { compareCachedCid } from './compareCachedCid.js';
 import { judgeRedeploy } from './judgeRedeploy.js';
 import type { NameSource } from './createNameSource.js';
-import type { CachedCopy, ServedCopy } from './createProductLoader.js';
 
 const report = createReporter({ flow: 'resolve' });
 
@@ -21,6 +21,18 @@ const report = createReporter({ flow: 'resolve' });
 const cacheRevalidateMetric = defineCount<'cleared' | 'error' | 'match' | 'update'>('cache.revalidate');
 
 const CACHE_REVALIDATE_LATENCY = 'cache.revalidate_latency';
+
+/** A label's content as the CID cache keeps it. */
+export type CachedCopy = CachedCid & { label: string };
+
+/** A copy the CID cache served. */
+export type ServedCopy = {
+  label: string;
+  /** The CID of the copy the page was served. */
+  servedCid: string;
+  /** False when the copy was refused rather than rendered, so the page shows no product to reload. */
+  onScreen: boolean;
+};
 
 export type RevalidateCachedCopyParams = ServedCopy & {
   names: Pick<NameSource, 'resolveProduct' | 'readManifests'>;
