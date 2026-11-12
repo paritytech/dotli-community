@@ -449,7 +449,7 @@ export function createProductFrame({
         recover: { kind: 'ready' },
         replacement: { kind: 'ready' },
       },
-      { previous: null, origin: { kind: 'asked', reply } },
+      { kind: 'asked', reply },
       transition,
     );
   };
@@ -458,13 +458,13 @@ export function createProductFrame({
   const renderAgain: HandlerOf<FrameMachine, LivelyKind, 'renderAsked'> = (state, { product, reply }, transition) => {
     startRun(
       { ...state, target: product, deaths: { count: 0, replacedAt: null } },
-      { previous: getRun(state), origin: { kind: 'asked', reply } },
+      { kind: 'asked', reply },
       transition,
     );
   };
 
   const rerender: HandlerOf<FrameMachine, LivelyKind, 'rerenderAsked'> = (state, { reason }, transition) => {
-    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason } }, transition);
+    startRun(state, { kind: 'rerender', reason }, transition);
   };
 
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
@@ -483,7 +483,7 @@ export function createProductFrame({
       });
       return;
     }
-    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason: 'permission' } }, transition);
+    startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
   };
 
   // The newer ask wins, since a frame rebuilt meanwhile asks with itself as the frame on screen.
@@ -492,7 +492,7 @@ export function createProductFrame({
     if (recover.kind === 'ready') {
       startRun(
         { ...state, recover: { kind: 'running', waiting: null } },
-        { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+        { kind: 'rerender', reason: 'recover' },
         transition,
       );
       return;
@@ -512,7 +512,7 @@ export function createProductFrame({
     }
     startRun(
       { ...state, recover: { kind: 'running', waiting: null } },
-      { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+      { kind: 'rerender', reason: 'recover' },
       transition,
     );
   };
@@ -549,15 +549,7 @@ export function createProductFrame({
   const stopRendering: HandlerOf<FrameMachine, LivelyKind, 'halted'> = (state, _event, transition) => {
     const { shown } = state;
     moveTo(state, { kind: 'halted', shown }, transition);
-    if (state.kind === 'connecting') {
-      transition.emitSideEffect({
-        kind: 'runSettled',
-        origin: state.run.origin,
-        outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
-      });
-      dropRun(state.run, shown, transition);
-    }
-    clearSpacers(state, transition);
+    stopInFlight(state, transition);
     // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
     if (shown !== null) {
       transition.emitSideEffect({ kind: 'coreReleased', attempt: shown.attempt });
@@ -573,18 +565,10 @@ export function createProductFrame({
       case 'halted':
         break;
       case 'connecting':
-        transition.emitSideEffect({
-          kind: 'runSettled',
-          origin: state.run.origin,
-          outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
-        });
-        clearSpacers(state, transition);
-        transition.emitSideEffect({ kind: 'attemptEnded', attempt: state.run.attempt });
-        break;
       case 'connected':
       case 'lost':
       case 'failed':
-        clearSpacers(state, transition);
+        stopInFlight(state, transition);
         break;
     }
     if (state.shown !== null) {
@@ -661,7 +645,7 @@ export function createProductFrame({
           try {
             attempt.frame.hold(mountPanel(run.iframe));
           } catch (error) {
-            failRun(state, error, transition);
+            failRun(state, { origin: run.origin, error }, transition);
             return;
           }
           endRun({ ...state, shown }, transition);
@@ -672,7 +656,7 @@ export function createProductFrame({
           if (run.attempt !== attempt) {
             return;
           }
-          failRun(state, error, transition);
+          failRun(state, { origin: run.origin, error }, transition);
           if (run.kind !== 'loadingPanel') {
             transition.emitSideEffect({ kind: 'attemptEnded', attempt });
           }
@@ -866,16 +850,20 @@ export function createProductFrame({
    * on screen. A product whose frame URL cannot be built fails at once.
    */
   function startRun(
-    from: Lively & Pick<FrameState, 'kind'>,
-    { previous, origin }: { previous: Run | null; origin: RunOrigin },
+    from: Lively & ({ kind: 'idle' | 'halted' | 'connected' | 'lost' | 'failed' } | { kind: 'connecting'; run: Run }),
+    origin: RunOrigin,
     transition: Transition<FrameMachine>,
   ): void {
+    const previous = from.kind === 'connecting' ? from.run : null;
     const lively =
       previous === null
         ? getLively(from)
         : settleRun(
-            { ...from, run: previous },
-            { kind: 'superseded', setupStartedAt: previous.setupStartedAt },
+            from,
+            {
+              origin: previous.origin,
+              outcome: { kind: 'superseded', setupStartedAt: previous.setupStartedAt },
+            },
             transition,
           );
     const product = lively.target;
@@ -884,7 +872,7 @@ export function createProductFrame({
     try {
       url = buildFrameUrl(product, page.location());
     } catch (error) {
-      failRun({ ...lively, kind: from.kind, run: { origin } }, error, transition);
+      failRun({ ...lively, kind: from.kind }, { origin, error }, transition);
       if (previous !== null) {
         dropRun(previous, lively.shown, transition);
       }
@@ -926,10 +914,18 @@ export function createProductFrame({
   ): void {
     const { run, shown } = state;
     if (shown.core === 'down') {
-      const lively = settleRun(state, { kind: 'superseded', setupStartedAt: run.setupStartedAt }, transition);
+      const lively = settleRun(
+        state,
+        { origin: run.origin, outcome: { kind: 'superseded', setupStartedAt: run.setupStartedAt } },
+        transition,
+      );
       loseCore({ ...lively, kind: state.kind, shown }, transition);
     } else {
-      const lively = settleRun(state, { kind: 'shown', setupStartedAt: run.setupStartedAt }, transition);
+      const lively = settleRun(
+        state,
+        { origin: run.origin, outcome: { kind: 'shown', setupStartedAt: run.setupStartedAt } },
+        transition,
+      );
       moveTo(state, { ...lively, kind: 'connected', shown }, transition);
     }
     transition.emitSideEffect({ kind: 'productShown', product: run.product, link: shown.link });
@@ -953,15 +949,14 @@ export function createProductFrame({
   }
 
   /**
-   * Tells the run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
+   * Tells a run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
    * part with that spacer moved.
    */
   function settleRun(
-    state: Lively & { run: Pick<RunParts, 'origin'> },
-    outcome: RunOutcome,
+    state: Lively,
+    { origin, outcome }: { origin: RunOrigin; outcome: RunOutcome },
     { emitSideEffect, update }: Transition<FrameMachine>,
   ): Lively {
-    const { origin } = state.run;
     const lively = getLively(state);
     emitSideEffect({ kind: 'runSettled', origin, outcome });
     if (origin.kind === 'asked') {
@@ -991,11 +986,11 @@ export function createProductFrame({
    * while a render to replace it is in flight, so its core goes.
    */
   function failRun(
-    state: Lively & Pick<FrameState, 'kind'> & { run: Pick<RunParts, 'origin'> },
-    error: unknown,
+    state: Lively & Pick<FrameState, 'kind'>,
+    { origin, error }: { origin: RunOrigin; error: unknown },
     transition: Transition<FrameMachine>,
   ): void {
-    const lively = settleRun(state, { kind: 'failed', error }, transition);
+    const lively = settleRun(state, { origin, outcome: { kind: 'failed', error } }, transition);
     moveTo(state, { ...lively, kind: 'failed' }, transition);
     if (lively.shown?.core === 'down') {
       transition.emitSideEffect({ kind: 'coreReleased', attempt: lively.shown.attempt });
@@ -1035,12 +1030,28 @@ export function createProductFrame({
   ): void {
     startRun(
       { ...lost, deaths: { ...lost.deaths, replacedAt: timers.now() }, replacement: { kind: 'running' } },
-      { previous: null, origin: { kind: 'rerender', reason: 'replacement' } },
+      { kind: 'rerender', reason: 'replacement' },
       transition,
     );
   }
 
-  /** Clears the timers of the spacers that wait, as the frame starts no render of its own again. */
+  /**
+   * Ends what the frame has in flight as it starts no render of its own again: a run, told it was superseded, and the
+   * spacers that wait.
+   */
+  function stopInFlight(state: Extract<FrameState, { kind: LivelyKind }>, transition: Transition<FrameMachine>): void {
+    if (state.kind === 'connecting') {
+      const { run, shown } = state;
+      transition.emitSideEffect({
+        kind: 'runSettled',
+        origin: run.origin,
+        outcome: { kind: 'superseded', setupStartedAt: run.setupStartedAt },
+      });
+      dropRun(run, shown, transition);
+    }
+    clearSpacers(state, transition);
+  }
+
   function clearSpacers({ recover, replacement }: Lively, { emitSideEffect }: Transition<FrameMachine>): void {
     if (recover.kind === 'spacing') {
       emitSideEffect({ kind: 'spacerCleared', timer: recover.timer });
@@ -1103,11 +1114,6 @@ function getStatus({ kind }: Pick<FrameState, 'kind'>): ProductFrameStatus | nul
     case 'failed':
       return kind;
   }
-}
-
-/** The run `state` waits on, none when it waits on no run. */
-function getRun(state: Extract<FrameState, { kind: LivelyKind }>): Run | null {
-  return state.kind === 'connecting' ? state.run : null;
 }
 
 /** `state`'s lively part, so a state that moves on carries no field of the kind it left. */
