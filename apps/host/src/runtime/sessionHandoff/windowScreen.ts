@@ -21,22 +21,24 @@ export type Shown =
   | { view: 'connecting' | 'phrase' | 'pairing' | 'failed' }
   | { view: 'continue'; offered: Offered; failure: WindowFailure | null };
 
-/** What every view of a round carries: the page it signs in for, null with no opener, and how far its pairing got. */
-type ScreenRound = { page: string | null; pairing: PairingView };
+/**
+ * A step of a round with the view it shows. Every view carries the page the round signs in for, null with no opener,
+ * and how far its pairing got.
+ */
+type ShownStep = { round: { page: string | null; pairing: PairingView }; shown: Shown };
 
 export const SPINNER: PairingView = { kind: 'spinner' };
 
-/** The screen of `shown` in `round`. */
-export function getSignInScreen({ page, pairing }: ScreenRound, shown: Shown): SignInScreen {
+export function getSignInScreen({ round: { page, pairing }, shown }: ShownStep): SignInScreen {
   if (shown.view === 'continue') {
     return { view: 'continue', offer: shown.offered.offer, pageHost: page, failure: shown.failure, pairing };
   }
   return { view: shown.view, pageHost: page, failure: null, pairing };
 }
 
-/** The view the window stops on, which keeps the page and the pairing `screen` showed. */
-export function getStopScreen({ pageHost, pairing }: SignInScreen, view: 'refused' | 'done-no-opener'): SignInScreen {
-  return { view, pageHost, failure: null, pairing };
+/** The view the window stops on, which keeps the page and the pairing the step showed. */
+export function getStopScreen({ round }: ShownStep, view: 'refused' | 'done-no-opener'): SignInScreen {
+  return { view, pageHost: round.page, failure: null, pairing: round.pairing };
 }
 
 /** What the window shows before its flow decides anything: it waits on its opener, or turned it away. */

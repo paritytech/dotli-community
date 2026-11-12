@@ -597,7 +597,7 @@ export function createWindowFlow({
         responderMoved({ flow }, event, transition) {
           switch (event.state.kind) {
             case 'refused':
-              transition.emitState({ kind: 'refused', screen: getStopScreen(getFlowScreen(flow), 'refused') });
+              transition.emitState({ kind: 'refused', screen: getStopScreen(flow, 'refused') });
               return;
             case 'answered':
               transition.emitSideEffect({ kind: 'closed' });
@@ -613,12 +613,12 @@ export function createWindowFlow({
           }
         },
         roundEnded({ flow }, { result }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'ended', screen: getFlowScreen(flow) });
+          emitState({ kind: 'ended', screen: getSignInScreen(flow) });
           emitSideEffect({ kind: 'logged', line: 'sign-in window sends its result' });
           emitSideEffect({ kind: 'delivered', result });
         },
         doneWithoutOpener({ flow }, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'ended', screen: getStopScreen(getFlowScreen(flow), 'done-no-opener') });
+          emitState({ kind: 'ended', screen: getStopScreen(flow, 'done-no-opener') });
           emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
         },
         cancelAsked: closeWindow,
@@ -879,16 +879,12 @@ export function createWindowFlow({
 function getScreen(state: State): SignInScreen {
   switch (state.kind) {
     case 'live':
-      return getFlowScreen(state.flow);
+      return getSignInScreen(state.flow);
     case 'refused':
     case 'ended':
     case 'disposed':
       return state.screen;
   }
-}
-
-function getFlowScreen({ round, shown }: Flow): SignInScreen {
-  return getSignInScreen(round, shown);
 }
 
 function toStoredRead(read: Promise<SessionResult>): Promise<Event> {
