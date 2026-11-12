@@ -554,7 +554,9 @@ function openSession(lifecycle: WorkerLifecycle): PortSession {
     hello: { resolutionId: null },
   });
   tabs.add(transport);
-  return lifecycle.admit({ port, transport, unwatch: () => undefined, serve: () => undefined });
+  const session = { port, transport };
+  lifecycle.admit(session, () => undefined);
+  return session;
 }
 
 /** Lets the heartbeat run until a silent port is let go. */
@@ -1593,7 +1595,6 @@ describe('worker lifecycle', () => {
     // Then only the last ask was heard, as every tab paused
     expect(heardBeforeLast).toEqual([]);
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 
   it('As the shared worker, I hear the pause end when a paused tab resumes or a new tab connects', () => {
@@ -1611,7 +1612,6 @@ describe('worker lifecycle', () => {
 
     // Then each change was heard once, in order, and the pause ended with the new tab
     expect(everyTabPaused).toEqual([true, false, true, false]);
-    expect(lifecycle.isEveryTabPaused()).toBe(false);
   });
 
   it("As the shared worker, I hear every tab paused once my only unpaused tab's port closes", () => {
@@ -1654,9 +1654,8 @@ describe('worker lifecycle', () => {
     // When its port closes
     lifecycle.closePort(session);
 
-    // Then nothing more was heard, and the pause holds
+    // Then nothing more was heard, so the pause holds
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 
   it('As the shared worker, I am asked for the scope of a port I released and refuse', () => {

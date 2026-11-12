@@ -497,7 +497,9 @@ export function startProtocolWorker({
       onIssue: wire.onIssue,
     });
     port.addEventListener('close', handleClose);
-    const session = lifecycle.admit({ port, transport, unwatch, serve });
+    const session: PortSession = { port, transport };
+    serve(session);
+    lifecycle.admit(session, unwatch);
     // Any message shows the tab is alive, not only its heartbeat. The provider drops this listener when the transport
     // is disposed, so its stop is not kept.
     provider.subscribe(() => {

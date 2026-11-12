@@ -163,6 +163,8 @@ type LifecycleEffect =
   | { kind: 'workerClosing'; ports: number }
   | { kind: 'flushFailed'; error: unknown }
   | { kind: 'everyTabPausedChanged'; paused: boolean }
+  | { kind: 'statusReady' }
+  | { kind: 'statusFailed'; error: Error }
   | { kind: 'statusEnded'; sink: FrameStatusSink; reason: Error }
   | { kind: 'transportDisposed'; transport: ProtocolTransport; reason: Error }
   | { kind: 'scopeClosed'; scope: EngineScope }
@@ -198,17 +200,6 @@ type Params = {
   initialFailure: Error | null;
   /** Hears each change in whether every served tab asks for a pause. Never throws. */
   onEveryTabPausedChange: (paused: boolean) => void;
-};
-
-type AdmitParams = {
-  /** A tab's newly connected port. */
-  port: WorkerPort;
-  /** The port's transport, which serves the tab. */
-  transport: ProtocolTransport;
-  /** Stops hearing the port close. */
-  unwatch: () => void;
-  /** Registers the session's handlers on its transport. */
-  serve: (session: PortSession) => void;
 };
 
 /**
@@ -265,7 +256,7 @@ export function createWorkerLifecycle({
     } else {
       scheduleClose({ ports, everyTabPaused, error }, transition);
     }
-    status.fail(error);
+    transition.emitSideEffect({ kind: 'statusFailed', error });
   };
   /** Recomputes whether every served tab asks for a pause, and tells `onEveryTabPausedChange` when it changed. */
   const updateEveryTabPaused: HandlerOf<LifecycleMachine, LiveKind, 'portsChanged'> = (
@@ -450,9 +441,9 @@ export function createWorkerLifecycle({
         : { kind: 'failedAtStart', ports: new Map(), everyTabPaused: false, error: initialFailure },
     handlers: {
       syncing: {
-        markedReady(state, _event, { emitState }) {
+        markedReady(state, _event, { emitState, emitSideEffect }) {
           emitState({ ...state, kind: 'ready' });
-          status.markReady();
+          emitSideEffect({ kind: 'statusReady' });
         },
         failed: failWorker,
         portConnected: connectPort,
@@ -624,6 +615,12 @@ export function createWorkerLifecycle({
         case 'everyTabPausedChanged':
           onEveryTabPausedChange(effect.paused);
           break;
+        case 'statusReady':
+          status.markReady();
+          break;
+        case 'statusFailed':
+          status.fail(effect.error);
+          break;
         case 'statusEnded':
           // Each status ends with why, typed, before its transport goes.
           effect.sink.interrupt(err(toFrameStatusEnd(effect.reason)));
@@ -679,14 +676,11 @@ export function createWorkerLifecycle({
     /** Whether the worker is marked ready and has not failed, closed or been disposed since. */
     isReady: (): boolean => machine.state.get().kind === 'ready',
     /**
-     * Serves a newly connected port through `serve` and returns its session, and schedules the close of a dead worker
-     * that waited for its first tab. Throws what `serve` throws, and then admits nothing.
+     * Serves a newly connected port, whose close `unwatch` stops hearing, and schedules the close of a dead worker
+     * that waited for its first tab. Never throws.
      */
-    admit({ port, transport, unwatch, serve }: AdmitParams): PortSession {
-      const session: PortSession = { port, transport };
-      serve(session);
+    admit({ port, transport }: PortSession, unwatch: () => void): void {
       machine.update({ kind: 'portConnected', port, transport, unwatch });
-      return session;
     },
     /** The port subscribed to its status, so a dead worker no longer waits for it to hear why. Never throws. */
     hear({ port }: PortSession): void {
@@ -703,11 +697,6 @@ export function createWorkerLifecycle({
     markPaused({ port }: PortSession, paused: boolean): void {
       machine.update({ kind: 'pauseAsked', port, paused });
     },
-    /**
-     * Whether every served tab asks for a pause, or, with none served, whether every tab did when the last one left.
-     * False before any tab asks, and once the worker closed or was disposed. Never throws.
-     */
-    isEveryTabPaused: (): boolean => readLive(machine.state.get())?.everyTabPaused ?? false,
     /**
      * Returns the served port's engine scope, opened through `open` on first use. Throws what `open` throws, and throws
      * when the port is no longer served, without calling `open`.
