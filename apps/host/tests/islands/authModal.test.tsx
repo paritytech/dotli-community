@@ -15,6 +15,7 @@ import { createBlockingModalCoordinator } from '../../src/runtime/createBlocking
 import { authControl } from '../../src/runtime/createAuthController.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { topbarState } from '../../src/state/topbarState.js';
+import { pageTopbarAutoHide } from '../../src/createTopbarAutoHide.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/createProductFrameView.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
@@ -40,6 +41,7 @@ const commands: AuthCommands = {
 };
 
 let unmount: (() => void) | undefined;
+let stopAutoHide: (() => void) | undefined;
 
 /** Resolves once the page shows the modal open or closed, which it does after the controller wrote the state. */
 async function untilModal(open: boolean): Promise<void> {
@@ -76,6 +78,8 @@ beforeEach(() => {
 afterEach(() => {
   unmount?.();
   unmount = undefined;
+  stopAutoHide?.();
+  stopAutoHide = undefined;
   resetAllStoresForTests();
   document.body.replaceChildren();
   document.body.removeAttribute('style');
@@ -83,8 +87,13 @@ afterEach(() => {
 
 describe('AuthModal island', () => {
   it('As a dApp user with the bar folded, a sign-in brings the bar back and holds it while open, and Cancel cancels the login', async () => {
-    // Given
-    topbarState.setVisible(false);
+    // Given the page's bar folded by its shortcut over shown content
+    topbarState.setPresent();
+    stopAutoHide = pageTopbarAutoHide.start();
+    pageTopbarAutoHide.setContentShown(true);
+    pageTopbarAutoHide.arm();
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 'T', altKey: true, shiftKey: true }));
+    const visibleBefore = topbarState.get().visible;
     mountIsland();
 
     // When
@@ -92,6 +101,7 @@ describe('AuthModal island', () => {
     await untilModal(true);
 
     // Then
+    expect(visibleBefore).toBe(false);
     expect(authModalState.store.get().open).toBe(true);
     expect(byTestId('auth-modal-backdrop').dataset['layout']).toBe('topbar-end');
     expect(topbarState.get().visible).toBe(true);

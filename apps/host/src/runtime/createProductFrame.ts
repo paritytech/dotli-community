@@ -5,40 +5,32 @@
 // still connecting, and the product on screen stays up until its replacement has connected. Only the app subdomain
 // joins the TrUAPI channel, so any nested iframe it loads is opaque to the host.
 
-import { createMessagePortProvider, type ProductId, type WireProvider as Provider } from '@parity/truapi';
+import { createMessagePortProvider, type ProductId } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
-import { getSandboxLabel } from '@dotli/resolver';
-import {
-  removeContractParams,
-  SANDBOX_CONTRACT_PARAMS,
-  SANDBOX_SCHEMA_VERSION,
-  type SandboxChannel,
-  type SandboxRecoverAcceptedMessage,
-} from '@dotli/sandbox-wire';
-import { createReporter, defineCount, getResolutionId, m } from '@dotli/metrics';
+import type { SandboxChannel, SandboxRecoverAcceptedMessage } from '@dotli/sandbox-wire';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
   createStateMachine,
   log,
   nest,
-  noop,
   realTimers,
   type HandlerOf,
   type MachineTypes,
   type Timers,
   type Transition,
 } from '@dotli/shared';
-import { debugBus, type DebugBusEvent } from '@dotli/truapi-debug';
-import { chatConnections } from './chat/createChatConnections.js';
 import { ownCoreConnection, type CoreProvider } from './ownCoreConnection.js';
-import { ERRORS } from './errors.js';
 import { CoreRedialError } from './coreRedialError.js';
-import type { CoreConnection, CoreLease, PageCore } from './createPageCore.js';
-import { pendingResets } from './createPendingResets.js';
+import type { CoreConnection, CoreLease, PageCore, PageProduct } from './createPageCore.js';
 import { createPermissionResponseGate } from './createPermissionResponseGate.js';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { createSide, type Side } from './createSide.js';
+import { toLoadedProduct, toTitledProduct } from './describeShownProduct.js';
+import { pipeProviders } from './pipeProviders.js';
+import { buildFrameUrl, getAppOrigin, getFrameSandbox } from './productFrameUrl.js';
+import { registerProductChat } from './registerProductChat.js';
+import { traceProductRender, type RenderTrace } from './traceProductRender.js';
 import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
@@ -47,7 +39,6 @@ import type { ProductFacts } from '../getProductFacts.js';
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
 const uiReport = createReporter({ flow: 'ui' });
-const releaseFailed = uiReport.listener('product_frame.release');
 
 /**
  * A render the product frame started on its own: on a replacement core, after a device permission change or at a
@@ -144,27 +135,10 @@ export type ProductFramePage = {
 
 export type ProductFrame = ReturnType<typeof createProductFrame>;
 
-type PipeProvidersParams = {
-  product: Provider;
-  core: Provider;
-  flowId: string;
-  label: string;
-  productId: string;
-  /** Is shown each core frame once it was forwarded to the product. */
-  noteForwarded: (message: Uint8Array) => void;
-  /** The clock the debug events are stamped with. */
-  timers: Pick<Timers, 'now'>;
-};
-
 /** Why the frame rendered the product again on its own. */
 type RerenderReason = 'replacement' | 'permission' | 'recover';
 
-type PageLocation = ReturnType<ProductFramePage['location']>;
-
 type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void };
-
-/** One side of an attempt, which lets go of what it holds as it ends. */
-type Side = ReturnType<typeof createSide>;
 
 /**
  * One try at leasing and connecting. Ending `core` lets go of the pipe, the routes, the connection and the lease, in
@@ -271,15 +245,22 @@ type FrameEvent =
   | { kind: 'halted' }
   | { kind: 'disposed' };
 
-/** A render's milestones the debug bus hears. `setupReady` comes with the iframe whose load it hears next. */
-type RunTrace =
-  | { kind: 'traced'; milestone: 'begun' | 'ready'; run: RunParts }
-  | { kind: 'traced'; milestone: 'setupReady'; run: RunParts; iframe: HTMLIFrameElement };
-
 type FrameEffect =
   | { kind: 'statusShown'; status: ProductFrameStatus }
+  /** Asks the page core for a lease on `attempt`, once the core was told the product. */
+  | { kind: 'leaseAsked'; attempt: Attempt }
+  | { kind: 'productNamed'; product: PageProduct }
+  | { kind: 'attemptEnded'; attempt: Attempt }
+  /** Ends only the core side of `attempt`: the product stays on screen without its core. */
+  | { kind: 'coreReleased'; attempt: Attempt }
+  | { kind: 'spacerCleared'; timer: unknown }
+  | { kind: 'frameAttached'; iframe: HTMLIFrameElement }
+  | ({ kind: 'screensCleared' } & Parameters<ProductFrameView['clearScreens']>[0])
+  | { kind: 'mountCleared' }
+  | { kind: 'productShown'; product: FrameProduct; link: Link }
+  | { kind: 'unsubscribed' }
   | { kind: 'runSettled'; origin: RunOrigin; outcome: RunOutcome }
-  | RunTrace
+  | ({ kind: 'traced' } & RenderTrace)
   | { kind: 'chatResolved'; capable: boolean }
   | { kind: 'walletConnected'; chat: boolean }
   | { kind: 'gaveUp'; deaths: number };
@@ -297,9 +278,6 @@ const CORE_DEATH_WINDOW_MS = 60_000;
 const CORE_DEATH_BUDGET = 3;
 // How long a rebuild after a device grant waits for the prompt's answer to reach the product.
 const PERMISSION_ANSWER_WAIT_MS = 3_000;
-
-const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointer-lock';
-const SUBDOMAIN_SANDBOX = `${IFRAME_SANDBOX} allow-popups`;
 
 const BROWSER_PAGE: ProductFramePage = {
   location: () => window.location,
@@ -329,8 +307,8 @@ export function createProductFrame({
     }
     const attempt = createAttempt(2);
     transition.emitState({ ...getRunParts(run), kind: 'leasing', attempt });
-    endAttempt(run.attempt);
-    acquireLease(attempt, transition.update);
+    transition.emitSideEffect({ kind: 'attemptEnded', attempt: run.attempt });
+    transition.emitSideEffect({ kind: 'leaseAsked', attempt });
   };
 
   /** Hands each event of the run's steps to its step, while the event's attempt is the run's. */
@@ -419,7 +397,7 @@ export function createProductFrame({
                   iframeUrl: url.href,
                   allowedOrigin: url.origin,
                   allow: `${allow}; cross-origin-isolated`,
-                  sandbox: getSandbox(product),
+                  sandbox: getFrameSandbox(product),
                   onPort: port => {
                     const productProvider = createMessagePortProvider(port);
                     attempt.core.hold(() => {
@@ -471,7 +449,7 @@ export function createProductFrame({
         recover: { kind: 'ready' },
         replacement: { kind: 'ready' },
       },
-      { previous: null, origin: { kind: 'asked', reply } },
+      { kind: 'asked', reply },
       transition,
     );
   };
@@ -480,13 +458,13 @@ export function createProductFrame({
   const renderAgain: HandlerOf<FrameMachine, LivelyKind, 'renderAsked'> = (state, { product, reply }, transition) => {
     startRun(
       { ...state, target: product, deaths: { count: 0, replacedAt: null } },
-      { previous: getRun(state), origin: { kind: 'asked', reply } },
+      { kind: 'asked', reply },
       transition,
     );
   };
 
   const rerender: HandlerOf<FrameMachine, LivelyKind, 'rerenderAsked'> = (state, { reason }, transition) => {
-    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason } }, transition);
+    startRun(state, { kind: 'rerender', reason }, transition);
   };
 
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
@@ -505,7 +483,7 @@ export function createProductFrame({
       });
       return;
     }
-    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason: 'permission' } }, transition);
+    startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
   };
 
   // The newer ask wins, since a frame rebuilt meanwhile asks with itself as the frame on screen.
@@ -514,7 +492,7 @@ export function createProductFrame({
     if (recover.kind === 'ready') {
       startRun(
         { ...state, recover: { kind: 'running', waiting: null } },
-        { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+        { kind: 'rerender', reason: 'recover' },
         transition,
       );
       return;
@@ -534,7 +512,7 @@ export function createProductFrame({
     }
     startRun(
       { ...state, recover: { kind: 'running', waiting: null } },
-      { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+      { kind: 'rerender', reason: 'recover' },
       transition,
     );
   };
@@ -571,45 +549,30 @@ export function createProductFrame({
   const stopRendering: HandlerOf<FrameMachine, LivelyKind, 'halted'> = (state, _event, transition) => {
     const { shown } = state;
     moveTo(state, { kind: 'halted', shown }, transition);
-    if (state.kind === 'connecting') {
-      transition.emitSideEffect({
-        kind: 'runSettled',
-        origin: state.run.origin,
-        outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
-      });
-      dropRun(state.run, shown);
-    }
-    clearSpacers(state);
+    stopInFlight(state, transition);
     // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
-    shown?.attempt.core.end();
+    if (shown !== null) {
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: shown.attempt });
+    }
   };
 
   const endFrame: HandlerOf<FrameMachine, 'idle' | LivelyKind | 'halted', 'disposed'> = (state, _event, transition) => {
     moveTo(state, { kind: 'disposed' }, transition);
-    stopPermissionChanges();
-    stopRecoverAsks();
+    transition.emitSideEffect({ kind: 'unsubscribed' });
     switch (state.kind) {
       case 'idle':
         return;
       case 'halted':
         break;
       case 'connecting':
-        transition.emitSideEffect({
-          kind: 'runSettled',
-          origin: state.run.origin,
-          outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
-        });
-        clearSpacers(state);
-        endAttempt(state.run.attempt);
-        break;
       case 'connected':
       case 'lost':
       case 'failed':
-        clearSpacers(state);
+        stopInFlight(state, transition);
         break;
     }
     if (state.shown !== null) {
-      endAttempt(state.shown.attempt);
+      transition.emitSideEffect({ kind: 'attemptEnded', attempt: state.shown.attempt });
     }
   };
 
@@ -656,13 +619,16 @@ export function createProductFrame({
           const next: Run =
             loadCheckerPanel === undefined ? run : { ...getRunParts(run), kind: 'loadingPanel', attempt, iframe };
           moveTo(state, { ...state, shown, run: next }, transition);
-          transition.emitSideEffect({ kind: 'traced', milestone: 'setupReady', run, iframe });
-          view.attachFrame(iframe);
+          transition.emitSideEffect({ kind: 'frameAttached', iframe });
           if (previous !== null) {
-            endAttempt(previous.attempt);
+            transition.emitSideEffect({ kind: 'attemptEnded', attempt: previous.attempt });
           }
           // On the initial app subdomain render the sandbox dismisses the overlay itself, with `dotli:loading-status`.
-          view.clearScreens({ loading: run.product.mode !== 'subdomain' || previous !== null });
+          transition.emitSideEffect({
+            kind: 'screensCleared',
+            loading: run.product.mode !== 'subdomain' || previous !== null,
+          });
+          transition.emitSideEffect({ kind: 'traced', milestone: 'setupReady', run, iframe });
           if (loadCheckerPanel === undefined) {
             endRun({ ...state, shown }, transition);
             return;
@@ -679,7 +645,7 @@ export function createProductFrame({
           try {
             attempt.frame.hold(mountPanel(run.iframe));
           } catch (error) {
-            failRun(state, error, transition);
+            failRun(state, { origin: run.origin, error }, transition);
             return;
           }
           endRun({ ...state, shown }, transition);
@@ -690,9 +656,9 @@ export function createProductFrame({
           if (run.attempt !== attempt) {
             return;
           }
-          failRun(state, error, transition);
+          failRun(state, { origin: run.origin, error }, transition);
           if (run.kind !== 'loadingPanel') {
-            endAttempt(attempt);
+            transition.emitSideEffect({ kind: 'attemptEnded', attempt });
           }
         },
         halted: stopRendering,
@@ -738,6 +704,39 @@ export function createProductFrame({
     },
     onEffect: effect => {
       switch (effect.kind) {
+        case 'leaseAsked':
+          acquireLease(effect.attempt);
+          return;
+        case 'productNamed':
+          core.setProduct(effect.product);
+          return;
+        case 'attemptEnded':
+          effect.attempt.core.end();
+          effect.attempt.frame.end();
+          return;
+        case 'coreReleased':
+          effect.attempt.core.end();
+          return;
+        case 'spacerCleared':
+          timers.clearTimeout(effect.timer);
+          return;
+        case 'frameAttached':
+          view.attachFrame(effect.iframe);
+          return;
+        case 'screensCleared':
+          view.clearScreens({ loading: effect.loading });
+          return;
+        case 'mountCleared':
+          view.clearMount();
+          return;
+        case 'productShown':
+          view.showTitle(toTitledProduct(effect.product));
+          productState.setLoaded(toLoadedProduct(effect.product, effect.link));
+          return;
+        case 'unsubscribed':
+          stopPermissionChanges();
+          stopRecoverAsks();
+          return;
         case 'statusShown':
           view.showStatus(effect.status);
           return;
@@ -751,7 +750,7 @@ export function createProductFrame({
           }
           return;
         case 'traced':
-          traceRun(effect);
+          traceProductRender(effect, timers);
           return;
         case 'chatResolved':
           chatReport.log.event('chat capability resolved', { capable: effect.capable });
@@ -851,16 +850,20 @@ export function createProductFrame({
    * on screen. A product whose frame URL cannot be built fails at once.
    */
   function startRun(
-    from: Lively & Pick<FrameState, 'kind'>,
-    { previous, origin }: { previous: Run | null; origin: RunOrigin },
+    from: Lively & ({ kind: 'idle' | 'halted' | 'connected' | 'lost' | 'failed' } | { kind: 'connecting'; run: Run }),
+    origin: RunOrigin,
     transition: Transition<FrameMachine>,
   ): void {
+    const previous = from.kind === 'connecting' ? from.run : null;
     const lively =
       previous === null
         ? getLively(from)
         : settleRun(
-            { ...from, run: previous },
-            { kind: 'superseded', setupStartedAt: previous.setupStartedAt },
+            from,
+            {
+              origin: previous.origin,
+              outcome: { kind: 'superseded', setupStartedAt: previous.setupStartedAt },
+            },
             transition,
           );
     const product = lively.target;
@@ -869,9 +872,9 @@ export function createProductFrame({
     try {
       url = buildFrameUrl(product, page.location());
     } catch (error) {
-      failRun({ ...lively, kind: from.kind, run: { origin } }, error, transition);
+      failRun({ ...lively, kind: from.kind }, { origin, error }, transition);
       if (previous !== null) {
-        dropRun(previous, lively.shown);
+        dropRun(previous, lively.shown, transition);
       }
       return;
     }
@@ -879,23 +882,26 @@ export function createProductFrame({
     const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
     moveTo(from, { ...lively, kind: 'connecting', run }, transition);
     if (previous !== null) {
-      dropRun(previous, lively.shown);
+      dropRun(previous, lively.shown, transition);
     }
     transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
     switch (product.mode) {
       case 'iframe':
         if (lively.shown === null) {
           // This path has no loading overlay to keep.
-          view.clearScreens({ loading: true });
-          view.clearMount();
+          transition.emitSideEffect({ kind: 'screensCleared', loading: true });
+          transition.emitSideEffect({ kind: 'mountCleared' });
         }
-        core.setProduct({ label: product.label, productId: product.productId });
+        transition.emitSideEffect({
+          kind: 'productNamed',
+          product: { label: product.label, productId: product.productId },
+        });
         break;
       case 'subdomain':
-        core.setProduct({ label: product.label });
+        transition.emitSideEffect({ kind: 'productNamed', product: { label: product.label } });
         break;
     }
-    acquireLease(run.attempt, transition.update);
+    transition.emitSideEffect({ kind: 'leaseAsked', attempt: run.attempt });
   }
 
   /**
@@ -908,20 +914,27 @@ export function createProductFrame({
   ): void {
     const { run, shown } = state;
     if (shown.core === 'down') {
-      const lively = settleRun(state, { kind: 'superseded', setupStartedAt: run.setupStartedAt }, transition);
+      const lively = settleRun(
+        state,
+        { origin: run.origin, outcome: { kind: 'superseded', setupStartedAt: run.setupStartedAt } },
+        transition,
+      );
       loseCore({ ...lively, kind: state.kind, shown }, transition);
     } else {
-      const lively = settleRun(state, { kind: 'shown', setupStartedAt: run.setupStartedAt }, transition);
+      const lively = settleRun(
+        state,
+        { origin: run.origin, outcome: { kind: 'shown', setupStartedAt: run.setupStartedAt } },
+        transition,
+      );
       moveTo(state, { ...lively, kind: 'connected', shown }, transition);
     }
-    view.showTitle(toTitledProduct(run.product));
-    productState.setLoaded(toLoadedProduct(run.product, shown.link));
+    transition.emitSideEffect({ kind: 'productShown', product: run.product, link: shown.link });
     transition.emitSideEffect({ kind: 'traced', milestone: 'ready', run });
   }
 
   /** Leases the page core for `attempt`. The lease goes as the attempt's core side ends, at once when it already has. */
-  function acquireLease(attempt: Attempt, update: Transition<FrameMachine>['update']): void {
-    update(
+  function acquireLease(attempt: Attempt): void {
+    machine.update(
       runStepWork(
         attempt,
         () => core.acquire(),
@@ -936,15 +949,14 @@ export function createProductFrame({
   }
 
   /**
-   * Tells the run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
+   * Tells a run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
    * part with that spacer moved.
    */
   function settleRun(
-    state: Lively & { run: Pick<RunParts, 'origin'> },
-    outcome: RunOutcome,
+    state: Lively,
+    { origin, outcome }: { origin: RunOrigin; outcome: RunOutcome },
     { emitSideEffect, update }: Transition<FrameMachine>,
   ): Lively {
-    const { origin } = state.run;
     const lively = getLively(state);
     emitSideEffect({ kind: 'runSettled', origin, outcome });
     if (origin.kind === 'asked') {
@@ -974,14 +986,14 @@ export function createProductFrame({
    * while a render to replace it is in flight, so its core goes.
    */
   function failRun(
-    state: Lively & Pick<FrameState, 'kind'> & { run: Pick<RunParts, 'origin'> },
-    error: unknown,
+    state: Lively & Pick<FrameState, 'kind'>,
+    { origin, error }: { origin: RunOrigin; error: unknown },
     transition: Transition<FrameMachine>,
   ): void {
-    const lively = settleRun(state, { kind: 'failed', error }, transition);
+    const lively = settleRun(state, { origin, outcome: { kind: 'failed', error } }, transition);
     moveTo(state, { ...lively, kind: 'failed' }, transition);
     if (lively.shown?.core === 'down') {
-      lively.shown.attempt.core.end();
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: lively.shown.attempt });
     }
   }
 
@@ -1001,7 +1013,7 @@ export function createProductFrame({
     if (deaths.count >= CORE_DEATH_BUDGET) {
       moveTo(lively, { ...lively, kind: 'failed', shown, deaths }, transition);
       // The product stays on screen under the reload notice, but its core is down for good, so its lease goes.
-      shown.attempt.core.end();
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: shown.attempt });
       transition.emitSideEffect({ kind: 'gaveUp', deaths: deaths.count });
       return;
     }
@@ -1018,18 +1030,34 @@ export function createProductFrame({
   ): void {
     startRun(
       { ...lost, deaths: { ...lost.deaths, replacedAt: timers.now() }, replacement: { kind: 'running' } },
-      { previous: null, origin: { kind: 'rerender', reason: 'replacement' } },
+      { kind: 'rerender', reason: 'replacement' },
       transition,
     );
   }
 
-  /** Clears the timers of the spacers that wait, as the frame starts no render of its own again. */
-  function clearSpacers({ recover, replacement }: Lively): void {
+  /**
+   * Ends what the frame has in flight as it starts no render of its own again: a run, told it was superseded, and the
+   * spacers that wait.
+   */
+  function stopInFlight(state: Extract<FrameState, { kind: LivelyKind }>, transition: Transition<FrameMachine>): void {
+    if (state.kind === 'connecting') {
+      const { run, shown } = state;
+      transition.emitSideEffect({
+        kind: 'runSettled',
+        origin: run.origin,
+        outcome: { kind: 'superseded', setupStartedAt: run.setupStartedAt },
+      });
+      dropRun(run, shown, transition);
+    }
+    clearSpacers(state, transition);
+  }
+
+  function clearSpacers({ recover, replacement }: Lively, { emitSideEffect }: Transition<FrameMachine>): void {
     if (recover.kind === 'spacing') {
-      timers.clearTimeout(recover.timer);
+      emitSideEffect({ kind: 'spacerCleared', timer: recover.timer });
     }
     if (replacement.kind === 'spacing') {
-      timers.clearTimeout(replacement.timer);
+      emitSideEffect({ kind: 'spacerCleared', timer: replacement.timer });
     }
   }
 
@@ -1070,68 +1098,6 @@ export function createProductFrame({
         return;
     }
   }
-
-  /** Tells the debug bus a render's milestone, and from a set-up frame its iframe's first load. */
-  function traceRun(trace: RunTrace): void {
-    const { product, url, flows } = trace.run;
-    const { label, mode } = product;
-    const productId = getFrameProductId(product);
-    switch (trace.milestone) {
-      case 'begun': {
-        const begun: DebugBusEvent = {
-          layer: 'render',
-          event: 'iframe_begin',
-          flowId: flows.render,
-          timestamp: timers.now(),
-          payload: { label, url: mode === 'iframe' ? product.url : url.toString(), mode },
-        };
-        const setupBegun: DebugBusEvent = {
-          layer: 'bridge',
-          event: 'setup_begin',
-          flowId: flows.bridge,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        };
-        for (const event of mode === 'iframe' ? [begun, setupBegun] : [setupBegun, begun]) {
-          debugBus.emit(event);
-        }
-        return;
-      }
-      case 'setupReady':
-        // The effect runs after the frame was attached, which is in time: the iframe navigates to a network URL, so its
-        // load comes in a later task.
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'setup_ready',
-          flowId: flows.bridge,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        });
-        trace.iframe.addEventListener(
-          'load',
-          () => {
-            debugBus.emit({
-              layer: 'bridge',
-              event: 'iframe_load',
-              flowId: flows.bridge,
-              timestamp: timers.now(),
-              payload: { label, productId, mode },
-            });
-          },
-          { once: true },
-        );
-        return;
-      case 'ready':
-        debugBus.emit({
-          layer: 'render',
-          event: 'iframe_ready',
-          flowId: flows.render,
-          timestamp: timers.now(),
-          payload: { label, mode },
-        });
-        return;
-    }
-  }
 }
 
 /** The status the page shows for `state`, none once the frame is disposed. */
@@ -1148,11 +1114,6 @@ function getStatus({ kind }: Pick<FrameState, 'kind'>): ProductFrameStatus | nul
     case 'failed':
       return kind;
   }
-}
-
-/** The run `state` waits on, none when it waits on no run. */
-function getRun(state: Extract<FrameState, { kind: LivelyKind }>): Run | null {
-  return state.kind === 'connecting' ? state.run : null;
 }
 
 /** `state`'s lively part, so a state that moves on carries no field of the kind it left. */
@@ -1178,56 +1139,10 @@ function createAttempt(n: Attempt['n']): Attempt {
   return { n, core: createSide(), frame: createSide() };
 }
 
-/** Ends both sides of `attempt`. */
-function endAttempt({ core, frame }: Attempt): void {
-  core.end();
-  frame.end();
-}
-
 /** Ends the attempt of `run`, a run the frame no longer waits on, unless its product is the one on screen. */
-function dropRun(run: Run, shown: Shown | null): void {
+function dropRun(run: Run, shown: Shown | null, { emitSideEffect }: Transition<FrameMachine>): void {
   if (run.attempt !== shown?.attempt) {
-    endAttempt(run.attempt);
-  }
-}
-
-/**
- * Holds releases until the side ends. Ending it aborts `signal`, then runs its holds once, last in, first out, so what
- * was built on a resource goes before that resource. A hold on a side that already ended is released at once.
- */
-function createSide() {
-  const ending = new AbortController();
-  const holds: (() => void)[] = [];
-  return {
-    /** Aborts as the side ends, for work that stops with it. */
-    signal: ending.signal,
-    /** Keeps `release` until the side ends. */
-    hold(release: () => void): void {
-      if (ending.signal.aborted) {
-        runRelease(release);
-        return;
-      }
-      holds.push(release);
-    },
-    /** Ends the side. Safe to call again. */
-    end(): void {
-      if (ending.signal.aborted) {
-        return;
-      }
-      ending.abort();
-      for (const release of holds.splice(0).reverse()) {
-        runRelease(release);
-      }
-    },
-  };
-}
-
-/** A release that throws is reported, so the releases after it still run. */
-function runRelease(release: () => void): void {
-  try {
-    release();
-  } catch (error) {
-    releaseFailed(error);
+    emitSideEffect({ kind: 'attemptEnded', attempt: run.attempt });
   }
 }
 
@@ -1265,198 +1180,4 @@ function showReloadNotice(notify: ShowNotification, page: ProductFramePage): voi
       onClick: page.reload,
     },
   });
-}
-
-/** The URL the frame loads `product` from. Throws when an app subdomain's deep path leaves its origin. */
-function buildFrameUrl(product: FrameProduct, location: PageLocation): URL {
-  switch (product.mode) {
-    case 'iframe':
-      return new URL(product.url, location.href);
-    case 'subdomain':
-      return buildSandboxUrl(product, location);
-  }
-}
-
-/** The product id `product` asks the core for. */
-function getFrameProductId(product: FrameProduct): string {
-  switch (product.mode) {
-    case 'iframe':
-      return product.productId ?? toProductId(product.label);
-    case 'subdomain':
-      return toProductId(product.label);
-  }
-}
-
-function getSandbox(product: FrameProduct): string {
-  switch (product.mode) {
-    case 'iframe':
-      return IFRAME_SANDBOX;
-    case 'subdomain':
-      return SUBDOMAIN_SANDBOX;
-  }
-}
-
-/** The sandbox validator rejects unknown params. */
-function buildSandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, location: PageLocation): URL {
-  const origin = getAppOrigin(product.label, location);
-  const deepPath = getDeepPath(location, product.base ?? '');
-  const url = new URL(deepPath ? `${origin}${deepPath}` : origin);
-  if (url.origin !== origin) {
-    throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
-  }
-  // Only the host writes the sandbox's params. A visitor's link that carried them could purge the sandbox origin or
-  // name a resolution.
-  const contract = new URLSearchParams();
-  contract.set(SANDBOX_CONTRACT_PARAMS.cid, product.cid);
-  contract.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
-  contract.set(SANDBOX_CONTRACT_PARAMS.chainBackend, getBackend());
-  contract.set(SANDBOX_CONTRACT_PARAMS.network, getNetwork());
-  if (pendingResets.take('sandbox')) {
-    contract.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
-  }
-  const resolutionId = getResolutionId();
-  if (resolutionId !== null) {
-    contract.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
-  }
-  const productQuery = removeContractParams(url.search);
-  url.search = [productQuery, contract.toString()].filter(part => part !== '').join('&');
-  return url;
-}
-
-function getAppOrigin(label: string, location: PageLocation): string {
-  const root = getLocalRoot(location.hostname);
-  if (root !== null) {
-    const port = import.meta.env.DEV ? DEV_SANDBOX_PORT : location.port;
-    return `${location.protocol}//${getSandboxLabel(label)}.app.${root}:${port}`;
-  }
-  return `https://${getSandboxLabel(label)}.app.${BASE_DOMAIN}`;
-}
-
-function getDeepPath(location: PageLocation, productBase: string): string {
-  const { pathname, search, hash } = location;
-  let path = pathname;
-  const base = import.meta.env.BASE_URL;
-  if (base !== '/' && path.startsWith(base)) {
-    path = '/' + path.slice(base.length);
-  }
-  if (productBase !== '' && path.startsWith(productBase)) {
-    path = path.slice(productBase.length);
-  }
-  const isRoot = path === '' || path === '/';
-  if (isRoot) {
-    return search || hash ? search + hash : '';
-  }
-  return path + search + hash;
-}
-
-function pipeProviders({
-  product,
-  core,
-  flowId,
-  label,
-  productId,
-  noteForwarded,
-  timers,
-}: PipeProvidersParams): () => void {
-  let sawInbound = false;
-  let sawOutbound = false;
-  const unsubscribes = [
-    product.subscribe(message => {
-      if (!sawInbound) {
-        sawInbound = true;
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'first_inbound',
-          flowId,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        });
-      }
-      core.postMessage(message);
-    }),
-    core.subscribe(message => {
-      if (!sawOutbound) {
-        sawOutbound = true;
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'first_outbound',
-          flowId,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        });
-      }
-      product.postMessage(message);
-      noteForwarded(message);
-    }),
-    product.subscribeClose?.(() => {
-      core.dispose();
-    }),
-    core.subscribeClose?.(() => {
-      product.dispose();
-    }),
-  ].filter((unsubscribe): unsubscribe is () => void => typeof unsubscribe === 'function');
-
-  function disposePipe(): void {
-    for (const unsubscribe of unsubscribes) {
-      try {
-        unsubscribe();
-        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort. Stale MessagePorts can already be closed while the next cleanup still must run.
-      } catch {
-        // Teardown race.
-      }
-    }
-  }
-
-  return disposePipe;
-}
-
-function registerProductChat({ provider, productId }: CoreConnection): () => void {
-  return chatConnections.register(productId, {
-    publish: action =>
-      provider.publishChatAction === undefined
-        ? Promise.reject(new Error('chat publishing unavailable'))
-        : provider.publishChatAction(action),
-    publishRendererAction: item =>
-      provider.publishRendererAction === undefined
-        ? Promise.reject(new Error('renderer actions unavailable'))
-        : provider.publishRendererAction(item),
-    render(request, sink) {
-      if (provider.render === undefined) {
-        sink.onError?.(new Error('rendering unavailable'));
-        return noop;
-      }
-      return provider.render(request, sink);
-    },
-  });
-}
-
-/**
- * What the page records of `product` once it is on screen over `link`, with whether its connection serves chat. The id
- * the core parsed, so chat data is keyed as the core keys it.
- */
-function toLoadedProduct(
-  product: FrameProduct,
-  { productId, chat }: Pick<Link, 'productId' | 'chat'>,
-): Parameters<typeof productState.setLoaded>[0] {
-  switch (product.mode) {
-    case 'iframe':
-      return {
-        label: product.label,
-        productId,
-        details: { chat },
-      };
-    case 'subdomain':
-      return {
-        label: product.label,
-        productId,
-        details: { cid: product.cid, chat, facts: product.facts },
-      };
-  }
-}
-
-/** The tab's view of a product: a local or preview URL has no root manifest to name it. */
-function toTitledProduct(product: FrameProduct): TitledProduct {
-  return product.mode === 'subdomain' && product.facts.displayName !== undefined
-    ? { mode: product.mode, label: product.label, displayName: product.facts.displayName }
-    : { mode: product.mode, label: product.label };
 }

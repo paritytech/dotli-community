@@ -26,6 +26,7 @@ import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot
 import { CoreRedialError } from './coreRedialError.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPhoneRequestTracker.js';
 import { toProductId } from './createTruapiRuntimeConfig.js';
+import { tapPhoneRequests } from './tapPhoneRequests.js';
 
 const report = createReporter({ flow: 'wallet' });
 const hearDownFailed = report.listener('page_core.down');
@@ -51,12 +52,6 @@ const pageCoreStaleReadMetric = defineCount<'error'>('page_core.stale_read');
 
 /** Count. A page core handler or effect threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const pageCoreTransitionMetric = defineCount<'error'>('page_core.transition');
-
-/**
- * Count. The phone request tap threw on a frame, so that frame went untracked. Tagged `outcome` (error), `reason`
- * (the error's name) and `side` (`product, core`).
- */
-const phoneRequestTapMetric = defineCount<'error'>('signing.phone_request_tap');
 
 export type PageProduct = {
   label: string;
@@ -200,7 +195,7 @@ type PageCoreEvent =
   | { kind: 'wentDown'; coreId: symbol; reason: CoreDownReason }
   | { kind: 'storeChanged'; coreId: symbol }
   | { kind: 'staleRead'; coreId: symbol; stale: boolean }
-  | { kind: 'staleReadFailed'; coreId: symbol; error: unknown }
+  | { kind: 'staleReadFailed'; error: unknown }
   | { kind: 'pairingCancelled' };
 
 type PageCoreEffect =
@@ -210,8 +205,11 @@ type PageCoreEffect =
   | { kind: 'redialed'; outcome: 'ok' | 'aborted'; reason: CoreDownReason }
   | { kind: 'bootFailed'; redial: CoreDownReason | undefined; error: unknown }
   | { kind: 'disposed'; core: Core }
+  | { kind: 'lingerCancelled'; timer: unknown }
   | { kind: 'orphaned'; runtime: WorkerPairingHostRuntime }
-  | { kind: 'sessionFollowFailed'; error: unknown }
+  /** A local wallet core has no phone. */
+  | { kind: 'phoneDropped'; phoneRequests: PhoneRequestTracker }
+  | { kind: 'sessionStoreChanged'; runtime: WorkerPairingHostRuntime }
   | { kind: 'staleReadFailed'; error: unknown }
   | { kind: 'pairingCancelled'; runtime: WorkerPairingHostRuntime }
   | { kind: 'coresGone' };
@@ -254,17 +252,14 @@ export function createPageCore({
     transition: Transition<PageCoreMachine>,
   ): void {
     const core = state.cores.get(coreId);
-    if (core?.kind !== 'live' && core?.kind !== 'lingering') {
+    if (core?.kind === 'lingering') {
+      transition.emitState(leave(state, core, transition));
       return;
     }
-    const down: Extract<Core, { kind: 'down' }> = {
-      ...getParts(core),
-      kind: 'down',
-      booted: core.booted,
-      stopFollowing: core.stopFollowing,
-      reason,
-      leases: core.kind === 'live' ? core.leases : new Set(),
-    };
+    if (core?.kind !== 'live') {
+      return;
+    }
+    const down: Core = { ...core, kind: 'down', reason };
     const next = withCore(state, down);
     if (down.leases.size === 0) {
       transition.emitState(leave(next, down, transition));
@@ -273,9 +268,6 @@ export function createPageCore({
       transition.emitState(dial(next, { redial: reason, waiting: new Map() }, transition));
     } else {
       transition.emitState(next);
-    }
-    if (core.kind === 'lingering') {
-      timers.clearTimeout(core.timer);
     }
   }
 
@@ -311,15 +303,9 @@ export function createPageCore({
               return;
             }
             case 'lingering': {
-              const live: LiveCore = {
-                ...getParts(core),
-                kind: 'live',
-                booted: core.booted,
-                stopFollowing: core.stopFollowing,
-                leases: new Set([leaseId]),
-              };
+              const live: LiveCore = { ...getBootedParts(core), kind: 'live', leases: new Set([leaseId]) };
               transition.emitState(withCore(state, live));
-              timers.clearTimeout(core.timer);
+              transition.emitSideEffect({ kind: 'lingerCancelled', timer: core.timer });
               transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
               return;
             }
@@ -348,14 +334,14 @@ export function createPageCore({
           };
           emitState(withCore(state, live));
           if (booted.local) {
-            // A local wallet core has no phone. Its leases are handed out after this, so no frame is tapped first.
-            core.phoneRequests.dispose();
+            // Its leases are handed out after this, so no frame is tapped first.
+            emitSideEffect({ kind: 'phoneDropped', phoneRequests: core.phoneRequests });
           } else {
             // A session stored or a store that came back before the core followed it is no store event.
             update({ kind: 'storeChanged', coreId });
-          }
-          if (core.pairingCancelled && !booted.local) {
-            emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+            if (core.pairingCancelled) {
+              emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+            }
           }
           for (const [leaseId, reply] of core.waiting) {
             emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
@@ -397,15 +383,7 @@ export function createPageCore({
           const timer = timers.setTimeout(() => {
             transition.update({ kind: 'lingerEnded', coreId, timer });
           }, destroyDelay);
-          transition.emitState(
-            withCore(state, {
-              ...getParts(core),
-              kind: 'lingering',
-              booted: core.booted,
-              stopFollowing: core.stopFollowing,
-              timer,
-            }),
-          );
+          transition.emitState(withCore(state, { ...getBootedParts(core), kind: 'lingering', timer }));
         },
         lingerEnded(state, { coreId, timer }, transition) {
           const core = state.cores.get(coreId);
@@ -420,18 +398,14 @@ export function createPageCore({
           if (core === undefined || core.kind === 'booting') {
             return;
           }
-          try {
-            core.booted.runtime.notifySessionStoreChanged();
-          } catch (error) {
-            emitSideEffect({ kind: 'sessionFollowFailed', error });
-          }
+          emitSideEffect({ kind: 'sessionStoreChanged', runtime: core.booted.runtime });
           // The store coming back can answer a wallet read that failed when this core booted.
           update(
             new Promise<boolean>(resolve => {
               resolve(core.booted.isStale());
             }).then(
               (stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale }),
-              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', coreId, error }),
+              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', error }),
             ),
           );
         },
@@ -449,8 +423,8 @@ export function createPageCore({
           for (const core of state.cores.values()) {
             if (core.kind === 'booting') {
               cores.set(core.id, { ...core, pairingCancelled: true });
-              // A signing runtime has no pairing to cancel.
             } else if (!core.booted.local) {
+              // A signing runtime has no pairing to cancel.
               emitSideEffect({ kind: 'pairingCancelled', runtime: core.booted.runtime });
             }
           }
@@ -493,15 +467,25 @@ export function createPageCore({
         case 'disposed':
           disposeCore(effect.core);
           return;
+        case 'lingerCancelled':
+          timers.clearTimeout(effect.timer);
+          return;
         case 'orphaned':
           effect.runtime.dispose();
           return;
-        case 'sessionFollowFailed':
-          report.defect(effect.error, {
-            step: 'session_follow',
-            metric: pageCoreSessionFollowMetric,
-            message: '[dot.li page-core] telling the core the stored session changed failed:',
-          });
+        case 'phoneDropped':
+          effect.phoneRequests.dispose();
+          return;
+        case 'sessionStoreChanged':
+          try {
+            effect.runtime.notifySessionStoreChanged();
+          } catch (error) {
+            report.defect(error, {
+              step: 'session_follow',
+              metric: pageCoreSessionFollowMetric,
+              message: '[dot.li page-core] telling the core the stored session changed failed:',
+            });
+          }
           return;
         case 'staleReadFailed':
           report.defect(effect.error, {
@@ -740,53 +724,22 @@ export function createPageCore({
       machine.update({ kind: 'wentDown', coreId: core.id, reason: 'refused' });
       throw error;
     }
+    const tapped = tapPhoneRequests(provider, core.phoneRequests);
     let closing = false;
-    const tap = core.phoneRequests.connect();
-    // The tracker only infers what it can, so a tap that fails is reported and the frame goes on as if untapped.
-    function tapFrame(side: 'product' | 'core', message: Uint8Array): void {
-      try {
-        switch (side) {
-          case 'product':
-            tap.fromProduct(message);
-            break;
-          case 'core':
-            tap.fromCore(message);
-            break;
-        }
-      } catch (error) {
-        report.defect(error, {
-          step: 'phone_request_tap',
-          tags: { side },
-          metric: phoneRequestTapMetric,
-          attributes: { side },
-          message: `[dot.li page-core] phone request tap failed on a frame from the ${side}:`,
-        });
-      }
-    }
-    const unsubscribeTap = provider.subscribe(message => {
-      tapFrame('core', message);
-    });
     // A deliberate close also fires close listeners. Any other close is the core going down.
     provider.subscribeClose?.(() => {
-      tap.dispose();
+      tapped.untap();
       if (!closing) {
         report.log.event('wallet core went down under a connection');
         machine.update({ kind: 'wentDown', coreId: core.id, reason: 'closed' });
       }
     });
     return {
-      provider: {
-        ...provider,
-        postMessage(message) {
-          provider.postMessage(message);
-          tapFrame('product', message);
-        },
-      },
+      provider: tapped.provider,
       productId,
       close() {
         closing = true;
-        unsubscribeTap();
-        tap.dispose();
+        tapped.untap();
         provider.dispose();
       },
     };
@@ -804,6 +757,13 @@ export function createPageCore({
 /** The parts every phase of `core` keeps, so a core that moves on carries no field of the phase it left. */
 function getParts({ id, product, redial, blockingModalScope, phoneRequests }: Core): CoreParts {
   return { id, product, redial, blockingModalScope, phoneRequests };
+}
+
+/** The parts every booted phase of `core` keeps. */
+function getBootedParts(
+  core: Exclude<Core, { kind: 'booting' }>,
+): CoreParts & Pick<LiveCore, 'booted' | 'stopFollowing'> {
+  return { ...getParts(core), booted: core.booted, stopFollowing: core.stopFollowing };
 }
 
 function servesProduct(core: Core, product: PageProduct): boolean {
