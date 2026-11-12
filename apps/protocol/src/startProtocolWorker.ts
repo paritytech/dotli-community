@@ -78,7 +78,15 @@ type WorkerEffect =
   | { kind: 'presyncComplete'; ms: number }
   | { kind: 'presyncFailed'; error: unknown }
   | { kind: 'lightClientDied'; message: string }
-  | { kind: 'lifecycleFailed'; error: Error };
+  | { kind: 'lifecycleFailed'; error: Error }
+  | { kind: 'lifecycleReady' }
+  | { kind: 'peopleWarmed'; service: LightClientService }
+  | { kind: 'pauseApplied'; service: LightClientService; paused: boolean }
+  | { kind: 'connectsUnheard' }
+  | { kind: 'lightClientUnheard' }
+  | { kind: 'lifecycleDisposed' }
+  | { kind: 'serviceDisposed'; service: LightClientService }
+  | { kind: 'engineDisposed'; engine: ProtocolEngine };
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
 
@@ -123,8 +131,6 @@ type Params = {
   flush: () => Promise<void>;
   /** Runs the worker's zero-delay close. Defaults to the page's own timers. */
   timers?: Timers;
-  /** The monotonic clock the pre-sync is timed on, in milliseconds. Defaults to the page's own. */
-  now?: () => number;
   /** Starts the light client's chains and name resolver. Defaults to the real one. */
   startService?: typeof startLightClientService;
 };
@@ -145,7 +151,6 @@ export function startProtocolWorker({
   netBytes,
   flush,
   timers,
-  now = () => performance.now(),
   startService = startLightClientService,
 }: Params): {
   /**
@@ -222,27 +227,26 @@ export function startProtocolWorker({
   const applyEveryTabPaused: HandlerOf<WorkerMachine, 'syncing' | 'serving', 'everyTabPausedChanged'> = (
     { service },
     { paused },
+    { emitSideEffect },
   ) => {
-    if (paused) {
-      service.pool.pause();
-    } else {
-      service.pool.resume();
-    }
+    emitSideEffect({ kind: 'pauseApplied', service, paused });
   };
-  const disposeWorker: HandlerOf<WorkerMachine, LiveKind, 'disposed'> = (state, _event, { emitState }) => {
+  /** One effect per call-out, so a release that throws still lets the rest go. */
+  const disposeWorker: HandlerOf<WorkerMachine, LiveKind, 'disposed'> = (
+    state,
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
     emitState({ kind: 'disposed' });
-    scope.removeEventListener('connect', handleConnectEvent);
-    stopHearingLightClient();
-    lifecycle.dispose();
+    emitSideEffect({ kind: 'connectsUnheard' });
+    emitSideEffect({ kind: 'lightClientUnheard' });
+    emitSideEffect({ kind: 'lifecycleDisposed' });
     switch (state.kind) {
       case 'syncing':
       case 'serving':
-        // The observed chains go before the pool they lease from, and a release that throws still lets the pool go.
-        try {
-          state.service.dispose();
-        } finally {
-          state.engine.dispose();
-        }
+        // The observed chains go before the pool they lease from.
+        emitSideEffect({ kind: 'serviceDisposed', service: state.service });
+        emitSideEffect({ kind: 'engineDisposed', engine: state.engine });
         break;
       case 'starting':
       case 'unknownNetwork':
@@ -261,7 +265,7 @@ export function startProtocolWorker({
             emitSideEffect({ kind: 'networkUnknown', message: network.value });
             return;
           }
-          const startedAt = now();
+          const startedAt = performance.now();
           emitSideEffect({ kind: 'presyncStarted', network: network.value });
           let service: LightClientService;
           try {
@@ -281,10 +285,8 @@ export function startProtocolWorker({
             resolver: service.dotns,
             log: logWorkerEvent,
           });
+          // No tab has connected yet, so none has asked for a pause.
           emitState({ kind: 'syncing', startedAt, service, engine });
-          if (lifecycle.isEveryTabPaused()) {
-            service.pool.pause();
-          }
           update(
             service.dotns.waitForAssetHubFinalized().then(
               (): WorkerEvent => ({ kind: 'assetHubSynced' }),
@@ -306,10 +308,9 @@ export function startProtocolWorker({
       syncing: {
         assetHubSynced({ startedAt, service, engine }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'serving', service, engine });
-          emitSideEffect({ kind: 'presyncComplete', ms: Math.round(now() - startedAt) });
-          lifecycle.markReady();
-          // Warmed in the background, so a later People read does not wait on a cold warp sync. Ready never waits on it.
-          service.warmPeople(WORKER_LOG_TAG);
+          emitSideEffect({ kind: 'presyncComplete', ms: Math.round(performance.now() - startedAt) });
+          emitSideEffect({ kind: 'lifecycleReady' });
+          emitSideEffect({ kind: 'peopleWarmed', service });
         },
         presyncFailed: failPresync,
         everyTabPausedChanged: applyEveryTabPaused,
@@ -347,6 +348,35 @@ export function startProtocolWorker({
           break;
         case 'lifecycleFailed':
           lifecycle.fail(effect.error);
+          break;
+        case 'lifecycleReady':
+          lifecycle.markReady();
+          break;
+        case 'peopleWarmed':
+          // Warmed in the background, so a later People read does not wait on a cold warp sync. Ready never waits on it.
+          effect.service.warmPeople(WORKER_LOG_TAG);
+          break;
+        case 'pauseApplied':
+          if (effect.paused) {
+            effect.service.pool.pause();
+          } else {
+            effect.service.pool.resume();
+          }
+          break;
+        case 'connectsUnheard':
+          scope.removeEventListener('connect', handleConnectEvent);
+          break;
+        case 'lightClientUnheard':
+          stopHearingLightClient();
+          break;
+        case 'lifecycleDisposed':
+          lifecycle.dispose();
+          break;
+        case 'serviceDisposed':
+          effect.service.dispose();
+          break;
+        case 'engineDisposed':
+          effect.engine.dispose();
           break;
       }
     },
