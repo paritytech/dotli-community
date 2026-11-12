@@ -299,7 +299,7 @@ describe('createChainPool', () => {
     expect(activity.slice(heardBefore)).toEqual([]);
   });
 
-  it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', () => {
+  it('As a dotli integrator, I read each chain status from the pool and a closed transport changes nothing', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -313,6 +313,7 @@ describe('createChainPool', () => {
     must(built[0], 'transport').hooks.onStatus('connected');
     connection.disconnect();
     must(built[0], 'transport').hooks.onStatus('connected');
+    await Promise.resolve();
 
     // Then
     expect(pool.status('0xbb')).toBe('disconnected');
@@ -521,7 +522,7 @@ describe('createChainPool', () => {
     expect(events).toEqual(['dropped', 'halt']);
   });
 
-  it('As a dotli integrator, I rebuild a chain from a halt handler and it reports its own status', () => {
+  it('As a dotli integrator, I rebuild a chain from a halt handler and it reports its own status', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
@@ -537,6 +538,7 @@ describe('createChainPool', () => {
 
     // When
     must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    await Promise.resolve();
 
     // Then
     expect(built).toHaveLength(2);
@@ -679,7 +681,7 @@ describe('createChainPool watch', () => {
     });
   });
 
-  it('As the network panel, I hear each lease, release and status change', () => {
+  it('As the network panel, I hear each lease, release and status change', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -690,6 +692,7 @@ describe('createChainPool watch', () => {
     const first = lease(pool, '0xAA');
     must(built[0], 'transport').hooks.onStatus('connected');
     first.disconnect();
+    await Promise.resolve();
 
     // Then
     expect(seen.activity.map(a => [a.genesisHash, a.consumers, a.status])).toEqual([
@@ -713,7 +716,7 @@ describe('createChainPool watch', () => {
     expect(seen.activity).toEqual([{ genesisHash: '0xaa', consumers: 1, status: 'connecting', following: false }]);
   });
 
-  it('As the network panel, I end on the rebuilt chain when a chain is rebuilt inside its halt, not on the dead one', () => {
+  it('As the network panel, I end on the rebuilt chain when a chain is rebuilt inside its halt, not on the dead one', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -727,6 +730,7 @@ describe('createChainPool watch', () => {
 
     // When
     must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    await Promise.resolve();
 
     // Then
     expect(built).toHaveLength(2);
@@ -760,7 +764,7 @@ describe('createChainPool watch', () => {
     });
   }
 
-  it('As the network panel, I get the best blocks of a chain someone holds without following it', () => {
+  it('As the network panel, I get the best blocks of a chain someone holds without following it', async () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -775,6 +779,7 @@ describe('createChainPool watch', () => {
     event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
     event({ event: 'bestBlockChanged', bestBlockHash: '0xb1' });
     answerHeader(transport, 8);
+    await Promise.resolve();
 
     // Then
     expect(transport.sent.filter(isFollow).map((message): unknown => message.params)).toEqual([[true]]);
@@ -795,6 +800,7 @@ describe('createChainPool watch', () => {
 
     // When
     connection.disconnect();
+    await Promise.resolve();
 
     // Then
     expect(transport.sent.at(-1)).toMatchObject({ method: 'chainHead_v1_unfollow', params: ['up-1'] });
@@ -938,7 +944,7 @@ describe('createChainPool watch', () => {
     expect(transport.sent.filter(isFollow)).toHaveLength(1);
   });
 
-  it('As the network panel, I unwatch while my follow opens a new connection and no follow is sent on it', () => {
+  it('As the network panel, I unwatch as I hear my follow open a new connection, and my follow there ends with that connection', async () => {
     // Given a first follow that was refused, and the only connection's follow room taken by a remote session
     const { createTransport, built } = createTransports({ followLimit: 1 });
     const pool = createChainPool({ createTransport, destroyDelay: Infinity });
@@ -961,10 +967,57 @@ describe('createChainPool watch', () => {
 
     // When the retry opens its follow on a new connection, and the status change that opens it reaches the panel
     vi.advanceTimersByTime(0);
+    await Promise.resolve();
 
-    // Then the panel's unwatch left the new connection with no follow
+    // Then the panel heard only once the follow went out, and its unwatch closed the connection the follow opened
     const opened = must(built[1], 'second connection');
-    expect(listMethod(opened, 'chainHead_v1_follow')).toEqual([]);
+    expect(listMethod(opened, 'chainHead_v1_follow')).toHaveLength(1);
+    expect(opened.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the network panel, I ask the pool for another chain while I hear a chain open, and I get its provider', async () => {
+    // Given a watcher that asks for 0xbb when it first hears of 0xaa
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const answers: (JsonRpcProvider | null)[] = [];
+    pool.watch({
+      onActivity: activity => {
+        if (activity.genesisHash === '0xaa' && answers.length === 0) {
+          answers.push(pool.getLocalProvider('0xbb'));
+        }
+      },
+      onBestBlock: () => undefined,
+    });
+
+    // When 0xaa is leased, and the watcher hears it
+    lease(pool, '0xaa');
+    await Promise.resolve();
+
+    // Then the watcher got 0xbb's provider, which leases the chain the pool built for it
+    expect(answers).toHaveLength(1);
+    must(answers[0], '0xbb provider')(() => undefined);
+    expect(built.map(record => record.genesisHash)).toEqual(['0xaa', '0xbb']);
+    expect(pool.status('0xbb')).toBe('connecting');
+  });
+
+  it("As a dotli integrator, I connect remotely to another chain while I hear a chain's status change, and I get my session", async () => {
+    // Given a status listener on 0xaa that connects a remote session to 0xbb the first time it hears
+    const { createTransport } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const sessions: unknown[] = [];
+    pool.onStatusChanged('0xaa', () => {
+      if (sessions.length === 0) {
+        sessions.push(pool.connectRemote({ genesisHash: '0xbb', connectionId: 'inner', onMessage: () => undefined }));
+      }
+    });
+
+    // When 0xaa is leased, and the listener hears its status
+    lease(pool, '0xaa');
+    await Promise.resolve();
+
+    // Then
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).not.toBeNull();
   });
 
   it('As the network panel, I see my chain leased, released and leased again, and I open its follow at once each time', () => {

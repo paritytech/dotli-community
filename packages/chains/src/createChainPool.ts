@@ -13,14 +13,12 @@ import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 import { createReporter } from '@dotli/metrics';
 import {
-  createListenerSet,
   createStateMachine,
   log,
   nest,
   realTimers,
   type HandlerOf,
   type HandlersOf,
-  type ListenerSet,
   type MachineTypes,
   type Timers,
   type Transition,
@@ -31,6 +29,7 @@ import { chainLaneOpenMetric } from './chainLaneOpenMetric.js';
 import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
 import { createChainLanes, type ChainLanes } from './createChainLanes.js';
 import { createChainRedial } from './createChainRedial.js';
+import { createLaterListeners } from './createLaterListeners.js';
 import { createHealingLease, type AttachAnswer } from './createHealingLease.js';
 import { createRedialGate, type RedialGate } from './createRedialGate.js';
 import { openWatchFollow } from './openWatchFollow.js';
@@ -84,25 +83,23 @@ export type ChainPool = {
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
    * and its later halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
    * `connectionId` already has a session. Throws when the chain halts while the session opens, with the halt's error as
-   * the cause. Called from inside a watcher or a status listener, it answers `null` for a chain the pool has not built
-   * yet, so such a caller asks after its callback returns.
+   * the cause.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
    * A provider whose connections are leases on the chain that take the rebuilt chain after a halt, or `null` when this
    * context cannot reach it. Calling the provider throws when no transport can be had for the chain at that call.
-   * `holder` names the lease in debug logs. Called from inside a watcher or a status listener, it answers `null` for a
-   * chain the pool has not built yet, so such a caller asks after its callback returns.
+   * `holder` names the lease in debug logs.
    */
   getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
   status(genesisHash: string): ConnectionStatus;
-  /** Hears each change of the chain's status, and returns the unsubscribe. */
+  /** Hears each change of the chain's status once the call that changed it has returned, and returns the unsubscribe. */
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
   /**
-   * Reports each chain's leases, status, follow and best blocks. The chains held now are replayed first. A chain
-   * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept. Never
-   * throws.
+   * Reports each chain's leases, status, follow and best blocks, each once the call that changed it has returned. The
+   * chains held now are replayed first, during the call. A chain someone holds is followed for its blocks until its
+   * last lease is released, and no chain is opened or kept. Never throws.
    */
   watch(watcher: ChainPoolWatcher): () => void;
   /**
@@ -240,9 +237,11 @@ export function createChainPool({
   isFrameDown = () => false,
   timers = realTimers,
 }: Params): ChainPool {
-  const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
+  // Each hears the pool once the call that changed it has returned, so one that asks the pool for a chain finds it
+  // settled.
+  const listeners = new Map<string, ReturnType<typeof createLaterListeners<ConnectionStatus>>>();
   let sessionCounter = 0;
-  const watchers = createListenerSet<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
+  const watchers = createLaterListeners<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
   const redial = createChainRedial({ status: readStatus, isFrameDown, timers });
   const healingLeases = new Set<JsonRpcConnection>();
 
@@ -673,7 +672,7 @@ export function createChainPool({
       const key = genesisHash.toLowerCase();
       let callbacks = listeners.get(key);
       if (callbacks === undefined) {
-        callbacks = createListenerSet<ConnectionStatus>({
+        callbacks = createLaterListeners<ConnectionStatus>({
           onListenerError: protocolReport.listener('chain_pool.status'),
         });
         listeners.set(key, callbacks);
