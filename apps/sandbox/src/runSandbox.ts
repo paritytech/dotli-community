@@ -5,25 +5,19 @@
 // visitor asks for, up to a limit. Every failure is reported and shown.
 
 import { hasLightClient } from '@dotli/config';
-import { CONTENT_ERRORS } from '@dotli/content';
 import type { SandboxContractError } from '@dotli/sandbox-wire';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createStateMachine,
-  describeGatewayUnreachable,
-  getErrorMessage,
-  getErrorName,
-  realTimers,
-  setErrorName,
-  withTimeout,
-  type MachineTypes,
-  type Timers,
-  type Transition,
-} from '@dotli/shared';
+import { createStateMachine, setErrorName, type MachineTypes, type Transition } from '@dotli/shared';
 
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { HostMessages } from './createHostMessages.js';
 import type { SandboxUi } from './createSandboxUi.js';
+import {
+  describeSandboxFailure,
+  getFailureStep,
+  type LoadDependency,
+  type SandboxFailure,
+} from './describeSandboxFailure.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
 import { readSandboxContract, type SandboxContract, type SandboxPage } from './readSandboxContract.js';
 import { appRunMetric } from './appRunMetric.js';
@@ -35,11 +29,6 @@ const runTransitionMetric = defineCount<'error'>('sandbox.run_transition');
 
 /** The most loads in all, the first one and each retry. */
 const MAX_ATTEMPTS = 5;
-
-type ContractStep = 'contract_top_level' | 'contract_origin' | 'contract_params' | 'contract_rerender';
-
-/** Each step names the failure wherever it is reported. */
-export type SandboxStep = LoadStep | ContractStep | 'retry_limit';
 
 /**
  * What the run needs from the page. A throw from `configure`, from the host messages or the UI while a failure is
@@ -54,35 +43,16 @@ export type RunSandboxDeps = {
   hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender'>;
   /** Shows a failure, with a retry when one is offered, and that a retry started. */
   ui: Pick<SandboxUi, 'showError' | 'showRetryScreen'>;
-  /** Resolves once the host accepted the recover ask, and rejects with `signal.reason` once `signal` aborts. */
-  waitForRecoverAccepted: (signal: AbortSignal) => Promise<void>;
+  /** Resolves once the host accepted the recover ask, and rejects once its deadline passed first. */
+  waitForRecoverAccepted: () => Promise<void>;
   /** The IPFS gateway's host, named when it cannot be reached. */
   getGatewayHost: () => string | undefined;
   /** The host's root domain, whose `app.` subdomains serve products. */
   baseDomain: string;
-  /** How long the host has to accept the recover ask. */
-  recoverTimeoutMs: number;
-  /** The timers the wait for the host to accept the recover ask runs on. */
-  timers?: Timers;
 };
-
-/** The backend a load read its content through, named in its failure. */
-type Dependency = 'smoldot-bitswap' | 'ipfs-gateway';
-
-/** A failure the host is told of and the visitor is shown. A load's failure is worded as it is shown. */
-type Failure =
-  | { kind: 'worded'; step: SandboxStep; title: string; message: string }
-  | { kind: 'load'; step: LoadStep; error: unknown; dependency: Dependency; retry: () => void };
 
 /** A contract this sandbox cannot use, reported as the host's fault. */
-type ContractFailure = {
-  step: ContractStep;
-  title: string;
-  /** Why the contract is unusable, shown and captured. */
-  message: string;
-  /** What the check or the ask threw, kept on the captured error. */
-  cause: unknown;
-};
+type ContractFailure = Extract<SandboxFailure, { kind: 'offOrigin' | 'unreadable' }>;
 
 /**
  * Where the run is. It starts with the contract, waits for the host when the contract was stripped, then loads, and
@@ -100,7 +70,7 @@ type FailedRun = { kind: 'failed'; params: SandboxParams; attempt: number };
 type RunEvent =
   | { kind: 'started'; contract: SandboxContract }
   | { kind: 'recoverAccepted' }
-  /** `cause` is what ended the wait: the contract the host never restored, or what the ask or the wait threw. */
+  /** `cause` is what ended the wait: its deadline, or what the ask or the wait threw. */
   | { kind: 'recoverFailed'; cause: unknown }
   | { kind: 'loadSettled'; outcome: LoadOutcome }
   | { kind: 'loadRejected'; error: unknown }
@@ -111,13 +81,15 @@ type RunEvent =
 type RunEffect =
   | { kind: 'configure'; params: SandboxParams }
   | { kind: 'topLevel' }
-  | ({ kind: 'contractFailed' } & ContractFailure)
+  /** `cause` is what the check or the ask threw, kept on the captured error. */
+  | { kind: 'contractFailed'; failure: ContractFailure; cause: unknown }
   | { kind: 'recoverAsked'; reason: string }
   | { kind: 'recoverAccepted' }
   | { kind: 'loadRejected'; error: unknown }
-  | { kind: 'loadFailed'; step: LoadStep; error: unknown; attempt: number; dependency: Dependency }
+  | { kind: 'loadFailed'; step: LoadStep; error: unknown; attempt: number; dependency: LoadDependency }
   | { kind: 'retryRefused' }
-  | { kind: 'showFailure'; failure: Failure }
+  /** Offers `retry` with the failure when given. */
+  | { kind: 'showFailure'; failure: SandboxFailure; retry?: () => void }
   | { kind: 'showRetry' };
 
 type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
@@ -128,60 +100,36 @@ type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
  * contract check fails with anything but a contract error.
  */
 export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
-  const timers = deps.timers ?? realTimers;
-
   const machine = createStateMachine<RunMachine>({
     initial: { kind: 'starting' },
     handlers: {
       starting: {
-        started(_state, { contract: read }, transition) {
-          switch (read.kind) {
+        started(_state, { contract }, transition) {
+          switch (contract.kind) {
             case 'topLevel':
               transition.emitState({ kind: 'ended' });
               transition.emitSideEffect({ kind: 'topLevel' });
               // A top-level load has no bridge for account, signing or storage calls, so it fails rather than half-works.
-              transition.emitSideEffect({
-                kind: 'showFailure',
-                failure: {
-                  kind: 'worded',
-                  step: 'contract_top_level',
-                  title: 'Sandbox URL not supported',
-                  message: `Open this dApp through https://${deps.baseDomain}. The sandbox origin (${read.host}) is not a standalone entry point.`,
-                },
-              });
+              transition.emitSideEffect({ kind: 'showFailure', failure: { kind: 'topLevel', host: contract.host } });
               return;
             case 'offOrigin':
               transition.emitState({ kind: 'ended' });
-              failContract(
-                {
-                  step: 'contract_origin',
-                  title: 'Sandbox URL not supported',
-                  message: `This page must load as a dotns app subdomain (e.g. myapp.app.${deps.baseDomain}) through dot.li.`,
-                  cause: undefined,
-                },
-                transition,
-              );
+              failContract({ kind: 'offOrigin' }, undefined, transition);
               return;
-            case 'unreadable':
-              if (read.error.recoverable) {
-                askHostToRecover(read.error, transition);
+            case 'unreadable': {
+              const { error } = contract;
+              if (error.recoverable) {
+                askHostToRecover(error, transition);
                 return;
               }
               transition.emitState({ kind: 'ended' });
-              failContract(
-                {
-                  step: 'contract_params',
-                  title: 'Invalid sandbox URL',
-                  message: read.error.message,
-                  cause: read.error,
-                },
-                transition,
-              );
+              failContract({ kind: 'unreadable', step: 'contract_params', reason: error.message }, error, transition);
               return;
+            }
             case 'readable':
               // Before the first load, which reads the settings it applies.
-              transition.emitSideEffect({ kind: 'configure', params: read.params });
-              startAttempt(read.params, 1, transition);
+              transition.emitSideEffect({ kind: 'configure', params: contract.params });
+              startAttempt(contract.params, 1, transition);
               return;
           }
         },
@@ -193,10 +141,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         },
         recoverFailed({ error }, { cause }, transition) {
           transition.emitState({ kind: 'ended' });
-          failContract(
-            { step: 'contract_rerender', title: 'Invalid sandbox URL', message: error.message, cause },
-            transition,
-          );
+          failContract({ kind: 'unreadable', step: 'contract_rerender', reason: error.message }, cause, transition);
         },
       },
       loading: {
@@ -226,15 +171,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
           if (state.attempt >= MAX_ATTEMPTS) {
             transition.emitState({ kind: 'ended' });
             transition.emitSideEffect({ kind: 'retryRefused' });
-            transition.emitSideEffect({
-              kind: 'showFailure',
-              failure: {
-                kind: 'worded',
-                step: 'retry_limit',
-                title: 'Too many retry attempts',
-                message: `Reached ${String(MAX_ATTEMPTS)} failed attempts. Reload the page to start over.`,
-              },
-            });
+            transition.emitSideEffect({ kind: 'showFailure', failure: { kind: 'retryLimit', attempts: MAX_ATTEMPTS } });
             return;
           }
           startAttempt(state.params, state.attempt + 1, transition);
@@ -272,16 +209,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
       Promise.resolve()
         .then(() => {
           deps.hostMessages.askRerender();
-          const wait = new AbortController();
-          return withTimeout({
-            work: deps.waitForRecoverAccepted(wait.signal),
-            ms: deps.recoverTimeoutMs,
-            timers,
-            timeoutError: () => error,
-          }).catch((cause: unknown) => {
-            wait.abort();
-            throw cause;
-          });
+          return deps.waitForRecoverAccepted();
         })
         .then(
           () => ({ kind: 'recoverAccepted' }),
@@ -320,19 +248,19 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     emitState(failedState);
     const dependency = hasLightClient(params.backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
     emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
-    const retry = (): void => {
-      update({ kind: 'retried', from: failedState });
-    };
-    emitSideEffect({ kind: 'showFailure', failure: { kind: 'load', step, error, dependency, retry } });
+    emitSideEffect({
+      kind: 'showFailure',
+      failure: { kind: 'load', step, error, dependency },
+      retry: () => {
+        update({ kind: 'retried', from: failedState });
+      },
+    });
   }
 
   /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
-  function failContract(failure: ContractFailure, { emitSideEffect }: Transition<RunMachine>): void {
-    emitSideEffect({ kind: 'contractFailed', ...failure });
-    emitSideEffect({
-      kind: 'showFailure',
-      failure: { kind: 'worded', step: failure.step, title: failure.title, message: failure.message },
-    });
+  function failContract(failure: ContractFailure, cause: unknown, { emitSideEffect }: Transition<RunMachine>): void {
+    emitSideEffect({ kind: 'contractFailed', failure, cause });
+    emitSideEffect({ kind: 'showFailure', failure });
   }
 
   /** Each effect becomes what the visitor sees, or the log line, count or capture it stands for. */
@@ -342,7 +270,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         deps.configure(effect.params);
         return;
       case 'showFailure':
-        showFailure(effect.failure);
+        showFailure(effect.failure, effect.retry);
         return;
       case 'showRetry':
         deps.ui.showRetryScreen();
@@ -356,11 +284,9 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         });
         return;
       case 'contractFailed': {
-        const error = setErrorName(
-          new Error(`${effect.title}: ${effect.message}`, { cause: effect.cause }),
-          'SandboxContractError',
-        );
-        report.capture(error, { step: effect.step, tags: { surface: 'sandbox_main' } });
+        const { title, message } = describeSandboxFailure(effect.failure, deps);
+        const error = setErrorName(new Error(`${title}: ${message}`, { cause: effect.cause }), 'SandboxContractError');
+        report.capture(error, { step: getFailureStep(effect.failure), tags: { surface: 'sandbox_main' } });
         return;
       }
       case 'recoverAsked':
@@ -386,33 +312,20 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   }
 
   /** The host is told first, so a failure that cannot be worded or shown still ends its loading screen. */
-  function showFailure(failure: Failure): void {
+  function showFailure(failure: SandboxFailure, retry: (() => void) | undefined): void {
+    const step = getFailureStep(failure);
     try {
-      deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: failure.step });
-      switch (failure.kind) {
-        case 'worded':
-          deps.ui.showError(failure.title, failure.message);
-          return;
-        case 'load':
-          deps.ui.showError('Failed to load content', describeLoadFailure(failure), { retry: failure.retry });
-          return;
-      }
+      deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
+      const { title, message } = describeSandboxFailure(failure, deps);
+      deps.ui.showError(title, message, { retry });
     } catch (error) {
       report.defect(error, {
         step: 'failure_show',
         metric: appRunMetric,
         reason: 'show_threw',
-        message: `${APP_LOG_TAG} Could not show the ${failure.step} failure`,
-        tags: { surface: 'sandbox_main', failed_step: failure.step },
+        message: `${APP_LOG_TAG} Could not show the ${step} failure`,
+        tags: { surface: 'sandbox_main', failed_step: step },
       });
     }
-  }
-
-  /** An unreachable gateway names a host the visitor can check, so it gets visitor copy. */
-  function describeLoadFailure({ error, dependency }: Extract<Failure, { kind: 'load' }>): string {
-    if (dependency === 'ipfs-gateway' && getErrorName(error) === CONTENT_ERRORS.GATEWAY_UNREACHABLE) {
-      return describeGatewayUnreachable(deps.getGatewayHost());
-    }
-    return `${getErrorMessage(error)} (via ${dependency})`;
   }
 }

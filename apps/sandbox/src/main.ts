@@ -152,9 +152,9 @@ runSandbox(
       }),
     hostMessages,
     ui,
-    waitForRecoverAccepted: signal => waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, signal }),
+    waitForRecoverAccepted: () =>
+      waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, ms: SANDBOX_TIMEOUTS.RECOVER }),
     getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
-    recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },
 );
