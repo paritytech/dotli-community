@@ -37,29 +37,37 @@ type Params = {
 /** One attach, minted for it, so a halt from an earlier lease finds the state moved on. */
 type Take = object;
 
+/** Why the lease last halted, and whether a take has failed since. */
+type Halt = { haltedBy: RemoteChainHalt; tried: boolean };
+
 /**
- * `taking` is a take whose attach runs or whose answer is queued. `detached` waits on its `heal` timer, and `tried`
- * says whether a take failed since the halt. `releasing` is a retake released before its answer came.
+ * `taking` holds the sends that wait for its take's answer. `detached` waits for its dial to open until `wait` aborts.
+ * `releasing` is a take released before its answer came.
  */
 type LeaseState =
-  | { kind: 'taking'; take: Take; haltedBy: RemoteChainHalt }
+  | { kind: 'taking'; take: Take; haltedBy: RemoteChainHalt; sends: JsonRpcRequest[] }
   | { kind: 'attached'; take: Take; connection: JsonRpcConnection }
-  | { kind: 'detached'; tried: boolean; haltedBy: RemoteChainHalt; heal: unknown }
+  | { kind: 'detached'; halt: Halt; wait: AbortController }
   | { kind: 'releasing' }
   | { kind: 'released' };
-
-type DetachedState = Extract<LeaseState, { kind: 'detached' }>;
 
 type LeaseEvent =
   | { kind: 'taken'; answer: AttachAnswer }
   | { kind: 'takeThrew'; error: unknown }
   | { kind: 'leaseHalted'; take: Take; error: unknown }
-  | { kind: 'healDue'; detached: DetachedState }
+  | { kind: 'healDue' }
   | { kind: 'sendAsked'; message: JsonRpcRequest }
   | { kind: 'releaseAsked' };
 
 type LeaseEffect =
-  { kind: 'healed'; outcome: 'ok' | 'halted' | 'no_transport' } | { kind: 'healFailed'; error: unknown };
+  | { kind: 'take'; take: Take }
+  | { kind: 'waitToHeal'; wait: AbortController; ms: number }
+  | { kind: 'stopWait'; wait: AbortController }
+  | { kind: 'send'; connection: JsonRpcConnection; message: JsonRpcRequest }
+  | { kind: 'answerHalted'; message: JsonRpcRequest }
+  | { kind: 'disconnect'; connection: JsonRpcConnection }
+  | { kind: 'healed'; found: AttachAnswer['kind'] }
+  | { kind: 'healFailed'; error: unknown };
 
 type LeaseMachine = MachineTypes<LeaseState, LeaseEvent, LeaseEffect>;
 
@@ -92,32 +100,35 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     initial:
       answer.kind === 'attached'
         ? { kind: 'attached', take: first, connection: answer.connection }
-        : { kind: 'taking', take: first, haltedBy: getHaltReason(answer.error) },
+        : { kind: 'taking', take: first, haltedBy: getHaltReason(answer.error), sends: [] },
     handlers: {
       taking: {
-        taken({ take, haltedBy }, { answer: found }, transition) {
-          transition.emitSideEffect(getHealedEffect(found));
+        taken(state, { answer: found }, transition) {
+          transition.emitSideEffect({ kind: 'healed', found: found.kind });
           switch (found.kind) {
             case 'attached':
-              transition.emitState({ kind: 'attached', take, connection: found.connection });
+              transition.emitState({ kind: 'attached', take: state.take, connection: found.connection });
+              for (const message of state.sends) {
+                transition.emitSideEffect({ kind: 'send', connection: found.connection, message });
+              }
               return;
             case 'halted': {
-              const reason = getHaltReason(found.error);
-              redial.noteHalt(key, reason);
-              detach({ tried: true, haltedBy: reason }, transition);
+              const haltedBy = getHaltReason(found.error);
+              redial.noteHalt(key, haltedBy);
+              failTake(state, { haltedBy, tried: true }, transition);
               return;
             }
             case 'unreachable':
-              detach({ tried: true, haltedBy }, transition);
+              failTake(state, { haltedBy: state.haltedBy, tried: true }, transition);
               return;
           }
         },
-        takeThrew({ haltedBy }, { error }, transition) {
+        takeThrew(state, { error }, transition) {
           transition.emitSideEffect({ kind: 'healFailed', error });
-          detach({ tried: true, haltedBy }, transition);
+          failTake(state, { haltedBy: state.haltedBy, tried: true }, transition);
         },
-        sendAsked(_state, { message }) {
-          answerHalted(message);
+        sendAsked(state, { message }, { emitState }) {
+          emitState({ ...state, sends: [...state.sends, message] });
         },
         releaseAsked(_state, _event, { emitState }) {
           emitState({ kind: 'releasing' });
@@ -130,50 +141,40 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
           }
           const haltedBy = getHaltReason(error);
           redial.noteHalt(key, haltedBy);
-          detach({ tried: false, haltedBy }, transition);
+          retake({ haltedBy, tried: false }, transition);
         },
-        sendAsked({ connection }, { message }) {
-          connection.send(message);
+        sendAsked({ connection }, { message }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'send', connection, message });
         },
         releaseAsked(_state, _event, { emitState }) {
           emitState({ kind: 'released' });
         },
       },
       detached: {
-        healDue(state, { detached }, transition) {
-          // A timer from a wait that was left heals nothing.
-          if (detached !== state) {
-            return;
-          }
-          if (!pickDial(state.tried).tryDial(key, state.haltedBy)) {
-            waitToHeal(state, transition);
-            return;
-          }
-          startTake(state.haltedBy, transition);
+        healDue({ halt }, _event, transition) {
+          retake(halt, transition);
         },
         // A send tries once and starts no wait, since the state's own wait is still pending.
-        sendAsked(state, { message }, transition) {
-          if (!pickDial(state.tried).tryDial(key, state.haltedBy)) {
-            answerHalted(message);
+        sendAsked({ halt, wait }, { message }, transition) {
+          if (!pickDial(halt.tried).tryDial(key, halt.haltedBy)) {
+            transition.emitSideEffect({ kind: 'answerHalted', message });
             return;
           }
-          startTake(state.haltedBy, transition);
-          timers.clearTimeout(state.heal);
-          // Sent again so it is handled after the take's answer.
-          transition.update({ kind: 'sendAsked', message });
+          transition.emitSideEffect({ kind: 'stopWait', wait });
+          startTake(halt.haltedBy, [message], transition);
         },
-        releaseAsked({ heal }, _event, { emitState }) {
+        releaseAsked({ wait }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'released' });
-          timers.clearTimeout(heal);
+          emitSideEffect({ kind: 'stopWait', wait });
         },
       },
       releasing: {
         taken(_state, { answer: found }, { emitState, emitSideEffect }) {
           emitState({ kind: 'released' });
-          emitSideEffect(getHealedEffect(found));
+          emitSideEffect({ kind: 'healed', found: found.kind });
           // A release while it attached leaves nothing to keep the new lease.
           if (found.kind === 'attached') {
-            found.connection.disconnect();
+            emitSideEffect({ kind: 'disconnect', connection: found.connection });
           }
         },
         takeThrew(_state, { error }, { emitState, emitSideEffect }) {
@@ -185,12 +186,50 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'healed':
-          report.log.debug(`${LEASE_TAG} ${key} taken again by ${holder}: ${effect.outcome}`);
-          chainPoolHealMetric.count(
-            effect.outcome === 'ok' ? { outcome: 'ok' } : { outcome: 'error', reason: effect.outcome },
-          );
+        case 'take': {
+          const { take } = effect;
+          try {
+            const found = attach(onMessage, error => {
+              lease.update({ kind: 'leaseHalted', take, error });
+            });
+            lease.update({ kind: 'taken', answer: found });
+          } catch (error) {
+            lease.update({ kind: 'takeThrew', error });
+          }
           return;
+        }
+        case 'waitToHeal': {
+          const handle = timers.setTimeout(() => {
+            lease.update({ kind: 'healDue' });
+          }, effect.ms);
+          effect.wait.signal.addEventListener('abort', () => {
+            timers.clearTimeout(handle);
+          });
+          return;
+        }
+        case 'stopWait':
+          effect.wait.abort();
+          return;
+        case 'send':
+          effect.connection.send(effect.message);
+          return;
+        case 'answerHalted': {
+          const { id } = effect.message;
+          // A notification has nothing to answer.
+          if (id !== undefined && id !== null) {
+            onMessage(createJsonRpcError(id, createChainHaltedError()));
+          }
+          return;
+        }
+        case 'disconnect':
+          effect.connection.disconnect();
+          return;
+        case 'healed': {
+          const outcome = getHealOutcome(effect.found);
+          report.log.debug(`${LEASE_TAG} ${key} taken again by ${holder}: ${outcome}`);
+          chainPoolHealMetric.count(outcome === 'ok' ? { outcome: 'ok' } : { outcome: 'error', reason: outcome });
+          return;
+        }
         case 'healFailed':
           reportHealDefect(effect.error, `${LEASE_TAG} ${holder} could not take ${key} again:`);
           return;
@@ -212,6 +251,7 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
      */
     send(message: JsonRpcRequest): void {
       const state = lease.state.get();
+      // Sent here, not as an effect, so the held lease's throw reaches the caller.
       if (state.kind === 'attached') {
         state.connection.send(message);
         return;
@@ -222,56 +262,46 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     disconnect(): void {
       const state = lease.state.get();
       lease.update({ kind: 'releaseAsked' });
+      // Released here, not as an effect, so the held lease's throw reaches the caller.
       if (state.kind === 'attached') {
         state.connection.disconnect();
       }
     },
   };
 
-  /** Takes the chain at once when its dial passes with no wait, as a heal inside the halt, and waits for it otherwise. */
-  function detach(
-    { tried, haltedBy }: Pick<DetachedState, 'tried' | 'haltedBy'>,
-    transition: Transition<LeaseMachine>,
-  ): void {
-    const dial = pickDial(tried);
-    if (dial.waitMs(key, haltedBy) === 0 && dial.tryDial(key, haltedBy)) {
-      startTake(haltedBy, transition);
+  /** Takes the chain again when its dial passes now, and otherwise waits in `detached` for the dial to open. */
+  function retake(halt: Halt, transition: Transition<LeaseMachine>): void {
+    const dial = pickDial(halt.tried);
+    if (dial.tryDial(key, halt.haltedBy)) {
+      startTake(halt.haltedBy, [], transition);
       return;
     }
-    waitToHeal({ tried, haltedBy }, transition);
+    const wait = new AbortController();
+    transition.emitState({ kind: 'detached', halt, wait });
+    transition.emitSideEffect({ kind: 'waitToHeal', wait, ms: dial.waitMs(key, halt.haltedBy) });
   }
 
-  /** Moves to a new `detached`, whose timer heals that wait only. */
-  function waitToHeal(
-    { tried, haltedBy }: Pick<DetachedState, 'tried' | 'haltedBy'>,
-    { emitState, update }: Transition<LeaseMachine>,
+  /** Answers the take's waiting sends with the halted marker, and takes the chain again or waits. */
+  function failTake(
+    { sends }: Extract<LeaseState, { kind: 'taking' }>,
+    halt: Halt,
+    transition: Transition<LeaseMachine>,
   ): void {
-    const detached: DetachedState = {
-      kind: 'detached',
-      tried,
-      haltedBy,
-      heal: timers.setTimeout(
-        () => {
-          update({ kind: 'healDue', detached });
-        },
-        pickDial(tried).waitMs(key, haltedBy),
-      ),
-    };
-    emitState(detached);
+    for (const message of sends) {
+      transition.emitSideEffect({ kind: 'answerHalted', message });
+    }
+    retake(halt, transition);
   }
 
   /** Takes the chain again. Its answer is queued, so a release or a send heard during the attach is handled first. */
-  function startTake(haltedBy: RemoteChainHalt, { emitState, update }: Transition<LeaseMachine>): void {
+  function startTake(
+    haltedBy: RemoteChainHalt,
+    sends: JsonRpcRequest[],
+    { emitState, emitSideEffect }: Transition<LeaseMachine>,
+  ): void {
     const take: Take = {};
-    emitState({ kind: 'taking', take, haltedBy });
-    try {
-      const found = attach(onMessage, error => {
-        update({ kind: 'leaseHalted', take, error });
-      });
-      update({ kind: 'taken', answer: found });
-    } catch (error) {
-      update({ kind: 'takeThrew', error });
-    }
+    emitState({ kind: 'taking', take, haltedBy, sends });
+    emitSideEffect({ kind: 'take', take });
   }
 
   // A lease whose take failed since its halt waits on the gate even while the chain is up, since that chain refused
@@ -283,23 +313,15 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
   function reportHealDefect(error: unknown, message: string): void {
     report.defect(error, { step: 'chain_heal', metric: chainPoolHealMetric, message });
   }
-
-  function answerHalted(message: JsonRpcRequest): void {
-    // A notification has nothing to answer.
-    if (message.id === undefined || message.id === null) {
-      return;
-    }
-    onMessage(createJsonRpcError(message.id, createChainHaltedError()));
-  }
 }
 
-function getHealedEffect(answer: AttachAnswer): LeaseEffect {
-  switch (answer.kind) {
+function getHealOutcome(found: AttachAnswer['kind']): 'ok' | 'halted' | 'no_transport' {
+  switch (found) {
     case 'attached':
-      return { kind: 'healed', outcome: 'ok' };
+      return 'ok';
     case 'halted':
-      return { kind: 'healed', outcome: 'halted' };
+      return 'halted';
     case 'unreachable':
-      return { kind: 'healed', outcome: 'no_transport' };
+      return 'no_transport';
   }
 }
