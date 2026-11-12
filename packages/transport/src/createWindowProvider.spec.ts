@@ -138,6 +138,22 @@ describe('createWindowProvider', () => {
     expect(thrown).toEqual(matchInstance(Error));
   });
 
+  it("As an embedded page, I answer my parent's first bytes from inside my listener and the answer goes to its origin", () => {
+    // Given
+    const listen = createTarget();
+    const parent = createFakeWindow();
+    const provider = createWindowProvider({ listen, peer: () => parent, origin: () => true });
+    provider.subscribe(() => {
+      provider.postMessage(new Uint8Array(1));
+    });
+
+    // When
+    listen.dispatchEvent(messageFrom(parent, 'https://parent.example', new ArrayBuffer(1)));
+
+    // Then
+    expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://parent.example']);
+  });
+
   it('As an embedded page, I count objects from my parent and drop them', () => {
     // Given
     const listen = createTarget();

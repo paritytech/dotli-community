@@ -1225,7 +1225,7 @@ describe('calls', () => {
     raw.transport.subscribe({ method: notes.watch, start: 'from the top', listeners: heard });
     await raw.timers.advance(0);
 
-    // Then the transport closed it before the post returned, and the peer heard no stop
+    // Then the transport closed it with the hook's reason, and the peer heard no stop
     expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(heard.fails).toEqual([]);
@@ -1898,6 +1898,49 @@ describe('serving', () => {
     expect(stops).toEqual([1, 1]);
   });
 
+  it('As a serving side, I hear a start that reuses the id of a running subscription and the old stop runs before the new handler starts', async () => {
+    // Given
+    const { transport, timers, peer } = await acceptRawRig();
+    const log: string[] = [];
+    transport.handleSubscription(notes.watch, start => {
+      log.push(`start:${start}`);
+      return () => {
+        log.push(`stop:${start}`);
+      };
+    });
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'first' } });
+    await timers.advance(0);
+
+    // When
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'second' } });
+    await timers.advance(0);
+
+    // Then
+    expect(log).toEqual(['start:first', 'stop:first', 'start:second']);
+  });
+
+  it("As a serving side, I hear a start that reuses the id of a running subscription and the replaced one's sink sends nothing", async () => {
+    // Given
+    const { transport, timers, peer } = await acceptRawRig();
+    const { sinks, stops } = serveWatch(transport);
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'first' } });
+    await timers.advance(0);
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'second' } });
+    await timers.advance(0);
+    const replaced = must(sinks[0], 'the replaced sink');
+
+    // When the replaced sink sends, sends what the wire cannot carry, and interrupts, then the new one sends
+    replaced.send('stale');
+    replaced.send('');
+    replaced.interrupt(ok());
+    must(sinks[1], 'the new sink').send('fresh');
+    await timers.advance(0);
+
+    // Then only the new one's value reaches the peer, and the new one still runs
+    expect(peer.getNames()).toEqual(['handshakeResponse', 'receive:notes.watch']);
+    expect(stops).toEqual([1, 0]);
+  });
+
   it('As a serving side, I see a peer dispose and what it opened keeps running, since it posts nothing', async () => {
     // Given a peer with a subscription
     const { opener, accepter, timers } = createRig();
@@ -1939,6 +1982,27 @@ describe('serving', () => {
     expect(other.fails).toEqual([]);
     expect(other.ends).toEqual([]);
     expect(issues).toEqual([]);
+  });
+
+  it('As a handler that interrupts and then breaks my channel inside start, I interrupt the subscription and the subscriber hears the interrupt first', async () => {
+    // Given
+    const { wrap, breakPosts } = createBreakablePosts(new Error('the port is closed'));
+    const { transport, timers, peer, issues } = await acceptRawRig({ wrap });
+    const stop = vi.fn();
+    transport.handleSubscription(notes.watch, (_start, _context, sink) => {
+      sink.interrupt(err('released'));
+      breakPosts();
+      return stop;
+    });
+
+    // When
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'from the top' } });
+    await timers.advance(0);
+
+    // Then
+    expect(peer.getValues(notes.watch, 'interrupt:notes.watch')).toEqual([err('released')]);
+    expect(issues).toEqual([]);
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it('As a serving side, I hear a stop before the handshake and refuse it as invalid, and drop one for a subscription that is not running quietly', async () => {
@@ -2610,6 +2674,73 @@ describe('forwarding', () => {
     expect(await read).toEqual(err(hostFailure(new Error('gone'))));
     expect(heard.fails).toEqual([hostFailure(new Error('gone'))]);
     expect(issues).toEqual([]);
+  });
+
+  it('As a transport that closes, I end my calls and each one ends in the order I opened it, a forwarded call among them', async () => {
+    // Given a forwarder whose posts to its peer are logged, and an upstream with a subscription, then a forwarded call
+    const log: string[] = [];
+    const near = createProviderPair();
+    const far = createProviderPair();
+    const timers = createManualTimers();
+    const { onIssue } = createIssueLog();
+    const opening = { timers, retryMs: RETRY_MS, timeoutMs: TIMEOUT_MS, onIssue };
+    const peer = createTransport({
+      schema: testSchema,
+      provider: near.left,
+      handshake: 'offer',
+      hello: 'peer',
+      ...opening,
+    });
+    const forwarder = createTransport({
+      schema: testSchema,
+      provider: {
+        ...near.right,
+        postMessage: message => {
+          log.push('posted');
+          near.right.postMessage(message);
+        },
+      },
+      handshake: 'respond',
+      hello: 'forwarder',
+      onIssue,
+    });
+    const upstream = createTransport({
+      schema: testSchema,
+      provider: far.left,
+      handshake: 'offer',
+      hello: 'upstream',
+      ...opening,
+    });
+    const server = createTransport({
+      schema: testSchema,
+      provider: far.right,
+      handshake: 'respond',
+      hello: 'server',
+      onIssue,
+    });
+    forwarder.forward([notes.read], upstream);
+    server.handleRequest(notes.read, () => createDeferred<ResultPayload<string, CallError<string>>>().promise);
+    serveWatch(server);
+    upstream.subscribe({
+      method: notes.watch,
+      start: 'from the top',
+      listeners: {
+        ...createWatcher(),
+        close: () => {
+          log.push('closed');
+        },
+      },
+    });
+    await timers.advance(0);
+    void peer.request(notes.read, 'a note');
+    await timers.advance(0);
+    log.length = 0;
+
+    // When
+    upstream.dispose(new Error('gone'));
+
+    // Then the subscription opened first hears its end first, and the forwarded call answers its peer after it
+    expect(log).toEqual(['closed', 'posted']);
   });
 
   it('As a forwarder that closes, I post nothing to my peer and stop each forwarded subscription on the upstream', async () => {
