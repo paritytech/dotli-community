@@ -5,7 +5,7 @@
 // that loads needs none of it, so the boot carries no Solid.
 
 import { createReporter, defineCount, spans as S } from '@dotli/metrics';
-import { createLazyLoad, createStateMachine, noop, type MachineTypes, type Transition } from '@dotli/shared';
+import { createLazyLoad, createStateMachine, type MachineTypes } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { FallbackScreen } from './createFallbackScreen.js';
@@ -28,20 +28,26 @@ type Params = {
   fallback: FallbackScreen;
 };
 
-/** A screen to show once the UI is up. */
-type Show = (ui: PageUiModule) => void;
+/** A full-page screen to show once the UI is up. `null` for a need that wants the UI only, such as a toast. */
+type Screen =
+  { kind: 'error'; title: string; message: string; retry: (() => void) | undefined } | { kind: 'retry' } | null;
 
 /** The UI is loaded once and mounted once. Until then each need loads it again, and the toasts are listened to. */
 type UiState = { kind: 'waiting'; stopToasts: () => void } | { kind: 'up'; ui: PageUiModule } | { kind: 'disposed' };
 
 type UiEvent =
   | { kind: 'toastsChanged' }
-  | { kind: 'uiNeeded'; show: Show; fallbackText: string | null }
-  | { kind: 'uiLoaded'; ui: PageUiModule; show: Show }
-  | { kind: 'uiMissed'; fallbackText: string | null }
+  | { kind: 'uiNeeded'; screen: Screen }
+  | { kind: 'uiLoaded'; ui: PageUiModule; screen: Screen }
+  | { kind: 'uiMissed'; screen: Screen }
   | { kind: 'disposed' };
 
-type UiMachine = MachineTypes<UiState, UiEvent>;
+type UiEffect =
+  | { kind: 'mount'; ui: PageUiModule }
+  | { kind: 'show'; ui: PageUiModule; screen: Screen }
+  | { kind: 'showFallback'; screen: Screen };
+
+type UiMachine = MachineTypes<UiState, UiEvent, UiEffect>;
 
 export type SandboxUi = ReturnType<typeof createSandboxUi>;
 
@@ -67,28 +73,25 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
     initial: { kind: 'waiting', stopToasts },
     handlers: {
       waiting: {
-        toastsChanged(_state, _event, transition) {
+        toastsChanged(_state, _event, { update }) {
+          // Listening goes on until the UI has loaded, so a toast after a failed load starts the next try. Each toast
+          // change during a load queues one more try. Mounting the overlays shows the toasts.
           if (toasts.get().items.length > 0) {
-            // Listening goes on until the UI has loaded, so a toast after a failed load starts the next try. Each toast
-            // change during a load queues one more try. Mounting the overlays shows the toasts.
-            requestUi(noop, null, transition);
+            update(loadFor(null));
           }
         },
-        uiNeeded(_state, { show, fallbackText }, transition) {
-          requestUi(show, fallbackText, transition);
+        uiNeeded(_state, { screen }, { update }) {
+          update(loadFor(screen));
         },
-        uiLoaded(state, { ui, show }, { emitState }) {
+        uiLoaded(state, { ui, screen }, { emitState, emitSideEffect }) {
           emitState({ kind: 'up', ui });
           state.stopToasts();
-          fallback.hide();
-          ui.mountOverlays();
-          show(ui);
+          emitSideEffect({ kind: 'mount', ui });
+          emitSideEffect({ kind: 'show', ui, screen });
         },
-        uiMissed(_state, { fallbackText }) {
+        uiMissed(_state, { screen }, { emitSideEffect }) {
           // Reported once where it loads.
-          if (fallbackText !== null) {
-            fallback.show(fallbackText);
-          }
+          emitSideEffect({ kind: 'showFallback', screen });
         },
         disposed(state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
@@ -96,18 +99,32 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
         },
       },
       up: {
-        uiNeeded(state, { show }) {
-          show(state.ui);
+        uiNeeded({ ui }, { screen }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'show', ui, screen });
         },
-        uiLoaded(state, { show }) {
-          // A load another need started before the UI came up.
-          show(state.ui);
+        // A load another need started before the UI came up.
+        uiLoaded({ ui }, { screen }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'show', ui, screen });
         },
         disposed(_state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
         },
       },
       disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'mount':
+          fallback.hide();
+          effect.ui.mountOverlays();
+          return;
+        case 'show':
+          showScreen(effect.ui, effect.screen);
+          return;
+        case 'showFallback':
+          showFallback(effect.screen);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -139,43 +156,55 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
     dispose,
   };
 
-  /** `fallbackText` is what the page says in place of the UI when it cannot load. */
-  function requestUi(show: Show, fallbackText: string | null, { update }: Transition<UiMachine>): void {
-    update(
-      loadChunk().then(
-        ui => ({ kind: 'uiLoaded', ui, show }),
-        () => ({ kind: 'uiMissed', fallbackText }),
-      ),
+  function loadFor(screen: Screen): Promise<UiEvent> {
+    return loadChunk().then(
+      ui => ({ kind: 'uiLoaded', ui, screen }),
+      () => ({ kind: 'uiMissed', screen }),
     );
   }
 
   async function loadUi(): Promise<PageUiModule> {
     const ui = await loadChunk();
-    machine.update({ kind: 'uiLoaded', ui, show: noop });
+    machine.update({ kind: 'uiLoaded', ui, screen: null });
     return ui;
   }
 
   function showError(title: string, message: string, { retry }: { retry?: (() => void) | undefined } = {}): void {
-    machine.update({
-      kind: 'uiNeeded',
-      show: ui => {
-        ui.showError(title, { detail: message, action: retry });
-      },
-      fallbackText: `${title}. ${message}`,
-    });
+    machine.update({ kind: 'uiNeeded', screen: { kind: 'error', title, message, retry } });
   }
 
   function showRetryScreen(): void {
-    machine.update({
-      kind: 'uiNeeded',
-      show: ui => {
-        ui.showRetryScreen();
-      },
-      fallbackText: 'Failed to load content.',
-    });
+    machine.update({ kind: 'uiNeeded', screen: { kind: 'retry' } });
   }
 
   function dispose(): void {
     machine.update({ kind: 'disposed' });
+  }
+
+  function showScreen(ui: PageUiModule, screen: Screen): void {
+    switch (screen?.kind) {
+      case 'error':
+        ui.showError(screen.title, { detail: screen.message, action: screen.retry });
+        return;
+      case 'retry':
+        ui.showRetryScreen();
+        return;
+      case undefined:
+        return;
+    }
+  }
+
+  /** Says in place of the UI what `screen` would have said. A need with no screen says nothing. */
+  function showFallback(screen: Screen): void {
+    switch (screen?.kind) {
+      case 'error':
+        fallback.show(`${screen.title}. ${screen.message}`);
+        return;
+      case 'retry':
+        fallback.show('Failed to load content.');
+        return;
+      case undefined:
+        return;
+    }
   }
 }
