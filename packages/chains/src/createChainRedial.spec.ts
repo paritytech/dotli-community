@@ -3,8 +3,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { createManualTimers } from '@dotli/shared/testing';
-import { createChainRedial } from './createChainRedial.js';
+import { createChainRedial, type LeaseHalt } from './createChainRedial.js';
 import type { ConnectionStatus } from './transportHooks.js';
+
+const CHAIN: LeaseHalt = { reason: 'chain', tried: false };
+const FRAME: LeaseHalt = { reason: 'frame', tried: false };
+const TRIED_CHAIN: LeaseHalt = { reason: 'chain', tried: true };
 
 type Params = {
   /** Whether the frame is down, false by default. */
@@ -16,15 +20,15 @@ describe('createChainRedial', () => {
     // Given a chain whose gate is shut, and another lease has rebuilt it
     const { redial, setStatus } = setup();
     redial.noteHalt('0xaa', 'chain');
-    redial.tryDial('0xaa', 'chain');
+    redial.tryDial('0xaa', CHAIN);
     redial.noteHalt('0xaa', 'chain');
     setStatus('connected');
 
     // When the lease asks, and the chain is gone again
-    const joined = redial.tryDial('0xaa', 'chain');
-    const wait = redial.waitMs('0xaa', 'chain');
+    const joined = redial.tryDial('0xaa', CHAIN);
+    const wait = redial.waitMs('0xaa', CHAIN);
     setStatus('disconnected');
-    const waitOnceGone = redial.waitMs('0xaa', 'chain');
+    const waitOnceGone = redial.waitMs('0xaa', CHAIN);
 
     // Then the lease joins at once, and the gate still waits only its first 1 s
     expect([joined, wait, waitOnceGone]).toEqual([true, 0, 1_000]);
@@ -34,13 +38,13 @@ describe('createChainRedial', () => {
     // Given a chain that halted and was redialed, and the rebuilt chain is up
     const { redial, setStatus } = setup();
     redial.noteHalt('0xaa', 'chain');
-    redial.tryDial('0xaa', 'chain');
+    redial.tryDial('0xaa', CHAIN);
     setStatus('connecting');
 
     // When a lease whose take of it failed asks
-    const retried = redial.tryDialGate('0xaa', 'chain');
-    const wait = redial.gateWaitMs('0xaa', 'chain');
-    const joinWait = redial.waitMs('0xaa', 'chain');
+    const retried = redial.tryDial('0xaa', TRIED_CHAIN);
+    const wait = redial.waitMs('0xaa', TRIED_CHAIN);
+    const joinWait = redial.waitMs('0xaa', CHAIN);
 
     // Then it waits the gate's 1 s, where a lease that has not tried joins at once
     expect([retried, wait, joinWait]).toEqual([false, 1_000, 0]);
@@ -52,8 +56,8 @@ describe('createChainRedial', () => {
     redial.noteHalt('0xaa', 'frame');
 
     // When
-    const first = redial.tryDial('0xaa', 'frame');
-    const second = redial.tryDial('0xaa', 'frame');
+    const first = redial.tryDial('0xaa', FRAME);
+    const second = redial.tryDial('0xaa', FRAME);
 
     // Then
     expect([first, second]).toEqual([true, false]);
@@ -65,12 +69,12 @@ describe('createChainRedial', () => {
     redial.noteHalt('0xaa', 'frame');
 
     // When it is redialed, halts again, and another lease rebuilds the chain
-    const first = redial.tryDial('0xaa', 'frame');
+    const first = redial.tryDial('0xaa', FRAME);
     redial.noteHalt('0xaa', 'frame');
-    const second = redial.tryDial('0xaa', 'frame');
-    const wait = redial.waitMs('0xaa', 'frame');
+    const second = redial.tryDial('0xaa', FRAME);
+    const wait = redial.waitMs('0xaa', FRAME);
     setStatus('connected');
-    const joined = redial.tryDial('0xaa', 'frame');
+    const joined = redial.tryDial('0xaa', FRAME);
 
     // Then
     expect([first, second, wait, joined]).toEqual([true, false, 1_000, true]);
@@ -80,12 +84,12 @@ describe('createChainRedial', () => {
     // Given 0xaa's gate is shut
     const { redial } = setup();
     redial.noteHalt('0xaa', 'chain');
-    redial.tryDial('0xaa', 'chain');
+    redial.tryDial('0xaa', CHAIN);
     redial.noteHalt('0xaa', 'chain');
     redial.noteHalt('0xbb', 'chain');
 
     // When
-    const other = redial.tryDial('0xbb', 'chain');
+    const other = redial.tryDial('0xbb', CHAIN);
 
     // Then
     expect(other).toBe(true);

@@ -18,6 +18,9 @@ type Params = {
   timers?: Pick<Timers, 'now'>;
 };
 
+/** Why a lease last halted, and whether its take of the chain has failed since. */
+export type LeaseHalt = { reason: RemoteChainHalt; tried: boolean };
+
 /** One pool's redial, as its factory builds it. */
 export type ChainRedial = ReturnType<typeof createChainRedial>;
 
@@ -44,26 +47,15 @@ export function createChainRedial({ status, isFrameDown, timers = realTimers }: 
       }
     },
     /**
-     * Returns whether a lease that halted for `reason` may take `key` now, and shuts that gate for its next wait when
-     * it may. Never throws.
+     * Returns whether a lease after `halt` may take `key` now, and shuts that gate for its next wait when it may. Never
+     * throws.
      */
-    tryDial(key: string, reason: RemoteChainHalt): boolean {
-      return canJoin(key, reason) || getGate(key, reason).tryDial();
+    tryDial(key: string, halt: LeaseHalt): boolean {
+      return canJoin(key, halt) || getGate(key, halt.reason).tryDial();
     },
-    /** Returns the ms until `tryDial` may pass for `reason`, 0 when it may now. Never throws. */
-    waitMs(key: string, reason: RemoteChainHalt): number {
-      return canJoin(key, reason) ? 0 : getGate(key, reason).waitMs();
-    },
-    /**
-     * Returns whether a lease that halted for `reason` and has since failed to take `key` may try again now, on its
-     * gate alone even while the chain is up, and shuts that gate for its next wait when it may. Never throws.
-     */
-    tryDialGate(key: string, reason: RemoteChainHalt): boolean {
-      return getGate(key, reason).tryDial();
-    },
-    /** Returns the ms until `tryDialGate` may pass for `reason`, 0 when it may now. Never throws. */
-    gateWaitMs(key: string, reason: RemoteChainHalt): number {
-      return getGate(key, reason).waitMs();
+    /** Returns the ms until `tryDial` may pass for `halt`, 0 when it may now. Never throws. */
+    waitMs(key: string, halt: LeaseHalt): number {
+      return canJoin(key, halt) ? 0 : getGate(key, halt.reason).waitMs();
     },
   };
 
@@ -76,8 +68,13 @@ export function createChainRedial({ status, isFrameDown, timers = realTimers }: 
     }
   }
 
-  // A chain another lease already rebuilt is joined free, unless the frame it rode is still down.
-  function canJoin(key: string, reason: RemoteChainHalt): boolean {
+  // A chain another lease already rebuilt is joined free, unless the frame it rode is still down. A lease whose take
+  // failed since its halt waits on the gate even while the chain is up, since that chain refused it and a free join
+  // would take it again at once.
+  function canJoin(key: string, { reason, tried }: LeaseHalt): boolean {
+    if (tried) {
+      return false;
+    }
     switch (reason) {
       case 'frame':
         return !isFrameDown() && isChainUp(status(key));
