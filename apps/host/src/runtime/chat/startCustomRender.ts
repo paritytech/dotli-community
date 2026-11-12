@@ -42,7 +42,18 @@ type RenderEvent =
   | { kind: 'registered'; productId: string }
   | { kind: 'disposed' };
 
-type RenderMachine = MachineTypes<RenderState, RenderEvent>;
+/**
+ * What the sink hears, and the stop of a render or a listener the state let go of. `renderFailed` moves the render on
+ * once the sink heard it, so a sink that disposes the render as it hears the error stops it before any next render.
+ */
+type RenderEffect =
+  | { kind: 'treeUpdated'; node: Parameters<RenderSink['onUpdate']>[0] }
+  | { kind: 'completed' }
+  | { kind: 'notConnected' }
+  | { kind: 'renderFailed'; error: Error }
+  | { kind: 'released'; stop: () => void };
+
+type RenderMachine = MachineTypes<RenderState, RenderEvent, RenderEffect>;
 
 export const NOT_CONNECTED = 'Chat is not connected for this product';
 
@@ -63,15 +74,15 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
   const disposeRender: HandlerOf<RenderMachine, 'starting' | 'rendering' | 'failing' | 'waiting', 'disposed'> = (
     state,
     _event,
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'disposed' });
     switch (state.kind) {
       case 'rendering':
-        state.stop();
+        emitSideEffect({ kind: 'released', stop: state.stop });
         return;
       case 'waiting':
-        state.stopListening();
+        emitSideEffect({ kind: 'released', stop: state.stopListening });
         return;
       case 'starting':
       case 'failing':
@@ -89,36 +100,31 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           wait(transition);
-          sink.onError?.(new Error(NOT_CONNECTED));
+          transition.emitSideEffect({ kind: 'notConnected' });
         },
         disposed: disposeRender,
       },
       rendering: {
-        treeUpdated(state, { attempt, node }) {
+        treeUpdated(state, { attempt, node }, { emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
-          sink.onUpdate(node);
+          emitSideEffect({ kind: 'treeUpdated', node });
         },
-        renderCompleted(state, { attempt }, { emitState }) {
+        renderCompleted(state, { attempt }, { emitState, emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
           emitState({ kind: 'completed' });
-          sink.onComplete?.();
+          emitSideEffect({ kind: 'completed' });
         },
-        renderFailed(state, { attempt, error }, { emitState, update }) {
+        renderFailed(state, { attempt, error }, { emitState, emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
           emitState({ kind: 'failing', failed: attempt.connection });
-          // The sink hears the error before any tree of the next render, and may dispose the render as it hears it.
-          try {
-            sink.onError?.(error);
-          } finally {
-            update({ kind: 'movedOn' });
-            state.stop();
-          }
+          emitSideEffect({ kind: 'renderFailed', error });
+          emitSideEffect({ kind: 'released', stop: state.stop });
         },
         disposed: disposeRender,
       },
@@ -143,12 +149,35 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           renderOn(connection, transition);
-          state.stopListening();
+          transition.emitSideEffect({ kind: 'released', stop: state.stopListening });
         },
         disposed: disposeRender,
       },
       completed: null,
       disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'treeUpdated':
+          sink.onUpdate(effect.node);
+          return;
+        case 'completed':
+          sink.onComplete?.();
+          return;
+        case 'notConnected':
+          sink.onError?.(new Error(NOT_CONNECTED));
+          return;
+        case 'renderFailed':
+          try {
+            sink.onError?.(effect.error);
+          } finally {
+            render.update({ kind: 'movedOn' });
+          }
+          return;
+        case 'released':
+          effect.stop();
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
