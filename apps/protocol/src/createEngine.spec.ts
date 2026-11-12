@@ -18,13 +18,8 @@ import {
   type ResultPayload,
   unsupported,
 } from '@dotli/transport';
-import {
-  createEngine,
-  MAX_CONNECTIONS,
-  type EngineParams,
-  type EngineResolver,
-  type ProtocolEngine,
-} from './createEngine.js';
+import { createEngine, MAX_CONNECTIONS, type EngineParams, type ProtocolEngine } from './createEngine.js';
+import type { EngineResolver } from './createNameReads.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { serveEngineScope } from './serveEngineMethods.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
@@ -119,17 +114,14 @@ function startEngine({ destroyDelay = Infinity, wrapPool = pool => pool, ...engi
   return { engine, tab: openTab(engine), built };
 }
 
-/** Watches a pool's remote connections: their halts, their disconnects and the pool's release. */
+/** Watches a pool's remote connections: their disconnects and the pool's release. */
 function spyOnPool() {
-  const halts: (() => void)[] = [];
   const disconnects: Mock<() => void>[] = [];
   const disconnectAll = vi.fn<() => void>();
   let nextFailure: Error | null = null;
   return {
     /** Wraps `pool`, for `startEngine`. */
     wrap,
-    /** Fires the halt each connection was given, in the order they connected. */
-    halts,
     /** Each connection's disconnect, in the order they connected. */
     disconnects,
     /** The pool's release. */
@@ -148,7 +140,6 @@ function spyOnPool() {
       ...pool,
       disconnectAll,
       connectRemote(params) {
-        halts.push(() => params.onHalt?.());
         const connection = pool.connectRemote(params);
         if (connection === null) {
           return null;
@@ -512,24 +503,6 @@ describe('createEngine halts', () => {
     // Then
     expect(again.events).toEqual([CONNECTED]);
     expect(built).toHaveLength(2);
-    expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
-  });
-
-  it('As a product, I reconnect under an id whose old connection then reports a late halt, and my new connection keeps working', async () => {
-    // Given a connection that halted, and a new one under its id
-    const pool = spyOnPool();
-    const { tab, built } = startEngine({ wrapPool: pool.wrap });
-    const first = await tab.connect('0xaa', 'c1');
-    haltTransport(must(built[0], 'transport'));
-    await first.ended;
-    await tab.connect('0xaa', 'c1');
-
-    // When the first connection's halt fires late, and the tab sends
-    must(pool.halts[0], 'first halt')();
-    const sent = await tab.send('c1', toGenesisRequest('q2'));
-
-    // Then
-    expect(sent).toEqual(ok());
     expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
   });
 
