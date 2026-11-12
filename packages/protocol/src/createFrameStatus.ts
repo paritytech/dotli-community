@@ -70,9 +70,9 @@ export function createFrameStatus() {
   }
 
   return {
-    /** The frame serves every method from now on. Does nothing once ready or ended. Never throws. */
+    /** The frame serves every method from now on. Does nothing once ready or ended. */
     markReady,
-    /** The frame will never serve, or has stopped for good. Only the first end is heard. Never throws. */
+    /** The frame will never serve, or has stopped for good. Only the first end is heard. */
     fail,
     /**
      * Ends the status with `end` as it is, for a relay that passes on another frame's end. Only the first end is heard.

@@ -319,7 +319,7 @@ describe('createProtocolFrame', () => {
     const heard: Error[] = [];
     frame.onVersionMismatch(error => heard.push(error));
 
-    // When the frame refuses the host wire version, and the keeper's longest waits pass
+    // When the frame refuses the host wire version, and the longest rebuild waits pass
     dom.serveNewer();
     await dom.retryHandshake();
     await advance(DEFAULT_FRAME_TIMEOUTS.maxRebuildMs * 3);
@@ -665,6 +665,129 @@ describe('createProtocolFrame', () => {
     expect(frame.status.get()).toBe('failed');
   });
 
+  it("As the host, I change the config while the frame loads and the dropped load's timer fails nothing", async () => {
+    // Given a frame that has been loading for part of its load wait, and a recording metrics pipeline
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ mount: null, timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.getTransport().catch(() => undefined);
+    await advance(DEFAULT_FRAME_TIMEOUTS.loadMs / 2);
+
+    // When the config changes, and the dropped frame's load wait comes due while the new frame still loads
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    const pendingAfterChange = timers.countPending();
+    await advance(DEFAULT_FRAME_TIMEOUTS.loadMs / 2);
+
+    // Then only the new frame's load wait was pending, and the new frame still boots
+    expect(pendingAfterChange).toBe(1);
+    expect(frame.status.get()).toBe('booting');
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([]);
+  });
+
+  it('As the host, I boot a frame that never loads and the boot fails at load and rebuilds', async () => {
+    // Given a frame whose document never loads, and a recording metrics pipeline
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ mount: null, timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    const up = catchRejection(frame.waitUntilReady());
+
+    // When
+    await advance(DEFAULT_FRAME_TIMEOUTS.loadMs);
+
+    // Then the wait fails with the load timeout, counted at load, and only the rebuild's wait is pending
+    expect((await up).message).toBe(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT);
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([{ outcome: 'error', phase: 'load', reason: 'Error' }]);
+    expect(frame.status.get()).toBe('failed');
+    expect(timers.countPending()).toBe(1);
+  });
+
+  it('As a returning user whose phone froze the tab while my frame loaded, I keep the frame when the tab wakes', async () => {
+    // Given a frame whose iframe is mounted and not loaded, and a recording metrics pipeline
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ mount: null, timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.getTransport().catch(() => undefined);
+    await advance();
+
+    // When the page is frozen, wakes, and the iframe then loads and the frame listens
+    timers.freeze(300_000);
+    await advance(0);
+    dom.getIframe().dispatchEvent(new Event('load'));
+    await dom.listen();
+
+    // Then
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([]);
+    expect(frame.status.get()).toBe('listening');
+  });
+
+  it('As a returning user whose phone froze the tab while my frame waited for its light client, I keep the frame when the tab wakes', async () => {
+    // Given a frame that listens, and a recording metrics pipeline
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    const status = await dom.listen();
+
+    // When the page is frozen, wakes, and the frame then reports ready
+    timers.freeze(300_000);
+    await advance(0);
+    status.markReady();
+    await advance();
+
+    // Then
+    expect(frame.status.get()).toBe('ready');
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([]);
+  });
+
+  it('As a dotli integrator whose page froze before it configured the frame, my wait still waits when the page wakes', async () => {
+    // Given an unconfigured frame and a ready wait
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    const outcome = readOutcome(frame.waitUntilReady());
+    await advance();
+
+    // When the page is frozen, wakes, and is then configured and the frame comes up
+    timers.freeze(300_000);
+    await advance(0);
+    frame.configure(FRAME_CONFIG);
+    await advance();
+    await dom.bringUp();
+
+    // Then
+    expect(await outcome).toBe('resolved');
+  });
+
+  it('As the host, I lose a frame whose mount throws', async () => {
+    // Given a page that refuses to mount the frame, and a recording metrics pipeline
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame({
+      ...dom.params,
+      document: {
+        createElement: tagName => dom.params.document.createElement(tagName),
+        body: {
+          appendChild: () => {
+            throw new Error('mount refused');
+          },
+        },
+      },
+    });
+    frame.configure(FRAME_CONFIG);
+
+    // When
+    const failure = await catchRejection(frame.waitUntilReady());
+
+    // Then the wait fails with the throw, counted at load, and only the rebuild's wait is pending
+    expect(failure.message).toBe('mount refused');
+    expect(metrics.counted('protocol.iframe_ready')).toEqual([{ outcome: 'error', phase: 'load', reason: 'Error' }]);
+    expect(frame.status.get()).toBe('failed');
+    expect(timers.countPending()).toBe(1);
+  });
+
   it('As the host, I receive a late message from a dropped frame and it settles nothing on the new one', async () => {
     // Given a read the first frame holds while it is dropped
     const dom = createFrameDom({ timers });
@@ -826,7 +949,7 @@ describe('createProtocolFrame', () => {
     expect(timers.countPending()).toBe(1);
   });
 
-  /** A configured frame that came up ready and then died with a fatal, so its keeper waits to rebuild it. */
+  /** A configured frame that came up ready and then died with a fatal, so it waits to rebuild. */
   async function bringFrameDownWithFatal(): Promise<{
     dom: FrameDom;
     frame: ReturnType<typeof createProtocolFrame>;
@@ -1063,21 +1186,21 @@ describe('frame liveness check', () => {
     expect(lines.filter(line => line.attrs?.['outcome'] === 'lost')).toEqual([]);
   });
 
-  it('As a dotli integrator, I check the rebuilt frame while the check of the frame it replaced is pending and it is still asked', async () => {
+  it('As a dotli integrator, I check the rebuilt frame after a config change dropped a frame under check, and the rebuilt frame is asked at once', async () => {
     // Given a ready frame whose app never answers the heartbeat, and a check of it that waits
     const { dom, frame, transport: replaced } = await bringFrameUp();
     dom.serve().handleRequest(heartbeat, () => new Promise(() => undefined));
     frame.checkAlive(replaced);
     await advance();
 
-    // When a config change rebuilds the frame, and the rebuilt frame's check queues behind the first
+    // When a config change rebuilds the frame, and the rebuilt frame is checked
     frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const up = frame.waitUntilReady();
     await dom.bringUp();
     const rebuilt = await up;
     dom.serve().handleRequest(heartbeat, () => Promise.resolve(ok()));
     frame.checkAlive(rebuilt);
-    await advance(HANDSHAKE_TIMEOUT_MS);
+    await advance();
 
     // Then the rebuilt frame was asked once
     expect(countHeartbeats(dom)).toBe(1);
@@ -1326,7 +1449,7 @@ describe('protocol status', () => {
     ]);
   });
 
-  it('As a dotli integrator, I request from a status listener after a config change, and a later listener hears the status there is on its turn, and a later ready waiter waits on the rebuilt frame', async () => {
+  it('As a dotli integrator, I request from a status listener after a config change, and each listener hears every status in turn, and the waits of the dropped frame fail with the reset', async () => {
     // Given a boot request queued ahead of the rebuilding listener, a second listener, and a ready waiter after both
     const booting = catchRejection(host.client.frame.ensureReady());
     await host.listen();
@@ -1339,7 +1462,7 @@ describe('protocol status', () => {
       }
     });
     host.client.frame.status.listen(next => heard[1]?.push(next));
-    const later = host.client.frame.ensureReady();
+    const later = catchRejection(host.client.frame.ensureReady());
 
     // When
     host.client.frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -1349,14 +1472,14 @@ describe('protocol status', () => {
     // Then
     expect(framesAfterChange).toBe(1);
     expect(heard[0]).toEqual(['idle', 'booting', 'listening', 'ready']);
-    expect(heard[1]).toEqual(['booting', 'booting', 'listening', 'ready']);
+    expect(heard[1]).toEqual(['idle', 'booting', 'listening', 'ready']);
     await expect(request).resolves.toBeUndefined();
     expect((await booting).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
-    await expect(later).resolves.toBeUndefined();
+    expect((await later).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
   });
 
-  it('As a dotli integrator, I request from an idle listener during a config change and the frame keeps one keeper', async () => {
-    // Given a second keeper would wait behind the first and rebuild the next lost frame at once
+  it('As a dotli integrator, I request from an idle listener during a config change and the lost frame is rebuilt once, after its wait', async () => {
+    // Given a frame that would rebuild the next lost frame at once if a second rebuild were waiting
     void host.client.frame.ensureReady();
     await host.bringUp();
     host.client.frame.status.listen(next => {
@@ -1378,7 +1501,46 @@ describe('protocol status', () => {
     expect(host.countFrames()).toBe(1);
   });
 
-  it('As a dotli user whose frame cannot be built, I see the real error on each request, each request that finds it down builds one, and one keeper retries', async () => {
+  it('As a dotli integrator, I configure again from an idle listener during a config change and one frame is built, with the latest config', async () => {
+    // Given a ready frame, and a listener that configures again on its first idle
+    const dom = createFrameDom({ timers });
+    let builds = 0;
+    const frame = createProtocolFrame({
+      ...dom.params,
+      document: {
+        createElement: tagName => {
+          builds += 1;
+          return dom.params.document.createElement(tagName);
+        },
+        body: dom.params.document.body,
+      },
+    });
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady();
+    await dom.bringUp();
+    let reconfigured = false;
+    onTestFinished(
+      frame.status.listen(next => {
+        if (next === 'idle' && !reconfigured) {
+          reconfigured = true;
+          frame.configure({ ...FRAME_CONFIG, network: 'previewnet' });
+        }
+      }),
+    );
+    const buildsBeforeChange = builds;
+
+    // When
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    await advance();
+
+    // Then
+    const params = new URL(dom.getIframe().src).searchParams;
+    expect(builds - buildsBeforeChange).toBe(1);
+    expect(params.get('mode')).toBe('direct');
+    expect(params.get('network')).toBe('previewnet');
+  });
+
+  it('As a dotli user whose frame cannot be built, I see the real error on each request, each request that finds it down builds one, and one frame is retried', async () => {
     // Given
     let builds = 0;
     const dom = createFrameDom({ timers });

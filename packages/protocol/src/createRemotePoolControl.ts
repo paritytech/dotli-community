@@ -54,6 +54,9 @@ export function createRemotePoolControl({ frame, rpc }: Params): ChainPoolContro
   });
 
   function latch(next: boolean): void {
+    if (paused === next) {
+      return;
+    }
     paused = next;
     // The request would boot a frame that is not ready, and a frame that boots later hears it once it is.
     if (isReady()) {
@@ -64,14 +67,14 @@ export function createRemotePoolControl({ frame, rpc }: Params): ChainPoolContro
   return {
     /**
      * Sends the pause to the frame now if it is ready, and the pause to each later frame once it is ready while it
-     * lasts. Never throws.
+     * lasts. A call while already paused sends nothing.
      */
     pause(): void {
       latch(true);
     },
     /**
      * Sends the resume to the frame now if it is ready, and ends the pause each later frame would hear once it is
-     * ready. Never throws.
+     * ready. A call while not paused sends nothing.
      */
     resume(): void {
       latch(false);

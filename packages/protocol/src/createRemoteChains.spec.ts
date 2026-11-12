@@ -98,6 +98,10 @@ function createClosedAnswer(id: number): JsonRpcMessage {
   return { jsonrpc: '2.0', id, error: { code: -32603, message: 'Chain connection is closed' } };
 }
 
+function createHaltedAnswer(id: number): JsonRpcMessage {
+  return { jsonrpc: '2.0', id, error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' } };
+}
+
 describe('createRemoteChains', () => {
   let fake: FakeFrame;
   let servers: ChainServer[];
@@ -237,6 +241,46 @@ describe('createRemoteChains', () => {
     expect(metrics.counted('protocol.chain_message')).toEqual([{ outcome: 'error', reason: 'SyntaxError' }]);
   });
 
+  it('As a dotli integrator, I open a connection the frame refuses and the failed connect is logged once', async () => {
+    // Given a connection the frame has not answered yet
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
+    people(() => undefined);
+    await settle();
+
+    // When
+    getServer().connects[0]?.sink.interrupt(err(hostFailure('Error: Too many chain connections')));
+    await settle();
+
+    // Then
+    expect(logError.map(line => line.message)).toEqual([
+      // An asymmetric matcher is typed any.
+      expect.stringMatching(/Failed to connect remote chain/) as string,
+    ]);
+  });
+
+  it('As a product, I send a request the frame refuses and I hear it answered as an error while the failure is logged', async () => {
+    // Given a live connection
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const received: JsonRpcMessage[] = [];
+    const connection = people(message => received.push(message));
+    await settle();
+    accept(getServer().connects[0]);
+    await settle();
+    connection.send(createGenesisRequest(5));
+    await settle();
+
+    // When
+    getServer().sends[0]?.answer.reject(new Error('send broke'));
+    await settle();
+
+    // Then
+    expect(received).toMatchObject([{ jsonrpc: '2.0', id: 5, error: {} }]);
+    expect(logError.map(line => line.message)).toEqual([
+      // An asymmetric matcher is typed any.
+      expect.stringMatching(/Remote chain send failed/) as string,
+    ]);
+  });
+
   it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {
     // Given
     fake.lose(new ProtocolFatalError('boom'));
@@ -284,6 +328,7 @@ describe('createRemoteChains', () => {
 
   it('As a product, I see a chain the frame accepts after my connect budget disconnected', async () => {
     // Given a frame too busy to accept a connect within its budget
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const received: JsonRpcMessage[] = [];
     const connection = people(message => received.push(message), onHalt);
@@ -300,6 +345,31 @@ describe('createRemoteChains', () => {
     expect(connect?.stopped).toBe(true);
     expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(received).toEqual([createClosedAnswer(1)]);
+    expect(getServer().sends).toEqual([]);
+    expect(logError.map(line => line.message)).toEqual([
+      // An asymmetric matcher is typed any.
+      expect.stringMatching(/Failed to connect remote chain/) as string,
+    ]);
+  });
+
+  it('As a dotli integrator, I send from my halt listener and the send is answered at once as closed', async () => {
+    // Given an open connection with a request queued before connected, whose halt listener sends
+    const received: JsonRpcMessage[] = [];
+    const connection: JsonRpcConnection = people(
+      message => received.push(message),
+      () => {
+        connection.send(createGenesisRequest(9));
+      },
+    );
+    connection.send(createGenesisRequest(4));
+    await settle();
+
+    // When the chain halts cleanly
+    getServer().connects[0]?.sink.interrupt(ok());
+    await settle();
+
+    // Then
+    expect(received).toEqual([createHaltedAnswer(4), createClosedAnswer(9)]);
     expect(getServer().sends).toEqual([]);
   });
 
@@ -432,13 +502,7 @@ describe('chains.createProvider halts', () => {
     await settle();
 
     // Then
-    expect(received).toEqual([
-      {
-        jsonrpc: '2.0',
-        id: 4,
-        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
-      },
-    ]);
+    expect(received).toEqual([createHaltedAnswer(4)]);
     expect(onHalt.mock.calls).toEqual([['chain']]);
   });
 
