@@ -4,7 +4,7 @@
 // The `bitswap_v1_get` requests of the client's fetches: each request's id, wait and timeout, the reading of its reply,
 // and the retries of a fetch until it gets its block or runs out of budget.
 
-import { isResponse, type JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import { isResponse, type JsonRpcConnection, type JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { TIMEOUTS } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import {
@@ -36,8 +36,8 @@ type FetchBlockParams = {
   deadline: number;
   /** Stops the fetch when it fires. */
   signal: AbortSignal | undefined;
-  /** Sends the request `id` on the client's connection. A failure to send goes to `fail`. */
-  send: (id: number) => void;
+  /** The Bulletin connection the requests go out on, whose replies `hearReply` hears. */
+  connection: JsonRpcConnection;
 };
 
 // `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
@@ -66,13 +66,9 @@ export function createBitswapRequests({ timers }: Params) {
     fetchBlock,
     /** Settles the request a reply on the connection answers. Ignores any other message. Never throws. */
     hearReply,
-    /** Fails the request `id`, such as one the connection could not send. Never throws. */
-    fail(id: number, error: Error): void {
-      replies.reject(id, error);
-    },
   };
 
-  function fetchBlock({ cid, deadline, signal, send }: FetchBlockParams): Promise<Uint8Array> {
+  function fetchBlock({ cid, deadline, signal, connection }: FetchBlockParams): Promise<Uint8Array> {
     // Separate counters, so early -32812s cannot pin discovery retries at the backoff cap.
     let made = 0;
     let discovery = 0;
@@ -90,7 +86,7 @@ export function createBitswapRequests({ timers }: Params) {
         );
       }
       try {
-        return await sendOnce(cid, Math.min(60_000, remaining), { signal, send });
+        return await sendOnce(cid, Math.min(60_000, remaining), { signal, connection });
       } catch (error) {
         const code = errorCode(error);
         let backoff: number;
@@ -131,7 +127,7 @@ export function createBitswapRequests({ timers }: Params) {
   function sendOnce(
     cid: string,
     timeoutMs: number,
-    { signal, send }: Pick<FetchBlockParams, 'signal' | 'send'>,
+    { signal, connection }: Pick<FetchBlockParams, 'signal' | 'connection'>,
   ): Promise<Uint8Array> {
     // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
@@ -162,7 +158,11 @@ export function createBitswapRequests({ timers }: Params) {
             },
           });
     const reply = replies.wait(id);
-    send(id);
+    try {
+      connection.send({ jsonrpc: '2.0', id, method: 'bitswap_v1_get', params: [cid] });
+    } catch (error) {
+      replies.reject(id, toError(error));
+    }
     // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
     return reply.finally(() => {
       timers.clearTimeout(timer);
