@@ -6,7 +6,7 @@ import { recordReports } from '@dotli/metrics/testing';
 import { catchError } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ResponderState } from '../sessionHandoff/createResponder.js';
-import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './createRedirectResponder.js';
+import { createRedirectResponder, type RedirectResponder } from './createRedirectResponder.js';
 import type { sealRedirect } from './siteSeal.js';
 
 type SealCall = Parameters<typeof sealRedirect>[0];
@@ -25,11 +25,14 @@ function openRedirectResponder(sealed: () => Promise<string> = () => Promise.res
   const seals: SealCall[] = [];
   const events: string[] = [];
   const navigated = createDeferred<string>();
-  const failure = createDeferred<{ error: unknown; siteToken: string | undefined; delivery: RedirectDelivery }>();
+  const failure = createDeferred<{
+    error: unknown;
+    siteToken: string | undefined;
+    delivery: ReturnType<RedirectResponder['delivery']>;
+  }>();
   const responder = createRedirectResponder({
     origin: ORIGIN,
-    returnTo: RETURN_TO,
-    sitePublicKey: SITE_PUBLIC_KEY,
+    fields: { returnTo: RETURN_TO, sitePublicKey: SITE_PUBLIC_KEY },
     round: ROUND,
     seal(call) {
       seals.push(call);
@@ -60,7 +63,7 @@ describe('redirect responder', () => {
 
     // Then it starts vetted for the return address's origin, with no answer on its way
     expect(responder.state.get()).toEqual({ kind: 'vetted', origin: ORIGIN, party: 'third' });
-    expect(responder.delivery()).toBe('none');
+    expect(responder.delivery()).toBe('waiting');
   });
 
   it.each<{ name: string; end: (responder: RedirectResponder) => void }>([
@@ -96,7 +99,7 @@ describe('redirect responder', () => {
       await navigated;
 
       // Then the answer was pending while it sealed, and is sent once the window navigated
-      expect(whileSealing).toBe('pending');
+      expect(whileSealing).toBe('sealing');
       expect(responder.delivery()).toBe('sent');
     },
   );
@@ -278,8 +281,7 @@ describe('redirect responder', () => {
     const navigating = createDeferred<undefined>();
     const responder = createRedirectResponder({
       origin: ORIGIN,
-      returnTo: RETURN_TO,
-      sitePublicKey: SITE_PUBLIC_KEY,
+      fields: { returnTo: RETURN_TO, sitePublicKey: SITE_PUBLIC_KEY },
       round: ROUND,
       seal: () => sealed.promise,
       forgetRequest: () => undefined,

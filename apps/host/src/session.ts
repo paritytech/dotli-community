@@ -361,8 +361,7 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   // The responder lives as long as the window's page, so nothing disposes it.
   const responder = createRedirectResponder({
     origin: verdict.origin,
-    returnTo: fields.returnTo,
-    sitePublicKey: fields.sitePublicKey,
+    fields,
     round: taken.round,
     seal: sealRedirect,
     forgetRequest() {
@@ -388,7 +387,7 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   sessionWindowState.setCloseIntent(() => {
     // Closing or going back in history while the sealed answer is on its way would leave the site unanswered.
     const delivery = responder.delivery();
-    if (delivery !== 'pending' && delivery !== 'sent') {
+    if (delivery !== 'sealing' && delivery !== 'sent') {
       closeWindow();
     }
   });

@@ -18,14 +18,13 @@ import {
   createResultMessage,
   type PageMessage,
 } from '../sessionHandoff/sessionMessages.js';
+import type { RedirectFields } from './readRedirectFields.js';
 import type { sealRedirect } from './siteSeal.js';
 
 type Params = {
   /** The vetted origin of the return address. */
   origin: string;
-  returnTo: string;
-  /** The site's temporary key. */
-  sitePublicKey: Uint8Array;
+  fields: RedirectFields;
   round: string;
   /** Seals the answer into the return address. Rejects when the answer cannot be sealed. */
   seal: typeof sealRedirect;
@@ -37,6 +36,10 @@ type Params = {
   failed: (error: unknown, siteToken: string | undefined) => void;
 };
 
+/**
+ * Where the round's one answer stands: `waiting` before the round ends, `sealing` while it is sealed, `sent` once the
+ * window navigates with it, and `failed` when sealing failed, which leaves the site unanswered.
+ */
 type RedirectState =
   | { kind: 'waiting' }
   | { kind: 'sealing'; answer: ResponderState; siteToken: string | undefined }
@@ -48,13 +51,10 @@ type RedirectEvent =
   | { kind: 'sealed'; url: string }
   | { kind: 'sealFailed'; error: unknown };
 
-type RedirectMachine = MachineTypes<RedirectState, RedirectEvent>;
+type RedirectEffect =
+  { kind: 'sealed'; url: string } | { kind: 'sealFailed'; error: unknown; siteToken: string | undefined };
 
-/**
- * Where the round's one answer stands: `none` before the round ends, `pending` while it is sealed, `sent` once the
- * window navigates with it, and `failed` when sealing failed, which leaves the site unanswered.
- */
-export type RedirectDelivery = 'none' | 'pending' | 'sent' | 'failed';
+type RedirectMachine = MachineTypes<RedirectState, RedirectEvent, RedirectEffect>;
 
 /** The window's responder in a redirect sign-in, which also says where its answer stands. */
 export type RedirectResponder = ReturnType<typeof createRedirectResponder>;
@@ -62,20 +62,8 @@ export type RedirectResponder = ReturnType<typeof createRedirectResponder>;
 const report = createReporter({ flow: 'wallet' });
 const redirectResponderTransitionMetric = defineCount<'error'>('session_pages.redirect_responder_transition');
 
-// Redirect mode sends no payload, so the call never comes.
-const NO_PAYLOAD = new Promise<string>(() => undefined);
-
 /** Makes the responder of a redirect sign-in, vetted for `origin` from the start. */
-export function createRedirectResponder({
-  origin,
-  returnTo,
-  sitePublicKey,
-  round,
-  seal,
-  forgetRequest,
-  navigate,
-  failed,
-}: Params) {
+export function createRedirectResponder({ origin, fields, round, seal, forgetRequest, navigate, failed }: Params) {
   const machine = createStateMachine<RedirectMachine>({
     initial: { kind: 'waiting' },
     handlers: {
@@ -83,7 +71,7 @@ export function createRedirectResponder({
         answered(_state, { answer, message, siteToken }, { emitState, update }) {
           emitState({ kind: 'sealing', answer, siteToken });
           update(
-            seal({ returnTo, sitePublicKey, round, message }).then(
+            seal({ ...fields, round, message }).then(
               (url): RedirectEvent => ({ kind: 'sealed', url }),
               (error: unknown): RedirectEvent => ({ kind: 'sealFailed', error }),
             ),
@@ -91,19 +79,29 @@ export function createRedirectResponder({
         },
       },
       sealing: {
-        sealed({ answer }, { url }, { emitState }) {
+        sealed({ answer }, { url }, { emitState, emitSideEffect }) {
           emitState({ kind: 'sent', answer });
-          // Forgotten first, so the page the browser keeps in history never answers this round again.
-          forgetRequest();
-          navigate(url);
+          emitSideEffect({ kind: 'sealed', url });
         },
-        sealFailed({ answer, siteToken }, { error }, { emitState }) {
+        sealFailed({ answer, siteToken }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'failed', answer });
-          failed(error, siteToken);
+          emitSideEffect({ kind: 'sealFailed', error, siteToken });
         },
       },
       sent: null,
       failed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'sealed':
+          // Forgotten first, so the page the browser keeps in history never answers this round again.
+          forgetRequest();
+          navigate(effect.url);
+          return;
+        case 'sealFailed':
+          failed(effect.error, effect.siteToken);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -114,19 +112,17 @@ export function createRedirectResponder({
     },
   });
 
-  const state = computed(machine.state, (current): ResponderState => {
-    switch (current.kind) {
-      case 'waiting':
-        return { kind: 'vetted', origin, party: 'third' };
-      case 'sealing':
-      case 'sent':
-      case 'failed':
-        return current.answer;
-    }
-  });
-
   const responder: Responder<unknown> = {
-    state,
+    state: computed(machine.state, (current): ResponderState => {
+      switch (current.kind) {
+        case 'waiting':
+          return { kind: 'vetted', origin, party: 'third' };
+        case 'sealing':
+        case 'sent':
+        case 'failed':
+          return current.answer;
+      }
+    }),
     send(result, { siteToken } = {}) {
       machine.update({
         kind: 'answered',
@@ -151,7 +147,8 @@ export function createRedirectResponder({
         siteToken: undefined,
       });
     },
-    payload: () => NO_PAYLOAD,
+    // Redirect mode sends no payload, so the call never comes.
+    payload: () => new Promise<string>(() => undefined),
     /**
      * Does nothing, since the responder holds no listener or timer, is safe to call twice, and leaves an answer already
      * being sealed to navigate the window once sealed.
@@ -162,17 +159,6 @@ export function createRedirectResponder({
   return {
     ...responder,
     /** Where the round's one answer stands now. */
-    delivery(): RedirectDelivery {
-      switch (machine.state.get().kind) {
-        case 'waiting':
-          return 'none';
-        case 'sealing':
-          return 'pending';
-        case 'sent':
-          return 'sent';
-        case 'failed':
-          return 'failed';
-      }
-    },
+    delivery: (): RedirectState['kind'] => machine.state.get().kind,
   };
 }
