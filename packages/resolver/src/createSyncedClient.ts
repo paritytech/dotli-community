@@ -165,7 +165,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
         switch (settled.kind) {
           case 'ready':
             return settled.client.api;
-          // The client this call waited for stopped as it synced, which the caller's halt retry counts.
+          // The client turned ready and stopped before this call read it, which the caller's halt retry counts.
           case 'idle':
             throw new ApiStoppedError();
           case 'failed':
