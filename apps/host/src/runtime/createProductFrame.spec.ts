@@ -1301,6 +1301,45 @@ describe('product frame rebuilds', () => {
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalled();
     expect(toProduct).toHaveLength(2);
   });
+
+  it('As a dApp user, I open another app while my device grant is on its way and I am told that app failed, not that it was replaced', async () => {
+    // Given a product on screen, piped to a core the test speaks for, whose device grant still waits for its answer
+    const fakes = createHarness();
+    const port = new MessageChannel();
+    onTestFinished(() => {
+      port.port2.close();
+    });
+    const toProduct: unknown[] = [];
+    port.port2.onmessage = event => {
+      toProduct.push(event.data);
+      fakes.changes.notify();
+    };
+    const rendered = fakes.frame.render(buildSubdomainProduct('prompted'));
+    const core = await answerConnection(fakes, 0);
+    await rendered;
+    nth(fakes.hosts, 0).options.onPort(port.port1);
+    fakes.announce({ label: 'prompted', permissions: ['Camera'], fromPrompt: true });
+    // And a render of another app asked for, whose frame is held
+    const release = fakes.holdNextFrame();
+    const opened = fakes.frame.render(buildSubdomainProduct('next'));
+    await answerConnection(fakes, 1);
+    await fakes.changes.until(() => fakes.countFramesAsked() === 2);
+    const failure = new Error('The frame could not be built');
+
+    // When the grant's answer reaches the product on screen, and then the other app's frame fails
+    core.listener?.(
+      encodeResponseFrame({
+        requestId: 'camera-prompt',
+        method: PERMISSIONS_REQUEST_DEVICE_PERMISSION,
+        value: new Uint8Array(),
+      }),
+    );
+    await fakes.changes.until(() => toProduct.length === 1);
+    release(failure);
+
+    // Then the render I asked for fails with that failure
+    expect(await catchRejection(opened)).toBe(failure);
+  });
 });
 
 describe('product frame and a device grant during a rebuild', () => {

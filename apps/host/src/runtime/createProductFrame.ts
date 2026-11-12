@@ -237,7 +237,8 @@ type FrameEvent =
   | { kind: 'panelLoaded'; attempt: Attempt; mountPanel: (iframe: HTMLIFrameElement) => () => void }
   | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
   | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
-  | { kind: 'rerenderAsked'; reason: RerenderReason }
+  /** The answer to a device grant reached the product, on the frame of `asking`. */
+  | { kind: 'permissionAnswered'; asking: Attempt }
   | { kind: 'permissionsChanged'; change: PermissionsChange }
   | { kind: 'recoverAsked'; asking: Attempt }
   | { kind: 'recoverSpaced'; timer: unknown }
@@ -463,8 +464,17 @@ export function createProductFrame({
     );
   };
 
-  const rerender: HandlerOf<FrameMachine, LivelyKind, 'rerenderAsked'> = (state, { reason }, transition) => {
-    startRun(state, { kind: 'rerender', reason }, transition);
+  // A render begun since the grant reads the new policy itself, so only the frame the grant was heard on is rebuilt, and
+  // only while no render is in flight. One asked for from above is never taken over.
+  const rebuildForPermission: HandlerOf<FrameMachine, 'connected' | 'lost' | 'failed', 'permissionAnswered'> = (
+    state,
+    { asking },
+    transition,
+  ) => {
+    if (state.shown?.attempt !== asking) {
+      return;
+    }
+    startRun(state, { kind: 'rerender', reason: 'permission' }, transition);
   };
 
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
@@ -478,8 +488,9 @@ export function createProductFrame({
       return;
     }
     if (change.fromPrompt && state.shown !== null && state.kind !== 'connecting') {
+      const asking = state.shown.attempt;
       state.shown.link.responses.runAfterResponse(() => {
-        transition.update({ kind: 'rerenderAsked', reason: 'permission' });
+        transition.update({ kind: 'permissionAnswered', asking });
       });
       return;
     }
@@ -588,7 +599,6 @@ export function createProductFrame({
       },
       connecting: {
         renderAsked: renderAgain,
-        rerenderAsked: rerender,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -666,7 +676,7 @@ export function createProductFrame({
       },
       connected: {
         renderAsked: renderAgain,
-        rerenderAsked: rerender,
+        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -677,7 +687,7 @@ export function createProductFrame({
       },
       lost: {
         renderAsked: renderAgain,
-        rerenderAsked: rerender,
+        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
@@ -687,7 +697,7 @@ export function createProductFrame({
       },
       failed: {
         renderAsked: renderAgain,
-        rerenderAsked: rerender,
+        permissionAnswered: rebuildForPermission,
         permissionsChanged: changePermissions,
         recoverAsked: askRecover,
         recoverSpaced: spaceRecover,
