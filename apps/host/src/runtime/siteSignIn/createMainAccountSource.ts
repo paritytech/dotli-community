@@ -6,7 +6,7 @@
 // It holds a lease on that core, so the core stays up from the read to the round's signer calls.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, listen, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
+import { createStateMachine, listen, noop, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
 import type { DotliAuthState } from '../session/types.js';
@@ -49,8 +49,6 @@ type SourceState =
   | { kind: 'disposing' }
   | { kind: 'disposed' };
 
-type HoldingState = Extract<SourceState, { kind: 'holding' }>;
-
 type SourceEvent =
   | { kind: 'readAsked'; reply: Reply; signal: AbortSignal }
   | { kind: 'readAborted'; reply: Reply; reason: unknown }
@@ -63,7 +61,6 @@ type SourceEvent =
 /** `settled` stops the abort listener of each read, then answers it. */
 type SourceEffect =
   | { kind: 'settled'; reads: Reads; outcome: Exclude<ReportVerdict, { kind: 'waiting' }> }
-  | { kind: 'refused'; reply: Reply }
   | { kind: 'released'; lease: HeldLease };
 
 type SourceMachine = MachineTypes<SourceState, SourceEvent, SourceEffect>;
@@ -96,7 +93,12 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     { reply },
     { emitSideEffect },
   ) => {
-    emitSideEffect({ kind: 'refused', reply });
+    // The read never listened for its abort, so it has no listener to stop.
+    emitSideEffect({
+      kind: 'settled',
+      reads: new Map([[reply, noop]]),
+      outcome: { kind: 'failed', error: createDisposedReadError() },
+    });
   };
   const machine = createStateMachine<SourceMachine>({
     initial: { kind: 'unleased', stale: null },
@@ -192,9 +194,6 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
             }
           }
           return;
-        case 'refused':
-          effect.reply.reject(createDisposedReadError());
-          return;
         case 'released':
           effect.lease.release();
           return;
@@ -246,7 +245,10 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   }
 
   /** Settles every read of `state` once the core's report answers them, and keeps them open otherwise. */
-  function answerReads(state: HoldingState, { emitState, emitSideEffect }: Transition<SourceMachine>): void {
+  function answerReads(
+    state: Extract<SourceState, { kind: 'holding' }>,
+    { emitState, emitSideEffect }: Transition<SourceMachine>,
+  ): void {
     const verdict = judgeReport(coreReport.get(), state.stale);
     if (verdict.kind === 'waiting') {
       emitState(state);
