@@ -31,12 +31,20 @@ const walletLogoutMetric = defineCount<'error' | 'ok'>('wallet.logout');
 
 /**
  * How a sign-out ended for the phone: `told` once the phone heard of the session this page held, or there was none,
- * and `untold` when the session could not be read, activated or ended. A page reports that and goes on, and the phone
- * keeps this device listed until the user removes it there. `tellAgain` tries once more for a caller that lets the
- * user retry, and holds the session only as long as that caller keeps it. It settles with the new outcome, having
- * reported its own failures, and never rejects.
+ * and `untold` when it could not be told. A page reports that and goes on, and the phone keeps this device listed
+ * until the user removes it there.
  */
-export type LogoutOutcome = { phone: 'told' } | { phone: 'untold'; tellAgain: () => Promise<LogoutOutcome> };
+export type LogoutOutcome = { phone: 'told' } | UntoldLogout;
+
+/**
+ * A sign-out the phone did not hear of, with what telling it again needs: `end` holds the session that could not be
+ * activated or ended, `read` had a copy that could not be read, and `no_window` is a local sign-out on a page that
+ * pairs in place, which has nothing to tell the phone with.
+ */
+export type UntoldLogout =
+  { phone: 'untold'; reason: 'end'; blob: string } | { phone: 'untold'; reason: 'read' | 'no_window' };
+
+export type PageSignOut = ReturnType<typeof createPageSignOut>;
 
 export type PageSignOutParams = {
   /** Whether the page runs on a local wallet now. Never throws. */
@@ -98,9 +106,6 @@ export type PageSignOutParams = {
 type SignOutFailureReason = 'end' | 'reset' | 'drop' | 'grants';
 
 const TOLD: LogoutOutcome = { phone: 'told' };
-
-/** A page that pairs in place has nothing to tell the phone with in local mode, so telling again answers the same. */
-const UNTOLD_IN_PLACE: LogoutOutcome = { phone: 'untold', tellAgain: () => Promise.resolve(UNTOLD_IN_PLACE) };
 
 /** Builds the page's own sign-out. Building it never throws. */
 export function createPageSignOut({
@@ -184,12 +189,13 @@ export function createPageSignOut({
     } catch (error) {
       // The phone keeps this device listed until the user removes it there.
       reportSignOutFailure(error, 'end');
-      return { phone: 'untold', tellAgain: () => signOuts.call(() => tell(blob)) };
+      return { phone: 'untold', reason: 'end', blob };
     }
   }
 
-  /** Reads the copy again and signs out what it holds, for a sign-out whose read failed. */
-  function signOutAgain(): Promise<LogoutOutcome> {
+  /** Reads the copy and signs out what it holds. */
+  function signOutPairedCopy(): Promise<LogoutOutcome> {
+    // Before any wait, so the read is ahead of the window's restore rule and of a visible check.
     const held = copy.readSession();
     return signOuts.call(() => runOnCore(() => signOutPaired(held)));
   }
@@ -210,7 +216,7 @@ export function createPageSignOut({
       // Core storage reported the read. Nothing can tell the phone without the session.
       report.log.event('logout could not read the paired session');
       walletLogoutMetric.count({ outcome: 'error', reason: 'read' });
-      return { phone: 'untold', tellAgain: signOutAgain };
+      return { phone: 'untold', reason: 'read' };
     }
     return blob === null ? TOLD : tell(blob);
   }
@@ -249,7 +255,7 @@ export function createPageSignOut({
     await leaveLocalWallet(async () => {
       await flag.clear({ drop: () => forgetWalletRead(heldWallet) });
     });
-    return untold ? UNTOLD_IN_PLACE : TOLD;
+    return untold ? { phone: 'untold', reason: 'no_window' } : TOLD;
   }
 
   /**
@@ -306,9 +312,7 @@ export function createPageSignOut({
   function signOut(): Promise<LogoutOutcome> {
     report.log.event('logout requested');
     if (!isLocalWallet()) {
-      // Before any wait, so the read is ahead of the window's restore rule and of a visible check.
-      const held = copy.readSession();
-      return signOuts.call(() => runOnCore(() => signOutPaired(held)));
+      return signOutPairedCopy();
     }
     // Before any wait, so it is the wallet the user signed out of.
     const heldWallet = readWallet();
@@ -328,6 +332,19 @@ export function createPageSignOut({
       }
       return runOnCore(() => signOutLocal(heldWallet));
     });
+  }
+
+  function tellAgain(untold: UntoldLogout): Promise<LogoutOutcome> {
+    switch (untold.reason) {
+      case 'end': {
+        const { blob } = untold;
+        return signOuts.call(() => tell(blob));
+      }
+      case 'read':
+        return signOutPairedCopy();
+      case 'no_window':
+        return Promise.resolve(untold);
+    }
   }
 
   async function signOutLocally(): Promise<void> {
@@ -356,6 +373,13 @@ export function createPageSignOut({
      * window tells the phone, so it answers `told`.
      */
     signOut,
+    /**
+     * Tries once more to tell the phone of the sign-out `untold` says it missed, one at a time with the page's other
+     * sign-outs: it ends the same session again, or reads the copy again and signs out what it holds. A page that pairs
+     * in place has nothing to tell with, so it answers `untold` as it is. Settles with the new outcome, having reported
+     * its own failures.
+     */
+    tellAgain,
     /**
      * Ends this page's sign-in without telling the phone, for one signed out elsewhere whose copy the restore rule
      * already cleared. Leaving local mode reloads the page. Rejects when the sign-in could not be ended.

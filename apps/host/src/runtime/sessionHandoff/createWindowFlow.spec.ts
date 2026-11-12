@@ -9,7 +9,6 @@ import { createDeferred, isRecord, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindowState.js';
 import type { LoginOutcome } from '../createAuthCommands.js';
-import type { AuthCommands } from '../createAuthController.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
@@ -125,17 +124,19 @@ function openWindow(options: OpenWindowParams = {}) {
     presence,
     readStoredSignIn: () => Promise.resolve(main.session !== null || main.wallet !== null ? 'held' : 'none'),
   });
-  const commands: AuthCommands = {
+  const commands: WindowFlowParams['commands'] = {
     login() {
       calls.push('login');
       const answer = createDeferred<LoginOutcome>();
       logins.push(answer);
       return answer.promise;
     },
-    async logout() {
+  };
+  const signOut: WindowFlowParams['signOut'] = {
+    async signOut() {
       calls.push('logout');
       // Lets the paired session go from the store through the flag keeper whether or not the phone heard of it, and
-      // answers whether it did, with one more try for a phone that missed it.
+      // answers whether it did.
       const held = main.session;
       if (held === null) {
         return { phone: 'told' };
@@ -147,10 +148,11 @@ function openWindow(options: OpenWindowParams = {}) {
           return Promise.resolve(true);
         },
       });
-      return getLogoutOutcome();
+      return getLogoutOutcome(held);
     },
-    cancelLogin() {
-      calls.push('cancelLogin');
+    tellAgain(untold) {
+      calls.push('tell again');
+      return Promise.resolve(untold.reason === 'end' ? getLogoutOutcome(untold.blob) : untold);
     },
   };
   const closed = createDeferred<undefined>();
@@ -161,6 +163,7 @@ function openWindow(options: OpenWindowParams = {}) {
     signIns,
     auth,
     commands,
+    signOut,
     store: {
       readSession() {
         return Promise.resolve(
@@ -221,18 +224,9 @@ function openWindow(options: OpenWindowParams = {}) {
     messages.post({ data: createHelloMessage('r1'), origin, source: opener });
   }
 
-  /** Whether the phone heard the sign-out, with one more try that answers the same way for a phone that missed it. */
-  function getLogoutOutcome(): LogoutOutcome {
-    if (!failures.phone) {
-      return { phone: 'told' };
-    }
-    return {
-      phone: 'untold',
-      tellAgain() {
-        calls.push('tell again');
-        return Promise.resolve(getLogoutOutcome());
-      },
-    };
+  /** Whether the phone heard of `blob`'s sign-out, with what telling it again needs for a phone that missed it. */
+  function getLogoutOutcome(blob: string): LogoutOutcome {
+    return failures.phone ? { phone: 'untold', reason: 'end', blob } : { phone: 'told' };
   }
 
   /** The command layer answering the window's last login, paired by default. */

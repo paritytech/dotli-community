@@ -11,9 +11,8 @@ import { createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { AuthCommands } from '../createAuthController.js';
 import { createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
-import { createWindowFlow, type WindowFlow } from '../sessionHandoff/createWindowFlow.js';
+import { createWindowFlow, type WindowFlow, type WindowFlowParams } from '../sessionHandoff/createWindowFlow.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { createOwnerSignInFlag } from '../session/signInFlag.js';
@@ -106,10 +105,12 @@ function createWindowParts({
     readStoredSignIn: () => Promise.resolve('held'),
   });
   // The window resumes what is stored, so it never pairs or signs out.
-  const commands: AuthCommands = {
+  const commands: WindowFlowParams['commands'] = {
     login: () => Promise.reject(new Error('The window paired')),
-    logout: () => Promise.reject(new Error('The window signed out')),
-    cancelLogin: () => undefined,
+  };
+  const signOut: WindowFlowParams['signOut'] = {
+    signOut: () => Promise.reject(new Error('The window signed out')),
+    tellAgain: () => Promise.reject(new Error('The window told the phone again')),
   };
   const closed = createDeferred<undefined>();
   const auth = atom<DotliAuthState>(CONNECTED);
@@ -130,6 +131,7 @@ function createWindowParts({
         signIns,
         auth,
         commands,
+        signOut,
         store: {
           readSession: async () => {
             await sessionReadHeld;

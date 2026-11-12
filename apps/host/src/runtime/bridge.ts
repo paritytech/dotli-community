@@ -353,6 +353,7 @@ export const hostBridge = {
   siteTxSigner,
   siteChain,
   authCommands,
+  pageSignOut,
   applyWindowResult,
   windowStore,
   startSessionLease,
