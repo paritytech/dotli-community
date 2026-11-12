@@ -17,6 +17,7 @@ import {
   waitForStatus,
   type HandlerOf,
   type MachineTypes,
+  type Transition,
 } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
 import { readWithRetry } from './readWithRetry.js';
@@ -124,33 +125,24 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     emitSideEffect({ kind: 'stopped' });
   };
 
-  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (
-    _state,
-    _event,
-    { emitState, emitSideEffect },
-  ) => {
-    emitState({ kind: 'stopped', error: new ApiStoppedError() });
-    // `unfollow` stops the follow without calling its error callback.
-    emitSideEffect({ kind: 'unfollow' });
-    emitSideEffect({ kind: 'stopped' });
+  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (_state, _event, transition) => {
+    unfollow(new ApiStoppedError(), transition);
   };
 
   const machine = createStateMachine<FollowMachine>({
     initial: { kind: 'following' },
     handlers: {
       following: {
-        initialized(_state, { finalized }, { emitState, emitSideEffect }) {
+        initialized(_state, { finalized }, transition) {
           const newest = finalized.at(-1);
+          // papi does not know a follow with no finalized block is dead, so it is ended here.
           if (newest === undefined) {
             const cause = new Error('chainHead follow initialized with no finalized block');
-            emitState({ kind: 'stopped', error: new ApiStoppedError(cause) });
-            // papi does not know the follow is dead, so it is ended here.
-            emitSideEffect({ kind: 'unfollow' });
-            emitSideEffect({ kind: 'stopped' });
+            unfollow(new ApiStoppedError(cause), transition);
             return;
           }
-          emitState({ kind: 'ready', bestHash: newest, newestFinalized: newest, pins: new Map() });
-          emitSideEffect({ kind: 'unpin', hashes: finalized.slice(0, -1) });
+          transition.emitState({ kind: 'ready', bestHash: newest, newestFinalized: newest, pins: new Map() });
+          transition.emitSideEffect({ kind: 'unpin', hashes: finalized.slice(0, -1) });
         },
         followEnded: endFollow,
         destroyed: destroyFollow,
@@ -238,6 +230,13 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       machine.update({ kind: 'followEnded', cause: error });
     },
   );
+
+  /** Ends the follow itself. `unfollow` stops it without calling its error callback, so the stop is told here. */
+  function unfollow(error: ApiStoppedError, { emitState, emitSideEffect }: Transition<FollowMachine>): void {
+    emitState({ kind: 'stopped', error });
+    emitSideEffect({ kind: 'unfollow' });
+    emitSideEffect({ kind: 'stopped' });
+  }
 
   function runEffect(effect: FollowEffect): void {
     switch (effect.kind) {
