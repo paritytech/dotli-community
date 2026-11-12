@@ -71,9 +71,6 @@ export type ScheduledNotificationsParams = {
   poll?: Poll;
 };
 
-/** What the page's scheduler takes beside the page's own database, locks, channels and document. */
-type CreatePageScheduledNotificationsParams = Pick<ScheduledNotificationsParams, 'show'>;
-
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
 
 type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
@@ -91,30 +88,38 @@ type Round =
 
 type ClaimingRound = Extract<Round, { kind: 'claiming' }>;
 
-type Running = {
-  stopListening: () => void;
-  channel: BroadcastChannel | null;
-  /** Aborts when the scheduler is disposed, so a claim in flight starts no delete. */
-  lifetime: AbortController;
-};
+/**
+ * What the scheduler holds from `init` to `dispose`: its page listeners, and a lifetime that aborts on dispose, so a
+ * claim in flight starts no delete.
+ */
+type Page = { stopListening: () => void; lifetime: AbortController };
 
-/** `rehydrating` fires what fell due as `rehydrate`, and `ticking` as `realtime`. */
+/** `rehydrating` fires what fell due as `rehydrate`, and `ticking` as `realtime`. A shown page holds the channel. */
 type SchedulerState =
   | { kind: 'uninitialized' }
-  | ({ kind: 'idle' } & Running)
-  | ({ kind: 'polling'; stopPoll: () => void } & Running)
-  | ({ kind: 'rehydrating'; round: Round } & Running)
-  // `rescan` is set when a notification was scheduled meanwhile, so the round's list may predate it and an empty list
-  // does not stop the poller.
-  | ({ kind: 'ticking'; stopPoll: () => void; round: Round; rescan: boolean } & Running)
-  | { kind: 'hidden'; stopListening: () => void; lifetime: AbortController }
+  | { kind: 'idle'; page: Page; channel: BroadcastChannel | null }
+  | { kind: 'polling'; page: Page; channel: BroadcastChannel | null; stopPoll: () => void }
+  | { kind: 'rehydrating'; page: Page; channel: BroadcastChannel | null; round: Round }
+  | {
+      kind: 'ticking';
+      page: Page;
+      channel: BroadcastChannel | null;
+      stopPoll: () => void;
+      round: Round;
+      /**
+       * A notification was scheduled meanwhile, so the round's list may predate it and an empty list does not stop the
+       * poller.
+       */
+      rescan: boolean;
+    }
+  | { kind: 'hidden'; page: Page }
   | { kind: 'disposed' };
 
 /** The kinds that run a round. */
 type RoundState = Extract<SchedulerState, { kind: 'rehydrating' | 'ticking' }>;
 
-/** The kinds of a shown page, which hold the channel. */
-type AwakeKind = 'idle' | 'polling' | 'rehydrating' | 'ticking';
+/** The kinds of a shown page. */
+type AwakeState = Extract<SchedulerState, { kind: 'idle' | 'polling' | 'rehydrating' | 'ticking' }>;
 
 type SchedulerEvent =
   | { kind: 'initialized'; label: string }
@@ -136,7 +141,12 @@ type SchedulerEffect =
   | { kind: 'initialized'; label: string }
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
-  | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource };
+  | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
+  | { kind: 'posted'; channel: BroadcastChannel | null; message: WakeMessage }
+  | { kind: 'channelClosed'; channel: BroadcastChannel | null }
+  /** The poller or the page listeners let go of. */
+  | { kind: 'stopped'; stop: () => void }
+  | { kind: 'lifetimeEnded'; lifetime: AbortController };
 
 type SchedulerMachine = MachineTypes<SchedulerState, SchedulerEvent, SchedulerEffect>;
 
@@ -204,8 +214,8 @@ export function createScheduledNotifications({
       }
       case 'ticking': {
         if (records.length === 0 && !state.rescan) {
-          transition.emitState({ kind: 'idle', ...pickRunning(state) });
-          state.stopPoll();
+          transition.emitState({ kind: 'idle', page: state.page, channel: state.channel });
+          transition.emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
           return;
         }
         const offset = visibility.visibilityState === 'visible' ? 0 : SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS;
@@ -231,7 +241,7 @@ export function createScheduledNotifications({
     endRound(state, transition);
   };
   /** Shows a record this tab removed, whatever round claimed it, since the delete is what claims it. */
-  const fireClaimed: HandlerOf<SchedulerMachine, AwakeKind | 'hidden', 'claimed'> = (
+  const fireClaimed: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden', 'claimed'> = (
     state,
     { record, removed, source },
     { emitSideEffect },
@@ -240,16 +250,9 @@ export function createScheduledNotifications({
       return;
     }
     emitSideEffect({ kind: 'fired', record, source });
-    switch (state.kind) {
-      case 'idle':
-      case 'polling':
-      case 'rehydrating':
-      case 'ticking':
-        state.channel?.postMessage({ kind: 'fired', hostId: record.hostId } satisfies WakeMessage);
-        return;
-      // Its channel closed as the page hid.
-      case 'hidden':
-        return;
+    // A hidden page's channel closed as it hid.
+    if (state.kind !== 'hidden') {
+      emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
     }
   };
   /** Claims the next due record when the claim is this round's, then shows the claimed one. */
@@ -274,34 +277,36 @@ export function createScheduledNotifications({
     transition.emitSideEffect({ kind: 'stepFailed', step: 'claim', error });
     claimNext(state, rest, transition);
   };
-  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating' | 'ticking', 'scheduled'> = ({
-    channel,
-  }) => {
-    channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating' | 'ticking', 'scheduled'> = (
+    { channel },
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'posted', channel, message: { kind: 'scheduled' } });
   };
-  const announceCancelled: HandlerOf<SchedulerMachine, AwakeKind, 'cancelled'> = ({ channel }) => {
-    channel?.postMessage({ kind: 'cancelled' } satisfies WakeMessage);
+  const announceCancelled: HandlerOf<SchedulerMachine, AwakeState['kind'], 'cancelled'> = (
+    { channel },
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'posted', channel, message: { kind: 'cancelled' } });
   };
   /** Stops the poller and closes the channel, since IDB starts closing as the page unloads. */
-  const hide: HandlerOf<SchedulerMachine, AwakeKind, 'pageHidden'> = (state, _event, { emitState }) => {
-    const { stopListening, lifetime } = state;
-    emitState({ kind: 'hidden', stopListening, lifetime });
-    stopWaking(state);
+  const hide: HandlerOf<SchedulerMachine, AwakeState['kind'], 'pageHidden'> = (state, _event, transition) => {
+    transition.emitState({ kind: 'hidden', page: state.page });
+    stopWaking(state, transition);
   };
-  const shutDown: HandlerOf<SchedulerMachine, AwakeKind | 'hidden', 'disposed'> = (state, _event, { emitState }) => {
-    emitState({ kind: 'disposed' });
-    state.lifetime.abort(new Error('The notification scheduler was disposed'));
-    state.stopListening();
-    switch (state.kind) {
-      case 'idle':
-      case 'polling':
-      case 'rehydrating':
-      case 'ticking':
-        stopWaking(state);
-        return;
-      // Its poller and channel stopped as the page hid.
-      case 'hidden':
-        return;
+  const shutDown: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden', 'disposed'> = (
+    state,
+    _event,
+    transition,
+  ) => {
+    transition.emitState({ kind: 'disposed' });
+    transition.emitSideEffect({ kind: 'lifetimeEnded', lifetime: state.page.lifetime });
+    transition.emitSideEffect({ kind: 'stopped', stop: state.page.stopListening });
+    // A hidden page's poller and channel stopped as it hid.
+    if (state.kind !== 'hidden') {
+      stopWaking(state, transition);
     }
   };
   // The poller retries every second, so a step's failure is reported when it starts failing, not on every tick.
@@ -311,19 +316,10 @@ export function createScheduledNotifications({
     handlers: {
       uninitialized: {
         initialized(_state, { label }, transition) {
-          const stopListening = listenForPage(transition.update);
+          const page = { stopListening: listenForPage(transition.update), lifetime: new AbortController() };
           const channel = openWakeChannel(transition.update);
           transition.emitSideEffect({ kind: 'initialized', label });
-          runStep(
-            {
-              kind: 'rehydrating',
-              round: { kind: 'removingStale' },
-              stopListening,
-              channel,
-              lifetime: new AbortController(),
-            },
-            transition,
-          );
+          runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
         },
         disposed(_state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
@@ -335,7 +331,7 @@ export function createScheduledNotifications({
         },
         scheduled(state, _event, transition) {
           startPolling(state, transition);
-          state.channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+          transition.emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
         },
         cancelled: announceCancelled,
         claimed: fireClaimed,
@@ -372,9 +368,9 @@ export function createScheduledNotifications({
         listFailed: endFailedList,
         claimed: settleClaim,
         claimFailed: skipFailedClaim,
-        scheduled(state, _event, { emitState }) {
+        scheduled(state, _event, { emitState, emitSideEffect }) {
           emitState({ ...state, rescan: true });
-          state.channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+          emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
         },
         cancelled: announceCancelled,
         pageHidden: hide,
@@ -383,9 +379,9 @@ export function createScheduledNotifications({
       // A round the page hid in reports nothing, since its connection closes as the page unloads.
       hidden: {
         claimed: fireClaimed,
-        pageRestored(state, _event, transition) {
+        pageRestored({ page }, _event, transition) {
           const channel = openWakeChannel(transition.update);
-          runStep({ ...state, kind: 'rehydrating', round: { kind: 'removingStale' }, channel }, transition);
+          runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
         },
         disposed: shutDown,
       },
@@ -428,6 +424,18 @@ export function createScheduledNotifications({
           });
           return;
         }
+        case 'posted':
+          effect.channel?.postMessage(effect.message);
+          return;
+        case 'channelClosed':
+          effect.channel?.close();
+          return;
+        case 'stopped':
+          effect.stop();
+          return;
+        case 'lifetimeEnded':
+          effect.lifetime.abort(new Error('The notification scheduler was disposed'));
+          return;
       }
     },
     onError: error => {
@@ -530,9 +538,9 @@ export function createScheduledNotifications({
         return;
       case 'claiming': {
         const [record] = round.due;
-        const source = getFireSource(state);
+        const source = state.kind === 'rehydrating' ? 'rehydrate' : 'realtime';
         update(
-          claim(record, state.lifetime.signal).then(
+          claim(record, state.page.lifetime.signal).then(
             removed => ({ kind: 'claimed', round, record, removed, source }),
             (error: unknown) => ({ kind: 'claimFailed', round, error }),
           ),
@@ -563,16 +571,19 @@ export function createScheduledNotifications({
         startPolling(state, transition);
         return;
       case 'ticking':
-        transition.emitState({ kind: 'polling', stopPoll: state.stopPoll, ...pickRunning(state) });
+        transition.emitState({ kind: 'polling', page: state.page, channel: state.channel, stopPoll: state.stopPoll });
         return;
     }
   }
 
-  function startPolling(running: Running, { emitState, update }: Transition<SchedulerMachine>): void {
+  function startPolling(
+    { page, channel }: Extract<SchedulerState, { kind: 'idle' | 'rehydrating' }>,
+    { emitState, update }: Transition<SchedulerMachine>,
+  ): void {
     const stopPoll = poll.start(() => {
       update({ kind: 'ticked' });
     }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
-    emitState({ kind: 'polling', stopPoll, ...pickRunning(running) });
+    emitState({ kind: 'polling', page, channel, stopPoll });
   }
 
   /**
@@ -654,7 +665,7 @@ export function createScheduledNotifications({
  */
 export function createPageScheduledNotifications({
   show,
-}: CreatePageScheduledNotificationsParams): ScheduledNotifications {
+}: Pick<ScheduledNotificationsParams, 'show'>): ScheduledNotifications {
   return createScheduledNotifications({
     store: scheduledNotifications,
     show,
@@ -665,30 +676,16 @@ export function createPageScheduledNotifications({
   });
 }
 
-function pickRunning({ stopListening, channel, lifetime }: Running): Running {
-  return { stopListening, channel, lifetime };
-}
-
 /** Stops the poller where one runs, and closes the channel. */
-function stopWaking(state: Extract<SchedulerState, { kind: AwakeKind }>): void {
+function stopWaking(state: AwakeState, { emitSideEffect }: Transition<SchedulerMachine>): void {
   switch (state.kind) {
     case 'polling':
     case 'ticking':
-      state.stopPoll();
+      emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
       break;
     case 'idle':
     case 'rehydrating':
       break;
   }
-  state.channel?.close();
-}
-
-/** A round at load or restore fires what it finds as `rehydrate`, and a tick's as `realtime`. */
-function getFireSource({ kind }: RoundState): FireSource {
-  switch (kind) {
-    case 'rehydrating':
-      return 'rehydrate';
-    case 'ticking':
-      return 'realtime';
-  }
+  emitSideEffect({ kind: 'channelClosed', channel: state.channel });
 }
