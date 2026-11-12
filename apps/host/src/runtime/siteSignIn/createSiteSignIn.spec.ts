@@ -7,7 +7,7 @@ import { createDeferred } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { MainAccount } from './createMainAccountSource.js';
+import type { MainAccount } from './mainAccount.js';
 import type { SiteRequest } from './parseSiteRequest.js';
 import type { SiteActionState, SiteScreen } from './createSiteRound.js';
 import { createSiteSignIn, createSiteSignInAction } from './createSiteSignIn.js';

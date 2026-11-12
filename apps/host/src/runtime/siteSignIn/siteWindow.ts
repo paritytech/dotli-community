@@ -14,7 +14,7 @@ import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindowSt
 import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { WindowFlow, WindowFlowParams } from '../sessionHandoff/createWindowFlow.js';
 import { refuseRound } from '../sessionHandoff/roundAnswer.js';
-import type { MainAccount } from './createMainAccountSource.js';
+import type { MainAccount } from './mainAccount.js';
 import type { SiteChain } from './createSiteChain.js';
 import type { SiteGroups } from './createSiteGroups.js';
 import type { SiteRequest } from './parseSiteRequest.js';

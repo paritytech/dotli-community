@@ -11,7 +11,7 @@ import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { Responder } from '../sessionHandoff/createResponder.js';
-import type { MainAccount } from './createMainAccountSource.js';
+import type { MainAccount } from './mainAccount.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import { SiteChainError, type SiteChain, type SiteDecodedCall } from './createSiteChain.js';

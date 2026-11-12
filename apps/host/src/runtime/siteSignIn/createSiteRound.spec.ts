@@ -12,7 +12,7 @@ import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotl
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import { CoreRedialError } from '../coreRedialError.js';
 import { createChanges } from '../../testing/changes.js';
-import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
+import { MainAccountError, type MainAccount } from './mainAccount.js';
 import { createSiteRound, type SiteAction, type SiteActionState, type SiteScreen } from './createSiteRound.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';

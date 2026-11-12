@@ -4,7 +4,7 @@
 import { createReporter, type CountMetric } from '@dotli/metrics';
 import { CoreRedialError } from '../coreRedialError.js';
 import { reportWalletFailure } from '../walletFailure.js';
-import { MainAccountError } from './createMainAccountSource.js';
+import { MainAccountError } from './mainAccount.js';
 import type { SiteRoundFailure } from './siteRoundErrors.js';
 
 const report = createReporter({ flow: 'wallet' });

@@ -18,7 +18,7 @@ import { createFakeSessionPresence } from '../session/createPagePresence.fake.js
 import { createOwnerSignInFlag } from '../session/signInFlag.js';
 import { findLeakedSecrets, MAIN_BLOB, WALLET_ACCOUNT, WALLET_ENTROPY } from '../../testing/findLeakedSecrets.js';
 import { MAIN_KEY } from '../../testing/siteRoundConstants.js';
-import { MainAccountError, getMainAccount, type MainAccount } from './createMainAccountSource.js';
+import { MainAccountError, getMainAccount, type MainAccount } from './mainAccount.js';
 import type { SignInScreen } from '../../state/sessionWindowState.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteChain } from './createSiteChain.js';

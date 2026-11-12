@@ -18,7 +18,7 @@ import {
   type MachineTypes,
   type Transition,
 } from '@dotli/shared';
-import type { MainAccount } from './createMainAccountSource.js';
+import type { MainAccount } from './mainAccount.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import { SiteChainError, type SiteChain, type SiteChainSession, type SiteDecodedCall } from './createSiteChain.js';
 import {

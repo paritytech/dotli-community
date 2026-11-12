@@ -6,37 +6,17 @@
 // It holds a lease on that core, so the core stays up from the read to the round's signer calls.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createStateMachine,
-  fromHex,
-  hashBlake2b,
-  listen,
-  toHex,
-  type HandlerOf,
-  type MachineTypes,
-  type Transition,
-} from '@dotli/shared';
+import { createStateMachine, listen, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
-import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
-import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
+import { judgeReport, MainAccountError, type MainAccount, type ReportVerdict } from './mainAccount.js';
 
 const report = createReporter({ flow: 'wallet' });
 const mainAccountTransitionMetric = defineCount<'error'>('session_pages.main_account_transition');
 
-/** The main account an action runs for. The round never sends any of it. */
-export type MainAccount = {
-  /** Hex of the hash of the main account's public key, whose grants these are. */
-  owner: string;
-  /** Null for an account with no username to show a site. */
-  username: { name: string; kind: 'lite' | 'full' } | null;
-};
-
 /** The main account a site's round runs for, as the window's own core reports it. */
 export type MainAccountSource = ReturnType<typeof createMainAccountSource>;
-
-type MainAccountErrorKind = 'unavailable' | 'signed_out';
 
 /** The two lease calls the source makes. */
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
@@ -58,32 +38,35 @@ type Reply = { resolve: (account: MainAccount) => void; reject: (error: MainAcco
 /** The reads open, each with the stop of its abort listener. */
 type Reads = ReadonlyMap<Reply, () => void>;
 
-type Report = DotliAuthState | null;
-
 /**
  * `stale` is the report on show when the last held lease went down. A read skips it, since it is the dead core's and
  * not an answer of a core that is up. `stop` removes the held lease's down listener and the report listener.
  */
 type SourceState =
-  | { kind: 'unleased'; stale: Report }
-  | { kind: 'leasing'; stale: Report; reads: Reads }
-  | { kind: 'holding'; stale: Report; reads: Reads; lease: HeldLease; stop: () => void }
+  | { kind: 'unleased'; stale: DotliAuthState | null }
+  | { kind: 'leasing'; stale: DotliAuthState | null; reads: Reads }
+  | { kind: 'holding'; stale: DotliAuthState | null; reads: Reads; lease: HeldLease; stop: () => void }
   | { kind: 'disposing' }
   | { kind: 'disposed' };
+
+type HoldingState = Extract<SourceState, { kind: 'holding' }>;
 
 type SourceEvent =
   | { kind: 'readAsked'; reply: Reply; signal: AbortSignal }
   | { kind: 'readAborted'; reply: Reply; reason: unknown }
   | { kind: 'leased'; lease: HeldLease }
   | { kind: 'leaseFailed'; error: unknown }
-  | { kind: 'reported'; lease: HeldLease }
-  | { kind: 'down'; lease: HeldLease }
+  | { kind: 'reported' }
+  | { kind: 'down' }
   | { kind: 'disposed' };
 
-type SourceMachine = MachineTypes<SourceState, SourceEvent>;
+/** `settled` stops the abort listener of each read, then answers it. */
+type SourceEffect =
+  | { kind: 'settled'; reads: Reads; outcome: Exclude<ReportVerdict, { kind: 'waiting' }> }
+  | { kind: 'refused'; reply: Reply }
+  | { kind: 'released'; lease: HeldLease };
 
-/** A key the core reports as `0x` hex of whole bytes. */
-const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
+type SourceMachine = MachineTypes<SourceState, SourceEvent, SourceEffect>;
 
 /** Makes the source, which takes its lease on the first read. */
 export function createMainAccountSource({ acquire, coreReport }: Params) {
@@ -91,129 +74,131 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   const abortRead: HandlerOf<SourceMachine, 'leasing' | 'holding', 'readAborted'> = (
     state,
     { reply, reason },
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     const stopAbort = state.reads.get(reply);
     // A read that settled in a transition queued before its abort has nothing left to fail.
     if (stopAbort === undefined) {
       return;
     }
-    stopAbort();
     const reads = new Map(state.reads);
     reads.delete(reply);
     emitState({ ...state, reads });
-    reply.reject(createReadError(reason));
+    emitSideEffect({
+      kind: 'settled',
+      reads: new Map([[reply, stopAbort]]),
+      outcome: { kind: 'failed', error: createReadError(reason) },
+    });
   };
   /** Fails a read asked of a disposed source at once, since its reply must still settle. */
-  const refuseRead: HandlerOf<SourceMachine, 'disposing' | 'disposed', 'readAsked'> = (_state, { reply }) => {
-    reply.reject(createReadError(createDisposedError()));
+  const refuseRead: HandlerOf<SourceMachine, 'disposing' | 'disposed', 'readAsked'> = (
+    _state,
+    { reply },
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'refused', reply });
   };
-  /** Fails a read asked with an aborted signal at once, and tells whether it did. */
-  function refuseAborted({ reply, signal }: Extract<SourceEvent, { kind: 'readAsked' }>): boolean {
-    if (!signal.aborted) {
-      return false;
-    }
-    reply.reject(createReadError(signal.reason));
-    return true;
-  }
   const machine = createStateMachine<SourceMachine>({
     initial: { kind: 'unleased', stale: null },
     handlers: {
       unleased: {
-        readAsked({ stale }, event, { emitState, update }) {
-          if (refuseAborted(event)) {
-            return;
-          }
-          emitState({ kind: 'leasing', stale, reads: addRead(new Map(), event, update) });
-          takeLease(update);
+        readAsked({ stale }, event, transition) {
+          transition.emitState({ kind: 'leasing', stale, reads: addRead(new Map(), event, transition) });
+          takeLease(transition);
         },
         disposed(_state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
         },
       },
       leasing: {
-        readAsked(state, event, { emitState, update }) {
-          if (refuseAborted(event)) {
-            return;
-          }
-          emitState({ ...state, reads: addRead(state.reads, event, update) });
+        readAsked(state, event, transition) {
+          transition.emitState({ ...state, reads: addRead(state.reads, event, transition) });
         },
         readAborted: abortRead,
         leased({ stale, reads }, { lease }, { emitState, update }) {
           // A core already down calls its listener during the subscribe, so its `down` runs before the `reported` below.
           const stopDown = lease.subscribeDown(() => {
-            update({ kind: 'down', lease });
+            update({ kind: 'down' });
           });
           const stopReport = coreReport.listen(() => {
-            update({ kind: 'reported', lease });
+            update({ kind: 'reported' });
           });
           function stop(): void {
             stopDown();
             stopReport();
           }
           emitState({ kind: 'holding', stale, reads, lease, stop });
-          update({ kind: 'reported', lease });
+          update({ kind: 'reported' });
         },
-        leaseFailed({ stale, reads }, { error }, { emitState }) {
-          stopAbortListeners(reads);
+        leaseFailed({ stale, reads }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'unleased', stale });
-          failReads(reads, error);
+          emitSideEffect({ kind: 'settled', reads, outcome: { kind: 'failed', error: createReadError(error) } });
         },
-        disposed({ reads }, _event, { emitState }) {
-          stopAbortListeners(reads);
+        disposed({ reads }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposing' });
-          failReads(reads, createDisposedError());
+          emitSideEffect({ kind: 'settled', reads, outcome: { kind: 'failed', error: createDisposedReadError() } });
         },
       },
       holding: {
         readAsked(state, event, transition) {
-          if (refuseAborted(event)) {
-            return;
-          }
-          answerReads({ ...state, reads: addRead(state.reads, event, transition.update) }, transition);
+          answerReads({ ...state, reads: addRead(state.reads, event, transition) }, transition);
         },
         readAborted: abortRead,
-        reported(state, { lease }, transition) {
-          if (lease !== state.lease) {
-            return;
-          }
+        reported(state, _event, transition) {
           answerReads(state, transition);
         },
-        down({ reads, lease, stop }, event, { emitState, update }) {
-          if (event.lease !== lease) {
-            return;
-          }
+        down({ reads, lease, stop }, _event, transition) {
           stop();
           const stale = coreReport.get();
-          // A replacement reports anew, so the reads still open wait for it on a new lease.
+          // A replacement reports anew, so the reads still open wait for it on a new lease. The new lease is taken
+          // before the old one goes, so the core is never left with no holder.
           if (reads.size > 0) {
-            emitState({ kind: 'leasing', stale, reads });
-            takeLease(update);
+            transition.emitState({ kind: 'leasing', stale, reads });
+            takeLease(transition);
           } else {
-            emitState({ kind: 'unleased', stale });
+            transition.emitState({ kind: 'unleased', stale });
           }
-          lease.release();
+          transition.emitSideEffect({ kind: 'released', lease });
         },
-        disposed({ reads, lease, stop }, _event, { emitState }) {
+        disposed({ reads, lease, stop }, _event, { emitState, emitSideEffect }) {
           stop();
-          stopAbortListeners(reads);
           emitState({ kind: 'disposed' });
           // Every read settles before the release, so a release that throws leaves no read open.
-          failReads(reads, createDisposedError());
-          lease.release();
+          emitSideEffect({ kind: 'settled', reads, outcome: { kind: 'failed', error: createDisposedReadError() } });
+          emitSideEffect({ kind: 'released', lease });
         },
       },
       disposing: {
         readAsked: refuseRead,
-        leased(_state, { lease }, { emitState }) {
+        leased(_state, { lease }, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed' });
-          lease.release();
+          emitSideEffect({ kind: 'released', lease });
         },
         leaseFailed(_state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
         },
       },
       disposed: { readAsked: refuseRead },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'settled':
+          for (const [reply, stopAbort] of effect.reads) {
+            stopAbort();
+            if (effect.outcome.kind === 'read') {
+              reply.resolve(effect.outcome.account);
+            } else {
+              reply.reject(effect.outcome.error);
+            }
+          }
+          return;
+        case 'refused':
+          effect.reply.reject(createDisposedReadError());
+          return;
+        case 'released':
+          effect.lease.release();
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -234,6 +219,9 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
      * waits for its replacement's own report.
      */
     read(signal: AbortSignal): Promise<MainAccount> {
+      if (signal.aborted) {
+        return Promise.reject(createReadError(signal.reason));
+      }
       return new Promise<MainAccount>((resolve, reject) => {
         machine.update({ kind: 'readAsked', reply: { resolve, reject }, signal });
       });
@@ -248,7 +236,7 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   };
 
   /** Takes a lease, whose landing or failure comes back as an event. */
-  function takeLease(update: Transition<SourceMachine>['update']): void {
+  function takeLease({ update }: Transition<SourceMachine>): void {
     update(
       acquire().then(
         (lease): SourceEvent => ({ kind: 'leased', lease }),
@@ -257,68 +245,15 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     );
   }
 
-  /** Stops the abort listeners of the reads, empties them from the state and answers each reply. */
-  function settleReads(
-    state: Extract<SourceState, { kind: 'holding' }>,
-    { emitState }: Transition<SourceMachine>,
-    answer: (reply: Reply) => void,
-  ): void {
-    stopAbortListeners(state.reads);
-    emitState({ ...state, reads: new Map() });
-    for (const reply of state.reads.keys()) {
-      answer(reply);
-    }
-  }
-
   /** Settles every read of `state` once the core's report answers them, and keeps them open otherwise. */
-  function answerReads(state: Extract<SourceState, { kind: 'holding' }>, transition: Transition<SourceMachine>): void {
-    const { emitState } = transition;
+  function answerReads(state: HoldingState, { emitState, emitSideEffect }: Transition<SourceMachine>): void {
     const verdict = judgeReport(coreReport.get(), state.stale);
-    switch (verdict.kind) {
-      case 'waiting':
-        emitState(state);
-        return;
-      case 'read':
-        settleReads(state, transition, reply => {
-          reply.resolve(verdict.account);
-        });
-        return;
-      case 'failed':
-        settleReads(state, transition, reply => {
-          reply.reject(verdict.error);
-        });
-        return;
+    if (verdict.kind === 'waiting') {
+      emitState(state);
+      return;
     }
-  }
-}
-
-/** The main account of a session, or null for one without a readable public key. */
-export function getMainAccount(session: TruapiSessionUiState): MainAccount | null {
-  const { publicKey } = session;
-  if (publicKey === undefined || !HEX_KEY.test(publicKey)) {
-    return null;
-  }
-  const owner = toHex(hashBlake2b(fromHex(publicKey), 32));
-  if (session.fullUsername !== undefined && session.fullUsername !== '') {
-    return { owner, username: { name: session.fullUsername, kind: 'full' } };
-  }
-  if (session.liteUsername !== undefined && session.liteUsername !== '') {
-    return { owner, username: { name: session.liteUsername, kind: 'lite' } };
-  }
-  return { owner, username: null };
-}
-
-/**
- * Why the main account could not be read. `signed_out` is a session the core reports gone, which only a new sign-in
- * brings back, and `unavailable` anything else, which a read may get past.
- */
-export class MainAccountError extends Error {
-  override name = 'MainAccountError';
-  readonly kind: MainAccountErrorKind;
-
-  constructor(kind: MainAccountErrorKind, message: string, { cause }: ErrorOptions = {}) {
-    super(message, { cause });
-    this.kind = kind;
+    emitState({ ...state, reads: new Map() });
+    emitSideEffect({ kind: 'settled', reads: state.reads, outcome: verdict });
   }
 }
 
@@ -326,7 +261,7 @@ export class MainAccountError extends Error {
 function addRead(
   reads: Reads,
   { reply, signal }: Extract<SourceEvent, { kind: 'readAsked' }>,
-  update: Transition<SourceMachine>['update'],
+  { update }: Transition<SourceMachine>,
 ): Reads {
   const stopAbort = listen({
     target: signal,
@@ -338,61 +273,10 @@ function addRead(
   return new Map(reads).set(reply, stopAbort);
 }
 
-/** Stops the abort listeners of `reads`, which the state emitted next no longer holds. */
-function stopAbortListeners(reads: Reads): void {
-  for (const stopAbort of reads.values()) {
-    stopAbort();
-  }
-}
-
-/** Fails every read of `reads` as unavailable, each with `cause`. */
-function failReads(reads: Reads, cause: unknown): void {
-  for (const reply of reads.keys()) {
-    reply.reject(createReadError(cause));
-  }
-}
-
 function createReadError(cause: unknown): MainAccountError {
   return new MainAccountError('unavailable', 'The main account could not be read', { cause });
 }
 
-function createDisposedError(): Error {
-  return new Error('The main account source was disposed');
-}
-
-/**
- * What the core's report `shown` answers a read. No report, the dead core's `stale` one and one on the way to a
- * session keep the read waiting.
- */
-function judgeReport(
-  shown: Report,
-  stale: Report,
-): { kind: 'waiting' } | { kind: 'read'; account: MainAccount } | { kind: 'failed'; error: MainAccountError } {
-  if (shown === null || shown === stale) {
-    return { kind: 'waiting' };
-  }
-  const session = authViews.getSignedInSession(shown);
-  if (session !== null) {
-    const account = getMainAccount(session);
-    if (account === null) {
-      return {
-        kind: 'failed',
-        error: new MainAccountError('unavailable', "The core's session has no readable public key"),
-      };
-    }
-    return { kind: 'read', account };
-  }
-  if (authViews.isSignInIdle(shown)) {
-    return {
-      kind: 'failed',
-      error: new MainAccountError('signed_out', `The window's core reports the main session ${shown.tag}`),
-    };
-  }
-  if (authViews.isSessionUnreachable(shown)) {
-    return {
-      kind: 'failed',
-      error: new MainAccountError('unavailable', "The window's core cannot read the main session"),
-    };
-  }
-  return { kind: 'waiting' };
+function createDisposedReadError(): MainAccountError {
+  return createReadError(new Error('The main account source was disposed'));
 }

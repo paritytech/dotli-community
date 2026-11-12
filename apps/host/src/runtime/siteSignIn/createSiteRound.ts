@@ -15,7 +15,7 @@ import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import type { RefusalReason } from '../sessionHandoff/sessionMessages.js';
 import { reportWalletFailure } from '../walletFailure.js';
-import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
+import { MainAccountError, type MainAccount } from './mainAccount.js';
 import type { DisplayAccount } from './toDisplayAccount.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteGroups } from './createSiteGroups.js';

@@ -7,15 +7,9 @@ import { hashBlake2b, createDeferred, fromHex, toHex } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
-import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 import type { DotliAuthState } from '../session/types.js';
-import {
-  createMainAccountSource,
-  getMainAccount,
-  MainAccountError,
-  type MainAccount,
-  type MainAccountSource,
-} from './createMainAccountSource.js';
+import { createMainAccountSource, type MainAccountSource } from './createMainAccountSource.js';
+import { MainAccountError } from './mainAccount.js';
 
 /** One lease the fake core handed out, which the test takes down. */
 type FakeLease = {
@@ -129,41 +123,6 @@ function createLiveSignal(): AbortSignal {
 }
 
 describe('main account', () => {
-  it.each<{ name: string; session: TruapiSessionUiState; username: MainAccount['username'] }>([
-    {
-      name: 'a full username',
-      session: { connected: true, publicKey: MAIN_KEY, fullUsername: 'alice.dot', liteUsername: 'alice.01' },
-      username: { name: 'alice.dot', kind: 'full' },
-    },
-    {
-      name: 'a lite username alone, its full one empty,',
-      session: { connected: true, publicKey: MAIN_KEY, fullUsername: '', liteUsername: 'alice.01' },
-      username: { name: 'alice.01', kind: 'lite' },
-    },
-    { name: 'no username', session: { connected: true, publicKey: MAIN_KEY }, username: null },
-  ])('As a site, I sign in for a main account with $name and get that username', ({ session, username }) => {
-    // Given a session with that username
-    const stored = session;
-
-    // When the window reads the session's main account
-    const main = getMainAccount(stored);
-
-    // Then it carries that username
-    expect(main).toEqual({ owner: OWNER, username });
-  });
-
-  it('As a site, I sign in for a main account whose session has no readable key and get none', () => {
-    // Given sessions with no key, and with a key that is not hex
-    const keyless = { connected: true, liteUsername: 'alice.01' };
-    const unreadable = { connected: true, publicKey: 'not hex' };
-
-    // When the window reads each session's main account
-    const read = [getMainAccount(keyless), getMainAccount(unreadable)];
-
-    // Then neither has one
-    expect(read).toEqual([null, null]);
-  });
-
   it("As a user, I start a site's round and the main account read waits for the core's own report, never the saved copy", async () => {
     // Given a source whose core has not reported yet
     const core = createSourceOverCore();
