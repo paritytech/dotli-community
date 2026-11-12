@@ -245,10 +245,7 @@ export function createRemoteChains({ rpc }: Params) {
       return null;
     }
 
-    function connectChain(
-      onMessage: (message: JsonRpcMessage) => void,
-      onHalt?: (reason: RemoteChainHalt) => void,
-    ): JsonRpcConnection {
+    return (onMessage, onHalt) => {
       const connectionId = createRandomId();
       const consumer: Consumer = { onMessage, onHalt: onHalt ?? null };
       chains.update({ kind: 'opened', connectionId, genesisHash, consumer });
@@ -261,9 +258,7 @@ export function createRemoteChains({ rpc }: Params) {
           chains.update({ kind: 'disconnected', connectionId });
         },
       };
-    }
-
-    return connectChain;
+    };
   }
 
   return {
@@ -276,24 +271,9 @@ export function createRemoteChains({ rpc }: Params) {
 
   function runEffect(effect: ChainsEffect): void {
     switch (effect.kind) {
-      // Subscribes the chain once the frame is ready. The connect has its own budget, and running out of it
-      // unsubscribes, which disconnects a connection a busy frame may still accept.
-      case 'connect': {
-        const { connectionId, genesisHash, signal } = effect;
-        chains.update(
-          rpc
-            .call(
-              chain.connect,
-              (transport, budget) => subscribeChain({ transport, connectionId, genesisHash, signal: budget }),
-              { signal },
-            )
-            .then(
-              (): ChainsEvent => ({ kind: 'chainConnected', connectionId }),
-              (error: unknown): ChainsEvent => ({ kind: 'connectFailed', connectionId, error }),
-            ),
-        );
+      case 'connect':
+        connectChain(effect);
         return;
-      }
       case 'send': {
         const { connectionId, request } = effect;
         chains.update(
@@ -305,7 +285,7 @@ export function createRemoteChains({ rpc }: Params) {
         return;
       }
       case 'leave':
-        effect.leave.abort(createDisconnectedError());
+        effect.leave.abort(setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError'));
         return;
       case 'deliver': {
         const { consumer, message } = effect;
@@ -350,42 +330,42 @@ export function createRemoteChains({ rpc }: Params) {
   }
 
   /**
-   * Resolves once the frame accepts the connection, and rejects once it ends it first. Sends its messages and its end
-   * as events.
+   * Subscribes the chain once the frame is ready, and tells its messages and its end as events. The connect has its own
+   * budget, and running out of it unsubscribes, which disconnects a connection a busy frame may still accept.
    */
-  function subscribeChain({
-    transport,
-    connectionId,
-    genesisHash,
-    signal,
-  }: {
-    transport: ProtocolTransport;
-    connectionId: string;
-    genesisHash: string;
-    signal: AbortSignal;
-  }): Promise<void> {
-    // A second resolve or reject does nothing, so no listener reads the connection's phase.
-    return new Promise((resolve, reject) => {
-      subscribe({
-        transport,
-        method: chain.connect,
-        start: { genesisHash, connectionId },
-        listeners: {
-          receive: event => {
-            if (event.tag === 'message') {
-              chains.update({ kind: 'chainMessage', connectionId, message: event.value });
-              return;
-            }
-            resolve();
+  function connectChain({ connectionId, genesisHash, signal }: Extract<ChainsEffect, { kind: 'connect' }>): void {
+    chains.update(
+      rpc.call(chain.connect, subscribeChain, { signal }).then(
+        (): ChainsEvent => ({ kind: 'chainConnected', connectionId }),
+        (error: unknown): ChainsEvent => ({ kind: 'connectFailed', connectionId, error }),
+      ),
+    );
+
+    // Resolves once the frame accepts the connection. A second resolve or reject does nothing, so no listener reads the
+    // connection's phase.
+    function subscribeChain(transport: ProtocolTransport, budget: AbortSignal): Promise<void> {
+      return new Promise((resolve, reject) => {
+        subscribe({
+          transport,
+          method: chain.connect,
+          start: { genesisHash, connectionId },
+          listeners: {
+            receive: event => {
+              if (event.tag === 'message') {
+                chains.update({ kind: 'chainMessage', connectionId, message: event.value });
+                return;
+              }
+              resolve();
+            },
+            end: error => {
+              reject(error ?? new Error('Chain halted before it connected'));
+              chains.update({ kind: 'chainEnded', connectionId, error });
+            },
           },
-          end: error => {
-            reject(error ?? new Error('Chain halted before it connected'));
-            chains.update({ kind: 'chainEnded', connectionId, error });
-          },
-        },
-        signal,
+          signal: budget,
+        });
       });
-    });
+    }
   }
 }
 
@@ -396,11 +376,6 @@ function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   } catch (error: unknown) {
     report.listener(`remote_chain.${label}`)(error);
   }
-}
-
-/** What a connect that the consumer left before it connected settles with. */
-function createDisconnectedError(): Error {
-  return setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError');
 }
 
 /**
@@ -415,20 +390,11 @@ function haltConnection(
   emitState({ kind: 'closed' });
   const { consumer } = connection;
   if (connection.kind === 'connecting') {
-    const error = getHaltAnswer(reason);
+    // A chain halt is retryable, unlike the dead frame's plain close.
+    const error = reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed';
     for (const request of connection.pending) {
       emitSideEffect({ kind: 'answer', consumer, request, error });
     }
   }
   emitSideEffect({ kind: 'halt', consumer, reason });
-}
-
-function getHaltAnswer(reason: RemoteChainHalt): RequestError {
-  switch (reason) {
-    case 'chain':
-      // Retryable, unlike the dead frame's plain close.
-      return createChainHaltedError();
-    case 'frame':
-      return 'Chain connection is closed';
-  }
 }
