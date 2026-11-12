@@ -12,7 +12,7 @@ import { createReporter, defineCount, type CountAttributes } from '@dotli/metric
 import { computed, type ReadableAtom } from 'nanostores';
 import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
-import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
+import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { RefusalReason } from '../sessionHandoff/sessionMessages.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import { MainAccountError, type MainAccount } from './mainAccount.js';
@@ -20,6 +20,17 @@ import type { DisplayAccount } from './toDisplayAccount.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteGroups } from './createSiteGroups.js';
 import { reportSiteFailure, SITE_ROUND_STEP } from './reportSiteFailure.js';
+import {
+  getGrantReason,
+  isAnsweringGrant,
+  isUnsentGrantForgotten,
+  keepGrant,
+  lookUpSite,
+  type GrantKeep,
+  type GrantLookup,
+  type GroupLookup,
+  type SiteGroup,
+} from './siteRoundGrants.js';
 import { SiteRoundFailure, type SiteRoundRefusal } from './siteRoundErrors.js';
 import type { SiteRoundWord, SiteRoute } from './siteRouteMetrics.js';
 
@@ -147,12 +158,6 @@ export type SiteRoundParams<Result, Outcome extends string> = {
 /** A site's round: its view and what the user does on it. */
 export type SiteRound = ReturnType<typeof createSiteRound>;
 
-/** A site's group: its registrable domain and its group token. */
-type SiteGroup = {
-  registrable: string;
-  token: string;
-};
-
 /** What the round knows of the request once its group is judged. */
 type Facts = {
   /** The request's group, or null for a site of no group. */
@@ -160,15 +165,6 @@ type Facts = {
   /** The grant the site's token names for this origin or its group, until it proves to be another main account's. */
   known: SiteGrant | null;
 };
-
-/** How the request's group was judged: by its registrable domains, or not at all for a request of no group. */
-type GroupLookup =
-  | { kind: 'none' }
-  | { kind: 'read'; token: string; registrable: string | null; own: string | null }
-  | { kind: 'failed'; error: unknown };
-
-/** The grant the site's token names, or why it could not be read. */
-type GrantLookup = { kind: 'read'; grant: SiteGrant | null } | { kind: 'failed'; error: unknown };
 
 /**
  * Where the round is. It judges the site's group while it reads the grant, asks consent, has the window flow sign in,
@@ -220,20 +216,26 @@ type RoundEvent<Result> =
   | { kind: 'actionMoved'; state: SiteActionState<Result> }
   | { kind: 'actionSettled' }
   | { kind: 'confirmed' }
-  | { kind: 'grantKept'; kept: SiteGrant | null }
-  | { kind: 'grantKeepFailed'; error: unknown; reason: 'grant_touch' | 'grant' }
+  | GrantKeep
   | { kind: 'unsentForgotten' }
   | { kind: 'unsentForgetFailed'; error: unknown }
-  | { kind: 'responderMoved'; state: ResponderState }
+  | { kind: 'responderMoved' }
   | { kind: 'retried' }
   | { kind: 'cancelled' };
 
-type RoundEffect<Outcome extends string> =
-  | { kind: 'counted'; outcome: Outcome | SiteRoundWord; reason: string }
-  | { kind: 'refused'; reason: RefusalReason }
+/** How a round that sends no result answers the site: refused, or told the user left on the page or on the phone. */
+type RoundAnswer = { kind: 'refused'; reason: RefusalReason } | { kind: 'cancelled'; by: 'page' | 'phone' };
+
+/** `refused`, `cancelled` and `sent` each count the round's outcome and answer the site. */
+type RoundEffect<Result> =
+  | RoundAnswer
+  | { kind: 'sent'; result: Result; siteToken: string | undefined; reason: string }
+  | { kind: 'actionPrepared' }
+  | { kind: 'actionStarted'; main: MainAccount }
+  | { kind: 'actionConfirmed' }
+  | { kind: 'actionEnded' }
+  | { kind: 'closed' }
   | { kind: 'refusalFailed'; refusal: SiteRoundRefusal }
-  | { kind: 'rejected' }
-  | { kind: 'sent' }
   | {
       kind: 'grantMissed';
       error: unknown;
@@ -259,73 +261,38 @@ export function createSiteRound<Result, Outcome extends string>({
   close,
   action,
 }: SiteRoundParams<Result, Outcome>) {
-  type Machine = MachineTypes<RoundState<Result>, RoundEvent<Result>, RoundEffect<Outcome>>;
+  type Machine = MachineTypes<RoundState<Result>, RoundEvent<Result>, RoundEffect<Result>>;
 
   const { route, metric } = action;
   const signing: SiteActionScreen = { view: 'site-signing', origin, route };
 
   const cancelRound: HandlerOf<Machine, OpenKind, 'cancelled'> = (state, _event, transition) => {
-    endRound(state, { kind: 'cancel' }, transition);
+    endRound(state, { kind: 'cancelled', by: 'page' }, transition);
   };
   /** Closes the window again for a round that already ended. */
-  const closeAgain: HandlerOf<Machine, 'abandoning' | 'forgettingUnsent' | 'ended', 'cancelled'> = () => {
-    close();
+  const closeAgain: HandlerOf<Machine, 'abandoning' | 'forgettingUnsent' | 'ended', 'cancelled'> = (
+    _state,
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'closed' });
   };
-  /**
-   * Sends the result once the grant is kept, or could not be, which is reported while the site still gets it.
-   */
-  function sendResult(
-    { group, known, result, screen }: Extract<RoundState<Result>, { kind: 'keepingGrant' }>,
-    event: Extract<RoundEvent<Result>, { kind: 'grantKept' | 'grantKeepFailed' }>,
-    { emitState, emitSideEffect, update }: Transition<Machine>,
-  ): void {
-    let kept: SiteGrant | null = null;
-    switch (event.kind) {
-      case 'grantKept':
-        kept = event.kept;
-        break;
-      case 'grantKeepFailed':
-        emitSideEffect({ kind: 'grantMissed', error: event.error, reason: event.reason });
-        break;
-    }
-    const stop = responder.state.listen(state => {
-      update({ kind: 'responderMoved', state });
-    });
-    emitState({ kind: 'sent', stop, screen });
-    emitSideEffect({ kind: 'counted', outcome: action.outcome(result), reason: getGrantReason({ group, known }) });
-    emitSideEffect({ kind: 'sent' });
-    responder.send(result, { siteToken: kept?.token });
-    action.end();
-    // A window restored from the back-forward cache meanwhile is answered only with its next vetting.
-    update({ kind: 'responderMoved', state: responder.state.get() });
-  }
 
   const machine = createStateMachine<Machine>({
     initial: { kind: 'starting' },
     handlers: {
       starting: {
-        started(_state, _event, { emitState, update }) {
+        started(_state, _event, { emitState, emitSideEffect, update }) {
           emitState({ kind: 'lookingUp' });
-          const { siteToken, groupToken } = request;
-          const reading: Promise<GrantLookup> = (
-            siteToken === null ? Promise.resolve(null) : grants.read(siteToken)
-          ).then(
-            grant => ({ kind: 'read', grant }),
-            (error: unknown) => ({ kind: 'failed', error }),
-          );
-          const judging: Promise<GroupLookup> =
-            groupToken === null
-              ? Promise.resolve({ kind: 'none' })
-              : Promise.all([
-                  groups.registrable(new URL(origin).hostname),
-                  groups.registrable(new URL(self).hostname),
-                ]).then(
-                  ([registrable, own]) => ({ kind: 'read', token: groupToken, registrable, own }),
-                  (error: unknown) => ({ kind: 'failed', error }),
-                );
           // One event carries both, so a refused group never reports a failed read.
-          update(Promise.all([judging, reading]).then(([group, grant]) => ({ kind: 'lookedUp', group, grant })));
-          action.prepare();
+          update(
+            lookUpSite({ request, origin, self, grants, groups }).then(({ group, grant }) => ({
+              kind: 'lookedUp',
+              group,
+              grant,
+            })),
+          );
+          emitSideEffect({ kind: 'actionPrepared' });
         },
         cancelled: cancelRound,
       },
@@ -338,14 +305,14 @@ export function createSiteRound<Result, Outcome extends string>({
             case 'read':
               // A group on a public suffix, an address or the window's own registrable domain is refused.
               if (group.registrable === null || group.registrable === group.own) {
-                endRound(state, { kind: 'refusal', reason: 'bad_request' }, transition);
+                endRound(state, { kind: 'refused', reason: 'bad_request' }, transition);
                 return;
               }
               askOrSignIn({ registrable: group.registrable, token: group.token }, grant, transition);
               return;
             case 'failed':
               transition.emitSideEffect({ kind: 'grantMissed', error: group.error, reason: 'group_list' });
-              endRound(state, { kind: 'refusal', reason: 'bad_request' }, transition);
+              endRound(state, { kind: 'refused', reason: 'bad_request' }, transition);
               return;
           }
         },
@@ -360,7 +327,7 @@ export function createSiteRound<Result, Outcome extends string>({
           startAction({ group, known }, account, transition);
         },
         declined(state, _event, transition) {
-          endRound(state, { kind: 'refusal', reason: 'declined' }, transition);
+          endRound(state, { kind: 'refused', reason: 'declined' }, transition);
         },
         cancelled: cancelRound,
       },
@@ -432,23 +399,24 @@ export function createSiteRound<Result, Outcome extends string>({
               return;
             case 'working':
               transition.emitState({ ...state, screen: moved.screen });
-              transition.update(waitForAction());
+              // No state handles `actionSettled`. It is sent so that the round's `await()` covers the action's work.
+              transition.update(action.await().then(() => ({ kind: 'actionSettled' })));
               return;
             case 'done': {
               state.stop();
               const { group, known, main, screen } = state;
               transition.emitState({ kind: 'keepingGrant', group, known, result: moved.result, screen });
-              transition.update(keepGrant({ group, known }, main));
+              transition.update(keepGrant({ grants, origin, group, known, owner: main.owner, at: now(), randomToken }));
               return;
             }
             case 'refused':
               if (moved.refusal.cause !== undefined) {
                 transition.emitSideEffect({ kind: 'refusalFailed', refusal: moved.refusal });
               }
-              endRound(state, { kind: 'refusal', reason: moved.refusal.reason }, transition);
+              endRound(state, { kind: 'refused', reason: moved.refusal.reason }, transition);
               return;
             case 'rejected':
-              endRound(state, { kind: 'rejection' }, transition);
+              endRound(state, { kind: 'cancelled', by: 'phone' }, transition);
               return;
             case 'failed': {
               state.stop();
@@ -459,19 +427,24 @@ export function createSiteRound<Result, Outcome extends string>({
             }
           }
         },
-        confirmed(_state, _event, { update }) {
-          action.confirm();
-          update(waitForAction());
+        confirmed(_state, _event, { emitSideEffect }) {
+          emitSideEffect({ kind: 'actionConfirmed' });
         },
         cancelled: cancelRound,
       },
       keepingGrant: {
-        grantKept: sendResult,
-        grantKeepFailed: sendResult,
+        grantKept(state, { kept }, transition) {
+          sendResult(state, kept?.token, transition);
+        },
+        grantKeepFailed(state, { error, reason }, transition) {
+          // Reported while the site still gets its result.
+          transition.emitSideEffect({ kind: 'grantMissed', error, reason });
+          sendResult(state, undefined, transition);
+        },
         cancelled: cancelRound,
       },
       abandoning: {
-        grantKept({ screen }, { kept }, { emitState, update }) {
+        grantKept({ screen }, { kept }, { emitState, emitSideEffect, update }) {
           // The round ended while the grant was kept, so this site holds no token for it.
           if (kept !== null && isUnsentGrantForgotten(kept)) {
             emitState({ kind: 'forgettingUnsent', screen });
@@ -484,41 +457,41 @@ export function createSiteRound<Result, Outcome extends string>({
             return;
           }
           emitState({ kind: 'ended', screen });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
         grantKeepFailed({ screen }, { error, reason }, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended', screen });
           // Reported even once the round ended, since only the view and the answer depend on whether it did.
           emitSideEffect({ kind: 'grantMissed', error, reason });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
         cancelled: closeAgain,
       },
       forgettingUnsent: {
-        unsentForgotten({ screen }, _event, { emitState }) {
+        unsentForgotten({ screen }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended', screen });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
         unsentForgetFailed({ screen }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended', screen });
           emitSideEffect({ kind: 'grantMissed', error, reason: 'grant_forget' });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
         cancelled: closeAgain,
       },
       sent: {
-        responderMoved({ stop, screen }, { state }, { emitState }) {
-          if (state.kind !== 'answered') {
+        responderMoved({ stop, screen }, _event, { emitState, emitSideEffect }) {
+          if (responder.state.get().kind !== 'answered') {
             return;
           }
           stop();
           emitState({ kind: 'ended', screen });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
-        cancelled({ stop, screen }, _event, { emitState }) {
+        cancelled({ stop, screen }, _event, { emitState, emitSideEffect }) {
           stop();
           emitState({ kind: 'ended', screen });
-          close();
+          emitSideEffect({ kind: 'closed' });
         },
       },
       failed: {
@@ -543,11 +516,37 @@ export function createSiteRound<Result, Outcome extends string>({
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'counted':
-          metric.count({ outcome: effect.outcome, reason: effect.reason });
-          return;
         case 'refused':
+          metric.count({ outcome: 'refused', reason: effect.reason });
           report.log.event('site round refused', { reason: effect.reason });
+          responder.refuse(effect.reason);
+          return;
+        case 'cancelled':
+          if (effect.by === 'phone') {
+            report.log.event('site round rejected on the phone');
+          }
+          metric.count({ outcome: 'cancelled', reason: effect.by });
+          responder.cancel();
+          return;
+        case 'sent':
+          metric.count({ outcome: action.outcome(effect.result), reason: effect.reason });
+          report.log.event('site round sent its result');
+          responder.send(effect.result, { siteToken: effect.siteToken });
+          return;
+        case 'actionPrepared':
+          action.prepare();
+          return;
+        case 'actionStarted':
+          action.start(effect.main);
+          return;
+        case 'actionConfirmed':
+          action.confirm();
+          return;
+        case 'actionEnded':
+          action.end();
+          return;
+        case 'closed':
+          close();
           return;
         case 'refusalFailed':
           // The `refused` count is its outcome.
@@ -556,12 +555,6 @@ export function createSiteRound<Result, Outcome extends string>({
             step: SITE_ROUND_STEP,
             reason: effect.refusal.reason,
           });
-          return;
-        case 'rejected':
-          report.log.event('site round rejected on the phone');
-          return;
-        case 'sent':
-          report.log.event('site round sent its result');
           return;
         case 'grantMissed':
           reportWalletFailure(effect.error, {
@@ -639,12 +632,12 @@ export function createSiteRound<Result, Outcome extends string>({
   }
 
   /**
-   * Ends a round still open with the site refused, or told the user left or rejected the request on the phone. A round
-   * whose grant is being kept waits for it, so a grant the site never got is forgotten.
+   * Ends a round still open with `answer` to the site. A round whose grant is being kept waits for it, so a grant the
+   * site never got is forgotten.
    */
   function endRound(
     state: Extract<RoundState<Result>, { kind: OpenKind }>,
-    way: { kind: 'refusal'; reason: RefusalReason } | { kind: 'cancel' } | { kind: 'rejection' },
+    answer: RoundAnswer,
     { emitState, emitSideEffect }: Transition<Machine>,
   ): void {
     switch (state.kind) {
@@ -665,25 +658,26 @@ export function createSiteRound<Result, Outcome extends string>({
     }
     const screen = toScreen(state);
     emitState(state.kind === 'keepingGrant' ? { kind: 'abandoning', screen } : { kind: 'ended', screen });
-    switch (way.kind) {
-      case 'refusal':
-        emitSideEffect({ kind: 'counted', outcome: 'refused', reason: way.reason });
-        emitSideEffect({ kind: 'refused', reason: way.reason });
-        responder.refuse(way.reason);
-        break;
-      case 'cancel':
-        emitSideEffect({ kind: 'counted', outcome: 'cancelled', reason: 'page' });
-        responder.cancel();
-        break;
-      case 'rejection':
-        emitSideEffect({ kind: 'rejected' });
-        emitSideEffect({ kind: 'counted', outcome: 'cancelled', reason: 'phone' });
-        responder.cancel();
-        break;
-    }
-    action.end();
+    emitSideEffect(answer);
+    emitSideEffect({ kind: 'actionEnded' });
     // The window closes at once, so it shows the site no view of how the round ended.
-    close();
+    emitSideEffect({ kind: 'closed' });
+  }
+
+  /** Sends the result once the grant is kept, or could not be, and waits for the site to be answered. */
+  function sendResult(
+    { group, known, result, screen }: Extract<RoundState<Result>, { kind: 'keepingGrant' }>,
+    siteToken: string | undefined,
+    { emitState, emitSideEffect, update }: Transition<Machine>,
+  ): void {
+    const stop = responder.state.listen(() => {
+      update({ kind: 'responderMoved' });
+    });
+    emitState({ kind: 'sent', stop, screen });
+    emitSideEffect({ kind: 'sent', result, siteToken, reason: getGrantReason(group, known) });
+    emitSideEffect({ kind: 'actionEnded' });
+    // A window restored from the back-forward cache meanwhile is answered only with its next vetting.
+    update({ kind: 'responderMoved' });
   }
 
   /** Has the window flow sign in or resume the stored sign-in. */
@@ -715,20 +709,17 @@ export function createSiteRound<Result, Outcome extends string>({
     );
   }
 
-  function startAction({ group, known }: Facts, main: MainAccount, { emitState, update }: Transition<Machine>): void {
+  /** Runs the action for `main`, whose moves come back as events. */
+  function startAction(
+    { group, known }: Facts,
+    main: MainAccount,
+    { emitState, emitSideEffect, update }: Transition<Machine>,
+  ): void {
     const stop = action.state.listen(moved => {
       update({ kind: 'actionMoved', state: moved });
     });
     emitState({ kind: 'acting', group, known, main, stop, screen: signing });
-    action.start(main);
-    update(waitForAction());
-  }
-
-  /**
-   * No state handles `actionSettled`. It is sent so that the round's `await()` covers the action's work in flight.
-   */
-  function waitForAction(): Promise<RoundEvent<Result>> {
-    return action.await().then(() => ({ kind: 'actionSettled' }));
+    emitSideEffect({ kind: 'actionStarted', main });
   }
 
   /**
@@ -739,7 +730,7 @@ export function createSiteRound<Result, Outcome extends string>({
     switch (lookup.kind) {
       case 'read':
         // Its owner is checked once the main account is read.
-        if (lookup.grant !== null && isAnsweringGrant(lookup.grant, group)) {
+        if (lookup.grant !== null && isAnsweringGrant(lookup.grant, group, origin)) {
           startFlow({ group, known: lookup.grant }, transition);
           return;
         }
@@ -751,63 +742,4 @@ export function createSiteRound<Result, Outcome extends string>({
         return;
     }
   }
-
-  /**
-   * Whether `grant` answers the request: one of the request's group, or of this origin for a request of no group. Its
-   * owner is checked once the main account is read.
-   */
-  function isAnsweringGrant(grant: SiteGrant, group: SiteGroup | null): boolean {
-    return group === null
-      ? grant.group === undefined && grant.origin === origin
-      : grant.group?.registrable === group.registrable && grant.group.token === group.token;
-  }
-
-  /**
-   * Keeps a new grant, or moves a known one's last use on and joins this origin to its group. Resolves with the grant
-   * whose token the site gets for a new grant, the group's own when the group already has one, or none for a known
-   * grant.
-   */
-  function keepGrant({ group, known }: Facts, main: MainAccount): Promise<RoundEvent<Result>> {
-    const at = now();
-    if (known !== null) {
-      // A known grant answers the request's group and the main account, so this origin may join it.
-      const touching = group === null ? grants.touch(known.token, at) : grants.touch(known.token, at, { origin });
-      return touching.then(
-        () => ({ kind: 'grantKept', kept: null }),
-        (error: unknown) => ({ kind: 'grantKeepFailed', error, reason: 'grant_touch' }),
-      );
-    }
-    const kept: SiteGrant = {
-      token: randomToken(),
-      origin,
-      owner: main.owner,
-      firstUsedAt: at,
-      lastUsedAt: at,
-    };
-    // Kept before the site gets the token, so no site holds a token the main store does not know.
-    const saving =
-      group === null
-        ? grants.save(kept).then(() => kept)
-        : grants.saveGroup({ ...kept, group: { ...group, origins: [origin] } });
-    return saving.then(
-      saved => ({ kind: 'grantKept', kept: saved }),
-      (error: unknown) => ({ kind: 'grantKeepFailed', error, reason: 'grant' }),
-    );
-  }
-}
-
-/**
- * Whether a kept grant whose token never reached the site is forgotten. A group's grant stays, since the user consented
- * and another origin of the group may hold its token.
- */
-export function isUnsentGrantForgotten(grant: Pick<SiteGrant, 'group'>): boolean {
-  return grant.group === undefined;
-}
-
-/** The reason the round's outcome counts with. */
-function getGrantReason({ group, known }: Facts): string {
-  if (group !== null) {
-    return 'group';
-  }
-  return known === null ? 'new' : 'known';
 }

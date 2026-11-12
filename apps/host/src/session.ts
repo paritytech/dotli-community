@@ -51,7 +51,7 @@ import { readRedirectFields, type RedirectFields } from './runtime/siteSignIn/re
 import { SITE_TOKEN_BYTES } from './runtime/siteSignIn/parseSiteRequest.js';
 import { checkReturnTo } from './runtime/siteSignIn/checkReturnTo.js';
 import { probeSeal, sealRedirect } from './runtime/siteSignIn/siteSeal.js';
-import { isUnsentGrantForgotten } from './runtime/siteSignIn/createSiteRound.js';
+import { isUnsentGrantForgotten } from './runtime/siteSignIn/siteRoundGrants.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindowParams } from './runtime/siteSignIn/siteWindow.js';
 import { authState } from './runtime/state/authState.js';
 import { getWindowSettings } from './getWindowSettings.js';
