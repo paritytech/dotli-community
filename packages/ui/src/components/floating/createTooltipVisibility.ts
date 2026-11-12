@@ -19,11 +19,12 @@ type Params = {
   timers?: Timers | undefined;
 };
 
+/** `timer` stops the pending show's delay or the pending hide's grace. */
 type TooltipState =
   | { kind: 'hidden' }
-  | { kind: 'showing'; timer: unknown }
+  | { kind: 'showing'; timer: AbortController }
   | { kind: 'shown' }
-  | { kind: 'hiding'; timer: unknown }
+  | { kind: 'hiding'; timer: AbortController }
   | { kind: 'disposed' };
 
 type TooltipEvent =
@@ -37,7 +38,10 @@ type TooltipEvent =
   | { kind: 'graceEnded' }
   | { kind: 'disposed' };
 
-type TooltipEffect = { kind: 'changed'; open: boolean };
+type TooltipEffect =
+  | { kind: 'startTimer'; timer: AbortController; ms: number; ends: 'delayEnded' | 'graceEnded' }
+  | { kind: 'stopTimer'; timer: AbortController }
+  | { kind: 'changed'; open: boolean };
 
 type TooltipMachine = MachineTypes<TooltipState, TooltipEvent, TooltipEffect>;
 
@@ -46,74 +50,14 @@ type TooltipMachine = MachineTypes<TooltipState, TooltipEvent, TooltipEffect>;
  * which disposes it on cleanup so no timer outlives it.
  */
 export function createTooltipVisibility({ onChange, timers = realTimers }: Params) {
-  function stopTimer(state: TooltipState): void {
-    switch (state.kind) {
-      case 'showing':
-      case 'hiding':
-        timers.clearTimeout(state.timer);
-        return;
-      case 'hidden':
-      case 'shown':
-      case 'disposed':
-        return;
-    }
-  }
-
-  /** Opens at once, ending a pending show or hide. Tells `onChange` only when the tooltip was closed. */
-  function showNow(
-    state: Extract<TooltipState, { kind: 'hidden' | 'showing' | 'hiding' }>,
-    _event: Extract<TooltipEvent, { kind: 'showAsked' | 'rested' | 'held' | 'delayEnded' }>,
-    { emitState, emitSideEffect }: Transition<TooltipMachine>,
-  ): void {
-    stopTimer(state);
-    emitState({ kind: 'shown' });
-    if (!isOpenIn(state)) {
-      emitSideEffect({ kind: 'changed', open: true });
-    }
-  }
-
-  /** Closes at once, ending a pending show or hide. Tells `onChange` only when the tooltip was open. */
-  function hideNow(
-    state: Extract<TooltipState, { kind: 'showing' | 'shown' | 'hiding' }>,
-    _event: Extract<TooltipEvent, { kind: 'hideAsked' | 'left' | 'showCancelled' | 'graceEnded' }>,
-    { emitState, emitSideEffect }: Transition<TooltipMachine>,
-  ): void {
-    stopTimer(state);
-    emitState({ kind: 'hidden' });
-    if (isOpenIn(state)) {
-      emitSideEffect({ kind: 'changed', open: false });
-    }
-  }
-
-  /** Starts the hide grace, restarting one already running. */
-  function armHide(
-    state: Extract<TooltipState, { kind: 'shown' | 'hiding' }>,
-    _event: Extract<TooltipEvent, { kind: 'left' }>,
-    { emitState, update }: Transition<TooltipMachine>,
-  ): void {
-    stopTimer(state);
-    emitState({ kind: 'hiding', timer: timers.setTimeout(() => update({ kind: 'graceEnded' }), TOOLTIP_HIDE_MS) });
-  }
-
-  /** Ends the unit and its timer, telling `onChange` nothing since its listener is going away. */
-  function dispose(
-    state: Exclude<TooltipState, { kind: 'disposed' }>,
-    _event: Extract<TooltipEvent, { kind: 'disposed' }>,
-    { emitState }: Transition<TooltipMachine>,
-  ): void {
-    stopTimer(state);
-    emitState({ kind: 'disposed' });
-  }
-
   const machine = createStateMachine<TooltipMachine>({
     initial: { kind: 'hidden' },
     handlers: {
       hidden: {
-        rested(_state, _event, { emitState, update }) {
-          emitState({
-            kind: 'showing',
-            timer: timers.setTimeout(() => update({ kind: 'delayEnded' }), TOOLTIP_SHOW_MS),
-          });
+        rested(_state, _event, { emitState, emitSideEffect }) {
+          const timer = new AbortController();
+          emitState({ kind: 'showing', timer });
+          emitSideEffect({ kind: 'startTimer', timer, ms: TOOLTIP_SHOW_MS, ends: 'delayEnded' });
         },
         showAsked: showNow,
         disposed: dispose,
@@ -140,10 +84,27 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
         left: armHide,
         disposed: dispose,
       },
-      disposed: {},
+      disposed: null,
     },
-    onEffect: ({ open }) => {
-      onChange(open);
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'startTimer': {
+          const { timer, ms, ends } = effect;
+          const id = timers.setTimeout(() => {
+            machine.update({ kind: ends });
+          }, ms);
+          timer.signal.addEventListener('abort', () => {
+            timers.clearTimeout(id);
+          });
+          return;
+        }
+        case 'stopTimer':
+          effect.timer.abort();
+          return;
+        case 'changed':
+          onChange(effect.open);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -189,6 +150,61 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     /** Whether the tooltip is open now, through a pending hide too. */
     isOpen: () => isOpenIn(machine.state.get()),
   };
+}
+
+/** Opens at once, ending a pending show or hide. Tells `onChange` only when the tooltip was closed. */
+function showNow(
+  state: Extract<TooltipState, { kind: 'hidden' | 'showing' | 'hiding' }>,
+  _event: Extract<TooltipEvent, { kind: 'showAsked' | 'rested' | 'held' | 'delayEnded' }>,
+  { emitState, emitSideEffect }: Transition<TooltipMachine>,
+): void {
+  emitState({ kind: 'shown' });
+  stopTimer(state, emitSideEffect);
+  if (!isOpenIn(state)) {
+    emitSideEffect({ kind: 'changed', open: true });
+  }
+}
+
+/** Closes at once, ending a pending show or hide. Tells `onChange` only when the tooltip was open. */
+function hideNow(
+  state: Extract<TooltipState, { kind: 'showing' | 'shown' | 'hiding' }>,
+  _event: Extract<TooltipEvent, { kind: 'hideAsked' | 'left' | 'showCancelled' | 'graceEnded' }>,
+  { emitState, emitSideEffect }: Transition<TooltipMachine>,
+): void {
+  emitState({ kind: 'hidden' });
+  stopTimer(state, emitSideEffect);
+  if (isOpenIn(state)) {
+    emitSideEffect({ kind: 'changed', open: false });
+  }
+}
+
+/** Starts the hide grace, restarting one already running. */
+function armHide(
+  state: Extract<TooltipState, { kind: 'shown' | 'hiding' }>,
+  _event: Extract<TooltipEvent, { kind: 'left' }>,
+  { emitState, emitSideEffect }: Transition<TooltipMachine>,
+): void {
+  const timer = new AbortController();
+  emitState({ kind: 'hiding', timer });
+  stopTimer(state, emitSideEffect);
+  emitSideEffect({ kind: 'startTimer', timer, ms: TOOLTIP_HIDE_MS, ends: 'graceEnded' });
+}
+
+/** Ends the unit and its timer, telling `onChange` nothing since its listener is going away. */
+function dispose(
+  state: Exclude<TooltipState, { kind: 'disposed' }>,
+  _event: Extract<TooltipEvent, { kind: 'disposed' }>,
+  { emitState, emitSideEffect }: Transition<TooltipMachine>,
+): void {
+  emitState({ kind: 'disposed' });
+  stopTimer(state, emitSideEffect);
+}
+
+/** Stops the pending show's delay or the pending hide's grace that `state` holds, if any. */
+function stopTimer(state: TooltipState, emitSideEffect: Transition<TooltipMachine>['emitSideEffect']): void {
+  if (state.kind === 'showing' || state.kind === 'hiding') {
+    emitSideEffect({ kind: 'stopTimer', timer: state.timer });
+  }
 }
 
 function isOpenIn(state: TooltipState): boolean {
