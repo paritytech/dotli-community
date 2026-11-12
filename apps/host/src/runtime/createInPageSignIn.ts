@@ -32,7 +32,7 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
     startLogin(state, { params: { reason, label } }, transition) {
       // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
       // shows none, so its Retry logs in again.
-      if (isLeaseHeld(state) && modal.getViewKind() !== 'error') {
+      if (isLeaseHeld(state.lease) && modal.getViewKind() !== 'error') {
         return;
       }
       if (modal.open(state, { reason, label }, transition) === null) {
@@ -70,7 +70,7 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
         round: isPhraseRound(state.round) ? { kind: 'idle' } : state.round,
       });
       if (pairing.deeplink) {
-        modal.show({ kind: 'pairing', payload: pairing.deeplink });
+        modal.show({ kind: 'pairing', payload: pairing.deeplink }, transition);
       }
     },
     signOut() {
@@ -88,9 +88,9 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
       resultWriting: null,
       windowClosed: null,
       phraseLoading: {
-        phraseLoaded(_round, { phrase }, { emitState }) {
-          emitState({ kind: 'phraseShown', phrase });
-          modal.show({ kind: 'phrase' });
+        phraseLoaded(_round, { phrase }, transition) {
+          transition.emitState({ kind: 'phraseShown', phrase });
+          modal.show({ kind: 'phrase' }, transition);
         },
         phraseMissed(_round, { reason }, { emitState, update }) {
           emitState({ kind: 'phraseFailed' });

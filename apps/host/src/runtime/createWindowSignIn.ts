@@ -15,7 +15,7 @@ import {
   isWaiting,
   type AuthModalEvent,
   type AuthModalMachine,
-  type LiveLease,
+  type LiveModal,
   type SignInRoute,
   type SignInRound,
   type StartLoginParams,
@@ -50,7 +50,7 @@ type SignInThroughWindowParams = StartLoginParams & {
 export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWallet, modal }: Params): SignInRoute {
   /** Opens the window and its wait, or brings the window of the wait on show to the front. */
   function signInThroughWindow(
-    state: LiveLease,
+    state: LiveModal,
     { intent, reason, label }: SignInThroughWindowParams,
     transition: Transition<AuthModalMachine>,
   ): void {
@@ -63,11 +63,11 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     // A prompt or a failure on show keeps its product's name. When the modal does not open the window still opens and
     // its result is still written. That page shows no wait, and its outcomes only write the closed modal's store: a
     // blocked or refused view nobody sees, while a failed write is only reported.
-    const base = isLeaseHeld(state) ? state : (modal.open(state, { reason, label }, transition) ?? state);
+    const base = isLeaseHeld(state.lease) ? state : (modal.open(state, { reason, label }, transition) ?? state);
     const round: SignInRound = { kind: 'windowOpen', intent };
     transition.emitState({ ...base, round });
-    if (isLeaseHeld(base)) {
-      modal.show({ kind: 'window' });
+    if (isLeaseHeld(base.lease)) {
+      modal.show({ kind: 'window' }, transition);
     }
     transition.update(outcome.then((ended): AuthModalEvent => ({ kind: 'windowEnded', round, outcome: ended })));
   }
@@ -89,7 +89,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
       if (isWaiting(state.round)) {
         return;
       }
-      if (isLeaseHeld(state) && modal.getViewKind() !== 'error') {
+      if (isLeaseHeld(state.lease) && modal.getViewKind() !== 'error') {
         return;
       }
       const opened = modal.open(
@@ -99,7 +99,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
       );
       transition.emitState({ ...(opened ?? state), round: { kind: 'idle' } });
       if (opened !== null) {
-        modal.show({ kind: 'prompt', resume: elsewhere() });
+        modal.show({ kind: 'prompt', resume: elsewhere() }, transition);
       }
     },
     signOut() {
@@ -117,7 +117,8 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     rounds: {
       idle: null,
       windowOpen: {
-        windowEnded({ intent }, { outcome }, { emitState, update }) {
+        windowEnded({ intent }, { outcome }, transition) {
+          const { emitState, update } = transition;
           switch (outcome.kind) {
             case 'cancelled':
               emitState({ kind: 'idle' });
@@ -127,7 +128,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
             case 'blocked':
             case 'refused':
               emitState({ kind: 'windowClosed', intent });
-              modal.show({ kind: outcome.kind });
+              modal.show({ kind: outcome.kind }, transition);
               return;
             case 'result':
               break;
