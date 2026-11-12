@@ -26,7 +26,7 @@ type ArchiveEvent =
   | { kind: 'readFailed'; reading: ReadingState; reason: string }
   | { kind: 'fileSelected'; path: string };
 
-type ArchiveEffect = { kind: 'read'; reading: ReadingState };
+type ArchiveEffect = { kind: 'load'; reading: ReadingState };
 
 type ArchiveMachine = MachineTypes<ArchiveState, ArchiveEvent, ArchiveEffect>;
 
@@ -43,7 +43,7 @@ export function createArchiveReader({ load }: { load: ArchiveLoader }) {
     }
     const reading: ReadingState = { kind: 'reading', cid };
     emitState(reading);
-    emitSideEffect({ kind: 'read', reading });
+    emitSideEffect({ kind: 'load', reading });
   };
   const machine = createStateMachine<ArchiveMachine>({
     initial: { kind: 'unread' },
