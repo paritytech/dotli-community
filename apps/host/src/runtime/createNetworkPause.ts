@@ -55,7 +55,7 @@ type PauseEvent =
   | { kind: 'graceEnded'; grace: GraceState }
   | { kind: 'ticked' };
 
-type PauseEffect = { kind: 'paused' } | { kind: 'resumed' };
+type PauseEffect = { kind: 'paused' } | { kind: 'resumed' } | { kind: 'returned' };
 
 type PauseMachine = MachineTypes<PauseState, PauseEvent, PauseEffect>;
 
@@ -95,7 +95,6 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
         state.stopTick();
         return;
       case 'paused':
-        tellTargets('resume');
         emitSideEffect({ kind: 'resumed' });
         return;
       case 'hidden':
@@ -132,12 +131,12 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
           stopTick();
           hidePage(page, transition);
         },
-        ticked(state, _event, { emitState }) {
+        ticked(state, _event, { emitState, emitSideEffect }) {
           const now = timers.now();
           emitState({ ...state, lastTickAt: now });
           // A busy page's timer runs late without any sleep, so only a tick later than that slack reads as a return.
           if (now - state.lastTickAt > SLEEP_TICK_MS + 30_000) {
-            returns.emit(undefined);
+            emitSideEffect({ kind: 'returned' });
           }
         },
         unfollowed: stopFollowing,
@@ -170,7 +169,6 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
             return;
           }
           transition.emitState({ kind: 'paused', page: state.page });
-          tellTargets('pause');
           transition.emitSideEffect({ kind: 'paused' });
         },
         visibilityChanged: detectReturn,
@@ -182,7 +180,6 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
             return;
           }
           emitState({ kind: 'hidden', page });
-          tellTargets('resume');
           emitSideEffect({ kind: 'resumed' });
         },
         visibilityChanged: detectReturn,
@@ -193,9 +190,14 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
       switch (effect.kind) {
         case 'paused':
           report.log.event('Network paused');
+          tellTargets('pause');
           return;
         case 'resumed':
           report.log.event('Network resumed');
+          tellTargets('resume');
+          return;
+        case 'returned':
+          returns.emit(undefined);
           return;
       }
     },
@@ -295,15 +297,10 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     transition: Transition<PauseMachine>,
   ): void {
     enterVisible(state.page, transition);
-    // A target that throws on resume still leaves the page resumed and the return told. The throw goes on to `onError`.
-    try {
-      if (state.kind === 'paused') {
-        tellTargets('resume');
-        transition.emitSideEffect({ kind: 'resumed' });
-      }
-    } finally {
-      returns.emit(undefined);
+    if (state.kind === 'paused') {
+      transition.emitSideEffect({ kind: 'resumed' });
     }
+    transition.emitSideEffect({ kind: 'returned' });
   }
 
   /**
