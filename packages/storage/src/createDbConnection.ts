@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
+import { createDeferred, createStateMachine, type MachineTypes } from '@dotli/shared';
 
 const report = createReporter({ flow: 'storage' });
 const dbConnectionTransitionMetric = defineCount<'error'>('db_connection.transition');
@@ -12,22 +12,27 @@ type Params = {
   open: () => Promise<IDBDatabase>;
 };
 
-/** `asker` is the token of the read whose ask started the open, so its failure goes to that read only. */
-type DbState =
-  | { kind: 'closed' }
-  | { kind: 'opening'; asker: symbol }
-  | { kind: 'open'; db: IDBDatabase }
-  | { kind: 'failed'; asker: symbol; error: unknown };
+type Read = ReturnType<typeof createDeferred<IDBDatabase>>;
 
-type OpenState = Extract<DbState, { kind: 'open' }>;
+/** `asker` is the read whose ask started the open, so its failure goes to that read only. */
+type DbState =
+  { kind: 'closed' } | { kind: 'opening'; asker: Read; queued: readonly Read[] } | { kind: 'open'; db: IDBDatabase };
 
 type DbEvent =
-  | { kind: 'asked'; asker: symbol }
+  | { kind: 'asked'; read: Read }
   | { kind: 'opened'; db: IDBDatabase }
   | { kind: 'openFailed'; error: unknown }
-  | { kind: 'dropped'; open: OpenState };
+  | { kind: 'connectionClosed'; db: IDBDatabase }
+  | { kind: 'upgradeAsked'; db: IDBDatabase };
 
-type DbMachine = MachineTypes<DbState, DbEvent>;
+type DbEffect =
+  | { kind: 'open' }
+  | { kind: 'listen'; db: IDBDatabase }
+  | { kind: 'close'; db: IDBDatabase }
+  | { kind: 'resolve'; reads: readonly Read[]; db: IDBDatabase }
+  | { kind: 'reject'; read: Read; error: unknown };
+
+type DbMachine = MachineTypes<DbState, DbEvent, DbEffect>;
 
 /**
  * One connection shared by every read, opened by `open` on first use. A connection that closes, or that another tab's
@@ -35,49 +40,90 @@ type DbMachine = MachineTypes<DbState, DbEvent>;
  * succeed. A read rejects with the error of the open it started.
  */
 export function createDbConnection({ open }: Params): () => Promise<IDBDatabase> {
-  const startOpen: HandlerOf<DbMachine, 'closed' | 'failed', 'asked'> = (_state, { asker }, { emitState, update }) => {
-    emitState({ kind: 'opening', asker });
-    update(
-      // An `open` that throws before it returns a promise rejects this one, so its error reaches the asker too.
-      new Promise<IDBDatabase>(resolve => {
-        resolve(open());
-      }).then(
-        db => ({ kind: 'opened', db }),
-        (error: unknown) => ({ kind: 'openFailed', error }),
-      ),
-    );
-  };
   const machine = createStateMachine<DbMachine>({
     initial: { kind: 'closed' },
     handlers: {
-      closed: { asked: startOpen },
-      // An `asked` here is ignored: that read waits for the open in flight.
-      opening: {
-        opened(_state, { db }, { emitState, update }) {
-          const opened: OpenState = { kind: 'open', db };
-          db.onclose = () => {
-            update({ kind: 'dropped', open: opened });
-          };
-          db.onversionchange = () => {
-            db.close();
-            update({ kind: 'dropped', open: opened });
-          };
-          emitState(opened);
+      closed: {
+        asked(_state, { read }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'opening', asker: read, queued: [] });
+          emitSideEffect({ kind: 'open' });
         },
-        openFailed({ asker }, { error }, { emitState }) {
-          emitState({ kind: 'failed', asker, error });
+      },
+      opening: {
+        asked(state, { read }, { emitState }) {
+          emitState({ ...state, queued: [...state.queued, read] });
+        },
+        opened({ asker, queued }, { db }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'open', db });
+          emitSideEffect({ kind: 'listen', db });
+          emitSideEffect({ kind: 'resolve', reads: [asker, ...queued], db });
+        },
+        openFailed({ asker, queued }, { error }, { emitState, emitSideEffect }) {
+          emitSideEffect({ kind: 'reject', read: asker, error });
+          const [next, ...rest] = queued;
+          if (next === undefined) {
+            emitState({ kind: 'closed' });
+            return;
+          }
+          emitState({ kind: 'opening', asker: next, queued: rest });
+          emitSideEffect({ kind: 'open' });
         },
       },
       open: {
-        dropped(state, { open: dropped }, { emitState }) {
-          // Only this handle's own close drops it, so a late close of a replaced one keeps the newer.
-          if (dropped !== state) {
+        asked({ db }, { read }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'resolve', reads: [read], db });
+        },
+        // Only the open handle's own close drops it, so a late close of a replaced one keeps the newer.
+        connectionClosed(state, { db }, { emitState }) {
+          if (db !== state.db) {
             return;
           }
           emitState({ kind: 'closed' });
         },
+        upgradeAsked(state, { db }, { emitState, emitSideEffect }) {
+          if (db !== state.db) {
+            return;
+          }
+          emitState({ kind: 'closed' });
+          emitSideEffect({ kind: 'close', db });
+        },
       },
-      failed: { asked: startOpen },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'open':
+          machine.update(
+            // An `open` that throws before it returns a promise rejects this one, so its error reaches the asker too.
+            new Promise<IDBDatabase>(resolve => {
+              resolve(open());
+            }).then(
+              db => ({ kind: 'opened', db }),
+              (error: unknown) => ({ kind: 'openFailed', error }),
+            ),
+          );
+          return;
+        case 'listen': {
+          const { db } = effect;
+          db.onclose = () => {
+            machine.update({ kind: 'connectionClosed', db });
+          };
+          db.onversionchange = () => {
+            machine.update({ kind: 'upgradeAsked', db });
+          };
+          return;
+        }
+        case 'close':
+          effect.db.close();
+          return;
+        case 'resolve':
+          for (const read of effect.reads) {
+            read.resolve(effect.db);
+          }
+          return;
+        case 'reject':
+          effect.read.reject(effect.error);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -88,28 +134,9 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
     },
   });
 
-  return getDb;
-
-  async function getDb(): Promise<IDBDatabase> {
-    const asker = Symbol('asker');
-    // Reads wake in the order they called `await()`. A read that woke after another one's failure, or after another
-    // read started the next open, asks again and waits on that open.
-    for (;;) {
-      machine.update({ kind: 'asked', asker });
-      await machine.await();
-      const settled = machine.state.get();
-      switch (settled.kind) {
-        case 'open':
-          return settled.db;
-        case 'failed':
-          if (settled.asker === asker) {
-            throw settled.error;
-          }
-          continue;
-        case 'closed':
-        case 'opening':
-          continue;
-      }
-    }
-  }
+  return () => {
+    const read = createDeferred<IDBDatabase>();
+    machine.update({ kind: 'asked', read });
+    return read.promise;
+  };
 }
