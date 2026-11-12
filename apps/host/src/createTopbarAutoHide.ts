@@ -156,7 +156,7 @@ export function createTopbarAutoHide({
       transition.emitState({ kind: 'up', listeners, contentShown: isContentShown(state) });
       return;
     }
-    restartFold(state, undefined, transition);
+    scheduleFold(listeners, isContentShown(state), transition);
   };
   /** Folds the bar at once when a press or Tab moved focus into the product's frame. */
   const foldForApp: HandlerOf<AutoHideMachine, 'up' | 'folding', 'windowBlurred'> = (
