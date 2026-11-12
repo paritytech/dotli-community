@@ -257,9 +257,6 @@ export function createLoadTelemetry({
       cid_cache_read: {
         cacheChecked({ traced }, { cid }, { emitState }) {
           const { label, trace } = traced;
-          if (cid !== null) {
-            enterStep({ kind: 'cached_launch_gate', traced }, emitState);
-          }
           debugBus.emit({
             layer: 'boot',
             event: 'cid_cache_checked',
@@ -267,13 +264,15 @@ export function createLoadTelemetry({
             timestamp: timers.now(),
             payload: { label, hit: cid !== null, ...(cid !== null ? { cid } : {}) },
           });
-          trace.recordCidCache(cid !== null ? 'hit' : cidCacheMiss);
           if (cid !== null) {
+            enterStep({ kind: 'cached_launch_gate', traced }, emitState);
+            trace.recordCidCache('hit');
             cacheReadMetric.count({ outcome: 'hit', surface: 'cid_cache' });
             resolveReport.log.event('CID cache hit', { cid });
             trace.recordNameResolved(cid);
             return;
           }
+          trace.recordCidCache(cidCacheMiss);
           if (skipCidCache) {
             resolveReport.log.event('CID cache skipped by settings');
             return;
@@ -330,20 +329,21 @@ export function createLoadTelemetry({
           if (cid !== null) {
             enterStep({ kind: 'manifest_read', traced, path }, emitState);
           }
+          const now = readClock();
           debugBus.emit({
             layer: 'resolve',
             event: 'completed',
             flowId: resolveFlowId,
             timestamp: timers.now(),
-            payload: { label, source: resolveSource, cid, durationMs: readClock() - coldStart },
+            payload: { label, source: resolveSource, cid, durationMs: now - coldStart },
           });
           progress.markNameResolved();
           performance.mark('dotli:resolve:end');
           log.debug(
-            `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(coldStart, { now: readClock() })} (total ${formatElapsed(startedAt, { now: readClock() })}) -> ${cid ?? 'null'}`,
+            `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(coldStart, { now })} (total ${formatElapsed(startedAt, { now })}) -> ${cid ?? 'null'}`,
           );
           resolveReport.log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
-            ms: Math.round(readClock() - coldStart),
+            ms: Math.round(now - coldStart),
             ...(cid !== null ? { cid } : {}),
           });
           trace.recordNameResolved(cid);
@@ -382,41 +382,29 @@ export function createLoadTelemetry({
             case 'fast':
               enterStep({ kind: 'content', traced, path: { kind: 'fast' } }, emitState);
               path.span.end();
-              performance.mark('dotli:main:end');
-              resolveReport.log.event('Sandbox mounted', {
-                path: 'cache',
-                total_ms: Math.round(readClock() - startedAt),
-              });
-              debugBus.emit({
-                layer: 'boot',
-                event: 'ready',
-                flowId,
-                timestamp: timers.now(),
-                payload: { label, totalMs: readClock() - startedAt, path: 'fast' },
-              });
-              trace.markHandedOff();
-              return;
+              break;
             case 'slow':
               enterStep({ kind: 'content', traced, path }, emitState);
               m.distribution('e2e.slow_path', readClock() - path.coldStart, {
                 unit: 'millisecond',
                 attributes: { outcome: 'ok', chain_backend: backend },
               });
-              performance.mark('dotli:main:end');
-              resolveReport.log.event('Sandbox mounted', {
-                path: 'cold',
-                total_ms: Math.round(readClock() - startedAt),
-              });
-              trace.markHandedOff();
-              debugBus.emit({
-                layer: 'boot',
-                event: 'ready',
-                flowId,
-                timestamp: timers.now(),
-                payload: { label, totalMs: readClock() - startedAt, path: 'slow' },
-              });
-              return;
+              break;
           }
+          const totalMs = readClock() - startedAt;
+          performance.mark('dotli:main:end');
+          resolveReport.log.event('Sandbox mounted', {
+            path: path.kind === 'fast' ? 'cache' : 'cold',
+            total_ms: Math.round(totalMs),
+          });
+          trace.markHandedOff();
+          debugBus.emit({
+            layer: 'boot',
+            event: 'ready',
+            flowId,
+            timestamp: timers.now(),
+            payload: { label, totalMs, path: path.kind },
+          });
         },
         failed: fail,
         screenFailed: reportScreenFailure,
