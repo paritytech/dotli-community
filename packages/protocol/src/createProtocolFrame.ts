@@ -39,7 +39,7 @@ import type {
 } from './frameTypes.js';
 import { FRAME_MODES } from './getBackendOfFrameMode.js';
 import { protocolIframeReadyMetric, reportBootFailure, type BootPhase } from './reportBootFailure.js';
-import { reportFrameLost } from './reportFrameLost.js';
+import { isFrameReleased, reportFrameLost } from './reportFrameLost.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscribe.js';
 
@@ -66,13 +66,14 @@ type Check = { kind: 'idle' } | { kind: 'asking' };
 /**
  * Where the frame stands. `held` is a frame whose light client failed to start, kept to answer the shared store until a
  * new frame listens. `failures` counts the frames lost since one stayed ready for `stableMs`, which the rebuild waits
- * grow with.
+ * grow with. `captured` is set once a ready frame's loss was captured since the last frame that stayed ready for
+ * `stableMs`, so a frame that keeps dying soon after ready is counted every time but captured once.
  */
 type FrameState<E> =
   // Each ask made before the first config comes with the stop of the wait that fails it when no config comes.
   | { kind: 'unconfigured'; waits: readonly (Ask & { stopWait: () => void })[] }
-  | { kind: 'idle'; config: ProtocolFrameConfig }
-  | { kind: 'resetting'; config: ProtocolFrameConfig }
+  | { kind: 'idle'; config: ProtocolFrameConfig; captured: boolean }
+  | { kind: 'resetting'; config: ProtocolFrameConfig; captured: boolean }
   | {
       kind: 'loading';
       config: ProtocolFrameConfig;
@@ -82,6 +83,7 @@ type FrameState<E> =
       readies: readonly Wait[];
       held: Frame<E> | null;
       failures: number;
+      captured: boolean;
     }
   | {
       kind: 'connecting';
@@ -90,16 +92,26 @@ type FrameState<E> =
       readies: readonly Wait[];
       held: Frame<E> | null;
       failures: number;
+      captured: boolean;
     }
   | {
       kind: 'listening';
       config: ProtocolFrameConfig;
       frame: Frame<E>;
       stopWait: () => void;
+      listenedAt: number;
       readies: readonly Wait[];
       failures: number;
+      captured: boolean;
     }
-  | { kind: 'ready'; config: ProtocolFrameConfig; frame: Frame<E>; readyAt: number; failures: number }
+  | {
+      kind: 'ready';
+      config: ProtocolFrameConfig;
+      frame: Frame<E>;
+      readyAt: number;
+      failures: number;
+      captured: boolean;
+    }
   | {
       kind: 'failed';
       config: ProtocolFrameConfig;
@@ -107,6 +119,7 @@ type FrameState<E> =
       stopWait: () => void;
       held: Frame<E> | null;
       failures: number;
+      captured: boolean;
     }
   | { kind: 'mismatched'; error: ProtocolVersionMismatchError };
 
@@ -133,17 +146,21 @@ type FrameEvent<E> =
   | { kind: 'frameUnresponsive'; transport: ProtocolTransport; error: Error };
 
 type FrameEffect<E> =
+  | { kind: 'publish'; status: ProtocolStatus; held: boolean }
+  | { kind: 'resolve'; waits: readonly Wait[]; transport: ProtocolTransport }
+  | { kind: 'reject'; waits: readonly Wait[]; error: Error }
+  | { kind: 'stopWait'; stopWait: () => void }
+  | { kind: 'mount'; iframe: E }
+  | { kind: 'connect'; iframe: E; transport: ProtocolTransport }
+  | { kind: 'askAlive'; transport: ProtocolTransport }
+  | { kind: 'rebuild' }
+  | ({ kind: 'drop'; reason: Error } & Mounted<E>)
   | { kind: 'bootFailed'; phase: BootPhase; error: Error; name: string }
-  | { kind: 'frameLost'; error: Error }
-  | { kind: 'heldLost'; error: Error }
-  | { kind: 'stableFrameLeft' }
-  | { kind: 'readyWaitStarted' }
-  | { kind: 'readyWaitEnded' }
+  | { kind: 'frameLost'; error: Error; capture: boolean }
+  | { kind: 'readyWaited'; ms: number }
   | { kind: 'reconfigured'; config: ProtocolFrameConfig }
   | { kind: 'livenessChecked'; outcome: 'alive' | 'lost' }
-  | ({ kind: 'frameDropped'; reason: Error } & Mounted<E>)
-  | { kind: 'mismatchMet'; error: ProtocolVersionMismatchError }
-  | { kind: 'statusListenerThrew'; thrown: unknown };
+  | { kind: 'mismatchMet'; error: ProtocolVersionMismatchError };
 
 type FrameMachine<E> = MachineTypes<FrameState<E>, FrameEvent<E>, FrameEffect<E>>;
 
@@ -153,22 +170,9 @@ type BootedKind = 'loading' | 'connecting' | 'listening' | 'ready';
 /** The states that hold a frame or a held one, whose liveness can be checked. */
 type CheckedKind = BootedKind | 'failed';
 
-type BootParams<E> = {
-  config: ProtocolFrameConfig;
-  loads: readonly Wait[];
-  readies: readonly Wait[];
-  held: Frame<E> | null;
-  failures: number;
-};
+type LoadingState<E> = Extract<FrameState<E>, { kind: 'loading' }>;
 
-type WaitToRebuildParams<E> = {
-  config: ProtocolFrameConfig;
-  error: Error;
-  held: Frame<E> | null;
-  failures: number;
-  /** Whether the lost frame stayed ready for `stableMs`, so the waits start over. */
-  stable: boolean;
-};
+type FailedState<E> = Extract<FrameState<E>, { kind: 'failed' }>;
 
 export const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
   configureMs: 30_000,
@@ -199,55 +203,10 @@ export function createProtocolFrame<E extends FrameElement>({
     onListenerError: report.listener('protocol.frame_lost'),
   });
 
-  /** Emits `next` and publishes it on the status and the held store, before the handler calls out. */
-  function enter(next: FrameState<E>, transition: Transition<FrameMachine<E>>): void {
-    transition.emitState(next);
-    switch (next.kind) {
-      case 'unconfigured':
-      case 'idle':
-      case 'resetting':
-        publish('idle', false, transition);
-        return;
-      case 'loading':
-      case 'connecting':
-        publish('booting', next.held !== null, transition);
-        return;
-      case 'listening':
-        publish('listening', false, transition);
-        return;
-      case 'ready':
-        publish('ready', false, transition);
-        return;
-      case 'failed':
-        publish('failed', next.held !== null, transition);
-        return;
-      case 'mismatched':
-        publish('failed', false, transition);
-        return;
-    }
-  }
-
-  /**
-   * Sets the status and the held store. The store is held before the status says the frame is down, and let go after
-   * a new frame listens, so a reader of both never finds the shared store with nothing to answer it.
-   */
-  function publish(next: ProtocolStatus, held: boolean, { emitSideEffect }: Transition<FrameMachine<E>>): void {
-    // A listener's throw is a defect in its subscriber, reported once every listener heard the change, and the step
-    // that moved the frame goes on.
-    function set<T>(store: WritableAtom<T>, value: T): void {
-      try {
-        store.set(value);
-      } catch (thrown: unknown) {
-        emitSideEffect({ kind: 'statusListenerThrew', thrown });
-      }
-    }
-    if (held) {
-      set(storeHeld, true);
-      set(status, next);
-      return;
-    }
-    set(status, next);
-    set(storeHeld, false);
+  /** Emits `next` and publishes it on the status and the held store, before the effects emitted after it. */
+  function enter(next: FrameState<E>, { emitState, emitSideEffect }: Transition<FrameMachine<E>>): void {
+    emitState(next);
+    emitSideEffect({ kind: 'publish', ...getPublished(next) });
   }
 
   /** Lets `frame` go once the transition's reports ran, its calls in flight rejecting with `reason`. */
@@ -255,177 +214,95 @@ export function createProtocolFrame<E extends FrameElement>({
     if (frame === null) {
       return;
     }
-    emitSideEffect({ kind: 'frameDropped', iframe: frame.iframe, transport: frame.transport, reason });
-  }
-
-  /** The transport to `iframe`, which has loaded. */
-  function openTransport(iframe: E): ProtocolTransport {
-    return createTransport({
-      schema: protocolSchema,
-      provider: createWindowProvider({
-        listen: messages,
-        peer: () => iframe.contentWindow ?? null,
-        origin,
-        // The provider drops what is not bytes before the transport sees it, so this is its only count.
-        onNotBytes: wire.onNotBytes,
-      }),
-      handshake: 'offer',
-      // The frame reads the resolution id from its URL, which it needs before any handshake.
-      hello: { resolutionId: null },
-      timers,
-      timeoutMs: timeouts.handshakeMs,
-      onIssue: wire.onIssue,
-    });
-  }
-
-  function createIframe(config: ProtocolFrameConfig): E {
-    const iframe = frameDocument.createElement('iframe');
-    const params = new URLSearchParams();
-    params.set('mode', FRAME_MODES[config.backend]);
-    params.set('network', config.network);
-    if (config.skipWorkerCache) {
-      params.set('skipWorkerCache', '1');
-    }
-    // On the URL, not posted after load, because the iframe's Sentry client emits before any handshake.
-    const resolutionId = getResolutionId();
-    if (resolutionId !== null) {
-      params.set('resolutionId', resolutionId);
-    }
-    const query = params.toString();
-    // The build serves the frame at /p/ on its origin.
-    iframe.src = query.length > 0 ? `${origin}/p/?${query}` : `${origin}/p/`;
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.tabIndex = -1;
-    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
-    return iframe;
+    emitSideEffect({ kind: 'drop', iframe: frame.iframe, transport: frame.transport, reason });
   }
 
   /**
-   * Builds and mounts a frame, which answers `loads` once its iframe loaded and `readies` once it is ready, and keeps
-   * `held` until it listens. The transport is built on `load`, since a post to a frame that has not committed its
-   * document is dropped. `load` also fires when the frame's script failed, which the handshake's own timeout then finds.
+   * Builds a frame, which answers `loads` once its iframe loaded and `readies` once it is ready, and keeps `held` until
+   * it listens. An iframe that cannot be built fails the boot, which waits to rebuild.
    */
   function boot(
-    { config, loads, readies, held, failures }: BootParams<E>,
+    params: Omit<LoadingState<E>, 'kind' | 'iframe' | 'stopWait'>,
     transition: Transition<FrameMachine<E>>,
   ): void {
-    const { update } = transition;
-    let built: E;
+    const { config, loads, readies, held, failures, captured } = params;
+    let iframe: E;
     try {
-      built = createIframe(config);
+      iframe = createIframe(config);
     } catch (thrown: unknown) {
       const error = fromTransportError(toError(thrown));
-      transition.emitSideEffect({
-        kind: 'bootFailed',
-        phase: 'load',
-        error,
-        name: thrown instanceof Error ? error.name : 'unknown',
-      });
-      waitToRebuild({ config, error, held, failures, stable: false }, transition);
-      for (const wait of [...loads, ...readies]) {
-        wait.reject(error);
-      }
+      const name = thrown instanceof Error ? error.name : 'unknown';
+      transition.emitSideEffect({ kind: 'bootFailed', phase: 'load', error, name });
+      waitToRebuild({ config, error, held, failures, captured }, false, transition);
+      transition.emitSideEffect({ kind: 'reject', waits: [...loads, ...readies], error });
       return;
     }
-    const iframe = built;
     const stopWait = startActiveTimeout({
       ms: timeouts.loadMs,
       onElapsed: () => {
-        update({ kind: 'loadTimedOut' });
+        transition.update({ kind: 'loadTimedOut' });
       },
       timers,
     });
-    enter({ kind: 'loading', config, iframe, stopWait, loads, readies, held, failures }, transition);
-    function handleLoad(): void {
-      iframe.removeEventListener('error', handleError);
-      update({ kind: 'iframeLoaded', iframe });
-    }
-    function handleError(): void {
-      iframe.removeEventListener('load', handleLoad);
-      update({ kind: 'iframeFailed', iframe });
-    }
-    iframe.addEventListener('load', handleLoad, { once: true });
-    iframe.addEventListener('error', handleError, { once: true });
-    try {
-      frameDocument.body.appendChild(iframe);
-    } catch (thrown: unknown) {
-      update({ kind: 'frameFailed', iframe, thrown });
-    }
+    enter({ kind: 'loading', ...params, iframe, stopWait }, transition);
+    transition.emitSideEffect({ kind: 'mount', iframe });
   }
 
-  /** Moves to `failed` until the rebuild, whose wait starts over after a stable frame and doubles otherwise. */
+  /**
+   * Moves to `failed` until the rebuild. The first wait is `rebuildMs`, and it doubles with each frame lost since one
+   * stayed ready for `stableMs`, up to `maxRebuildMs`.
+   */
   function waitToRebuild(
-    { config, error, held, failures, stable }: WaitToRebuildParams<E>,
+    { failures, ...failed }: Omit<FailedState<E>, 'kind' | 'stopWait'>,
+    stable: boolean,
     transition: Transition<FrameMachine<E>>,
   ): void {
+    const before = stable ? 0 : failures;
     const handle = timers.setTimeout(
       () => {
         transition.update({ kind: 'rebuildDue' });
       },
-      stable ? timeouts.rebuildMs : Math.min(timeouts.rebuildMs * 2 ** failures, timeouts.maxRebuildMs),
+      Math.min(timeouts.rebuildMs * 2 ** before, timeouts.maxRebuildMs),
     );
     const stopWait = () => {
       timers.clearTimeout(handle);
     };
-    enter({ kind: 'failed', config, error, stopWait, held, failures: stable ? 0 : failures + 1 }, transition);
+    enter({ kind: 'failed', ...failed, stopWait, failures: before + 1 }, transition);
   }
 
   /**
-   * Ends what `state` runs as it is left: its ready wait, and the incident of a frame that stayed ready for `stableMs`.
-   * Returns what it owed and kept, the stop of its wait included, which the caller calls once it emitted the next state.
+   * Ends what `state` runs as it is left: its waits for a timeout, and its ready wait. Returns what it owed and kept.
+   * `captured` starts over when it was a frame that stayed ready for `stableMs`, which `stable` tells.
    */
   function leave(
     state: Extract<FrameState<E>, { kind: CheckedKind }>,
     { emitSideEffect }: Transition<FrameMachine<E>>,
-  ): {
-    /** The stop of the wait it held, called once the next state is emitted. */
-    stopWait: () => void;
-    loads: readonly Wait[];
-    readies: readonly Wait[];
-    frame: Mounted<E> | null;
-    held: Frame<E> | null;
-    /** Whether it was a frame that stayed ready for `stableMs`. */
-    stable: boolean;
-  } {
+  ): { waits: readonly Wait[]; frame: Mounted<E> | null; held: Frame<E> | null; stable: boolean; captured: boolean } {
+    const { captured } = state;
     switch (state.kind) {
       case 'loading':
+        emitSideEffect({ kind: 'stopWait', stopWait: state.stopWait });
         return {
-          stopWait: state.stopWait,
-          loads: state.loads,
-          readies: state.readies,
+          waits: [...state.loads, ...state.readies],
           frame: { iframe: state.iframe, transport: null },
           held: state.held,
           stable: false,
+          captured,
         };
       case 'connecting':
-        return {
-          stopWait: noop,
-          loads: [],
-          readies: state.readies,
-          frame: state.frame,
-          held: state.held,
-          stable: false,
-        };
+        return { waits: state.readies, frame: state.frame, held: state.held, stable: false, captured };
       case 'listening':
-        emitSideEffect({ kind: 'readyWaitEnded' });
-        return {
-          stopWait: state.stopWait,
-          loads: [],
-          readies: state.readies,
-          frame: state.frame,
-          held: null,
-          stable: false,
-        };
+        emitSideEffect({ kind: 'stopWait', stopWait: state.stopWait });
+        emitSideEffect({ kind: 'readyWaited', ms: timers.now() - state.listenedAt });
+        return { waits: state.readies, frame: state.frame, held: null, stable: false, captured };
       case 'ready': {
-        const stable = timers.now() - state.readyAt >= timeouts.stableMs;
         // A frame that stayed up ends the incident, however it left.
-        if (stable) {
-          emitSideEffect({ kind: 'stableFrameLeft' });
-        }
-        return { stopWait: noop, loads: [], readies: [], frame: state.frame, held: null, stable };
+        const stable = timers.now() - state.readyAt >= timeouts.stableMs;
+        return { waits: [], frame: state.frame, held: null, stable, captured: captured && !stable };
       }
       case 'failed':
-        return { stopWait: state.stopWait, loads: [], readies: [], frame: null, held: state.held, stable: false };
+        emitSideEffect({ kind: 'stopWait', stopWait: state.stopWait });
+        return { waits: [], frame: null, held: state.held, stable: false, captured };
     }
   }
 
@@ -443,7 +320,8 @@ export function createProtocolFrame<E extends FrameElement>({
     // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
     const error = fromTransportError(toError(thrown));
     const name = thrown instanceof Error ? error.name : 'unknown';
-    const { stopWait, loads, readies, frame, held, stable } = leave(state, transition);
+    const { waits, frame, held, stable, captured: left } = leave(state, transition);
+    let captured = left;
     switch (state.kind) {
       case 'loading':
         emitSideEffect({ kind: 'bootFailed', phase: 'load', error, name });
@@ -455,36 +333,29 @@ export function createProtocolFrame<E extends FrameElement>({
         emitSideEffect({ kind: 'bootFailed', phase: 'ready', error, name });
         break;
       case 'ready':
-        emitSideEffect({ kind: 'frameLost', error });
+        emitSideEffect({ kind: 'frameLost', error, capture: !captured });
+        captured ||= !isFrameReleased(error);
         break;
     }
     const { config, failures } = state;
     // Rebuilding cannot fix a frame that refused the host's wire version, and a reload can, so it is final.
     if (error instanceof ProtocolVersionMismatchError) {
       enter({ kind: 'mismatched', error }, transition);
-      for (const wait of [...loads, ...readies]) {
-        wait.reject(error);
-      }
+      emitSideEffect({ kind: 'reject', waits, error });
       dropFrame(frame, error, transition);
       dropFrame(held, error, transition);
       emitSideEffect({ kind: 'mismatchMet', error });
-    } else if (
-      error instanceof ProtocolInitFailedError &&
-      (state.kind === 'connecting' || state.kind === 'listening')
-    ) {
-      waitToRebuild({ config, error, held: state.frame, failures, stable }, transition);
-      for (const wait of readies) {
-        wait.reject(error);
-      }
-      dropFrame(held, new Error(PROTOCOL_ERRORS.FRAME_RESET), transition);
-    } else {
-      waitToRebuild({ config, error, held, failures, stable }, transition);
-      for (const wait of [...loads, ...readies]) {
-        wait.reject(error);
-      }
-      dropFrame(frame, error, transition);
+      return;
     }
-    stopWait();
+    if (error instanceof ProtocolInitFailedError && (state.kind === 'connecting' || state.kind === 'listening')) {
+      waitToRebuild({ config, error, held: state.frame, failures, captured }, stable, transition);
+      emitSideEffect({ kind: 'reject', waits, error });
+      dropFrame(held, new Error(PROTOCOL_ERRORS.FRAME_RESET), transition);
+      return;
+    }
+    waitToRebuild({ config, error, held, failures, captured }, stable, transition);
+    emitSideEffect({ kind: 'reject', waits, error });
+    dropFrame(frame, error, transition);
   }
 
   /** The handler of both asks in the states of `Kind`. */
@@ -493,18 +364,11 @@ export function createProtocolFrame<E extends FrameElement>({
 
   // An intersection of slots gives a handler no contextual type, so the parameters of these are written out.
   const bootOnAsk: AskHandler<'idle' | 'resetting'> = (
-    state: Extract<FrameState<E>, { kind: 'idle' | 'resetting' }>,
-    { kind, wait }: Ask,
+    { config, captured }: Extract<FrameState<E>, { kind: 'idle' | 'resetting' }>,
+    ask: Ask,
     transition: Transition<FrameMachine<E>>,
   ) => {
-    switch (kind) {
-      case 'readyAsked':
-        boot({ config: state.config, loads: [], readies: [wait], held: null, failures: 0 }, transition);
-        return;
-      case 'transportAsked':
-        boot({ config: state.config, loads: [wait], readies: [], held: null, failures: 0 }, transition);
-        return;
-    }
+    boot({ config, ...getAskWaits(ask), held: null, failures: 0, captured }, transition);
   };
 
   // Each ask waits for the first config, and fails when none comes within `configureMs`.
@@ -527,38 +391,18 @@ export function createProtocolFrame<E extends FrameElement>({
     HandlerOf<FrameMachine<E>, 'ready', 'readyAsked'> = (
     { frame }: Extract<FrameState<E>, { kind: 'listening' | 'ready' }>,
     { wait }: Ask,
+    { emitSideEffect }: Transition<FrameMachine<E>>,
   ) => {
-    wait.resolve(frame.transport);
+    emitSideEffect({ kind: 'resolve', waits: [wait], transport: frame.transport });
   };
 
   const rejectMismatched: AskHandler<'mismatched'> = (
     { error }: Extract<FrameState<E>, { kind: 'mismatched' }>,
     { wait }: Ask,
+    { emitSideEffect }: Transition<FrameMachine<E>>,
   ) => {
-    wait.reject(error);
+    emitSideEffect({ kind: 'reject', waits: [wait], error });
   };
-
-  /** Sends the frame a heartbeat, answered when it answers within `handshakeMs`, a refusal included. */
-  function askAlive(transport: ProtocolTransport): Promise<FrameEvent<E>> {
-    const asking = new AbortController();
-    return withTimeout({
-      work: transport.request(protocolSchema.sections.frame.heartbeat, undefined, { signal: asking.signal }),
-      ms: timeouts.handshakeMs,
-      timeoutError: () => {
-        const error = new Error(`The frame did not answer the heartbeat within ${String(timeouts.handshakeMs)} ms`);
-        asking.abort(error);
-        return error;
-      },
-      timers,
-    }).then(
-      (): FrameEvent<E> => ({ kind: 'heartbeatAnswered', transport }),
-      (thrown: unknown): FrameEvent<E> => ({
-        kind: 'heartbeatFailed',
-        transport,
-        error: createUnresponsiveError(thrown),
-      }),
-    );
-  }
 
   const changeIdleConfig: HandlerOf<FrameMachine<E>, 'idle' | 'resetting', 'configured'> = (
     state,
@@ -571,24 +415,21 @@ export function createProtocolFrame<E extends FrameElement>({
     enter({ ...state, config }, transition);
   };
 
-  // A listener that heard `idle` may have asked for the frame or configured again, so the boot waits for what it sent,
-  // and the frame is built once, with the latest config.
+  // A listener that heard `idle` may have asked for the frame or configured again, so the rebuild is asked for after
+  // `idle` is published, and the frame is built once, with the latest config.
   const reconfigure: HandlerOf<FrameMachine<E>, CheckedKind, 'configured'> = (state, { config }, transition) => {
     if (isSameFrameConfig(state.config, config)) {
       return;
     }
     // Told apart from a fatal in the trail, since both drop the frame.
     transition.emitSideEffect({ kind: 'reconfigured', config });
-    const { stopWait, loads, readies, frame, held } = leave(state, transition);
-    enter({ kind: 'resetting', config }, transition);
-    stopWait();
+    const { waits, frame, held, captured } = leave(state, transition);
+    enter({ kind: 'resetting', config, captured }, transition);
     const reason = new Error(PROTOCOL_ERRORS.FRAME_RESET);
-    for (const wait of [...loads, ...readies]) {
-      wait.reject(reason);
-    }
+    transition.emitSideEffect({ kind: 'reject', waits, error: reason });
     dropFrame(frame, reason, transition);
     dropFrame(held, reason, transition);
-    transition.update({ kind: 'rebuildAsked' });
+    transition.emitSideEffect({ kind: 'rebuild' });
   };
 
   const joinReadies: HandlerOf<FrameMachine<E>, 'loading' | 'connecting' | 'listening', 'readyAsked'> = (
@@ -599,6 +440,7 @@ export function createProtocolFrame<E extends FrameElement>({
     enter({ ...state, readies: [...state.readies, wait] }, transition);
   };
 
+  // A frame ready without a `listening` of its own waited no time for ready.
   const markReady: HandlerOf<FrameMachine<E>, 'connecting' | 'listening', 'frameReadied'> = (
     state,
     { iframe },
@@ -607,39 +449,21 @@ export function createProtocolFrame<E extends FrameElement>({
     if (iframe !== state.frame.iframe) {
       return;
     }
-    const { frame, config, failures } = state;
-    enter({ kind: 'ready', config, frame, readyAt: timers.now(), failures }, transition);
-    for (const wait of state.readies) {
-      wait.resolve(frame.transport);
+    const { frame, config, failures, captured, readies } = state;
+    const { held } = leave(state, transition);
+    enter({ kind: 'ready', config, frame, readyAt: timers.now(), failures, captured }, transition);
+    transition.emitSideEffect({ kind: 'resolve', waits: readies, transport: frame.transport });
+    if (state.kind === 'connecting') {
+      transition.emitSideEffect({ kind: 'readyWaited', ms: 0 });
     }
-    switch (state.kind) {
-      case 'connecting':
-        transition.emitSideEffect({ kind: 'readyWaitStarted' });
-        transition.emitSideEffect({ kind: 'readyWaitEnded' });
-        dropFrame(state.held, new Error(PROTOCOL_ERRORS.FRAME_RESET), transition);
-        return;
-      case 'listening':
-        state.stopWait();
-        transition.emitSideEffect({ kind: 'readyWaitEnded' });
-        return;
-    }
+    dropFrame(held, new Error(PROTOCOL_ERRORS.FRAME_RESET), transition);
   };
 
   // A dropped frame's own status ends with its loss, which was reported when it was dropped.
   const failFrame: HandlerOf<FrameMachine<E>, BootedKind, 'frameFailed'> = (state, { iframe, thrown }, transition) => {
-    switch (state.kind) {
-      case 'loading':
-        if (iframe !== state.iframe) {
-          return;
-        }
-        break;
-      case 'connecting':
-      case 'listening':
-      case 'ready':
-        if (iframe !== state.frame.iframe) {
-          return;
-        }
-        break;
+    const current = state.kind === 'loading' ? state.iframe : state.frame.iframe;
+    if (iframe !== current) {
+      return;
     }
     loseFrame(state, thrown, transition);
   };
@@ -650,12 +474,12 @@ export function createProtocolFrame<E extends FrameElement>({
     { transport, error },
     transition,
   ) => {
-    const { held } = state;
+    const { held, captured } = state;
     if (held?.transport !== transport) {
       return;
     }
-    enter({ ...state, held: null }, transition);
-    transition.emitSideEffect({ kind: 'heldLost', error });
+    enter({ ...state, held: null, captured: captured || !isFrameReleased(error) }, transition);
+    transition.emitSideEffect({ kind: 'frameLost', error, capture: !captured });
     dropFrame(held, error, transition);
   };
 
@@ -716,9 +540,9 @@ export function createProtocolFrame<E extends FrameElement>({
     },
     handlers: {
       idle: {
-        aliveChecked(_check, { transport }, { emitState, update }) {
+        aliveChecked(_check, { transport }, { emitState, emitSideEffect }) {
           emitState({ kind: 'asking' });
-          update(askAlive(transport));
+          emitSideEffect({ kind: 'askAlive', transport });
         },
       },
       asking: {
@@ -735,11 +559,6 @@ export function createProtocolFrame<E extends FrameElement>({
     },
   });
 
-  // Whether a ready frame's loss was captured since the last frame that stayed ready for `stableMs`. A frame that keeps
-  // dying soon after ready is counted every time but captured once, so a rebuild loop does not flood the error tracker.
-  let captured = false;
-  let stopReadyWait: () => void = noop;
-
   const machine = createStateMachine<FrameMachine<E>>({
     initial: { kind: 'unconfigured', waits: [] },
     handlers: {
@@ -748,12 +567,16 @@ export function createProtocolFrame<E extends FrameElement>({
         transportAsked: queueAsk,
         configureTimedOut(state, { wait }, transition) {
           enter({ kind: 'unconfigured', waits: state.waits.filter(queued => queued.wait !== wait) }, transition);
-          wait.reject(new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED));
+          transition.emitSideEffect({
+            kind: 'reject',
+            waits: [wait],
+            error: new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED),
+          });
         },
         configured(state, { config }, transition) {
-          enter({ kind: 'idle', config }, transition);
+          enter({ kind: 'idle', config, captured: false }, transition);
           for (const queued of state.waits) {
-            queued.stopWait();
+            transition.emitSideEffect({ kind: 'stopWait', stopWait: queued.stopWait });
             transition.update({ kind: queued.kind, wait: queued.wait });
           }
         },
@@ -767,8 +590,8 @@ export function createProtocolFrame<E extends FrameElement>({
         readyAsked: bootOnAsk,
         transportAsked: bootOnAsk,
         configured: changeIdleConfig,
-        rebuildAsked(state, _event, transition) {
-          boot({ config: state.config, loads: [], readies: [], held: null, failures: 0 }, transition);
+        rebuildAsked({ config, captured }, _event, transition) {
+          boot({ config, loads: [], readies: [], held: null, failures: 0, captured }, transition);
         },
       },
       loading: {
@@ -776,53 +599,26 @@ export function createProtocolFrame<E extends FrameElement>({
         transportAsked(state, { wait }, transition) {
           // A held frame answers the shared store until a new frame listens.
           if (state.held !== null) {
-            wait.resolve(state.held.transport);
+            transition.emitSideEffect({ kind: 'resolve', waits: [wait], transport: state.held.transport });
             return;
           }
           enter({ ...state, loads: [...state.loads, wait] }, transition);
         },
         configured: reconfigure,
+        // The transport is built on `load`, since a post to a frame that has not committed its document is dropped.
+        // `load` also fires when the frame's script failed, which the handshake's own timeout then finds.
         iframeLoaded(state, { iframe }, transition) {
           if (iframe !== state.iframe) {
             return;
           }
-          const { update } = transition;
           const transport = openTransport(iframe);
-          try {
-            // First, so the status call starts the handshake ahead of the calls that waited for the load.
-            subscribe({
-              transport,
-              method: protocolSchema.sections.frame.status,
-              start: undefined,
-              listeners: {
-                receive: () => {
-                  update({ kind: 'frameReadied', iframe });
-                },
-                end: error => {
-                  update({
-                    kind: 'frameFailed',
-                    iframe,
-                    thrown: error ?? new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED),
-                  });
-                },
-              },
-            });
-          } catch (thrown: unknown) {
-            update({ kind: 'frameFailed', iframe, thrown });
-          }
-          const { config, readies, held, failures } = state;
+          const { config, readies, held, failures, captured } = state;
           const frame: Frame<E> = { iframe, transport, check: { kind: 'idle' } };
-          enter({ kind: 'connecting', config, frame, readies, held, failures }, transition);
-          state.stopWait();
-          for (const wait of state.loads) {
-            wait.resolve(transport);
-          }
-          update(
-            transport.whenConnected().then(
-              (): FrameEvent<E> => ({ kind: 'handshakeDone', iframe }),
-              (thrown: unknown): FrameEvent<E> => ({ kind: 'frameFailed', iframe, thrown }),
-            ),
-          );
+          enter({ kind: 'connecting', config, frame, readies, held, failures, captured }, transition);
+          // First, so the status call starts the handshake ahead of the calls that waited for the load.
+          transition.emitSideEffect({ kind: 'connect', iframe, transport });
+          transition.emitSideEffect({ kind: 'stopWait', stopWait: state.stopWait });
+          transition.emitSideEffect({ kind: 'resolve', waits: state.loads, transport });
         },
         iframeFailed(state, { iframe }, transition) {
           if (iframe !== state.iframe) {
@@ -841,8 +637,8 @@ export function createProtocolFrame<E extends FrameElement>({
       },
       connecting: {
         readyAsked: joinReadies,
-        transportAsked(state, { wait }) {
-          wait.resolve((state.held ?? state.frame).transport);
+        transportAsked(state, { wait }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'resolve', waits: [wait], transport: (state.held ?? state.frame).transport });
         },
         configured: reconfigure,
         handshakeDone(state, { iframe }, transition) {
@@ -856,9 +652,9 @@ export function createProtocolFrame<E extends FrameElement>({
             },
             timers,
           });
-          const { config, frame, readies, failures } = state;
-          enter({ kind: 'listening', config, frame, stopWait, readies, failures }, transition);
-          transition.emitSideEffect({ kind: 'readyWaitStarted' });
+          const { config, frame, readies, failures, captured } = state;
+          const listenedAt = timers.now();
+          enter({ kind: 'listening', config, frame, stopWait, listenedAt, readies, failures, captured }, transition);
           // A held frame answers only while no frame listens, so a listener that asks for a transport on `listening`
           // gets this one, and the held frame goes after.
           dropFrame(state.held, new Error(PROTOCOL_ERRORS.FRAME_RESET), transition);
@@ -899,25 +695,27 @@ export function createProtocolFrame<E extends FrameElement>({
         readyAsked(state, { wait }, transition) {
           // A light client that failed to start fails a wait at once until the next boot, which the backoff starts.
           if (state.held !== null) {
-            wait.reject(state.error);
+            transition.emitSideEffect({ kind: 'reject', waits: [wait], error: state.error });
             return;
           }
-          boot({ config: state.config, loads: [], readies: [wait], held: null, failures: 0 }, transition);
-          state.stopWait();
+          const { config, captured } = state;
+          leave(state, transition);
+          boot({ config, loads: [], readies: [wait], held: null, failures: 0, captured }, transition);
         },
         transportAsked(state, { wait }, transition) {
           if (state.held !== null) {
-            wait.resolve(state.held.transport);
+            transition.emitSideEffect({ kind: 'resolve', waits: [wait], transport: state.held.transport });
             return;
           }
-          boot({ config: state.config, loads: [wait], readies: [], held: null, failures: 0 }, transition);
-          state.stopWait();
+          const { config, captured } = state;
+          leave(state, transition);
+          boot({ config, loads: [wait], readies: [], held: null, failures: 0, captured }, transition);
         },
         configured: reconfigure,
         rebuildDue(state, _event, transition) {
-          const { config, held, failures } = state;
-          boot({ config, loads: [], readies: [], held, failures }, transition);
-          state.stopWait();
+          const { config, held, failures, captured } = state;
+          leave(state, transition);
+          boot({ config, loads: [], readies: [], held, failures, captured }, transition);
         },
         aliveChecked: checkFrame,
         heartbeatAnswered: checkFrame,
@@ -929,49 +727,7 @@ export function createProtocolFrame<E extends FrameElement>({
         transportAsked: rejectMismatched,
       },
     },
-    onEffect(effect) {
-      switch (effect.kind) {
-        case 'bootFailed':
-          reportBootFailure({ phase: effect.phase, error: effect.error, name: effect.name, count });
-          return;
-        case 'frameLost':
-        case 'heldLost':
-          if (reportFrameLost({ error: effect.error, count, capture: !captured })) {
-            captured = true;
-          }
-          return;
-        case 'stableFrameLeft':
-          captured = false;
-          return;
-        case 'readyWaitStarted':
-          stopReadyWait = m.timer(protocolIframeReadyMetric.name);
-          return;
-        case 'readyWaitEnded':
-          stopReadyWait();
-          return;
-        case 'reconfigured':
-          report.log.event('protocol frame reconfigured', {
-            backend: effect.config.backend,
-            network: effect.config.network,
-            skipWorkerCache: effect.config.skipWorkerCache,
-          });
-          return;
-        case 'livenessChecked':
-          report.log.event('protocol frame liveness check', { outcome: effect.outcome });
-          return;
-        case 'frameDropped':
-          // The transport posts nothing as it closes, so the frame lets go of what it served once its iframe goes.
-          effect.transport?.dispose(effect.reason);
-          effect.iframe.remove();
-          return;
-        case 'mismatchMet':
-          mismatchListeners.emit(effect.error);
-          return;
-        case 'statusListenerThrew':
-          report.listener('protocol.status')(effect.thrown);
-          return;
-      }
-    },
+    onEffect: runEffect,
     onError: error => {
       report.defect(error, {
         step: 'frame_transition',
@@ -1001,7 +757,7 @@ export function createProtocolFrame<E extends FrameElement>({
       const state = machine.state.get();
       if (state.kind === 'mismatched') {
         listener(state.error);
-        return () => undefined;
+        return noop;
       }
       return mismatchListeners.subscribe(listener);
     },
@@ -1009,6 +765,235 @@ export function createProtocolFrame<E extends FrameElement>({
       machine.update({ kind: 'aliveChecked', transport });
     },
   };
+
+  function runEffect(effect: FrameEffect<E>): void {
+    switch (effect.kind) {
+      case 'publish':
+        publish(effect.status, effect.held);
+        return;
+      case 'resolve':
+        for (const wait of effect.waits) {
+          wait.resolve(effect.transport);
+        }
+        return;
+      case 'reject':
+        for (const wait of effect.waits) {
+          wait.reject(effect.error);
+        }
+        return;
+      case 'stopWait':
+        effect.stopWait();
+        return;
+      case 'mount':
+        mountIframe(effect.iframe);
+        return;
+      case 'connect':
+        connectFrame(effect.iframe, effect.transport);
+        return;
+      case 'askAlive':
+        machine.update(askAlive(effect.transport));
+        return;
+      case 'rebuild':
+        machine.update({ kind: 'rebuildAsked' });
+        return;
+      case 'drop':
+        // The transport posts nothing as it closes, so the frame lets go of what it served once its iframe goes.
+        effect.transport?.dispose(effect.reason);
+        effect.iframe.remove();
+        return;
+      case 'bootFailed':
+        reportBootFailure({ phase: effect.phase, error: effect.error, name: effect.name, count });
+        return;
+      case 'frameLost':
+        reportFrameLost({ error: effect.error, count, capture: effect.capture });
+        return;
+      case 'readyWaited':
+        m.measure(protocolIframeReadyMetric.name, effect.ms);
+        m.distribution(protocolIframeReadyMetric.name, effect.ms);
+        return;
+      case 'reconfigured':
+        report.log.event('protocol frame reconfigured', {
+          backend: effect.config.backend,
+          network: effect.config.network,
+          skipWorkerCache: effect.config.skipWorkerCache,
+        });
+        return;
+      case 'livenessChecked':
+        report.log.event('protocol frame liveness check', { outcome: effect.outcome });
+        return;
+      case 'mismatchMet':
+        mismatchListeners.emit(effect.error);
+        return;
+    }
+  }
+
+  /**
+   * Sets the status and the held store. The store is held before the status says the frame is down, and let go after
+   * a new frame listens, so a reader of both never finds the shared store with nothing to answer it.
+   */
+  function publish(next: ProtocolStatus, held: boolean): void {
+    if (held) {
+      setPublished(storeHeld, true);
+      setPublished(status, next);
+      return;
+    }
+    setPublished(status, next);
+    setPublished(storeHeld, false);
+  }
+
+  /** Mounts `iframe` and sends its load or its failure as an event. */
+  function mountIframe(iframe: E): void {
+    function handleLoad(): void {
+      iframe.removeEventListener('error', handleError);
+      machine.update({ kind: 'iframeLoaded', iframe });
+    }
+    function handleError(): void {
+      iframe.removeEventListener('load', handleLoad);
+      machine.update({ kind: 'iframeFailed', iframe });
+    }
+    iframe.addEventListener('load', handleLoad, { once: true });
+    iframe.addEventListener('error', handleError, { once: true });
+    try {
+      frameDocument.body.appendChild(iframe);
+    } catch (thrown: unknown) {
+      machine.update({ kind: 'frameFailed', iframe, thrown });
+    }
+  }
+
+  /** Follows the status of the frame on `transport`, and its handshake, as events. */
+  function connectFrame(iframe: E, transport: ProtocolTransport): void {
+    try {
+      subscribe({
+        transport,
+        method: protocolSchema.sections.frame.status,
+        start: undefined,
+        listeners: {
+          receive: () => {
+            machine.update({ kind: 'frameReadied', iframe });
+          },
+          end: error => {
+            machine.update({
+              kind: 'frameFailed',
+              iframe,
+              thrown: error ?? new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED),
+            });
+          },
+        },
+      });
+    } catch (thrown: unknown) {
+      machine.update({ kind: 'frameFailed', iframe, thrown });
+    }
+    machine.update(
+      transport.whenConnected().then(
+        (): FrameEvent<E> => ({ kind: 'handshakeDone', iframe }),
+        (thrown: unknown): FrameEvent<E> => ({ kind: 'frameFailed', iframe, thrown }),
+      ),
+    );
+  }
+
+  /** Sends the frame a heartbeat, answered when it answers within `handshakeMs`, a refusal included. */
+  function askAlive(transport: ProtocolTransport): Promise<FrameEvent<E>> {
+    const asking = new AbortController();
+    return withTimeout({
+      work: transport.request(protocolSchema.sections.frame.heartbeat, undefined, { signal: asking.signal }),
+      ms: timeouts.handshakeMs,
+      timeoutError: () => {
+        const error = new Error(`The frame did not answer the heartbeat within ${String(timeouts.handshakeMs)} ms`);
+        asking.abort(error);
+        return error;
+      },
+      timers,
+    }).then(
+      (): FrameEvent<E> => ({ kind: 'heartbeatAnswered', transport }),
+      (thrown: unknown): FrameEvent<E> => ({
+        kind: 'heartbeatFailed',
+        transport,
+        error: createUnresponsiveError(thrown),
+      }),
+    );
+  }
+
+  /** The transport to `iframe`, which has loaded. */
+  function openTransport(iframe: E): ProtocolTransport {
+    return createTransport({
+      schema: protocolSchema,
+      provider: createWindowProvider({
+        listen: messages,
+        peer: () => iframe.contentWindow ?? null,
+        origin,
+        // The provider drops what is not bytes before the transport sees it, so this is its only count.
+        onNotBytes: wire.onNotBytes,
+      }),
+      handshake: 'offer',
+      // The frame reads the resolution id from its URL, which it needs before any handshake.
+      hello: { resolutionId: null },
+      timers,
+      timeoutMs: timeouts.handshakeMs,
+      onIssue: wire.onIssue,
+    });
+  }
+
+  function createIframe(config: ProtocolFrameConfig): E {
+    const iframe = frameDocument.createElement('iframe');
+    const params = new URLSearchParams();
+    params.set('mode', FRAME_MODES[config.backend]);
+    params.set('network', config.network);
+    if (config.skipWorkerCache) {
+      params.set('skipWorkerCache', '1');
+    }
+    // On the URL, not posted after load, because the iframe's Sentry client emits before any handshake.
+    const resolutionId = getResolutionId();
+    if (resolutionId !== null) {
+      params.set('resolutionId', resolutionId);
+    }
+    const query = params.toString();
+    // The build serves the frame at /p/ on its origin.
+    iframe.src = query.length > 0 ? `${origin}/p/?${query}` : `${origin}/p/`;
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.tabIndex = -1;
+    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
+    return iframe;
+  }
+}
+
+/** The waits a boot answers for `ask`: once its iframe loaded, or once it is ready. */
+function getAskWaits({ kind, wait }: Ask): { loads: readonly Wait[]; readies: readonly Wait[] } {
+  switch (kind) {
+    case 'transportAsked':
+      return { loads: [wait], readies: [] };
+    case 'readyAsked':
+      return { loads: [], readies: [wait] };
+  }
+}
+
+/** What the status and the held store say of `state`. */
+function getPublished(state: FrameState<unknown>): { status: ProtocolStatus; held: boolean } {
+  switch (state.kind) {
+    case 'unconfigured':
+    case 'idle':
+    case 'resetting':
+      return { status: 'idle', held: false };
+    case 'loading':
+    case 'connecting':
+      return { status: 'booting', held: state.held !== null };
+    case 'listening':
+      return { status: 'listening', held: false };
+    case 'ready':
+      return { status: 'ready', held: false };
+    case 'failed':
+      return { status: 'failed', held: state.held !== null };
+    case 'mismatched':
+      return { status: 'failed', held: false };
+  }
+}
+
+/** Sets `store`. A listener's throw is a defect in its subscriber, reported once every listener heard the change. */
+function setPublished<T>(store: WritableAtom<T>, value: T): void {
+  try {
+    store.set(value);
+  } catch (thrown: unknown) {
+    report.listener('protocol.status')(thrown);
+  }
 }
 
 /** Why a frame that did not answer the heartbeat is dropped, with what the heartbeat failed with as its cause. */
