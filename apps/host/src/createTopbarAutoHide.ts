@@ -41,29 +41,27 @@ type Params = {
   isPhone: () => boolean;
   /** Returns the unwatch. */
   watchPhone: (onChange: () => void) => () => void;
-  layout: Pick<ProductFrameLayout, 'setTopbarLayout' | 'getFrame'>;
-  /**
-   * Reached as the auto-hide starts, or as a reveal before that focuses the bar, so making one reads no browser
-   * global.
-   */
+  layout: Pick<ProductFrameLayout, 'getFrame'>;
+  /** Reached only once the auto-hide starts or a reveal focuses the bar, so making one reads no browser global. */
   page: () => TopbarAutoHidePage;
   /** The timers the fold and the focus checks wait on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout'>;
 };
 
-/** The started auto-hide's page and its listeners' stop. One per start, so a stale focus check is told apart. */
-type AutoHideRun = { page: TopbarAutoHidePage; stopListening: () => void };
-
+/**
+ * `listeners` is the started auto-hide's, one per start, so a focus check queued by an earlier start is told apart.
+ * The bar shows in every state but `folded`, and auto-hide is on in `up`, `folding` and `folded`.
+ */
 type AutoHideState =
   | { kind: 'stopped' }
   /** Started, bar up, and not armed, so it never folds. */
-  | { kind: 'unarmed'; run: AutoHideRun; contentShown: boolean }
+  | { kind: 'unarmed'; listeners: AbortController; contentShown: boolean }
   /** Armed, bar up, no fold pending. */
-  | { kind: 'up'; run: AutoHideRun; contentShown: boolean }
+  | { kind: 'up'; listeners: AbortController; contentShown: boolean }
   /** Armed over shown content, the fold's timer running. */
-  | { kind: 'folding'; run: AutoHideRun }
+  | { kind: 'folding'; listeners: AbortController }
   /** Armed over shown content, bar folded. */
-  | { kind: 'folded'; run: AutoHideRun };
+  | { kind: 'folded'; listeners: AbortController };
 
 type ArmedState = Extract<AutoHideState, { kind: 'up' | 'folding' | 'folded' }>;
 
@@ -77,22 +75,27 @@ type AutoHideEvent =
   | { kind: 'hideAsked' }
   | { kind: 'revealAsked' }
   | { kind: 'revealFocusAsked' }
-  /** `run` is null for a focusin, and the starting run for a check queued after a focusout. */
-  | { kind: 'focusChanged'; run: AutoHideRun | null }
-  | { kind: 'windowBlurred'; run: AutoHideRun }
-  | { kind: 'keyPressed'; event: KeyboardEvent }
+  | { kind: 'focusChanged'; listeners: AbortController }
+  | { kind: 'windowBlurred'; listeners: AbortController }
+  | { kind: 'shortcutPressed'; press: KeyboardEvent }
   | { kind: 'viewportChanged' }
   | { kind: 'hideDue'; folding: FoldingState };
 
-type AutoHideMachine = MachineTypes<AutoHideState, AutoHideEvent>;
+type AutoHideEffect =
+  | { kind: 'barFocused' }
+  /** Moves focus off a folded bar, so it never parks on an offscreen control. */
+  | { kind: 'focusReleased' }
+  | { kind: 'shortcutTaken'; press: KeyboardEvent };
+
+type AutoHideMachine = MachineTypes<AutoHideState, AutoHideEvent, AutoHideEffect>;
 
 export type TopbarAutoHide = ReturnType<typeof createTopbarAutoHide>;
 
 export const HIDE_DELAY_MS = 2000;
 
 /**
- * Builds the bar's auto-hide. Until it starts, every method but `reveal`, `revealAndFocus` and the registrations does
- * nothing, and only `revealAndFocus` reads the page.
+ * Builds the bar's auto-hide. Until it starts, every method but `revealAndFocus` and the registrations does nothing,
+ * and only `revealAndFocus` reads the page.
  */
 export function createTopbarAutoHide({
   isMobile,
@@ -105,83 +108,88 @@ export function createTopbarAutoHide({
   let bar: HTMLElement | undefined;
   let revealButton: HTMLElement | undefined;
 
-  /** Shows the bar and drops listening. */
   const stopAutoHide: HandlerOf<AutoHideMachine, 'unarmed' | 'up' | 'folding' | 'folded', 'stopped'> = (
-    { run },
+    { listeners },
     _event,
     { emitState },
   ) => {
     emitState({ kind: 'stopped' });
-    topbarState.setAutoHide(false);
-    setVisible(true);
-    run.stopListening();
+    listeners.abort();
+  };
+  const focusBar: HandlerOf<AutoHideMachine, 'stopped' | 'unarmed', 'revealFocusAsked'> = (
+    _state,
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'barFocused' });
   };
   /** Restarts the fold's wait of an armed bar that is up. */
   const rearm: HandlerOf<AutoHideMachine, 'up' | 'folding', 'armed'> = (state, _event, transition) => {
     if (!canArm()) {
       return;
     }
-    scheduleFold(state.run, isContentShown(state), transition);
+    scheduleFold(state.listeners, isContentShown(state), transition);
   };
   const askHide: HandlerOf<AutoHideMachine, 'up' | 'folding', 'hideAsked'> = (state, _event, transition) => {
-    scheduleFold(state.run, isContentShown(state), transition);
+    scheduleFold(state.listeners, isContentShown(state), transition);
   };
   const changeContent: HandlerOf<AutoHideMachine, 'up' | 'folding', 'contentChanged'> = (
-    { run },
+    { listeners },
     { shown },
     transition,
   ) => {
     if (shown) {
-      scheduleFold(run, true, transition);
+      scheduleFold(listeners, true, transition);
       return;
     }
-    showBar(run, false, transition);
+    transition.emitState({ kind: 'up', listeners, contentShown: false });
   };
   /** Shows a bar that holds focus or an open surface, and restarts the wait for the fold of one that does not. */
   const followFocus: HandlerOf<AutoHideMachine, 'up' | 'folding' | 'folded', 'focusChanged'> = (
     state,
-    { run },
+    { listeners },
     transition,
   ) => {
-    // A check queued by an earlier start finds a run that is not its own.
-    if (run !== null && run !== state.run) {
+    // A check queued by an earlier start finds listeners that are not its own.
+    if (listeners !== state.listeners) {
       return;
     }
-    if (isBusy(state.run.page)) {
-      showBar(state.run, isContentShown(state), transition);
+    if (isBusy()) {
+      transition.emitState({ kind: 'up', listeners, contentShown: isContentShown(state) });
       return;
     }
     refold(state, transition);
   };
   /** Folds the bar at once when a press or Tab moved focus into the product's frame. */
-  const foldForApp: HandlerOf<AutoHideMachine, 'up' | 'folding', 'windowBlurred'> = (state, { run }, transition) => {
-    if (run !== state.run) {
+  const foldForApp: HandlerOf<AutoHideMachine, 'up' | 'folding', 'windowBlurred'> = (
+    state,
+    { listeners },
+    transition,
+  ) => {
+    if (listeners !== state.listeners) {
       return;
     }
     const frame = layout.getFrame();
-    if (frame === null || run.page.activeElement() !== frame || !canFold(isContentShown(state))) {
+    if (frame === null || getPage().activeElement() !== frame || !canFold(isContentShown(state))) {
       return;
     }
-    if (isBusy(run.page)) {
-      scheduleFold(run, true, transition);
+    if (isBusy()) {
+      scheduleFold(listeners, true, transition);
       return;
     }
-    fold(run, transition);
+    transition.emitState({ kind: 'folded', listeners });
   };
-  const pressKey: HandlerOf<AutoHideMachine, 'up' | 'folding' | 'folded', 'keyPressed'> = (
+  const pressShortcut: HandlerOf<AutoHideMachine, 'up' | 'folding' | 'folded', 'shortcutPressed'> = (
     state,
-    { event },
-    transition,
+    { press },
+    { emitState, emitSideEffect },
   ) => {
-    if (!isRevealShortcut(event)) {
-      return;
-    }
-    event.preventDefault();
-    const { run } = state;
+    emitSideEffect({ kind: 'shortcutTaken', press });
+    const { listeners } = state;
     switch (state.kind) {
       case 'folded':
-        showBar(run, true, transition);
-        focusBar(() => run.page);
+        emitState({ kind: 'up', listeners, contentShown: true });
+        emitSideEffect({ kind: 'barFocused' });
         return;
       case 'up':
       case 'folding':
@@ -189,11 +197,8 @@ export function createTopbarAutoHide({
         if (!canFold(isContentShown(state)) || topbarSurfaces.isAnyOpen()) {
           return;
         }
-        transition.emitState({ kind: 'folded', run });
-        if (isTopbarFocused(run.page)) {
-          releaseFocusToApp(run.page);
-        }
-        setVisible(false);
+        emitState({ kind: 'folded', listeners });
+        emitSideEffect({ kind: 'focusReleased' });
         return;
     }
   };
@@ -203,49 +208,36 @@ export function createTopbarAutoHide({
     transition,
   ) => {
     if (isPhone()) {
-      showBar(state.run, isContentShown(state), transition);
+      transition.emitState({ kind: 'up', listeners: state.listeners, contentShown: isContentShown(state) });
       return;
     }
     refold(state, transition);
   };
-  const revealBar: HandlerOf<AutoHideMachine, 'folding' | 'folded', 'revealAsked'> = ({ run }, _event, transition) => {
-    showBar(run, true, transition);
+  const revealBar: HandlerOf<AutoHideMachine, 'folding' | 'folded', 'revealAsked'> = (
+    { listeners },
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'up', listeners, contentShown: true });
   };
   const revealAndFocusBar: HandlerOf<AutoHideMachine, 'up' | 'folding' | 'folded', 'revealFocusAsked'> = (
     state,
     _event,
-    transition,
+    { emitState, emitSideEffect },
   ) => {
-    showBar(state.run, isContentShown(state), transition);
-    const { run } = state;
-    focusBar(() => run.page);
-  };
-  /** Shows a bar that is not armed, since a reveal shows it even before the auto-hide starts. */
-  const revealUnarmed: HandlerOf<AutoHideMachine, 'stopped' | 'unarmed', 'revealAsked'> = () => {
-    setVisible(true);
+    emitState({ kind: 'up', listeners: state.listeners, contentShown: isContentShown(state) });
+    emitSideEffect({ kind: 'barFocused' });
   };
   const autoHide = createStateMachine<AutoHideMachine>({
     initial: { kind: 'stopped' },
     handlers: {
       stopped: {
-        revealAsked: revealUnarmed,
-        revealFocusAsked() {
-          setVisible(true);
-          // A stopped auto-hide holds no page, so the page is reached here.
-          focusBar(getPage);
-        },
         started(_state, _event, { emitState, update }) {
           const page = getPage();
           const listeners = new AbortController();
           const { signal } = listeners;
-          const run: AutoHideRun = {
-            page,
-            stopListening: () => {
-              listeners.abort();
-            },
-          };
           // Started before any listener is added, so a stop releases those added before one threw.
-          emitState({ kind: 'unarmed', run, contentShown: false });
+          emitState({ kind: 'unarmed', listeners, contentShown: false });
           const unlisten = productState.store.listen(() => {
             if (productState.store.get().status === 'error') {
               update({ kind: 'contentChanged', shown: false });
@@ -255,7 +247,7 @@ export function createTopbarAutoHide({
           page.document.addEventListener(
             'focusin',
             () => {
-              update({ kind: 'focusChanged', run: null });
+              update({ kind: 'focusChanged', listeners });
             },
             { signal },
           );
@@ -264,15 +256,17 @@ export function createTopbarAutoHide({
             () => {
               // activeElement only settles after focusout, so check on the next tick.
               timers.setTimeout(() => {
-                update({ kind: 'focusChanged', run });
+                update({ kind: 'focusChanged', listeners });
               }, 0);
             },
             { signal },
           );
           page.document.addEventListener(
             'keydown',
-            event => {
-              update({ kind: 'keyPressed', event });
+            press => {
+              if (isRevealShortcut(press)) {
+                update({ kind: 'shortcutPressed', press });
+              }
             },
             { signal },
           );
@@ -282,7 +276,7 @@ export function createTopbarAutoHide({
             'blur',
             () => {
               timers.setTimeout(() => {
-                update({ kind: 'windowBlurred', run });
+                update({ kind: 'windowBlurred', listeners });
               }, 0);
             },
             { signal },
@@ -294,6 +288,7 @@ export function createTopbarAutoHide({
             }),
           );
         },
+        revealFocusAsked: focusBar,
       },
       unarmed: {
         stopped: stopAutoHide,
@@ -301,22 +296,12 @@ export function createTopbarAutoHide({
           if (!canArm()) {
             return;
           }
-          scheduleFold(state.run, state.contentShown, transition);
-          topbarState.setAutoHide(true);
+          scheduleFold(state.listeners, state.contentShown, transition);
         },
         contentChanged(state, { shown }, { emitState }) {
           emitState({ ...state, contentShown: shown });
         },
-        revealAsked: revealUnarmed,
-        revealFocusAsked({ run }) {
-          setVisible(true);
-          focusBar(() => run.page);
-        },
-        viewportChanged() {
-          if (isPhone()) {
-            setVisible(true);
-          }
-        },
+        revealFocusAsked: focusBar,
       },
       up: {
         stopped: stopAutoHide,
@@ -326,7 +311,7 @@ export function createTopbarAutoHide({
         revealFocusAsked: revealAndFocusBar,
         focusChanged: followFocus,
         windowBlurred: foldForApp,
-        keyPressed: pressKey,
+        shortcutPressed: pressShortcut,
         viewportChanged: followViewport,
       },
       folding: {
@@ -338,34 +323,49 @@ export function createTopbarAutoHide({
         revealFocusAsked: revealAndFocusBar,
         focusChanged: followFocus,
         windowBlurred: foldForApp,
-        keyPressed: pressKey,
+        shortcutPressed: pressShortcut,
         viewportChanged: followViewport,
         hideDue(state, { folding }, transition) {
           // A timer from a wait that was left or restarted folds nothing.
           if (folding !== state) {
             return;
           }
-          if (isBusy(state.run.page)) {
-            scheduleFold(state.run, true, transition);
+          if (isBusy()) {
+            scheduleFold(state.listeners, true, transition);
             return;
           }
-          fold(state.run, transition);
+          transition.emitState({ kind: 'folded', listeners: state.listeners });
         },
       },
       folded: {
         stopped: stopAutoHide,
-        contentChanged({ run }, { shown }, transition) {
+        contentChanged({ listeners }, { shown }, { emitState }) {
           if (shown) {
             return;
           }
-          showBar(run, false, transition);
+          emitState({ kind: 'up', listeners, contentShown: false });
         },
         revealAsked: revealBar,
         revealFocusAsked: revealAndFocusBar,
         focusChanged: followFocus,
-        keyPressed: pressKey,
+        shortcutPressed: pressShortcut,
         viewportChanged: followViewport,
       },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'barFocused':
+          if (bar !== undefined) {
+            getPage().focusFirst(bar);
+          }
+          return;
+        case 'focusReleased':
+          releaseFocusToApp();
+          return;
+        case 'shortcutTaken':
+          effect.press.preventDefault();
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -374,6 +374,12 @@ export function createTopbarAutoHide({
         message: '[dot.li] A topbar auto-hide transition threw',
       });
     },
+  });
+  // The bar's look follows the state alone. The hidden bar keeps its tab stops, since tabbing into it is what reveals
+  // it for keyboard users.
+  autoHide.state.listen(state => {
+    topbarState.setVisible(state.kind !== 'folded');
+    topbarState.setAutoHide(state.kind === 'up' || state.kind === 'folding' || state.kind === 'folded');
   });
 
   return {
@@ -395,7 +401,7 @@ export function createTopbarAutoHide({
     reveal,
     /** Shows the bar and focuses its first control. */
     revealAndFocus,
-    /** Registers the bar the auto-hide folds. Returns its release. Throws only as `watchPhone` does. */
+    /** Registers the bar the auto-hide folds. Returns its release. */
     registerBar,
     /** Registers the reveal button, which holds the bar open while it has focus. Returns its release. */
     registerRevealButton,
@@ -432,35 +438,20 @@ export function createTopbarAutoHide({
 
   function registerBar(element: HTMLElement): () => void {
     bar = element;
-    syncFrameLayout();
-    const unwatch = watchPhone(syncFrameLayout);
-    function release(): void {
-      unwatch();
+    return () => {
       if (bar === element) {
         bar = undefined;
       }
-    }
-    return release;
+    };
   }
 
   function registerRevealButton(element: HTMLElement): () => void {
     revealButton = element;
-    function release(): void {
+    return () => {
       if (revealButton === element) {
         revealButton = undefined;
       }
-    }
-    return release;
-  }
-
-  /** Bars that never fold keep the frame clear of them, rather than sitting over it for good. */
-  function syncFrameLayout(): void {
-    layout.setTopbarLayout({ offset: isPhone() || isMobile() });
-  }
-
-  function setVisible(next: boolean): void {
-    // The hidden bar keeps its tab stops, since tabbing into it is what reveals it for keyboard users.
-    topbarState.setVisible(next);
+    };
   }
 
   function canArm(): boolean {
@@ -471,46 +462,41 @@ export function createTopbarAutoHide({
     return contentShown && !isMobile() && !isPhone();
   }
 
-  function isTopbarFocused(page: TopbarAutoHidePage): boolean {
-    const active = page.activeElement();
+  function isTopbarFocused(): boolean {
+    const active = getPage().activeElement();
     if (active === null) {
       return false;
     }
     return bar?.contains(active) === true || active === revealButton || topbarSurfaces.contains(active);
   }
 
-  function isBusy(page: TopbarAutoHidePage): boolean {
-    return isTopbarFocused(page) || topbarSurfaces.isAnyOpen();
+  function isBusy(): boolean {
+    return isTopbarFocused() || topbarSurfaces.isAnyOpen();
   }
 
-  /** Takes the page as a getter so it is read only when there is a bar to focus. */
-  function focusBar(page: () => TopbarAutoHidePage): void {
-    if (bar !== undefined) {
-      page().focusFirst(bar);
+  function releaseFocusToApp(): void {
+    if (!isTopbarFocused()) {
+      return;
     }
-  }
-
-  /** So focus never parks on an offscreen control. */
-  function releaseFocusToApp(page: TopbarAutoHidePage): void {
     const frame = layout.getFrame();
     if (frame !== null) {
       frame.focus();
       return;
     }
-    page.activeElement()?.blur();
+    getPage().activeElement()?.blur();
   }
 
   /** Starts a new wait for the fold when the bar can fold, and keeps it up with no fold pending otherwise. */
   function scheduleFold(
-    run: AutoHideRun,
+    listeners: AbortController,
     contentShown: boolean,
     { emitState, update }: Transition<AutoHideMachine>,
   ): void {
     if (!canFold(contentShown)) {
-      emitState({ kind: 'up', run, contentShown });
+      emitState({ kind: 'up', listeners, contentShown });
       return;
     }
-    const folding: FoldingState = { kind: 'folding', run };
+    const folding: FoldingState = { kind: 'folding', listeners };
     emitState(folding);
     timers.setTimeout(() => {
       update({ kind: 'hideDue', folding });
@@ -522,21 +508,11 @@ export function createTopbarAutoHide({
     switch (state.kind) {
       case 'up':
       case 'folding':
-        scheduleFold(state.run, isContentShown(state), transition);
+        scheduleFold(state.listeners, isContentShown(state), transition);
         return;
       case 'folded':
         return;
     }
-  }
-
-  function fold(run: AutoHideRun, { emitState }: Transition<AutoHideMachine>): void {
-    emitState({ kind: 'folded', run });
-    setVisible(false);
-  }
-
-  function showBar(run: AutoHideRun, contentShown: boolean, { emitState }: Transition<AutoHideMachine>): void {
-    emitState({ kind: 'up', run, contentShown });
-    setVisible(true);
   }
 }
 
