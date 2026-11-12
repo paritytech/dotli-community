@@ -46,22 +46,16 @@ export function createPortServer({ lifecycle, status, handleTelemetry, openSpan,
     if (port === undefined) {
       return;
     }
-    // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
-    // A worker has no page load of its own.
     const transport = createTransport({
       schema: protocolSchema,
+      // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
       provider: createPortProvider({ port, closeOnDispose: false }),
       handshake: 'respond',
+      // A worker has no page load of its own.
       hello: { resolutionId: null },
       onIssue: wire.onIssue,
     });
     const session: PortSession = { port, transport };
-    serve(session);
-    lifecycle.admit(session);
-  };
-
-  function serve(session: PortSession): void {
-    const { transport } = session;
     transport.handleSubscription(frame.status, (start, context, sink) => {
       const removeSink = lifecycle.addStatusSink(session, sink);
       // Ended at once if the worker already failed, and told of a later failure the moment it happens.
@@ -136,5 +130,6 @@ export function createPortServer({ lifecycle, status, handleTelemetry, openSpan,
         handler: (payload, context) => getScope().send(payload, context),
       }),
     });
-  }
+    lifecycle.admit(session);
+  };
 }

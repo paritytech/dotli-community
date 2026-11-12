@@ -43,13 +43,13 @@ const report = createReporter({ flow: 'protocol' });
 type Built = { service: LightClientService; engine: ProtocolEngine };
 
 /**
- * `unbuilt` is a known network whose service threw on start. `failed` keeps the engine of a pre-sync that failed or a
+ * `unserved` is an unknown network, or a known one whose service threw on start, with what every call is refused with.
+ * `failed` keeps the engine of a pre-sync that failed or a
  * light client that died, so a late sync marks nothing ready.
  */
 type WorkerState =
   | { kind: 'starting' }
-  | { kind: 'unknownNetwork'; message: string }
-  | { kind: 'unbuilt' }
+  | { kind: 'unserved'; reason: string }
   | ({ kind: 'syncing'; startedAt: number } & Built)
   | ({ kind: 'serving' } & Built)
   | ({ kind: 'failed' } & Built)
@@ -70,9 +70,7 @@ type WorkerEffect =
   | { kind: 'presyncFailed'; error: unknown }
   | { kind: 'lightClientDied'; message: string }
   | { kind: 'pauseApplied'; service: LightClientService; paused: boolean }
-  | { kind: 'connectsUnheard' }
-  | { kind: 'lightClientUnheard' }
-  | { kind: 'lifecycleDisposed' }
+  | { kind: 'released' }
   | { kind: 'serviceDisposed'; service: LightClientService }
   | { kind: 'engineDisposed'; engine: ProtocolEngine };
 
@@ -194,8 +192,7 @@ export function startProtocolWorker({
       case 'serving':
         emitState({ kind: 'failed', service: state.service, engine: state.engine });
         break;
-      case 'unknownNetwork':
-      case 'unbuilt':
+      case 'unserved':
       case 'failed':
         break;
     }
@@ -209,16 +206,14 @@ export function startProtocolWorker({
   ) => {
     emitSideEffect({ kind: 'pauseApplied', service, paused });
   };
-  /** One effect per call-out, so a release that throws still lets the rest go. */
+  /** The chains go in effects of their own, so a release that throws still lets the engine go. */
   const disposeWorker: HandlerOf<WorkerMachine, LiveKind, 'disposed'> = (
     state,
     _event,
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'disposed' });
-    emitSideEffect({ kind: 'connectsUnheard' });
-    emitSideEffect({ kind: 'lightClientUnheard' });
-    emitSideEffect({ kind: 'lifecycleDisposed' });
+    emitSideEffect({ kind: 'released' });
     switch (state.kind) {
       case 'syncing':
       case 'serving':
@@ -227,8 +222,7 @@ export function startProtocolWorker({
         emitSideEffect({ kind: 'serviceDisposed', service: state.service });
         emitSideEffect({ kind: 'engineDisposed', engine: state.engine });
         break;
-      case 'unknownNetwork':
-      case 'unbuilt':
+      case 'unserved':
         break;
     }
   };
@@ -239,7 +233,7 @@ export function startProtocolWorker({
         started(_state, _event, { emitState, emitSideEffect, update }) {
           if (!network.success) {
             // Every tab hears this as the reason the worker never became ready.
-            emitState({ kind: 'unknownNetwork', message: network.value });
+            emitState({ kind: 'unserved', reason: network.value });
             emitSideEffect({ kind: 'networkUnknown', message: network.value });
             return;
           }
@@ -249,7 +243,7 @@ export function startProtocolWorker({
           try {
             service = startService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
           } catch (error) {
-            emitState({ kind: 'unbuilt' });
+            emitState({ kind: 'unserved', reason: PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED });
             emitSideEffect({ kind: 'presyncFailed', error });
             return;
           }
@@ -269,11 +263,7 @@ export function startProtocolWorker({
           );
         },
       },
-      unknownNetwork: {
-        lightClientDied: failLightClient,
-        disposed: disposeWorker,
-      },
-      unbuilt: {
+      unserved: {
         lightClientDied: failLightClient,
         disposed: disposeWorker,
       },
@@ -335,13 +325,9 @@ export function startProtocolWorker({
             effect.service.pool.resume();
           }
           break;
-        case 'connectsUnheard':
+        case 'released':
           scope.removeEventListener('connect', handleConnect);
-          break;
-        case 'lightClientUnheard':
           stopHearingLightClient();
-          break;
-        case 'lifecycleDisposed':
           lifecycle.dispose();
           break;
         case 'serviceDisposed':
@@ -383,10 +369,9 @@ export function startProtocolWorker({
       case 'serving':
       case 'failed':
         return state.engine;
-      case 'unknownNetwork':
-        throw new Error(state.message);
+      case 'unserved':
+        throw new Error(state.reason);
       case 'starting':
-      case 'unbuilt':
       case 'disposed':
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
     }
