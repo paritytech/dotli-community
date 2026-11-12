@@ -53,6 +53,9 @@ export type WorkerPort = {
   removeEventListener(type: 'close', listener: () => void): void;
 } & PortLike;
 
+/** The worker's ports and close, as its factory builds them. */
+export type WorkerLifecycle = ReturnType<typeof createWorkerLifecycle>;
+
 /** A tab's `frame.beat` subscription. */
 type BeatSink = Sink<undefined, SubscriptionEnd<undefined>>;
 
@@ -67,8 +70,8 @@ export type PortSession = Readonly<{
 type ServedPort = {
   kind: 'served';
   transport: ProtocolTransport;
-  /** Stops hearing the port close. */
-  unwatch: () => void;
+  /** Stops hearing the tab speak and its end of the port close. */
+  stopListening: () => void;
   /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
   /** Beats since the port last sent anything. */
@@ -89,8 +92,6 @@ type ServedPort = {
  */
 type ReleasedPort = {
   kind: 'released';
-  unwatch: () => void;
-  /** Stops hearing the tab speak. */
   stopListening: () => void;
   /** The tab spoke since the release, so the next beat closes the port. */
   spoke: boolean;
@@ -131,7 +132,7 @@ type LiveKind = Exclude<LifecycleState, { kind: 'closed' | 'disposed' }>['kind']
 type PortEvent = { port: WorkerPort };
 
 type LifecycleEvent =
-  | ({ kind: 'portConnected'; transport: ProtocolTransport; unwatch: () => void } & PortEvent)
+  | ({ kind: 'portConnected'; transport: ProtocolTransport } & PortEvent)
   | ({ kind: 'heard' } & PortEvent)
   | ({ kind: 'spoke' } & PortEvent)
   | ({ kind: 'portClosed' } & PortEvent)
@@ -151,7 +152,7 @@ type LifecycleEvent =
   | { kind: 'disposed' };
 
 /**
- * `statusEnded`, `transportDisposed`, `scopeClosed`, `listeningStopped`, `unwatched`, `portShut`, `beatSent`,
+ * `statusEnded`, `transportDisposed`, `scopeClosed`, `listeningStopped`, `portShut`, `beatSent`,
  * `heartbeatStopped`, `timerCleared` and `workerClosed` each make one call-out, so one that throws skips none of the
  * others.
  */
@@ -169,7 +170,6 @@ type LifecycleEffect =
   | { kind: 'transportDisposed'; transport: ProtocolTransport; reason: Error }
   | { kind: 'scopeClosed'; scope: EngineScope }
   | { kind: 'listeningStopped'; stopListening: () => void }
-  | { kind: 'unwatched'; unwatch: () => void }
   | { kind: 'portShut'; port: WorkerPort }
   | { kind: 'beatSent'; sink: BeatSink }
   | { kind: 'heartbeatStopped' }
@@ -222,27 +222,42 @@ export function createWorkerLifecycle({
   initialFailure,
   onEveryTabPausedChange,
 }: Params) {
-  const connectPort: HandlerOf<LifecycleMachine, Exclude<LiveKind, 'awaitingTab'>, 'portConnected'> = (
+  /** Serves the port, not yet heard, and hears its tab speak and its end close until it is shut. */
+  const connectPort: HandlerOf<LifecycleMachine, LiveKind, 'portConnected'> = (
     state,
-    event,
-    { emitState, emitSideEffect, update },
+    { port, transport },
+    transition,
   ) => {
-    const ports = servePort(state.ports, event);
+    const ports = new Map(state.ports).set(port, {
+      kind: 'served',
+      transport,
+      stopListening: listenToPort(port, transition.update),
+      scope: null,
+      missed: 0,
+      beats: new Set(),
+      statuses: new Set(),
+      paused: false,
+      heard: false,
+    });
     switch (state.kind) {
       case 'syncing':
       case 'ready':
-        emitState({ ...state, ports, reached: true });
-        emitSideEffect({ kind: 'portConnected', engine: state.kind });
+        transition.emitState({ ...state, ports, reached: true });
+        transition.emitSideEffect({ kind: 'portConnected', engine: state.kind });
+        break;
+      case 'awaitingTab':
+        scheduleClose({ ...state, ports }, transition);
+        transition.emitSideEffect({ kind: 'portConnected', engine: 'failed' });
         break;
       case 'failedAtStart':
       case 'closeScheduled':
       case 'flushing':
       case 'awaitingHeard':
-        emitState({ ...state, ports });
-        emitSideEffect({ kind: 'portConnected', engine: 'failed' });
+        transition.emitState({ ...state, ports });
+        transition.emitSideEffect({ kind: 'portConnected', engine: 'failed' });
         break;
     }
-    update({ kind: 'portsChanged' });
+    transition.update({ kind: 'portsChanged' });
   };
   /** Latches the first failure. A later failure is only its symptom, and finds no handler. */
   const failWorker: HandlerOf<LifecycleMachine, 'syncing' | 'ready', 'failed'> = (
@@ -298,7 +313,7 @@ export function createWorkerLifecycle({
             ports.set(port, { ...held, missed });
             break;
           }
-          ports.set(port, releasePort(port, held, update));
+          ports.set(port, { kind: 'released', stopListening: held.stopListening, spoke: false });
           releasing.push(held);
           break;
         }
@@ -381,7 +396,7 @@ export function createWorkerLifecycle({
           emitState({ kind: 'closed' });
           emitSideEffect({ kind: 'portClosed' });
           update({ kind: 'portsChanged' });
-          emitSideEffect({ kind: 'unwatched', unwatch: served.unwatch });
+          emitSideEffect({ kind: 'listeningStopped', stopListening: served.stopListening });
           emitSideEffect({
             kind: 'transportDisposed',
             transport: served.transport,
@@ -492,11 +507,7 @@ export function createWorkerLifecycle({
         disposed: disposeLifecycle,
       },
       awaitingTab: {
-        portConnected(state, event, transition) {
-          transition.emitSideEffect({ kind: 'portConnected', engine: 'failed' });
-          transition.update({ kind: 'portsChanged' });
-          scheduleClose({ ...state, ports: servePort(state.ports, event) }, transition);
-        },
+        portConnected: connectPort,
         heard: handlePort,
         spoke: handlePort,
         portClosed: handlePort,
@@ -634,9 +645,6 @@ export function createWorkerLifecycle({
         case 'listeningStopped':
           effect.stopListening();
           break;
-        case 'unwatched':
-          effect.unwatch();
-          break;
         case 'portShut':
           effect.port.close();
           break;
@@ -676,19 +684,15 @@ export function createWorkerLifecycle({
     /** Whether the worker is marked ready and has not failed, closed or been disposed since. */
     isReady: (): boolean => machine.state.get().kind === 'ready',
     /**
-     * Serves a newly connected port, whose close `unwatch` stops hearing, and schedules the close of a dead worker
-     * that waited for its first tab. Never throws.
+     * Serves a newly connected port until its tab goes silent or its end closes, and schedules the close of a dead
+     * worker that waited for its first tab. Never throws.
      */
-    admit({ port, transport }: PortSession, unwatch: () => void): void {
-      machine.update({ kind: 'portConnected', port, transport, unwatch });
+    admit({ port, transport }: PortSession): void {
+      machine.update({ kind: 'portConnected', port, transport });
     },
     /** The port subscribed to its status, so a dead worker no longer waits for it to hear why. Never throws. */
     hear({ port }: PortSession): void {
       machine.update({ kind: 'heard', port });
-    },
-    /** Notes that the port's tab sent something, so the heartbeat counts its missed beats from zero. Never throws. */
-    markAlive({ port }: PortSession): void {
-      machine.update({ kind: 'spoke', port });
     },
     /**
      * Notes whether the port's tab asks for a pause, and tells `onEveryTabPausedChange` when that changes whether every
@@ -726,13 +730,6 @@ export function createWorkerLifecycle({
       return () => {
         machine.update({ kind: 'beatSinkRemoved', port, sink });
       };
-    },
-    /**
-     * Lets go of a port whose tab's end closed: forgets it while it is served, or closes it once released. Never
-     * throws.
-     */
-    closePort({ port }: PortSession): void {
-      machine.update({ kind: 'portClosed', port });
     },
     /** Marks the worker ready and tells every port. A failed worker stays failed. Never throws. */
     markReady(): void {
@@ -794,42 +791,25 @@ export function createWorkerLifecycle({
   }
 }
 
-/** `ports` with the port of `event` served, not yet heard. */
-function servePort(
-  ports: ReadonlyMap<WorkerPort, ServedPort | ReleasedPort>,
-  { port, transport, unwatch }: Extract<LifecycleEvent, { kind: 'portConnected' }>,
-): ReadonlyMap<WorkerPort, ServedPort | ReleasedPort> {
-  return new Map(ports).set(port, {
-    kind: 'served',
-    transport,
-    unwatch,
-    scope: null,
-    missed: 0,
-    beats: new Set(),
-    statuses: new Set(),
-    paused: false,
-    heard: false,
-  });
-}
-
-/** The served port released, listening for its tab to speak through `update`. */
-function releasePort(
-  port: WorkerPort,
-  { unwatch }: ServedPort,
-  update: Transition<LifecycleMachine>['update'],
-): ReleasedPort {
+/**
+ * Hears any message on the port as its tab speaking, and the close of the tab's end, as when its page left for good,
+ * crashed or was evicted, which no message tells. Engines that never fire the close fall back to the heartbeat release.
+ * Returns the stop of both.
+ */
+function listenToPort(port: WorkerPort, update: Transition<LifecycleMachine>['update']): () => void {
   port.addEventListener('message', markSpoke);
-  return {
-    kind: 'released',
-    unwatch,
-    stopListening: () => {
-      port.removeEventListener('message', markSpoke);
-    },
-    spoke: false,
+  port.addEventListener('close', markClosed);
+  return () => {
+    port.removeEventListener('message', markSpoke);
+    port.removeEventListener('close', markClosed);
   };
 
   function markSpoke(): void {
     update({ kind: 'spoke', port });
+  }
+
+  function markClosed(): void {
+    update({ kind: 'portClosed', port });
   }
 }
 
@@ -860,10 +840,7 @@ function endServing(served: ServedPort, reason: Error, emitSideEffect: EmitSideE
 
 /** Stops hearing the port and closes it. */
 function shutPort(port: WorkerPort, held: ServedPort | ReleasedPort, emitSideEffect: EmitSideEffect): void {
-  if (held.kind === 'released') {
-    emitSideEffect({ kind: 'listeningStopped', stopListening: held.stopListening });
-  }
-  emitSideEffect({ kind: 'unwatched', unwatch: held.unwatch });
+  emitSideEffect({ kind: 'listeningStopped', stopListening: held.stopListening });
   emitSideEffect({ kind: 'portShut', port });
   emitSideEffect({ kind: 'releasedPortClosed' });
 }
