@@ -142,11 +142,9 @@ type Watch =
   | {
       kind: 'refused';
       chain: WatchChain;
-      /** The handle of the timer that tries the follow again. */
-      retry: unknown;
+      /** Aborted to stop the wait to try the follow again. */
+      retry: AbortController;
     };
-
-type RefusedWatch = Extract<Watch, { kind: 'refused' }>;
 
 /** Why a chain closed: its halt, or `null` for a close on release or unload. */
 type Halt = { error: unknown } | null;
@@ -168,8 +166,8 @@ type Entry = {
   | { kind: 'unheld' }
   | {
       kind: 'expiring';
-      /** The handle of the timer that closes the chain. */
-      destroyTimer: unknown;
+      /** Aborted to stop the countdown to the chain's close. */
+      countdown: AbortController;
     }
   | { kind: 'closed'; halt: Halt }
 );
@@ -189,7 +187,7 @@ type PoolEvent =
   | { kind: 'leased'; key: string; lanes: ChainLanes; holder: string }
   | { kind: 'released'; key: string; lanes: ChainLanes; holder: string }
   | { kind: 'askEnded'; key: string }
-  | { kind: 'destroyDue'; key: string; destroyTimer: unknown }
+  | { kind: 'destroyDue'; key: string }
   | { kind: 'closeDue'; key: string }
   | { kind: 'laneStatus'; key: string; lanes: ChainLanes; status: ConnectionStatus }
   | { kind: 'laneHalted'; key: string; lanes: ChainLanes; error: unknown }
@@ -198,7 +196,7 @@ type PoolEvent =
   | { kind: 'followChanged'; key: string; follow: WatchFollow; following: boolean }
   | { kind: 'followRefused'; key: string; follow: WatchFollow }
   | { kind: 'bestBlock'; key: string; follow: WatchFollow; blockNumber: number }
-  | { kind: 'retryDue'; key: string; refused: RefusedWatch }
+  | { kind: 'retryDue'; key: string }
   | { kind: 'followFailed'; key: string; lanes: ChainLanes; error: unknown }
   | { kind: 'modeAsked'; mode: PoolKind }
   | { kind: 'watchersChanged' }
@@ -215,7 +213,11 @@ type PoolEffect =
   | { kind: 'buildFailed' | 'followFailed'; key: string; error: unknown }
   | { kind: 'laneFailed'; key: string; action: 'pause' | 'resume'; error: unknown }
   | { kind: 'closeFailed'; key: string; error: unknown; onHalt: boolean }
-  | { kind: 'leaseEndFailed'; error: unknown };
+  | { kind: 'leaseEndFailed'; error: unknown }
+  | { kind: 'startTimer'; timer: AbortController; ms: number; event: PoolEvent }
+  | { kind: 'stopTimer'; timer: AbortController }
+  | { kind: 'endWatch'; watch: Watch }
+  | { kind: 'close'; key: string; lanes: ChainLanes; watch: Watch | null };
 
 type PoolMachine = MachineTypes<PoolState, PoolEvent, PoolEffect>;
 type EntryMachine = MachineTypes<Entry, PoolEvent, PoolEffect>;
@@ -291,7 +293,7 @@ export function createChainPool({
     emitSideEffect({ kind: 'leased', key, holder });
     update({ kind: 'syncDue', key });
     if (entry.kind === 'expiring') {
-      timers.clearTimeout(entry.destroyTimer);
+      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
     }
   };
 
@@ -305,9 +307,8 @@ export function createChainPool({
     find({ watch }, event) {
       switch (event.kind) {
         case 'syncDue':
-          return watch;
         case 'retryDue':
-          return watch === event.refused ? watch : null;
+          return watch;
         case 'followChanged':
         case 'followRefused':
         case 'bestBlock':
@@ -335,14 +336,15 @@ export function createChainPool({
           if (watchers.size === 0) {
             emitState({ kind: 'off', chain: watch.chain });
             emitSideEffect({ kind: 'unfollowed', key });
-            watch.follow.disconnect();
+            emitSideEffect({ kind: 'endWatch', watch });
             return;
           }
+          // Started here, since a start that throws leaves the watch off.
           try {
             watch.follow.start();
           } catch (error) {
             emitState({ kind: 'off', chain: watch.chain });
-            watch.follow.disconnect();
+            emitSideEffect({ kind: 'endWatch', watch });
             update({ kind: 'followFailed', key, lanes: watch.chain.lanes, error });
           }
         },
@@ -353,10 +355,10 @@ export function createChainPool({
           emitState({ ...watch, following });
           emitSideEffect({ kind: 'activity', key });
         },
-        followRefused({ chain, follow }, { key }, transition) {
-          chain.followGate.noteHalt();
-          waitToRetry(chain, key, transition);
-          follow.disconnect();
+        followRefused(watch, { key }, transition) {
+          watch.chain.followGate.noteHalt();
+          waitToRetry(watch.chain, key, transition);
+          transition.emitSideEffect({ kind: 'endWatch', watch });
         },
         bestBlock(_watch, { key, blockNumber }, { emitSideEffect }) {
           emitSideEffect({ kind: 'bestBlock', key, blockNumber });
@@ -364,13 +366,13 @@ export function createChainPool({
       },
       refused: {
         // A watcher still here changes nothing, since the backoff is pending.
-        syncDue({ chain, retry }, { key }, { emitState, emitSideEffect }) {
+        syncDue(watch, { key }, { emitState, emitSideEffect }) {
           if (watchers.size > 0) {
             return;
           }
-          emitState({ kind: 'off', chain });
+          emitState({ kind: 'off', chain: watch.chain });
           emitSideEffect({ kind: 'unfollowed', key });
-          timers.clearTimeout(retry);
+          emitSideEffect({ kind: 'endWatch', watch });
         },
         retryDue({ chain }, { key }, transition) {
           // The timer and the gate's clock may disagree, so the follow waits again as the gate says.
@@ -404,11 +406,9 @@ export function createChainPool({
         case 'laneFailed':
         case 'followFailed':
           return entry.chain.lanes === event.lanes ? entry : null;
-        // The handle outlives a status change, which replaces the entry.
-        case 'destroyDue':
-          return entry.kind === 'expiring' && entry.destroyTimer === event.destroyTimer ? entry : null;
         // An ask that ends after a rebuild still counts the rebuilt chain down.
         case 'askEnded':
+        case 'destroyDue':
         case 'chainAsked':
         case 'closeDue':
         case 'syncDue':
@@ -436,7 +436,7 @@ export function createChainPool({
           const { chain, status } = entry;
           const unheld: UnheldEntry = { kind: 'unheld', chain, status };
           transition.emitState(unheld);
-          endWatch(entry.watch);
+          transition.emitSideEffect({ kind: 'endWatch', watch: entry.watch });
           idle(key, unheld, transition);
         },
         laneStatus: storeStatus,
@@ -462,10 +462,10 @@ export function createChainPool({
         followFailed: reportFollowFailure,
       },
       expiring: {
-        chainAsked(entry, _event, { emitState }) {
+        chainAsked(entry, _event, { emitState, emitSideEffect }) {
           const { chain, status } = entry;
           emitState({ kind: 'unheld', chain, status });
-          timers.clearTimeout(entry.destroyTimer);
+          emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
         },
         leased: holdEntry,
         destroyDue(entry, { key }, transition) {
@@ -792,6 +792,43 @@ export function createChainPool({
           message: `${POOL_TAG} ending a healing lease failed:`,
         });
         return;
+      case 'startTimer': {
+        const handle = timers.setTimeout(() => {
+          machine.update(effect.event);
+        }, effect.ms);
+        effect.timer.signal.addEventListener('abort', () => {
+          timers.clearTimeout(handle);
+        });
+        return;
+      }
+      case 'stopTimer':
+        effect.timer.abort();
+        return;
+      case 'endWatch':
+        endWatch(effect.watch);
+        return;
+      case 'close': {
+        const { key, lanes, watch } = effect;
+        // The entry is already closed, so a failure must not keep the rest of the chain open.
+        try {
+          runEvery(
+            [
+              () => {
+                if (watch !== null) {
+                  endWatch(watch);
+                }
+              },
+              () => {
+                lanes.disconnectAll();
+              },
+            ],
+            `closing ${key} failed`,
+          );
+        } catch (error) {
+          runEffect({ kind: 'closeFailed', key, error, onHalt: false });
+        }
+        return;
+      }
       case 'closeFailed': {
         const cause = effect.onHalt ? 'on a halt' : 'on release or unload';
         protocolReport.defect(effect.error, {
@@ -838,33 +875,16 @@ export function createChainPool({
     }
     emitSideEffect({ kind: 'closed', key, halt });
     if (entry.kind === 'expiring') {
-      timers.clearTimeout(entry.destroyTimer);
+      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
     }
     const watch = entry.kind === 'held' ? entry.watch : null;
-    if (halt !== null) {
-      // This path disconnects no follow and no lane, so only a refused watch has a timer to clear.
-      if (watch?.kind === 'refused') {
-        endWatch(watch);
-      }
+    if (halt === null) {
+      emitSideEffect({ kind: 'close', key, lanes: chain.lanes, watch });
       return;
     }
-    // The entry is already closed, so a failure must not keep the rest of the chain open.
-    try {
-      runEvery(
-        [
-          () => {
-            if (watch !== null) {
-              endWatch(watch);
-            }
-          },
-          () => {
-            chain.lanes.disconnectAll();
-          },
-        ],
-        `closing ${key} failed`,
-      );
-    } catch (error) {
-      emitSideEffect({ kind: 'closeFailed', key, error, onHalt: false });
+    // This path disconnects no follow and no lane, so only a refused watch has a timer to stop.
+    if (watch?.kind === 'refused') {
+      emitSideEffect({ kind: 'endWatch', watch });
     }
   }
 
@@ -878,10 +898,14 @@ export function createChainPool({
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
-    const destroyTimer: unknown = timers.setTimeout(() => {
-      transition.update({ kind: 'destroyDue', key, destroyTimer });
-    }, destroyDelay);
-    transition.emitState({ ...entry, kind: 'expiring', destroyTimer });
+    const countdown = new AbortController();
+    transition.emitState({ ...entry, kind: 'expiring', countdown });
+    transition.emitSideEffect({
+      kind: 'startTimer',
+      timer: countdown,
+      ms: destroyDelay,
+      event: { kind: 'destroyDue', key },
+    });
   }
 
   /** Stops the watchers' follow, or its wait to follow again. */
@@ -893,21 +917,21 @@ export function createChainPool({
         watch.follow.disconnect();
         return;
       case 'refused':
-        timers.clearTimeout(watch.retry);
+        watch.retry.abort();
         return;
     }
   }
 
   /** Holds the watchers' follow as refused until its gate's wait ends. */
-  function waitToRetry(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
-    const refused: RefusedWatch = {
-      kind: 'refused',
-      chain,
-      retry: timers.setTimeout(() => {
-        update({ kind: 'retryDue', key, refused });
-      }, chain.followGate.waitMs()),
-    };
-    emitState(refused);
+  function waitToRetry(chain: WatchChain, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
+    const retry = new AbortController();
+    emitState({ kind: 'refused', chain, retry });
+    emitSideEffect({
+      kind: 'startTimer',
+      timer: retry,
+      ms: chain.followGate.waitMs(),
+      event: { kind: 'retryDue', key },
+    });
   }
 
   /**
