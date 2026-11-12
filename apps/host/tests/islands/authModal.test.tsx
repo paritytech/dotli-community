@@ -10,7 +10,7 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { byId, byTestId } from '@dotli/ui/testing';
-import type { AuthCommands } from '../../src/runtime/createAuthCommands.js';
+import type { AuthCommands } from '../../src/runtime/createAuthController.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
 import { authControl } from '../../src/runtime/createAuthController.js';
 import { authState } from '../../src/runtime/state/authState.js';

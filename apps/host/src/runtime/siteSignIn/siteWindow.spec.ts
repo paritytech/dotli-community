@@ -11,7 +11,7 @@ import { createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { AuthCommands } from '../createAuthCommands.js';
+import type { AuthCommands } from '../createAuthController.js';
 import { createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
 import { createWindowFlow, type WindowFlow } from '../sessionHandoff/createWindowFlow.js';
 import type { DotliAuthState } from '../session/types.js';

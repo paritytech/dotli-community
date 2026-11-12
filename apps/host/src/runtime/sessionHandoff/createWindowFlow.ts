@@ -29,7 +29,7 @@ import type {
   WindowFailure,
   WindowIntents,
 } from '../../state/sessionWindowState.js';
-import type { AuthCommands } from '../createAuthCommands.js';
+import type { AuthCommands } from '../createAuthController.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
 import { getLoginFailureView } from '../getLoginFailureView.js';

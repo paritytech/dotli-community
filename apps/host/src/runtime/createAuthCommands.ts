@@ -5,12 +5,11 @@
 // every call made in its round, and a logout runs its end in the order it was asked for.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createAsyncTaskPool, createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, createStateMachine, type MachineTypes } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { authViews } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { TruapiSessionUiState } from './session/parseUiStateCache.js';
-import type { LogoutOutcome } from './createPageSignOut.js';
 
 /**
  * How a login ended. `paired` once the core reports the account signed in and, for a pairing, the page's copy holds the
@@ -31,26 +30,6 @@ export type CoreLoginParams = LoginParams & {
   signal: AbortSignal;
 };
 
-/** The page's sign-in and sign-out on its core. */
-export type AuthCommands = {
-  /**
-   * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-   * already signed in. Rejects when the core paired but its session could not be stored or read back. A call queued
-   * behind a login that rejects rejects too, with that failure as its cause.
-   */
-  login(params?: LoginParams): Promise<LoginOutcome>;
-  /**
-   * Settles once the sign-out has ended, with whether the phone heard of every session this page held. A failed
-   * sign-out is reported and never rejects.
-   */
-  logout(): Promise<LogoutOutcome>;
-  /**
-   * Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in.
-   * Never throws.
-   */
-  cancelLogin(): void;
-};
-
 type Params = {
   /** The page's auth state, which tells a login of a user already signed in. */
   auth: ReadableAtom<DotliAuthState>;
@@ -64,10 +43,10 @@ type Params = {
 };
 
 /** A call to `login`, which its round's login answers. */
-type LoginWaiter = { resolve: (outcome: LoginOutcome) => void; reject: (error: unknown) => void };
+type LoginWaiter = ReturnType<typeof createDeferred<LoginOutcome>>;
 
 /** The calls of one login, which share how it ended. The first call is the one whose login runs. */
-type LoginRound = { controller: AbortController; waiters: readonly [LoginWaiter, ...LoginWaiter[]] };
+type LoginRound = { id: symbol; controller: AbortController; waiters: readonly [LoginWaiter, ...LoginWaiter[]] };
 
 /**
  * The login rounds whose login has not ended. A round ends when its login ends or when a cancel or logout is asked
@@ -102,17 +81,6 @@ const authReport = createReporter({ flow: 'wallet' });
 /** A login round's transition that threw. Tagged `outcome` (error). */
 const authCommandsTransitionMetric = defineCount<'error'>('auth_commands.transition');
 
-/** Ends the round a click would join, so a login still waiting for its core hears the abort and sends nothing. */
-const endRound: HandlerOf<CommandsMachine, 'open', 'roundEnded'> = (state, { by }, { emitState, emitSideEffect }) => {
-  const ended = state.current === null ? undefined : state.rounds.get(state.current);
-  if (ended !== undefined) {
-    emitState({ ...state, current: null });
-    emitSideEffect({ kind: 'abortLogin', controller: ended.controller });
-  }
-  // A logout queues behind the open login, which only the cancel ends when the core never answers it.
-  emitSideEffect({ kind: by === 'cancel' ? 'cancelPairing' : 'cancelRunningPairing' });
-};
-
 /** Returns the page's login, logout and cancel over one queue. Never throws. */
 export function createAuthCommands({ auth, login, cancelPairing }: Params) {
   const queue = createAsyncTaskPool({ poolSize: 1 });
@@ -121,20 +89,27 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
     handlers: {
       open: {
         loginAsked(state, { reason, waiter }, { emitState, emitSideEffect }) {
-          const { current, rounds } = state;
-          const joined = current === null ? undefined : rounds.get(current);
-          if (current !== null && joined !== undefined) {
+          const joined = getCurrentRound(state);
+          if (joined !== undefined) {
             // A click while a round runs shares its login, so it starts no second pairing.
             const round: LoginRound = { ...joined, waiters: [...joined.waiters, waiter] };
-            emitState({ ...state, rounds: new Map(rounds).set(current, round) });
+            emitState({ ...state, rounds: new Map(state.rounds).set(round.id, round) });
             return;
           }
-          const id = Symbol('login round');
-          const controller = new AbortController();
-          emitState({ ...state, current: id, rounds: new Map(rounds).set(id, { controller, waiters: [waiter] }) });
-          emitSideEffect({ kind: 'queueLogin', id, reason, signal: controller.signal });
+          const round: LoginRound = { id: Symbol('login round'), controller: new AbortController(), waiters: [waiter] };
+          emitState({ ...state, current: round.id, rounds: new Map(state.rounds).set(round.id, round) });
+          emitSideEffect({ kind: 'queueLogin', id: round.id, reason, signal: round.controller.signal });
         },
-        roundEnded: endRound,
+        // Ends the round a click would join, so a login still waiting for its core hears the abort and sends nothing.
+        roundEnded(state, { by }, { emitState, emitSideEffect }) {
+          const ended = getCurrentRound(state);
+          if (ended !== undefined) {
+            emitState({ ...state, current: null });
+            emitSideEffect({ kind: 'abortLogin', controller: ended.controller });
+          }
+          // A logout queues behind the open login, which only the cancel ends when the core never answers it.
+          emitSideEffect({ kind: by === 'cancel' ? 'cancelPairing' : 'cancelRunningPairing' });
+        },
         roundAnswered(state, { id, outcome }, { emitState, emitSideEffect }) {
           const round = state.rounds.get(id);
           if (round === undefined) {
@@ -227,9 +202,9 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
      * behind a login that rejects rejects too, with that failure as its cause.
      */
     login({ reason }: LoginParams = {}): Promise<LoginOutcome> {
-      return new Promise<LoginOutcome>((resolve, reject) => {
-        machine.update({ kind: 'loginAsked', reason, waiter: { resolve, reject } });
-      });
+      const waiter = createDeferred<LoginOutcome>();
+      machine.update({ kind: 'loginAsked', reason, waiter });
+      return waiter.promise;
     },
     /**
      * Ends the login round and cancels a pairing under way, since the core may never answer it, then runs `end` once no
@@ -248,6 +223,11 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
       machine.update({ kind: 'roundEnded', by: 'cancel' });
     },
   };
+}
+
+/** The round a click joins, if one is open. */
+function getCurrentRound({ current, rounds }: CommandsState): LoginRound | undefined {
+  return current === null ? undefined : rounds.get(current);
 }
 
 /** `state` with the round `id` gone, and no round to join when it was the one. */

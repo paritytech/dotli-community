@@ -19,7 +19,8 @@ import {
 } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
-import type { AuthCommands, LoginParams } from './createAuthCommands.js';
+import type { LoginOutcome, LoginParams } from './createAuthCommands.js';
+import type { LogoutOutcome } from './createPageSignOut.js';
 import type { HostBridge } from './bridge.js';
 import type { BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn } from './createInPageSignIn.js';
@@ -71,6 +72,26 @@ const authModalLeaseMetric = defineCount<'error'>('auth.modal_lease');
 
 /** Count. A transition of the sign-in modal's machine threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const authModalTransitionMetric = defineCount<'error'>('auth_modal.transition');
+
+/** The page's sign-in and sign-out on its core. */
+export type AuthCommands = {
+  /**
+   * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
+   * already signed in. Rejects when the core paired but its session could not be stored or read back. A call queued
+   * behind a login that rejects rejects too, with that failure as its cause.
+   */
+  login(params?: LoginParams): Promise<LoginOutcome>;
+  /**
+   * Settles once the sign-out has ended, with whether the phone heard of every session this page held. A failed
+   * sign-out is reported and never rejects.
+   */
+  logout(): Promise<LogoutOutcome>;
+  /**
+   * Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in.
+   * Never throws.
+   */
+  cancelLogin(): void;
+};
 
 /** What the controller reaches in the bridge chunk. */
 type AuthBridge = Pick<HostBridge, 'authCommands' | 'applyWindowResult' | 'rereadSession'> & {

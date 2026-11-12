@@ -16,7 +16,7 @@ import { pageNotifications } from '../pageNotifications.js';
 import { getProductFrameContainer, productFrameView } from '../createProductFrameView.js';
 import { networkMonitorState } from '../state/networkMonitorState.js';
 import { createBridge } from './createBridge.js';
-import type { AuthCommands } from './createAuthCommands.js';
+import type { AuthCommands } from './createAuthController.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
 import { createCoreRuntimeBoot } from './createCoreRuntimeBoot.js';
 import { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
