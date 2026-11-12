@@ -349,7 +349,10 @@ export function createRemoteChains({ rpc }: Params) {
     }
   }
 
-  /** Settles once the frame accepts the connection or ends it, and sends its messages and its end as events. */
+  /**
+   * Resolves once the frame accepts the connection, and rejects once it ends it first. Sends its messages and its end
+   * as events.
+   */
   function subscribeChain({
     transport,
     connectionId,
@@ -374,7 +377,6 @@ export function createRemoteChains({ rpc }: Params) {
               return;
             }
             resolve();
-            chains.update({ kind: 'chainConnected', connectionId });
           },
           end: error => {
             reject(error ?? new Error('Chain halted before it connected'));
