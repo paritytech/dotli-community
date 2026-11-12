@@ -17,10 +17,21 @@ import {
   type SandboxRecoverAcceptedMessage,
 } from '@dotli/sandbox-wire';
 import { createReporter, defineCount, getResolutionId, m } from '@dotli/metrics';
-import { createAsyncTaskPool, log, noop, createRandomId, realTimers, sleep, type Timers } from '@dotli/shared';
-import { debugBus } from '@dotli/truapi-debug';
+import {
+  createRandomId,
+  createStateMachine,
+  log,
+  nest,
+  noop,
+  realTimers,
+  type HandlerOf,
+  type MachineTypes,
+  type Timers,
+  type Transition,
+} from '@dotli/shared';
+import { debugBus, type DebugBusEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/createChatConnections.js';
-import { ownCoreConnection } from './ownCoreConnection.js';
+import { ownCoreConnection, type CoreProvider } from './ownCoreConnection.js';
 import { ERRORS } from './errors.js';
 import { CoreRedialError } from './coreRedialError.js';
 import type { CoreConnection, CoreLease, PageCore } from './createPageCore.js';
@@ -36,6 +47,7 @@ import type { ProductFacts } from '../getProductFacts.js';
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
 const uiReport = createReporter({ flow: 'ui' });
+const releaseFailed = uiReport.listener('product_frame.release');
 
 /**
  * A render the product frame started on its own: on a replacement core, after a device permission change or at a
@@ -44,6 +56,9 @@ const uiReport = createReporter({ flow: 'ui' });
  * is there to report it.
  */
 const productRerenderMetric = defineCount<'aborted' | 'error' | 'ok'>('product.rerender');
+
+/** Count. A product frame handler or effect threw. Tagged `outcome` (error) and `reason` (the error's name). */
+const productFrameTransitionMetric = defineCount<'error'>('product_frame.transition');
 
 const BRIDGE_SETUP = 'bridge.setup';
 
@@ -129,18 +144,6 @@ export type ProductFramePage = {
 
 export type ProductFrame = ReturnType<typeof createProductFrame>;
 
-type ConnectHostParams = {
-  iframeUrl: string;
-  allowedOrigin: string;
-  sandbox: string;
-  label: string;
-  /** Whether the product declares chat, once its manifest tells. */
-  chat: Promise<boolean>;
-  debugFlowId: string;
-  /** Called each time the core under the product goes down, is refused or turns stale. */
-  onCoreDown: () => void;
-};
-
 type PipeProvidersParams = {
   product: Provider;
   core: Provider;
@@ -153,35 +156,137 @@ type PipeProvidersParams = {
   timers: Pick<Timers, 'now'>;
 };
 
-type MountedHost = {
-  iframe: HTMLIFrameElement;
-  /** The id the core parsed for the product, which its connection runs under. */
-  productId: ProductId;
-  /** Whether the product declares chat, as its connection was opened. */
-  chat: boolean;
-  /** Runs `run` once the product's pending permission answer has reached it. */
-  runAfterPermissionResponse: (run: () => void) => void;
-  /**
-   * Whether the core under the product reported itself down, refused or stale. Reads false once the core was released.
-   * Never throws.
-   */
-  isCoreDown: () => boolean;
-  /**
-   * Lets go of the core under the product, which stays on screen until a render replaces it. Idempotent, and `dispose`
-   * after it only removes the frame.
-   */
-  releaseCore: () => void;
-  /**
-   * Removes the frame, lets go of the core under it and ends the wait for a permission answer. Throws when the core
-   * connection's or the frame's own dispose throws.
-   */
-  dispose: () => void;
-};
-
 /** Why the frame rendered the product again on its own. */
 type RerenderReason = 'replacement' | 'permission' | 'recover';
 
 type PageLocation = ReturnType<ProductFramePage['location']>;
+
+type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void };
+
+/** One side of an attempt, which lets go of what it holds as it ends. */
+type Side = ReturnType<typeof createSide>;
+
+/**
+ * One try at leasing and connecting. Ending `core` lets go of the pipe, the routes, the connection and the lease, in
+ * that order. Ending `frame` ends the wait for a permission answer and removes the panel and the iframe, which outlive a
+ * released core, so a device grant still waiting for its answer when the frame gives up on its core still rebuilds it.
+ */
+type Attempt = { n: 1 | 2; core: Side; frame: Side };
+
+/** The product's connection, as its frame is built on it. */
+type Link = {
+  coreProvider: CoreProvider;
+  /** The id the core parsed for the product, which its connection runs under. */
+  productId: ProductId;
+  /** Whether the product declares chat, as its connection was opened. */
+  chat: boolean;
+  /** Holds a rebuild back until the product's pending permission answer has reached it. */
+  responses: ReturnType<typeof createPermissionResponseGate>;
+};
+
+/** Whether the core under an attempt reported itself down, refused or stale. */
+type CoreSide = 'live' | 'down';
+
+/** A render's steps. The frame itself takes the product on screen from `building` and ends the run. */
+type Step =
+  | { kind: 'leasing'; attempt: Attempt }
+  | { kind: 'readingChat'; attempt: Attempt; lease: CoreLease; core: CoreSide }
+  | { kind: 'connecting'; attempt: Attempt; chat: boolean; core: CoreSide }
+  | { kind: 'readingAllow'; attempt: Attempt; link: Link; core: CoreSide }
+  | { kind: 'building'; attempt: Attempt; link: Link; core: CoreSide }
+  | { kind: 'loadingPanel'; attempt: Attempt; iframe: HTMLIFrameElement };
+
+/** Who a render's outcome is told to: the caller that asked for it, or the frame's own report. */
+type RunOrigin = { kind: 'asked'; reply: Reply<void> } | { kind: 'rerender'; reason: RerenderReason };
+
+type RunParts = {
+  product: FrameProduct;
+  origin: RunOrigin;
+  /** Built once as the run starts, since building it takes a scheduled sandbox reset. */
+  url: URL;
+  flows: { render: string; bridge: string };
+  /** When the run began, which its `bridge.setup` time counts from. */
+  setupStartedAt: number;
+};
+
+/** One render, nested in `connecting`. Its kind is the step it is at. */
+type Run = RunParts & Step;
+
+/** The product on screen. `attempt` is the key a recover ask and a core-down event match it by. */
+type Shown = { attempt: Attempt; link: Link; iframeHost: IframeHost; core: CoreSide };
+
+/** What the frame holds from its first render until it halts. */
+type Lively = {
+  /** The product the frame renders, which every render it starts on its own reads. */
+  target: FrameProduct;
+  shown: Shown | null;
+  /** Quick core deaths in a row, and when the render on the latest replacement core began. */
+  deaths: { count: number; replacedAt: number | null };
+  /** Spaces the rebuilds a reloaded sandbox asks for. `waiting` is the one newer ask, by the product it came from. */
+  recover:
+    | { kind: 'ready' }
+    | { kind: 'running'; waiting: { asking: Attempt } | null }
+    | { kind: 'spacing'; timer: unknown; waiting: { asking: Attempt } | null };
+  /** Spaces the renders on a replacement core. */
+  replacement: { kind: 'ready' } | { kind: 'running' } | { kind: 'spacing'; timer: unknown };
+};
+
+/** `halted` keeps the product on screen without its core, under a failure screen the page shows. */
+type FrameState =
+  | { kind: 'idle' }
+  | (Lively & { kind: 'connecting'; run: Run })
+  | (Lively & { kind: 'connected'; shown: Shown })
+  | (Lively & { kind: 'lost'; shown: Shown })
+  | (Lively & { kind: 'failed' })
+  | { kind: 'halted'; shown: Shown | null }
+  | { kind: 'disposed' };
+
+type LivelyKind = 'connecting' | 'connected' | 'lost' | 'failed';
+
+/** A run that did not fail carries when it began, so its `bridge.setup` time is recorded. */
+type RunOutcome =
+  | { kind: 'shown'; setupStartedAt: number }
+  | { kind: 'superseded'; setupStartedAt: number }
+  | { kind: 'failed'; error: unknown };
+
+/** The events of a render's steps, which its nested value handles. */
+type StepEvent =
+  | { kind: 'leased'; attempt: Attempt; lease: CoreLease }
+  | { kind: 'chatRead'; attempt: Attempt; chatCapable: boolean }
+  | { kind: 'opened'; attempt: Attempt; connection: CoreConnection; coreProvider: CoreProvider }
+  | { kind: 'allowRead'; attempt: Attempt; allow: string }
+  | { kind: 'coreDown'; attempt: Attempt };
+
+type FrameEvent =
+  | StepEvent
+  | { kind: 'frameBuilt'; attempt: Attempt; iframeHost: IframeHost }
+  | { kind: 'panelLoaded'; attempt: Attempt; mountPanel: (iframe: HTMLIFrameElement) => () => void }
+  | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
+  | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
+  | { kind: 'rerenderAsked'; reason: RerenderReason }
+  | { kind: 'permissionsChanged'; change: PermissionsChange }
+  | { kind: 'recoverAsked'; asking: Attempt }
+  | { kind: 'recoverSpaced'; timer: unknown }
+  | { kind: 'replacementSpaced'; timer: unknown }
+  | { kind: 'halted' }
+  | { kind: 'disposed' };
+
+/** A render's milestones the debug bus hears. `setupReady` comes with the iframe whose load it hears next. */
+type RunTrace =
+  | { kind: 'traced'; milestone: 'begun' | 'ready'; run: RunParts }
+  | { kind: 'traced'; milestone: 'setupReady'; run: RunParts; iframe: HTMLIFrameElement };
+
+type FrameEffect =
+  | { kind: 'statusShown'; status: ProductFrameStatus }
+  | { kind: 'runSettled'; origin: RunOrigin; outcome: RunOutcome }
+  | RunTrace
+  | { kind: 'chatResolved'; capable: boolean }
+  | { kind: 'walletConnected'; chat: boolean }
+  | { kind: 'gaveUp'; deaths: number };
+
+type FrameMachine = MachineTypes<FrameState, FrameEvent, FrameEffect>;
+
+type RunMachine = MachineTypes<Run, FrameEvent, FrameEffect>;
 
 // Spaces the rebuilds a reloaded sandbox asks for and the renders after a core death, so a product that keeps reloading
 // or keeps taking its core down cannot pin the host.
@@ -203,9 +308,6 @@ const BROWSER_PAGE: ProductFramePage = {
   },
 };
 
-/** The core under a render went down before the product's connection was open, so its replacement is worth a try. */
-class CoreWentDownError extends Error {}
-
 /** Builds the frame that shows the product. Building it never throws. */
 export function createProductFrame({
   core,
@@ -218,479 +320,492 @@ export function createProductFrame({
   page = BROWSER_PAGE,
   timers = realTimers,
 }: ProductFrameParams) {
-  // A newer render aborts the one before it, which frees the slot at once. The aborted render still runs to its next
-  // check and takes down what it built.
-  const renders = createAsyncTaskPool({ poolSize: 1 });
-  // A recover holds the slot past its rebuild, so the next one waits out the interval.
-  const recovers = createAsyncTaskPool({ poolSize: 1 });
-  // A render on a replacement core holds its slot the same way.
-  const replacements = createAsyncTaskPool({ poolSize: 1 });
-  // Each render names its own pool, so a superseded render still connecting never holds up a newer one.
-  const attaches = createAsyncTaskPool({
-    poolSize: 1,
-    retryCount: 1,
-    retryIf: error => error instanceof CoreWentDownError,
-    timers,
-  });
-  // Aborts on dispose, after which no wait of the frame's runs on.
-  const frameLifetime = new AbortController();
-  let rendering = new AbortController();
-  // The recover ask queued behind the running one. A newer ask takes its place, so at most one waits.
-  let waitingRecover: AbortController | null = null;
-  let target: FrameProduct | null = null;
-  let mounted: MountedHost | null = null;
-  let panelDispose: (() => void) | null = null;
-  // Quick core deaths in a row, and when the render on the latest replacement core began.
-  let coreDeaths = 0;
-  let replacedAt: number | null = null;
-
-  // On the page as state that browser tests read, and read here to tell what the frame is doing.
-  let status: ProductFrameStatus = 'idle';
-  view.showStatus(status);
-
-  function setStatus(next: ProductFrameStatus): void {
-    if (next !== status) {
-      status = next;
-      view.showStatus(next);
+  // A core that goes down before the product's connection is open closes that connection with it, so the attempt
+  // leases the replacement instead, once.
+  const retryOnCoreDown: HandlerOf<RunMachine, 'readingChat' | 'connecting', 'coreDown'> = (run, event, transition) => {
+    if (run.attempt.n === 2) {
+      markCoreDown(run, event, transition);
+      return;
     }
-  }
+    const attempt = createAttempt(2);
+    transition.emitState({ ...getRunParts(run), kind: 'leasing', attempt });
+    endAttempt(run.attempt);
+    acquireLease(attempt, transition.update);
+  };
 
-  async function render(product: FrameProduct): Promise<void> {
-    // A render asked from above starts afresh, so the cores that died before it no longer count.
-    coreDeaths = 0;
-    replacedAt = null;
-    await start(product);
-  }
-
-  /** Resolves true when this render put the product on screen, false when a newer render or a core loss took over. */
-  function start(product: FrameProduct): Promise<boolean> {
-    // A disposed frame mounts nothing again.
-    if (frameLifetime.signal.aborted) {
-      return Promise.resolve(false);
-    }
-    rendering.abort(new Error('A newer render superseded this one'));
-    const controller = new AbortController();
-    rendering = controller;
-    target = product;
-    return renders
-      .call(() => mount(product, controller.signal), { signal: controller.signal })
-      .then(
-        () => !controller.signal.aborted && status === 'connected',
-        (error: unknown) => {
-          // The newer render owns the frame now.
-          if (controller.signal.aborted) {
-            return false;
-          }
-          setStatus('failed');
-          // A product whose core went down holds that core only while a render to replace it is in flight.
-          if (mounted?.isCoreDown() === true) {
-            mounted.releaseCore();
-          }
-          throw error;
+  /** Hands each event of the run's steps to its step, while the event's attempt is the run's. */
+  const runStep = nest<FrameMachine, 'connecting', RunMachine, StepEvent['kind']>({
+    find: ({ run }, { attempt }) => (run.attempt === attempt ? run : null),
+    store: (state, _event, run) => ({ ...state, run }),
+    handlers: {
+      leasing: {
+        leased(run, { lease }, { emitState, update }) {
+          const { attempt, product } = run;
+          emitState({ ...getRunParts(run), kind: 'readingChat', attempt, lease, core: 'live' });
+          attempt.core.hold(
+            lease.subscribeDown(() => {
+              update({ kind: 'coreDown', attempt });
+            }),
+          );
+          update(
+            runStepWork(
+              attempt,
+              () => product.chat,
+              chatCapable => ({ kind: 'chatRead', attempt, chatCapable }),
+            ),
+          );
         },
-      );
-  }
-
-  /** A render the frame starts on its own has no caller to report to, so it counts its own outcome. */
-  function rerender(reason: RerenderReason): Promise<void> {
-    const product = target;
-    if (product === null) {
-      return Promise.resolve();
-    }
-    return start(product).then(
-      shown => {
-        productRerenderMetric.count({ outcome: shown ? 'ok' : 'aborted', reason });
       },
-      (error: unknown) => {
-        reportRerenderFailure(error, reason);
-        showReloadNotice(notify, page);
+      readingChat: {
+        chatRead(run, { chatCapable }, { emitState, emitSideEffect, update }) {
+          const { attempt, lease, core: coreSide } = run;
+          emitState({ ...getRunParts(run), kind: 'connecting', attempt, chat: chatCapable, core: coreSide });
+          emitSideEffect({ kind: 'chatResolved', capable: chatCapable });
+          update(
+            runStepWork(
+              attempt,
+              // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
+              () => lease.connect({ executionKind: chatCapable ? 'Worker' : 'App' }),
+              connection => {
+                const coreProvider = ownCoreConnection(connection);
+                attempt.core.hold(() => {
+                  coreProvider.dispose();
+                });
+                return { kind: 'opened', attempt, connection, coreProvider };
+              },
+            ),
+          );
+        },
+        coreDown: retryOnCoreDown,
       },
-    );
-  }
-
-  /**
-   * Shows the product again on the core that replaced the one under it, at most once per interval, and gives up once
-   * its cores keep dying soon after it is rendered on them.
-   */
-  function renderOnReplacement(): void {
-    if (replacedAt === null || timers.now() - replacedAt > CORE_DEATH_WINDOW_MS) {
-      coreDeaths = 0;
-    }
-    coreDeaths += 1;
-    if (coreDeaths >= CORE_DEATH_BUDGET) {
-      setStatus('failed');
-      // The product stays on screen under the reload notice, but its core is down for good, so its lease goes.
-      mounted?.releaseCore();
-      reportRerenderFailure(
-        new Error(`The wallet core went down ${String(coreDeaths)} times in a row under the product`),
-        'core_deaths',
-      );
-      showReloadNotice(notify, page);
-      return;
-    }
-    setStatus('lost');
-    const lost = mounted;
-    replacements
-      .call(async () => {
-        // A render since the death already answered it.
-        if (mounted !== lost || status !== 'lost') {
-          return;
-        }
-        replacedAt = timers.now();
-        await rerender('replacement');
-        await sleep(RECOVER_MIN_INTERVAL_MS, { signal: frameLifetime.signal, timers });
-      })
-      .catch((error: unknown) => {
-        // A disposed frame ended the wait.
-        if (frameLifetime.signal.aborted) {
-          return;
-        }
-        reportRerenderFailure(error, 'replacement');
-      });
-  }
-
-  async function mount(product: FrameProduct, signal: AbortSignal): Promise<void> {
-    // Read after each wait, since a newer render can abort this one at any of them.
-    const isSuperseded = (): boolean => signal.aborted;
-    setStatus('connecting');
-    let shown: MountedHost | null = null;
-    const renderFlowId = createRandomId();
-    const bridgeFlowId = createRandomId();
-    const productId = getFrameProductId(product);
-    const stopSetup = m.timer(BRIDGE_SETUP);
-    // Keep the product on screen while its replacement connects, which can take seconds.
-    const previous = mounted;
-    switch (product.mode) {
-      case 'iframe':
-        debugBus.emit({
-          layer: 'render',
-          event: 'iframe_begin',
-          flowId: renderFlowId,
-          timestamp: timers.now(),
-          payload: { label: product.label, url: product.url, mode: 'iframe' },
-        });
-        if (previous === null) {
-          // This path has no loading overlay to keep.
-          view.clearScreens({ loading: true });
-          view.clearMount();
-        }
-        core.setProduct({ label: product.label, productId: product.productId });
-        break;
-      case 'subdomain':
-        core.setProduct({ label: product.label });
-        break;
-    }
-    const iframeUrl = buildFrameUrl(product, page.location());
-    debugBus.emit({
-      layer: 'bridge',
-      event: 'setup_begin',
-      flowId: bridgeFlowId,
-      timestamp: timers.now(),
-      payload: { label: product.label, productId },
-    });
-    if (product.mode === 'subdomain') {
-      debugBus.emit({
-        layer: 'render',
-        event: 'iframe_begin',
-        flowId: renderFlowId,
-        timestamp: timers.now(),
-        payload: { label: product.label, url: iframeUrl.toString(), mode: 'subdomain' },
-      });
-    }
-    const host = await connectHost({
-      iframeUrl: iframeUrl.href,
-      allowedOrigin: iframeUrl.origin,
-      sandbox: getSandbox(product),
-      label: product.label,
-      chat: product.chat,
-      debugFlowId: bridgeFlowId,
-      // A core that goes down closes the product's connection with it, and one refused or turned stale (another tab
-      // logged in with another wallet) no longer serves it, so the product is shown again on the replacement. A frame
-      // still being built does that once it is up. A newer render in flight holds a lease of its own and answers for
-      // itself. A frame that still hears its core while failed keeps a product whose last render failed, so it is
-      // rendered again as a connected one is. A replacement that cannot boot fails the render that asked for it, and
-      // cores that keep dying use up a budget, so this never loops.
-      onCoreDown: () => {
-        if (shown !== null && shown === mounted && (status === 'connected' || status === 'failed')) {
-          renderOnReplacement();
-        }
-      },
-    });
-    if (isSuperseded()) {
-      host.dispose();
-      stopSetup();
-      return;
-    }
-    debugBus.emit({
-      layer: 'bridge',
-      event: 'setup_ready',
-      flowId: bridgeFlowId,
-      timestamp: timers.now(),
-      payload: { label: product.label, productId },
-    });
-    view.attachFrame(host.iframe);
-    // On the initial app subdomain render the sandbox dismisses the overlay itself, with `dotli:loading-status`.
-    activate(host, product.mode === 'subdomain' && previous === null);
-    shown = host;
-    host.iframe.addEventListener(
-      'load',
-      () => {
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'iframe_load',
-          flowId: bridgeFlowId,
-          timestamp: timers.now(),
-          payload: { label: product.label, productId, mode: product.mode },
-        });
-      },
-      { once: true },
-    );
-
-    if (view.loadCheckerPanel !== undefined) {
-      const mountPanel = await view.loadCheckerPanel();
-      if (isSuperseded()) {
-        stopSetup();
-        return;
-      }
-      panelDispose = mountPanel(host.iframe);
-    }
-
-    stopSetup();
-    view.showTitle(toTitledProduct(product));
-    productState.setLoaded(toLoadedProduct(product, host));
-    debugBus.emit({
-      layer: 'render',
-      event: 'iframe_ready',
-      flowId: renderFlowId,
-      timestamp: timers.now(),
-      payload: { label: product.label, mode: product.mode },
-    });
-    // The core's down report can land before the render reaches `connected`, which keeps the down listener idle.
-    if (host.isCoreDown()) {
-      renderOnReplacement();
-      return;
-    }
-    setStatus('connected');
-  }
-
-  async function connectHost({
-    iframeUrl,
-    allowedOrigin,
-    sandbox,
-    label,
-    chat,
-    debugFlowId,
-    onCoreDown,
-  }: ConnectHostParams): Promise<MountedHost> {
-    const { lease, connection, chatCapable } = await attaches.call(() => attach(chat), {
-      pool: debugFlowId,
-    });
-    let coreSide: 'live' | 'down' | 'released' = 'live';
-    const unsubscribeDown = lease.subscribeDown(() => {
-      if (coreSide === 'live') {
-        coreSide = 'down';
-      }
-      onCoreDown();
-    });
-    const coreProvider = ownCoreConnection(connection);
-    const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
-    const unregisterPermissions = permissions.register(label, coreProvider);
-    let productProvider: Provider | null = null;
-    let disposePipe: (() => void) | null = null;
-    const lifetime = new AbortController();
-    const responses = createPermissionResponseGate({
-      signal: lifetime.signal,
-      timeoutMs: PERMISSION_ANSWER_WAIT_MS,
-      timers,
-    });
-    function disposeProductSide(): void {
-      disposePipe?.();
-      productProvider?.dispose();
-      disposePipe = null;
-      productProvider = null;
-    }
-
-    /** Runs once, from a dispose, a failed build or a frame that gave up on its core. */
-    function releaseCoreSide(): void {
-      if (coreSide === 'released') {
-        return;
-      }
-      coreSide = 'released';
-      unsubscribeDown();
-      unregisterPermissions();
-      unregisterChat();
-      disposeProductSide();
-      coreProvider.dispose();
-      lease.release();
-    }
-
-    try {
-      const allow = `${await permissions.getAllowAttribute(label)}; cross-origin-isolated`;
-      const host = await createIframeHost({
-        iframeUrl,
-        allowedOrigin,
-        allow,
-        sandbox,
-        onPort: port => {
-          productProvider = createMessagePortProvider(port);
-          disposePipe = pipeProviders({
-            product: productProvider,
-            core: coreProvider,
-            flowId: debugFlowId,
-            label,
+      connecting: {
+        opened(run, { connection, coreProvider }, { emitState, emitSideEffect, update }) {
+          const { attempt, product, chat, core: coreSide } = run;
+          const link: Link = {
+            coreProvider,
             productId: connection.productId,
-            noteForwarded: responses.noteForwarded,
-            timers,
-          });
+            chat,
+            responses: createPermissionResponseGate({
+              signal: attempt.frame.signal,
+              timeoutMs: PERMISSION_ANSWER_WAIT_MS,
+              timers,
+            }),
+          };
+          emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
+          emitSideEffect({ kind: 'walletConnected', chat });
+          attempt.core.hold(permissions.register(product.label, coreProvider));
+          if (chat) {
+            attempt.core.hold(registerProductChat(connection));
+          }
+          update(
+            runStepWork(
+              attempt,
+              () => permissions.getAllowAttribute(product.label),
+              allow => ({ kind: 'allowRead', attempt, allow }),
+            ),
+          );
         },
-      });
-      return {
-        iframe: host.iframe,
-        productId: connection.productId,
-        chat: chatCapable,
-        runAfterPermissionResponse: responses.runAfterResponse,
-        isCoreDown: () => coreSide === 'down',
-        // The frame's lifetime runs on, so a device grant still waiting for its answer when the frame gives up still
-        // rebuilds it.
-        releaseCore: releaseCoreSide,
-        dispose() {
-          lifetime.abort();
-          releaseCoreSide();
-          host.dispose();
+        coreDown: retryOnCoreDown,
+      },
+      readingAllow: {
+        allowRead(run, { allow }, { emitState, update }) {
+          const { attempt, product, url, flows, link } = run;
+          emitState({ ...run, kind: 'building' });
+          update(
+            runStepWork(
+              attempt,
+              () =>
+                createIframeHost({
+                  iframeUrl: url.href,
+                  allowedOrigin: url.origin,
+                  allow: `${allow}; cross-origin-isolated`,
+                  sandbox: getSandbox(product),
+                  onPort: port => {
+                    const productProvider = createMessagePortProvider(port);
+                    attempt.core.hold(() => {
+                      productProvider.dispose();
+                    });
+                    attempt.core.hold(
+                      pipeProviders({
+                        product: productProvider,
+                        core: link.coreProvider,
+                        flowId: flows.bridge,
+                        label: product.label,
+                        productId: link.productId,
+                        noteForwarded: link.responses.noteForwarded,
+                        timers,
+                      }),
+                    );
+                  },
+                }),
+              iframeHost => {
+                attempt.frame.hold(() => {
+                  iframeHost.dispose();
+                });
+                return { kind: 'frameBuilt', attempt, iframeHost };
+              },
+            ),
+          );
         },
-      };
-    } catch (error) {
-      lifetime.abort();
-      releaseCoreSide();
-      throw error;
-    }
-  }
+        coreDown: markCoreDown,
+      },
+      building: {
+        coreDown: markCoreDown,
+      },
+      // Its attempt is the product on screen's, whose core-down event the frame hears itself.
+      loadingPanel: null,
+    },
+  });
 
-  /** A lease on the page core with the product's connection open on it. */
-  async function attach(
-    chat: Promise<boolean>,
-  ): Promise<{ lease: CoreLease; connection: CoreConnection; chatCapable: boolean }> {
-    const lease = await core.acquire();
-    // Written by the core's down report, which can arrive during either wait below.
-    const heard = { coreDown: false };
-    const unsubscribeDown = lease.subscribeDown(() => {
-      heard.coreDown = true;
-    });
-    try {
-      // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
-      const chatCapable = await chat;
-      chatReport.log.event('chat capability resolved', { capable: chatCapable });
-      const connection = await lease.connect({ executionKind: chatCapable ? 'Worker' : 'App' });
-      walletReport.log.event('product connected to wallet core', { kind: chatCapable ? 'Worker' : 'App' });
-      return { lease, connection, chatCapable };
-    } catch (error) {
-      lease.release();
-      throw heard.coreDown
-        ? new CoreWentDownError('The wallet core went down before the product connected', { cause: error })
-        : error;
-    } finally {
-      unsubscribeDown();
-    }
-  }
+  const renderAfresh: HandlerOf<FrameMachine, 'idle' | 'halted', 'renderAsked'> = (
+    state,
+    { product, reply },
+    transition,
+  ) => {
+    startRun(
+      {
+        kind: state.kind,
+        target: product,
+        shown: state.kind === 'halted' ? state.shown : null,
+        deaths: { count: 0, replacedAt: null },
+        recover: { kind: 'ready' },
+        replacement: { kind: 'ready' },
+      },
+      { previous: null, origin: { kind: 'asked', reply } },
+      transition,
+    );
+  };
 
-  function activate(host: MountedHost, keepLoading: boolean): void {
-    takeDown();
-    view.clearScreens({ loading: !keepLoading });
-    mounted = host;
-  }
+  // A render asked from above starts afresh, so the cores that died before it no longer count.
+  const renderAgain: HandlerOf<FrameMachine, LivelyKind, 'renderAsked'> = (state, { product, reply }, transition) => {
+    startRun(
+      { ...state, target: product, deaths: { count: 0, replacedAt: null } },
+      { previous: getRun(state), origin: { kind: 'asked', reply } },
+      transition,
+    );
+  };
 
-  /** Takes down the product on screen and the panel watching it. Throws when the product's own dispose throws. */
-  function takeDown(): void {
-    const stopPanel = panelDispose;
-    const taken = mounted;
-    // Cleared first, so a dispose that throws is not repeated by a second take down.
-    panelDispose = null;
-    mounted = null;
-    stopPanel?.();
-    taken?.dispose();
-  }
+  const rerender: HandlerOf<FrameMachine, LivelyKind, 'rerenderAsked'> = (state, { reason }, transition) => {
+    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason } }, transition);
+  };
 
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
   // before the change, so it is built again at once rather than after an answer for the frame it replaces.
-  const stopPermissionChanges = subscribePermissionChanges(change => {
-    if (!change.allowChanged || change.label !== target?.label) {
+  const changePermissions: HandlerOf<FrameMachine, LivelyKind, 'permissionsChanged'> = (
+    state,
+    { change },
+    transition,
+  ) => {
+    if (!change.allowChanged || change.label !== state.target.label) {
       return;
     }
-    const host = mounted;
-    if (change.fromPrompt && host !== null && status !== 'connecting') {
-      host.runAfterPermissionResponse(() => {
-        void rerender('permission');
+    if (change.fromPrompt && state.shown !== null && state.kind !== 'connecting') {
+      state.shown.link.responses.runAfterResponse(() => {
+        transition.update({ kind: 'rerenderAsked', reason: 'permission' });
       });
-    } else {
-      void rerender('permission');
+      return;
     }
+    startRun(state, { previous: getRun(state), origin: { kind: 'rerender', reason: 'permission' } }, transition);
+  };
+
+  // The newer ask wins, since a frame rebuilt meanwhile asks with itself as the frame on screen.
+  const askRecover: HandlerOf<FrameMachine, LivelyKind, 'recoverAsked'> = (state, { asking }, transition) => {
+    const { recover } = state;
+    if (recover.kind === 'ready') {
+      startRun(
+        { ...state, recover: { kind: 'running', waiting: null } },
+        { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+        transition,
+      );
+      return;
+    }
+    moveTo(state, { ...state, recover: { ...recover, waiting: { asking } } }, transition);
+  };
+
+  const spaceRecover: HandlerOf<FrameMachine, LivelyKind, 'recoverSpaced'> = (state, { timer }, transition) => {
+    const { recover } = state;
+    if (recover.kind !== 'spacing' || recover.timer !== timer) {
+      return;
+    }
+    // A rebuild since the ask already answered it.
+    if (state.shown === null || recover.waiting?.asking !== state.shown.attempt) {
+      moveTo(state, { ...state, recover: { kind: 'ready' } }, transition);
+      return;
+    }
+    startRun(
+      { ...state, recover: { kind: 'running', waiting: null } },
+      { previous: getRun(state), origin: { kind: 'rerender', reason: 'recover' } },
+      transition,
+    );
+  };
+
+  const spaceReplacement: HandlerOf<FrameMachine, LivelyKind, 'replacementSpaced'> = (state, { timer }, transition) => {
+    const { replacement } = state;
+    if (replacement.kind !== 'spacing' || replacement.timer !== timer) {
+      return;
+    }
+    // A render since the death already answered it.
+    if (state.kind !== 'lost') {
+      moveTo(state, { ...state, replacement: { kind: 'ready' } }, transition);
+      return;
+    }
+    renderOnReplacement(state, transition);
+  };
+
+  // A frame that still hears its core while failed keeps a product whose last render failed, so it is rendered again as
+  // a connected one is. A replacement that cannot boot fails the render that asked for it, and cores that keep dying use
+  // up a budget, so this never loops.
+  const hearCoreDown: HandlerOf<FrameMachine, 'connected' | 'failed', 'coreDown'> = (
+    state,
+    { attempt },
+    transition,
+  ) => {
+    const { shown } = state;
+    if (shown?.attempt !== attempt) {
+      return;
+    }
+    loseCore({ ...getLively(state), kind: state.kind, shown }, transition);
+  };
+
+  // The frame starts no render of its own again, so a run in flight is told it was superseded and spaces nothing.
+  const stopRendering: HandlerOf<FrameMachine, LivelyKind, 'halted'> = (state, _event, transition) => {
+    const { shown } = state;
+    moveTo(state, { kind: 'halted', shown }, transition);
+    if (state.kind === 'connecting') {
+      transition.emitSideEffect({
+        kind: 'runSettled',
+        origin: state.run.origin,
+        outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
+      });
+      dropRun(state.run, shown);
+    }
+    clearSpacers(state);
+    // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
+    shown?.attempt.core.end();
+  };
+
+  const endFrame: HandlerOf<FrameMachine, 'idle' | LivelyKind | 'halted', 'disposed'> = (state, _event, transition) => {
+    moveTo(state, { kind: 'disposed' }, transition);
+    stopPermissionChanges();
+    stopRecoverAsks();
+    switch (state.kind) {
+      case 'idle':
+        return;
+      case 'halted':
+        break;
+      case 'connecting':
+        transition.emitSideEffect({
+          kind: 'runSettled',
+          origin: state.run.origin,
+          outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
+        });
+        clearSpacers(state);
+        endAttempt(state.run.attempt);
+        break;
+      case 'connected':
+      case 'lost':
+      case 'failed':
+        clearSpacers(state);
+        break;
+    }
+    if (state.shown !== null) {
+      endAttempt(state.shown.attempt);
+    }
+  };
+
+  const machine = createStateMachine<FrameMachine>({
+    initial: { kind: 'idle' },
+    handlers: {
+      idle: {
+        renderAsked: renderAfresh,
+        halted(state, _event, transition) {
+          moveTo(state, { kind: 'halted', shown: null }, transition);
+        },
+        disposed: endFrame,
+      },
+      connecting: {
+        renderAsked: renderAgain,
+        rerenderAsked: rerender,
+        permissionsChanged: changePermissions,
+        recoverAsked: askRecover,
+        recoverSpaced: spaceRecover,
+        replacementSpaced: spaceReplacement,
+        coreDown(state, event, transition) {
+          const { shown } = state;
+          // The product on screen hears its own core. A newer render in flight holds a lease of its own and answers for
+          // itself.
+          if (shown?.attempt === event.attempt) {
+            moveTo(state, { ...state, shown: { ...shown, core: 'down' } }, transition);
+            return;
+          }
+          runStep(state, event, transition);
+        },
+        leased: runStep,
+        chatRead: runStep,
+        opened: runStep,
+        allowRead: runStep,
+        // The frame takes the product on screen, then ends the run at once or once the checker panel is mounted.
+        frameBuilt(state, { attempt, iframeHost }, transition) {
+          const { run, shown: previous } = state;
+          if (run.attempt !== attempt || run.kind !== 'building') {
+            return;
+          }
+          const { loadCheckerPanel } = view;
+          const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core };
+          const { iframe } = iframeHost;
+          const next: Run =
+            loadCheckerPanel === undefined ? run : { ...getRunParts(run), kind: 'loadingPanel', attempt, iframe };
+          moveTo(state, { ...state, shown, run: next }, transition);
+          transition.emitSideEffect({ kind: 'traced', milestone: 'setupReady', run, iframe });
+          view.attachFrame(iframe);
+          if (previous !== null) {
+            endAttempt(previous.attempt);
+          }
+          // On the initial app subdomain render the sandbox dismisses the overlay itself, with `dotli:loading-status`.
+          view.clearScreens({ loading: run.product.mode !== 'subdomain' || previous !== null });
+          if (loadCheckerPanel === undefined) {
+            endRun({ ...state, shown }, transition);
+            return;
+          }
+          transition.update(
+            runStepWork(attempt, loadCheckerPanel, mountPanel => ({ kind: 'panelLoaded', attempt, mountPanel })),
+          );
+        },
+        panelLoaded(state, { attempt, mountPanel }, transition) {
+          const { run, shown } = state;
+          if (run.attempt !== attempt || run.kind !== 'loadingPanel' || shown === null) {
+            return;
+          }
+          try {
+            attempt.frame.hold(mountPanel(run.iframe));
+          } catch (error) {
+            failRun(state, error, transition);
+            return;
+          }
+          endRun({ ...state, shown }, transition);
+        },
+        // A failed step's attempt ends with the run, unless its product is already on screen.
+        stepFailed(state, { attempt, error }, transition) {
+          const { run } = state;
+          if (run.attempt !== attempt) {
+            return;
+          }
+          failRun(state, error, transition);
+          if (run.kind !== 'loadingPanel') {
+            endAttempt(attempt);
+          }
+        },
+        halted: stopRendering,
+        disposed: endFrame,
+      },
+      connected: {
+        renderAsked: renderAgain,
+        rerenderAsked: rerender,
+        permissionsChanged: changePermissions,
+        recoverAsked: askRecover,
+        recoverSpaced: spaceRecover,
+        replacementSpaced: spaceReplacement,
+        coreDown: hearCoreDown,
+        halted: stopRendering,
+        disposed: endFrame,
+      },
+      lost: {
+        renderAsked: renderAgain,
+        rerenderAsked: rerender,
+        permissionsChanged: changePermissions,
+        recoverAsked: askRecover,
+        recoverSpaced: spaceRecover,
+        replacementSpaced: spaceReplacement,
+        halted: stopRendering,
+        disposed: endFrame,
+      },
+      failed: {
+        renderAsked: renderAgain,
+        rerenderAsked: rerender,
+        permissionsChanged: changePermissions,
+        recoverAsked: askRecover,
+        recoverSpaced: spaceRecover,
+        replacementSpaced: spaceReplacement,
+        coreDown: hearCoreDown,
+        halted: stopRendering,
+        disposed: endFrame,
+      },
+      halted: {
+        renderAsked: renderAfresh,
+        disposed: endFrame,
+      },
+      disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'statusShown':
+          view.showStatus(effect.status);
+          return;
+        case 'runSettled':
+          tellOutcome(effect.origin, effect.outcome);
+          // A render that failed records no `bridge.setup`.
+          if (effect.outcome.kind !== 'failed') {
+            const setupMs = timers.now() - effect.outcome.setupStartedAt;
+            m.measure(BRIDGE_SETUP, setupMs);
+            m.distribution(BRIDGE_SETUP, setupMs);
+          }
+          return;
+        case 'traced':
+          traceRun(effect);
+          return;
+        case 'chatResolved':
+          chatReport.log.event('chat capability resolved', { capable: effect.capable });
+          return;
+        case 'walletConnected':
+          walletReport.log.event('product connected to wallet core', { kind: effect.chat ? 'Worker' : 'App' });
+          return;
+        case 'gaveUp':
+          reportRerenderFailure(
+            new Error(`The wallet core went down ${String(effect.deaths)} times in a row under the product`),
+            'core_deaths',
+          );
+          showReloadNotice(notify, page);
+          return;
+      }
+    },
+    onError: error => {
+      uiReport.defect(error, {
+        step: 'transition',
+        metric: productFrameTransitionMetric,
+        message: '[dot.li] A product frame transition threw',
+      });
+    },
+  });
+
+  // On the page as state that browser tests read.
+  view.showStatus('idle');
+
+  const stopPermissionChanges = subscribePermissionChanges(change => {
+    machine.update({ kind: 'permissionsChanged', change });
   });
 
   // The sandbox strips its contract params after boot, so a reloaded sandbox asks the host to rebuild it.
   const stopRecoverAsks = channel.on('dotli:sandbox-recover', (_message, { origin, source }) => {
-    const product = target;
-    const asking = mounted;
+    const state = machine.state.get();
+    if (state.kind === 'idle' || state.kind === 'halted' || state.kind === 'disposed') {
+      return;
+    }
+    const { target, shown } = state;
     // The exact origin of the product on screen, so one product's sandbox cannot rebuild another, and the frame on
     // screen itself, so a frame nested inside the product on its own origin cannot either. A reloaded sandbox keeps its
     // window.
     if (
-      product?.mode !== 'subdomain' ||
-      origin !== getAppOrigin(product.label, page.location()) ||
-      source !== asking?.iframe.contentWindow
+      target.mode !== 'subdomain' ||
+      origin !== getAppOrigin(target.label, page.location()) ||
+      source !== shown?.iframeHost.iframe.contentWindow
     ) {
       return;
     }
-    // The newer ask wins, since a frame rebuilt meanwhile asks with itself as the frame on screen.
-    waitingRecover?.abort(new Error('A newer recover ask replaced this one'));
-    const ask = new AbortController();
-    waitingRecover = ask;
-    const signal = AbortSignal.any([ask.signal, frameLifetime.signal]);
-    recovers
-      .call(
-        async () => {
-          if (waitingRecover === ask) {
-            waitingRecover = null;
-          }
-          // A rebuild since the ask already answered it.
-          if (mounted !== asking) {
-            return;
-          }
-          await rerender('recover');
-          await sleep(RECOVER_MIN_INTERVAL_MS, { signal, timers });
-        },
-        { signal },
-      )
-      .catch((error: unknown) => {
-        // A newer ask took the place of this one while it waited, or a disposed frame ended the wait.
-        if (!signal.aborted) {
-          reportRerenderFailure(error, 'recover');
-        }
-      });
-    // Told before the rebuild, which can wait a long time for a core.
+    machine.update({ kind: 'recoverAsked', asking: shown.attempt });
+    // Told before the rebuild, which can wait a long time for a core. A post that throws reaches the channel's report.
     const accepted = { type: 'dotli:sandbox-recover-accepted' } satisfies SandboxRecoverAcceptedMessage;
-    asking.iframe.contentWindow?.postMessage(accepted, { targetOrigin: origin });
+    shown.iframeHost.iframe.contentWindow?.postMessage(accepted, { targetOrigin: origin });
   });
-
-  function halt(): void {
-    rendering.abort(new Error('The product failed for good'));
-    // Every render the frame starts on its own reads the product from here.
-    target = null;
-    setStatus('failed');
-    // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
-    mounted?.releaseCore();
-  }
-
-  function dispose(): void {
-    frameLifetime.abort(new Error('The product frame was disposed'));
-    rendering.abort(new Error('The product frame was disposed'));
-    waitingRecover?.abort(new Error('The product frame was disposed'));
-    waitingRecover = null;
-    // Every render the frame starts on its own reads the product from here.
-    target = null;
-    stopPermissionChanges();
-    stopRecoverAsks();
-    takeDown();
-  }
 
   return {
     /**
@@ -707,11 +822,424 @@ export function createProductFrame({
     /**
      * Stops hearing permission changes and recover asks, takes down the product on screen with its core and ends every
      * render and wait in flight, so a render asked from above resolves as superseded and neither it nor a later render
-     * mounts anything, is safe to call twice or after a failed render, and throws only when the product on screen's
-     * own dispose throws.
+     * mounts anything. Safe to call twice or after a failed render. Never throws.
      */
     dispose,
   };
+
+  /** Its promise stays pending for a render queued behind the frame's disposal and for one whose handler throws. */
+  function render(product: FrameProduct): Promise<void> {
+    // A disposed frame mounts nothing again.
+    if (machine.state.get().kind === 'disposed') {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      machine.update({ kind: 'renderAsked', product, reply: { resolve, reject } });
+    });
+  }
+
+  function halt(): void {
+    machine.update({ kind: 'halted' });
+  }
+
+  function dispose(): void {
+    machine.update({ kind: 'disposed' });
+  }
+
+  /**
+   * Starts a render of `from.target`, superseding the run in flight, whose attempt ends unless its product is already
+   * on screen. A product whose frame URL cannot be built fails at once.
+   */
+  function startRun(
+    from: Lively & Pick<FrameState, 'kind'>,
+    { previous, origin }: { previous: Run | null; origin: RunOrigin },
+    transition: Transition<FrameMachine>,
+  ): void {
+    const lively =
+      previous === null
+        ? getLively(from)
+        : settleRun(
+            { ...from, run: previous },
+            { kind: 'superseded', setupStartedAt: previous.setupStartedAt },
+            transition,
+          );
+    const product = lively.target;
+    const setupStartedAt = timers.now();
+    let url: URL;
+    try {
+      url = buildFrameUrl(product, page.location());
+    } catch (error) {
+      failRun({ ...lively, kind: from.kind, run: { origin } }, error, transition);
+      if (previous !== null) {
+        dropRun(previous, lively.shown);
+      }
+      return;
+    }
+    const flows = { render: createRandomId(), bridge: createRandomId() };
+    const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
+    moveTo(from, { ...lively, kind: 'connecting', run }, transition);
+    if (previous !== null) {
+      dropRun(previous, lively.shown);
+    }
+    transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
+    switch (product.mode) {
+      case 'iframe':
+        if (lively.shown === null) {
+          // This path has no loading overlay to keep.
+          view.clearScreens({ loading: true });
+          view.clearMount();
+        }
+        core.setProduct({ label: product.label, productId: product.productId });
+        break;
+      case 'subdomain':
+        core.setProduct({ label: product.label });
+        break;
+    }
+    acquireLease(run.attempt, transition.update);
+  }
+
+  /**
+   * Ends the run with the product it built on screen. A core that went down under it before the end sends the product
+   * on to the replacement.
+   */
+  function endRun(
+    state: Extract<FrameState, { kind: 'connecting' }> & { shown: Shown },
+    transition: Transition<FrameMachine>,
+  ): void {
+    const { run, shown } = state;
+    if (shown.core === 'down') {
+      const lively = settleRun(state, { kind: 'superseded', setupStartedAt: run.setupStartedAt }, transition);
+      loseCore({ ...lively, kind: state.kind, shown }, transition);
+    } else {
+      const lively = settleRun(state, { kind: 'shown', setupStartedAt: run.setupStartedAt }, transition);
+      moveTo(state, { ...lively, kind: 'connected', shown }, transition);
+    }
+    view.showTitle(toTitledProduct(run.product));
+    productState.setLoaded(toLoadedProduct(run.product, shown.link));
+    transition.emitSideEffect({ kind: 'traced', milestone: 'ready', run });
+  }
+
+  /** Leases the page core for `attempt`. The lease goes as the attempt's core side ends, at once when it already has. */
+  function acquireLease(attempt: Attempt, update: Transition<FrameMachine>['update']): void {
+    update(
+      runStepWork(
+        attempt,
+        () => core.acquire(),
+        lease => {
+          attempt.core.hold(() => {
+            lease.release();
+          });
+          return { kind: 'leased', attempt, lease };
+        },
+      ),
+    );
+  }
+
+  /**
+   * Tells the run's origin its outcome. A recover or a replacement then spaces the next one. Returns `state`'s lively
+   * part with that spacer moved.
+   */
+  function settleRun(
+    state: Lively & { run: Pick<RunParts, 'origin'> },
+    outcome: RunOutcome,
+    { emitSideEffect, update }: Transition<FrameMachine>,
+  ): Lively {
+    const { origin } = state.run;
+    const lively = getLively(state);
+    emitSideEffect({ kind: 'runSettled', origin, outcome });
+    if (origin.kind === 'asked') {
+      return lively;
+    }
+    switch (origin.reason) {
+      case 'permission':
+        return lively;
+      case 'recover': {
+        const timer = timers.setTimeout(() => {
+          update({ kind: 'recoverSpaced', timer });
+        }, RECOVER_MIN_INTERVAL_MS);
+        const waiting = lively.recover.kind === 'ready' ? null : lively.recover.waiting;
+        return { ...lively, recover: { kind: 'spacing', timer, waiting } };
+      }
+      case 'replacement': {
+        const timer = timers.setTimeout(() => {
+          update({ kind: 'replacementSpaced', timer });
+        }, RECOVER_MIN_INTERVAL_MS);
+        return { ...lively, replacement: { kind: 'spacing', timer } };
+      }
+    }
+  }
+
+  /**
+   * Moves to `failed` with the run settled as failed. A product on screen whose core went down holds that core only
+   * while a render to replace it is in flight, so its core goes.
+   */
+  function failRun(
+    state: Lively & Pick<FrameState, 'kind'> & { run: Pick<RunParts, 'origin'> },
+    error: unknown,
+    transition: Transition<FrameMachine>,
+  ): void {
+    const lively = settleRun(state, { kind: 'failed', error }, transition);
+    moveTo(state, { ...lively, kind: 'failed' }, transition);
+    if (lively.shown?.core === 'down') {
+      lively.shown.attempt.core.end();
+    }
+  }
+
+  /**
+   * The core under the product on screen went down, was refused or turned stale. The product is shown again on the
+   * replacement, at most once per interval, and the frame gives up once its cores keep dying soon after it is rendered
+   * on them.
+   */
+  function loseCore(
+    lively: Lively & Pick<FrameState, 'kind'> & { shown: Shown },
+    transition: Transition<FrameMachine>,
+  ): void {
+    const shown: Shown = { ...lively.shown, core: 'down' };
+    const { count, replacedAt } = lively.deaths;
+    const recent = replacedAt !== null && timers.now() - replacedAt <= CORE_DEATH_WINDOW_MS;
+    const deaths = { count: (recent ? count : 0) + 1, replacedAt };
+    if (deaths.count >= CORE_DEATH_BUDGET) {
+      moveTo(lively, { ...lively, kind: 'failed', shown, deaths }, transition);
+      // The product stays on screen under the reload notice, but its core is down for good, so its lease goes.
+      shown.attempt.core.end();
+      transition.emitSideEffect({ kind: 'gaveUp', deaths: deaths.count });
+      return;
+    }
+    const lost: Extract<FrameState, { kind: 'lost' }> = { ...lively, kind: 'lost', shown, deaths };
+    moveTo(lively, lost, transition);
+    if (lively.replacement.kind === 'ready') {
+      renderOnReplacement(lost, transition);
+    }
+  }
+
+  function renderOnReplacement(
+    lost: Extract<FrameState, { kind: 'lost' }>,
+    transition: Transition<FrameMachine>,
+  ): void {
+    startRun(
+      { ...lost, deaths: { ...lost.deaths, replacedAt: timers.now() }, replacement: { kind: 'running' } },
+      { previous: null, origin: { kind: 'rerender', reason: 'replacement' } },
+      transition,
+    );
+  }
+
+  /** Clears the timers of the spacers that wait, as the frame starts no render of its own again. */
+  function clearSpacers({ recover, replacement }: Lively): void {
+    if (recover.kind === 'spacing') {
+      timers.clearTimeout(recover.timer);
+    }
+    if (replacement.kind === 'spacing') {
+      timers.clearTimeout(replacement.timer);
+    }
+  }
+
+  /** Emits `next`, and its status when that differs from the status of `from`, the state the move starts from. */
+  function moveTo(
+    from: Pick<FrameState, 'kind'>,
+    next: FrameState,
+    { emitState, emitSideEffect }: Transition<FrameMachine>,
+  ): void {
+    const before = getStatus(from);
+    emitState(next);
+    const status = getStatus(next);
+    if (status !== null && status !== before) {
+      emitSideEffect({ kind: 'statusShown', status });
+    }
+  }
+
+  /** A render the frame starts on its own has no caller to report to, so it counts its own outcome. */
+  function tellOutcome(origin: RunOrigin, outcome: RunOutcome): void {
+    if (origin.kind === 'asked') {
+      if (outcome.kind === 'failed') {
+        origin.reply.reject(outcome.error);
+      } else {
+        origin.reply.resolve();
+      }
+      return;
+    }
+    switch (outcome.kind) {
+      case 'shown':
+        productRerenderMetric.count({ outcome: 'ok', reason: origin.reason });
+        return;
+      case 'superseded':
+        productRerenderMetric.count({ outcome: 'aborted', reason: origin.reason });
+        return;
+      case 'failed':
+        reportRerenderFailure(outcome.error, origin.reason);
+        showReloadNotice(notify, page);
+        return;
+    }
+  }
+
+  /** Tells the debug bus a render's milestone, and from a set-up frame its iframe's first load. */
+  function traceRun(trace: RunTrace): void {
+    const { product, url, flows } = trace.run;
+    const { label, mode } = product;
+    const productId = getFrameProductId(product);
+    switch (trace.milestone) {
+      case 'begun': {
+        const begun: DebugBusEvent = {
+          layer: 'render',
+          event: 'iframe_begin',
+          flowId: flows.render,
+          timestamp: timers.now(),
+          payload: { label, url: mode === 'iframe' ? product.url : url.toString(), mode },
+        };
+        const setupBegun: DebugBusEvent = {
+          layer: 'bridge',
+          event: 'setup_begin',
+          flowId: flows.bridge,
+          timestamp: timers.now(),
+          payload: { label, productId },
+        };
+        for (const event of mode === 'iframe' ? [begun, setupBegun] : [setupBegun, begun]) {
+          debugBus.emit(event);
+        }
+        return;
+      }
+      case 'setupReady':
+        // The effect runs after the frame was attached, which is in time: the iframe navigates to a network URL, so its
+        // load comes in a later task.
+        debugBus.emit({
+          layer: 'bridge',
+          event: 'setup_ready',
+          flowId: flows.bridge,
+          timestamp: timers.now(),
+          payload: { label, productId },
+        });
+        trace.iframe.addEventListener(
+          'load',
+          () => {
+            debugBus.emit({
+              layer: 'bridge',
+              event: 'iframe_load',
+              flowId: flows.bridge,
+              timestamp: timers.now(),
+              payload: { label, productId, mode },
+            });
+          },
+          { once: true },
+        );
+        return;
+      case 'ready':
+        debugBus.emit({
+          layer: 'render',
+          event: 'iframe_ready',
+          flowId: flows.render,
+          timestamp: timers.now(),
+          payload: { label, mode },
+        });
+        return;
+    }
+  }
+}
+
+/** The status the page shows for `state`, none once the frame is disposed. */
+function getStatus({ kind }: Pick<FrameState, 'kind'>): ProductFrameStatus | null {
+  switch (kind) {
+    case 'halted':
+      return 'failed';
+    case 'disposed':
+      return null;
+    case 'idle':
+    case 'connecting':
+    case 'connected':
+    case 'lost':
+    case 'failed':
+      return kind;
+  }
+}
+
+/** The run `state` waits on, none when it waits on no run. */
+function getRun(state: Extract<FrameState, { kind: LivelyKind }>): Run | null {
+  return state.kind === 'connecting' ? state.run : null;
+}
+
+/** `state`'s lively part, so a state that moves on carries no field of the kind it left. */
+function getLively({ target, shown, deaths, recover, replacement }: Lively): Lively {
+  return { target, shown, deaths, recover, replacement };
+}
+
+/** The parts every step of `run` keeps, so a run that steps on carries no field of the step it left. */
+function getRunParts({ product, origin, url, flows, setupStartedAt }: Run): RunParts {
+  return { product, origin, url, flows, setupStartedAt };
+}
+
+/** Marks the core under the run down, so the product goes on to the replacement once it is on screen. */
+const markCoreDown: HandlerOf<RunMachine, 'readingChat' | 'connecting' | 'readingAllow' | 'building', 'coreDown'> = (
+  run,
+  _event,
+  { emitState },
+) => {
+  emitState({ ...run, core: 'down' });
+};
+
+function createAttempt(n: Attempt['n']): Attempt {
+  return { n, core: createSide(), frame: createSide() };
+}
+
+/** Ends both sides of `attempt`. */
+function endAttempt({ core, frame }: Attempt): void {
+  core.end();
+  frame.end();
+}
+
+/** Ends the attempt of `run`, a run the frame no longer waits on, unless its product is the one on screen. */
+function dropRun(run: Run, shown: Shown | null): void {
+  if (run.attempt !== shown?.attempt) {
+    endAttempt(run.attempt);
+  }
+}
+
+/**
+ * Holds releases until the side ends. Ending it aborts `signal`, then runs its holds once, last in, first out, so what
+ * was built on a resource goes before that resource. A hold on a side that already ended is released at once.
+ */
+function createSide() {
+  const ending = new AbortController();
+  const holds: (() => void)[] = [];
+  return {
+    /** Aborts as the side ends, for work that stops with it. */
+    signal: ending.signal,
+    /** Keeps `release` until the side ends. */
+    hold(release: () => void): void {
+      if (ending.signal.aborted) {
+        runRelease(release);
+        return;
+      }
+      holds.push(release);
+    },
+    /** Ends the side. Safe to call again. */
+    end(): void {
+      if (ending.signal.aborted) {
+        return;
+      }
+      ending.abort();
+      for (const release of holds.splice(0).reverse()) {
+        runRelease(release);
+      }
+    },
+  };
+}
+
+/** A release that throws is reported, so the releases after it still run. */
+function runRelease(release: () => void): void {
+  try {
+    release();
+  } catch (error) {
+    releaseFailed(error);
+  }
+}
+
+/** Maps `work`'s value to an event of `attempt`, and its failure, a throw before it returns too, to `stepFailed`. */
+function runStepWork<T>(
+  attempt: Attempt,
+  work: () => T | PromiseLike<T>,
+  toEvent: (value: T) => FrameEvent,
+): Promise<FrameEvent> {
+  return new Promise<T>(resolve => {
+    resolve(work());
+  }).then(toEvent, (error: unknown): FrameEvent => ({ kind: 'stepFailed', attempt, error }));
 }
 
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
@@ -903,12 +1431,12 @@ function registerProductChat({ provider, productId }: CoreConnection): () => voi
 }
 
 /**
- * What the page records of `product` once it is on `host`, with whether its connection serves chat. The id the core
- * parsed, so chat data is keyed as the core keys it.
+ * What the page records of `product` once it is on screen over `link`, with whether its connection serves chat. The id
+ * the core parsed, so chat data is keyed as the core keys it.
  */
 function toLoadedProduct(
   product: FrameProduct,
-  { productId, chat }: MountedHost,
+  { productId, chat }: Pick<Link, 'productId' | 'chat'>,
 ): Parameters<typeof productState.setLoaded>[0] {
   switch (product.mode) {
     case 'iframe':

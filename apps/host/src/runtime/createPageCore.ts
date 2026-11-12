@@ -12,13 +12,14 @@ import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
-  createListenerSet,
+  createStateMachine,
   log,
-  markHandled,
+  noop,
   realTimers,
   type AsyncTaskPool,
-  type ListenerSet,
+  type MachineTypes,
   type Timers,
+  type Transition,
 } from '@dotli/shared';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
@@ -27,6 +28,7 @@ import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPho
 import { toProductId } from './createTruapiRuntimeConfig.js';
 
 const report = createReporter({ flow: 'wallet' });
+const hearDownFailed = report.listener('page_core.down');
 
 /**
  * One redial of the page's wallet core after the core was taken out of service. Tagged `outcome` (ok, error or aborted,
@@ -40,6 +42,15 @@ const walletCoreRedialMetric = defineCount<'aborted' | 'error' | 'ok'>('wallet.c
  * Tagged `outcome` (error) and `reason` (the error's name).
  */
 const pageCoreSessionFollowMetric = defineCount<'error'>('page_core.session_follow');
+
+/**
+ * Count. A pairing core's check for the local wallet rejected, so the core stays in service though the wallet may be
+ * back. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const pageCoreStaleReadMetric = defineCount<'error'>('page_core.stale_read');
+
+/** Count. A page core handler or effect threw. Tagged `outcome` (error) and `reason` (the error's name). */
+const pageCoreTransitionMetric = defineCount<'error'>('page_core.transition');
 
 /**
  * Count. The phone request tap threw on a frame, so that frame went untracked. Tagged `outcome` (error), `reason`
@@ -93,7 +104,10 @@ export type CoreLease = {
    * request gets. Called at once for a core that is already down. Returns the unsubscribe. Never throws.
    */
   subscribeDown(listener: () => void): () => void;
-  /** Idempotent. Drops the down listeners subscribed through this lease. Never throws. */
+  /**
+   * Idempotent. Drops the down listeners subscribed through this lease. Never throws. A release queued while the page
+   * core drains can still hear a down queued ahead of it.
+   */
   release(): void;
 };
 
@@ -125,11 +139,6 @@ type Params = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
-type DialParams = {
-  /** Why the core before it went down. A first dial has none. */
-  redial?: CoreDownReason | undefined;
-};
-
 type ConnectParams = {
   /** What the product runs as. An app by default. */
   executionKind?: ExecutableKind | undefined;
@@ -137,21 +146,77 @@ type ConnectParams = {
 
 export type PageCore = ReturnType<typeof createPageCore>;
 
-type Core = {
+type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void };
+
+type CoreParts = {
+  id: symbol;
   product: PageProduct;
-  runtime: Promise<BootedCoreRuntime>;
-  leases: number;
-  faulted: boolean;
-  downListeners: ListenerSet<undefined>;
+  /** Why the core before it went down. A first dial has none. */
+  redial: CoreDownReason | undefined;
+  blockingModalScope: BlockingModalScope;
   phoneRequests: PhoneRequestTracker;
-  /** Runs while the core outlives its last lease. */
-  destroyTimer: { handle: unknown } | null;
-  /**
-   * Takes the core out of the page and drops its runtime, prompts and phone claims. Idempotent. Throws only when
-   * `onCoresGone` throws.
-   */
-  dispose(): void;
 };
+
+/**
+ * `lingering` is a core in service that outlives its last lease. `down` is one out of service that leases still hold.
+ * A core is in the page's table from its dial until it leaves.
+ */
+type Core =
+  | (CoreParts & {
+      kind: 'booting';
+      /** Aborted as the core leaves before it booted, which cancels the boot and its redial. */
+      dropped: AbortController;
+      waiting: ReadonlyMap<symbol, Reply<CoreLease>>;
+      /** Whether the page cancelled pairing while the core booted, so a pairing core cancels it once booted. */
+      pairingCancelled: boolean;
+    })
+  | (CoreParts & { kind: 'live'; booted: BootedCoreRuntime; stopFollowing: () => void; leases: ReadonlySet<symbol> })
+  | (CoreParts & { kind: 'lingering'; booted: BootedCoreRuntime; stopFollowing: () => void; timer: unknown })
+  | (CoreParts & {
+      kind: 'down';
+      booted: BootedCoreRuntime;
+      stopFollowing: () => void;
+      reason: CoreDownReason;
+      leases: ReadonlySet<symbol>;
+    });
+
+type LiveCore = Extract<Core, { kind: 'live' }>;
+
+/** `current` is the core a request gets while it serves `product`. */
+type PageCoreState = {
+  kind: 'serving';
+  product: PageProduct;
+  current: symbol | null;
+  cores: ReadonlyMap<symbol, Core>;
+};
+
+type PageCoreEvent =
+  | { kind: 'productSet'; product: PageProduct }
+  | { kind: 'leaseAsked'; leaseId: symbol; reply: Reply<CoreLease> }
+  | { kind: 'booted'; coreId: symbol; booted: BootedCoreRuntime }
+  | { kind: 'bootFailed'; coreId: symbol; error: unknown }
+  | { kind: 'leaseReleased'; coreId: symbol; leaseId: symbol }
+  | { kind: 'lingerEnded'; coreId: symbol; timer: unknown }
+  | { kind: 'wentDown'; coreId: symbol; reason: CoreDownReason }
+  | { kind: 'storeChanged'; coreId: symbol }
+  | { kind: 'staleRead'; coreId: symbol; stale: boolean }
+  | { kind: 'staleReadFailed'; coreId: symbol; error: unknown }
+  | { kind: 'pairingCancelled' };
+
+type PageCoreEffect =
+  | { kind: 'leaseGranted'; reply: Reply<CoreLease>; core: LiveCore; leaseId: symbol }
+  | { kind: 'leaseRefused'; reply: Reply<CoreLease>; error: unknown }
+  | { kind: 'dialed'; product: PageProduct; redial: CoreDownReason | undefined }
+  | { kind: 'redialed'; outcome: 'ok' | 'aborted'; reason: CoreDownReason }
+  | { kind: 'bootFailed'; redial: CoreDownReason | undefined; error: unknown }
+  | { kind: 'disposed'; core: Core }
+  | { kind: 'orphaned'; runtime: WorkerPairingHostRuntime }
+  | { kind: 'sessionFollowFailed'; error: unknown }
+  | { kind: 'staleReadFailed'; error: unknown }
+  | { kind: 'pairingCancelled'; runtime: WorkerPairingHostRuntime }
+  | { kind: 'coresGone' };
+
+type PageCoreMachine = MachineTypes<PageCoreState, PageCoreEvent, PageCoreEffect>;
 
 /** What a page core serves until the page names its product. A page that never names one keeps it. */
 export const LANDING_PRODUCT: PageProduct = {
@@ -179,211 +244,500 @@ export function createPageCore({
   destroyDelay = CORE_DESTROY_DELAY_MS,
   timers = realTimers,
 }: Params) {
-  let pageProduct = LANDING_PRODUCT;
-  let current: Core | null = null;
-  // Also holds cores a product change or fault replaced while they still had leases.
-  const cores = new Set<Core>();
-
-  function clearDestroyTimer(core: Core): void {
-    if (core.destroyTimer !== null) {
-      timers.clearTimeout(core.destroyTimer.handle);
-      core.destroyTimer = null;
+  /**
+   * Moves a live or lingering core out of service. A held core that is the page's has its replacement dialed in the
+   * same state, so a lease that hears the core go finds the replacement current. One nobody holds leaves.
+   */
+  function takeOutOfService(
+    state: PageCoreState,
+    { coreId, reason }: { coreId: symbol; reason: CoreDownReason },
+    transition: Transition<PageCoreMachine>,
+  ): void {
+    const core = state.cores.get(coreId);
+    if (core?.kind !== 'live' && core?.kind !== 'lingering') {
+      return;
+    }
+    const down: Extract<Core, { kind: 'down' }> = {
+      ...getParts(core),
+      kind: 'down',
+      booted: core.booted,
+      stopFollowing: core.stopFollowing,
+      reason,
+      leases: core.kind === 'live' ? core.leases : new Set(),
+    };
+    const next = withCore(state, down);
+    if (down.leases.size === 0) {
+      transition.emitState(leave(next, down, transition));
+    } else if (state.current === coreId) {
+      // A holder waits on the replacement, for the page's product, which a product change may have moved on from.
+      transition.emitState(dial(next, { redial: reason, waiting: new Map() }, transition));
+    } else {
+      transition.emitState(next);
+    }
+    if (core.kind === 'lingering') {
+      timers.clearTimeout(core.timer);
     }
   }
 
-  function isPageProduct(core: Core): boolean {
-    return core.product.label === pageProduct.label && getProductId(core.product) === getProductId(pageProduct);
-  }
+  const machine = createStateMachine<PageCoreMachine>({
+    initial: { kind: 'serving', product: LANDING_PRODUCT, current: null, cores: new Map() },
+    handlers: {
+      serving: {
+        productSet(state, { product }, transition) {
+          const next = { ...state, product };
+          const core = getCurrentCore(state);
+          // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it
+          // goes now rather than with the next request.
+          if (core === null || servesProduct(core, product)) {
+            transition.emitState(next);
+            return;
+          }
+          transition.emitState(dropIfUnheld(next, core, transition));
+        },
+        leaseAsked(state, { leaseId, reply }, transition) {
+          const core = getCurrentCore(state);
+          if (core === null || core.kind === 'down' || !servesProduct(core, state.product)) {
+            transition.emitState(dial(state, { redial: undefined, waiting: new Map([[leaseId, reply]]) }, transition));
+            return;
+          }
+          switch (core.kind) {
+            case 'booting':
+              transition.emitState(withCore(state, { ...core, waiting: new Map([...core.waiting, [leaseId, reply]]) }));
+              return;
+            case 'live': {
+              const live: LiveCore = { ...core, leases: new Set([...core.leases, leaseId]) };
+              transition.emitState(withCore(state, live));
+              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+              return;
+            }
+            case 'lingering': {
+              const live: LiveCore = {
+                ...getParts(core),
+                kind: 'live',
+                booted: core.booted,
+                stopFollowing: core.stopFollowing,
+                leases: new Set([leaseId]),
+              };
+              transition.emitState(withCore(state, live));
+              timers.clearTimeout(core.timer);
+              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+              return;
+            }
+          }
+        },
+        booted(state, { coreId, booted }, { emitState, emitSideEffect, update }) {
+          const core = state.cores.get(coreId);
+          // A core dropped after its boot resolved holds no runtime, so the runtime this event carries goes.
+          if (core?.kind !== 'booting') {
+            emitSideEffect({ kind: 'orphaned', runtime: booted.runtime });
+            return;
+          }
+          // A local wallet core holds its session in memory, so the stored one is not its to follow. Other tabs' logins
+          // land in the shared session store.
+          const stopFollowing = booted.local
+            ? noop
+            : subscribeStoredSession(() => {
+                update({ kind: 'storeChanged', coreId });
+              });
+          const live: LiveCore = {
+            ...getParts(core),
+            kind: 'live',
+            booted,
+            stopFollowing,
+            leases: new Set(core.waiting.keys()),
+          };
+          emitState(withCore(state, live));
+          if (booted.local) {
+            // A local wallet core has no phone. Its leases are handed out after this, so no frame is tapped first.
+            core.phoneRequests.dispose();
+          } else {
+            // A session stored or a store that came back before the core followed it is no store event.
+            update({ kind: 'storeChanged', coreId });
+          }
+          if (core.pairingCancelled && !booted.local) {
+            emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+          }
+          for (const [leaseId, reply] of core.waiting) {
+            emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+          }
+          if (core.redial !== undefined) {
+            emitSideEffect({ kind: 'redialed', outcome: 'ok', reason: core.redial });
+          }
+        },
+        bootFailed(state, { coreId, error }, transition) {
+          const core = state.cores.get(coreId);
+          if (core?.kind !== 'booting') {
+            return;
+          }
+          transition.emitSideEffect({ kind: 'bootFailed', redial: core.redial, error });
+          transition.emitState(leave(state, core, transition));
+          // The page core reports a redial that failed, so a caller that hears of it must not report it again.
+          const refusal = core.redial === undefined ? error : new CoreRedialError(error);
+          for (const reply of core.waiting.values()) {
+            transition.emitSideEffect({ kind: 'leaseRefused', reply, error: refusal });
+          }
+        },
+        leaseReleased(state, { coreId, leaseId }, transition) {
+          const core = state.cores.get(coreId);
+          if ((core?.kind !== 'live' && core?.kind !== 'down') || !core.leases.has(leaseId)) {
+            return;
+          }
+          const leases = new Set(core.leases);
+          leases.delete(leaseId);
+          if (leases.size > 0) {
+            transition.emitState(withCore(state, { ...core, leases }));
+            return;
+          }
+          const lingers =
+            core.kind === 'live' && destroyDelay > 0 && state.current === coreId && servesProduct(core, state.product);
+          if (!lingers) {
+            transition.emitState(leave(state, core, transition));
+            return;
+          }
+          const timer = timers.setTimeout(() => {
+            transition.update({ kind: 'lingerEnded', coreId, timer });
+          }, destroyDelay);
+          transition.emitState(
+            withCore(state, {
+              ...getParts(core),
+              kind: 'lingering',
+              booted: core.booted,
+              stopFollowing: core.stopFollowing,
+              timer,
+            }),
+          );
+        },
+        lingerEnded(state, { coreId, timer }, transition) {
+          const core = state.cores.get(coreId);
+          if (core?.kind !== 'lingering' || core.timer !== timer) {
+            return;
+          }
+          transition.emitState(leave(state, core, transition));
+        },
+        wentDown: takeOutOfService,
+        storeChanged(state, { coreId }, { emitSideEffect, update }) {
+          const core = state.cores.get(coreId);
+          if (core === undefined || core.kind === 'booting') {
+            return;
+          }
+          try {
+            core.booted.runtime.notifySessionStoreChanged();
+          } catch (error) {
+            emitSideEffect({ kind: 'sessionFollowFailed', error });
+          }
+          // The store coming back can answer a wallet read that failed when this core booted.
+          update(
+            new Promise<boolean>(resolve => {
+              resolve(core.booted.isStale());
+            }).then(
+              (stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale }),
+              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', coreId, error }),
+            ),
+          );
+        },
+        staleRead(state, { coreId, stale }, transition) {
+          if (!stale) {
+            return;
+          }
+          takeOutOfService(state, { coreId, reason: 'stale' }, transition);
+        },
+        staleReadFailed(_state, { error }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'staleReadFailed', error });
+        },
+        pairingCancelled(state, _event, { emitState, emitSideEffect }) {
+          const cores = new Map(state.cores);
+          for (const core of state.cores.values()) {
+            if (core.kind === 'booting') {
+              cores.set(core.id, { ...core, pairingCancelled: true });
+              // A signing runtime has no pairing to cancel.
+            } else if (!core.booted.local) {
+              emitSideEffect({ kind: 'pairingCancelled', runtime: core.booted.runtime });
+            }
+          }
+          emitState({ ...state, cores });
+        },
+      },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'leaseGranted':
+          effect.reply.resolve(createLease(effect.core, effect.leaseId));
+          return;
+        case 'leaseRefused':
+          effect.reply.reject(effect.error);
+          return;
+        case 'dialed':
+          report.log.event(effect.redial === undefined ? 'wallet core create' : 'wallet core redial', {
+            landing: effect.product === LANDING_PRODUCT,
+            ...(effect.redial === undefined ? {} : { reason: effect.redial }),
+          });
+          return;
+        case 'redialed':
+          walletCoreRedialMetric.count({ outcome: effect.outcome, reason: effect.reason });
+          return;
+        case 'bootFailed':
+          if (effect.redial === undefined) {
+            // The caller that asked for this core gets the error and reports it.
+            log.warn('[dot.li page-core] wallet core failed to boot:', effect.error);
+            return;
+          }
+          // Nobody asked for a redial, so the page core is the only one to report that it gave up.
+          report.defect(effect.error, {
+            step: 'core_redial',
+            tags: { reason: effect.redial },
+            metric: walletCoreRedialMetric,
+            reason: effect.redial,
+            message: '[dot.li page-core] wallet core redial failed:',
+          });
+          return;
+        case 'disposed':
+          disposeCore(effect.core);
+          return;
+        case 'orphaned':
+          effect.runtime.dispose();
+          return;
+        case 'sessionFollowFailed':
+          report.defect(effect.error, {
+            step: 'session_follow',
+            metric: pageCoreSessionFollowMetric,
+            message: '[dot.li page-core] telling the core the stored session changed failed:',
+          });
+          return;
+        case 'staleReadFailed':
+          report.defect(effect.error, {
+            step: 'stale_read',
+            metric: pageCoreStaleReadMetric,
+            message: '[dot.li page-core] reading whether the core turned stale failed:',
+          });
+          return;
+        case 'pairingCancelled':
+          effect.runtime.cancelPairing();
+          return;
+        case 'coresGone':
+          onCoresGone?.();
+          return;
+      }
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: pageCoreTransitionMetric,
+        message: '[dot.li page-core] A page core transition threw',
+      });
+    },
+  });
 
-  /** Returns the core that serves the page's product, dialing one when none does. */
-  function getServingCore(): Core {
-    if (current === null || current.faulted || !isPageProduct(current)) {
-      return dial(pageProduct);
-    }
-    return current;
-  }
+  return {
+    /**
+     * Called as soon as the page knows it, so a core booted by an early login is already the product's. Never
+     * throws.
+     */
+    setProduct(product: PageProduct): void {
+      machine.update({ kind: 'productSet', product });
+    },
 
-  function dial(product: PageProduct, { redial }: DialParams = {}): Core {
-    report.log.event(redial === undefined ? 'wallet core create' : 'wallet core redial', {
-      landing: product === LANDING_PRODUCT,
-      ...(redial === undefined ? {} : { reason: redial }),
-    });
+    /**
+     * Resolves with a lease on the page's core, dialing one when none serves the page's product. A request made while
+     * the core redials waits for the replacement. Rejects when the core fails to boot.
+     */
+    acquire(): Promise<CoreLease> {
+      return new Promise((resolve, reject) => {
+        machine.update({ kind: 'leaseAsked', leaseId: Symbol('lease'), reply: { resolve, reject } });
+      });
+    },
+
+    /** Cancels the pairing of every pairing core dialed, at once or, for one still booting, once it boots. Never throws. */
+    cancelPairing(): void {
+      machine.update({ kind: 'pairingCancelled' });
+    },
+
+    /**
+     * Resets the session of every core already dialed, once the boots and reads in flight have settled, booting none,
+     * for a session that ended elsewhere. Rejects when a booted core fails to reset.
+     */
+    async resetSession(): Promise<void> {
+      await machine.await();
+      // A core that never booted holds no session, and its boot failure was reported as it failed.
+      await Promise.all(
+        [...machine.state.get().cores.values()].flatMap(core =>
+          core.kind === 'booting' ? [] : [core.booted.runtime.resetSessionState()],
+        ),
+      );
+    },
+  };
+
+  /**
+   * Returns `state` with a core booting for the page's product, as the page's current core. A previous current core
+   * nobody holds leaves in it.
+   */
+  function dial(
+    state: PageCoreState,
+    { redial, waiting }: Pick<Extract<Core, { kind: 'booting' }>, 'redial' | 'waiting'>,
+    transition: Transition<PageCoreMachine>,
+  ): PageCoreState {
+    const { product } = state;
+    const id = Symbol('core');
     const blockingModalScope = coordinator.createScope();
     const phoneRequests = createPhoneRequests();
     const dropped = new AbortController();
-    let unsubscribeStore: (() => void) | null = null;
     const context: CoreContext = {
       product,
       blockingModalScope,
       phoneRequests,
-      isLive: () => cores.has(core),
-      isInService: () => cores.has(core) && !core.faulted,
+      isLive: () => machine.state.get().cores.has(id),
+      isInService: () => (machine.state.get().cores.get(id)?.kind ?? 'down') !== 'down',
       sessionInMemory: false,
     };
-    async function attempt(): Promise<BootedCoreRuntime> {
-      const booted = await bootRuntime(context);
-      // The signal owns the runtime from here, so a drop at any later point disposes it exactly once.
-      if (dropped.signal.aborted) {
-        booted.runtime.dispose();
-        throw dropped.signal.reason;
-      }
-      dropped.signal.addEventListener(
-        'abort',
-        () => {
-          booted.runtime.dispose();
-        },
-        { once: true },
-      );
-      return booted;
-    }
-    const booting = redial === undefined ? attempt() : redials.call(attempt, { signal: dropped.signal });
-    // Settled here first, so whoever awaits the runtime sees the fault already recorded.
-    const runtime = booting.then(
-      booted => {
-        // The pool can resolve a boot that was dropped in the same turn. Its runtime is already disposed.
-        if (dropped.signal.aborted) {
-          if (redial !== undefined) {
-            walletCoreRedialMetric.count({ outcome: 'aborted', reason: redial });
-          }
-          throw dropped.signal.reason;
-        }
-        // A local wallet core has no phone. Leases are handed out only after this runs, so no frame is tapped first.
-        if (booted.local) {
-          phoneRequests.dispose();
-        }
-        // A local wallet core holds its session in memory, so the stored one is not its to follow.
-        if (!booted.local) {
-          // Runs in store listeners, where a throw would reach the store's writer, and in a microtask, where it would be
-          // uncaught, so it is reported here and the stale check still runs.
-          function followStore(): void {
-            try {
-              booted.runtime.notifySessionStoreChanged();
-            } catch (error) {
-              report.defect(error, {
-                step: 'session_follow',
-                metric: pageCoreSessionFollowMetric,
-                message: '[dot.li page-core] telling the core the stored session changed failed:',
-              });
-            }
-            // The store coming back can answer a wallet read that failed when this core booted.
-            void booted.isStale().then(stale => {
-              if (stale) {
-                takeDown(core, 'stale');
-              }
-            });
-          }
-          // Other tabs' logins land in the shared session store. Once now too, for a session stored or a store that
-          // came back before this core subscribed, which no store event reports.
-          unsubscribeStore = subscribeStoredSession(followStore);
-          queueMicrotask(() => {
-            if (cores.has(core)) {
-              followStore();
-            }
+    transition.update(
+      new Promise<PageCoreEvent>(resolve => {
+        // A booted runtime is told as the boot ends, since a drop just after rejects the redial pool's call without it.
+        function boot(): Promise<void> {
+          return bootCore(context, dropped.signal).then(booted => {
+            resolve({ kind: 'booted', coreId: id, booted });
           });
         }
-        if (redial !== undefined) {
-          walletCoreRedialMetric.count({ outcome: 'ok', reason: redial });
-        }
-        return booted;
-      },
-      (error: unknown) => {
-        if (dropped.signal.aborted) {
-          if (redial !== undefined) {
-            walletCoreRedialMetric.count({ outcome: 'aborted', reason: redial });
-          }
-          throw error;
-        }
-        core.faulted = true;
-        if (redial === undefined) {
-          // The caller that asked for this core gets the error and reports it.
-          log.warn('[dot.li page-core] wallet core failed to boot:', error);
-        } else {
-          // Nobody asked for a redial, so the page core is the only one to report that it gave up.
-          report.defect(error, {
-            step: 'core_redial',
-            tags: { reason: redial },
-            metric: walletCoreRedialMetric,
-            reason: redial,
-            message: '[dot.li page-core] wallet core redial failed:',
-          });
-          // A redial nobody waits on has nobody to fail, and would leave the page following a dead core.
-          if (core.leases === 0) {
-            core.dispose();
-          }
-          // The page core has reported it, so a caller that hears of it must not report it again.
-          throw new CoreRedialError(error);
-        }
-        throw error;
+        (redial === undefined ? boot() : redials.call(boot, { signal: dropped.signal })).catch((error: unknown) => {
+          resolve({ kind: 'bootFailed', coreId: id, error });
+        });
+      }),
+    );
+    transition.emitSideEffect({ kind: 'dialed', product, redial });
+    const previous = getCurrentCore(state);
+    const next = withCore(
+      { ...state, current: id },
+      {
+        id,
+        product,
+        redial,
+        blockingModalScope,
+        phoneRequests,
+        dropped,
+        kind: 'booting',
+        waiting,
+        pairingCancelled: false,
       },
     );
-    // Logged above, and a redial nobody has asked for yet has no caller to tell.
-    void markHandled(runtime);
-    const core: Core = {
-      product,
-      runtime,
-      leases: 0,
-      faulted: false,
-      destroyTimer: null,
-      phoneRequests,
-      downListeners: createListenerSet<undefined>({ onListenerError: report.listener('page_core.down') }),
-      dispose() {
-        if (!cores.delete(core)) {
-          return;
+    return previous === null ? next : dropIfUnheld(next, previous, transition);
+  }
+
+  /**
+   * Resolves with the booted runtime. Rejects when the boot fails, or when the core was dropped while it booted, after
+   * disposing the runtime.
+   */
+  async function bootCore(context: CoreContext, dropped: AbortSignal): Promise<BootedCoreRuntime> {
+    const booted = await bootRuntime(context);
+    // A boot that ends after the drop has no core left to take its runtime.
+    if (dropped.aborted) {
+      booted.runtime.dispose();
+      throw dropped.reason;
+    }
+    return booted;
+  }
+
+  /** Returns `state` without `core` when nothing holds it. A redial dropped before it booted is counted as aborted. */
+  function dropIfUnheld(state: PageCoreState, core: Core, transition: Transition<PageCoreMachine>): PageCoreState {
+    switch (core.kind) {
+      case 'booting':
+        if (core.waiting.size > 0) {
+          return state;
         }
-        clearDestroyTimer(core);
-        if (current === core) {
-          current = null;
+        if (core.redial !== undefined) {
+          transition.emitSideEffect({ kind: 'redialed', outcome: 'aborted', reason: core.redial });
         }
-        report.log.event('wallet core disposed', { faulted: core.faulted });
-        dropped.abort(new Error('The page core was disposed'));
-        unsubscribeStore?.();
-        blockingModalScope.dispose();
-        phoneRequests.dispose();
-        if (cores.size === 0) {
-          onCoresGone?.();
+        return leave(state, core, transition);
+      case 'live':
+        return core.leases.size > 0 ? state : leave(state, core, transition);
+      case 'lingering':
+        return leave(state, core, transition);
+      case 'down':
+        return state;
+    }
+  }
+
+  /** Returns `state` without `core`, whose resources go once the state is emitted. */
+  function leave(state: PageCoreState, core: Core, { emitSideEffect }: Transition<PageCoreMachine>): PageCoreState {
+    const cores = new Map(state.cores);
+    cores.delete(core.id);
+    emitSideEffect({ kind: 'disposed', core });
+    if (cores.size === 0) {
+      emitSideEffect({ kind: 'coresGone' });
+    }
+    return { ...state, current: state.current === core.id ? null : state.current, cores };
+  }
+
+  /** Drops the runtime, prompts, phone claims and store following of a core that left the page. */
+  function disposeCore(core: Core): void {
+    report.log.event('wallet core disposed', { faulted: core.kind === 'down' });
+    if (core.kind === 'booting') {
+      core.dropped.abort(new Error('The page core was disposed'));
+    } else {
+      if (core.kind === 'lingering') {
+        timers.clearTimeout(core.timer);
+      }
+      core.booted.runtime.dispose();
+      core.stopFollowing();
+    }
+    core.blockingModalScope.dispose();
+    core.phoneRequests.dispose();
+  }
+
+  function createLease(core: LiveCore, leaseId: symbol): CoreLease {
+    /** Whether the lease is still held, and whether its core went down. */
+    function readLease(state: PageCoreState): 'held' | 'down' | 'released' {
+      const leased = state.cores.get(core.id);
+      if ((leased?.kind !== 'live' && leased?.kind !== 'down') || !leased.leases.has(leaseId)) {
+        return 'released';
+      }
+      return leased.kind === 'down' ? 'down' : 'held';
+    }
+
+    return {
+      runtime: core.booted.runtime,
+      connect: params => connect(core, params),
+      subscribeDown(listener) {
+        // A listener runs inside the state's write, which a throw would reach.
+        function hearDown(): void {
+          try {
+            listener();
+          } catch (error) {
+            hearDownFailed(error);
+          }
         }
+        switch (readLease(machine.state.get())) {
+          case 'released':
+            return noop;
+          case 'down':
+            hearDown();
+            return noop;
+          case 'held':
+            break;
+        }
+        const stop = machine.state.listen(state => {
+          const lease = readLease(state);
+          if (lease === 'held') {
+            return;
+          }
+          stop();
+          if (lease === 'down') {
+            hearDown();
+          }
+        });
+        return stop;
+      },
+      release() {
+        machine.update({ kind: 'leaseReleased', coreId: core.id, leaseId });
       },
     };
-    cores.add(core);
-    const previous = current;
-    current = core;
-    // Only a redialed or lingering core can be current without a lease, and nobody waits on it once it is replaced.
-    if (previous !== null && previous.leases === 0) {
-      previous.dispose();
-    }
-    return core;
   }
 
-  /** Idempotent, so a refused connection and the close that follows it, or two stale checks, take the core down once. */
-  function takeDown(core: Core, reason: CoreDownReason): void {
-    if (core.faulted) {
-      return;
-    }
-    core.faulted = true;
-    if (current === core) {
-      if (core.leases > 0) {
-        // A holder waits on the replacement, for the page's product, which a product change may have moved on from.
-        dial(pageProduct, { redial: reason });
-      } else {
-        // Redialing a core nobody holds would boot a crashing one forever, so the next request dials instead.
-        core.dispose();
-      }
-    }
-    // Once only, as the guard above holds, and a holder that subscribes after this hears it at once instead.
-    core.downListeners.emit(undefined);
-  }
-
-  async function connect(
-    core: Core,
-    { runtime, productId }: BootedCoreRuntime,
-    { executionKind = 'App' }: ConnectParams = {},
-  ): Promise<CoreConnection> {
+  async function connect(core: LiveCore, { executionKind = 'App' }: ConnectParams = {}): Promise<CoreConnection> {
+    const { runtime, productId } = core.booted;
     let provider: TrUApiProductProvider;
     try {
       provider = await runtime.createProvider({ productId, executionKind });
     } catch (error) {
       log.warn('[dot.li page-core] wallet core refused a connection:', error);
-      takeDown(core, 'refused');
+      machine.update({ kind: 'wentDown', coreId: core.id, reason: 'refused' });
       throw error;
     }
     let closing = false;
@@ -417,7 +771,7 @@ export function createPageCore({
       tap.dispose();
       if (!closing) {
         report.log.event('wallet core went down under a connection');
-        takeDown(core, 'closed');
+        machine.update({ kind: 'wentDown', coreId: core.id, reason: 'closed' });
       }
     });
     return {
@@ -438,125 +792,22 @@ export function createPageCore({
     };
   }
 
-  return {
-    /**
-     * Called as soon as the page knows it, so a core booted by an early login is already the product's. Never
-     * throws.
-     */
-    setProduct(product: PageProduct): void {
-      pageProduct = product;
-      // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it goes
-      // now rather than with the next request.
-      if (current !== null && current.leases === 0 && !isPageProduct(current)) {
-        current.dispose();
-      }
-    },
+  function getCurrentCore(state: PageCoreState): Core | null {
+    return state.current === null ? null : (state.cores.get(state.current) ?? null);
+  }
 
-    /**
-     * Resolves with a lease on the page's core, dialing one when none serves the page's product. A request made while
-     * the core redials waits for the replacement. Rejects when the core fails to boot.
-     */
-    async acquire(): Promise<CoreLease> {
-      const core = getServingCore();
-      // A lingering core is leased again, so it stays.
-      clearDestroyTimer(core);
-      core.leases++;
-      let released = false;
-      // A core outliving a lease must not call back a holder that let it go.
-      const leaseUnsubscribes = new Set<() => void>();
+  function withCore(state: PageCoreState, core: Core): PageCoreState {
+    return { ...state, cores: new Map(state.cores).set(core.id, core) };
+  }
+}
 
-      function release(): void {
-        if (released) {
-          return;
-        }
-        released = true;
-        for (const unsubscribe of leaseUnsubscribes) {
-          unsubscribe();
-        }
-        leaseUnsubscribes.clear();
-        core.leases--;
-        if (core.leases === 0) {
-          const lingers =
-            destroyDelay > 0 && cores.has(core) && core === current && !core.faulted && isPageProduct(core);
-          if (lingers) {
-            core.destroyTimer = {
-              handle: timers.setTimeout(() => {
-                core.destroyTimer = null;
-                core.dispose();
-              }, destroyDelay),
-            };
-          } else {
-            core.dispose();
-          }
-        }
-      }
+/** The parts every phase of `core` keeps, so a core that moves on carries no field of the phase it left. */
+function getParts({ id, product, redial, blockingModalScope, phoneRequests }: Core): CoreParts {
+  return { id, product, redial, blockingModalScope, phoneRequests };
+}
 
-      let booted: BootedCoreRuntime;
-      try {
-        booted = await core.runtime;
-      } catch (error) {
-        release();
-        throw error;
-      }
-      return {
-        runtime: booted.runtime,
-        connect: params => connect(core, booted, params),
-        subscribeDown(listener) {
-          if (released) {
-            return () => undefined;
-          }
-          if (core.faulted) {
-            listener();
-            return () => undefined;
-          }
-          const unsubscribe = core.downListeners.subscribe(listener);
-          leaseUnsubscribes.add(unsubscribe);
-          function unsubscribeFromLease(): void {
-            leaseUnsubscribes.delete(unsubscribe);
-            unsubscribe();
-          }
-          return unsubscribeFromLease;
-        },
-        release,
-      };
-    },
-
-    /** Cancels the pairing of every pairing core dialed. Never throws. */
-    cancelPairing(): void {
-      for (const core of cores) {
-        core.runtime.then(
-          booted => {
-            // A signing runtime has no pairing to cancel.
-            if (!booted.local) {
-              booted.runtime.cancelPairing();
-            }
-          },
-          () => {
-            // A core that never booted has no pairing to cancel.
-          },
-        );
-      }
-    },
-
-    /**
-     * Resets the session of every core already dialed, booting none, for a session that ended elsewhere. Rejects when
-     * a booted core fails to reset.
-     */
-    async resetSession(): Promise<void> {
-      await Promise.all(
-        [...cores].map(async core => {
-          let booted: BootedCoreRuntime;
-          try {
-            booted = await core.runtime;
-          } catch {
-            // A core that never booted holds no session, and its boot failure was reported as it failed.
-            return;
-          }
-          await booted.runtime.resetSessionState();
-        }),
-      );
-    },
-  };
+function servesProduct(core: Core, product: PageProduct): boolean {
+  return core.product.label === product.label && getProductId(core.product) === getProductId(product);
 }
 
 function getProductId(product: PageProduct): string {

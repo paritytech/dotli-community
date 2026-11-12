@@ -15,12 +15,14 @@ import { rethrow } from '../testing/rethrow.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
 import type { DotliAuthState } from './session/types.js';
 import { pendingResets } from './createPendingResets.js';
+import { ERRORS } from './errors.js';
 import {
   createProductFrame,
   type FrameHostParams,
   type FrameProduct,
   type ProductFrameParams,
   type ProductFramePage,
+  type ProductFrameView,
 } from './createProductFrame.js';
 import { productState } from './state/productState.js';
 import type { ProductFacts } from '../getProductFacts.js';
@@ -66,6 +68,8 @@ type CreateHarnessParams = {
   location?: Partial<PageLocation>;
   /** Hears a throw of a sandbox channel handler, `rethrow` by default so a spec fails on it. */
   reportHandlerError?: (error: unknown, type: SandboxMessageType) => void;
+  /** Loads the sandbox checker panel, none by default. */
+  loadCheckerPanel?: ProductFrameView['loadCheckerPanel'];
 };
 
 type AskToRecoverParams = {
@@ -116,6 +120,7 @@ function createHarness({
   timers = realTimers,
   location = {},
   reportHandlerError = rethrow,
+  loadCheckerPanel,
 }: CreateHarnessParams = {}) {
   const hosts: FakeIframeHost[] = [];
   let held: Promise<undefined> | null = null;
@@ -162,6 +167,7 @@ function createHarness({
     permissions: createPermissionAuthorizations(),
     view: {
       ...frameView.view,
+      loadCheckerPanel,
       showStatus: status => {
         frameView.view.showStatus(status);
         fakes.changes.notify();
@@ -326,7 +332,7 @@ function createTopbarLogin({ fakes }: CreateTopbarLoginParams): () => Promise<vo
 }
 
 describe('product frame renders', () => {
-  it('As a dApp user, I open a second app before the first connects and the first app frame that connects late goes with its connection and core', async () => {
+  it("As a dApp user, I open a second app before the first connects and the first app's late connection goes with its core, with no frame built", async () => {
     // Given
     const fakes = createHarness();
 
@@ -336,15 +342,13 @@ describe('product frame renders', () => {
     const second = fakes.frame.render(buildIframeProduct('second'));
     const secondProvider = await answerConnection(fakes, 1);
     await second;
-    const shownBeforeFirst = fakes.listOnScreen()[0]?.options.iframeUrl;
     const firstProvider = await answerConnection(fakes, 0);
     await first;
-    await fakes.changes.until(() => fakes.hosts.length === 2);
-    const firstHost = fakes.hosts.find(host => host.options.iframeUrl === 'https://first.example/app');
-    await fakes.changes.until(() => (firstHost?.dispose.mock.calls.length ?? 0) === 1);
+    await fakes.changes.until(() => firstProvider.dispose.mock.calls.length === 1);
 
     // Then
-    expect(shownBeforeFirst).toBe('https://second.example/app');
+    expect(fakes.hosts.map(host => host.options.iframeUrl)).toEqual(['https://second.example/app']);
+    expect(fakes.countFramesAsked()).toBe(1);
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
@@ -399,6 +403,25 @@ describe('product frame renders', () => {
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
     expect(fakes.listOnScreen()).toHaveLength(1);
     expect(fakes.listOnScreen()[0]?.options.iframeUrl).toBe('https://second.example/app');
+  });
+
+  it("As a dApp user, I open a second app and the first app's connection closes before its core goes", async () => {
+    // Given the first app on screen, on a core that serves it alone
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildIframeProduct('first'));
+    const firstProvider = await answerConnection(fakes, 0);
+    await rendered;
+
+    // When the second app connects on its own core and replaces the first
+    await fakes.settle(buildIframeProduct('second'), 1);
+    const firstRuntime = nth(fakes.runtimes, 0);
+
+    // Then the first connection was closed while its core still ran
+    expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
+    expect(firstRuntime.dispose).toHaveBeenCalledTimes(1);
+    expect(nth(firstProvider.dispose.mock.invocationCallOrder, 0)).toBeLessThan(
+      nth(firstRuntime.dispose.mock.invocationCallOrder, 0),
+    );
   });
 
   it('As a dApp user, I open an app by iframe and then by subdomain and each app frame is handed to the frame layout', async () => {
@@ -645,6 +668,57 @@ describe('product frame status', () => {
     expect(fakes.readLastStatus()).toBe('failed');
   });
 
+  it('As a dApp user whose frame cannot be built, I see the render fail and its connection go', async () => {
+    // Given a frame host that throws as it is asked for
+    const failure = new Error('The frame host cannot be built');
+    const fakes = createHarness({
+      createIframeHost: () => {
+        throw failure;
+      },
+    });
+
+    // When
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const connection = await answerConnection(fakes, 0);
+    const error = await catchRejection(rendered);
+
+    // Then
+    expect(error).toBe(failure);
+    expect(fakes.readLastStatus()).toBe('failed');
+    expect(connection.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor, I open a link whose path leaves the app origin while another app connects, and the render fails at once and drops the other one', async () => {
+    // Given a page whose path, past the product's base, names another host, and an app still connecting
+    const fakes = createHarness({
+      location: { href: 'http://localhost:3000/Doom.dot@evil.example', pathname: '/Doom.dot@evil.example' },
+    });
+    const first = fakes.frame.render(buildIframeProduct('first'));
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // When the product whose frame URL cannot be built is rendered, and the dropped app's connection opens late
+    const error = await catchRejection(
+      fakes.frame.render({
+        mode: 'subdomain',
+        label: 'doom',
+        cid: 'cid',
+        base: '/Doom.dot',
+        chat: Promise.resolve(false),
+        facts: {},
+      }),
+    );
+    const firstOutcome = await readOutcome(first);
+    const firstProvider = await answerConnection(fakes, 0);
+    await fakes.changes.until(() => firstProvider.dispose.mock.calls.length === 1);
+
+    // Then
+    expect(error.message).toBe(ERRORS.CROSS_ORIGIN_APP_URL);
+    expect(firstOutcome).toBe('resolved');
+    expect(fakes.listStatuses()).toEqual(['connecting', 'failed']);
+    expect(fakes.countFramesAsked()).toBe(0);
+    expect(fakes.connections).toHaveLength(1);
+  });
+
   it('As a user, I open a newer version of an app before the first connects and the superseded render settles without an error', async () => {
     // Given
     const fakes = createHarness();
@@ -710,6 +784,67 @@ describe('product frame app roots', () => {
   });
 });
 
+describe('product frame checker panel', () => {
+  it('As a sandbox checker user whose panel fails to load, I see the render fail and keep the product on screen', async () => {
+    // Given a checker panel that fails to load
+    const failure = new Error('Failed to fetch the checker panel');
+    const fakes = createHarness({ loadCheckerPanel: () => Promise.reject(failure) });
+
+    // When the product renders, then a later render replaces it
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const live = await answerConnection(fakes, 0);
+    const error = await catchRejection(rendered);
+    const afterFailure = {
+      status: fakes.readLastStatus(),
+      onScreen: fakes.listOnScreen(),
+      connectionClosed: live.dispose.mock.calls.length,
+    };
+    const later = fakes.frame.render(buildSubdomainProduct('product', { cid: 'later-cid' }));
+    await answerConnection(fakes, 1);
+    await catchRejection(later);
+
+    // Then
+    expect(error).toBe(failure);
+    expect(afterFailure).toEqual({ status: 'failed', onScreen: [nth(fakes.hosts, 0)], connectionClosed: 0 });
+    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a sandbox checker user whose panel fails to mount, I see the render fail and keep the product on screen', async () => {
+    // Given a checker panel that loads and then throws as it mounts
+    const failure = new Error('The checker panel cannot mount');
+    const fakes = createHarness({
+      loadCheckerPanel: () =>
+        Promise.resolve(() => {
+          throw failure;
+        }),
+    });
+
+    // When
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const live = await answerConnection(fakes, 0);
+    const error = await catchRejection(rendered);
+
+    // Then
+    expect(error).toBe(failure);
+    expect(fakes.listStatuses()).toEqual(['connecting', 'failed']);
+    expect(fakes.listOnScreen()).toEqual([nth(fakes.hosts, 0)]);
+    expect(live.dispose).not.toHaveBeenCalled();
+  });
+
+  it('As a sandbox checker user, I leave the page and the panel goes once', async () => {
+    // Given a product on screen under the checker panel
+    const stopPanel = vi.fn();
+    const fakes = createHarness({ loadCheckerPanel: () => Promise.resolve(() => stopPanel) });
+    await fakes.settle(buildSubdomainProduct('product'), 0);
+
+    // When
+    fakes.frame.dispose();
+
+    // Then
+    expect(stopPanel).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('product frame halted', () => {
   it('As a visitor whose app failed for good, I stay on the failure screen and the app lets go of its core with nothing rebuilt under it', async () => {
     // Given a product on screen, halted under the failure screen the page put up
@@ -740,16 +875,18 @@ describe('product frame halted', () => {
     await fakes.settle(buildSubdomainProduct('product'), 0);
     fakes.askToRecover();
 
-    // When the app fails for good under the failure screen, and the rebuild's frame then connects
+    // When the app fails for good under the failure screen while the rebuild still leases its core
     fakes.frame.halt();
     const { disposePage } = fakes.putUpScreens();
-    await answerConnection(fakes, 1);
-    await fakes.changes.until(() => fakes.hosts.length === 2 && fakes.listOnScreen().length === 1);
+    await fakes.changes.until(() => (fakes.runtimes[0]?.dispose.mock.calls.length ?? 0) > 0);
 
-    // Then the rebuilt frame is dropped, and the product that was on screen stays under the screen
+    // Then the rebuild never connects, and the product that was on screen stays under the screen without its core
     expect(disposePage).not.toHaveBeenCalled();
-    expect(fakes.listOnScreen()).toEqual([nth(fakes.hosts, 0)]);
+    expect(fakes.connections).toHaveLength(1);
+    expect(fakes.countFramesAsked()).toBe(1);
     expect(fakes.readLastStatus()).toBe('failed');
+    expect(fakes.listOnScreen()).toEqual([nth(fakes.hosts, 0)]);
+    expect(nth(fakes.hosts, 0).dispose).not.toHaveBeenCalled();
   });
 });
 
@@ -806,18 +943,16 @@ describe('product frame disposed', () => {
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
     await fakes.changes.until(() => fakes.connections.length === 1);
 
-    // When the frame is disposed, then the connection opens and the frame comes up
+    // When the frame is disposed, then the connection opens
     fakes.frame.dispose();
     const connection = await answerConnection(fakes, 0);
     const outcome = await readOutcome(rendered);
-    await fakes.changes.until(
-      () => fakes.hosts.length === 1 && (fakes.frameView.attached.length > 0 || fakes.listOnScreen().length === 0),
-    );
+    await fakes.changes.until(() => connection.dispose.mock.calls.length === 1);
 
-    // Then the render resolves, and the frame goes with its connection without being attached
+    // Then the render resolves, and the connection goes with no frame built or attached
     expect(outcome).toBe('resolved');
+    expect(fakes.hosts).toEqual([]);
     expect(fakes.frameView.attached).toEqual([]);
-    expect(fakes.listOnScreen()).toEqual([]);
     expect(connection.dispose).toHaveBeenCalledTimes(1);
   });
 
@@ -882,9 +1017,10 @@ describe('product frame disposed', () => {
     expect(fakes.frameView.attached).toEqual([]);
   });
 
-  it('As a dApp user whose product fails to go as I leave the page, I dispose the frame again and its failed dispose is not repeated', async () => {
+  it('As a dApp user whose product fails to go as I leave the page, I dispose the frame twice and the failure is reported once', async () => {
     // Given a product on screen whose connection throws as it goes
     const fakes = createHarness();
+    const { counted } = bindReports();
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
     const live = await answerConnection(fakes, 0);
     await rendered;
@@ -897,10 +1033,13 @@ describe('product frame disposed', () => {
     const first = catchError(fakes.frame.dispose);
     const second = catchError(fakes.frame.dispose);
 
-    // Then the first dispose threw the product's failure, the second threw nothing, and the connection went once
-    expect(first).toBe(failure);
+    // Then neither dispose threw, the connection went once, and its failure was reported once
+    expect(first).toBeUndefined();
     expect(second).toBeUndefined();
     expect(live.dispose).toHaveBeenCalledTimes(1);
+    expect(counted('listener.delivery')).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'product_frame.release' },
+    ]);
   });
 
   it('As a dApp user whose app failed to render, I leave the page and the frame is disposed without throwing', async () => {
@@ -1400,6 +1539,53 @@ describe('product frame and the page core', () => {
     expect(fakes.runtimes).toHaveLength(2);
     expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
     expect(fakes.listOnScreen()).toHaveLength(1);
+  });
+
+  it('As a dApp user whose replacement core turns stale while my product connects to it again, I see it rendered on the next core', async () => {
+    // Given a render whose first core refused its connection, now connecting to the replacement core
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    await fakes.changes.until(() => fakes.connections.length === 1);
+    nth(fakes.connections, 0).reject(new Error('runtime disposed'));
+    await fakes.changes.until(() => fakes.connections.length === 2);
+
+    // When another tab's login brings the local wallet, so the replacement turns stale, and its connection then opens
+    fakes.findLocalWallet();
+    await fakes.changes.until(() => fakes.runtimes.length === 3);
+    await answerConnection(fakes, 1);
+    await rendered;
+    await answerConnection(fakes, 2);
+    await fakes.changes.until(() => fakes.readLastStatus() === 'connected');
+
+    // Then the product ends connected on the local core, and the stale core goes with the frame it served
+    expect(fakes.listStatuses()).toEqual(['connecting', 'lost', 'connecting', 'connected']);
+    expect(fakes.runtimes).toHaveLength(3);
+    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(nth(fakes.runtimes, 1).dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.listOnScreen()).toHaveLength(1);
+  });
+
+  it('As a dApp user whose core turns stale while my product connects to it, I see it shown on the replacement core with no core death counted', async () => {
+    // Given a render waiting for its connection to a pairing core
+    const fakes = createHarness();
+    const { counted } = bindReports({ onReport: fakes.changes.notify });
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // When another tab's login brings the local wallet, so the core turns stale, and the connection then opens
+    fakes.findLocalWallet();
+    await fakes.changes.until(() => fakes.runtimes.length === 2);
+    const first = await answerConnection(fakes, 0);
+    await fakes.changes.until(() => first.dispose.mock.calls.length === 1);
+    await answerConnection(fakes, 1);
+    await rendered;
+
+    // Then
+    expect(fakes.listStatuses()).toEqual(['connecting', 'connected']);
+    expect(fakes.listOnScreen()).toHaveLength(1);
+    expect(nth(fakes.runtimes, 1).createProvider).toHaveBeenCalledTimes(1);
+    expect(first.dispose).toHaveBeenCalledTimes(1);
+    expect(counted('product.rerender')).toEqual([]);
   });
 
   it('As a dApp user, I keep my product open while a core dialed for another product cannot boot and my product stays connected', async () => {

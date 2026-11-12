@@ -687,6 +687,26 @@ describe('page core', () => {
     expect(outcomes).toEqual(['error', 'ok']);
   });
 
+  it('As a dApp user whose core boot throws before it starts, I see my first ask refused and the next one dial again', async () => {
+    // Given a first boot that throws before it returns
+    const { core, runtimes, contexts, nextBoots } = createHarness();
+    nextBoots.push(() => {
+      throw new Error('boot threw');
+    });
+
+    // When I ask for the core, and ask again once the first ask failed
+    const firstFailure = await core.acquire().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const second = await core.acquire();
+
+    // Then the first ask failed with the throw, and the second dialed a second core
+    expect(firstFailure).toMatchObject({ message: 'boot threw' });
+    expect(contexts).toHaveLength(2);
+    expect(second.runtime).toBe(nth(runtimes, 0).runtime);
+  });
+
   it('As a dApp user whose core goes down under my product, I wait and a new core is dialed without asking', async () => {
     // Given a connection on a core
     const { core, runtimes, contexts, outcomes, changes } = createHarness();
@@ -1112,6 +1132,23 @@ describe('page core', () => {
     // Then the core heard no cancel
     expect(nth(runtimes, 0).cancelPairing).not.toHaveBeenCalled();
   });
+
+  it('As a Polkadot App user, I close the login modal while my core is still booting and my core cancels the pairing once it boots', async () => {
+    // Given a core whose boot is in flight
+    const { core, nextBoots, changes } = createHarness();
+    const held = createHeldBoot({ changes });
+    nextBoots.push(held.boot);
+    const lease = core.acquire();
+
+    // When the modal closes before the boot ends, and the boot then ends
+    core.cancelPairing();
+    const runtime = held.resolve();
+    await lease;
+    await changes.until(() => runtime.cancelPairing.mock.calls.length === 1);
+
+    // Then the core cancels once
+    expect(runtime.cancelPairing).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('page core redial reports', () => {
@@ -1312,6 +1349,35 @@ describe('page core after a failed wallet read', () => {
     // Then the failure is counted once and the stale check still retired the pairing core
     expect(counted('page_core.session_follow')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'stale' }]);
+  });
+
+  it('As an operator, I see a stale check that fails on a stored session change counted, and the user keeps the core', async () => {
+    // Given a pairing core whose wallet read throws once the store changes
+    let readBroken = false;
+    const { core, contexts, storeListeners, staleChecks, counted, changes } = createReportingHarness({
+      walletFound: () => {
+        if (readBroken) {
+          throw new Error('wallet read broke');
+        }
+        return false;
+      },
+    });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    const lease = await core.acquire();
+    await changes.until(() => staleChecks.length === 1);
+    readBroken = true;
+
+    // When the store reports a change
+    for (const listener of [...storeListeners]) {
+      listener();
+    }
+    await changes.until(() => counted('page_core.stale_read').length === 1);
+    const next = await core.acquire();
+
+    // Then the failure is counted once and the core stays
+    expect(counted('page_core.stale_read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(next.runtime).toBe(lease.runtime);
+    expect(contexts).toHaveLength(1);
   });
 });
 
