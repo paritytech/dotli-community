@@ -195,7 +195,7 @@ type PageCoreEvent =
   | { kind: 'wentDown'; coreId: symbol; reason: CoreDownReason }
   | { kind: 'storeChanged'; coreId: symbol }
   | { kind: 'staleRead'; coreId: symbol; stale: boolean }
-  | { kind: 'staleReadFailed'; coreId: symbol; error: unknown }
+  | { kind: 'staleReadFailed'; error: unknown }
   | { kind: 'pairingCancelled' };
 
 type PageCoreEffect =
@@ -252,15 +252,14 @@ export function createPageCore({
     transition: Transition<PageCoreMachine>,
   ): void {
     const core = state.cores.get(coreId);
-    if (core?.kind !== 'live' && core?.kind !== 'lingering') {
+    if (core?.kind === 'lingering') {
+      transition.emitState(leave(state, core, transition));
       return;
     }
-    const down: Core = {
-      ...getBootedParts(core),
-      kind: 'down',
-      reason,
-      leases: core.kind === 'live' ? core.leases : new Set(),
-    };
+    if (core?.kind !== 'live') {
+      return;
+    }
+    const down: Core = { ...core, kind: 'down', reason };
     const next = withCore(state, down);
     if (down.leases.size === 0) {
       transition.emitState(leave(next, down, transition));
@@ -269,9 +268,6 @@ export function createPageCore({
       transition.emitState(dial(next, { redial: reason, waiting: new Map() }, transition));
     } else {
       transition.emitState(next);
-    }
-    if (core.kind === 'lingering') {
-      transition.emitSideEffect({ kind: 'lingerCancelled', timer: core.timer });
     }
   }
 
@@ -343,9 +339,9 @@ export function createPageCore({
           } else {
             // A session stored or a store that came back before the core followed it is no store event.
             update({ kind: 'storeChanged', coreId });
-          }
-          if (core.pairingCancelled && !booted.local) {
-            emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+            if (core.pairingCancelled) {
+              emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+            }
           }
           for (const [leaseId, reply] of core.waiting) {
             emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
@@ -409,7 +405,7 @@ export function createPageCore({
               resolve(core.booted.isStale());
             }).then(
               (stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale }),
-              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', coreId, error }),
+              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', error }),
             ),
           );
         },
