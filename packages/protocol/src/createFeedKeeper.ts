@@ -95,8 +95,7 @@ type FeedEvent<T> =
   | { kind: 'askFailed'; ask: symbol; error: unknown }
   | { kind: 'feedEnded'; holdId: symbol; error: Error | null }
   | { kind: 'feedClosed'; holdId: symbol }
-  | { kind: 'reopenDue'; holdId: symbol }
-  | { kind: 'holdClosed'; holdId: symbol };
+  | { kind: 'reopenDue'; holdId: symbol };
 
 type FeedEffect =
   | { kind: 'ask'; ask: symbol }
@@ -200,7 +199,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
   };
 
   // The feed closed with its transport, so there is nothing to unsubscribe. An ask still out stays out.
-  const leaveHold: HandlerOf<FeedMachine<T>, 'holding' | 'reasking', 'holdClosed'> = (
+  const leaveHold: HandlerOf<FeedMachine<T>, 'holding' | 'reasking', 'feedClosed'> = (
     state,
     { holdId },
     { emitState },
@@ -224,12 +223,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     emitSideEffect({ kind: 'release', reopen: hold.reopen });
   };
 
-  const handleReopen = nest<
-    FeedMachine<T>,
-    'holding' | 'reasking',
-    ReopenMachine<T>,
-    'feedEnded' | 'feedClosed' | 'reopenDue'
-  >({
+  const handleReopen = nest<FeedMachine<T>, 'holding' | 'reasking', ReopenMachine<T>, 'feedEnded' | 'reopenDue'>({
     find: ({ hold }, { holdId }) => (holdId === hold.id ? hold.reopen : null),
     store: (state, _event, reopen) => ({ ...state, hold: { ...state.hold, reopen } }),
     handlers: {
@@ -247,9 +241,6 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
           );
           emitState({ kind: 'backingOff', open, timer, failures: stable ? 0 : failures + 1, captured: true });
           emitSideEffect({ kind: 'feedEnded', error: ended, capture: !captured });
-        },
-        feedClosed(_reopen, { holdId }, { update }) {
-          update({ kind: 'holdClosed', holdId });
         },
       },
       backingOff: {
@@ -285,9 +276,8 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
       holding: {
         statusChanged: followFrame,
         feedEnded: handleReopen,
-        feedClosed: handleReopen,
         reopenDue: handleReopen,
-        holdClosed: leaveHold,
+        feedClosed: leaveHold,
         stopped: dropHold,
       },
       reasking: {
@@ -295,9 +285,8 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         transportAnswered: takeTransport,
         askFailed: failAsk,
         feedEnded: handleReopen,
-        feedClosed: handleReopen,
         reopenDue: handleReopen,
-        holdClosed: leaveHold,
+        feedClosed: leaveHold,
         stopped: dropHold,
       },
     },
