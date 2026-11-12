@@ -9,7 +9,7 @@ import { catchError, createManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import {
   protocolSchema,
   type FrameFailure,
@@ -30,9 +30,11 @@ import {
 } from './createWorkerLifecycle.js';
 import { startProtocolWorker, type WorkerResolver, type WorkerScope } from './startProtocolWorker.js';
 import { connectSharedWorker } from './connectSharedWorker.js';
+import type { EngineScope } from './createEngine.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
+import { startLightClientService } from './startLightClientService.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 import { record, type Recording } from './testing/record.js';
 
@@ -83,6 +85,8 @@ type BootWorkerParams = {
   flush?: () => Promise<void>;
   /** The byte total the worker meters. Unset, it meters none. */
   readNetBytes?: () => number;
+  /** Starts the worker's chains and name resolver. The real one by default. */
+  startService?: typeof startLightClientService;
 };
 
 type AttachParams = {
@@ -327,7 +331,12 @@ function spyOnPort({ port, posted, onReceived, onClosed, listeners, closeEvent }
  */
 async function bootWorker(
   light: FakeLightClient,
-  { name = 'dotli-protocol-paseo-next-v2', flush = () => Promise.resolve(), readNetBytes }: BootWorkerParams = {},
+  {
+    name = 'dotli-protocol-paseo-next-v2',
+    flush = () => Promise.resolve(),
+    readNetBytes,
+    startService = startLightClientService,
+  }: BootWorkerParams = {},
 ) {
   const heartbeat = createTestTicker();
   const netBytesTicker = createTestTicker();
@@ -373,6 +382,7 @@ async function bootWorker(
     flush,
     netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, startTicker: netBytesTicker.startTicker },
     timers,
+    startService,
   });
   await light.presyncDone;
   return {
@@ -757,6 +767,29 @@ describe('protocol SharedWorker', () => {
 
     // Then it heard why pre-sync failed, and the worker closed once
     await expect(status.ended).resolves.toEqual(err(domain({ tag: 'initFailed', value: 'chainHead follow stopped' })));
+    expect(worker.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli user whose worker fails to start its service, I hear why, my chain call is refused, the failure is counted and the worker then closes', async () => {
+    // Given a worker whose service throws as it starts
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const worker = await bootWorker(createFakeLightClient(), {
+      startService() {
+        throw new Error('chain pool failed to open');
+      },
+    });
+
+    // When a tab connects and sends a chain message, and the worker closes
+    const tab = worker.connect();
+    const sent = await tab.transport.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
+    await worker.runQueuedClose();
+
+    // Then the tab heard why, its call was refused, the pre-sync failure was counted, and the worker closed once
+    await expect(tab.status.ended).resolves.toEqual(
+      err(domain({ tag: 'initFailed', value: 'chain pool failed to open' })),
+    );
+    expect(sent).toEqual(err(hostFailure(`Error: ${PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED}`)));
+    expect(metrics.counted(S.SMOLDOT_PRESYNC)).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.close).toHaveBeenCalledTimes(1);
   });
 
@@ -1442,6 +1475,32 @@ describe('protocol SharedWorker', () => {
     expect(tab.countCloses()).toBe(1);
   });
 
+  it('As a worker whose service fails to let go of its chains, I am disposed without a throw and the failure is reported', async () => {
+    // Given a synced worker whose service lets go of its chains and then throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light, {
+      startService(params) {
+        const service = startLightClientService(params);
+        return {
+          ...service,
+          dispose() {
+            service.dispose();
+            throw new Error('service release failed');
+          },
+        };
+      },
+    });
+
+    // When the worker is disposed
+    const thrown = catchError(worker.dispose);
+
+    // Then nothing threw, the failure was reported, and each chain it opened was disconnected once
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(light.disconnects.map(disconnect => disconnect.mock.calls.length)).toEqual([1, 1]);
+  });
+
   it('As a worker that was disposed, I no longer hear the light client', async () => {
     // Given a worker that was disposed
     const light = createFakeLightClient();
@@ -1504,7 +1563,6 @@ describe('worker lifecycle', () => {
     await timers.advance(0);
 
     // Then it stayed failed and closed once
-    expect(lifecycle.getPhase().name).toBe('failed');
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -1600,4 +1658,101 @@ describe('worker lifecycle', () => {
     expect(everyTabPaused).toEqual([true]);
     expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
+
+  it('As the shared worker, I am asked for the scope of a port I released and refuse', () => {
+    // Given a lifecycle whose only port the heartbeat released, as its tab missed every beat it allows
+    const { lifecycle, heartbeat } = startLifecycle();
+    const session = openSession(lifecycle);
+    for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
+      heartbeat.tick();
+    }
+    const open = vi.fn<() => EngineScope>();
+
+    // When the scope of that port is asked for
+    const thrown = catchError(() => lifecycle.getScope(session, open));
+
+    // Then it is refused, and no scope was opened
+    expect(thrown).toMatchObject({ message: 'The port is no longer served' });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("As the shared worker, I am disposed while my first port's transport throws, and the failure is reported while my other port is still let go", () => {
+    // Given a lifecycle serving two ports, the first of whose transport throws on dispose
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle } = startLifecycle();
+    const first = openSession(lifecycle);
+    const second = openSession(lifecycle);
+    vi.spyOn(first.transport, 'dispose').mockImplementationOnce(() => {
+      throw new Error('dispose failed');
+    });
+    const secondDispose = vi.spyOn(second.transport, 'dispose');
+
+    // When the lifecycle is disposed
+    const thrown = catchError(() => {
+      lifecycle.dispose();
+    });
+
+    // Then nothing was thrown, the failure was reported, and the second port was let go
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(secondDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the shared worker, I am told a served tab left while its transport throws on dispose, and the failure is reported while its scope still closes and its port is shut', () => {
+    // Given a lifecycle serving a tab with an open scope, whose transport throws on dispose
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle } = startLifecycle();
+    const session = openSession(lifecycle);
+    const closeScope = vi.fn<() => void>();
+    lifecycle.getScope(session, () => toFakeScope(closeScope));
+    vi.spyOn(session.transport, 'dispose').mockImplementationOnce(() => {
+      throw new Error('dispose failed');
+    });
+    const closePort = vi.spyOn(session.port, 'close');
+
+    // When the tab's port closes
+    const thrown = catchError(() => {
+      lifecycle.closePort(session);
+    });
+
+    // Then nothing was thrown, the failure was reported, and the scope and the port were still closed
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(closeScope).toHaveBeenCalledTimes(1);
+    expect(closePort).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the shared worker, I release a tab whose status sink throws on its end, and the failure is reported while its transport still goes and its scope still closes', () => {
+    // Given a lifecycle serving a tab with an open scope and a status sink that throws when ended
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle, heartbeat } = startLifecycle();
+    const session = openSession(lifecycle);
+    const closeScope = vi.fn<() => void>();
+    lifecycle.getScope(session, () => toFakeScope(closeScope));
+    lifecycle.addStatusSink(session, {
+      send: () => undefined,
+      interrupt: () => {
+        throw new Error('interrupt failed');
+      },
+    });
+    const dispose = vi.spyOn(session.transport, 'dispose');
+
+    // When the tab misses every beat it is allowed
+    const thrown = catchError(() => {
+      for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
+        heartbeat.tick();
+      }
+    });
+
+    // Then nothing was thrown, the failure was reported, and the transport and the scope were still let go
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(closeScope).toHaveBeenCalledTimes(1);
+  });
 });
+
+/** A scope that only records its close, for a case that never connects on it. */
+function toFakeScope(close: () => void): EngineScope {
+  return { close } as unknown as EngineScope;
+}

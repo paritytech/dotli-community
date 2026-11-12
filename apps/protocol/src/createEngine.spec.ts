@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { catchError, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
+import { createChainPool, type ChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import { getBudget, protocolSchema, type RemoteFailure } from '@dotli/protocol';
 import {
@@ -44,6 +45,8 @@ type TransportRecord = {
 type Params = Partial<EngineParams> & {
   /** How long the pool keeps a chain nobody uses. Never, when unset. */
   destroyDelay?: number;
+  /** Wraps the real pool before the engine gets it. */
+  wrapPool?: (pool: ChainPool) => ChainPool;
 };
 
 afterEach(() => {
@@ -109,11 +112,60 @@ function openTab(engine: ProtocolEngine) {
 }
 
 /** Starts an engine on a real pool that records each transport it builds, with one tab open. */
-function startEngine({ destroyDelay = Infinity, ...engineParams }: Params = {}) {
+function startEngine({ destroyDelay = Infinity, wrapPool = pool => pool, ...engineParams }: Params = {}) {
   const { createChainTransport, built } = createTransports();
-  const pool = createChainPool({ createTransport: createChainTransport, destroyDelay });
+  const pool = wrapPool(createChainPool({ createTransport: createChainTransport, destroyDelay }));
   const engine = createEngine({ pool, isChainSupported: () => true, ...engineParams });
   return { engine, tab: openTab(engine), built };
+}
+
+/** Watches a pool's remote connections: their halts, their disconnects and the pool's release. */
+function spyOnPool() {
+  const halts: (() => void)[] = [];
+  const disconnects: Mock<() => void>[] = [];
+  const disconnectAll = vi.fn<() => void>();
+  let nextFailure: Error | null = null;
+  return {
+    /** Wraps `pool`, for `startEngine`. */
+    wrap,
+    /** Fires the halt each connection was given, in the order they connected. */
+    halts,
+    /** Each connection's disconnect, in the order they connected. */
+    disconnects,
+    /** The pool's release. */
+    disconnectAll,
+    /** Makes the next connection's disconnect throw `error` once it has disconnected. */
+    failNextDisconnect(error: Error): void {
+      nextFailure = error;
+    },
+  };
+
+  function wrap(pool: ChainPool): ChainPool {
+    disconnectAll.mockImplementation(() => {
+      pool.disconnectAll();
+    });
+    return {
+      ...pool,
+      disconnectAll,
+      connectRemote(params) {
+        halts.push(() => params.onHalt?.());
+        const connection = pool.connectRemote(params);
+        if (connection === null) {
+          return null;
+        }
+        const failure = nextFailure;
+        nextFailure = null;
+        const disconnect = vi.fn(() => {
+          connection.disconnect();
+          if (failure !== null) {
+            throw failure;
+          }
+        });
+        disconnects.push(disconnect);
+        return { ...connection, disconnect };
+      },
+    };
+  }
 }
 
 const CONNECTED = { tag: 'connected' };
@@ -246,6 +298,37 @@ describe('createEngine chain pool', () => {
 
     // Then
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the frame, I dispose the engine while a disconnect throws, and the failure is reported, not thrown', async () => {
+    // Given two connections, the first of whose disconnect throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const pool = spyOnPool();
+    const { engine, tab } = startEngine({ wrapPool: pool.wrap });
+    pool.failNextDisconnect(new Error('disconnect failed'));
+    await tab.connect('0xaa', 'c1');
+    await tab.connect('0xbb', 'c2');
+
+    // When
+    const thrown = catchError(engine.dispose);
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(must(pool.disconnects[1], 'second disconnect')).toHaveBeenCalledTimes(1);
+    expect(pool.disconnectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a product, I connect on a scope of a disposed engine and am refused', async () => {
+    // Given
+    const { engine, tab } = startEngine();
+    engine.dispose();
+
+    // When
+    const chain = await tab.connect('0xaa', 'c1');
+
+    // Then
+    expect(await chain.ended).toEqual(toThrownAnswer('The engine was disposed'));
   });
 });
 
@@ -432,6 +515,24 @@ describe('createEngine halts', () => {
     expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
   });
 
+  it('As a product, I reconnect under an id whose old connection then reports a late halt, and my new connection keeps working', async () => {
+    // Given a connection that halted, and a new one under its id
+    const pool = spyOnPool();
+    const { tab, built } = startEngine({ wrapPool: pool.wrap });
+    const first = await tab.connect('0xaa', 'c1');
+    haltTransport(must(built[0], 'transport'));
+    await first.ended;
+    await tab.connect('0xaa', 'c1');
+
+    // When the first connection's halt fires late, and the tab sends
+    must(pool.halts[0], 'first halt')();
+    const sent = await tab.send('c1', toGenesisRequest('q2'));
+
+    // Then
+    expect(sent).toEqual(ok());
+    expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
+  });
+
   it('As a dotli user, I watch one chain die and my connections on other chains keep working', async () => {
     // Given
     const { tab, built } = startEngine();
@@ -548,6 +649,25 @@ describe('createEngine scopes', () => {
     expect(refilled.map(connected => connected.events)).toEqual(
       Array.from({ length: MAX_CONNECTIONS }, () => [CONNECTED]),
     );
+  });
+
+  it('As the frame, I close a scope while a disconnect throws, and the failure is reported, not thrown', async () => {
+    // Given two connections, the first of whose disconnect throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const pool = spyOnPool();
+    const { tab } = startEngine({ wrapPool: pool.wrap });
+    pool.failNextDisconnect(new Error('disconnect failed'));
+    const first = await tab.connect('0xaa', 'c1');
+    const second = await tab.connect('0xbb', 'c2');
+
+    // When
+    const thrown = catchError(tab.scope.close);
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(await first.ended).toEqual(ok());
+    expect(await second.ended).toEqual(ok());
   });
 
   it('As a dotli user on the shared light client, I close a tab after its chain died and only what is left is released', async () => {

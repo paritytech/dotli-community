@@ -144,6 +144,12 @@ function createFakeWorker() {
     failToStart(message: string): void {
       workerTarget.dispatchEvent(new ErrorEvent('error', { message }));
     },
+    /** Makes each later removal of a listener from the worker throw `error`. */
+    refuseListenerRemoval(error: Error): void {
+      worker.removeEventListener = () => {
+        throw error;
+      };
+    },
   };
 
   function waitForHeartbeat(): Promise<void> {
@@ -413,6 +419,23 @@ describe('connectSharedWorker', () => {
     expect(worker.heartbeats).toEqual(['load-1', 'load-1']);
   });
 
+  it('As a tab whose worker gets ready while my heartbeat waits for its answer, my frame is up without waiting on it', async () => {
+    // Given a tab whose heartbeat to the syncing worker is held
+    const worker = createFakeWorker();
+    const linked = link(worker);
+    await worker.beatsHeard;
+    worker.holdHeartbeats();
+    const asked = worker.waitForHeartbeat();
+    worker.beatTab();
+    await asked;
+
+    // When the worker says it is ready
+    worker.status.markReady();
+
+    // Then the ready wait resolves while the heartbeat is still held
+    await expect(linked.ready).resolves.toBeUndefined();
+  });
+
   it('As a dotli maintainer, I watch the worker refuse a heartbeat and see it reported once while the tab stops answering', async () => {
     // Given a tab on a ready worker that refuses heartbeats
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
@@ -583,5 +606,28 @@ describe('connectSharedWorker', () => {
     // Then the later beat went unanswered, and the failed heartbeat was not captured
     expect(worker.heartbeats).toHaveLength(1);
     expect(captured.map(capture => capture.step)).toEqual([]);
+  });
+
+  it('As a tab whose worker refuses to drop my listener, I let go of my link before ready and the failure is reported, not thrown, while my ready wait still fails and my page keeps no pagehide listener', async () => {
+    // Given a tab whose worker still syncs, and throws when a listener is removed
+    const reports = recordReports({ onFinished: onTestFinished });
+    const page = createFakePage();
+    const countListeners = countPageHideListeners(page);
+    const worker = createFakeWorker();
+    const linked = link(worker, { page });
+    const failed = linked.ready.catch((error: unknown) => error);
+    await worker.statusHeard;
+    worker.refuseListenerRemoval(new Error('listener removal failed'));
+
+    // When
+    const thrown = catchError(() => {
+      linked.dispose();
+    });
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(countListeners()).toBe(0);
+    await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
   });
 });

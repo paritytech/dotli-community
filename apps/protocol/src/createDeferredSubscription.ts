@@ -24,7 +24,7 @@ export type DeferredSubscription<Start, Value, Domain> = ReturnType<
   typeof createDeferredSubscription<Start, Value, Domain>
 >;
 
-/** A subscription served at once, which waits for its source. Never throws. */
+/** A subscription served at once, which waits for its source. */
 export function createDeferredSubscription<Start, Value, Domain>() {
   let startSource: Handler<Start, Value, Domain> | null = null;
   const waiting = new Set<Waiting<Start, Value, Domain>>();
@@ -37,12 +37,11 @@ export function createDeferredSubscription<Start, Value, Domain>() {
     accept: acceptSubscription,
     /**
      * Starts every waiting subscription on `handler`, and every later one at once. Only the first `serve` or `fail`
-     * counts. A waiting subscription whose start throws ends with the error. Never throws.
+     * counts. A waiting subscription whose start throws ends with the error.
      */
     serve,
     /**
      * Ends every waiting subscription with `error`, and every later one at once, for a source that will never come.
-     * Never throws.
      */
     fail,
   };
