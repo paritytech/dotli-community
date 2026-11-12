@@ -427,8 +427,8 @@ export function createPageCore({
           for (const core of state.cores.values()) {
             if (core.kind === 'booting') {
               cores.set(core.id, { ...core, pairingCancelled: true });
-              // A signing runtime has no pairing to cancel.
             } else if (!core.booted.local) {
+              // A signing runtime has no pairing to cancel.
               emitSideEffect({ kind: 'pairingCancelled', runtime: core.booted.runtime });
             }
           }
