@@ -71,12 +71,11 @@ type SharedFetch = { kind: 'fetching'; runner: Caller; queued: readonly Caller[]
 type Fetching = Extract<SharedFetch, { kind: 'fetching' }>;
 
 /**
- * The connection is held while any fetch runs, retry waits included, and closed after the last. `holding` has fetches
- * and no connection yet, since the first request dials. An ended fetch leaves `fetches`.
+ * The connection is held while any fetch runs, retry waits included, and closed after the last. The first request
+ * dials, so `undialed` may hold fetches. An ended fetch leaves `fetches`.
  */
 type ClientState =
-  | { kind: 'idle' }
-  | { kind: 'holding'; fetches: ReadonlyMap<string, Fetching> }
+  | { kind: 'undialed'; fetches: ReadonlyMap<string, Fetching> }
   | { kind: 'dialed'; connection: JsonRpcConnection; fetches: ReadonlyMap<string, Fetching> };
 
 type ClientEvent =
@@ -87,7 +86,12 @@ type ClientEvent =
   | { kind: 'fetchEnded' }
   | { kind: 'requested'; id: number; cid: string };
 
-type ClientEffect = { kind: 'releaseFailed'; error: unknown };
+type ClientEffect =
+  | { kind: 'resolve'; caller: Caller; bytes: Uint8Array }
+  | { kind: 'reject'; caller: Caller; error: unknown }
+  | { kind: 'send'; connection: JsonRpcConnection; id: number; cid: string }
+  | { kind: 'requestFailed'; id: number; error: Error }
+  | { kind: 'disconnect'; connection: JsonRpcConnection };
 
 type ClientMachine = MachineTypes<ClientState, ClientEvent, ClientEffect>;
 
@@ -141,7 +145,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
   });
 
   /** A CID with no fetch gets the caller as its runner, and a CID with one queues the caller behind it. */
-  const addCaller: HandlerOf<ClientMachine, 'holding' | 'dialed', 'asked'> = (
+  const addCaller: HandlerOf<ClientMachine, 'undialed' | 'dialed', 'asked'> = (
     state,
     { cid, caller },
     { emitState, update },
@@ -160,7 +164,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
 
   const handleFetch = nest<
     ClientMachine,
-    'holding' | 'dialed',
+    'undialed' | 'dialed',
     MachineTypes<SharedFetch, ClientEvent, ClientEffect>,
     'blockFetched' | 'fetchFailed' | 'callerAborted'
   >({
@@ -192,16 +196,16 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     },
     handlers: {
       fetching: {
-        blockFetched({ runner, queued }, { bytes }, { emitState, update }) {
+        blockFetched({ runner, queued }, { bytes }, { emitState, emitSideEffect, update }) {
           emitState({ kind: 'ended' });
-          runner.resolve(bytes);
+          emitSideEffect({ kind: 'resolve', caller: runner, bytes });
           for (const caller of queued) {
             // A copy each, since a caller may transfer its buffer away.
-            caller.resolve(bytes.slice());
+            emitSideEffect({ kind: 'resolve', caller, bytes: bytes.slice() });
           }
           update({ kind: 'fetchEnded' });
         },
-        fetchFailed({ runner, queued }, { cid, error }, { emitState, update }) {
+        fetchFailed({ runner, queued }, { cid, error }, { emitState, emitSideEffect, update }) {
           const [next, ...rest] = queued;
           if (next === undefined) {
             emitState({ kind: 'ended' });
@@ -210,15 +214,16 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
             emitState({ kind: 'fetching', runner: next, queued: rest });
             startFetch(cid, next, update);
           }
-          runner.reject(runner.signal?.aborted === true ? abortError(cid, error) : error);
+          const failure = runner.signal?.aborted === true ? abortError(cid, error) : error;
+          emitSideEffect({ kind: 'reject', caller: runner, error: failure });
         },
         // A runner's abort ends its fetch instead, which `fetchFailed` hears.
-        callerAborted(state, { cid, caller }, { emitState }) {
+        callerAborted(state, { cid, caller }, { emitState, emitSideEffect }) {
           if (!state.queued.includes(caller)) {
             return;
           }
           emitState({ ...state, queued: state.queued.filter(queued => queued !== caller) });
-          caller.reject(abortError(cid, caller.signal?.reason));
+          emitSideEffect({ kind: 'reject', caller, error: abortError(cid, caller.signal?.reason) });
         },
       },
       ended: null,
@@ -226,27 +231,14 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
   });
 
   const client = createStateMachine<ClientMachine>({
-    initial: { kind: 'idle' },
+    initial: { kind: 'undialed', fetches: new Map() },
     handlers: {
-      // No `requested`: a request comes only from a fetch the state holds.
-      idle: {
-        asked(_state, { cid, caller }, { emitState, update }) {
-          emitState({ kind: 'holding', fetches: new Map([[cid, { kind: 'fetching', runner: caller, queued: [] }]]) });
-          startFetch(cid, caller, update);
-        },
-      },
-      holding: {
+      undialed: {
         asked: addCaller,
         blockFetched: handleFetch,
         fetchFailed: handleFetch,
         callerAborted: handleFetch,
-        fetchEnded(state, _event, { emitState }) {
-          if (state.fetches.size > 0) {
-            return;
-          }
-          emitState({ kind: 'idle' });
-        },
-        requested(state, { id, cid }, { emitState }) {
+        requested(state, { id, cid }, { emitState, emitSideEffect }) {
           // A request of a fetch that has ended would dial with nothing to close the connection.
           if (!state.fetches.has(cid)) {
             return;
@@ -256,19 +248,17 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           try {
             const bulletin = provider();
             if (bulletin === null) {
-              replies.reject(
-                id,
-                setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE),
-              );
+              const error = new Error('Bulletin is not in the supported chain set');
+              emitSideEffect({ kind: 'requestFailed', id, error: setErrorName(error, BITSWAP_ERRORS.UNAVAILABLE) });
               return;
             }
             connection = bulletin(hearReply);
           } catch (error) {
-            replies.reject(id, toError(error));
+            emitSideEffect({ kind: 'requestFailed', id, error: toError(error) });
             return;
           }
           emitState({ kind: 'dialed', connection, fetches: state.fetches });
-          sendRequest(connection, id, cid);
+          emitSideEffect({ kind: 'send', connection, id, cid });
         },
       },
       dialed: {
@@ -280,27 +270,47 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           if (fetches.size > 0) {
             return;
           }
-          emitState({ kind: 'idle' });
-          try {
-            connection.disconnect();
-          } catch (error) {
-            emitSideEffect({ kind: 'releaseFailed', error });
-          }
+          emitState({ kind: 'undialed', fetches });
+          emitSideEffect({ kind: 'disconnect', connection });
         },
-        requested({ connection, fetches }, { id, cid }) {
+        requested({ connection, fetches }, { id, cid }, { emitSideEffect }) {
           if (!fetches.has(cid)) {
             return;
           }
-          sendRequest(connection, id, cid);
+          emitSideEffect({ kind: 'send', connection, id, cid });
         },
       },
     },
-    onEffect: ({ error }) => {
-      report.defect(error, {
-        step: 'bitswap_release',
-        metric: contentBitswapReleaseMetric,
-        message: '[dot.li bitswap] closing the Bulletin connection failed:',
-      });
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'resolve':
+          effect.caller.resolve(effect.bytes);
+          return;
+        case 'reject':
+          effect.caller.reject(effect.error);
+          return;
+        case 'send':
+          try {
+            effect.connection.send({ jsonrpc: '2.0', id: effect.id, method: 'bitswap_v1_get', params: [effect.cid] });
+          } catch (error) {
+            replies.reject(effect.id, toError(error));
+          }
+          return;
+        case 'requestFailed':
+          replies.reject(effect.id, effect.error);
+          return;
+        case 'disconnect':
+          try {
+            effect.connection.disconnect();
+          } catch (error) {
+            report.defect(error, {
+              step: 'bitswap_release',
+              metric: contentBitswapReleaseMetric,
+              message: '[dot.li bitswap] closing the Bulletin connection failed:',
+            });
+          }
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -368,14 +378,6 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     }
     // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
     replies.resolve(message.id, fromHex(message.result));
-  }
-
-  function sendRequest(connection: JsonRpcConnection, id: number, cid: string): void {
-    try {
-      connection.send({ jsonrpc: '2.0', id, method: 'bitswap_v1_get', params: [cid] });
-    } catch (error) {
-      replies.reject(id, toError(error));
-    }
   }
 
   function startFetch(cid: string, runner: Caller, update: Transition<ClientMachine>['update']): void {
