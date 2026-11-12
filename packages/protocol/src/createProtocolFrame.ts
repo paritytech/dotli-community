@@ -698,8 +698,8 @@ export function createProtocolFrame<E extends FrameElement>({
             transition.emitSideEffect({ kind: 'reject', waits: [wait], error: state.error });
             return;
           }
-          const { config, captured } = state;
-          leave(state, transition);
+          const { config, captured, stopWait } = state;
+          transition.emitSideEffect({ kind: 'stopWait', stopWait });
           boot({ config, loads: [], readies: [wait], held: null, failures: 0, captured }, transition);
         },
         transportAsked(state, { wait }, transition) {
@@ -707,14 +707,13 @@ export function createProtocolFrame<E extends FrameElement>({
             transition.emitSideEffect({ kind: 'resolve', waits: [wait], transport: state.held.transport });
             return;
           }
-          const { config, captured } = state;
-          leave(state, transition);
+          const { config, captured, stopWait } = state;
+          transition.emitSideEffect({ kind: 'stopWait', stopWait });
           boot({ config, loads: [wait], readies: [], held: null, failures: 0, captured }, transition);
         },
         configured: reconfigure,
         rebuildDue(state, _event, transition) {
           const { config, held, failures, captured } = state;
-          leave(state, transition);
           boot({ config, loads: [], readies: [], held, failures, captured }, transition);
         },
         aliveChecked: checkFrame,
