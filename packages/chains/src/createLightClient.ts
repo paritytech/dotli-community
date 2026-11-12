@@ -4,10 +4,20 @@
 // One light client per context over truapi-provider's embedded smoldot, shared by the resolver, the broker and every
 // product. Each chain comes from its genesis hash through truapi-provider's bundled catalog.
 
-import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
 import { createReporter, defineCount, m } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, getErrorMessage, log, markHandled } from '@dotli/shared';
+import {
+  createListenerSet,
+  createStateMachine,
+  getErrorMessage,
+  log,
+  markHandled,
+  nest,
+  type HandlerOf,
+  type MachineTypes,
+  type Transition,
+} from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb, type SmoldotDb } from './createSmoldotDb.js';
@@ -27,6 +37,9 @@ const report = createReporter({ flow: 'protocol' });
  * Tagged `outcome` (error) and `reason` (`cap`).
  */
 const smoldotConnectionCapMetric = defineCount<'error'>('smoldot.connection_cap');
+
+/** A light client transition or effect that threw. Tagged `outcome` (error). */
+const lightClientTransitionMetric = defineCount<'error'>('light_client.transition');
 
 /**
  * Liveness heartbeat, the constant `1` once per 60s per light client.
@@ -103,7 +116,7 @@ export type LightClient = {
   /**
    * Returns the chain's transport, which takes the light client's follow limit, or `null` for a genesis the active
    * network does not define. smoldot never reconnects underneath its consumers, so a failure or an unrequested stream
-   * end halts the chain.
+   * end halts the chain. A failure under a connection's `send` or `disconnect` is reported as the light client's defect.
    */
   createChainTransport: (genesisHash: string, hooks?: ChainTransportHooks) => ChainTransport | null;
   /** Whether the active network defines the genesis. */
@@ -133,19 +146,79 @@ type ChainSyncEntry = {
   held: { source: ChainSyncSource; tap: ChainSyncTap } | null;
 };
 
-type ThrowIfLeftParams = {
-  /** The chain whose open waits on the start. */
-  key: string;
-  /** What the start threw, when it threw. */
-  cause?: unknown;
+/** A chain one consumer opened. */
+type Chain = {
+  /** The lowercase genesis hash, which every engine call takes. */
+  genesis: string;
+  onMessage: (message: JsonRpcMessage) => void;
+  hooks: ChainTransportHooks | null;
 };
 
-// The engine's life. A fatal never clears, so a light client that reached it opens no chain again.
-type EngineState =
+/** Unique to one opened connection. */
+type ConnectionKey = symbol;
+
+// The engine's life. A fatal never clears, so a light client that reached it opens no chain again. `idle` holds no
+// connections, since the open that leaves it adds the first. `starter` is the open that started the engine, which hears
+// the start's error and names the fatal.
+type ClientState =
   | { kind: 'idle' }
-  | { kind: 'starting' }
-  | { kind: 'running'; engine: LightClientEngine; heartbeat: ReturnType<typeof setInterval> | null }
-  | { kind: 'fatal'; message: string };
+  | { kind: 'starting'; starter: { key: ConnectionKey; genesis: string }; connections: Connections }
+  | {
+      kind: 'running';
+      engine: LightClientEngine;
+      heartbeat: ReturnType<typeof setInterval> | null;
+      connections: Connections;
+    }
+  | { kind: 'fatal'; message: string; connections: Connections };
+
+type Connections = ReadonlyMap<ConnectionKey, ChainConnection>;
+
+/**
+ * One connection's steps. `restoring` and `connecting` hold the engine they work on, so a connection goes on after
+ * another chain turned the light client fatal. `closing` left while its connect was in flight. `stopped` halted while
+ * it read, and keeps the engine's connection until the consumer leaves. An `ended` connection leaves the map.
+ */
+type ChainConnection =
+  | { kind: 'waiting'; chain: Chain; queued: readonly string[] }
+  | { kind: 'restoring'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
+  | { kind: 'connecting'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
+  | { kind: 'closing'; chain: Chain }
+  | { kind: 'stopped'; connection: LightClientConnection }
+  | { kind: 'reading'; chain: Chain; connection: LightClientConnection; source: ChainSyncSource }
+  | { kind: 'ended' };
+
+type ReadingConnection = Extract<ChainConnection, { kind: 'reading' }>;
+
+type ClientEvent =
+  | { kind: 'opened'; key: ConnectionKey; chain: Chain }
+  | { kind: 'refused'; key: ConnectionKey; message: string }
+  | { kind: 'engineStarted'; engine: LightClientEngine }
+  | { kind: 'engineFailed'; error: unknown }
+  | { kind: 'storeAnswered'; genesis: string; outcome: SmoldotDbOutcome }
+  | { kind: 'restored'; key: ConnectionKey; genesis: string; warm: boolean }
+  | { kind: 'restoreMissed'; key: ConnectionKey; genesis: string; error: unknown }
+  | { kind: 'chainConnected'; key: ConnectionKey; connection: LightClientConnection }
+  | { kind: 'connectFailed'; key: ConnectionKey; error: unknown }
+  | { kind: 'responseRead'; key: ConnectionKey; message: JsonRpcMessage }
+  | { kind: 'streamEnded'; key: ConnectionKey }
+  | { kind: 'readFailed'; key: ConnectionKey; error: unknown }
+  | { kind: 'sent'; key: ConnectionKey; message: JsonRpcRequest }
+  | { kind: 'left'; key: ConnectionKey };
+
+type ClientEffect =
+  | { kind: 'ready' }
+  | { kind: 'fatal'; message: string }
+  | { kind: 'dbRead'; genesis: string; outcome: SmoldotDbOutcome }
+  | { kind: 'dbCache'; genesis: string; warm: boolean }
+  | { kind: 'warmStartMissed'; genesis: string; error: unknown }
+  | { kind: 'capRefused'; error: LightClientCapError; genesis: string }
+  | { kind: 'readBroke'; error: unknown; genesis: string }
+  | { kind: 'halted'; hooks: ChainTransportHooks | null; error: unknown };
+
+type ClientMachine = MachineTypes<ClientState, ClientEvent, ClientEffect>;
+
+/** One connection's steps, nested in the light client's state. */
+type ConnectionMachine = MachineTypes<ChainConnection, ClientEvent, ClientEffect>;
 
 /** A connect the engine refused because it already holds as many connections as it allows. */
 export class LightClientCapError extends Error {
@@ -180,115 +253,426 @@ export function createLightClient({
   // The read needs no engine, so it overlaps the wasm compile. A blob is megabytes, so an entry lives only until its
   // chain's resume.
   const earlyReads = new Map<string, Promise<string | null>>();
-  let engineState: EngineState = { kind: 'idle' };
-  // Every chain's first open waits on one start.
-  const starts = createAsyncTaskPool({ poolSize: 1 });
   const syncTaps = createChainSyncTaps({ attachChainSync });
 
-  function markFatal(message: string): void {
-    if (engineState.kind === 'fatal') {
+  // A message sent before the chain connects goes out once it does, in order.
+  const queueMessage: HandlerOf<ConnectionMachine, 'waiting' | 'restoring' | 'connecting', 'sent'> = (
+    state,
+    { message },
+    { emitState },
+  ) => {
+    emitState({ ...state, queued: [...state.queued, JSON.stringify(message)] });
+  };
+  // A connection that leaves before its connect starts never connects.
+  const dropConnection: HandlerOf<ConnectionMachine, 'waiting' | 'restoring', 'left'> = (
+    _state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'ended' });
+  };
+  // A failed connect is the light client's, except a cap refusal, which is this chain's alone.
+  const failConnect: HandlerOf<ClientMachine, 'running' | 'fatal', 'connectFailed'> = (
+    state,
+    { key, error },
+    { emitState, emitSideEffect },
+  ) => {
+    const connection = state.connections.get(key);
+    // Only a connect fails, and a connection that left before it is gone.
+    if (connection?.kind !== 'connecting' && connection?.kind !== 'closing') {
       return;
     }
-    const left = engineState;
-    engineState = { kind: 'fatal', message };
-    // A dead light client must not be counted as live.
-    if (left.kind === 'running' && left.heartbeat !== null) {
-      clearInterval(left.heartbeat);
-    }
-    log.error(`[dot.li provider] ${message}`);
-    listeners.emit({ kind: 'fatal', message });
-  }
-
-  function markDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
-    const chain = getChainRoleForGenesis(genesisHash);
-    // First read wins, since only the chain's first add consumes the store. People is left out, as nothing the page
-    // waits on depends on it.
-    if (chain === null || chain === 'people' || dbOutcomes.has(chain)) {
-      return;
-    }
-    dbOutcomes.set(chain, outcome);
-    listeners.emit({ kind: 'db', chain, outcome });
-  }
-
-  // The relay's blob is only read here, never through `loadDatabase`. A failure must reject, not read as empty.
-  const observedDb: SmoldotDb | null =
-    db === null
-      ? null
-      : {
-          async load(genesisHash: string) {
-            try {
-              const blob = await readStored(db, genesisHash);
-              markDb(genesisHash, blob !== null ? 'hit' : 'miss');
-              return blob;
-            } catch (error) {
-              markDb(genesisHash, 'unavailable');
-              throw error;
-            }
-          },
-          save: (genesisHash, blob) => db.save(genesisHash, blob),
-        };
-
-  function ensureEngine(key: string): Promise<LightClientEngine> {
-    return starts.call(async () => {
-      switch (engineState.kind) {
-        case 'running':
-          return engineState.engine;
-        case 'fatal':
-          throw new Error(`chain ${key} cannot open: the light client is fatal: ${engineState.message}`);
-        case 'idle':
-          return startEngine(key);
-        case 'starting':
-          // The start pool has one slot, so no start is in flight when this runs.
-          throw new Error(
-            `chain ${key} cannot open: the light client is starting, but its start pool runs one at a time`,
-          );
+    const { chain } = connection;
+    const connections = withConnection(state.connections, key, { kind: 'ended' });
+    if (state.kind === 'running' && !(error instanceof LightClientCapError)) {
+      const message = `chain ${chain.genesis} connection failed: ${getErrorMessage(error)}`;
+      emitState({ kind: 'fatal', message, connections });
+      emitSideEffect({ kind: 'fatal', message });
+      // A dead light client must not be counted as live.
+      if (state.heartbeat !== null) {
+        clearInterval(state.heartbeat);
       }
-    });
-  }
-
-  async function startEngine(key: string): Promise<LightClientEngine> {
-    const starting: EngineState = { kind: 'starting' };
-    engineState = starting;
-    let engine: LightClientEngine;
-    try {
-      engine = await start({ logLevel, store: observedDb, debug });
-    } catch (error) {
-      throwIfLeft(starting, { key, cause: error });
-      markFatal(`chain ${key} connection failed: ${getErrorMessage(error)}`);
-      throw error;
+    } else {
+      emitState({ ...state, connections });
     }
-    // The engine has no close, so a start that succeeds after the state moved would leak it. Every other writer of the
-    // engine state waits on this start, so that path cannot happen.
-    throwIfLeft(starting, { key });
-    engineState = {
-      kind: 'running',
-      engine,
-      heartbeat:
-        gauge === null
-          ? null
-          : setInterval(() => {
-              gauge(1);
-            }, heartbeatMs),
+    if (error instanceof LightClientCapError) {
+      emitSideEffect({ kind: 'capRefused', error, genesis: chain.genesis });
+    }
+    // A connection that left while it connected is never halted.
+    if (connection.kind !== 'closing') {
+      emitSideEffect({ kind: 'halted', hooks: chain.hooks, error });
+    }
+  };
+  const handleConnection = nest<
+    ClientMachine,
+    'starting' | 'running' | 'fatal',
+    ConnectionMachine,
+    | 'refused'
+    | 'restored'
+    | 'restoreMissed'
+    | 'chainConnected'
+    | 'responseRead'
+    | 'streamEnded'
+    | 'readFailed'
+    | 'sent'
+    | 'left'
+  >({
+    find: ({ connections }, { key }) => connections.get(key) ?? null,
+    store: (state, { key }, next) => ({ ...state, connections: withConnection(state.connections, key, next) }),
+    handlers: {
+      waiting: {
+        refused({ chain }, { message }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'ended' });
+          emitSideEffect({ kind: 'halted', hooks: chain.hooks, error: new Error(message) });
+        },
+        sent: queueMessage,
+        left: dropConnection,
+      },
+      restoring: {
+        restored(state, { key }, transition) {
+          connectChain(state, key, transition);
+        },
+        // A store that cannot answer starts the chain from the chain-spec checkpoint, as a miss does.
+        restoreMissed(state, { key }, transition) {
+          connectChain(state, key, transition);
+        },
+        sent: queueMessage,
+        left: dropConnection,
+      },
+      connecting: {
+        chainConnected({ chain, engine, queued }, { key, connection }, transition) {
+          const reading: ReadingConnection = {
+            kind: 'reading',
+            chain,
+            connection,
+            source: {
+              send: raw => {
+                connection.send(raw);
+              },
+              watchLifecycle: () => engine.lifecycle(chain.genesis),
+            },
+          };
+          transition.emitState(reading);
+          transition.update(readResponse(key, connection));
+          // A send that fails here halts the chain as a consumer's throw does, so it never reads without `connected`.
+          try {
+            for (const raw of queued) {
+              connection.send(raw);
+            }
+            // After the flush, so the sync request cannot jump ahead of a caller's.
+            syncTaps.join(chain.genesis, reading.source);
+            chain.hooks?.onStatus('connected');
+          } catch (error) {
+            breakReading(reading, error, transition);
+          }
+        },
+        sent: queueMessage,
+        left({ chain }, _event, { emitState }) {
+          emitState({ kind: 'closing', chain });
+        },
+      },
+      closing: {
+        chainConnected(_state, { connection }, { emitState }) {
+          emitState({ kind: 'ended' });
+          connection.close();
+        },
+      },
+      reading: {
+        responseRead(state, { key, message }, transition) {
+          transition.update(readResponse(key, state.connection));
+          try {
+            // polkadot-api would reject a string id it never issued.
+            if (syncTaps.intercept(state.chain.genesis, state.source, message)) {
+              return;
+            }
+            state.chain.onMessage(message);
+          } catch (error) {
+            breakReading(state, error, transition);
+          }
+        },
+        // Only the consumer's leave ends the stream in order. Otherwise the transport died or overflowed its send budget.
+        streamEnded(state, _event, transition) {
+          haltReading(state, new Error(`chain ${state.chain.genesis} stopped responding`), transition);
+        },
+        readFailed(state, { error }, transition) {
+          breakReading(state, error, transition);
+        },
+        sent({ connection }, { message }) {
+          connection.send(JSON.stringify(message));
+        },
+        left({ chain, connection, source }, _event, { emitState }) {
+          emitState({ kind: 'ended' });
+          // A tap whose stop throws still leaves the connection closed.
+          try {
+            syncTaps.leave(chain.genesis, source);
+          } finally {
+            connection.close();
+          }
+        },
+      },
+      stopped: {
+        left({ connection }, _event, { emitState }) {
+          emitState({ kind: 'ended' });
+          connection.close();
+        },
+      },
+      ended: null,
+    },
+  });
+  // The store's answer is the chain's, so it is reported even when the connection left while it restored.
+  const resumeChain: HandlerOf<ClientMachine, 'running' | 'fatal', 'restored'> = (state, event, transition) => {
+    transition.emitSideEffect({ kind: 'dbCache', genesis: event.genesis, warm: event.warm });
+    handleConnection(state, event, transition);
+  };
+  const resumeChainCold: HandlerOf<ClientMachine, 'running' | 'fatal', 'restoreMissed'> = (
+    state,
+    event,
+    transition,
+  ) => {
+    transition.emitSideEffect({ kind: 'dbCache', genesis: event.genesis, warm: false });
+    transition.emitSideEffect({ kind: 'warmStartMissed', genesis: event.genesis, error: event.error });
+    handleConnection(state, event, transition);
+  };
+  // The engine reads the store from its start on, whatever the light client's phase.
+  const noteStoreAnswer: HandlerOf<ClientMachine, 'starting' | 'running' | 'fatal', 'storeAnswered'> = (
+    _state,
+    { genesis, outcome },
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'dbRead', genesis, outcome });
+  };
+  const machine = createStateMachine<ClientMachine>({
+    initial: { kind: 'idle' },
+    handlers: {
+      idle: {
+        opened(_state, { key, chain }, { emitState, update }) {
+          emitState({
+            kind: 'starting',
+            starter: { key, genesis: chain.genesis },
+            connections: new Map<ConnectionKey, ChainConnection>([[key, { kind: 'waiting', chain, queued: [] }]]),
+          });
+          readEarly(chain.genesis);
+          update(
+            // A start that throws before it returns a promise rejects this one, so it fails the light client too.
+            new Promise<LightClientEngine>(resolve => {
+              resolve(start({ logLevel, store: db === null ? null : observeStore(db, update), debug }));
+            }).then(
+              (engine): ClientEvent => ({ kind: 'engineStarted', engine }),
+              (error: unknown): ClientEvent => ({ kind: 'engineFailed', error }),
+            ),
+          );
+        },
+      },
+      starting: {
+        opened(state, { key, chain }, { emitState }) {
+          emitState({
+            ...state,
+            connections: withConnection(state.connections, key, { kind: 'waiting', chain, queued: [] }),
+          });
+          readEarly(chain.genesis);
+        },
+        engineStarted({ connections }, { engine }, { emitState, emitSideEffect, update }) {
+          // The tick only counts the client as live and changes no phase, so it calls the gauge rather than the machine.
+          const heartbeat =
+            gauge === null
+              ? null
+              : setInterval(() => {
+                  gauge(1);
+                }, heartbeatMs);
+          const restoring = new Map<ConnectionKey, Extract<ChainConnection, { kind: 'restoring' }>>();
+          for (const [key, connection] of connections) {
+            // Narrows the type: every connection of a starting light client waits on the start.
+            if (connection.kind !== 'waiting') {
+              continue;
+            }
+            restoring.set(key, { kind: 'restoring', chain: connection.chain, engine, queued: connection.queued });
+          }
+          emitState({ kind: 'running', engine, heartbeat, connections: restoring });
+          // At start, so the first bucket counts a client that is already syncing.
+          emitSideEffect({ kind: 'ready' });
+          const opened = new Set<string>();
+          for (const [key, { chain }] of restoring) {
+            opened.add(chain.genesis);
+            update(restore(engine, key, chain.genesis));
+          }
+          // A connection that left while it waited never restores, so its chain's early read goes here.
+          for (const genesis of earlyReads.keys()) {
+            if (!opened.has(genesis)) {
+              earlyReads.delete(genesis);
+            }
+          }
+        },
+        engineFailed({ starter, connections }, { error }, { emitState, emitSideEffect }) {
+          const message = `chain ${starter.genesis} connection failed: ${getErrorMessage(error)}`;
+          emitState({ kind: 'fatal', message, connections: new Map() });
+          emitSideEffect({ kind: 'fatal', message });
+          for (const [key, connection] of connections) {
+            // Narrows the type: every connection of a starting light client waits on the start.
+            if (connection.kind !== 'waiting') {
+              continue;
+            }
+            emitSideEffect({
+              kind: 'halted',
+              hooks: connection.chain.hooks,
+              error: key === starter.key ? error : new Error(getRefusal(connection.chain.genesis, message)),
+            });
+          }
+          // A fatal light client reads no store again.
+          earlyReads.clear();
+        },
+        storeAnswered: noteStoreAnswer,
+        // A waiting connection only queues and leaves.
+        sent: handleConnection,
+        left: handleConnection,
+      },
+      running: {
+        opened(state, { key, chain }, { emitState, update }) {
+          emitState({
+            ...state,
+            connections: withConnection(state.connections, key, {
+              kind: 'restoring',
+              chain,
+              engine: state.engine,
+              queued: [],
+            }),
+          });
+          update(restore(state.engine, key, chain.genesis));
+        },
+        connectFailed: failConnect,
+        storeAnswered: noteStoreAnswer,
+        restored: resumeChain,
+        restoreMissed: resumeChainCold,
+        // Only a fatal light client refuses an open.
+        chainConnected: handleConnection,
+        responseRead: handleConnection,
+        streamEnded: handleConnection,
+        readFailed: handleConnection,
+        sent: handleConnection,
+        left: handleConnection,
+      },
+      fatal: {
+        opened(state, { key, chain }, { emitState, update }) {
+          emitState({
+            ...state,
+            connections: withConnection(state.connections, key, { kind: 'waiting', chain, queued: [] }),
+          });
+          // The halt reaches the hooks after the open returns, never inside the call that builds a lane.
+          update(
+            Promise.resolve<ClientEvent>({ kind: 'refused', key, message: getRefusal(chain.genesis, state.message) }),
+          );
+        },
+        connectFailed: failConnect,
+        storeAnswered: noteStoreAnswer,
+        restored: resumeChain,
+        restoreMissed: resumeChainCold,
+        refused: handleConnection,
+        chainConnected: handleConnection,
+        responseRead: handleConnection,
+        streamEnded: handleConnection,
+        readFailed: handleConnection,
+        sent: handleConnection,
+        left: handleConnection,
+      },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'ready':
+          gauge?.(1);
+          report.log.event('Light client ready');
+          return;
+        case 'fatal':
+          log.error(`[dot.li provider] ${effect.message}`);
+          listeners.emit({ kind: 'fatal', message: effect.message });
+          return;
+        case 'dbRead': {
+          const chain = getChainRoleForGenesis(effect.genesis);
+          // First read wins, since only the chain's first add consumes the store. People is left out, as nothing the
+          // page waits on depends on it.
+          if (chain === null || chain === 'people' || dbOutcomes.has(chain)) {
+            return;
+          }
+          dbOutcomes.set(chain, effect.outcome);
+          listeners.emit({ kind: 'db', chain, outcome: effect.outcome });
+          return;
+        }
+        case 'dbCache':
+          pageChainSyncReporter.reportDbCache(effect.genesis, effect.warm);
+          if (effect.warm) {
+            log.debug(`[dot.li provider] resuming ${effect.genesis} from stored state`);
+          }
+          return;
+        case 'warmStartMissed':
+          log.warn(`[dot.li provider] warm start unavailable for ${effect.genesis}:`, effect.error);
+          return;
+        case 'capRefused':
+          report.expected(effect.error, {
+            step: 'light_client_connect',
+            metric: smoldotConnectionCapMetric,
+            reason: 'cap',
+            message: `[dot.li provider] chain ${effect.genesis} is past the light client's connection cap, halting it: ${getErrorMessage(effect.error)}`,
+          });
+          return;
+        case 'readBroke':
+          log.warn(
+            `[dot.li provider] chain ${effect.genesis} read failed, halting it: ${getErrorMessage(effect.error)}`,
+            effect.error,
+          );
+          return;
+        case 'halted':
+          try {
+            effect.hooks?.onStatus('disconnected');
+            effect.hooks?.onHalt(effect.error);
+          } catch (thrown) {
+            report.listener('light_client.halt')(thrown);
+          }
+          return;
+      }
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: lightClientTransitionMetric,
+        message: '[dot.li provider] A light client transition threw',
+      });
+    },
+  });
+
+  return {
+    createChainTransport,
+    isChainSupported,
+    status: () => {
+      const state = machine.state.get();
+      return { fatal: state.kind === 'fatal' ? state.message : null, db: new Map(dbOutcomes) };
+    },
+    subscribe: listeners.subscribe,
+  };
+
+  /**
+   * `store` as the engine reads it, which sends each read's outcome to the machine. The relay's blob is only read here,
+   * never through `loadDatabase`. A failure must reject, not read as empty.
+   */
+  function observeStore(store: SmoldotDb, update: Transition<ClientMachine>['update']): SmoldotDb {
+    return {
+      async load(genesisHash) {
+        try {
+          const blob = await readStored(store, genesisHash);
+          update({ kind: 'storeAnswered', genesis: genesisHash, outcome: blob !== null ? 'hit' : 'miss' });
+          return blob;
+        } catch (error) {
+          update({ kind: 'storeAnswered', genesis: genesisHash, outcome: 'unavailable' });
+          throw error;
+        }
+      },
+      save: (genesisHash, blob) => store.save(genesisHash, blob),
     };
-    // At start, so the first bucket counts a client that is already syncing.
-    gauge?.(1);
-    report.log.event('Light client ready');
-    return engine;
   }
 
-  function throwIfLeft(starting: EngineState, { key, cause }: ThrowIfLeftParams): void {
-    if (engineState !== starting) {
-      throw new Error(`chain ${key} cannot open: the light client left its start`, { cause });
-    }
-  }
-
-  function readEarly(genesisHash: string): void {
-    // Once the engine is up there is nothing to overlap, a chain it already added reads nothing, and a fatal light
-    // client opens no chain.
-    if (db === null || !isEngineComing(engineState) || earlyReads.has(genesisHash)) {
+  /** Starts the chain's stored database read, so it overlaps the engine's start. */
+  function readEarly(genesis: string): void {
+    if (db === null || earlyReads.has(genesis)) {
       return;
     }
-    earlyReads.set(genesisHash, markHandled(db.load(genesisHash)));
+    earlyReads.set(genesis, markHandled(db.load(genesis)));
   }
 
   function readStored(store: SmoldotDb, genesisHash: string): Promise<string | null> {
@@ -300,16 +684,51 @@ export function createLightClient({
     return early;
   }
 
-  async function prepareChain(key: string): Promise<LightClientEngine> {
-    readEarly(key);
-    try {
-      const live = await ensureEngine(key);
-      // Must run before the chain is added: only a chain's first add consumes a blob.
-      await resumeFromStore(live, key);
-      return live;
-    } finally {
-      earlyReads.delete(key);
-    }
+  /** Hands the chain its stored database before its first add, since only a chain's first add consumes a blob. */
+  function restore(engine: LightClientEngine, key: ConnectionKey, genesis: string): Promise<ClientEvent> {
+    // A load that throws before it returns a promise rejects this one, so the chain starts cold as on a rejection.
+    return new Promise<boolean>(resolve => {
+      resolve(engine.loadDatabase(genesis));
+    })
+      .finally(() => {
+        earlyReads.delete(genesis);
+      })
+      .then(
+        (warm): ClientEvent => ({ kind: 'restored', key, genesis, warm }),
+        (error: unknown): ClientEvent => ({ kind: 'restoreMissed', key, genesis, error }),
+      );
+  }
+
+  /** Moves a restored connection to `connecting` and starts its connect. */
+  function connectChain(
+    { chain, engine, queued }: Extract<ChainConnection, { kind: 'restoring' }>,
+    key: ConnectionKey,
+    { emitState, update }: Transition<ConnectionMachine>,
+  ): void {
+    emitState({ kind: 'connecting', chain, engine, queued });
+    update(
+      engine.connect(chain.genesis).then(
+        (connection): ClientEvent => ({ kind: 'chainConnected', key, connection }),
+        (error: unknown): ClientEvent => ({ kind: 'connectFailed', key, error }),
+      ),
+    );
+  }
+
+  /** Halts a reading chain and hands its sync tap on. The engine's connection stays until the consumer leaves. */
+  function haltReading(
+    { chain, connection, source }: ReadingConnection,
+    error: unknown,
+    { emitState, emitSideEffect }: Transition<ConnectionMachine>,
+  ): void {
+    emitState({ kind: 'stopped', connection });
+    emitSideEffect({ kind: 'halted', hooks: chain.hooks, error });
+    syncTaps.leave(chain.genesis, source);
+  }
+
+  /** Halts a reading chain whose read or consumer failed, with a warning first. */
+  function breakReading(reading: ReadingConnection, error: unknown, transition: Transition<ConnectionMachine>): void {
+    transition.emitSideEffect({ kind: 'readBroke', error, genesis: reading.chain.genesis });
+    haltReading(reading, error, transition);
   }
 
   function isChainSupported(genesisHash: string): boolean {
@@ -317,157 +736,27 @@ export function createLightClient({
   }
 
   function createChainTransport(genesisHash: string, hooks?: ChainTransportHooks): ChainTransport | null {
-    const key = genesisHash.toLowerCase();
-    if (!isChainSupported(key)) {
+    const genesis = genesisHash.toLowerCase();
+    if (!isChainSupported(genesis)) {
       log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
       return null;
     }
 
     function provider(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
-      const state: {
-        connection: LightClientConnection | null;
-        closed: boolean;
-        sync: ChainSyncSource | null;
-      } = {
-        connection: null,
-        closed: false,
-        sync: null,
-      };
-      // A call, so the early guard cannot narrow later reads to `false` while `disconnect` flips it between awaits.
-      function isClosed(): boolean {
-        return state.closed;
-      }
-      const queued: string[] = [];
-      function fail(error: unknown): void {
-        hooks?.onStatus('disconnected');
-        hooks?.onHalt(error);
-      }
-      function halt(error: unknown): void {
-        try {
-          fail(error);
-        } catch (thrown) {
-          // Nothing awaits the read loop to hear it.
-          report.listener('light_client.halt')(thrown);
-        }
-      }
-      function releaseSync(): void {
-        if (state.sync === null) {
-          return;
-        }
-        syncTaps.leave(key, state.sync);
-        state.sync = null;
-      }
-      function reportFailure(error: unknown, connected: boolean): void {
-        const reason = getErrorMessage(error);
-        if (connected) {
-          log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`, error);
-          return;
-        }
-        if (error instanceof LightClientCapError) {
-          report.expected(error, {
-            step: 'light_client_connect',
-            metric: smoldotConnectionCapMetric,
-            reason: 'cap',
-            message: `[dot.li provider] chain ${key} is past the light client's connection cap, halting it: ${reason}`,
-          });
-          return;
-        }
-        markFatal(`chain ${key} connection failed: ${reason}`);
-      }
+      const key: ConnectionKey = Symbol(genesis);
       hooks?.onStatus('connecting');
-      void readResponses();
-
-      async function readResponses(): Promise<void> {
-        // The halt runs outside the `try`, so a throwing hook cannot reach the `catch` and halt again.
-        let streamEnded = false;
-        // A failure before connecting is the light client's, one after it is this chain's. A cap rejection before
-        // connecting is the chain's failure too.
-        let connected = false;
-        try {
-          const live = await prepareChain(key);
-          const candidate = await live.connect(key);
-          if (state.closed) {
-            candidate.close();
-            return;
-          }
-          state.connection = candidate;
-          connected = true;
-          hooks?.onStatus('connected');
-          for (const message of queued) {
-            candidate.send(message);
-          }
-          queued.length = 0;
-          // After the flush, so the sync request cannot jump ahead of a caller's.
-          const source: ChainSyncSource = {
-            send: raw => {
-              candidate.send(raw);
-            },
-            watchLifecycle: () => live.lifecycle(key),
-          };
-          state.sync = source;
-          syncTaps.join(key, source);
-          for (;;) {
-            const response = await candidate.nextResponse();
-            // A response read before `disconnect()` must not reach a listener that already left.
-            if (isClosed()) {
-              break;
-            }
-            if (response === undefined) {
-              streamEnded = true;
-              break;
-            }
-            // The light client answers only JSON-RPC, which goes on unchecked as the held provider wire.
-            const parsed = JSON.parse(response) as JsonRpcMessage;
-            // polkadot-api would reject a string id it never issued.
-            if (syncTaps.intercept(key, source, parsed)) {
-              continue;
-            }
-            onMessage(parsed);
-          }
-        } catch (error) {
-          reportFailure(error, connected);
-          if (!isClosed()) {
-            halt(error);
-          }
-        } finally {
-          // A stream that ended or broke hands the chain's tap to another of its connections.
-          releaseSync();
-        }
-        // Only `disconnect()` ends the stream in order. Otherwise the transport died or overflowed its send budget.
-        if (streamEnded && !isClosed()) {
-          halt(new Error(`chain ${key} stopped responding`));
-        }
-      }
-
+      machine.update({ kind: 'opened', key, chain: { genesis, onMessage, hooks: hooks ?? null } });
       return {
         send(message) {
-          if (state.closed) {
-            return;
-          }
-          const raw = JSON.stringify(message);
-          if (state.connection !== null) {
-            state.connection.send(raw);
-          } else {
-            queued.push(raw);
-          }
+          machine.update({ kind: 'sent', key, message });
         },
         disconnect() {
-          state.closed = true;
-          releaseSync();
-          state.connection?.close();
-          state.connection = null;
+          machine.update({ kind: 'left', key });
         },
       };
     }
     return { provider, followLimit: LIGHT_CLIENT_FOLLOW_LIMIT };
   }
-
-  return {
-    createChainTransport,
-    isChainSupported,
-    status: () => ({ fatal: engineState.kind === 'fatal' ? engineState.message : null, db: new Map(dbOutcomes) }),
-    subscribe: listeners.subscribe,
-  };
 }
 
 /**
@@ -589,28 +878,32 @@ function createChainSyncTaps({ attachChainSync }: CreateChainSyncTapsParams) {
   };
 }
 
-// Whether the engine may still come up.
-function isEngineComing(state: EngineState): boolean {
-  switch (state.kind) {
-    case 'idle':
-    case 'starting':
-      return true;
-    case 'running':
-    case 'fatal':
-      return false;
+/** `connections` with the connection of `key` set to `next`, or without it when `next` ended. */
+function withConnection(connections: Connections, key: ConnectionKey, next: ChainConnection): Connections {
+  const updated = new Map(connections);
+  if (next.kind === 'ended') {
+    updated.delete(key);
+    return updated;
   }
+  updated.set(key, next);
+  return updated;
 }
 
-async function resumeFromStore(engine: LightClientEngine, key: string): Promise<void> {
-  try {
-    const warm = await engine.loadDatabase(key);
-    pageChainSyncReporter.reportDbCache(key, warm);
-    if (warm) {
-      log.debug(`[dot.li provider] resuming ${key} from stored state`);
-    }
-  } catch (error) {
-    // The chain starts from the chain-spec checkpoint, as on a miss, which is slower but correct.
-    pageChainSyncReporter.reportDbCache(key, false);
-    log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);
-  }
+/** The connection's next response as its event. A rejection, a parse failure included, is a failed read. */
+function readResponse(key: ConnectionKey, connection: LightClientConnection): Promise<ClientEvent> {
+  return connection
+    .nextResponse()
+    .then((response): ClientEvent => {
+      if (response === undefined) {
+        return { kind: 'streamEnded', key };
+      }
+      // The light client answers only JSON-RPC, which goes on unchecked as the held provider wire.
+      return { kind: 'responseRead', key, message: JSON.parse(response) as JsonRpcMessage };
+    })
+    .catch((error: unknown): ClientEvent => ({ kind: 'readFailed', key, error }));
+}
+
+/** Why a chain cannot open on a fatal light client. */
+function getRefusal(genesis: string, fatal: string): string {
+  return `chain ${genesis} cannot open: the light client is fatal: ${fatal}`;
 }

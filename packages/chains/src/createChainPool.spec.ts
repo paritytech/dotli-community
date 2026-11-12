@@ -13,6 +13,7 @@ import type {
 import { CHAIN_HEAD_FOLLOW } from './jsonRpcMethods.js';
 import { RPC_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 import { ChainHaltError } from './chainHaltError.js';
+import { createChainHaltedError } from './createChainHaltedError.js';
 import { bindLogSink } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
@@ -336,6 +337,41 @@ describe('createChainPool', () => {
     expect(pool.status('0xbb')).toBe('disconnected');
   });
 
+  it('As a dotli integrator, I ask for a chain whose transport factory throws, each failure is reported, and an ask once it recovers builds the chain', () => {
+    // Given a factory that throws until it recovers
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport: createBase, built } = createTransports();
+    let failing = true;
+    function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+      if (failing) {
+        throw new Error('factory failed');
+      }
+      return createBase(genesisHash, hooks);
+    }
+    const pool = createChainPool({ createTransport });
+
+    // When
+    const local = pool.getLocalProvider('0xaa');
+    const remote = pool.connectRemote({ genesisHash: '0xaa', connectionId: 'conn-1', onMessage: () => undefined });
+
+    // Then
+    expect(local).toBeNull();
+    expect(remote).toBeNull();
+    expect(captured).toMatchObject([{ step: 'chain_lane_build' }, { step: 'chain_lane_build' }]);
+    expect(pool.status('0xaa')).toBe('disconnected');
+
+    // Given the factory recovers
+    failing = false;
+
+    // When
+    const recovered = pool.getLocalProvider('0xaa');
+
+    // Then
+    expect(recovered).not.toBeNull();
+    expect(built).toHaveLength(1);
+  });
+
   it('As a dotli integrator, I connect remotely and hold a lease, and a duplicate connection id leaks none', () => {
     // Given
     const { createTransport, built } = createTransports();
@@ -507,6 +543,39 @@ describe('createChainPool', () => {
     expect(built).toHaveLength(2);
     expect(pool.status('0xaa')).toBe('connecting');
     expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
+  });
+
+  it("As a dotli integrator, I release the last lease, my chain's status changes during its destroy delay, and it still closes destroyDelay later", () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    lease(pool, '0xaa').disconnect();
+    const transport = must(built[0], 'transport');
+
+    // When
+    vi.advanceTimersByTime(500);
+    transport.hooks.onStatus('connected');
+    vi.advanceTimersByTime(500);
+
+    // Then
+    expect(transport.disconnect).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xaa')).toBe('disconnected');
+  });
+
+  it("As a dotli page, I pause during my released chain's destroy delay, and it still closes destroyDelay later", () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    lease(pool, '0xaa').disconnect();
+
+    // When
+    vi.advanceTimersByTime(500);
+    pool.pause();
+    vi.advanceTimersByTime(500);
+    lease(pool, '0xaa');
+
+    // Then the closed chain is built again
+    expect(built).toHaveLength(2);
   });
 
   it('As a dotli integrator, I connect remotely under a name like a local lease and the two do not collide', () => {
@@ -737,6 +806,30 @@ describe('createChainPool watch', () => {
 
     // Then
     expect(transport.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the network panel, I have my established follow dropped with the halted chain and the rebuilt chain opens one follow', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    pool.watch(createRecorder().watcher);
+    lease(pool, '0xaa');
+    const halted = must(built[0], 'transport');
+    answerFollow(halted, 'up-1')({ event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+
+    // When
+    halted.hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(halted.sent.filter(isFollow)).toHaveLength(1);
+    expect(listMethod(halted, 'chainHead_v1_unfollow')).toEqual([]);
+
+    // When
+    lease(pool, '0xaa');
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'rebuilt transport').sent.filter(isFollow)).toHaveLength(1);
   });
 
   /** Refuses the pool's newest follow request upstream, as a node at its follow limit does. */
@@ -1329,6 +1422,49 @@ describe('createChainPool healing', () => {
     expect(pool.status('0xaa')).toBe('disconnected');
     expect(built).toHaveLength(1);
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, my healing lease is on a chain whose follow cannot get a new connection, and I take the rebuilt chain once its gate opens', () => {
+    // Given my healing lease on a chain with no second connection, whose one connection its remote leases' follows fill
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    let builds = 0;
+    const { createTransport, built } = createTransports({
+      followLimit: RPC_FOLLOW_LIMIT,
+      supported: () => {
+        builds += 1;
+        return builds !== 2;
+      },
+    });
+    const pool = createChainPool({ createTransport, destroyDelay: Infinity });
+    const heard: JsonRpcMessage[] = [];
+    const healing = lease(pool, '0xaa', {
+      onMessage: message => {
+        heard.push(message);
+      },
+    });
+    for (let index = 0; index < RPC_FOLLOW_LIMIT; index += 1) {
+      const connection = remoteLease(pool, '0xaa', { onHalt: () => undefined });
+      connection.send({ jsonrpc: '2.0', id: index, method: CHAIN_HEAD_FOLLOW, params: [true] });
+    }
+
+    // When the network panel watches, and my healing lease sends a request
+    pool.watch({ onActivity: () => undefined, onBestBlock: () => undefined });
+    healing.send({ jsonrpc: '2.0', id: 'early', method: 'system_health', params: [] });
+
+    // Then the chain is rebuilt, my lease failed to take the halted one twice, and my request is answered as halted
+    expect(built).toHaveLength(2);
+    expect(captured).toMatchObject([{ step: 'chain_lane_build' }, { step: 'chain_heal' }, { step: 'chain_heal' }]);
+    expect(heard).toEqual([{ jsonrpc: '2.0', id: 'early', error: createChainHaltedError() }]);
+    const rebuilt = must(built[1], 'second connection');
+    expect(listMethod(rebuilt, 'system_health')).toEqual([]);
+
+    // When my gate opens, and my healing lease sends a request
+    vi.advanceTimersByTime(1_000);
+    healing.send({ jsonrpc: '2.0', id: 'late', method: 'system_health', params: [] });
+
+    // Then
+    expect(listMethod(rebuilt, 'system_health')).toHaveLength(1);
   });
 
   it('As the host page, my chain halts with the frame while the frame is down and it is rebuilt only as the frame gate allows', async () => {

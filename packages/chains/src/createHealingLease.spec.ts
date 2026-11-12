@@ -4,11 +4,10 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
-import { createAsyncTaskPool } from '@dotli/shared';
 import { catchError, createManualTimers, must } from '@dotli/shared/testing';
 import { createChainHaltedError } from './createChainHaltedError.js';
 import { createChainRedial } from './createChainRedial.js';
-import { createHealingLease } from './createHealingLease.js';
+import { createHealingLease, type AttachAnswer } from './createHealingLease.js';
 import type { ConnectionStatus } from './transportHooks.js';
 
 /**
@@ -171,7 +170,6 @@ describe('createHealingLease', () => {
 
     // Then
     expect([beforeASecond, atASecond]).toEqual([2, 3]);
-    expect(must(attach.leases[1], 'halted lease').sent).toEqual([]);
     expect(metrics.counted('chain_pool.heal')).toEqual([{ outcome: 'error', reason: 'halted' }, { outcome: 'ok' }]);
   });
 
@@ -224,6 +222,7 @@ describe('createHealingLease', () => {
 
     // Then
     expect(timers.countPending()).toBe(1);
+    expect(must(attach.leases[2], 'joined lease').sent).toEqual([REQUEST]);
   });
 
   it('As a chain consumer, a late halt from a lease I already replaced touches nothing', () => {
@@ -274,7 +273,6 @@ function setup({ steps = [] }: Params = {}) {
   const timers = createManualTimers();
   let status: ConnectionStatus = 'disconnected';
   const redial = createChainRedial({ status: () => status, isFrameDown: () => false, timers });
-  const waits = createAsyncTaskPool({ poolSize: 1, timers });
   const heard: JsonRpcMessage[] = [];
   let connection: { disconnect: () => void } | undefined;
   const attach = createFakeAttach(steps, setStatus, () => {
@@ -286,9 +284,7 @@ function setup({ steps = [] }: Params = {}) {
       key: '0xaa',
       attach: attach.attach,
       redial,
-      waits,
-      waitPool: 'chain_heal',
-      logTag: '[spec]',
+      timers,
       holder: 'spec',
       onMessage: message => {
         heard.push(message);
@@ -316,29 +312,26 @@ function createFakeAttach(
   const leases: FakeLease[] = [];
   let calls = 0;
 
-  function attach(_onMessage: (message: JsonRpcMessage) => void, onHalt: (error?: unknown) => void) {
+  function attach(_onMessage: (message: JsonRpcMessage) => void, onHalt: (error?: unknown) => void): AttachAnswer {
     calls += 1;
     const step = steps.shift() ?? 'lease';
     switch (step) {
       case 'none':
-        return null;
+        return { kind: 'unreachable' };
       case 'throws':
         throw new Error('transport refused');
       case 'refuses':
         setStatus('connecting');
         throw new Error('transport refused');
       case 'lease':
-        return takeLease(onHalt);
+        return { kind: 'attached', connection: takeLease(onHalt) };
       case 'releases': {
         const connection = takeLease(onHalt);
         releaseConsumer();
-        return connection;
+        return { kind: 'attached', connection };
       }
-      case 'halts': {
-        const connection = takeLease(onHalt);
-        onHalt();
-        return connection;
-      }
+      case 'halts':
+        return { kind: 'halted', error: undefined };
     }
   }
 
