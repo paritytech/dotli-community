@@ -945,14 +945,26 @@ export function createChainPool({
   }
 
   /**
-   * Tells the pool its chain's lanes halted or failed, then halts them, so a lease taken again from inside that halt
-   * finds the chain gone. Reports a halt that throws.
+   * Tells the pool its chain's lanes halted or failed, then halts them once the pool closed the chain, so a lease taken
+   * again from inside that halt builds the chain anew. Reports a halt that throws.
    */
   function haltLanes(
     event: Extract<PoolEvent, { kind: 'laneHalted' | 'laneFailed' }>,
     update: Transition<PoolMachine>['update'],
   ): void {
     update(event);
+    // A halt heard inside a pool transition, such as a follow whose new lane could not be built, waits in the pool's
+    // queue, and a lease taken now could not build the chain. Its lanes halt once that transition is done.
+    if (findLive(event.key)?.chain.lanes === event.lanes) {
+      queueMicrotask(() => {
+        haltLanesNow(event);
+      });
+      return;
+    }
+    haltLanesNow(event);
+  }
+
+  function haltLanesNow(event: Extract<PoolEvent, { kind: 'laneHalted' | 'laneFailed' }>): void {
     try {
       event.lanes.halt(event.error);
     } catch (error) {

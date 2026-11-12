@@ -13,7 +13,6 @@ import type {
 import { CHAIN_HEAD_FOLLOW } from './jsonRpcMethods.js';
 import { RPC_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 import { ChainHaltError } from './chainHaltError.js';
-import { createChainHaltedError } from './createChainHaltedError.js';
 import { bindLogSink } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './createChainPool.js';
 import { collectWarningsDuring } from './testing/collectWarningsDuring.js';
@@ -1020,7 +1019,7 @@ describe('createChainPool watch', () => {
     expect(seen.activity).toEqual([]);
   });
 
-  it('As the network panel, I watch a chain that cannot open a connection for my follow, and get my unwatch while that chain halts and the next is followed', () => {
+  it('As the network panel, I watch a chain that cannot open a connection for my follow, and get my unwatch while that chain halts and the next is followed', async () => {
     // Given 0xaa's one connection full of its leases' follows, no second connection to it, and 0xbb held
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -1048,8 +1047,9 @@ describe('createChainPool watch', () => {
     }
     lease(pool, '0xbb');
 
-    // When the network panel watches
+    // When the network panel watches, and the halt settles
     const unwatch = pool.watch(createRecorder().watcher);
+    await Promise.resolve();
 
     // Then the watch returns its unwatch, 0xaa's lane is reported and the chain halts every lease, and 0xbb is followed
     expect(unwatch).toBeTypeOf('function');
@@ -1424,7 +1424,7 @@ describe('createChainPool healing', () => {
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli integrator, my healing lease is on a chain whose follow cannot get a new connection, and I take the rebuilt chain once its gate opens', () => {
+  it('As a dotli integrator, my healing lease is on a chain whose follow cannot get a new connection, and I take the rebuilt chain at once', async () => {
     // Given my healing lease on a chain with no second connection, whose one connection its remote leases' follows fill
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     onTestFinished(bindLogSink({ emit: () => undefined }));
@@ -1448,23 +1448,16 @@ describe('createChainPool healing', () => {
       connection.send({ jsonrpc: '2.0', id: index, method: CHAIN_HEAD_FOLLOW, params: [true] });
     }
 
-    // When the network panel watches, and my healing lease sends a request
+    // When the network panel watches, the halt settles, and my healing lease sends a request
     pool.watch({ onActivity: () => undefined, onBestBlock: () => undefined });
-    healing.send({ jsonrpc: '2.0', id: 'early', method: 'system_health', params: [] });
-
-    // Then the chain is rebuilt, my lease failed to take the halted one twice, and my request is answered as halted
-    expect(built).toHaveLength(2);
-    expect(captured).toMatchObject([{ step: 'chain_lane_build' }, { step: 'chain_heal' }, { step: 'chain_heal' }]);
-    expect(heard).toEqual([{ jsonrpc: '2.0', id: 'early', error: createChainHaltedError() }]);
-    const rebuilt = must(built[1], 'second connection');
-    expect(listMethod(rebuilt, 'system_health')).toEqual([]);
-
-    // When my gate opens, and my healing lease sends a request
-    vi.advanceTimersByTime(1_000);
+    await vi.advanceTimersByTimeAsync(0);
     healing.send({ jsonrpc: '2.0', id: 'late', method: 'system_health', params: [] });
 
-    // Then
-    expect(listMethod(rebuilt, 'system_health')).toHaveLength(1);
+    // Then the chain is rebuilt, my lease took it with no failed take, and my request goes on it
+    expect(built).toHaveLength(2);
+    expect(captured).toMatchObject([{ step: 'chain_lane_build' }]);
+    expect(heard).toEqual([]);
+    expect(listMethod(must(built[1], 'second connection'), 'system_health')).toHaveLength(1);
   });
 
   it('As the host page, my chain halts with the frame while the frame is down and it is rebuilt only as the frame gate allows', async () => {
