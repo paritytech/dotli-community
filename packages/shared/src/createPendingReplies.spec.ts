@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { createPendingReplies } from './createPendingReplies.js';
-import { noop } from './noop.js';
 import { catchError } from './testing/catchError.js';
 
 describe('createPendingReplies', () => {
@@ -39,44 +38,20 @@ describe('createPendingReplies', () => {
     expect(replies.listIds()).toEqual([]);
   });
 
-  it('As a channel closing down, I fail every wait while one error factory throws and none is left open', async () => {
+  it('As a channel closing down, I fail every wait and none is left open', async () => {
     // Given
     const replies = createPendingReplies<string, string>();
     const firstReply = replies.wait('a');
     const secondReply = replies.wait('b');
-    const settled = [
-      expect(firstReply).rejects.toThrow('no error for a'),
-      expect(secondReply).rejects.toThrow('lost b'),
-    ];
+    const closed = new Error('channel closed');
+    const settled = [expect(firstReply).rejects.toBe(closed), expect(secondReply).rejects.toBe(closed)];
 
     // When
-    replies.rejectAll(id => {
-      if (id === 'a') {
-        throw new Error('no error for a');
-      }
-      return new Error(`lost ${id}`);
-    });
+    replies.rejectAll(closed);
 
     // Then
     await Promise.all(settled);
     expect(replies.listIds()).toEqual([]);
-  });
-
-  it('As an error factory, I wait on one id twice while every wait fails, and the second wait is refused while the first stays', async () => {
-    // Given
-    const replies = createPendingReplies<string, string>();
-    void replies.wait('a').catch(noop);
-    const kept: Promise<string>[] = [];
-
-    // When
-    replies.rejectAll(id => {
-      kept.push(replies.wait('z'), replies.wait('z'));
-      return new Error(`lost ${id}`);
-    });
-
-    // Then
-    await expect(kept[1]).rejects.toThrow('A reply to id z is already awaited');
-    expect(replies.listIds()).toEqual(['z']);
   });
 
   it('As a channel reading progress, I read what a request left with its wait and it is gone once answered', () => {

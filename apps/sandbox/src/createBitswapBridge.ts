@@ -89,7 +89,7 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
     }
     postAbort(ids);
     // Rejected rather than dropped, or the promises never settle: the reply listener ignores unknown ids.
-    replies.rejectAll(createAbortError);
+    replies.rejectAll(createAbortError());
   }
 
   function onMessage(event: MessageEvent<unknown>): void {
