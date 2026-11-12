@@ -149,7 +149,7 @@ type PermissionsState =
   | ({ kind: 'reading'; label: string; job: ReadJob } & Store)
   | ({ kind: 'sending' } & Write & Store)
   /** A newer change superseded the run: the writes already sent finish, and then the run does, with no retry. */
-  | ({ kind: 'stopping' } & Write & Store)
+  | ({ kind: 'stopping'; job: ChangeJob } & Write & Store)
   /** The prompt closed: the writes already sent finish, and then the decision rejects and nothing changes. */
   | ({ kind: 'abandoning'; job: RunningDecision } & Store)
   | ({ kind: 'retrying'; errors: readonly unknown[]; timer: unknown } & Write & Store)
@@ -293,7 +293,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
           const queue = replaceQueuedChange(state.queue, job, transition);
           // A newer change supersedes a running one, whose writes already sent still finish.
           transition.emitState(
-            state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue },
+            state.job.kind === 'change' ? { ...state, kind: 'stopping', job: state.job, queue } : { ...state, queue },
           );
         },
         promptClosed({ job, shown, queue }, _event, { emitState }) {
@@ -623,20 +623,24 @@ export function createProductPermissions({ registry, product, timers = realTimer
     transition: Transition<PermissionsMachine>,
   ): void {
     const { emitState, emitSideEffect, update } = transition;
+    // First, so a listener that hears the announcement and closes the prompt reaches no run after this one.
+    if (job.kind === 'decision') {
+      emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
+    }
     const targets = getTargets(job);
     const landed = NAMES.filter(name => targets[name] !== undefined && !failing.includes(name));
     const current = getReadStatuses(store.shown, job.label);
     // Only statuses read are patched, so a write over unread ones shows nothing yet.
-    const shown =
-      current !== null
-        ? land(store.shown, {
+    const shown: ProductPermissionsState =
+      current === null
+        ? store.shown
+        : {
             status: 'read',
             label: job.label,
             statuses: NAMES.map((name, i) =>
               landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'),
             ),
-          })
-        : store.shown;
+          };
     const change = getLandedChange(job, landed, before);
     if (change !== null) {
       emitSideEffect({ kind: 'announced', change });
@@ -652,9 +656,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
       startNext({ shown, queue: store.queue }, transition);
       emitSideEffect({ kind: 'writeSettled', job, failed: failing, errors });
     }
-    if (job.kind === 'decision') {
-      emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
-    }
   }
 
   /** Ends a run whose prompt closed: the decision rejects and nothing changes. */
@@ -662,8 +663,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
     { job, shown, queue }: { job: RunningDecision } & Store,
     transition: Transition<PermissionsMachine>,
   ): void {
-    startNext({ shown, queue }, transition);
     transition.emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
+    startNext({ shown, queue }, transition);
     transition.emitSideEffect({ kind: 'decisionAborted', job });
   }
 }

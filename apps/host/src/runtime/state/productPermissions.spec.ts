@@ -548,6 +548,40 @@ describe('product permissions store', () => {
     expect(core.stored.get('Camera')).toBe('Authorized');
   });
 
+  it("As a user, I answer two prompts and the first one's frame closes its prompt as it hears the answer, and the second answer is still stored and announced", async () => {
+    // Given a listener that closes the first prompt as its answer is announced, and a second answer queued behind it
+    createFakeCore();
+    const changes = recordChanges();
+    await loadProduct();
+    const firstPrompt = new AbortController();
+    cleanups.push(
+      permissions.subscribeChanges(change => {
+        if (change.permissions.includes('Camera')) {
+          firstPrompt.abort();
+        }
+      }),
+    );
+
+    // When
+    const first = permissions.recordPromptDecision({
+      label: LABEL,
+      name: 'Camera',
+      decision: 'granted',
+      signal: firstPrompt.signal,
+    });
+    const second = permissions.recordPromptDecision({
+      label: LABEL,
+      name: 'Microphone',
+      decision: 'granted',
+      signal: new AbortController().signal,
+    });
+    const settled = await Promise.allSettled([first, second]);
+
+    // Then
+    expect(settled.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(changes.map(({ permissions: names }) => names)).toEqual([['Camera'], ['Microphone']]);
+  });
+
   it("As a user, I answer a product's prompt queued between two panel changes and the answer is never superseded and still announces", async () => {
     // Given: a panel change whose write is held, and a prompt decision queued behind it
     const core = createFakeCore();
