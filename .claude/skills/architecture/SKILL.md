@@ -23,14 +23,16 @@ how files nobody asked for get invented.
 The `architect` agent (`.claude/agents/architect.md`) runs the steps, so that its context holds one change alone. Side
 questions and other work stay in the main session, out of the change's context.
 
-**The main session** never runs the steps and does no framing, reading or exploring first. If
-`docs/_plans/project-agent.md` exists, a change is already running: route the request by the rules of `CLAUDE.md` §
-Project agent. Otherwise:
+**The main session** never runs the steps and does no framing, reading or exploring first. If its own
+`docs/_plans/project-agent-<session id>.md` exists, with `<session id>` from `$CLAUDE_CODE_SESSION_ID`, a change is
+already running: route the request by the rules of `CLAUDE.md` § Project agent. Another session's file does not count.
+Otherwise:
 
 1. Dispatch `Agent` with `subagent_type: "architect"` in the background. Pass no `model` and no `effort`, so it runs on
    the session's own. Its prompt is the owner's request verbatim, as `OWNER: <text>`, plus the paths of any file the
    owner attached.
-2. Write `docs/_plans/project-agent.md`: the agent ID from the dispatch result, the date, and the request in one line.
+2. Write `docs/_plans/project-agent-<session id>.md`: the agent ID from the dispatch result, the date, and the request
+   in one line.
 3. Tell the owner in one line that the change runs in the project agent, then stop.
 
 **The `architect` agent** runs every step from the frame to `DONE`, in one context. That context holds the frame, the
@@ -236,6 +238,9 @@ resolve it.
 
 Invoke `superpowers:brainstorming`. It clarifies requirements one question at a time, proposes approaches and presents a
 design. Write the design to `docs/_plans/<topic>-design.md`, not under docs/superpowers/.
+
+An agent that runs in a worktree writes its design, plan and review files under its own worktree from the start, never
+in the shared checkout.
 
 Run `document-review` on the design before presenting it for approval. The design is the one artifact with no gate of
 its own downstream: step 5 reviews the plan, and `reviewer` reviews the code. A vague design, a hypothetical feature or
