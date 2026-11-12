@@ -3,31 +3,34 @@
 
 // The table that pairs a request with the reply carrying its id, for any channel that answers out of band.
 
-import { createStateMachine, nest, type MachineTypes } from './createStateMachine.js';
+import { createDeferred } from './createDeferred.js';
+import { createStateMachine, type MachineTypes } from './createStateMachine.js';
 import { rejectUnhandled } from './rejectUnhandled.js';
 import { toError } from './toError.js';
 
-type Waiting<Value, Meta> = {
-  kind: 'waiting';
-  resolve: (value: Value) => void;
-  reject: (error: Error) => void;
-  meta: Meta | undefined;
-};
+type Reply<Value> = ReturnType<typeof createDeferred<Value>>;
 
-type Wait<Value, Meta> = Waiting<Value, Meta> | { kind: 'settled' };
+type Wait<Value, Meta> = { reply: Reply<Value>; meta: Meta | undefined };
 
 /** A settled wait leaves the table, so `waits` holds only the waits still open. */
-type RepliesState<Id, Value, Meta> = { kind: 'open'; waits: ReadonlyMap<Id, Waiting<Value, Meta>> };
+type RepliesState<Id, Value, Meta> = { kind: 'open'; waits: ReadonlyMap<Id, Wait<Value, Meta>> };
 
 type RepliesEvent<Id, Value, Meta> =
-  | { kind: 'waited'; id: Id; wait: Waiting<Value, Meta> }
+  | { kind: 'waited'; id: Id; wait: Wait<Value, Meta> }
   | { kind: 'replied'; id: Id; value: Value }
   | { kind: 'failed'; id: Id; error: Error }
   | { kind: 'allFailed'; errorFor: (id: Id) => Error };
 
-type RepliesMachine<Id, Value, Meta> = MachineTypes<RepliesState<Id, Value, Meta>, RepliesEvent<Id, Value, Meta>>;
+type RepliesEffect<Id, Value> =
+  | { kind: 'resolve'; reply: Reply<Value>; value: Value }
+  | { kind: 'reject'; reply: Reply<Value>; error: Error }
+  | { kind: 'rejectEach'; replies: ReadonlyMap<Id, Reply<Value>>; errorFor: (id: Id) => Error };
 
-type WaitMachine<Id, Value, Meta> = MachineTypes<Wait<Value, Meta>, RepliesEvent<Id, Value, Meta>>;
+type RepliesMachine<Id, Value, Meta> = MachineTypes<
+  RepliesState<Id, Value, Meta>,
+  RepliesEvent<Id, Value, Meta>,
+  RepliesEffect<Id, Value>
+>;
 
 type WaitParams<Meta> = {
   meta?: Meta;
@@ -43,60 +46,60 @@ export type PendingReplies<Id, Value, Meta = undefined> = ReturnType<typeof crea
  * const reply = replies.wait(id); // later, the message handler calls replies.resolve(id, bytes)
  */
 export function createPendingReplies<Id, Value, Meta = undefined>() {
-  const handleWait = nest<RepliesMachine<Id, Value, Meta>, 'open', WaitMachine<Id, Value, Meta>, 'replied' | 'failed'>({
-    find: ({ waits }, { id }) => waits.get(id) ?? null,
-    store(state, { id }, next) {
-      const waits = new Map(state.waits);
-      switch (next.kind) {
-        case 'waiting':
-          waits.set(id, next);
-          break;
-        case 'settled':
-          waits.delete(id);
-          break;
-      }
-      return { ...state, waits };
-    },
-    handlers: {
-      waiting: {
-        replied({ resolve }, { value }, { emitState }) {
-          emitState({ kind: 'settled' });
-          resolve(value);
-        },
-        failed({ reject }, { error }, { emitState }) {
-          emitState({ kind: 'settled' });
-          reject(error);
-        },
-      },
-      settled: null,
-    },
-  });
   const machine = createStateMachine<RepliesMachine<Id, Value, Meta>>({
     initial: { kind: 'open', waits: new Map() },
     handlers: {
       open: {
-        waited(state, { id, wait }, { emitState }) {
+        waited(state, { id, wait }, { emitState, emitSideEffect }) {
           // A second wait on an id can arrive queued behind the first, such as when an error factory waits twice.
           if (state.waits.has(id)) {
-            wait.reject(createAwaitedError(id));
+            emitSideEffect({ kind: 'reject', reply: wait.reply, error: createAwaitedError(id) });
             return;
           }
           emitState({ ...state, waits: new Map(state.waits).set(id, wait) });
         },
-        replied: handleWait,
-        failed: handleWait,
-        allFailed(state, { errorFor }, { emitState }) {
-          emitState({ ...state, waits: new Map() });
-          for (const [id, { reject }] of state.waits) {
-            // A factory that throws still fails its wait, so the waits after it are not left open.
-            try {
-              reject(errorFor(id));
-            } catch (error) {
-              reject(toError(error));
-            }
+        replied(state, { id, value }, { emitState, emitSideEffect }) {
+          const wait = state.waits.get(id);
+          if (wait === undefined) {
+            return;
           }
+          emitState({ ...state, waits: withoutId(state.waits, id) });
+          emitSideEffect({ kind: 'resolve', reply: wait.reply, value });
+        },
+        failed(state, { id, error }, { emitState, emitSideEffect }) {
+          const wait = state.waits.get(id);
+          if (wait === undefined) {
+            return;
+          }
+          emitState({ ...state, waits: withoutId(state.waits, id) });
+          emitSideEffect({ kind: 'reject', reply: wait.reply, error });
+        },
+        allFailed(state, { errorFor }, { emitState, emitSideEffect }) {
+          emitState({ ...state, waits: new Map() });
+          const replies = new Map([...state.waits].map(([id, { reply }]) => [id, reply]));
+          emitSideEffect({ kind: 'rejectEach', replies, errorFor });
         },
       },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'resolve':
+          effect.reply.resolve(effect.value);
+          return;
+        case 'reject':
+          effect.reply.reject(effect.error);
+          return;
+        case 'rejectEach':
+          for (const [id, reply] of effect.replies) {
+            // A factory that throws still fails its wait, so the waits after it are not left open.
+            try {
+              reply.reject(effect.errorFor(id));
+            } catch (error) {
+              reply.reject(toError(error));
+            }
+          }
+          return;
+      }
     },
     onError: rejectUnhandled,
   });
@@ -112,9 +115,9 @@ export function createPendingReplies<Id, Value, Meta = undefined>() {
       if (machine.state.get().waits.has(id)) {
         throw createAwaitedError(id);
       }
-      return new Promise<Value>((resolve, reject) => {
-        machine.update({ kind: 'waited', id, wait: { kind: 'waiting', resolve, reject, meta } });
-      });
+      const reply = createDeferred<Value>();
+      machine.update({ kind: 'waited', id, wait: { reply, meta } });
+      return reply.promise;
     },
     /** What the wait on `id` carries, or `undefined` once nothing waits on it. Never throws. */
     getMeta(id: Id): Meta | undefined {
@@ -137,6 +140,12 @@ export function createPendingReplies<Id, Value, Meta = undefined>() {
       return [...machine.state.get().waits.keys()];
     },
   };
+}
+
+function withoutId<Id, Wait>(waits: ReadonlyMap<Id, Wait>, id: Id): ReadonlyMap<Id, Wait> {
+  const next = new Map(waits);
+  next.delete(id);
+  return next;
 }
 
 function createAwaitedError(id: unknown): Error {
