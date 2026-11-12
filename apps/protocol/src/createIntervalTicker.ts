@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** Calls `tick` once per interval until the returned stop runs. Throws when it cannot start. The stop never throws. */
+/** Calls `tick` once per interval until the returned stop runs. Throws when it cannot start. */
 export type Ticker = (tick: () => void) => () => void;
 
 /** A `Ticker` on a real interval of `intervalMs`. */

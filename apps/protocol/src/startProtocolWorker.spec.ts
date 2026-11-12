@@ -25,7 +25,7 @@ import { createWaitList } from './testing/createWaitList.js';
 import {
   createWorkerLifecycle,
   HEARTBEAT_MISSED_BEATS,
-  type PortSession,
+  type WorkerLifecycle,
   type WorkerPort,
 } from './createWorkerLifecycle.js';
 import { startProtocolWorker, type WorkerResolver, type WorkerScope } from './startProtocolWorker.js';
@@ -65,7 +65,6 @@ type Tab = ReturnType<Attached['speak']>;
 type Presync = ReturnType<typeof createDeferred<undefined>>;
 
 /** The worker's ports and close, on their own. */
-type WorkerLifecycle = ReturnType<typeof createWorkerLifecycle>;
 
 type CreateFakeLightClientParams = {
   /** What the resolver's Asset Hub pre-sync waits on. Settled at once when unset. */
@@ -534,8 +533,11 @@ function startLifecycle() {
   return { lifecycle, heartbeat, timers, close, everyTabPaused };
 }
 
-/** A session `lifecycle` admitted, on the worker's end of a fresh port pair, whose tab never speaks. */
-function openSession(lifecycle: WorkerLifecycle): PortSession {
+/**
+ * A session `lifecycle` admitted, on the worker's end of a fresh port pair, whose tab speaks and leaves only when the
+ * test says so.
+ */
+function openSession(lifecycle: WorkerLifecycle) {
   const channel = new MessageChannel();
   openPorts.add(channel.port1);
   openPorts.add(channel.port2);
@@ -554,7 +556,19 @@ function openSession(lifecycle: WorkerLifecycle): PortSession {
     hello: { resolutionId: null },
   });
   tabs.add(transport);
-  return lifecycle.admit({ port, transport, unwatch: () => undefined, serve: () => undefined });
+  const session = { port, transport };
+  lifecycle.admit(session);
+  return {
+    ...session,
+    /** The tab sends something, which the worker hears at once. */
+    speak(): void {
+      channel.port1.dispatchEvent(new Event('message'));
+    },
+    /** The tab's end of the port closes, which the worker hears at once. */
+    leave(): void {
+      channel.port1.dispatchEvent(new Event('close'));
+    },
+  };
 }
 
 /** Lets the heartbeat run until a silent port is let go. */
@@ -1593,7 +1607,6 @@ describe('worker lifecycle', () => {
     // Then only the last ask was heard, as every tab paused
     expect(heardBeforeLast).toEqual([]);
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 
   it('As the shared worker, I hear the pause end when a paused tab resumes or a new tab connects', () => {
@@ -1611,7 +1624,6 @@ describe('worker lifecycle', () => {
 
     // Then each change was heard once, in order, and the pause ended with the new tab
     expect(everyTabPaused).toEqual([true, false, true, false]);
-    expect(lifecycle.isEveryTabPaused()).toBe(false);
   });
 
   it("As the shared worker, I hear every tab paused once my only unpaused tab's port closes", () => {
@@ -1622,7 +1634,7 @@ describe('worker lifecycle', () => {
     lifecycle.markPaused(paused, true);
 
     // When the unpaused tab's port closes
-    lifecycle.closePort(unpaused);
+    unpaused.leave();
 
     // Then every tab left asks for a pause
     expect(everyTabPaused).toEqual([true]);
@@ -1637,7 +1649,7 @@ describe('worker lifecycle', () => {
 
     // When the heartbeat runs past the beats it allows, while only the paused tab speaks
     for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
-      lifecycle.markAlive(paused);
+      paused.speak();
       heartbeat.tick();
     }
 
@@ -1652,11 +1664,10 @@ describe('worker lifecycle', () => {
     lifecycle.markPaused(session, true);
 
     // When its port closes
-    lifecycle.closePort(session);
+    session.leave();
 
-    // Then nothing more was heard, and the pause holds
+    // Then nothing more was heard, so the pause holds
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 
   it('As the shared worker, I am asked for the scope of a port I released and refuse', () => {
@@ -1712,7 +1723,7 @@ describe('worker lifecycle', () => {
 
     // When the tab's port closes
     const thrown = catchError(() => {
-      lifecycle.closePort(session);
+      session.leave();
     });
 
     // Then nothing was thrown, the failure was reported, and the scope and the port were still closed

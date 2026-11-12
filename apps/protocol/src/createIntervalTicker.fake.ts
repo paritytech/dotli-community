@@ -19,9 +19,13 @@ export function createTestTicker() {
 
   function startTicker(onTick: () => void): () => void {
     started += 1;
-    ticks.add(onTick);
+    // Its own entry, as a real interval is, so a ticker started again with the same callback is a second ticker.
+    const ticker = (): void => {
+      onTick();
+    };
+    ticks.add(ticker);
     return () => {
-      ticks.delete(onTick);
+      ticks.delete(ticker);
     };
   }
 

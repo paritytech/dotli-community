@@ -5,28 +5,19 @@
 // themselves are shared by every scope of the engine.
 
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
-import { TIMEOUTS } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  getBudget,
-  type ProtocolContext,
-  type ProtocolHandler,
-  protocolSchema,
-  type RemoteFailure,
-  toRemoteEnd,
-} from '@dotli/protocol';
-import type { DotnsResolver } from '@dotli/resolver';
-import { createStateMachine, nest, toError, type HandlerOf, type MachineTypes } from '@dotli/shared';
-import { err, ok, type AnyMethod, type CallError, type MethodTypes, type ResultPayload } from '@dotli/transport';
+import type { ProtocolContext, ProtocolHandler, protocolSchema } from '@dotli/protocol';
+import { createStateMachine, nest, type HandlerOf, type MachineTypes } from '@dotli/shared';
+import { ok, type MethodTypes } from '@dotli/transport';
 
+import { assertNonEmpty } from './assertNonEmpty.js';
+import { createNameReads, type EngineResolver } from './createNameReads.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
 const report = createReporter({ flow: 'protocol' });
 const engineTransitionMetric = defineCount<'error'>('protocol.engine.transition');
 
-type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
-
-type NameSink = Parameters<ProtocolHandler<typeof methods.resolve.dotName>>[2];
+type ChainSink = Parameters<ProtocolHandler<Methods['chain']['connect']>>[2];
 
 /** One tab's chain connections and budget. */
 export type EngineScope = ReturnType<ProtocolEngine['openScope']>;
@@ -49,13 +40,7 @@ export type EngineParams = {
   syncBudgetCapMs?: number | undefined;
 };
 
-export type EngineResolver = Pick<
-  DotnsResolver,
-  'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest'
->;
-
-/** `token` tells this connection apart from an earlier one under its id, whose halt can still arrive. */
-type Held = { token: symbol; connection: StringJsonRpcConnection; sink: ChainSink };
+type Held = { connection: StringJsonRpcConnection; sink: ChainSink };
 
 /**
  * `answered` has heard its first message. Only the first is noted, later ones would push the load's steps out of the
@@ -63,37 +48,41 @@ type Held = { token: symbol; connection: StringJsonRpcConnection; sink: ChainSin
  */
 type Connection = ({ kind: 'connected' } & Held) | ({ kind: 'answered' } & Held) | { kind: 'gone' };
 
-/** One tab's live connections. A scope with none leaves the map, and its next connection adds it again. */
-type Scope = { kind: 'open'; connections: ReadonlyMap<string, Exclude<Connection, { kind: 'gone' }>> };
+type LiveConnection = Exclude<Connection, { kind: 'gone' }>;
 
-type EngineState = { kind: 'open'; scopes: ReadonlyMap<string, Scope> } | { kind: 'disposed' };
+/**
+ * Each tab's live connections by scope id, then by connection id. A scope with none leaves the map, and its next
+ * connection adds it again.
+ */
+type Scopes = ReadonlyMap<string, ReadonlyMap<string, LiveConnection>>;
 
-type ConnectionEvent = { scopeId: string; connectionId: string; token: symbol };
+type EngineState = { kind: 'open'; scopes: Scopes } | { kind: 'disposed' };
+
+type ConnectionEvent = { scopeId: string; connectionId: string };
 
 type EngineEvent =
   | ({ kind: 'connected'; connection: StringJsonRpcConnection; sink: ChainSink } & ConnectionEvent)
-  | ({ kind: 'answered'; bytes: number } & ConnectionEvent)
+  | ({ kind: 'messaged'; message: string } & ConnectionEvent)
   | ({ kind: 'halted' } & ConnectionEvent)
   | ({ kind: 'disconnected' } & ConnectionEvent)
   | { kind: 'scopeClosed'; scopeId: string }
   | { kind: 'disposed' };
 
 type EngineEffect =
+  | { kind: 'sent'; sink: ChainSink; value: MethodTypes<Methods['chain']['connect']>['receive'] }
   | { kind: 'chainConnected'; connectionId: string }
   | { kind: 'firstMessage'; connectionId: string; bytes: number }
   | { kind: 'chainHalted'; connectionId: string }
   | { kind: 'chainDisconnected'; connectionId: string }
-  | { kind: 'disconnect'; connection: StringJsonRpcConnection }
+  | { kind: 'connectionClosed'; connection: StringJsonRpcConnection }
   | { kind: 'sinkEnded'; sink: ChainSink }
   | { kind: 'poolReleased' };
 
 type EngineMachine = MachineTypes<EngineState, EngineEvent, EngineEffect>;
 
-type ScopeMachine = MachineTypes<Scope, EngineEvent, EngineEffect>;
-
 type ConnectionMachine = MachineTypes<Connection, EngineEvent, EngineEffect>;
 
-const methods = protocolSchema.sections;
+type Methods = typeof protocolSchema.sections;
 
 /** One scope's budget, which is one tab's. */
 export const MAX_CONNECTIONS = 10;
@@ -125,95 +114,70 @@ export function createEngine({
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'gone' });
-    emitSideEffect({ kind: 'disconnect', connection });
+    emitSideEffect({ kind: 'connectionClosed', connection });
     emitSideEffect({ kind: 'chainDisconnected', connectionId });
   };
-  const handleConnection = nest<ScopeMachine, 'open', ConnectionMachine, 'answered' | 'halted' | 'disconnected'>({
-    find({ connections }, { connectionId, token }) {
-      const held = connections.get(connectionId);
-      // An event of an earlier connection under a reused id is not for this one.
-      return held?.token === token ? held : null;
-    },
-    store(scope, { connectionId }, next) {
-      const connections = new Map(scope.connections);
-      switch (next.kind) {
-        case 'connected':
-        case 'answered':
-          connections.set(connectionId, next);
-          break;
-        case 'gone':
-          connections.delete(connectionId);
-          break;
-      }
-      return { ...scope, connections };
-    },
+  const handleConnection = nest<EngineMachine, 'open', ConnectionMachine, 'messaged' | 'halted' | 'disconnected'>({
+    find: ({ scopes }, { scopeId, connectionId }) => scopes.get(scopeId)?.get(connectionId) ?? null,
+    store: (state, { scopeId, connectionId }, next) => ({
+      ...state,
+      scopes: withConnection(state.scopes, { scopeId, connectionId }, next),
+    }),
     handlers: {
       connected: {
-        answered(held, { connectionId, bytes }, { emitState, emitSideEffect }) {
+        messaged(held, { connectionId, message }, { emitState, emitSideEffect }) {
           emitState({ ...held, kind: 'answered' });
-          emitSideEffect({ kind: 'firstMessage', connectionId, bytes });
+          emitSideEffect({ kind: 'sent', sink: held.sink, value: { tag: 'message', value: message } });
+          emitSideEffect({ kind: 'firstMessage', connectionId, bytes: message.length });
         },
         halted: endConnection,
         disconnected: disconnectConnection,
       },
       answered: {
+        messaged({ sink }, { message }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'sent', sink, value: { tag: 'message', value: message } });
+        },
         halted: endConnection,
         disconnected: disconnectConnection,
       },
       gone: null,
     },
   });
-  const handleScope = nest<EngineMachine, 'open', ScopeMachine, 'answered' | 'halted' | 'disconnected'>({
-    find: ({ scopes }, { scopeId }) => scopes.get(scopeId) ?? null,
-    store(state, { scopeId }, next) {
-      const scopes = new Map(state.scopes);
-      if (next.connections.size === 0) {
-        scopes.delete(scopeId);
-      } else {
-        scopes.set(scopeId, next);
-      }
-      return { ...state, scopes };
-    },
-    handlers: {
-      open: { answered: handleConnection, halted: handleConnection, disconnected: handleConnection },
-    },
-  });
   const machine = createStateMachine<EngineMachine>({
     initial: { kind: 'open', scopes: new Map() },
     handlers: {
       open: {
-        connected(state, { scopeId, connectionId, token, connection, sink }, { emitState, emitSideEffect }) {
-          const connections = new Map(state.scopes.get(scopeId)?.connections).set(connectionId, {
-            kind: 'connected',
-            token,
-            connection,
-            sink,
-          });
-          emitState({ ...state, scopes: new Map(state.scopes).set(scopeId, { kind: 'open', connections }) });
+        connected(state, { scopeId, connectionId, connection, sink }, { emitState, emitSideEffect }) {
+          const scopes = withConnection(
+            state.scopes,
+            { scopeId, connectionId },
+            { kind: 'connected', connection, sink },
+          );
+          emitState({ ...state, scopes });
           emitSideEffect({ kind: 'chainConnected', connectionId });
+          emitSideEffect({ kind: 'sent', sink, value: { tag: 'connected', value: undefined } });
         },
-        answered: handleScope,
-        halted: handleScope,
-        disconnected: handleScope,
+        messaged: handleConnection,
+        halted: handleConnection,
+        disconnected: handleConnection,
         scopeClosed(state, { scopeId }, { emitState, emitSideEffect }) {
-          const scope = state.scopes.get(scopeId);
-          if (scope === undefined) {
+          const connections = state.scopes.get(scopeId);
+          if (connections === undefined) {
             return;
           }
-          // Dropped first, so a halt the disconnect causes finds nothing to end again.
           const scopes = new Map(state.scopes);
           scopes.delete(scopeId);
           emitState({ ...state, scopes });
-          for (const { connection, sink } of scope.connections.values()) {
-            emitSideEffect({ kind: 'disconnect', connection });
+          for (const { connection, sink } of connections.values()) {
+            emitSideEffect({ kind: 'connectionClosed', connection });
             emitSideEffect({ kind: 'sinkEnded', sink });
           }
         },
         disposed(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed' });
-          for (const { connections } of state.scopes.values()) {
+          for (const connections of state.scopes.values()) {
             for (const { connection } of connections.values()) {
-              emitSideEffect({ kind: 'disconnect', connection });
+              emitSideEffect({ kind: 'connectionClosed', connection });
             }
           }
           emitSideEffect({ kind: 'poolReleased' });
@@ -223,6 +187,9 @@ export function createEngine({
     },
     onEffect: effect => {
       switch (effect.kind) {
+        case 'sent':
+          effect.sink.send(effect.value);
+          break;
         case 'chainConnected':
           log(`Chain connected: ${effect.connectionId} (${String(countConnections(machine.state.get()))} total)`);
           break;
@@ -237,7 +204,7 @@ export function createEngine({
             `Chain disconnected: ${effect.connectionId} (${String(countConnections(machine.state.get()))} remaining)`,
           );
           break;
-        case 'disconnect':
+        case 'connectionClosed':
           effect.connection.disconnect();
           break;
         case 'sinkEnded':
@@ -262,20 +229,7 @@ export function createEngine({
     openScope,
     /** Answers once the mode's warmup settles. Rejects with what the warmup rejects with. */
     warmup,
-    /**
-     * Sends each phase, then the result, then ends cleanly, or ends with the read's failure. Throws when the mode
-     * resolves no names or `label` is empty.
-     */
-    resolveDotName,
-    /** Answers the name's owner, or the failure as a remote error, a mode that resolves no names included. */
-    resolveOwner,
-    /**
-     * Answers the name's executable manifest, or the failure as a remote error, a mode that resolves no names
-     * included.
-     */
-    resolveExecutableManifest,
-    /** Answers the name's root manifest, or the failure as a remote error, a mode that resolves no names included. */
-    resolveRootManifest,
+    ...createNameReads({ resolver, syncBudgetCapMs }),
     /**
      * Disconnects every scope's connections and releases the pool's chains, and every later connect is refused. A
      * repeated call does nothing. Reports a connection's disconnect that throws, and still runs the others and the
@@ -312,7 +266,7 @@ export function createEngine({
     }
 
     function connect(
-      { genesisHash, connectionId }: MethodTypes<typeof methods.chain.connect>['start'],
+      { genesisHash, connectionId }: MethodTypes<Methods['chain']['connect']>['start'],
       _context: ProtocolContext,
       sink: ChainSink,
     ): () => void {
@@ -323,7 +277,7 @@ export function createEngine({
       assertNonEmpty(genesisHash, 'genesisHash');
       assertNonEmpty(connectionId, 'connectionId');
       // Connection ids are unique only within a scope, so each scope checks its own.
-      const connections: ReadonlyMap<string, unknown> = state.scopes.get(scopeId)?.connections ?? new Map();
+      const connections: ReadonlyMap<string, unknown> = state.scopes.get(scopeId) ?? new Map();
       if (connections.has(connectionId)) {
         throw new Error(`Duplicate chain connection: ${connectionId}`);
       }
@@ -333,37 +287,34 @@ export function createEngine({
       if (!isChainSupported(genesisHash)) {
         throw new Error(`Unsupported chain: ${genesisHash}`);
       }
-      const token = Symbol(connectionId);
       const connection = pool.connectRemote({
         genesisHash,
         connectionId: `${scopeId} ${connectionId}`,
         onMessage: message => {
-          sink.send({ tag: 'message', value: message });
-          machine.update({ kind: 'answered', scopeId, connectionId, token, bytes: message.length });
+          machine.update({ kind: 'messaged', scopeId, connectionId, message });
         },
         onHalt: () => {
-          machine.update({ kind: 'halted', scopeId, connectionId, token });
+          machine.update({ kind: 'halted', scopeId, connectionId });
         },
       });
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
-      machine.update({ kind: 'connected', scopeId, connectionId, token, connection, sink });
-      sink.send({ tag: 'connected', value: undefined });
+      machine.update({ kind: 'connected', scopeId, connectionId, connection, sink });
       return () => {
-        machine.update({ kind: 'disconnected', scopeId, connectionId, token });
+        machine.update({ kind: 'disconnected', scopeId, connectionId });
       };
     }
 
     // Typed as the protocol's handler answers, so the scope's type is no narrower than the method it serves.
     function send(
-      { connectionId, message }: MethodTypes<typeof methods.chain.send>['request'],
+      { connectionId, message }: MethodTypes<Methods['chain']['send']>['request'],
       _context: ProtocolContext,
-    ): ReturnType<ProtocolHandler<typeof methods.chain.send>> {
+    ): ReturnType<ProtocolHandler<Methods['chain']['send']>> {
       assertNonEmpty(connectionId, 'connectionId');
       assertNonEmpty(message, 'message');
       const state = machine.state.get();
-      const held = state.kind === 'open' ? state.scopes.get(scopeId)?.connections.get(connectionId) : undefined;
+      const held = state.kind === 'open' ? state.scopes.get(scopeId)?.get(connectionId) : undefined;
       if (held === undefined) {
         throw new Error(`Unknown chain connection: ${connectionId}`);
       }
@@ -372,116 +323,12 @@ export function createEngine({
     }
   }
 
-  function requireResolver(unsupported: string): EngineResolver {
-    if (resolver === undefined) {
-      throw new Error(unsupported);
-    }
-    return resolver;
-  }
-
-  /**
-   * The resolver's sync budget for a read: the method's budget, counted from when the call arrives, less a grace for
-   * the typed error to cross back while the call still waits.
-   */
-  function toSyncOptions(method: AnyMethod): { syncTimeoutMs?: number } {
-    const budgetMs = getBudget(method);
-    if (budgetMs === null) {
-      return {};
-    }
-    const budget = Math.max(1, budgetMs - TIMEOUTS.RESPONSE_DELIVERY_GRACE);
-    return { syncTimeoutMs: syncBudgetCapMs === undefined ? budget : Math.min(budget, syncBudgetCapMs) };
-  }
-
-  function resolveDotName(
-    { label }: MethodTypes<typeof methods.resolve.dotName>['start'],
-    _context: ProtocolContext,
-    sink: NameSink,
-  ): () => void {
-    const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
-    assertNonEmpty(label, 'label');
-    void reader
-      .resolveDotName(label, {
-        onPhase: phase => {
-          sink.send({ tag: 'phase', value: phase });
-        },
-        ...toSyncOptions(methods.resolve.dotName),
-      })
-      .then(
-        resolved => {
-          sink.send({ tag: 'resolved', value: resolved });
-          sink.interrupt(ok());
-        },
-        (error: unknown) => {
-          sink.interrupt(err(toRemoteEnd(toError(error))));
-        },
-      );
-    // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.
-    return () => undefined;
-  }
-
-  // Each request handler below takes the context and returns what the protocol's handler returns, so the engine's
-  // type is no narrower than the method it serves.
+  // Takes the context and returns what the protocol's handler returns, so the type is no narrower than the method.
   function warmup(
-    _request: MethodTypes<typeof methods.frame.warmup>['request'],
+    _request: MethodTypes<Methods['frame']['warmup']>['request'],
     _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.frame.warmup>> {
-    return answerWarmup(onWarmup);
-  }
-
-  function resolveOwner(
-    { label }: MethodTypes<typeof methods.resolve.owner>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.owner>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveOwner(label, toSyncOptions(methods.resolve.owner));
-    });
-  }
-
-  function resolveExecutableManifest(
-    { label, kind }: MethodTypes<typeof methods.resolve.executableManifest>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.executableManifest>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveExecutableManifest(label, kind, toSyncOptions(methods.resolve.executableManifest));
-    });
-  }
-
-  function resolveRootManifest(
-    { label }: MethodTypes<typeof methods.resolve.rootManifest>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.rootManifest>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveRootManifest(label, toSyncOptions(methods.resolve.rootManifest));
-    });
-  }
-}
-
-/** Answers once `onWarmup` settles. Rejects with what it rejects with. */
-async function answerWarmup(
-  onWarmup: (() => Promise<void>) | undefined,
-): Promise<MethodTypes<typeof methods.frame.warmup>['response']> {
-  await onWarmup?.();
-  return ok();
-}
-
-function assertNonEmpty(value: string, name: string): void {
-  if (value.length === 0) {
-    throw new Error(`Invalid ${name}: expected non-empty string`);
-  }
-}
-
-/** Answers a read with its value, or with its failure as a remote error ends a call. */
-async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, CallError<RemoteFailure>>> {
-  try {
-    return ok(await read());
-  } catch (error) {
-    return err(toRemoteEnd(toError(error)));
+  ): ReturnType<ProtocolHandler<Methods['frame']['warmup']>> {
+    return (onWarmup?.() ?? Promise.resolve()).then(() => ok());
   }
 }
 
@@ -490,7 +337,7 @@ function countConnections(state: EngineState): number {
   switch (state.kind) {
     case 'open': {
       let total = 0;
-      for (const { connections } of state.scopes.values()) {
+      for (const connections of state.scopes.values()) {
         total += connections.size;
       }
       return total;
@@ -498,4 +345,29 @@ function countConnections(state: EngineState): number {
     case 'disposed':
       return 0;
   }
+}
+
+/** `scopes` with the connection set to `next`, or dropped when `next` is gone, and a scope left empty dropped too. */
+function withConnection(
+  scopes: Scopes,
+  { scopeId, connectionId }: { scopeId: string; connectionId: string },
+  next: Connection,
+): Scopes {
+  const connections = new Map(scopes.get(scopeId));
+  switch (next.kind) {
+    case 'connected':
+    case 'answered':
+      connections.set(connectionId, next);
+      break;
+    case 'gone':
+      connections.delete(connectionId);
+      break;
+  }
+  const nextScopes = new Map(scopes);
+  if (connections.size === 0) {
+    nextScopes.delete(scopeId);
+  } else {
+    nextScopes.set(scopeId, connections);
+  }
+  return nextScopes;
 }
