@@ -12,6 +12,7 @@ import {
   createSharedRun,
   createStateMachine,
   isShallowEqual,
+  listen,
   realTimers,
   type HandlerOf,
   type MachineTypes,
@@ -122,9 +123,14 @@ type DecisionJob = {
 type Job = ReadJob | ChangeJob | DecisionJob;
 
 /** A running decision listens to its prompt, so a prompt that closes stops the run. */
-type RunningWrite = ChangeJob | (DecisionJob & { stopListening: () => void });
+type RunningDecision = DecisionJob & { stopListening: () => void };
 
-/** The work waiting behind the running job, and what the store shows. */
+type RunningWrite = ChangeJob | RunningDecision;
+
+/**
+ * The work waiting behind the running job, and what the store shows. `shown` names the product on show, as the last
+ * load or refresh found it.
+ */
 type Store = { shown: ProductPermissionsState; queue: readonly Job[] };
 
 /** A write run under way. */
@@ -133,8 +139,8 @@ type Write = {
   attempt: number;
   /** The names the next attempt writes, those whose last write failed. */
   failing: readonly EnforceablePermissionName[];
-  /** What the run writes and what it found before it, fixed for the run. */
-  written: { names: readonly EnforceablePermissionName[]; before: readonly PermissionStatus[] | null };
+  /** The statuses read before the run, fixed for the run. */
+  before: readonly PermissionStatus[] | null;
 };
 
 /** A write run's steps are kinds of the store, since each step's end moves the store. */
@@ -142,8 +148,10 @@ type PermissionsState =
   | { kind: 'idle'; shown: ProductPermissionsState }
   | ({ kind: 'reading'; label: string; job: ReadJob } & Store)
   | ({ kind: 'sending' } & Write & Store)
-  /** Sending, stopped: the writes already sent finish, and then the run does, with no more attempts. */
+  /** A newer change superseded the run: the writes already sent finish, and then the run does, with no retry. */
   | ({ kind: 'stopping' } & Write & Store)
+  /** The prompt closed: the writes already sent finish, and then the decision rejects and nothing changes. */
+  | ({ kind: 'abandoning'; job: RunningDecision } & Store)
   | ({ kind: 'retrying'; errors: readonly unknown[]; timer: unknown } & Write & Store)
   | ({
       kind: 'rereading';
@@ -156,15 +164,15 @@ type PermissionsState =
 type BusyKind = Exclude<PermissionsState['kind'], 'idle'>;
 
 type PermissionsEvent =
-  | { kind: 'refreshAsked'; resolve: () => void }
+  | { kind: 'refreshAsked'; label: string | null; resolve: () => void }
   | { kind: 'changeAsked'; job: ChangeJob }
   | { kind: 'decisionAsked'; job: DecisionJob }
   | { kind: 'productShown'; label: string | null }
-  | { kind: 'statusesRead'; label: string; statuses: readonly PermissionStatus[] }
-  | { kind: 'statusesFailed'; label: string; error: unknown }
+  | { kind: 'statusesRead'; statuses: readonly PermissionStatus[] }
+  | { kind: 'statusesFailed'; error: unknown }
   | { kind: 'sent'; failing: readonly EnforceablePermissionName[]; errors: readonly unknown[] }
   | { kind: 'retryDue' }
-  | { kind: 'promptClosed'; prompt: AbortSignal };
+  | { kind: 'promptClosed' };
 
 type PermissionsEffect =
   | { kind: 'read' }
@@ -196,22 +204,25 @@ export function createProductPermissions({ registry, product, timers = realTimer
     onListenerError: uiReport.listener('product_permissions.change'),
   });
 
-  const queueRefresh: HandlerOf<PermissionsMachine, BusyKind, 'refreshAsked'> = (state, { resolve }, { emitState }) => {
-    emitState({ ...state, queue: joinRead(state.queue, [resolve]) });
+  const queueRefresh: HandlerOf<PermissionsMachine, BusyKind, 'refreshAsked'> = (
+    state,
+    { label, resolve },
+    { emitState },
+  ) => {
+    emitState({ ...state, shown: getShownFor(state.shown, label), queue: joinRead(state.queue, [resolve]) });
   };
 
   const queueDecision: HandlerOf<PermissionsMachine, BusyKind, 'decisionAsked'> = (state, { job }, { emitState }) => {
     emitState({ ...state, queue: [...state.queue, job] });
   };
 
-  /** Queues a change behind a run it does not supersede, and drops the change queued before it. */
-  const queueChange: HandlerOf<PermissionsMachine, 'reading' | 'stopping' | 'rereading', 'changeAsked'> = (
-    state,
-    { job },
-    { emitState, emitSideEffect },
-  ) => {
-    emitState({ ...state, queue: withChange(state.queue, job) });
-    dropQueuedChanges(state.queue, emitSideEffect);
+  /** Queues a change behind a run it does not supersede, in place of the change queued before it. */
+  const queueChange: HandlerOf<
+    PermissionsMachine,
+    'reading' | 'stopping' | 'abandoning' | 'rereading',
+    'changeAsked'
+  > = (state, { job }, transition) => {
+    transition.emitState({ ...state, queue: replaceQueuedChange(state.queue, job, transition) });
   };
 
   /** Reads on every load, a reload of the same product included. */
@@ -225,10 +236,11 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   const landRead: HandlerOf<PermissionsMachine, 'reading' | 'rereading', 'statusesRead'> = (
     state,
-    { label, statuses },
+    { statuses },
     transition,
   ) => {
     transition.emitSideEffect({ kind: 'read' });
+    const { label } = state;
     endRead(
       state,
       land(state.shown, { status: 'read', label, statuses: NAMES.map((_, i) => statuses[i] ?? 'ask') }),
@@ -238,19 +250,19 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   const landFailedRead: HandlerOf<PermissionsMachine, 'reading' | 'rereading', 'statusesFailed'> = (
     state,
-    { label, error },
+    { error },
     transition,
   ) => {
     transition.emitSideEffect({ kind: 'readFailed', error });
-    endRead(state, land(state.shown, { status: 'failed', label }), transition);
+    endRead(state, land(state.shown, { status: 'failed', label: state.label }), transition);
   };
 
   const machine = createStateMachine<PermissionsMachine>({
     initial: { kind: 'idle', shown: NONE },
     handlers: {
       idle: {
-        refreshAsked({ shown }, { resolve }, transition) {
-          startNext({ shown, queue: [{ kind: 'read', waiters: [resolve] }] }, transition);
+        refreshAsked({ shown }, { label, resolve }, transition) {
+          startNext({ shown: getShownFor(shown, label), queue: [{ kind: 'read', waiters: [resolve] }] }, transition);
         },
         changeAsked({ shown }, { job }, transition) {
           startNext({ shown, queue: [job] }, transition);
@@ -277,17 +289,19 @@ export function createProductPermissions({ registry, product, timers = realTimer
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
         productShown: followProduct,
-        changeAsked(state, { job }, { emitState, emitSideEffect }) {
-          const queue = withChange(state.queue, job);
+        changeAsked(state, { job }, transition) {
+          const queue = replaceQueuedChange(state.queue, job, transition);
           // A newer change supersedes a running one, whose writes already sent still finish.
-          emitState(state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue });
-          dropQueuedChanges(state.queue, emitSideEffect);
+          transition.emitState(
+            state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue },
+          );
         },
-        promptClosed(state, { prompt }, { emitState }) {
-          if (state.job.kind !== 'decision' || state.job.prompt !== prompt) {
+        promptClosed({ job, shown, queue }, _event, { emitState }) {
+          // Only a decision hears its prompt.
+          if (job.kind !== 'decision') {
             return;
           }
-          emitState({ ...state, kind: 'stopping' });
+          emitState({ kind: 'abandoning', job, shown, queue });
         },
         sent(state, { failing, errors }, transition) {
           // Three attempts in all, the first included.
@@ -310,26 +324,35 @@ export function createProductPermissions({ registry, product, timers = realTimer
           finishWrite({ ...state, failing, errors }, transition);
         },
       },
+      abandoning: {
+        refreshAsked: queueRefresh,
+        changeAsked: queueChange,
+        decisionAsked: queueDecision,
+        productShown: followProduct,
+        sent(state, _event, transition) {
+          abandonDecision(state, transition);
+        },
+      },
       retrying: {
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
         productShown: followProduct,
         changeAsked(state, { job }, transition) {
-          const queue = withChange(state.queue, job);
-          if (state.job.kind === 'change') {
-            // A newer change supersedes a running one, which makes no more attempts.
-            finishWrite({ ...state, queue }, transition);
-            transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
-          } else {
+          const queue = replaceQueuedChange(state.queue, job, transition);
+          if (state.job.kind !== 'change') {
             transition.emitState({ ...state, queue });
-          }
-          dropQueuedChanges(state.queue, transition.emitSideEffect);
-        },
-        promptClosed(state, { prompt }, transition) {
-          if (state.job.kind !== 'decision' || state.job.prompt !== prompt) {
             return;
           }
-          finishWrite(state, transition);
+          // A newer change supersedes a running one, which makes no more attempts.
+          finishWrite({ ...state, queue }, transition);
+          transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
+        },
+        promptClosed(state, _event, transition) {
+          // Only a decision hears its prompt.
+          if (state.job.kind !== 'decision') {
+            return;
+          }
+          abandonDecision({ ...state, job: state.job }, transition);
           transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
         },
         retryDue(state, _event, transition) {
@@ -449,7 +472,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   function refresh(): Promise<void> {
     return new Promise(resolve => {
-      machine.update({ kind: 'refreshAsked', resolve });
+      machine.update({ kind: 'refreshAsked', label: getLabelOnShow(), resolve });
     });
   }
 
@@ -483,14 +506,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
     return shown.status === 'loaded' ? shown.label : null;
   }
 
-  /** A read or write lands only for the product still on show. */
-  function land(
-    shown: ProductPermissionsState,
-    next: Exclude<ProductPermissionsState, { status: 'none' }>,
-  ): ProductPermissionsState {
-    return getLabelOnShow() === next.label ? next : shown;
-  }
-
   /** Starts the first job of `queue`, or rests in `idle` when none waits. */
   function startNext({ shown, queue }: Store, transition: Transition<PermissionsMachine>): void {
     const [job, ...rest] = queue;
@@ -512,7 +527,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   /** Reads the product on show. With none on show, the read is done at once. */
   function startRead(store: Store, job: ReadJob, transition: Transition<PermissionsMachine>): void {
-    const label = getLabelOnShow();
+    const label = getShownLabel(store.shown);
     if (label === null) {
       startNext(store, transition);
       transition.emitSideEffect({ kind: 'refreshed', waiters: job.waiters });
@@ -525,8 +540,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
   function readStatuses(label: string, update: Transition<PermissionsMachine>['update']): void {
     update(
       registry.getStatuses(label, NAMES).then(
-        (statuses): PermissionsEvent => ({ kind: 'statusesRead', label, statuses }),
-        (error: unknown): PermissionsEvent => ({ kind: 'statusesFailed', label, error }),
+        (statuses): PermissionsEvent => ({ kind: 'statusesRead', statuses }),
+        (error: unknown): PermissionsEvent => ({ kind: 'statusesFailed', error }),
       ),
     );
   }
@@ -561,7 +576,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
           transition.emitSideEffect({ kind: 'writeSettled', job, failed: [], errors: [] });
           return;
         }
-        send({ job, attempt: 1, failing: names, written: { names, before }, ...store }, transition);
+        send({ job, attempt: 1, failing: names, before, ...store }, transition);
         return;
       case 'decision': {
         if (job.prompt.aborted) {
@@ -569,20 +584,16 @@ export function createProductPermissions({ registry, product, timers = realTimer
           transition.emitSideEffect({ kind: 'decisionAborted', job });
           return;
         }
-        const { prompt } = job;
-        const close = () => {
-          transition.update({ kind: 'promptClosed', prompt });
-        };
-        prompt.addEventListener('abort', close, { once: true });
-        const running = {
-          ...job,
-          stopListening: () => {
-            prompt.removeEventListener('abort', close);
+        const stopListening = listen({
+          target: job.prompt,
+          type: 'abort',
+          handler: () => {
+            transition.update({ kind: 'promptClosed' });
           },
-        };
+        });
         // Written even where it matches the statuses read. A prompt asks only at Ask, as the core said just then, so
         // the statuses read may be stale, and a skipped write would drop the answer.
-        send({ job: running, attempt: 1, failing: names, written: { names, before }, ...store }, transition);
+        send({ job: { ...job, stopListening }, attempt: 1, failing: names, before, ...store }, transition);
         return;
       }
     }
@@ -590,10 +601,10 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   /** Sends one attempt, writing each name of `failing`. */
   function send(
-    { job, attempt, failing, written, shown, queue }: Write & Store,
+    { job, attempt, failing, before, shown, queue }: Write & Store,
     { emitState, update }: Transition<PermissionsMachine>,
   ): void {
-    emitState({ kind: 'sending', job, attempt, failing, written, shown, queue });
+    emitState({ kind: 'sending', job, attempt, failing, before, shown, queue });
     const targets = getTargets(job);
     update(
       Promise.allSettled(
@@ -608,37 +619,33 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   /** Ends a write run: shows and announces what landed, then reads again or settles the job. */
   function finishWrite(
-    { job, failing, errors, written: { names, before }, ...store }: Write & Store & { errors: readonly unknown[] },
+    { job, failing, errors, before, ...store }: Write & Store & { errors: readonly unknown[] },
     transition: Transition<PermissionsMachine>,
   ): void {
     const { emitState, emitSideEffect, update } = transition;
-    if (job.kind === 'decision' && job.prompt.aborted) {
-      startNext(store, transition);
-      emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
-      emitSideEffect({ kind: 'decisionAborted', job });
-      return;
-    }
     const targets = getTargets(job);
-    const landed = names.filter(name => !failing.includes(name));
+    const landed = NAMES.filter(name => targets[name] !== undefined && !failing.includes(name));
     const current = getReadStatuses(store.shown, job.label);
     // Only statuses read are patched, so a write over unread ones shows nothing yet.
-    const patched = current !== null && landed.length > 0;
-    const shown = patched
-      ? land(store.shown, {
-          status: 'read',
-          label: job.label,
-          statuses: NAMES.map((name, i) => (landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'))),
-        })
-      : store.shown;
+    const shown =
+      current !== null
+        ? land(store.shown, {
+            status: 'read',
+            label: job.label,
+            statuses: NAMES.map((name, i) =>
+              landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'),
+            ),
+          })
+        : store.shown;
     const change = getLandedChange(job, landed, before);
     if (change !== null) {
       emitSideEffect({ kind: 'announced', change });
     }
     emitSideEffect(failing.length > 0 ? { kind: 'changeFailed', errors } : { kind: 'changed' });
-    const label = getLabelOnShow();
-    // A failed write shows what the core kept, not what was asked for. Only the product on show is read, so a write
-    // whose product left reads nothing.
-    if (label !== null && (failing.length > 0 || (landed.length > 0 && !patched && label === job.label))) {
+    const label = getShownLabel(shown);
+    // A failed write shows what the core kept, not what was asked for. A write over unread statuses reads them, but
+    // only for the product on show.
+    if (label !== null && (failing.length > 0 || (landed.length > 0 && current === null && label === job.label))) {
       emitState({ kind: 'rereading', job, label, failed: failing, errors, shown, queue: store.queue });
       readStatuses(label, update);
     } else {
@@ -649,6 +656,29 @@ export function createProductPermissions({ registry, product, timers = realTimer
       emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
     }
   }
+
+  /** Ends a run whose prompt closed: the decision rejects and nothing changes. */
+  function abandonDecision(
+    { job, shown, queue }: { job: RunningDecision } & Store,
+    transition: Transition<PermissionsMachine>,
+  ): void {
+    startNext({ shown, queue }, transition);
+    transition.emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
+    transition.emitSideEffect({ kind: 'decisionAborted', job });
+  }
+}
+
+/** The label of the product on show, as `shown` names it. */
+function getShownLabel(shown: ProductPermissionsState): string | null {
+  return shown.status === 'none' ? null : shown.label;
+}
+
+/** A read or write lands only for the product still on show. */
+function land(
+  shown: ProductPermissionsState,
+  next: Exclude<ProductPermissionsState, { status: 'none' }>,
+): ProductPermissionsState {
+  return getShownLabel(shown) === next.label ? next : shown;
 }
 
 /** The change a write run made with the names that `landed`, against the statuses `before` it, or null for none. */
@@ -782,19 +812,18 @@ function joinRead(queue: readonly Job[], waiters: readonly (() => void)[]): read
   return queue.map(job => (job === queued ? { ...queued, waiters: [...queued.waiters, ...waiters] } : job));
 }
 
-/** `queue` with `job` in place of the change queued in it. */
-function withChange(queue: readonly Job[], job: ChangeJob): readonly Job[] {
-  return [...queue.filter(queued => queued.kind !== 'change'), job];
-}
-
-/** Settles the change queued in `queue`, which a newer one dropped, as having nothing left to write. */
-function dropQueuedChanges(
+/**
+ * `queue` with `job` queued last in place of the change queued in it, which settles as having nothing left to write.
+ * A queue holds one change at most.
+ */
+function replaceQueuedChange(
   queue: readonly Job[],
-  emitSideEffect: Transition<PermissionsMachine>['emitSideEffect'],
-): void {
-  for (const job of queue) {
-    if (job.kind === 'change') {
-      emitSideEffect({ kind: 'writeSettled', job, failed: [], errors: [] });
-    }
+  job: ChangeJob,
+  { emitSideEffect }: Transition<PermissionsMachine>,
+): readonly Job[] {
+  const dropped = queue.find(queued => queued.kind === 'change');
+  if (dropped !== undefined) {
+    emitSideEffect({ kind: 'writeSettled', job: dropped, failed: [], errors: [] });
   }
+  return [...queue.filter(queued => queued !== dropped), job];
 }
