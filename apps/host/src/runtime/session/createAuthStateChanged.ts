@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { AuthPresenter, AuthState } from '@parity/truapi-host';
-import { sessionState, type PairingPresentation, type SessionState } from './createSessionState.js';
+import { sessionState, type SessionState } from './createSessionState.js';
+import type { PairingPresentation } from './getCoreReport.js';
 
 type Params = Omit<PairingPresentation, 'label'> & {
   /** Whether the core is still in service. Always by default. */

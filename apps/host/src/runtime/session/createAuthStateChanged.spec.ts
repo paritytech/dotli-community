@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthState } from '@parity/truapi-host';
 import { createAuthStateChanged } from './createAuthStateChanged.js';
-import type { PairingPresentation } from './createSessionState.js';
+import type { PairingPresentation } from './getCoreReport.js';
 
 describe('core auth presenter', () => {
   it('As a dotli integrator, I pass on a state the core reports and session state gets it with its pairing presentation', () => {
