@@ -4,7 +4,17 @@
 // The loading screen's behaviour. It writes the loading store and touches no DOM.
 
 import { getActiveTldSuffix } from '@dotli/config';
-import { realTimers, type Timers } from '@dotli/shared';
+import { createReporter, defineCount } from '@dotli/metrics';
+import {
+  createStateMachine,
+  nest,
+  noop,
+  realTimers,
+  type HandlerOf,
+  type MachineTypes,
+  type Timers,
+  type Transition,
+} from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { pageScreen, prefersReducedMotion, type PageContent } from '@dotli/ui';
 import { pagePoll, type Poll } from './pagePoll.js';
@@ -49,10 +59,92 @@ type Params = {
   poll?: Poll;
 };
 
-type SetProgressParams = {
+type MoveBarParams = {
+  percent: number;
   /** Movement that does not re-arm the stall watch, or the stall warning could never appear. */
   cosmetic?: boolean | undefined;
 };
+
+/** The bar's numbers. */
+type Bar = {
+  percent: number;
+  /** The rounded number on screen, and when it last changed. */
+  shown: number;
+  shownAt: number;
+  /** The last number reached by real progress rather than by the floor creep. */
+  realShown: number;
+};
+
+/** The running step's share of the bar, with the crawl that carries the bar across it. */
+type Band =
+  | { kind: 'unbanded' }
+  | {
+      kind: 'banded';
+      index: number;
+      target: number;
+      crawlStep: number;
+      creepCeiling: number;
+      creepStep: number;
+      /** `count` while a real percentage owns the bar, `clock` while the crawl and creep do. */
+      owner: 'count' | 'clock';
+      crawl: { kind: 'still' } | { kind: 'crawling'; stopTick: () => void };
+    };
+
+type StallWatch = { kind: 'idle' } | { kind: 'armed'; percent: number; timer: unknown };
+
+/** The stage's explanations, turned over on a timer. `line` is the one shown last, -1 before the first. */
+type Rotation = { kind: 'still' } | { kind: 'rotating'; explanations: readonly string[]; line: number; timer: unknown };
+
+/** The explanation being typed, one animation frame at a time. */
+type Typing =
+  { kind: 'still' } | { kind: 'typing'; frame: number; from: string; to: string; startedAt: number; eraseMs: number };
+
+type ScreenState =
+  | { kind: 'idle' }
+  | {
+      kind: 'active';
+      stopFollowing: () => void;
+      phases: readonly LoadingPhase[];
+      bar: Bar;
+      band: Band;
+      /** Heard a release, possibly before the counting step began. Cleared with the phases. */
+      released: boolean;
+      stall: StallWatch;
+      /** The running stage's place in the story, -1 before the first. */
+      stageIndex: number;
+      /** True until the first stage turn, which the markup already painted. */
+      opening: boolean;
+      rotation: Rotation;
+      typing: Typing;
+    }
+  | { kind: 'dismissing'; stopFollowing: () => void; fadeTimer: unknown }
+  | { kind: 'gone'; stopFollowing: () => void }
+  | { kind: 'disposed' };
+
+type ActiveState = Extract<ScreenState, { kind: 'active' }>;
+
+type ScreenEvent =
+  | { kind: 'started' }
+  | { kind: 'pageContentChanged'; content: PageContent }
+  | { kind: 'phasesSet'; phases: readonly LoadingPhase[] }
+  | { kind: 'stageSet'; stage: LoadingStage }
+  | { kind: 'phaseEntered'; index: number }
+  | { kind: 'progressNudged'; fraction: number; stage: LoadingStage }
+  | { kind: 'progressReleased' }
+  | { kind: 'watchStopped' }
+  | { kind: 'progressCompleted' }
+  | { kind: 'tickStopped' }
+  | { kind: 'hidden' }
+  | { kind: 'dismissed' }
+  | { kind: 'disposed' }
+  | { kind: 'crawled' }
+  | { kind: 'stallDue'; timer: unknown }
+  | { kind: 'explanationDue'; timer: unknown }
+  | { kind: 'lineDue'; explanation: string }
+  | { kind: 'frameDrawn'; now: number }
+  | { kind: 'fadeEnded'; timer: unknown };
+
+type ScreenMachine = MachineTypes<ScreenState, ScreenEvent>;
 
 const CRAWL_TICK_MS = 200;
 
@@ -78,7 +170,7 @@ const LOADING_STAGES: readonly LoadingStage[] = ['starting', 'relay', 'assetHub'
  * The first line is the step line, up for the whole stage. The rest are explanations only a slow load
  * reaches, as many as the step runs long, so the long ones do not repeat.
  */
-const STAGE_MESSAGES: Record<LoadingStage, readonly [string, ...string[]]> = {
+const STAGE_MESSAGES: Record<LoadingStage, readonly [string, string, ...string[]]> = {
   starting: [
     'Reaching out',
     'This page comes from a network, with no one in between',
@@ -115,7 +207,13 @@ export const FADE_MS = 300;
 export const ERASE_MS = 1_400;
 export const TYPE_MS = 3_600;
 
-/** The screen is live from first paint, so a full-page screen ends it even before any load started. */
+const report = createReporter({ flow: 'boot' });
+const loadingScreenTransitionMetric = defineCount<'error'>('loading_screen.transition');
+
+/**
+ * The screen is live from first paint, so a full-page screen ends it even before any load started. Once it fades, the
+ * bar, its steps and the story stand still, and once it is gone nothing on it moves.
+ */
 export function createLoadingController({
   prefersReducedMotion,
   frames,
@@ -123,353 +221,328 @@ export function createLoadingController({
   timers = realTimers,
   poll = pagePoll,
 }: Params) {
-  let phases: LoadingPhase[] = [];
-  let currentPhase = -1;
-
-  let currentProgress = 0;
-  let targetProgress = 0;
-  let crawlStep = 0;
-  let stopCrawlTick: (() => void) | null = null;
-
-  let lastShownAt = 0;
-  let lastShown = -1;
-  /** The last number reached by real progress rather than by the floor creep. */
-  let lastRealShown = -1;
-
-  let creepCeiling = 0;
-  let creepStep = 0;
-  let phaseReportsProgress = false;
-  /** Heard a release, possibly before the counting step began. Cleared with the phases. */
-  let progressReleased = false;
-
-  let progressStallTimer: unknown = null;
-  let progressStallListener: ((percent: number) => void) | null = null;
-
-  /** Fires each time the bar stops afresh. Replaces any previous listener. */
-  function onProgressStall(listener: (percent: number) => void): () => void {
-    progressStallListener = listener;
-    return removeStallListener;
-
-    // A listener that replaced this one stays.
-    function removeStallListener(): void {
-      if (progressStallListener === listener) {
-        progressStallListener = null;
-      }
-    }
-  }
-
-  function stopProgressWatch(): void {
-    if (progressStallTimer !== null) {
-      timers.clearTimeout(progressStallTimer);
-      progressStallTimer = null;
-    }
-  }
-
-  function armProgressWatch(percent: number): void {
-    stopProgressWatch();
-    if (percent >= 100 || !isLive()) {
-      return;
-    }
-    progressStallTimer = timers.setTimeout(() => {
-      progressStallListener?.(percent);
-    }, PROGRESS_STALL_MS);
-  }
-
-  function setProgress(percent: number, { cosmetic = false }: SetProgressParams = {}): void {
-    const shown = Math.round(percent);
-    if (shown !== lastShown) {
-      lastShown = shown;
-      lastShownAt = timers.now();
-    }
-    const moved = !cosmetic && shown !== lastRealShown;
-    if (moved) {
-      lastRealShown = shown;
-    }
-    currentProgress = percent;
-    if (moved) {
-      armProgressWatch(percent);
-    }
-    loadingState.update({ progress: percent });
-  }
-
-  function startProgressCrawl(): void {
-    stopProgressCrawl();
-    if (!isLive()) {
-      return;
-    }
-    stopCrawlTick = poll.start(() => {
-      // A step reporting a real percentage owns the bar, and the guesses must not run past it.
-      if (!phaseReportsProgress) {
-        if (currentProgress < targetProgress) {
-          setProgress(Math.min(currentProgress + crawlStep, targetProgress));
-          return;
-        }
-        if (currentProgress < creepCeiling) {
-          setProgress(Math.min(currentProgress + creepStep, creepCeiling));
-          return;
-        }
-      }
-      // Whatever owns the bar, the number still moves, within the current step's band.
-      if (timers.now() - lastShownAt >= PROGRESS_FLOOR_MS) {
-        const ceiling = Math.min(phaseReportsProgress ? targetProgress : creepCeiling, CREEP_CEILING);
-        const next = Math.min(Math.floor(currentProgress) + 1, ceiling);
-        if (next > currentProgress) {
-          setProgress(next, { cosmetic: true });
-        }
-      }
-    }, CRAWL_TICK_MS);
-  }
-
-  function stopProgressCrawl(): void {
-    if (stopCrawlTick !== null) {
-      stopCrawlTick();
-      stopCrawlTick = null;
-    }
-  }
-
-  function completeProgress(): void {
-    stopProgressCrawl();
-    setProgress(100);
-  }
-
-  /** Call once before resolution begins. */
-  function initPhases(phaseList: LoadingPhase[]): void {
-    phases = phaseList;
-    currentPhase = -1;
-    currentStageIndex = -1;
-    openingLine = true;
-    currentProgress = 0;
-    targetProgress = 0;
-    phaseReportsProgress = false;
-    progressReleased = false;
-    lastShown = -1;
-    lastRealShown = -1;
-    lastShownAt = timers.now();
-
-    // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
-    // the explanation clock starts now.
-    setLoadingStage('starting');
-  }
-
-  let stageTimer: unknown = null;
-  let currentStageIndex = -1;
-  /** True until the first stage turn, which the markup already painted. */
-  let openingLine = true;
   let loadingDomain = '';
-
-  function setLoadingDomain(domain: string): void {
-    loadingDomain = domain;
-  }
-
-  /** Falls back to "the name" on the preview and local-target paths, which have no dotNS name. */
-  function getStepParts(message: string): StepPart[] {
-    const at = message.indexOf(DOMAIN_TOKEN);
-    if (at === -1) {
-      return [message];
-    }
-    const name: StepPart = loadingDomain === '' ? 'the name' : { host: loadingDomain, tld: getActiveTldSuffix() };
-    return [message.slice(0, at), name, message.slice(at + DOMAIN_TOKEN.length)].filter(part => part !== '');
-  }
-
-  let typingFrame: number | null = null;
-
-  function cancelTyping(): void {
-    if (typingFrame !== null) {
-      frames.cancel(typingFrame);
-      typingFrame = null;
-      // An interrupted fade would otherwise leave the line stranded dim.
-      loadingState.update({ explanationOpacity: 1 });
-    }
-  }
-
-  function writeExplanation(next: string): void {
-    cancelTyping();
-    // Screen readers get the whole sentence once, from an element the typing never touches.
-    loadingState.update({ srText: next });
-    const previous = loadingState.get().explanation;
-    if (next === previous || prefersReducedMotion() || !isLive()) {
-      loadingState.update({ explanation: next });
-      return;
-    }
-    const eraseMs = previous === '' ? 0 : ERASE_MS;
-    const start = frames.now();
-    function drawTypingFrame(now: number): void {
-      const elapsedMs = now - start;
-      // The frame clock can start a little before `start`, so a zero-length erase is skipped, not divided by.
-      if (eraseMs > 0 && elapsedMs < eraseMs) {
-        const gone = applyEaseInOut(elapsedMs / eraseMs);
-        // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
-        loadingState.update({
-          explanation: previous.slice(0, Math.ceil(previous.length * (1 - gone))),
-          explanationOpacity: 1 - 0.25 * gone,
-        });
-      } else if (elapsedMs < eraseMs + TYPE_MS) {
-        const shown = applyEaseInOut((elapsedMs - eraseMs) / TYPE_MS);
-        loadingState.update({
-          explanation: next.slice(0, Math.ceil(next.length * shown)),
-          explanationOpacity: 0.75 + 0.25 * shown,
-        });
-      } else {
-        loadingState.update({ explanation: next, explanationOpacity: 1 });
-        typingFrame = null;
-        return;
-      }
-      typingFrame = frames.request(drawTypingFrame);
-    }
-    typingFrame = frames.request(drawTypingFrame);
-  }
-
-  /** Only moves forward, so a late event cannot walk the story backwards or restart a running stage. */
-  function setLoadingStage(stage: LoadingStage): void {
-    const stageIndex = LOADING_STAGES.indexOf(stage);
-    if (stageIndex <= currentStageIndex) {
-      return;
-    }
-    currentStageIndex = stageIndex;
-    const [opening, ...explanations] = STAGE_MESSAGES[stage];
-    stopStageMessages();
-    const step = getStepParts(opening);
-    loadingState.update({ step, explanation: '', explanationOpacity: 1, srText: toStepSentence(step) });
-    // The opening step line has been up since first paint, so its first explanation is due from then.
-    const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
-    openingLine = false;
-    if (explanations.length === 0 || !isLive()) {
-      return;
-    }
-    let line = -1;
-    function showNextExplanation(): void {
-      line = (line + 1) % explanations.length;
-      writeExplanation(explanations[line] ?? '');
-      stageTimer = timers.setTimeout(showNextExplanation, MESSAGE_ROTATE_MS);
-    }
-    stageTimer = timers.setTimeout(showNextExplanation, firstDelay);
-  }
-
-  function stopStageTimer(): void {
-    if (stageTimer !== null) {
-      timers.clearTimeout(stageTimer);
-      stageTimer = null;
-    }
-  }
-
-  function stopStageMessages(): void {
-    stopStageTimer();
-    cancelTyping();
-  }
-
-  /** No-op if the phase is already active or past. */
-  function advancePhase(index: number): void {
-    const phase = phases[index];
-    if (index <= currentPhase || phase === undefined) {
-      return;
-    }
-    currentPhase = index;
-
-    const { base, target, expectedMs, reportsProgress } = phase;
-    phaseReportsProgress = reportsProgress === true && !progressReleased;
-    if (base > currentProgress) {
-      setProgress(base);
-    }
-    targetProgress = target;
-    // A constant slice per tick, so the bar moves steadily through a long sync instead of stalling near the top.
-    crawlStep = ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
-    creepCeiling = Math.min(getLentCeiling(phases[index + 1]), CREEP_CEILING);
-    creepStep = (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS);
-    startProgressCrawl();
-
-    setLoadingStage(phase.stage);
-  }
-
-  /**
-   * Monotonic and clamped to the band, so a late or noisy signal never rewinds the bar. `stage` must be
-   * the running one, so a signal cannot drive a band it does not own.
-   */
-  function nudgePhaseProgress(fraction: number, stage: LoadingStage): void {
-    if (!Number.isFinite(fraction) || currentPhase < 0) {
-      return;
-    }
-    const phase = phases[currentPhase];
-    if (phase?.stage !== stage) {
-      return;
-    }
-    const { base, target } = phase;
-    const clamped = Math.max(0, Math.min(1, fraction));
-    // Suppresses the crawl only until the work is done, then the creep carries the unreported tail.
-    if (phase.reportsProgress === true) {
-      phaseReportsProgress = clamped < 1;
-    }
-    const want = base + (target - base) * clamped;
-    if (want > currentProgress) {
-      setProgress(Math.min(want, target));
-    }
-  }
-
-  /** Not a timeout, which fires regardless of progress. */
-  function releasePhaseProgress(): void {
-    progressReleased = true;
-    phaseReportsProgress = false;
-  }
-
-  function stopStatusTick(): void {
-    stopProgressCrawl();
-    stopStageMessages();
-    stopProgressWatch();
-  }
-
-  /** False once the screen is gone for good, so a late signal starts no orphan timer. */
-  function isLive(): boolean {
-    return loadingState.get().phase !== 'gone';
-  }
-
-  /** Without the fade, for a page that replaces the screen. */
-  function hideLoading(): void {
-    stopStatusTick();
-    loadingState.update({ phase: 'gone' });
-  }
-
-  const stopFollowingPageContent = pageContent.listen(() => {
-    if (pageContent.get() === 'screen') {
-      hideLoading();
-    }
+  let stallListener: ((percent: number) => void) | null = null;
+  const handleStall = nest<ScreenMachine, 'active', MachineTypes<StallWatch, ScreenEvent>, 'stallDue'>({
+    find: state => state.stall,
+    store: (state, _event, stall) => ({ ...state, stall }),
+    handlers: {
+      idle: null,
+      armed: {
+        stallDue({ percent, timer }, event, { emitState }) {
+          if (event.timer !== timer) {
+            return;
+          }
+          emitState({ kind: 'idle' });
+          stallListener?.(percent);
+        },
+      },
+    },
   });
-
-  /** Null hides it. */
-  function setLoadingWarning(message: string | null): void {
-    loadingState.update({ warning: message });
-  }
-
-  let fadeTimer: unknown = null;
-
-  function dismissLoading(): void {
-    completeProgress();
-    stopProgressWatch();
-    stopStageMessages();
-    if (loadingState.get().phase !== 'active') {
+  const handleRotation = nest<ScreenMachine, 'active', MachineTypes<Rotation, ScreenEvent>, 'explanationDue'>({
+    find: state => state.rotation,
+    store: (state, _event, rotation) => ({ ...state, rotation }),
+    handlers: {
+      still: null,
+      rotating: {
+        explanationDue(rotation, event, { emitState, update }) {
+          if (event.timer !== rotation.timer) {
+            return;
+          }
+          const line = (rotation.line + 1) % rotation.explanations.length;
+          emitState({ ...rotation, line, timer: startRotationTimer(MESSAGE_ROTATE_MS, update) });
+          update({ kind: 'lineDue', explanation: rotation.explanations[line] ?? '' });
+        },
+      },
+    },
+  });
+  const handleTyping = nest<ScreenMachine, 'active', MachineTypes<Typing, ScreenEvent>, 'frameDrawn'>({
+    find: state => state.typing,
+    store: (state, _event, typing) => ({ ...state, typing }),
+    handlers: {
+      still: null,
+      typing: {
+        frameDrawn(typing, { now }, { emitState, update }) {
+          const { from, to, startedAt, eraseMs } = typing;
+          const elapsedMs = now - startedAt;
+          if (elapsedMs >= eraseMs + TYPE_MS) {
+            emitState({ kind: 'still' });
+            loadingState.update({ explanation: to, explanationOpacity: 1 });
+            return;
+          }
+          emitState({ ...typing, frame: requestTypingFrame(update) });
+          // The frame clock can start a little before `startedAt`, so a zero-length erase is skipped, not divided by.
+          if (eraseMs > 0 && elapsedMs < eraseMs) {
+            const gone = applyEaseInOut(elapsedMs / eraseMs);
+            // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
+            loadingState.update({
+              explanation: from.slice(0, Math.ceil(from.length * (1 - gone))),
+              explanationOpacity: 1 - 0.25 * gone,
+            });
+            return;
+          }
+          const shown = applyEaseInOut((elapsedMs - eraseMs) / TYPE_MS);
+          loadingState.update({
+            explanation: to.slice(0, Math.ceil(to.length * shown)),
+            explanationOpacity: 0.75 + 0.25 * shown,
+          });
+        },
+      },
+    },
+  });
+  /** Takes the screen down at once, without the fade, for a page that replaces it. */
+  const hide: HandlerOf<ScreenMachine, 'active' | 'dismissing', 'hidden'> = (state, _event, { emitState }) => {
+    emitState({ kind: 'gone', stopFollowing: state.stopFollowing });
+    stopPhase(state);
+    // An interrupted fade would otherwise leave the line stranded dim.
+    loadingState.update({ phase: 'gone', explanationOpacity: 1 });
+  };
+  const hideBehindScreen: HandlerOf<ScreenMachine, 'active' | 'dismissing', 'pageContentChanged'> = (
+    state,
+    { content },
+    transition,
+  ) => {
+    if (content !== 'screen') {
       return;
     }
-    loadingState.update({ phase: 'dismissing' });
-    // The screen is removed only once its fade has finished.
-    fadeTimer = timers.setTimeout(() => {
-      fadeTimer = null;
-      if (loadingState.get().phase === 'dismissing') {
-        hideLoading();
-      }
-    }, FADE_MS);
-  }
-
-  function dispose(): void {
-    stopFollowingPageContent();
-    stopStatusTick();
-    if (fadeTimer !== null) {
-      timers.clearTimeout(fadeTimer);
-      fadeTimer = null;
-    }
-  }
+    hide(state, { kind: 'hidden' }, transition);
+  };
+  /** Stops following the page and everything the phase runs, leaving the screen as it is. */
+  const stop: HandlerOf<ScreenMachine, 'active' | 'dismissing' | 'gone', 'disposed'> = (
+    state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'disposed' });
+    stopPhase(state);
+    state.stopFollowing();
+  };
+  const screen = createStateMachine<ScreenMachine>({
+    initial: { kind: 'idle' },
+    handlers: {
+      idle: {
+        started(_state, _event, { emitState, update }) {
+          const following = (stopFollowing: () => void): ActiveState => ({
+            kind: 'active',
+            stopFollowing,
+            phases: [],
+            bar: { percent: 0, shown: -1, shownAt: 0, realShown: -1 },
+            band: { kind: 'unbanded' },
+            released: false,
+            stall: { kind: 'idle' },
+            stageIndex: -1,
+            opening: true,
+            rotation: { kind: 'still' },
+            typing: { kind: 'still' },
+          });
+          let stopFollowing: () => void;
+          try {
+            stopFollowing = pageContent.listen(content => {
+              update({ kind: 'pageContentChanged', content });
+            });
+          } catch (error) {
+            // A page that cannot be followed still gets its screen, which then misses only the page replacing it.
+            emitState(following(noop));
+            throw error;
+          }
+          emitState(following(stopFollowing));
+        },
+        disposed(_state, _event, { emitState }) {
+          emitState({ kind: 'disposed' });
+        },
+      },
+      active: {
+        pageContentChanged: hideBehindScreen,
+        phasesSet(state, { phases }, transition) {
+          const next: ActiveState = {
+            ...state,
+            phases,
+            bar: { percent: 0, shown: -1, shownAt: timers.now(), realShown: -1 },
+            band: { kind: 'unbanded' },
+            released: false,
+            stageIndex: -1,
+            opening: true,
+          };
+          transition.emitState(next);
+          stopCrawl(state.band);
+          // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
+          // the explanation clock starts now.
+          enterStage(next, 'starting', transition);
+        },
+        stageSet(state, { stage }, transition) {
+          enterStage(state, stage, transition);
+        },
+        phaseEntered(state, { index }, transition) {
+          const { phases, band } = state;
+          const phase = phases[index];
+          if (phase === undefined || (band.kind === 'banded' && index <= band.index)) {
+            return;
+          }
+          const { base, target, expectedMs, reportsProgress } = phase;
+          const moved = base > state.bar.percent ? moveBar(state, { percent: base }, transition) : state;
+          const stopTick = poll.start(() => {
+            transition.update({ kind: 'crawled' });
+          }, CRAWL_TICK_MS);
+          const creepCeiling = Math.min(getLentCeiling(phases[index + 1]), CREEP_CEILING);
+          const next: ActiveState = {
+            ...moved,
+            band: {
+              kind: 'banded',
+              index,
+              target,
+              // A constant slice per tick, so the bar moves steadily through a long sync instead of stalling near the
+              // top.
+              crawlStep: ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS),
+              creepCeiling,
+              creepStep: (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS),
+              owner: reportsProgress === true && !state.released ? 'count' : 'clock',
+              crawl: { kind: 'crawling', stopTick },
+            },
+          };
+          transition.emitState(next);
+          stopCrawl(band);
+          enterStage(next, phase.stage, transition);
+        },
+        progressNudged(state, { fraction, stage }, transition) {
+          const { band } = state;
+          if (band.kind !== 'banded' || !Number.isFinite(fraction)) {
+            return;
+          }
+          const phase = state.phases[band.index];
+          if (phase?.stage !== stage) {
+            return;
+          }
+          const { base, target } = phase;
+          const clamped = Math.max(0, Math.min(1, fraction));
+          let next = state;
+          // Suppresses the crawl only until the work is done, then the creep carries the unreported tail.
+          if (phase.reportsProgress === true) {
+            next = { ...state, band: { ...band, owner: clamped < 1 ? 'count' : 'clock' } };
+            transition.emitState(next);
+          }
+          const want = base + (target - base) * clamped;
+          if (want > next.bar.percent) {
+            moveBar(next, { percent: Math.min(want, target) }, transition);
+          }
+        },
+        progressReleased(state, _event, { emitState }) {
+          const { band } = state;
+          emitState({ ...state, released: true, band: band.kind === 'banded' ? { ...band, owner: 'clock' } : band });
+        },
+        watchStopped(state, _event, { emitState }) {
+          emitState({ ...state, stall: { kind: 'idle' } });
+          stopStall(state.stall);
+        },
+        progressCompleted(state, _event, transition) {
+          moveBar({ ...state, band: toStillCrawl(state.band) }, { percent: 100 }, transition);
+          stopCrawl(state.band);
+        },
+        tickStopped(state, _event, { emitState }) {
+          emitState({
+            ...state,
+            band: toStillCrawl(state.band),
+            stall: { kind: 'idle' },
+            rotation: { kind: 'still' },
+            typing: { kind: 'still' },
+          });
+          stopPhase(state);
+          loadingState.update({ explanationOpacity: 1 });
+        },
+        crawled(state, _event, transition) {
+          const { band, bar } = state;
+          if (band.kind !== 'banded') {
+            return;
+          }
+          // A step reporting a real percentage owns the bar, and the guesses must not run past it.
+          if (band.owner === 'clock') {
+            if (bar.percent < band.target) {
+              moveBar(state, { percent: Math.min(bar.percent + band.crawlStep, band.target) }, transition);
+              return;
+            }
+            if (bar.percent < band.creepCeiling) {
+              moveBar(state, { percent: Math.min(bar.percent + band.creepStep, band.creepCeiling) }, transition);
+              return;
+            }
+          }
+          // Whatever owns the bar, the number still moves, within the current step's band.
+          if (timers.now() - bar.shownAt < PROGRESS_FLOOR_MS) {
+            return;
+          }
+          const ceiling = Math.min(band.owner === 'count' ? band.target : band.creepCeiling, CREEP_CEILING);
+          const next = Math.min(Math.floor(bar.percent) + 1, ceiling);
+          if (next > bar.percent) {
+            moveBar(state, { percent: next, cosmetic: true }, transition);
+          }
+        },
+        stallDue: handleStall,
+        explanationDue: handleRotation,
+        lineDue(state, { explanation }, { emitState, update }) {
+          const previous = loadingState.get().explanation;
+          // Screen readers get the whole sentence once, from an element the typing never touches.
+          if (explanation === previous || prefersReducedMotion()) {
+            emitState({ ...state, typing: { kind: 'still' } });
+            stopTyping(state.typing);
+            loadingState.update({ srText: explanation, explanation, explanationOpacity: 1 });
+            return;
+          }
+          const startedAt = frames.now();
+          emitState({
+            ...state,
+            typing: {
+              kind: 'typing',
+              frame: requestTypingFrame(update),
+              from: previous,
+              to: explanation,
+              startedAt,
+              eraseMs: previous === '' ? 0 : ERASE_MS,
+            },
+          });
+          stopTyping(state.typing);
+          // An interrupted fade would otherwise leave the line stranded dim.
+          loadingState.update({ srText: explanation, explanationOpacity: 1 });
+        },
+        frameDrawn: handleTyping,
+        hidden: hide,
+        dismissed(state, _event, { emitState, update }) {
+          // The screen is removed only once its fade has finished.
+          const fadeTimer = timers.setTimeout(() => {
+            update({ kind: 'fadeEnded', timer: fadeTimer });
+          }, FADE_MS);
+          emitState({ kind: 'dismissing', stopFollowing: state.stopFollowing, fadeTimer });
+          stopPhase(state);
+          loadingState.update({ progress: 100, explanationOpacity: 1, phase: 'dismissing' });
+        },
+        disposed: stop,
+      },
+      dismissing: {
+        pageContentChanged: hideBehindScreen,
+        fadeEnded(state, { timer }, transition) {
+          if (timer !== state.fadeTimer) {
+            return;
+          }
+          hide(state, { kind: 'hidden' }, transition);
+        },
+        hidden: hide,
+        disposed: stop,
+      },
+      gone: { disposed: stop },
+      disposed: null,
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: loadingScreenTransitionMetric,
+        message: '[dot.li] A loading screen transition threw',
+      });
+    },
+  });
+  screen.update({ kind: 'started' });
 
   return {
     /**
      * Sets the listener that hears each time the bar stops afresh, replacing any previous one. Returns the function
-     * that removes it, which does nothing once another listener replaced it. Never throws.
+     * that removes it, which does nothing once another listener replaced it. Never throws: a throw of the listener is
+     * reported.
      */
     onProgressStall,
     /** Stops watching the bar for a stall. Never throws. */
@@ -504,10 +577,197 @@ export function createLoadingController({
     dismissLoading,
     /**
      * Stops following the page's content, the crawl, the stage messages, the stall watch and the fade, leaving the
-     * screen as it is. Throws only as the unsubscribe `pageContent` returned does.
+     * screen as it is. Never throws: a throw of the unsubscribe `pageContent` returned is reported.
      */
     dispose,
   };
+
+  function onProgressStall(listener: (percent: number) => void): () => void {
+    stallListener = listener;
+    return removeStallListener;
+
+    // A listener that replaced this one stays.
+    function removeStallListener(): void {
+      if (stallListener === listener) {
+        stallListener = null;
+      }
+    }
+  }
+
+  function stopProgressWatch(): void {
+    screen.update({ kind: 'watchStopped' });
+  }
+
+  function completeProgress(): void {
+    screen.update({ kind: 'progressCompleted' });
+  }
+
+  function initPhases(phases: LoadingPhase[]): void {
+    screen.update({ kind: 'phasesSet', phases });
+  }
+
+  function setLoadingDomain(domain: string): void {
+    loadingDomain = domain;
+  }
+
+  function setLoadingStage(stage: LoadingStage): void {
+    screen.update({ kind: 'stageSet', stage });
+  }
+
+  function advancePhase(index: number): void {
+    screen.update({ kind: 'phaseEntered', index });
+  }
+
+  function nudgePhaseProgress(fraction: number, stage: LoadingStage): void {
+    screen.update({ kind: 'progressNudged', fraction, stage });
+  }
+
+  function releasePhaseProgress(): void {
+    screen.update({ kind: 'progressReleased' });
+  }
+
+  function stopStatusTick(): void {
+    screen.update({ kind: 'tickStopped' });
+  }
+
+  function hideLoading(): void {
+    screen.update({ kind: 'hidden' });
+  }
+
+  function setLoadingWarning(message: string | null): void {
+    loadingState.update({ warning: message });
+  }
+
+  function dismissLoading(): void {
+    screen.update({ kind: 'dismissed' });
+  }
+
+  function dispose(): void {
+    screen.update({ kind: 'disposed' });
+  }
+
+  /** Moves the bar to `percent`, and arms the stall watch afresh when real progress moved the shown number. */
+  function moveBar(
+    state: ActiveState,
+    { percent, cosmetic = false }: MoveBarParams,
+    { emitState, update }: Transition<ScreenMachine>,
+  ): ActiveState {
+    const shown = Math.round(percent);
+    const moved = !cosmetic && shown !== state.bar.realShown;
+    const next: ActiveState = {
+      ...state,
+      bar: {
+        percent,
+        shown,
+        shownAt: shown === state.bar.shown ? state.bar.shownAt : timers.now(),
+        realShown: moved ? shown : state.bar.realShown,
+      },
+      stall: moved ? armStallWatch(percent, update) : state.stall,
+    };
+    emitState(next);
+    if (moved) {
+      stopStall(state.stall);
+    }
+    loadingState.update({ progress: percent });
+    return next;
+  }
+
+  /** Returns a watch on `percent`, or none for a full bar. The caller stops the watch it replaces. */
+  function armStallWatch(percent: number, update: Transition<ScreenMachine>['update']): StallWatch {
+    if (percent >= 100) {
+      return { kind: 'idle' };
+    }
+    const timer = timers.setTimeout(() => {
+      update({ kind: 'stallDue', timer });
+    }, PROGRESS_STALL_MS);
+    return { kind: 'armed', percent, timer };
+  }
+
+  /** Only moves forward, so a late event cannot walk the story backwards or restart a running stage. */
+  function enterStage(state: ActiveState, stage: LoadingStage, { emitState, update }: Transition<ScreenMachine>): void {
+    const stageIndex = LOADING_STAGES.indexOf(stage);
+    if (stageIndex <= state.stageIndex) {
+      return;
+    }
+    const [opening, ...explanations] = STAGE_MESSAGES[stage];
+    // The opening step line has been up since first paint, so its first explanation is due from then.
+    const firstDelay = state.opening ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
+    emitState({
+      ...state,
+      stageIndex,
+      opening: false,
+      rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, update) },
+      typing: { kind: 'still' },
+    });
+    stopRotation(state.rotation);
+    stopTyping(state.typing);
+    const step = getStepParts(opening);
+    loadingState.update({ step, explanation: '', explanationOpacity: 1, srText: toStepSentence(step) });
+  }
+
+  /** Falls back to "the name" on the preview and local-target paths, which have no dotNS name. */
+  function getStepParts(message: string): StepPart[] {
+    const at = message.indexOf(DOMAIN_TOKEN);
+    if (at === -1) {
+      return [message];
+    }
+    const name: StepPart = loadingDomain === '' ? 'the name' : { host: loadingDomain, tld: getActiveTldSuffix() };
+    return [message.slice(0, at), name, message.slice(at + DOMAIN_TOKEN.length)].filter(part => part !== '');
+  }
+
+  function startRotationTimer(delayMs: number, update: Transition<ScreenMachine>['update']): unknown {
+    const timer = timers.setTimeout(() => {
+      update({ kind: 'explanationDue', timer });
+    }, delayMs);
+    return timer;
+  }
+
+  function requestTypingFrame(update: Transition<ScreenMachine>['update']): number {
+    return frames.request(now => {
+      update({ kind: 'frameDrawn', now });
+    });
+  }
+
+  /** Stops every tick, timer and frame the phase `state` holds. */
+  function stopPhase(state: Extract<ScreenState, { kind: 'active' | 'dismissing' | 'gone' }>): void {
+    switch (state.kind) {
+      case 'active':
+        stopCrawl(state.band);
+        stopStall(state.stall);
+        stopRotation(state.rotation);
+        stopTyping(state.typing);
+        return;
+      case 'dismissing':
+        timers.clearTimeout(state.fadeTimer);
+        return;
+      case 'gone':
+        return;
+    }
+  }
+
+  function stopCrawl(band: Band): void {
+    if (band.kind === 'banded' && band.crawl.kind === 'crawling') {
+      band.crawl.stopTick();
+    }
+  }
+
+  function stopStall(stall: StallWatch): void {
+    if (stall.kind === 'armed') {
+      timers.clearTimeout(stall.timer);
+    }
+  }
+
+  function stopRotation(rotation: Rotation): void {
+    if (rotation.kind === 'rotating') {
+      timers.clearTimeout(rotation.timer);
+    }
+  }
+
+  function stopTyping(typing: Typing): void {
+    if (typing.kind === 'typing') {
+      frames.cancel(typing.frame);
+    }
+  }
 }
 
 /** The page's loading screen. It lasts the page's life, so it is never disposed. */
@@ -532,6 +792,11 @@ function getLentCeiling(next: LoadingPhase | undefined): number {
     return CREEP_CEILING;
   }
   return next.reportsProgress === true ? next.base : next.target;
+}
+
+/** `band` with its crawl marked still. */
+function toStillCrawl(band: Band): Band {
+  return band.kind === 'banded' ? { ...band, crawl: { kind: 'still' } } : band;
 }
 
 function toStepSentence(parts: readonly StepPart[]): string {

@@ -6,7 +6,7 @@
 
 import { getActiveTldSuffix, isVerifiedSession } from '@dotli/config';
 import type { BitswapClient } from '@dotli/bitswap';
-import { createReporter, defineCount, m } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { ProtocolClient } from '@dotli/protocol';
 import type { ResolvePhase } from '@dotli/resolver';
 import { isLoadedOutcome } from '@dotli/sandbox-wire';
@@ -18,6 +18,7 @@ import {
   type HandlerOf,
   type HandlersOf,
   type MachineTypes,
+  type Transition,
 } from '@dotli/shared';
 import type { CachedCid } from '@dotli/storage';
 import { readChatCapability } from './readChatCapability.js';
@@ -54,8 +55,8 @@ type LoadPath = 'fast' | 'slow';
 
 /**
  * Where the page's load is. It starts idle and ends once. Between them it steps from the CID cache or the name to the
- * render, then holds the product in its frame, which is on screen once the handoff's side work is done. A failure
- * shows its screen before the load ends.
+ * product's core and then the render, then holds the product in its frame, which is on screen once the handoff's side
+ * work is done. A failure shows its screen before the load ends.
  */
 type LoadState =
   | { kind: 'idle'; params: Params }
@@ -63,6 +64,7 @@ type LoadState =
   | { kind: 'readingCache'; run: LoadRun }
   | { kind: 'resolvingName'; run: LoadRun; manifestsRead: Promise<ProductManifests> }
   | { kind: 'readingManifests'; run: LoadRun; cid: string }
+  | { kind: 'holdingCore'; run: LoadRun; path: LoadPath; cid: string; manifests: ProductManifests }
   | { kind: 'rendering'; run: LoadRun; path: LoadPath; cid: string; manifests: ProductManifests }
   | {
       kind: 'handingOff';
@@ -89,7 +91,9 @@ type LoadEvent =
   | { kind: 'nameResolved'; cid: string | null }
   | { kind: 'manifestsRead'; manifests: ProductManifests }
   | { kind: 'render' }
+  | { kind: 'coreHeld' }
   | { kind: 'rendered' }
+  | { kind: 'renderFailed'; error: unknown }
   | { kind: 'stepFailed'; error: unknown }
   | { kind: 'handOff' }
   | {
@@ -132,6 +136,7 @@ export function createProductLoader(params: Params) {
       readingCache,
       resolvingName,
       readingManifests,
+      holdingCore,
       rendering,
       handingOff,
       onScreen,
@@ -180,7 +185,7 @@ const starting: HandlersOf<LoadMachine, 'starting'> = {
   start({ label, params }, _event, { emitState, emitSideEffect, update }) {
     let run: LoadRun;
     try {
-      run = startLoadRun({ label, params, update });
+      run = startLoadRun({ label, params });
     } catch (error) {
       emitState({ kind: 'ended', error: toError(error) });
       return;
@@ -199,7 +204,7 @@ const starting: HandlersOf<LoadMachine, 'starting'> = {
 /** Fails a load whose product is not on screen yet, and queues its failure screen. */
 const failLoad: HandlerOf<
   LoadMachine,
-  'readingCache' | 'resolvingName' | 'readingManifests' | 'rendering',
+  'readingCache' | 'resolvingName' | 'readingManifests' | 'holdingCore' | 'rendering',
   'stepFailed'
 > = ({ run }, { error }, { emitState, emitSideEffect, update }) => {
   releaseCore(run);
@@ -245,7 +250,7 @@ const readingCache: HandlersOf<LoadMachine, 'readingCache'> = {
       update({ kind: 'stepFailed', error });
       return;
     }
-    emitState({ kind: 'rendering', run, path: 'fast', cid: cached.cid, manifests });
+    emitState({ kind: 'holdingCore', run, path: 'fast', cid: cached.cid, manifests });
     update({ kind: 'render' });
   },
 };
@@ -296,49 +301,68 @@ const readingManifests: HandlersOf<LoadMachine, 'readingManifests'> = {
     if (!params.skipCidCache) {
       params.cidCache.storeLater({ label, cid, manifests: toCachedManifest(manifests) });
     }
-    emitState({ kind: 'rendering', run, path: 'slow', cid, manifests });
+    emitState({ kind: 'holdingCore', run, path: 'slow', cid, manifests });
     update({ kind: 'render' });
+  },
+};
+
+const holdingCore: HandlersOf<LoadMachine, 'holdingCore'> = {
+  stepFailed: failLoad,
+  render({ run }, _event, { emitSideEffect, update }) {
+    emitSideEffect({ kind: 'rendering' });
+    try {
+      // The shield shows how the content was checked, and the topbar may fold from then on.
+      urlPillState.setVerificationShield(isVerifiedSession(run.params.backend) ? 'verified' : 'trusted');
+      run.autoHide.settle();
+    } catch (error) {
+      update({ kind: 'stepFailed', error });
+      return;
+    }
+    update(
+      run.coreHold.then(
+        () => ({ kind: 'coreHeld' }),
+        (error: unknown) => ({ kind: 'stepFailed', error }),
+      ),
+    );
+  },
+  coreHeld(state, _event, { emitState, update }) {
+    const { run, cid, manifests } = state;
+    const { label, params } = run;
+    emitState({ ...state, kind: 'rendering' });
+    let rendered: Promise<void>;
+    try {
+      rendered = params.productFrame.render({
+        mode: 'subdomain',
+        label,
+        cid,
+        base: params.base,
+        chat: run.chat,
+        facts: getProductFacts(manifests),
+      });
+    } catch (error) {
+      update({ kind: 'renderFailed', error });
+      return;
+    }
+    update(
+      rendered.then(
+        () => ({ kind: 'rendered' }),
+        (error: unknown) => ({ kind: 'renderFailed', error }),
+      ),
+    );
   },
 };
 
 const rendering: HandlersOf<LoadMachine, 'rendering'> = {
   stepFailed: failLoad,
-  render({ run, path, cid, manifests }, _event, { emitSideEffect, update }) {
-    const { label, params } = run;
-    emitSideEffect({ kind: 'rendering' });
-    update(
-      (path === 'fast' ? m.span('e2e.fast_path', renderProduct) : renderProduct()).then(
-        () => ({ kind: 'rendered' }),
-        (error: unknown) => ({ kind: 'stepFailed', error }),
-      ),
-    );
-
-    /** Hands the product to its frame. Rejects when the core cannot boot or the render fails. */
-    async function renderProduct(): Promise<void> {
-      // The shield shows how the content was checked, and the topbar may fold from then on.
-      urlPillState.setVerificationShield(isVerifiedSession(params.backend) ? 'verified' : 'trusted');
-      run.autoHide.settle();
-      await run.coreHold;
-      try {
-        await params.productFrame.render({
-          mode: 'subdomain',
-          label,
-          cid,
-          base: params.base,
-          chat: run.chat,
-          facts: getProductFacts(manifests),
-        });
-      } catch (error) {
-        // A render that failed after it mounted the product leaves it holding its core under the failure screen.
-        params.productFrame.halt();
-        throw error;
-      }
-    }
+  renderFailed(state, { error }, transition) {
+    failLoad(state, { kind: 'stepFailed', error }, transition);
+    // A render that failed after it mounted the product leaves it holding its core under the failure screen.
+    state.run.params.productFrame.halt();
   },
   rendered(state, _event, { emitState, update }) {
     let stopListening: () => void;
     try {
-      stopListening = listenToProduct(state.run);
+      stopListening = listenToProduct({ run: state.run, update });
     } catch (error) {
       update({ kind: 'stepFailed', error });
       return;
@@ -433,15 +457,7 @@ const failing: HandlersOf<LoadMachine, 'failing' | 'failingOnScreen'> = {
 };
 
 /** Sets up one load and returns what it holds. Throws what the setup throws. */
-function startLoadRun({
-  label,
-  params,
-  update,
-}: {
-  label: string;
-  params: Params;
-  update: (event: LoadEvent) => void;
-}) {
+function startLoadRun({ label, params }: { label: string; params: Params }) {
   params.bridge.setPageProduct({ label });
   // In parallel with the CID.
   const chat = readChatCapability(label, async () => {
@@ -454,7 +470,6 @@ function startLoadRun({
   return {
     label,
     params,
-    update,
     chat,
     autoHide,
     // The core boots while the name resolves, so its boot can fail before anything awaits it.
@@ -463,7 +478,13 @@ function startLoadRun({
 }
 
 /** Listens for what can still fail the product, and for its content's outcomes. Returns what stops listening. */
-function listenToProduct({ params, update }: LoadRun): () => void {
+function listenToProduct({
+  run: { params },
+  update,
+}: {
+  run: LoadRun;
+  update: Transition<LoadMachine>['update'];
+}): () => void {
   // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
   // the app would sit there with no chain or store, so the reload screen replaces it.
   const stopHearingMismatch = params.onProtocolVersionMismatch(error => {
@@ -471,14 +492,17 @@ function listenToProduct({ params, update }: LoadRun): () => void {
   });
   // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is
   // down.
-  void params.sandboxLoad.expectHeardWithin().catch((error: unknown) => {
-    update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
+  const stopDeadline = params.sandboxLoad.expectHeardWithin({
+    onSilent: error => {
+      update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
+    },
   });
   const stopFollowingContent = params.sandboxLoad.subscribeOutcomes(report => {
     update({ kind: 'contentOutcome', report });
   });
   return () => {
     stopHearingMismatch();
+    stopDeadline();
     stopFollowingContent();
   };
 }

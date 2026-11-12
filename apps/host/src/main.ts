@@ -10,7 +10,7 @@ import { startHost, type HostStartup } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
 // Right after the startup modules, so the page's start is marked once boot's dependencies have loaded.
 import { PAGE_START } from './pageStart.js';
-import { bootTracker } from './createBootTracker.js';
+import { bootTracker, type BootStep } from './createBootTracker.js';
 import { pageLoading } from './createLoadingController.js';
 import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
 import { loadingState } from './state/loadingState.js';
@@ -28,7 +28,16 @@ import { loadVerify } from '@dotli/content';
 import { getProtocolClient } from '@dotli/protocol';
 import { blockCache as pageBlockCache, cidCache } from '@dotli/storage';
 import { runWhenIdle } from '@dotli/ui';
-import { formatElapsed, log, markHandled, createRandomId } from '@dotli/shared';
+import {
+  createRandomId,
+  createStateMachine,
+  formatElapsed,
+  log,
+  markHandled,
+  type HandlerOf,
+  type HandlersOf,
+  type MachineTypes,
+} from '@dotli/shared';
 import {
   DEBUG,
   getActiveServicesConfig,
@@ -91,6 +100,39 @@ type Shell = {
   startup: HostStartup;
   productFrame: ProductFrame;
 };
+
+/** A route the page opens rather than leaves to its parent. */
+type OpenedRoute = Exclude<ShellRoute, { kind: 'nested' }>;
+
+/**
+ * Where the page's boot is. It starts the shell, then opens what the route names: a local target by its URL, or a
+ * product by its name. It ends opened, or failed once its failure screen shows.
+ */
+type BootState =
+  | { kind: 'idle' }
+  | { kind: 'startingShell'; route: OpenedRoute; cidRead: EarlyCidRead | null }
+  | { kind: 'openingTarget'; target: LocalTarget; shell: Shell }
+  | { kind: 'openingProduct' }
+  | { kind: 'opened' }
+  | { kind: 'failed' };
+
+type BootEvent =
+  | { kind: 'started'; route: OpenedRoute; role: PageRole }
+  | { kind: 'shellStarted'; shell: Shell }
+  | { kind: 'targetRendered' }
+  | { kind: 'targetFailed'; error: unknown }
+  | { kind: 'opened' }
+  | { kind: 'failed'; error: unknown };
+
+/** What the boot reports: its step for a failure's tag, the route it took, a local target on screen, a failure. */
+type BootEffect =
+  | { kind: 'stepEntered'; step: BootStep }
+  | { kind: 'routeAnnounced'; route: OpenedRoute; flowId: string }
+  | { kind: 'targetRouted'; target: LocalTarget }
+  | { kind: 'targetOpened'; target: LocalTarget; flowId: string }
+  | { kind: 'failed'; error: unknown };
+
+type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 
 type OpenProductParams = {
   route: Extract<ShellRoute, { kind: 'product' }>;
@@ -164,68 +206,10 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   return { flowId, sandboxChannel, sandboxLoad, startup, productFrame };
 }
 
-/** Tells the debug panel which route the page took, with the path as the settings left it. */
-function announceRoute(route: Exclude<ShellRoute, { kind: 'nested' }>, flowId: string): void {
-  debugBus.emit({
-    layer: 'boot',
-    event: 'url_parsed',
-    flowId,
-    timestamp: Date.now(),
-    payload: {
-      label: route.kind === 'product' ? route.label : null,
-      localhostHost: route.kind === 'localhost' ? route.host : null,
-      deepPath: window.location.pathname + window.location.search,
-    },
-  });
-}
-
-async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void> {
-  const { bridge } = shell.startup;
-  // Only debug builds read a localhost route, so the compile-time flag drops its branches from release bundles.
-  const proxied = DEBUG && target.kind === 'localhost';
-  bootTracker.setStep(proxied ? 'localhost_render' : 'preview_render');
-  bootReport.log.event(proxied ? 'Route: localhost proxy' : 'Route: preview', { host: target.host });
-  bridge.setPageProduct({ label: target.host, productId: target.productId });
-
-  pageNotifications().init({ label: target.host });
-
-  // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
-  // unconditionally for product testing.
-  try {
-    await shell.productFrame.render({
-      mode: 'iframe',
-      label: target.host,
-      url: target.url,
-      productId: target.productId,
-      chat: Promise.resolve(true),
-    });
-  } catch (error: unknown) {
-    // The boot's failure screen takes over, so the frame must not show the product again on a replacement core.
-    shell.productFrame.halt();
-    throw error;
-  }
-  pageTopbarAutoHide.setContentShown(true);
-  // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's life,
-  // so the cleanup goes unused.
-  startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
-  history.replaceState(null, '', getLocalTargetPath(target));
-  performance.mark('dotli:main:end');
-  if (proxied) {
-    debugBus.emit({
-      layer: 'boot',
-      event: 'ready',
-      flowId: shell.flowId,
-      timestamp: Date.now(),
-      payload: { label: null, totalMs: performance.now() - PAGE_START, path: 'localhost' },
-    });
-  }
-}
-
 async function openProduct({ route, shell, cidRead }: OpenProductParams): Promise<void> {
   const { label, base } = route;
   const { settings, bridge } = shell.startup;
   const protocol = getProtocolClient();
-  bootTracker.setStep('resolve_setup');
 
   pageNotifications().init({ label });
   const relay = startProductContent(shell, settings.cache.skipArchiveCache);
@@ -278,8 +262,8 @@ function runWhenPageIdle(callback: () => void): void {
 
 /** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
 function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBlockRelay {
-  // The screen clears at the sandbox's first done.
-  void shell.sandboxLoad.cleared.then(pageLoading.dismissLoading).catch(contentReport.listener('page_loading.dismiss'));
+  // The screen clears at the sandbox's first done. The page never stops hearing it, so the stop goes unused.
+  shell.sandboxLoad.subscribeCleared(pageLoading.dismissLoading);
   const blockCache = skipArchiveCache
     ? null
     : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
@@ -297,7 +281,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
   startSandboxContent({
     relay,
     cached: blockCache !== null,
-    outcome: shell.sandboxLoad.outcome,
+    subscribeOutcomes: shell.sandboxLoad.subscribeOutcomes,
     prune() {
       void pageBlockCache.prune(BLOCK_CACHE_MAX_BYTES);
     },
@@ -308,49 +292,225 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
   return relay;
 }
 
-async function main(): Promise<void> {
-  startPage();
-  const framed = window.self !== window.top;
-  const route = readShellRoute(window.location, {
-    localhost: isLocalhost,
-    framed,
-    // Behind the compile-time flag, so release bundles drop the localhost proxy.
-    readLocalhostProxyUrl: DEBUG ? readLocalhostUrl : undefined,
-  });
-  // A nested dot.li would draw a second topbar.
-  if (route.kind === 'nested') {
-    return;
+/** Starts the page and its boot on the route its URL names. A throw before the boot runs is reported. */
+function main(): void {
+  try {
+    startPage();
+    const framed = window.self !== window.top;
+    const route = readShellRoute(window.location, {
+      localhost: isLocalhost,
+      framed,
+      // Behind the compile-time flag, so release bundles drop the localhost proxy.
+      readLocalhostProxyUrl: DEBUG ? readLocalhostUrl : undefined,
+    });
+    // A nested dot.li would draw a second topbar.
+    if (route.kind === 'nested') {
+      return;
+    }
+    performance.mark('dotli:main:start');
+    // The load ends the hold itself once the loading screen is gone, so the stop goes unused.
+    holdNetworkWhileLoading({ pause: networkPause, loading: loadingState.store });
+    // From the URL alone, before any await, so the URL bar paints with the page.
+    if (route.kind === 'preview' || route.kind === 'localhost') {
+      urlPillState.showLocalhost(route.host);
+    }
+    const boot = createStateMachine<BootMachine>({
+      initial: { kind: 'idle' },
+      handlers: {
+        idle,
+        startingShell,
+        openingTarget,
+        openingProduct,
+        opened: null,
+        failed: null,
+      },
+      onEffect: reportBoot,
+      onError: reportBootFailure,
+    });
+    boot.update({ kind: 'started', route, role: getShellPageRole(route, framed) });
+  } catch (error) {
+    reportBootFailure(error);
   }
-  performance.mark('dotli:main:start');
-  // The load ends the hold itself once the loading screen is gone, so the stop goes unused.
-  holdNetworkWhileLoading({ pause: networkPause, loading: loadingState.store });
-  // From the URL alone, before any await, so the URL bar paints with the page.
-  if (route.kind === 'preview' || route.kind === 'localhost') {
-    urlPillState.showLocalhost(route.host);
+}
+
+const idle: HandlersOf<BootMachine, 'idle'> = {
+  started(_state, { route, role }, { emitState, update }) {
+    emitState({ kind: 'startingShell', route, cidRead: null });
+    const shellStart = startShell(route, role);
+    // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
+    // even when the shell fails to start.
+    const cidRead: EarlyCidRead | null =
+      route.kind === 'product' ? { label: route.label, read: cidCache.get(route.label, getNetwork()) } : null;
+    emitState({ kind: 'startingShell', route, cidRead });
+    update(
+      shellStart.then(
+        shell => ({ kind: 'shellStarted', shell }),
+        (error: unknown) => ({ kind: 'failed', error }),
+      ),
+    );
+  },
+};
+
+/** Ends a boot that failed before the page had anything to show. */
+const failBoot: HandlerOf<BootMachine, 'startingShell' | 'openingTarget' | 'openingProduct', 'failed'> = (
+  _state,
+  { error },
+  { emitState, emitSideEffect },
+) => {
+  emitState({ kind: 'failed' });
+  emitSideEffect({ kind: 'failed', error });
+};
+
+const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
+  failed: failBoot,
+  shellStarted(state, { shell }, transition) {
+    const { route, cidRead } = state;
+    const { emitState, emitSideEffect, update } = transition;
+    switch (route.kind) {
+      case 'preview':
+      case 'localhost': {
+        const proxied = isLocalhostProxy(route);
+        emitState({ kind: 'openingTarget', target: route, shell });
+        if (proxied) {
+          emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
+        }
+        emitSideEffect({ kind: 'stepEntered', step: proxied ? 'localhost_render' : 'preview_render' });
+        emitSideEffect({ kind: 'targetRouted', target: route });
+        try {
+          shell.startup.bridge.setPageProduct({ label: route.host, productId: route.productId });
+          pageNotifications().init({ label: route.host });
+        } catch (error) {
+          update({ kind: 'failed', error });
+          return;
+        }
+        let rendered: Promise<void>;
+        try {
+          // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
+          // unconditionally for product testing.
+          rendered = shell.productFrame.render({
+            mode: 'iframe',
+            label: route.host,
+            url: route.url,
+            productId: route.productId,
+            chat: Promise.resolve(true),
+          });
+        } catch (error) {
+          update({ kind: 'targetFailed', error });
+          return;
+        }
+        update(
+          rendered.then(
+            () => ({ kind: 'targetRendered' }),
+            (error: unknown) => ({ kind: 'targetFailed', error }),
+          ),
+        );
+        return;
+      }
+      case 'product':
+        emitState({ kind: 'openingProduct' });
+        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
+        emitSideEffect({ kind: 'stepEntered', step: 'resolve_setup' });
+        update(
+          openProduct({ route, shell, cidRead }).then(
+            () => ({ kind: 'opened' }),
+            (error: unknown) => ({ kind: 'failed', error }),
+          ),
+        );
+        return;
+      case 'landing':
+        emitState({ kind: 'opened' });
+        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
+        try {
+          leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
+        } catch (error) {
+          failBoot(state, { kind: 'failed', error }, transition);
+        }
+        return;
+    }
+  },
+};
+
+const openingTarget: HandlersOf<BootMachine, 'openingTarget'> = {
+  failed: failBoot,
+  targetFailed(state, { error }, transition) {
+    failBoot(state, { kind: 'failed', error }, transition);
+    // The boot's failure screen takes over, so the frame must not show the product again on a replacement core.
+    state.shell.productFrame.halt();
+  },
+  targetRendered(state, _event, transition) {
+    const { target, shell } = state;
+    const { emitState, emitSideEffect } = transition;
+    emitState({ kind: 'opened' });
+    try {
+      pageTopbarAutoHide.setContentShown(true);
+      // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's
+      // life, so the cleanup goes unused.
+      startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
+      history.replaceState(null, '', getLocalTargetPath(target));
+    } catch (error) {
+      failBoot(state, { kind: 'failed', error }, transition);
+      return;
+    }
+    emitSideEffect({ kind: 'targetOpened', target, flowId: shell.flowId });
+  },
+};
+
+const openingProduct: HandlersOf<BootMachine, 'openingProduct'> = {
+  failed: failBoot,
+  opened(_state, _event, { emitState }) {
+    emitState({ kind: 'opened' });
+  },
+};
+
+/** Makes the boot's reports: the step a failure is tagged with, the debug panel's events and the failure screen. */
+function reportBoot(effect: BootEffect): void {
+  switch (effect.kind) {
+    case 'stepEntered':
+      bootTracker.setStep(effect.step);
+      return;
+    case 'routeAnnounced': {
+      const { route } = effect;
+      // With the path as the settings left it.
+      debugBus.emit({
+        layer: 'boot',
+        event: 'url_parsed',
+        flowId: effect.flowId,
+        timestamp: Date.now(),
+        payload: {
+          label: route.kind === 'product' ? route.label : null,
+          localhostHost: route.kind === 'localhost' ? route.host : null,
+          deepPath: window.location.pathname + window.location.search,
+        },
+      });
+      return;
+    }
+    case 'targetRouted':
+      bootReport.log.event(isLocalhostProxy(effect.target) ? 'Route: localhost proxy' : 'Route: preview', {
+        host: effect.target.host,
+      });
+      return;
+    case 'targetOpened':
+      performance.mark('dotli:main:end');
+      if (isLocalhostProxy(effect.target)) {
+        debugBus.emit({
+          layer: 'boot',
+          event: 'ready',
+          flowId: effect.flowId,
+          timestamp: Date.now(),
+          payload: { label: null, totalMs: performance.now() - PAGE_START, path: 'localhost' },
+        });
+      }
+      return;
+    case 'failed':
+      reportBootFailure(effect.error);
+      return;
   }
-  const booting = startShell(route, getShellPageRole(route, framed));
-  // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
-  // even when the shell fails to start.
-  const cidRead: EarlyCidRead | null =
-    route.kind === 'product' ? { label: route.label, read: cidCache.get(route.label, getNetwork()) } : null;
-  const shell = await booting;
-  switch (route.kind) {
-    case 'preview':
-      await openLocalTarget(route, shell);
-      return;
-    case 'localhost':
-      announceRoute(route, shell.flowId);
-      await openLocalTarget(route, shell);
-      return;
-    case 'product':
-      announceRoute(route, shell.flowId);
-      await openProduct({ route, shell, cidRead });
-      return;
-    case 'landing':
-      announceRoute(route, shell.flowId);
-      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
-      return;
-  }
+}
+
+/** Whether `target` is a local dev server behind the proxy. */
+function isLocalhostProxy(target: LocalTarget): boolean {
+  // Only debug builds read a localhost route, so the compile-time flag drops its branches from release bundles.
+  return DEBUG && target.kind === 'localhost';
 }
 
 // The shell's chrome is static markup that only this page renders, so its bindings run from this one script. They
@@ -364,5 +524,4 @@ if (urlPillElement !== null) {
   bindUrlPill(urlPillElement);
 }
 
-// Everything past boot catches its own failures, so this broke the shell before a load started.
-main().catch(reportBootFailure);
+main();

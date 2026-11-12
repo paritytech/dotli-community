@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './runtime/state/productState.js';
 import { topbarState } from './state/topbarState.js';
@@ -23,6 +24,11 @@ type StandInSurface = {
   open: boolean;
 };
 
+type CreateAutoHideParams = {
+  /** Watches the window for a phone width, the page's own stand-in unless given. */
+  watchPhone?: (onChange: () => void) => () => void;
+};
+
 type LoadAutoHideParams = {
   /** Whether the product's content already shows. */
   contentShown?: boolean;
@@ -38,6 +44,8 @@ type AutoHidePage = {
   setActive: (element: FakeElement | null) => void;
   /** Builds an element of the page under `parent`. */
   createElement: (id: string, parent?: FakeElement | null) => FakeElement;
+  /** Builds the auto-hide as the shell state builds it on a page with the bar, not started and with no bar registered. */
+  createAutoHide: (params?: CreateAutoHideParams) => TopbarAutoHide;
   /** Starts the auto-hide as the shell state starts it, with the bar registered. */
   loadAutoHide: (params?: LoadAutoHideParams) => TopbarAutoHide & { stop: () => void };
   /** Registers a stand-in surface, rendered outside the bar like a portal. */
@@ -168,6 +176,48 @@ describe('topbar auto-hide reveal', () => {
 
     // Then only the new hide timer ran, so the bar folds
     expect(isHidden()).toBe(true);
+  });
+});
+
+describe('topbar auto-hide start and stop', () => {
+  it('As a page that never started the auto-hide, I arm it over shown content and the bar never folds', async () => {
+    // Given an auto-hide on a page with the bar, never started
+    const { createAutoHide, advance } = setupAutoHidePage();
+    const autoHide = createAutoHide();
+
+    // When
+    autoHide.arm();
+    autoHide.setContentShown(true);
+    await advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(topbarState.get().autoHide).toBe(false);
+  });
+
+  it('As a page whose viewport watch fails, I start the auto-hide and the failure is reported while the bar still folds and stop brings it back', async () => {
+    // Given an auto-hide whose viewport watch throws, with no bar registered
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { createAutoHide, advance } = setupAutoHidePage();
+    const autoHide = createAutoHide({
+      watchPhone() {
+        throw new Error('watch broke');
+      },
+    });
+
+    // When
+    const stop = autoHide.start();
+    autoHide.arm();
+    autoHide.setContentShown(true);
+    await advance(HIDE_DELAY_MS);
+    const hiddenWhileStarted = isHidden();
+    stop();
+
+    // Then
+    expect(hiddenWhileStarted).toBe(true);
+    expect(isHidden()).toBe(false);
+    expect(topbarState.get().autoHide).toBe(false);
+    expect(reports.exceptions.map(report => report.step)).toEqual(['transition']);
   });
 });
 
@@ -467,6 +517,7 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
       active = element;
     },
     createElement,
+    createAutoHide,
     loadAutoHide,
     openSurface(open) {
       const stand: StandInSurface = { element: createElement('surface'), open };
@@ -522,17 +573,12 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
     document.dispatchEvent(new Event('focusin'));
   }
 
-  function loadAutoHide({ contentShown = true }: LoadAutoHideParams = {}): TopbarAutoHide & { stop: () => void } {
+  function createAutoHide({ watchPhone = watchPhoneWidth }: CreateAutoHideParams = {}): TopbarAutoHide {
     topbarState.setPresent();
-    const autoHide = createTopbarAutoHide({
+    return createTopbarAutoHide({
       isMobile: () => device.mobile,
       isPhone: () => device.phone,
-      watchPhone(listener) {
-        phoneWatchers.add(listener);
-        return () => {
-          phoneWatchers.delete(listener);
-        };
-      },
+      watchPhone,
       layout: {
         setTopbarLayout(layout) {
           offset = layout.offset;
@@ -549,6 +595,17 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
       }),
       timers,
     });
+  }
+
+  function watchPhoneWidth(listener: () => void): () => void {
+    phoneWatchers.add(listener);
+    return () => {
+      phoneWatchers.delete(listener);
+    };
+  }
+
+  function loadAutoHide({ contentShown = true }: LoadAutoHideParams = {}): TopbarAutoHide & { stop: () => void } {
+    const autoHide = createAutoHide();
     const stop = autoHide.start();
     cleanups.push(stop);
     if (contentShown) {

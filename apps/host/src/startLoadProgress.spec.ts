@@ -14,9 +14,11 @@ import { createLoadingController, type LoadingPhase } from './createLoadingContr
 import {
   startLoadProgress,
   type ContentProgressFacts,
+  type LoadEvents,
   type LoadingScreen,
   type LoadProgress,
 } from './startLoadProgress.js';
+import { bindReports } from './testing/bindReports.js';
 import { productState } from './runtime/state/productState.js';
 import { loadingState } from './state/loadingState.js';
 import { createManualPoll } from './testing/createManualPoll.js';
@@ -26,6 +28,8 @@ import { networkMonitorState } from './state/networkMonitorState.js';
 type ReportSource<Report> = {
   on: (listener: (report: Report) => void) => () => void;
   send: (report: Report) => void;
+  /** Returns whether anything still listens. */
+  isHeard: () => boolean;
 };
 
 /** A load's progress over a page of its own, the sources it hears and what it reported, until the case ends. */
@@ -54,6 +58,8 @@ type Band = { progress: number; line: string };
 type Params = {
   /** The backend the load runs on. */
   backend: Backend;
+  /** Report sources that stand in for the stand's own. */
+  events?: Partial<LoadEvents>;
 };
 
 /** The debug panel's flow every load reports under. */
@@ -180,6 +186,62 @@ describe('startLoadProgress', () => {
     expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
   });
 
+  it('As a visitor in direct mode, I wait on two chains that stall before the load is old enough to be slow and am told of the later stall at that mark', async () => {
+    // Given the relay and Asset Hub find no peers, and the relay starts connecting
+    const { chainSync, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(1_000);
+
+    // When Asset Hub starts connecting a second later, so both stall before the mark
+    chainSync.send({ chain: 'assethub', kind: 'connecting' });
+    await timers.advance(4_000);
+
+    // Then
+    expect(loadingState.get().warning).toBe(
+      'Still looking for computers that carry the name registry. Nothing has answered yet.',
+    );
+    expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
+  });
+
+  it('As an operator, I see a report source that throws as the load progress subscribes reported as a defect, while the progress returns and leaves no other source listened to', () => {
+    // Given a byte counter that cannot be listened to
+    const { counted } = bindReports();
+    const events: Partial<LoadEvents> = {
+      onNetBytes() {
+        throw new Error('the protocol frame is gone');
+      },
+    };
+
+    // When
+    const { chainSync, chainDetail } = setupLoad({ backend: 'smoldot-direct', events });
+
+    // Then
+    expect(counted('load_progress.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect([chainSync.isHeard(), chainDetail.isHeard()]).toEqual([false, false]);
+  });
+
+  it('As an operator, I see an unsubscribe that throws as a failed start cleans up reported too, while the other sources are still unsubscribed', () => {
+    // Given a chain sync source whose unsubscribe throws, and a byte counter that cannot be listened to
+    const { counted } = bindReports();
+    const events: Partial<LoadEvents> = {
+      onChainSync: () => () => {
+        throw new Error('the protocol frame is gone');
+      },
+      onNetBytes() {
+        throw new Error('the byte counter is gone');
+      },
+    };
+
+    // When
+    const { chainDetail } = setupLoad({ backend: 'smoldot-direct', events });
+
+    // Then both throws were reported and the chain detail source was unsubscribed
+    expect(counted('load_progress.transition')).toHaveLength(2);
+    expect(chainDetail.isHeard()).toBe(false);
+  });
+
   it.each(['smoldot-direct', 'smoldot-shared-worker'] as const)(
     'As a visitor on the %s light client, I see the bar follow the relay warp and Asset Hub, and the network monitor follows each chain',
     backend => {
@@ -208,6 +270,22 @@ describe('startLoadProgress', () => {
       expect(debug.map(event => event.event)).toEqual(['phase', 'phase', 'phase', 'peers']);
     },
   );
+
+  it('As an operator in direct mode, I see the resolution trace hear the download progress before it moves the bar', () => {
+    // Given a trace that reads the bar as it hears the download
+    const { progress, content, trace } = setupLoad({ backend: 'smoldot-direct' });
+    const barsHeard: number[] = [];
+    trace.recordContent.mockImplementation(() => {
+      barsHeard.push(readProgress());
+    });
+    progress.enterContentFetch();
+
+    // When
+    content.send({ bytesFetched: 50, totalBytes: 100 });
+
+    // Then
+    expect(barsHeard).toEqual([62]);
+  });
 
   it('As a visitor in direct mode, I see the download fill its band by bytes and hand over to preparing once complete', () => {
     // Given
@@ -325,6 +403,23 @@ describe('startLoadProgress', () => {
     expect(trace.recordBytes.mock.calls).toEqual([[100]]);
   });
 
+  it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while dispose returns', () => {
+    // Given a chain detail source whose unsubscribe throws
+    const { counted } = bindReports();
+    const events: Partial<LoadEvents> = {
+      onChainDetail: () => () => {
+        throw new Error('the protocol frame is gone');
+      },
+    };
+    const { progress } = setupLoad({ backend: 'smoldot-direct', events });
+
+    // When
+    progress.dispose();
+
+    // Then
+    expect(counted('load_progress.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+
   it('As a visitor whose download parks after the load progress was disposed, I wait and see no slow-load warning', async () => {
     // Given a download that counts its bytes, parked halfway
     const { progress, content, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
@@ -342,7 +437,7 @@ describe('startLoadProgress', () => {
 });
 
 /** Starts a load on `backend` over fresh stores, the page's own timers and a loading screen, until the case ends. */
-function setupLoad({ backend }: Params): LoadStand {
+function setupLoad({ backend, events = {} }: Params): LoadStand {
   const timers = createManualTimers({ start: PAGE_OPENED_AT });
   resetAllStoresForTests();
   const debugBus = createDebugBus();
@@ -392,6 +487,7 @@ function setupLoad({ backend }: Params): LoadStand {
       onChainDetail: chainDetail.on,
       onNetBytes: netBytes.on,
       onContentProgress: content.on,
+      ...events,
     },
     loading,
     trace,
@@ -422,6 +518,7 @@ function createReportSource<Report>(): ReportSource<Report> {
         listener(report);
       }
     },
+    isHeard: () => listeners.size > 0,
   };
 }
 

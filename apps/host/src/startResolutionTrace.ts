@@ -58,11 +58,11 @@ export type ResolutionTrace = ReturnType<typeof startResolutionTrace>;
 export type TracedPage = {
   /** Fires `pagehide` when the visitor leaves. */
   lifecycle: Pick<Window, 'addEventListener' | 'removeEventListener'>;
-  /** Returns whether the tab is in view. Never throws. */
+  /** Returns whether the tab is in view. */
   isVisible: () => boolean;
-  /** Returns the loading bar's percent, as the visitor sees it. Never throws. */
+  /** Returns the loading bar's percent, as the visitor sees it. */
   readProgress: () => number;
-  /** Returns the reason the app gave for its own reload, or null when it gave none. Never throws. */
+  /** Returns the reason the app gave for its own reload, or null when it gave none. */
   peekContinuation: () => Continuation | null;
 };
 
@@ -361,26 +361,26 @@ export function startResolutionTrace({
   page.lifecycle.addEventListener('pagehide', abandonOnPageHide);
 
   return {
-    /** Records a chain's sync milestone. Ignored once the trace finished. Never throws. */
+    /** Records a chain's sync milestone. Ignored once the trace finished. */
     recordChainSync,
-    /** Records a telemetry-only fact about one chain. Ignored once the trace finished. Never throws. */
+    /** Records a telemetry-only fact about one chain. Ignored once the trace finished. */
     recordChainDetail,
     /**
      * Records the cumulative bytes the light client has pulled off the network. Ignored once the trace finished, or
-     * when the count is not finite or went back. Never throws.
+     * when the count is not finite or went back.
      */
     recordBytes,
-    /** Records the content fetch's progress. Ignored once the trace finished. Never throws. */
+    /** Records the content fetch's progress. Ignored once the trace finished. */
     recordContent,
-    /** Records the name's CID, null for none. Ignored once the trace finished. Never throws. */
+    /** Records the name's CID, null for none. Ignored once the trace finished. */
     recordNameResolved,
-    /** Records what the CID cache lookup found. Never throws. */
+    /** Records what the CID cache lookup found. */
     recordCidCache,
-    /** Records the load's step, reported as `loading_phase` wherever the load ends. Never throws. */
+    /** Records the load's step, reported as `loading_phase` wherever the load ends. */
     recordStep,
-    /** Records that the sandbox iframe is mounted and the download is its to run. Never throws. */
+    /** Records that the sandbox iframe is mounted and the download is its to run. */
     markHandedOff,
-    /** Records that the visitor was shown a slow-load warning. Never throws. */
+    /** Records that the visitor was shown a slow-load warning. */
     markWarningShown,
     /** The trace's root, for linking this load's errors to it. */
     span: root,

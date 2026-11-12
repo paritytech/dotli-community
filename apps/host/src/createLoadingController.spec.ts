@@ -17,6 +17,7 @@ import { atom, type WritableAtom } from 'nanostores';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { PageContent } from '@dotli/ui';
 import { loadingState, type StepPart } from './state/loadingState.js';
+import { bindReports } from './testing/bindReports.js';
 
 /** A controller over a page of its own, disposed with its timers when the case ends. */
 type Stand = {
@@ -24,8 +25,14 @@ type Stand = {
   pageContent: WritableAtom<PageContent>;
 };
 
+type ControllerParams = Parameters<typeof createLoadingController>[0];
+
 type Params = {
   reducedMotion?: boolean;
+  /** What fills the page, a plain atom unless given. */
+  pageContent?: WritableAtom<PageContent>;
+  /** Replace the faked frames and the page's faked timers and interval. */
+  collaborators?: Partial<Pick<ControllerParams, 'frames' | 'timers' | 'poll'>>;
 };
 
 const STALL_PHASES: LoadingPhase[] = [
@@ -306,6 +313,22 @@ describe('The loading controller drives the loading store', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
+  it('As a visitor, I get a late stage and a late dismiss after the loading screen was hidden and neither writes to the screen', () => {
+    // Given a load whose screen has gone
+    const { controller } = setupController();
+    controller.initPhases(ROOT_PHASES);
+    controller.advancePhase(0);
+    controller.hideLoading();
+    const hidden = loadingState.get();
+
+    // When
+    controller.setLoadingStage('preparing');
+    controller.dismissLoading();
+
+    // Then
+    expect(loadingState.get()).toEqual(hidden);
+  });
+
   it('As a visitor, I get late signals after the loading screen was hidden and nothing on screen changes', () => {
     // Given a load whose screen has gone
     const { controller } = setupController();
@@ -403,6 +426,47 @@ describe('The loading controller drives the loading store', () => {
     // Then the line no longer changes
     expect(readExplanation()).toBe(settled);
     expect(loadingState.get().explanationOpacity).toBe(1);
+  });
+
+  it('As a visitor whose app loaded, I get a late step while the screen fades and the bar stays full with no crawl started', () => {
+    // Given a screen fading out
+    const { controller } = setupController();
+    controller.initPhases([
+      { label: 'a', base: 5, target: 50, expectedMs: 60_000, stage: 'relay' },
+      { label: 'b', base: 50, target: 90, expectedMs: 60_000, stage: 'content' },
+    ]);
+    controller.advancePhase(0);
+    controller.dismissLoading();
+    const step = readStep();
+
+    // When
+    controller.advancePhase(1);
+
+    // Then only the fade's timer runs, and the story stays where it was
+    expect(readProgress()).toBe(100);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(readStep()).toEqual(step);
+  });
+
+  it('As an operator, I see a stall listener that throws reported as a defect while the bar goes on', () => {
+    // Given a counting step whose stall listener throws
+    const { counted } = bindReports();
+    const { controller } = setupController();
+    const stalledAt: number[] = [];
+    controller.initPhases(STALL_PHASES);
+    controller.onProgressStall(() => {
+      stalledAt.push(readShownPercent());
+      throw new Error('the stall warning broke');
+    });
+    controller.advancePhase(1);
+
+    // When the bar parks past the stall time, and then some
+    vi.advanceTimersByTime(PROGRESS_STALL_MS + 3_000);
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect(stalledAt).toHaveLength(1);
+    expect(readShownPercent()).toBeGreaterThan(nth(stalledAt, 0));
   });
 });
 
@@ -566,6 +630,107 @@ describe('The loading bar never stands still', () => {
   });
 });
 
+describe('The loading screen reports a collaborator that throws', () => {
+  it('As an operator, I see a page content that throws as the screen stops following it reported as a defect while dispose returns', () => {
+    // Given a page whose unsubscribe throws
+    const { counted } = bindReports();
+    const pageContent = atom<PageContent>('page');
+    pageContent.listen = () => () => {
+      throw new Error('the page cannot be unfollowed');
+    };
+    const { controller } = setupController({ pageContent });
+
+    // When
+    controller.dispose();
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+
+  it('As an operator, I see a page content that throws as the screen starts following it reported as a defect while the screen still shows its steps', () => {
+    // Given a page that cannot be followed
+    const { counted } = bindReports();
+    const pageContent = atom<PageContent>('page');
+    pageContent.listen = () => {
+      throw new Error('the page cannot be followed');
+    };
+
+    // When
+    const { controller } = setupController({ pageContent, reducedMotion: true });
+    controller.setLoadingStage('relay');
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect(readStep()).toEqual(['Connecting to Polkadot']);
+  });
+
+  it('As an operator, I see a page interval that throws as the bar starts crawling reported as a defect', () => {
+    // Given
+    const { counted } = bindReports();
+    const { controller } = setupController({
+      collaborators: {
+        poll: {
+          start() {
+            throw new Error('the page has no interval');
+          },
+        },
+      },
+    });
+    controller.initPhases(ROOT_PHASES);
+
+    // When
+    controller.advancePhase(0);
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+
+  it('As an operator, I see animation frames that throw as an explanation starts typing reported as a defect', () => {
+    // Given
+    const { counted } = bindReports();
+    const { controller } = setupController({
+      collaborators: {
+        frames: {
+          request() {
+            throw new Error('the page draws no frames');
+          },
+          cancel: () => undefined,
+          now: () => performance.now(),
+        },
+      },
+    });
+    controller.setLoadingStage('relay');
+
+    // When the first explanation is due
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS);
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+
+  it('As an operator, I see page timers that throw as a stage starts its explanations reported as a defect', () => {
+    // Given
+    const { counted } = bindReports();
+    const { controller } = setupController({
+      collaborators: {
+        timers: {
+          now: () => Date.now(),
+          setTimeout() {
+            throw new Error('the page has no timers');
+          },
+          clearTimeout: () => undefined,
+        },
+      },
+    });
+
+    // When
+    controller.setLoadingStage('relay');
+
+    // Then
+    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+});
+
 describe('Restarting the loading phases', () => {
   it('As a visitor, I see the loading phases start again and the overlay stays on screen until it is hidden', () => {
     // Given
@@ -587,12 +752,15 @@ describe('Restarting the loading phases', () => {
 });
 
 /** Builds a controller over fresh stores and a page of its own, torn down with the global fake timers. */
-function setupController({ reducedMotion = false }: Params = {}): Stand {
+function setupController({
+  reducedMotion = false,
+  pageContent = atom<PageContent>('page'),
+  collaborators = {},
+}: Params = {}): Stand {
   // Global, not manual, timers: the minutes-long cases fire tens of thousands of 16ms typing frames, and manual timers
   // settle a real macrotask after each one.
   vi.useFakeTimers();
   resetAllStoresForTests();
-  const pageContent = atom<PageContent>('page');
   const frameTimers = new Map<number, ReturnType<typeof setTimeout>>();
   let lastFrame = 0;
   const controller = createLoadingController({
@@ -617,6 +785,7 @@ function setupController({ reducedMotion = false }: Params = {}): Stand {
       now: () => performance.now(),
     },
     pageContent,
+    ...collaborators,
   });
   onTestFinished(() => {
     controller.dispose();

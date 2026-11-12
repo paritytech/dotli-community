@@ -20,56 +20,62 @@ type SandboxFrame = {
 };
 
 describe('watchSandboxLoad', () => {
-  it('As a visitor, I see my app frame say it starts and the load is heard', async () => {
-    // Given
+  it('As a visitor, I see my app frame say it starts and the loading screen is not cleared yet', () => {
+    // Given a follower of the screen's clear
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: string[] = [];
+    load.subscribeCleared(() => heard.push('cleared'));
 
     // When
     frame.postStatus({ message: 'Starting' });
 
     // Then
-    await expect(load.heard).resolves.toBeUndefined();
+    expect(heard).toEqual([]);
   });
 
-  it('As a visitor, my app frame loads and I hear the outcome loaded and the screen cleared', async () => {
+  it('As a visitor, my app frame loads and I hear the outcome loaded and the screen cleared', () => {
     // Given
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard = recordInOrder(load);
 
     // When
     frame.postStatus({ done: true, outcome: 'loaded' });
 
     // Then
-    await expect(load.cleared).resolves.toBeUndefined();
-    await expect(load.outcome).resolves.toEqual({ outcome: 'loaded', failedStep: undefined });
+    expect(heard).toEqual(['cleared', { outcome: 'loaded', failedStep: undefined }]);
   });
 
-  it('As a visitor, my app frame fails at a step and I hear failed with that step', async () => {
+  it('As a visitor, my app frame fails at a step and I hear failed with that step', () => {
     // Given
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeOutcomes(report => heard.push(report));
 
     // When
     frame.postStatus({ done: true, outcome: 'failed', failedStep: 'content_fetch' });
 
     // Then
-    await expect(load.outcome).resolves.toEqual({ outcome: 'failed', failedStep: 'content_fetch' });
+    expect(heard).toEqual([{ outcome: 'failed', failedStep: 'content_fetch' }]);
   });
 
-  it('As a visitor, my app frame names a step that is not a token and I hear failed with no step', async () => {
+  it('As a visitor, my app frame names a step that is not a token and I hear failed with no step', () => {
     // Given
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeOutcomes(report => heard.push(report));
 
     // When
     frame.postStatus({ done: true, outcome: 'failed', failedStep: 'Failed: <script>' });
 
     // Then
-    await expect(load.outcome).resolves.toEqual({ outcome: 'failed', failedStep: undefined });
+    expect(heard).toEqual([{ outcome: 'failed', failedStep: undefined }]);
   });
 
-  it('As a visitor, my app frame clears the screen for its password prompt and later fails, and I hear the clear first and then failed with its step', async () => {
+  it('As a visitor, my app frame clears the screen for its password prompt and later fails, and I hear the clear first and then failed with its step', () => {
     // Given a watch that records what it hears, in order
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
@@ -77,25 +83,43 @@ describe('watchSandboxLoad', () => {
 
     // When the sandbox clears the screen for its prompt, then fails
     frame.postStatus({ done: true });
-    await load.cleared;
     frame.postStatus({ done: true, outcome: 'failed', failedStep: 'archive_password' });
-    await load.outcome;
 
     // Then
     expect(heard).toEqual(['cleared', { outcome: 'failed', failedStep: 'archive_password' }]);
   });
 
-  it('As a visitor, my app frame reports twice and only the first outcome counts', async () => {
-    // Given
+  it('As a visitor, my app frame reports twice and I hear the screen cleared once and both outcomes', () => {
+    // Given a watch that records what it hears, in order
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard = recordInOrder(load);
 
     // When
     frame.postStatus({ done: true, outcome: 'loaded' });
     frame.postStatus({ done: true, outcome: 'failed', failedStep: 'content_fetch' });
 
-    // Then the first outcome stands
-    await expect(load.outcome).resolves.toEqual({ outcome: 'loaded', failedStep: undefined });
+    // Then
+    expect(heard).toEqual([
+      'cleared',
+      { outcome: 'loaded', failedStep: undefined },
+      { outcome: 'failed', failedStep: 'content_fetch' },
+    ]);
+  });
+
+  it('As a visitor, I start following the screen after my app frame cleared it and hear the clear at once, once', () => {
+    // Given an app frame that cleared the screen before anyone followed it
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    frame.postStatus({ done: true });
+    const heard: string[] = [];
+
+    // When a follower subscribes and the frame reports again
+    load.subscribeCleared(() => heard.push('cleared'));
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then
+    expect(heard).toEqual(['cleared']);
   });
 
   it('As a visitor whose app frame fails and then loads on my retry, I hear both outcomes in order', () => {
@@ -186,63 +210,159 @@ describe('watchSandboxLoad', () => {
     expect(heard).toEqual([{ outcome: 'loaded', failedStep: undefined }]);
   });
 
-  it('As a visitor whose watch on the app frame stopped, I wait out the deadline and nothing the frame said after counts', async () => {
-    // Given a watch stopped twice
+  it('As an operator, I watch a follower of the screen clear throw and see it reported as a clear listener while the other followers still hear the clear', () => {
+    // Given a clear follower that throws and one that records
+    const { captures } = bindReports();
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    load.subscribeCleared(() => {
+      throw new Error('a follower broke');
+    });
+    const heard: string[] = [];
+    load.subscribeCleared(() => heard.push('cleared'));
+
+    // When the app frame clears the screen
+    frame.postStatus({ done: true });
+
+    // Then the throw was reported under the clear's listeners and the other follower heard the clear
+    expect(captures.exception.mock.calls.map(([, context]) => [context.step, context.tags?.['owner']])).toEqual([
+      ['listener', 'sandbox_load.cleared'],
+    ]);
+    expect(heard).toEqual(['cleared']);
+  });
+
+  it('As an operator, I see a sandbox channel that throws as the watch starts reported as a defect while the watch returns', () => {
+    // Given a channel that cannot be listened to
+    const { captures, counted } = bindReports();
+    const channel: Pick<SandboxChannel, 'on'> = {
+      on() {
+        throw new Error('the channel is closed');
+      },
+    };
+
+    // When
+    watchSandboxLoad(channel, { timers: createManualTimers() });
+
+    // Then
+    expect(captures.exception.mock.calls.map(([, context]) => context.step)).toEqual(['transition']);
+    expect(counted('sandbox_load.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+  });
+
+  it('As a visitor whose watch on the app frame stopped twice, a deadline asked before the stop never calls the frame silent and nothing is left listening', async () => {
+    // Given a deadline asked, then a watch stopped twice
     const timers = createManualTimers();
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers });
+    const silences: SandboxSilentError[] = [];
+    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
     load.dispose();
     load.dispose();
 
-    // When the sandbox reports its outcome and the deadline passes
-    frame.postStatus({ done: true, outcome: 'loaded' });
-    const settled = load.expectHeardWithin().catch((error: unknown) => error);
-    await timers.advance(30_000);
-
-    // Then the load stays unheard and nothing is left listening
-    expect(await settled).toBeInstanceOf(SandboxSilentError);
-    expect(frame.countListening()).toBe(0);
-  });
-
-  it('As a visitor whose app frame never speaks, I wait out the deadline and the wait fails', async () => {
-    // Given
-    const timers = createManualTimers();
-    const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
-
-    // When
-    const settled = load.expectHeardWithin().catch((error: unknown) => error);
+    // When the deadline passes
     await timers.advance(30_000);
 
     // Then
-    expect(await settled).toBeInstanceOf(SandboxSilentError);
+    expect(silences).toEqual([]);
+    expect(frame.countListening()).toBe(0);
   });
 
-  it('As a visitor whose app frame speaks during the wait, I wait and the wait resolves before the deadline', async () => {
+  it('As a visitor whose app frame never speaks, I wait out the deadline and hear the frame silent once', async () => {
+    // Given
+    const timers = createManualTimers();
+    const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
+    const silences: SandboxSilentError[] = [];
+    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+
+    // When
+    await timers.advance(30_000);
+
+    // Then
+    expect(silences).toEqual([expect.any(SandboxSilentError)]);
+  });
+
+  it('As a visitor whose load asks to wait again, I hear the frame silent only for the later ask, and the earlier ask stops nothing', async () => {
+    // Given a deadline asked twice, and the stop of the first
+    const timers = createManualTimers();
+    const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
+    const earlier: SandboxSilentError[] = [];
+    const later: SandboxSilentError[] = [];
+    const stopEarlier = load.expectHeardWithin({ onSilent: error => earlier.push(error), silenceMs: 10_000 });
+    load.expectHeardWithin({ onSilent: error => later.push(error), silenceMs: 30_000 });
+
+    // When the earlier ask is stopped and the later deadline passes
+    stopEarlier();
+    await timers.advance(30_000);
+
+    // Then
+    expect(earlier).toEqual([]);
+    expect(later).toEqual([expect.any(SandboxSilentError)]);
+  });
+
+  it('As an operator, I see a silence handler that throws reported as a defect while the watch goes on', async () => {
+    // Given a deadline whose handler throws
+    const { captures } = bindReports();
+    const timers = createManualTimers();
+    const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
+    load.expectHeardWithin({
+      onSilent() {
+        throw new Error('the handler broke');
+      },
+      silenceMs: 30_000,
+    });
+
+    // When the deadline passes
+    await timers.advance(30_000);
+
+    // Then
+    expect(captures.exception.mock.calls.map(([, context]) => context.step)).toEqual(['transition']);
+  });
+
+  it('As a visitor whose app frame speaks during the wait, I never hear the frame silent', async () => {
     // Given a wait that has run to just short of its deadline
     const timers = createManualTimers();
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers });
-    const expected = load.expectHeardWithin();
+    const silences: SandboxSilentError[] = [];
+    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
     await timers.advance(29_999);
 
-    // When
+    // When the frame speaks and the deadline passes
     frame.postStatus({ message: 'Starting' });
+    await timers.advance(1);
 
     // Then
-    await expect(expected).resolves.toBeUndefined();
+    expect(silences).toEqual([]);
   });
 
-  it('As a visitor whose app frame spoke before the deadline started, I wait and the wait resolves at once', async () => {
+  it('As a visitor whose app frame spoke before the deadline started, I never hear the frame silent', async () => {
     // Given the sandbox speaking before the deadline starts
+    const timers = createManualTimers();
     const frame = createSandboxFrame();
-    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const load = watchSandboxLoad(frame.channel, { timers });
     frame.postStatus({ message: 'Starting' });
+    const silences: SandboxSilentError[] = [];
 
-    // When
-    const expected = load.expectHeardWithin(30_000);
+    // When the deadline is asked and its time passes
+    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    await timers.advance(30_000);
 
     // Then
-    await expect(expected).resolves.toBeUndefined();
+    expect(silences).toEqual([]);
+  });
+
+  it('As a visitor whose load stopped waiting for the app frame, I never hear the frame silent', async () => {
+    // Given a deadline that was stopped
+    const timers = createManualTimers();
+    const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
+    const silences: SandboxSilentError[] = [];
+    const stopDeadline = load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+
+    // When
+    stopDeadline();
+    await timers.advance(30_000);
+
+    // Then
+    expect(silences).toEqual([]);
   });
 });
 
@@ -277,10 +397,10 @@ function createSandboxFrame(): SandboxFrame {
   };
 }
 
-/** Records the clear and the outcome in the order they settle. */
+/** Records the clear and each outcome in the order they are heard. */
 function recordInOrder(load: SandboxLoad): unknown[] {
   const heard: unknown[] = [];
-  void load.cleared.then(() => heard.push('cleared'));
-  void load.outcome.then(report => heard.push(report));
+  load.subscribeCleared(() => heard.push('cleared'));
+  load.subscribeOutcomes(report => heard.push(report));
   return heard;
 }

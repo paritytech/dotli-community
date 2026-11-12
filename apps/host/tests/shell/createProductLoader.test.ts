@@ -10,11 +10,11 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { flush } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
+import { bindCaptureSink, m, type CaptureContext, type SpanValue } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
-import { createDeferred, createListenerSet, waitForStatus, withTimeout } from '@dotli/shared';
+import { createListenerSet, noop, waitForStatus } from '@dotli/shared';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -28,7 +28,7 @@ import type { NameSource } from '../../src/createNameSource.js';
 import { createProductLoader } from '../../src/createProductLoader.js';
 import type { PageCidCache } from '../../src/createPageCidCache.js';
 import type { ProductFrame } from '../../src/runtime/createProductFrame.js';
-import { SandboxSilentError, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
+import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { urlPillState } from '../../src/state/urlPillState.js';
 
@@ -132,6 +132,31 @@ describe('createProductLoader', () => {
     expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-cached'));
     expect(revalidated).toEqual([['doom', 'bafy-cached', true]]);
     expect(debug.at(-1)?.payload).toMatchObject({ label: 'doom', path: 'fast' });
+  });
+
+  it('As an operator, I see a visitor return to a cached app in one fast path span, ended at the handoff', async () => {
+    // Given
+    const { loader } = setupLoader({ cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } });
+    const spans = recordSpans();
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readFastPaths(spans)).toEqual([{ outcome: undefined, ended: true }]);
+  });
+
+  it('As an operator, I see a cached app that fails to render end its fast path span with an error', async () => {
+    // Given
+    const { loader, ports } = setupLoader({ cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } });
+    ports.product.render.mockRejectedValueOnce(new Error('the frame did not render'));
+    const spans = recordSpans();
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readFastPaths(spans)).toEqual([{ outcome: 'error', ended: true }]);
   });
 
   it('As a visitor whose cached copy no longer passes, I open it and see why, and the copy is checked without reloading me', async () => {
@@ -360,6 +385,39 @@ describe('createProductLoader', () => {
     expect(readResolution()).toMatchObject({ outcome: 'error' });
     expect(ports.product.halt).toHaveBeenCalledTimes(1);
     expect(nextAttempt.attemptNumber).toBe(2);
+  });
+
+  it('As a visitor whose app frame throws as it is asked to render, I open a name and see the failure screen, and the frame halts', async () => {
+    // Given a frame whose render throws before it hands back a promise
+    const cause = new Error('the frame threw at the render');
+    const { loader, ports, failures } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(() => {
+      throw cause;
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor whose app frame fails to render and then throws as it halts, I open a name and still see the failure screen', async () => {
+    // Given a frame whose render rejects and whose halt throws
+    const cause = new Error('the frame failed to render');
+    const { loader, ports, failures } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(() => Promise.reject(cause));
+    ports.product.halt.mockImplementation(() => {
+      throw new Error('the frame threw as it halted');
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then the load fails with the render's error and shows its screen
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(productState.store.get().status).toBe('error');
   });
 
   it('As a visitor whose sandbox said its content loaded while the app frame came up, I see the app and my journey ends', async () => {
@@ -596,10 +654,6 @@ function setupLoader(params: Params = {}) {
   const failures: LoadFailure[] = [];
   const sandboxOutcomes = createListenerSet<SandboxLoadReport>({ onListenerError: rethrow });
   let latestOutcome: SandboxLoadReport | null = null;
-  const heard = createDeferred<undefined>();
-  if (params.silentSandbox !== true) {
-    heard.resolve(undefined);
-  }
   const stored: string[] = [];
   const revalidated: [string, string, boolean][] = [];
   const recents: string[] = [];
@@ -640,13 +694,17 @@ function setupLoader(params: Params = {}) {
         }
         return sandboxOutcomes.subscribe(listener);
       },
-      expectHeardWithin: () =>
-        withTimeout({
-          work: heard.promise,
-          ms: 30_000,
-          timeoutError: () => new SandboxSilentError(30_000),
-          timers,
-        }),
+      expectHeardWithin: ({ onSilent }: Parameters<SandboxLoad['expectHeardWithin']>[0]) => {
+        if (params.silentSandbox !== true) {
+          return noop;
+        }
+        const timer = timers.setTimeout(() => {
+          onSilent(new SandboxSilentError(30_000));
+        }, 30_000);
+        return () => {
+          timers.clearTimeout(timer);
+        };
+      },
     },
     content: { onProgress: () => () => undefined },
   };
@@ -752,6 +810,44 @@ function setupLoader(params: Params = {}) {
     sandboxOutcomes.emit(report);
     return Promise.resolve();
   }
+}
+
+/**
+ * Binds a Sentry that records each span opened apart from the active one, with its attributes and whether it ended.
+ * Restored when the case ends. It replaces the recording `setupLoader` bound, so a case that calls it cannot read the
+ * resolution's spans.
+ */
+function recordSpans() {
+  const spans: { name: string; attributes: Record<string, SpanValue>; ended: boolean }[] = [];
+  onTestFinished(
+    m.bind({
+      startSpan: (_options, fn) => fn(undefined),
+      startInactiveSpan: ({ name, attributes }) => {
+        const span = { name, attributes: { ...attributes }, ended: false };
+        spans.push(span);
+        return {
+          setAttributes(next) {
+            Object.assign(span.attributes, next);
+          },
+          end() {
+            span.ended = true;
+          },
+        };
+      },
+      setMeasurement: noop,
+      metrics: { count: noop, distribution: noop, gauge: noop },
+      setTag: noop,
+      addBreadcrumb: noop,
+    }),
+  );
+  return spans;
+}
+
+/** Returns each fast path span's outcome and whether it ended, in order. */
+function readFastPaths(spans: ReturnType<typeof recordSpans>) {
+  return spans
+    .filter(span => span.name === 'dotli.e2e.fast_path')
+    .map(({ attributes, ended }) => ({ outcome: attributes['outcome'], ended }));
 }
 
 function createWorkerManifest(
