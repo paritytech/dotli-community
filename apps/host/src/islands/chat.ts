@@ -15,11 +15,12 @@ function openFeed(chat: ChatStore): ChatFeed {
   const productId = useStore(chatPanelState.store, chatPanelState.getCurrentProductId);
   const loadId = useStore(productState.store, state => state.loadId);
   onCleanup(chatPanelState.markFollowedRoomSeen(chat.view));
+  const initial = chat.view.get();
   return {
-    contacts: useStore(chat.view, state => state.contacts),
-    contactsFailed: useStore(chat.view, state => state.contactsFailed),
-    messages: useStore(chat.view, state => state.messages),
-    messagesFailed: useStore(chat.view, state => state.messagesFailed),
+    contacts: useStore(chat.view, state => state.contacts, { initial }),
+    contactsFailed: useStore(chat.view, state => state.contactsFailed, { initial }),
+    messages: useStore(chat.view, state => state.messages, { initial }),
+    messagesFailed: useStore(chat.view, state => state.messagesFailed, { initial }),
     onChange: listener => chat.view.listen(listener),
     follow: shown => {
       createEffect(

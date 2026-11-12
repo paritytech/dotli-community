@@ -1,15 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
 import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
-import type {
-  ChangeOutcome,
-  PendingPermissions,
-  ProductPermissionsState,
+import { createPermissionAuthorizations } from '../runtime/createPermissionAuthorizations.js';
+import {
+  createProductPermissions,
+  type ChangeOutcome,
+  type PendingPermissions,
+  type ProductPermissionsState,
 } from '../runtime/state/productPermissions.js';
+import type { ProductState } from '../runtime/state/productState.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ShownProduct, usePermissionsPanel } from './permissions.js';
 
@@ -51,6 +54,23 @@ function read(statuses: readonly PermissionStatus[], label = 'app'): ProductPerm
 }
 
 describe('usePermissionsPanel', () => {
+  it('As a user, I open the topbar before the permissions of the app are read, and the permissions button shows no grants', () => {
+    // Given
+    const product = atom<ProductState>({ status: 'none', loadId: 0 });
+    const store = createProductPermissions({ registry: createPermissionAuthorizations(), product });
+
+    // When
+    const { panel, dispose } = createRoot(d => ({
+      panel: usePermissionsPanel({ permissions: PERMISSIONS, product, store }),
+      dispose: d,
+    }));
+    onTestFinished(dispose);
+    flush();
+
+    // Then
+    expect(panel.hasGrants()).toBe(false);
+  });
+
   it.each<[string, ShownProduct, ProductPermissionsState, string | undefined]>([
     ['the product is still loading', { status: 'none' }, { status: 'none' }, 'loading'],
     ['there is no app', { status: 'error' }, { status: 'none' }, 'no-app'],

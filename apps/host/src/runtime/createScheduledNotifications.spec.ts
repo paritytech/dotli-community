@@ -240,7 +240,8 @@ describe('scheduled notifications poller', () => {
   });
 
   it('As a user, I load a page with a due notification the poller also reaches and it shows once', async () => {
-    // Given a due record whose claim at page load is slow to land
+    // Given a due record whose claim at page load is slow to land. The schedule below finds that round running and
+    // starts no poller, so this guards only that it shows once.
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
     const removeRecord = store.removeById.getMockImplementation();
@@ -250,10 +251,10 @@ describe('scheduled notifications poller', () => {
       return (await removeRecord?.(hostId)) ?? false;
     });
     store.schedule.mockResolvedValue({ ok: true, id: 2 });
-    // Without Web Locks, so nothing but the claim itself keeps the two apart.
+    // Without Web Locks, so the store's delete alone claims the record.
     const { notifications, show } = start({ store, overrides: { locks: undefined } });
 
-    // When a newly scheduled notification starts the poller, which reaches the record while that claim still runs
+    // When a newly scheduled notification finds that round running, and the claim lands two seconds later
     await notifications.schedule({ ...DUE, scheduledAt: timers.now() + 3_600_000 });
     await advanceTicks(2);
     landed.resolve(undefined);
@@ -262,6 +263,123 @@ describe('scheduled notifications poller', () => {
     // Then it shows once, as the page load found it
     expect(show).toHaveBeenCalledTimes(1);
     expect(show).toHaveBeenCalledWith(expect.objectContaining({ label: 'Acme', browserNotification: false }));
+  });
+
+  it('As a user, I keep a page open while a round is slow and a tick that comes meanwhile starts no second round', async () => {
+    // Given an initialized scheduler whose rehydrate round ended, and a read held from the next call on
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
+    start({ store });
+    await advanceTicks(1);
+    const read = createDeferred<ScheduledNotificationRecord[]>();
+    store.listAll.mockClear();
+    store.listAll.mockReturnValueOnce(read.promise);
+
+    // When the poll ticks three times while the read is held, and then once more after it lands
+    await advanceTicks(3);
+    const readsWhileHeld = store.listAll.mock.calls.length;
+    read.resolve([{ ...DUE, scheduledAt: timers.now() + 3_600_000 }]);
+    await advanceTicks(1);
+
+    // Then the store was read once while held, and the tick after the release ran a round
+    expect(readsWhileHeld).toBe(1);
+    expect(store.listAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a user who schedules a notification while a round reads the store, I keep the poller running so the notification still shows', async () => {
+    // Given a polling tab holding a far-off notification, whose store gets one due in 2.5 seconds and whose next read is held
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const record = { ...DUE, scheduledAt: timers.now() + 2_500 };
+    const store = createRecordStore({ records: [{ ...DUE, hostId: 9, scheduledAt: timers.now() + 3_600_000 }] });
+    store.schedule.mockResolvedValue({ ok: true, id: 1 });
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+    const read = createDeferred<ScheduledNotificationRecord[]>();
+    store.listAll.mockReturnValueOnce(read.promise);
+    await advanceTicks(1);
+
+    // When a notification is scheduled while that read is held, and the read, taken before it, comes back empty
+    store.listAll.mockResolvedValue([record]);
+    store.removeById.mockResolvedValueOnce(true);
+    await notifications.schedule(record);
+    read.resolve([]);
+    await advanceTicks(2);
+
+    // Then the poller still ran, and the notification shows once it falls due
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user, I schedule a notification before the page starts its scheduler and it shows once the scheduler starts', async () => {
+    // Given a scheduler not yet started, over a store that keeps a notification due in two seconds once scheduled
+    const { timers, build, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 2_000 }] });
+    store.schedule.mockResolvedValue({ ok: true, id: 1 });
+    const { notifications, show } = build({ store });
+
+    // When the notification is scheduled and nothing starts the scheduler
+    await notifications.schedule({ ...DUE, scheduledAt: timers.now() + 2_000 });
+
+    // Then no poller starts
+    expect(timers.countPending()).toBe(0);
+
+    // When the scheduler starts and the notification falls due
+    notifications.init({ label: 'acme' });
+    await advanceTicks(3);
+
+    // Then it shows once
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user who leaves a page while its scheduler claims a due notification, I come back and the notification still shows once', async () => {
+    // Given a due record whose claim at page load removes it at once and is slow to answer
+    const { timers, page, start } = createPollerHarness();
+    const store = createRecordStore({ records: [DUE] });
+    const removeRecord = store.removeById.getMockImplementation();
+    const landed = createDeferred<undefined>();
+    store.removeById.mockImplementationOnce(async hostId => {
+      const removed = (await removeRecord?.(hostId)) ?? false;
+      await landed.promise;
+      return removed;
+    });
+    const { show } = start({ store });
+    await timers.advance(0);
+
+    // When the page hides, the delete's answer lands, and the page is restored
+    page.window.dispatchEvent(new Event('pagehide'));
+    landed.resolve(undefined);
+    await timers.advance(0);
+    page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    await timers.advance(0);
+
+    // Then it shows once, as the page load found it
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
+  });
+
+  it('As a user who comes back to a page whose claim was still running when it left, I see the notification once', async () => {
+    // Given a due record whose claim at page load removes it at once and is slow to answer
+    const { timers, page, start } = createPollerHarness();
+    const store = createRecordStore({ records: [DUE] });
+    const removeRecord = store.removeById.getMockImplementation();
+    const landed = createDeferred<undefined>();
+    store.removeById.mockImplementationOnce(async hostId => {
+      const removed = (await removeRecord?.(hostId)) ?? false;
+      await landed.promise;
+      return removed;
+    });
+    const { show } = start({ store });
+    await timers.advance(0);
+
+    // When the page hides and is restored, the restored round finds nothing and ends, and the delete's answer lands
+    page.window.dispatchEvent(new Event('pagehide'));
+    page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    await timers.advance(0);
+    landed.resolve(undefined);
+    await timers.advance(0);
+
+    // Then it shows once, as the page load found it
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ browserNotification: false }));
   });
 
   it('As a user back on a page from the back-forward cache, I come back and a notification that fell due meanwhile still shows', async () => {
@@ -395,6 +513,44 @@ describe('scheduled notifications disposed', () => {
     // Then it is not claimed, so it stays for another tab or the next load, and nothing is shown
     expect(store.removeById).not.toHaveBeenCalled();
     expect(show).not.toHaveBeenCalled();
+  });
+
+  it('As a user who left the page, I see a claim whose delete was already running show nothing', async () => {
+    // Given a page load whose claim of a due notification is held at the delete
+    const { start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [DUE] });
+    const removed = createDeferred<boolean>();
+    store.removeById.mockReturnValueOnce(removed.promise);
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+
+    // When the scheduler is disposed and the delete then lands
+    notifications.dispose();
+    removed.resolve(true);
+    await advanceTicks(1);
+
+    // Then nothing is shown
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('As an operator, I see a notification whose show throws reported as a defect, and the next due notification still shows', async () => {
+    // Given two due notifications, the first of which fails to show
+    const { counted, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [DUE, { ...DUE, hostId: 2, perProductId: 2 }] });
+    const show = vi
+      .fn<ScheduledNotificationsParams['show']>()
+      .mockImplementationOnce(() => {
+        throw new Error('toast failed');
+      })
+      .mockImplementation(() => {});
+    start({ store, overrides: { show } });
+
+    // When the page load claims them
+    await advanceTicks(1);
+
+    // Then the failure is counted under the transition metric, and the second notification showed
+    expect(counted('notifications.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(show).toHaveBeenCalledTimes(2);
   });
 
   it('As a dApp user, I start a scheduler already disposed and it opens no channel, fires nothing and starts no poller', async () => {

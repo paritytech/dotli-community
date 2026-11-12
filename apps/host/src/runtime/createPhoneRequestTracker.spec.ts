@@ -11,7 +11,12 @@ import { encodePhoneRequestFrame } from '../testing/encodePhoneRequestFrame.js';
 import { encodePhoneResponseFrame, type PhoneResult } from '../testing/encodePhoneResponseFrame.js';
 import { encodeRequestFrame } from '../testing/encodeRequestFrame.js';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
-import { createPhoneRequestTracker, type PhoneRequest } from './createPhoneRequestTracker.js';
+import {
+  createPhoneRequestTracker,
+  type PhoneClaim,
+  type PhoneRequest,
+  type PhoneRequestTracker,
+} from './createPhoneRequestTracker.js';
 
 const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
 const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
@@ -186,6 +191,33 @@ describe('phone request tracker', () => {
     expect(afterClose).toBeUndefined();
   });
 
+  it('As a dotli integrator, I claim from inside a tracker transition and find nothing, and the request stays claimable', async () => {
+    // Given a network hold that claims while the second request is tracked
+    let reentrant: PhoneClaim | undefined;
+    let holds = 0;
+    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
+      holdNetwork() {
+        holds += 1;
+        if (holds === 2) {
+          reentrant = tracker.claim(isSignRaw);
+        }
+        return () => {};
+      },
+    });
+    const tap = tracker.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+
+    // When
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
+    const claim = tracker.claim(isSignRaw);
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED }));
+
+    // Then
+    expect(reentrant).toBeUndefined();
+    expect(claim?.request.body).toEqual(buildSignRawBody('x'));
+    await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
+  });
+
   it('As a dotli integrator, I send a request on a closed tap and find nothing to claim', () => {
     // Given
     const { tracker: requests, reportUndecodable } = createTrackerHarness();
@@ -252,6 +284,25 @@ describe('phone request tracker', () => {
     expect(sentry.counted('signing.phone_request')).toEqual([{ outcome: 'undecodable', reason: 'signPayload' }]);
     expect(captured).toMatchObject([{ step: 'phone_request', tags: { method: 'signPayload' } }]);
     expect(logged).toHaveLength(1);
+  });
+
+  it('As an operator, I see a transition fail because the undecodable report threw, and the tracker still tracks the next request', () => {
+    // Given a tracker whose undecodable report throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const reportUndecodable = vi.fn(() => {
+      throw new Error('report failed');
+    });
+    const requests = createPhoneRequestTracker({ reportUndecodable });
+    const tap = requests.connect();
+
+    // When an undecodable request is followed by a valid one
+    tap.fromProduct(encodeGarbagePhoneRequestFrame('a', 'signRaw'));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('x') }));
+    const claim = requests.claim(isSignRaw);
+
+    // Then the throw is reported as a defect of the tracker, and the valid request is claimable
+    expect(reports.exceptions).toMatchObject([{ step: 'phone_tracker_transition' }]);
+    expect(claim?.request.body).toEqual(buildSignRawBody('x'));
   });
 
   it('As an operator, I see an undecodable answer reported and its count left to the claim', async () => {

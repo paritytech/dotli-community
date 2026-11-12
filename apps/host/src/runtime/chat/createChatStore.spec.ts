@@ -15,6 +15,15 @@ import { createMemoryChatRepo } from './createChatStore.fake.js';
 const PRODUCT = 'chatty.dot';
 const GONE = new Error('IndexedDB is gone');
 const NOW = 1_700_000_000_000;
+/** The view of a chat followed at nothing. */
+const EMPTY_VIEW = {
+  productId: null,
+  contacts: null,
+  contactsFailed: false,
+  roomId: null,
+  messages: null,
+  messagesFailed: false,
+};
 
 function setup(): {
   repo: ReturnType<typeof createMemoryChatRepo>;
@@ -543,14 +552,46 @@ describe('chat store view', () => {
     await chat.settle();
 
     // Then
-    expect(chat.view.get()).toEqual({
-      productId: null,
-      contacts: null,
-      contactsFailed: false,
-      roomId: null,
-      messages: null,
-      messagesFailed: false,
-    });
+    expect(chat.view.get()).toEqual(EMPTY_VIEW);
+  });
+
+  it('As a user who closes the chat panel while a room change waits behind a running read, I let the read land and no further read is made', async () => {
+    // Given a room list read that waits while a room change makes another read due
+    const { repo, chat } = setup();
+    repo.reads.hold.rooms = true;
+    chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
+    await repo.reads.holding(1);
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    repo.reads.hold.rooms = false;
+
+    // When
+    chat.follow(null);
+    repo.reads.releaseOne();
+    await chat.settle();
+
+    // Then
+    expect(repo.reads.count.rooms).toBe(1);
+    expect(chat.view.get()).toEqual(EMPTY_VIEW);
+  });
+
+  it('As a user who closes and reopens the chat panel during a room list read, I see the list end on the rooms written meanwhile after one more read', async () => {
+    // Given a read that waits while the panel closes, a room is created and the panel reopens
+    const { repo, chat } = setup();
+    repo.reads.hold.rooms = true;
+    chat.follow({ productId: PRODUCT, roomId: null, loadId: 1 });
+    await repo.reads.holding(1);
+    chat.follow(null);
+    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
+    chat.follow({ productId: PRODUCT, roomId: null, loadId: 2 });
+    repo.reads.hold.rooms = false;
+
+    // When
+    repo.reads.releaseOne();
+    await chat.settle();
+
+    // Then
+    expect(repo.reads.count.rooms).toBe(2);
+    expect(chat.view.get().contacts?.rooms.map(room => room.roomId)).toEqual(['main']);
   });
 
   it('As a user with the chat panel open, I hit a failed read and see it reported and flagged until a read works while I keep what was shown', async () => {

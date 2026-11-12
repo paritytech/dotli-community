@@ -8,12 +8,15 @@ import type { ProductId } from '@parity/truapi';
 import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
-  createAsyncTaskPool,
+  createStateMachine,
   log,
   listen,
   listenForDocumentVisible,
   realTimers,
+  type HandlerOf,
+  type MachineTypes,
   type Timers,
+  type Transition,
   type VisibilitySource,
 } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
@@ -27,6 +30,9 @@ const report = createReporter({ flow: 'notifications' });
  * browser causes is expected, the rest captured.
  */
 const notificationsPollMetric = defineCount<'error'>('notifications.poll');
+
+/** Count. A transition of the scheduler threw. Tagged `outcome` (error) and `reason` (the error's name). */
+const notificationsTransitionMetric = defineCount<'error'>('notifications.transition');
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
@@ -72,8 +78,67 @@ export type ScheduledNotifications = ReturnType<typeof createScheduledNotificati
 
 type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
 
-// The poller retries every second, so a failure is reported when it starts, not on every tick.
 type PollStep = 'remove_stale' | 'list_pending' | 'claim';
+
+type FireSource = 'realtime' | 'rehydrate';
+
+/** A round's step. A step's events carry the `Round` value they were started for. */
+type Round =
+  | { kind: 'removingStale' }
+  | { kind: 'listing' }
+  // Claims the first of `due`.
+  | { kind: 'claiming'; due: readonly [ScheduledNotificationRecord, ...ScheduledNotificationRecord[]] };
+
+type ClaimingRound = Extract<Round, { kind: 'claiming' }>;
+
+type Running = {
+  stopListening: () => void;
+  channel: BroadcastChannel | null;
+  /** Aborts when the scheduler is disposed, so a claim in flight starts no delete. */
+  lifetime: AbortController;
+};
+
+/** `rehydrating` fires what fell due as `rehydrate`, and `ticking` as `realtime`. */
+type SchedulerState =
+  | { kind: 'uninitialized' }
+  | ({ kind: 'idle' } & Running)
+  | ({ kind: 'polling'; stopPoll: () => void } & Running)
+  | ({ kind: 'rehydrating'; round: Round } & Running)
+  // `rescan` is set when a notification was scheduled meanwhile, so the round's list may predate it and an empty list
+  // does not stop the poller.
+  | ({ kind: 'ticking'; stopPoll: () => void; round: Round; rescan: boolean } & Running)
+  | { kind: 'hidden'; stopListening: () => void; lifetime: AbortController }
+  | { kind: 'disposed' };
+
+/** The kinds that run a round. */
+type RoundState = Extract<SchedulerState, { kind: 'rehydrating' | 'ticking' }>;
+
+/** The kinds of a shown page, which hold the channel. */
+type AwakeKind = 'idle' | 'polling' | 'rehydrating' | 'ticking';
+
+type SchedulerEvent =
+  | { kind: 'initialized'; label: string }
+  | { kind: 'ticked' }
+  | { kind: 'woken' }
+  | { kind: 'scheduled' }
+  | { kind: 'cancelled' }
+  | { kind: 'pageHidden' }
+  | { kind: 'pageRestored' }
+  | { kind: 'disposed' }
+  | { kind: 'staleRemoved'; round: Round }
+  | { kind: 'staleRemoveFailed'; round: Round; error: unknown }
+  | { kind: 'listed'; round: Round; records: readonly ScheduledNotificationRecord[] }
+  | { kind: 'listFailed'; round: Round; error: unknown }
+  | { kind: 'claimed'; round: ClaimingRound; record: ScheduledNotificationRecord; removed: boolean; source: FireSource }
+  | { kind: 'claimFailed'; round: ClaimingRound; error: unknown };
+
+type SchedulerEffect =
+  | { kind: 'initialized'; label: string }
+  | { kind: 'stepSucceeded'; step: PollStep }
+  | { kind: 'stepFailed'; step: PollStep; error: unknown }
+  | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource };
+
+type SchedulerMachine = MachineTypes<SchedulerState, SchedulerEvent, SchedulerEffect>;
 
 export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
 
@@ -93,236 +158,316 @@ export function createScheduledNotifications({
   timers = realTimers,
   poll = pagePoll,
 }: ScheduledNotificationsParams) {
-  let initialized = false;
-  let shuttingDown = false;
-  // Aborts on dispose, after which the scheduler starts no poller, opens no channel and claims no record.
-  const lifetime = new AbortController();
-  let stopPoll: (() => void) | null = null;
-  let stopListening: (() => void) | null = null;
-  let broadcastChannel: BroadcastChannel | null = null;
-  const failing = new Set<PollStep>();
-  // One claim per record at a time. A claim that queued behind another finds the record gone and fires nothing.
-  const claims = createAsyncTaskPool({ poolSize: 1 });
-
-  function markSucceeded(step: PollStep): void {
-    failing.delete(step);
-  }
-
-  function reportFailure(step: PollStep, error: unknown): void {
-    // The connection closes as the page unloads, so a tick caught by it is moot.
-    if (shuttingDown || failing.has(step)) {
+  /** Moves the round on to listing once the stale records are gone. */
+  const listAfterStale: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'staleRemoved'> = (
+    state,
+    { round },
+    transition,
+  ) => {
+    if (round !== state.round) {
       return;
     }
-    failing.add(step);
-    if (isExpectedDbError(error)) {
-      report.expected(error, { step, metric: notificationsPollMetric, attributes: { step } });
+    transition.emitSideEffect({ kind: 'stepSucceeded', step: 'remove_stale' });
+    runStep({ ...state, round: { kind: 'listing' } }, transition);
+  };
+  /** Moves the round on to listing, since a stale record left behind is only a record not yet due. */
+  const listAfterStaleFailed: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'staleRemoveFailed'> = (
+    state,
+    { round, error },
+    transition,
+  ) => {
+    if (round !== state.round) {
       return;
     }
-    report.defect(error, {
-      step,
-      metric: notificationsPollMetric,
-      message: `[scheduled notifications] ${step} failed:`,
-      attributes: { step },
-    });
-  }
-
-  /** Null when listing failed. */
-  async function listPendingRecords(): Promise<ScheduledNotificationRecord[] | null> {
-    try {
-      await store.removeStale(timers.now());
-      markSucceeded('remove_stale');
-    } catch (error) {
-      reportFailure('remove_stale', error);
+    transition.emitSideEffect({ kind: 'stepFailed', step: 'remove_stale', error });
+    runStep({ ...state, round: { kind: 'listing' } }, transition);
+  };
+  /** Claims the listed records that fell due. A tick that lists none stops the poller. */
+  const claimListed: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'listed'> = (
+    state,
+    { round, records },
+    transition,
+  ) => {
+    if (round !== state.round) {
+      return;
     }
-
-    try {
-      const records = await store.listAll();
-      markSucceeded('list_pending');
-      return records;
-    } catch (error) {
-      reportFailure('list_pending', error);
-      return null;
-    }
-  }
-
-  function fire(record: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): void {
-    show({
-      label: record.title,
-      text: record.text,
-      deeplink: record.deeplink ?? undefined,
-      // An OS toast for an event the user was not around for is intrusive.
-      browserNotification: source === 'realtime',
-    });
-  }
-
-  async function claim(record: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): Promise<void> {
-    async function claimAndFire(): Promise<void> {
-      // A disposed scheduler leaves the record in the store for another tab or the next load to fire.
-      if (lifetime.signal.aborted) {
+    transition.emitSideEffect({ kind: 'stepSucceeded', step: 'list_pending' });
+    switch (state.kind) {
+      case 'rehydrating': {
+        const now = timers.now();
+        claimNext(
+          state,
+          records.filter(r => r.scheduledAt <= now),
+          transition,
+        );
         return;
       }
-      const removed = await store.removeById(record.hostId);
-      if (!removed) {
-        return;
-      }
-      fire(record, source);
-      broadcastChannel?.postMessage({
-        kind: 'fired',
-        hostId: record.hostId,
-      } satisfies WakeMessage);
-    }
-
-    try {
-      if (locks !== undefined) {
-        await locks.request(`dotli-notif:${String(record.hostId)}`, { ifAvailable: true }, async lock => {
-          if (!lock) {
-            return;
-          }
-          await claimAndFire();
-        });
-      } else {
-        // The IDB delete still claims the record alone.
-        await claimAndFire();
-      }
-      markSucceeded('claim');
-    } catch (error) {
-      reportFailure('claim', error);
-    }
-  }
-
-  function tryFire(record: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): Promise<void> {
-    return claims.call(() => claim(record, source), { pool: String(record.hostId) });
-  }
-
-  function stopPolling(): void {
-    if (stopPoll === null) {
-      return;
-    }
-    stopPoll();
-    stopPoll = null;
-  }
-
-  async function tick(): Promise<void> {
-    if (shuttingDown) {
-      return;
-    }
-    const records = await listPendingRecords();
-    if (records === null) {
-      return;
-    }
-
-    if (records.length === 0) {
-      stopPolling();
-      return;
-    }
-
-    const isVisible = visibility.visibilityState === 'visible';
-    const offset = isVisible ? 0 : SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS;
-    const cutoff = timers.now() - offset;
-
-    for (const record of records) {
-      if (record.scheduledAt > cutoff) {
-        continue;
-      }
-      await tryFire(record, 'realtime');
-    }
-  }
-
-  function ensurePolling(): void {
-    if (shuttingDown || lifetime.signal.aborted || stopPoll !== null) {
-      return;
-    }
-    stopPoll = poll.start(() => {
-      void tick();
-    }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
-  }
-
-  function openBroadcast(): void {
-    // A restore without a preceding `pagehide` keeps its channel, so none is opened twice.
-    if (broadcastChannel !== null) {
-      return;
-    }
-    broadcastChannel = openChannel(BROADCAST_CHANNEL_NAME);
-    if (broadcastChannel !== null) {
-      broadcastChannel.onmessage = () => {
-        ensurePolling();
-      };
-    }
-  }
-
-  function closeBroadcast(): void {
-    broadcastChannel?.close();
-    broadcastChannel = null;
-  }
-
-  async function rehydrate(): Promise<void> {
-    const records = await listPendingRecords();
-    const now = timers.now();
-    for (const record of records ?? []) {
-      if (record.scheduledAt > now) {
-        continue;
-      }
-      await tryFire(record, 'rehydrate');
-    }
-  }
-
-  function init({ label }: InitParams): void {
-    if (initialized || lifetime.signal.aborted) {
-      return;
-    }
-    initialized = true;
-
-    openBroadcast();
-
-    log.debug(`[${label}] scheduled notifications: init`);
-
-    void rehydrate().then(() => {
-      ensurePolling();
-    });
-
-    stopListening = listenForPage();
-  }
-
-  /** Follows the page as it shows, hides and comes back from the back-forward cache, until the returned stop. */
-  function listenForPage(): () => void {
-    const stopVisible = listenForDocumentVisible(visibility, ensurePolling);
-
-    // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not
-    // `beforeunload`, because it also fires on the bfcache path.
-    const stopHide = listen({
-      target: lifecycle,
-      type: 'pagehide',
-      handler: () => {
-        shuttingDown = true;
-        stopPolling();
-        closeBroadcast();
-      },
-    });
-
-    // A page restored from the back-forward cache runs on where `pagehide` stopped it, so the channel and the
-    // poller come back, and a record that fell due meanwhile fires. The first load's `pageshow` is not a restore.
-    const stopShow = listen({
-      target: lifecycle,
-      type: 'pageshow',
-      handler: event => {
-        if (!('persisted' in event) || event.persisted !== true) {
+      case 'ticking': {
+        if (records.length === 0 && !state.rescan) {
+          transition.emitState({ kind: 'idle', ...pickRunning(state) });
+          state.stopPoll();
           return;
         }
-        shuttingDown = false;
-        openBroadcast();
-        void rehydrate().then(() => {
-          ensurePolling();
-        });
-      },
-    });
-
-    return stop;
-
-    function stop(): void {
-      stopVisible();
-      stopHide();
-      stopShow();
+        const offset = visibility.visibilityState === 'visible' ? 0 : SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS;
+        const cutoff = timers.now() - offset;
+        claimNext(
+          state,
+          records.filter(r => r.scheduledAt <= cutoff),
+          transition,
+        );
+        return;
+      }
     }
+  };
+  const endFailedList: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'listFailed'> = (
+    state,
+    { round, error },
+    transition,
+  ) => {
+    if (round !== state.round) {
+      return;
+    }
+    transition.emitSideEffect({ kind: 'stepFailed', step: 'list_pending', error });
+    endRound(state, transition);
+  };
+  /** Shows a record this tab removed, whatever round claimed it, since the delete is what claims it. */
+  const fireClaimed: HandlerOf<SchedulerMachine, AwakeKind | 'hidden', 'claimed'> = (
+    state,
+    { record, removed, source },
+    { emitSideEffect },
+  ) => {
+    if (!removed) {
+      return;
+    }
+    emitSideEffect({ kind: 'fired', record, source });
+    switch (state.kind) {
+      case 'idle':
+      case 'polling':
+      case 'rehydrating':
+      case 'ticking':
+        state.channel?.postMessage({ kind: 'fired', hostId: record.hostId } satisfies WakeMessage);
+        return;
+      // Its channel closed as the page hid.
+      case 'hidden':
+        return;
+    }
+  };
+  /** Claims the next due record when the claim is this round's, then shows the claimed one. */
+  const settleClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimed'> = (state, event, transition) => {
+    if (event.round === state.round) {
+      const [, ...rest] = event.round.due;
+      transition.emitSideEffect({ kind: 'stepSucceeded', step: 'claim' });
+      claimNext(state, rest, transition);
+    }
+    fireClaimed(state, event, transition);
+  };
+  /** Claims the next due record, leaving the one whose claim failed for a later round. */
+  const skipFailedClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimFailed'> = (
+    state,
+    { round, error },
+    transition,
+  ) => {
+    if (round !== state.round) {
+      return;
+    }
+    const [, ...rest] = round.due;
+    transition.emitSideEffect({ kind: 'stepFailed', step: 'claim', error });
+    claimNext(state, rest, transition);
+  };
+  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating' | 'ticking', 'scheduled'> = ({
+    channel,
+  }) => {
+    channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+  };
+  const announceCancelled: HandlerOf<SchedulerMachine, AwakeKind, 'cancelled'> = ({ channel }) => {
+    channel?.postMessage({ kind: 'cancelled' } satisfies WakeMessage);
+  };
+  /** Stops the poller and closes the channel, since IDB starts closing as the page unloads. */
+  const hide: HandlerOf<SchedulerMachine, AwakeKind, 'pageHidden'> = (state, _event, { emitState }) => {
+    const { stopListening, lifetime } = state;
+    emitState({ kind: 'hidden', stopListening, lifetime });
+    stopWaking(state);
+  };
+  const shutDown: HandlerOf<SchedulerMachine, AwakeKind | 'hidden', 'disposed'> = (state, _event, { emitState }) => {
+    emitState({ kind: 'disposed' });
+    state.lifetime.abort(new Error('The notification scheduler was disposed'));
+    state.stopListening();
+    switch (state.kind) {
+      case 'idle':
+      case 'polling':
+      case 'rehydrating':
+      case 'ticking':
+        stopWaking(state);
+        return;
+      // Its poller and channel stopped as the page hid.
+      case 'hidden':
+        return;
+    }
+  };
+  // The poller retries every second, so a step's failure is reported when it starts failing, not on every tick.
+  const failingSteps = new Set<PollStep>();
+  const machine = createStateMachine<SchedulerMachine>({
+    initial: { kind: 'uninitialized' },
+    handlers: {
+      uninitialized: {
+        initialized(_state, { label }, transition) {
+          const stopListening = listenForPage(transition.update);
+          const channel = openWakeChannel(transition.update);
+          transition.emitSideEffect({ kind: 'initialized', label });
+          runStep(
+            {
+              kind: 'rehydrating',
+              round: { kind: 'removingStale' },
+              stopListening,
+              channel,
+              lifetime: new AbortController(),
+            },
+            transition,
+          );
+        },
+        disposed(_state, _event, { emitState }) {
+          emitState({ kind: 'disposed' });
+        },
+      },
+      idle: {
+        woken(state, _event, transition) {
+          startPolling(state, transition);
+        },
+        scheduled(state, _event, transition) {
+          startPolling(state, transition);
+          state.channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+        },
+        cancelled: announceCancelled,
+        claimed: fireClaimed,
+        pageHidden: hide,
+        disposed: shutDown,
+      },
+      polling: {
+        ticked(state, _event, transition) {
+          runStep({ ...state, kind: 'ticking', round: { kind: 'removingStale' }, rescan: false }, transition);
+        },
+        scheduled: announceScheduled,
+        cancelled: announceCancelled,
+        claimed: fireClaimed,
+        pageHidden: hide,
+        disposed: shutDown,
+      },
+      rehydrating: {
+        staleRemoved: listAfterStale,
+        staleRemoveFailed: listAfterStaleFailed,
+        listed: claimListed,
+        listFailed: endFailedList,
+        claimed: settleClaim,
+        claimFailed: skipFailedClaim,
+        scheduled: announceScheduled,
+        cancelled: announceCancelled,
+        pageHidden: hide,
+        disposed: shutDown,
+      },
+      // A tick while the round runs is ignored, so rounds never overlap.
+      ticking: {
+        staleRemoved: listAfterStale,
+        staleRemoveFailed: listAfterStaleFailed,
+        listed: claimListed,
+        listFailed: endFailedList,
+        claimed: settleClaim,
+        claimFailed: skipFailedClaim,
+        scheduled(state, _event, { emitState }) {
+          emitState({ ...state, rescan: true });
+          state.channel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+        },
+        cancelled: announceCancelled,
+        pageHidden: hide,
+        disposed: shutDown,
+      },
+      // A round the page hid in reports nothing, since its connection closes as the page unloads.
+      hidden: {
+        claimed: fireClaimed,
+        pageRestored(state, _event, transition) {
+          const channel = openWakeChannel(transition.update);
+          runStep({ ...state, kind: 'rehydrating', round: { kind: 'removingStale' }, channel }, transition);
+        },
+        disposed: shutDown,
+      },
+      disposed: null,
+    },
+    onEffect(effect) {
+      switch (effect.kind) {
+        case 'initialized':
+          log.debug(`[${effect.label}] scheduled notifications: init`);
+          return;
+        case 'stepSucceeded':
+          failingSteps.delete(effect.step);
+          return;
+        case 'stepFailed': {
+          const { step, error } = effect;
+          if (failingSteps.has(step)) {
+            return;
+          }
+          failingSteps.add(step);
+          if (isExpectedDbError(error)) {
+            report.expected(error, { step, metric: notificationsPollMetric, attributes: { step } });
+            return;
+          }
+          report.defect(error, {
+            step,
+            metric: notificationsPollMetric,
+            message: `[scheduled notifications] ${step} failed:`,
+            attributes: { step },
+          });
+          return;
+        }
+        case 'fired': {
+          const { record, source } = effect;
+          show({
+            label: record.title,
+            text: record.text,
+            deeplink: record.deeplink ?? undefined,
+            // An OS toast for an event the user was not around for is intrusive.
+            browserNotification: source === 'realtime',
+          });
+          return;
+        }
+      }
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: notificationsTransitionMetric,
+        message: '[scheduled notifications] A transition of the scheduler threw:',
+      });
+    },
+  });
+
+  return {
+    /**
+     * Opens the channel, fires what fell due and starts the poller. Idempotent, never throws, and does nothing after
+     * `dispose`.
+     */
+    init,
+    /**
+     * Schedules a notification. An immediate fire (null or past `scheduledAt`) only allocates an id and is not
+     * persisted. Before `init` it starts no poller, and `init` fires it once due. After `dispose` it still persists the
+     * notification for another tab or the next load to fire, but starts no poller. Rejects when the store cannot
+     * allocate or write it.
+     */
+    schedule,
+    /**
+     * Idempotent, also after `dispose`. False when the record had already fired or never existed. Rejects when the
+     * store cannot remove it.
+     */
+    cancel,
+    /**
+     * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more and a
+     * claim whose delete is running shows nothing, an `init` or a restore after it starts nothing, a `schedule` or
+     * `cancel` still settles as the store answers, and it is safe to call twice or after a failed round and never
+     * throws.
+     */
+    dispose,
+  };
+
+  function init({ label }: InitParams): void {
+    machine.update({ kind: 'initialized', label });
   }
 
   async function schedule(request: ScheduleRequest): Promise<ScheduleNotificationResult> {
@@ -345,8 +490,7 @@ export function createScheduledNotifications({
       return result;
     }
 
-    ensurePolling();
-    broadcastChannel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
+    machine.update({ kind: 'scheduled' });
 
     return { ok: true, id: result.id, immediate: false };
   }
@@ -354,43 +498,154 @@ export function createScheduledNotifications({
   async function cancel(productId: ProductId, perProductId: number): Promise<boolean> {
     const removed = await store.cancel(productId, perProductId);
     if (removed) {
-      broadcastChannel?.postMessage({ kind: 'cancelled' } satisfies WakeMessage);
+      machine.update({ kind: 'cancelled' });
     }
     return removed;
   }
 
   function dispose(): void {
-    lifetime.abort(new Error('The notification scheduler was disposed'));
-    stopListening?.();
-    stopListening = null;
-    stopPolling();
-    closeBroadcast();
+    machine.update({ kind: 'disposed' });
   }
 
-  return {
-    /**
-     * Opens the channel, fires what fell due and starts the poller. Idempotent, never throws, and does nothing after
-     * `dispose`.
-     */
-    init,
-    /**
-     * Schedules a notification. An immediate fire (null or past `scheduledAt`) only allocates an id and is not
-     * persisted. After `dispose` it still persists the notification for another tab or the next load to fire, but
-     * starts no poller. Rejects when the store cannot allocate or write it.
-     */
-    schedule,
-    /**
-     * Idempotent, also after `dispose`. False when the record had already fired or never existed. Rejects when the
-     * store cannot remove it.
-     */
-    cancel,
-    /**
-     * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more, an
-     * `init` or a restore after it starts nothing, a `schedule` or `cancel` still settles as the store answers, and it
-     * is safe to call twice or after a failed round and never throws.
-     */
-    dispose,
-  };
+  /** Moves to `state`, then starts the work of its round's step. */
+  function runStep(state: RoundState, { emitState, update }: Transition<SchedulerMachine>): void {
+    emitState(state);
+    const { round } = state;
+    switch (round.kind) {
+      case 'removingStale':
+        update(
+          store.removeStale(timers.now()).then(
+            () => ({ kind: 'staleRemoved', round }),
+            (error: unknown) => ({ kind: 'staleRemoveFailed', round, error }),
+          ),
+        );
+        return;
+      case 'listing':
+        update(
+          store.listAll().then(
+            records => ({ kind: 'listed', round, records }),
+            (error: unknown) => ({ kind: 'listFailed', round, error }),
+          ),
+        );
+        return;
+      case 'claiming': {
+        const [record] = round.due;
+        const source = getFireSource(state);
+        update(
+          claim(record, state.lifetime.signal).then(
+            removed => ({ kind: 'claimed', round, record, removed, source }),
+            (error: unknown) => ({ kind: 'claimFailed', round, error }),
+          ),
+        );
+        return;
+      }
+    }
+  }
+
+  /** Claims the first of `due`, or ends the round when none is left. */
+  function claimNext(
+    state: RoundState,
+    due: readonly ScheduledNotificationRecord[],
+    transition: Transition<SchedulerMachine>,
+  ): void {
+    const [record, ...rest] = due;
+    if (record === undefined) {
+      endRound(state, transition);
+      return;
+    }
+    runStep({ ...state, round: { kind: 'claiming', due: [record, ...rest] } }, transition);
+  }
+
+  /** Ends the round in `polling`, with the poller kept or started. */
+  function endRound(state: RoundState, transition: Transition<SchedulerMachine>): void {
+    switch (state.kind) {
+      case 'rehydrating':
+        startPolling(state, transition);
+        return;
+      case 'ticking':
+        transition.emitState({ kind: 'polling', stopPoll: state.stopPoll, ...pickRunning(state) });
+        return;
+    }
+  }
+
+  function startPolling(running: Running, { emitState, update }: Transition<SchedulerMachine>): void {
+    const stopPoll = poll.start(() => {
+      update({ kind: 'ticked' });
+    }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
+    emitState({ kind: 'polling', stopPoll, ...pickRunning(running) });
+  }
+
+  /**
+   * Removes `record` from the store, under its lock where the browser has Web Locks. Resolves whether this tab removed
+   * it. Rejects with `signal`'s reason once it aborted, and when the store cannot remove it.
+   */
+  function claim(record: ScheduledNotificationRecord, signal: AbortSignal): Promise<boolean> {
+    if (locks === undefined) {
+      // The IDB delete still claims the record alone.
+      return removeRecord();
+    }
+    return locks.request(`dotli-notif:${String(record.hostId)}`, { ifAvailable: true }, async lock => {
+      if (lock === null) {
+        return false;
+      }
+      return removeRecord();
+    });
+
+    async function removeRecord(): Promise<boolean> {
+      // A disposed scheduler leaves the record in the store for another tab or the next load to fire.
+      signal.throwIfAborted();
+      return store.removeById(record.hostId);
+    }
+  }
+
+  /** Opens the channel to the other tabs, whose every message wakes the poller. */
+  function openWakeChannel(update: Transition<SchedulerMachine>['update']): BroadcastChannel | null {
+    const channel = openChannel(BROADCAST_CHANNEL_NAME);
+    if (channel !== null) {
+      channel.onmessage = () => {
+        update({ kind: 'woken' });
+      };
+    }
+    return channel;
+  }
+
+  /** Follows the page as it shows, hides and comes back from the back-forward cache, until the returned stop. */
+  function listenForPage(update: Transition<SchedulerMachine>['update']): () => void {
+    const stopVisible = listenForDocumentVisible(visibility, () => {
+      update({ kind: 'woken' });
+    });
+
+    // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not
+    // `beforeunload`, because it also fires on the bfcache path.
+    const stopHide = listen({
+      target: lifecycle,
+      type: 'pagehide',
+      handler: () => {
+        update({ kind: 'pageHidden' });
+      },
+    });
+
+    // A page restored from the back-forward cache runs on where `pagehide` stopped it, so the channel and the
+    // poller come back, and a record that fell due meanwhile fires. The first load's `pageshow` is not a restore.
+    const stopShow = listen({
+      target: lifecycle,
+      type: 'pageshow',
+      handler: event => {
+        if (!('persisted' in event) || event.persisted !== true) {
+          return;
+        }
+        update({ kind: 'pageRestored' });
+      },
+    });
+
+    return stop;
+
+    function stop(): void {
+      stopVisible();
+      stopHide();
+      stopShow();
+    }
+  }
 }
 
 /**
@@ -408,4 +663,32 @@ export function createPageScheduledNotifications({
     visibility: document,
     lifecycle: window,
   });
+}
+
+function pickRunning({ stopListening, channel, lifetime }: Running): Running {
+  return { stopListening, channel, lifetime };
+}
+
+/** Stops the poller where one runs, and closes the channel. */
+function stopWaking(state: Extract<SchedulerState, { kind: AwakeKind }>): void {
+  switch (state.kind) {
+    case 'polling':
+    case 'ticking':
+      state.stopPoll();
+      break;
+    case 'idle':
+    case 'rehydrating':
+      break;
+  }
+  state.channel?.close();
+}
+
+/** A round at load or restore fires what it finds as `rehydrate`, and a tick's as `realtime`. */
+function getFireSource({ kind }: RoundState): FireSource {
+  switch (kind) {
+    case 'rehydrating':
+      return 'rehydrate';
+    case 'ticking':
+      return 'realtime';
+  }
 }

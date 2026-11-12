@@ -9,11 +9,14 @@ import {
   hasGrant,
   isUnreadable,
   type PermissionsRead,
+  type ProductPermissionsState,
   type ProductPermissions,
 } from '../runtime/state/productPermissions.js';
 import type { PermissionsNotice } from '../components/permissions/permissions.js';
 import type { PermissionsContentProps } from '../components/permissions/PermissionsContent.js';
 import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';
+
+const INITIAL_STATE: ProductPermissionsState = { status: 'none' };
 
 /** The product on show, as the panel reads it. */
 export type ShownProduct = { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string };
@@ -29,8 +32,8 @@ export type PermissionsBinding = {
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
 export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {
   const product = useStore(binding.product);
-  const state = useStore(binding.store.state);
-  const pendingChange = useStore(binding.store.pending);
+  const state = useStore(binding.store.state, { initial: INITIAL_STATE });
+  const pendingChange = useStore(binding.store.pending, { initial: null });
 
   const notice = (): PermissionsNotice | undefined => {
     const current = product();
@@ -58,7 +61,7 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
 
   return {
     permissions: binding.permissions,
-    hasGrants: useStore(binding.store.state, hasGrant),
+    hasGrants: useStore(binding.store.state, hasGrant, { initial: INITIAL_STATE }),
     notice,
     statuses: () => {
       const read = shownRead();

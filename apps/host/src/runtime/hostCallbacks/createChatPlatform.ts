@@ -5,28 +5,56 @@
 
 import type { ChatPlatform } from '@parity/truapi-host';
 import type { HostChatListSubscribeItem } from '@parity/truapi';
-import { createAsyncTaskPool, getErrorMessage, type AsyncTaskPool } from '@dotli/shared';
-import { chatStore, type ChatStore } from '../chat/createChatStore.js';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { createStateMachine, getErrorMessage, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
+import { chatStore, type ChatRoomRecord, type ChatStore } from '../chat/createChatStore.js';
 import { createResultStream } from './createResultStream.js';
 
 type Params = {
   /** The chat the product's rooms, bots and messages live in. The page's chat store by default. */
   chat?: ChatStore;
-  /**
-   * Builds the pool a room list subscription runs its reads on, which must run one task at a time. Called once per
-   * subscription. A new one-slot pool by default.
-   */
-  createReadPool?: () => AsyncTaskPool;
 };
+
+/** The `push` and `pushError` a room list stream hands its follow. */
+type RoomsStream = Parameters<Parameters<typeof createResultStream<HostChatListSubscribeItem>>[1]>;
+
+type FollowRoomsParams = {
+  chat: Pick<ChatStore, 'subscribe' | 'listRooms'>;
+  productId: string;
+  push: RoomsStream[0];
+  pushError: RoomsStream[1];
+};
+
+/** `rereading` is a read in flight whose list a change made stale, so another read follows it. */
+type RoomsState =
+  | { kind: 'starting' }
+  | { kind: 'reading'; stopListening: () => void }
+  | { kind: 'rereading'; stopListening: () => void }
+  | { kind: 'idle'; stopListening: () => void }
+  | { kind: 'stopped' };
+
+type RoomsEvent =
+  | { kind: 'started' }
+  | { kind: 'roomsChanged' }
+  | { kind: 'roomsRead'; rooms: ChatRoomRecord[] }
+  | { kind: 'readFailed'; error: unknown }
+  | { kind: 'stopped' };
+
+type RoomsMachine = MachineTypes<RoomsState, RoomsEvent>;
+
+const report = createReporter({ flow: 'chat' });
+
+/**
+ * One room list follow transition that threw, after which the follow keeps the state its handler emitted. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+const chatRoomsTransitionMetric = defineCount<'error'>('chat.rooms_transition');
 
 /**
  * Serves the product side of chat over the chat store. Each call rejects as the store's call does. The room list
  * stream yields one error item when a read fails, and the stream then ends.
  */
-export function createChatPlatform({
-  chat = chatStore,
-  createReadPool = () => createAsyncTaskPool({ poolSize: 1 }),
-}: Params = {}): Required<ChatPlatform> {
+export function createChatPlatform({ chat = chatStore }: Params = {}): Required<ChatPlatform> {
   return {
     async createChatRoom(product, request) {
       const status = await chat.createRoom(product.productId, {
@@ -60,61 +88,110 @@ export function createChatPlatform({
     },
 
     subscribeChatRooms(product) {
-      return createResultStream<HostChatListSubscribeItem>([], (push, pushError) => {
-        // Aborted when the product stops listening, which drops the queued reads and silences the running one.
-        const listening = new AbortController();
-        const { signal } = listening;
-        // One read at a time, so lists land in the order they were read. A change marks the list stale, and the
-        // queued read that finds it already fresh does nothing, so a burst of changes costs one more read.
-        const reads = createReadPool();
-        let stale = false;
-
-        // Read after each wait, since the product can stop listening during any of them.
-        function isStopped(): boolean {
-          return signal.aborted;
-        }
-
-        async function readRooms(): Promise<void> {
-          if (!stale) {
-            return;
-          }
-          stale = false;
-          try {
-            const rooms = await chat.listRooms(product.productId);
-            if (!isStopped()) {
-              push({ rooms: rooms.map(room => ({ roomId: room.roomId, participatingAs: 'RoomHost' as const })) });
-            }
-          } catch (error) {
-            if (!isStopped()) {
-              pushError({ reason: getErrorMessage(error) });
-            }
-          }
-        }
-
-        function refresh(): void {
-          stale = true;
-          // The close's abort is what the close asked for. A read catches its own failures, so anything else is a
-          // fault, and the page's unhandled rejection report carries it.
-          void reads.call(readRooms, { signal }).catch((error: unknown) => {
-            if (error !== signal.reason) {
-              throw error;
-            }
-          });
-        }
-
-        function dispose(): void {
-          listening.abort();
-          stop();
-        }
-
-        const stop = chat.subscribe(change => {
-          if (change.kind === 'rooms' && change.productId === product.productId) {
-            refresh();
-          }
-        });
-        refresh();
-        return dispose;
-      });
+      return createResultStream<HostChatListSubscribeItem>([], (push, pushError) =>
+        followRooms({ chat, productId: product.productId, push, pushError }),
+      );
     },
   };
+}
+
+/**
+ * Pushes the product's room list now and after each change to its rooms, one read at a time, so lists land in the
+ * order they were read. A burst of changes during a read costs one more read. A failed read pushes its error and ends
+ * the follow. Returns the stop, after which nothing is read or pushed.
+ */
+function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): () => void {
+  const stopFollowing: HandlerOf<RoomsMachine, 'starting' | 'reading' | 'rereading' | 'idle', 'stopped'> = (
+    state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'stopped' });
+    switch (state.kind) {
+      case 'starting':
+        return;
+      case 'reading':
+      case 'rereading':
+      case 'idle':
+        state.stopListening();
+        return;
+    }
+  };
+  const failRead: HandlerOf<RoomsMachine, 'reading' | 'rereading', 'readFailed'> = (
+    { stopListening },
+    { error },
+    { emitState },
+  ) => {
+    emitState({ kind: 'stopped' });
+    stopListening();
+    pushError({ reason: getErrorMessage(error) });
+  };
+  const follow = createStateMachine<RoomsMachine>({
+    initial: { kind: 'starting' },
+    handlers: {
+      starting: {
+        started(_state, _event, transition) {
+          const stopListening = chat.subscribe(change => {
+            if (change.kind === 'rooms' && change.productId === productId) {
+              transition.update({ kind: 'roomsChanged' });
+            }
+          });
+          startRead(stopListening, transition);
+        },
+        stopped: stopFollowing,
+      },
+      reading: {
+        roomsChanged({ stopListening }, _event, { emitState }) {
+          emitState({ kind: 'rereading', stopListening });
+        },
+        roomsRead({ stopListening }, { rooms }, { emitState }) {
+          emitState({ kind: 'idle', stopListening });
+          pushRooms(rooms);
+        },
+        readFailed: failRead,
+        stopped: stopFollowing,
+      },
+      rereading: {
+        roomsRead({ stopListening }, { rooms }, transition) {
+          startRead(stopListening, transition);
+          pushRooms(rooms);
+        },
+        readFailed: failRead,
+        stopped: stopFollowing,
+      },
+      idle: {
+        roomsChanged({ stopListening }, _event, transition) {
+          startRead(stopListening, transition);
+        },
+        stopped: stopFollowing,
+      },
+      stopped: null,
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'rooms_transition',
+        metric: chatRoomsTransitionMetric,
+        message: '[dot.li chat] A room list follow transition threw',
+      });
+    },
+  });
+  follow.update({ kind: 'started' });
+  return () => {
+    follow.update({ kind: 'stopped' });
+  };
+
+  /** Moves to `reading` and reads the room list. */
+  function startRead(stopListening: () => void, { emitState, update }: Transition<RoomsMachine>): void {
+    emitState({ kind: 'reading', stopListening });
+    update(
+      chat.listRooms(productId).then(
+        rooms => ({ kind: 'roomsRead', rooms }),
+        (error: unknown) => ({ kind: 'readFailed', error }),
+      ),
+    );
+  }
+
+  function pushRooms(rooms: ChatRoomRecord[]): void {
+    push({ rooms: rooms.map(room => ({ roomId: room.roomId, participatingAs: 'RoomHost' as const })) });
+  }
 }

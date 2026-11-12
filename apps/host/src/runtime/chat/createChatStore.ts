@@ -5,17 +5,19 @@
 // only writer of chat data, so every write is announced through `subscribe` and shown through `view`. User replies and
 // custom-message taps reach the product through its live connection.
 
-import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
-import type { RenderSink } from '@parity/truapi-host';
+import type { ChatMessageContent, HostRendererActionSubscribeItem } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
-  createAsyncTaskPool,
   createListenerSet,
   createRandomId,
+  createStateMachine,
   isShallowEqual,
+  nest,
   realTimers,
-  registerAtomReset,
+  type HandlerOf,
+  type MachineTypes,
   type Timers,
+  type Transition,
 } from '@dotli/shared';
 import {
   chat,
@@ -25,8 +27,9 @@ import {
   type ChatRoomFooter,
   type ChatRoomRecord,
 } from '@dotli/storage';
-import { atom, type ReadableAtom } from 'nanostores';
+import { computed } from 'nanostores';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
+import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
 
 const report = createReporter({ flow: 'chat' });
 
@@ -35,6 +38,12 @@ const report = createReporter({ flow: 'chat' });
  * a product's room list, which then rejects to its caller. Tagged `outcome` (error) and `reason` (the error's name).
  */
 const chatReadMetric = defineCount<'error'>('chat.read');
+
+/**
+ * One chat store transition that threw, after which the store keeps the state its handler emitted. Tagged `outcome`
+ * (error) and `reason` (the error's name).
+ */
+const storeTransitionMetric = defineCount<'error'>('chat.store_transition');
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
@@ -138,29 +147,6 @@ type TriggerActionParams = {
   trigger: { messageId: string; actionId: string; payload?: `0x${string}` };
 };
 
-type RenderCustomMessageParams = {
-  /** The product that renders the message. */
-  productId: string;
-  /** The custom message to render. */
-  request: ProductRendererRenderRequest;
-  /** Where the trees stream. */
-  sink: RenderSink;
-};
-
-/** A render on a connection, with the stop that connection handed back. */
-type Rendering = { kind: 'rendering'; connection: ChatConnection; stop: () => void };
-/** A render waiting for the product's next connection, with the unsubscribe of its registration listener. */
-type Waiting = { kind: 'waiting'; stopListening: () => void };
-/** One custom message render: on a connection, waiting for the product's next one, completed, or disposed. */
-type RenderState = Rendering | Waiting | { kind: 'completed' } | { kind: 'disposed' };
-
-type StartCustomRenderParams = RenderCustomMessageParams & {
-  /** The live product connections the render follows. */
-  connections: Pick<ChatConnections, 'get' | 'onRegister'>;
-};
-
-const NOT_CONNECTED = 'Chat is not connected for this product';
-
 const NO_VIEW: ChatView = {
   productId: null,
   contacts: null,
@@ -171,28 +157,226 @@ const NO_VIEW: ChatView = {
 };
 
 /**
+ * One kind of read: none running, one running, or one running with another due after it. One read of each kind at a
+ * time, so results land in the order they were read, and a burst of changes during a read costs one more read.
+ */
+type ReadPhase = { kind: 'idle' } | { kind: 'reading' } | { kind: 'rereading' };
+
+type Reads = { contacts: ReadPhase; messages: ReadPhase };
+
+/** The reads outlive a follow, so a read still running when the panel follows again is not overlapped by a new one. */
+type ChatState =
+  | { kind: 'unfollowed'; reads: Reads }
+  | {
+      kind: 'following';
+      follow: ChatFollow;
+      view: ChatView;
+      /** Messages arrived while the room list was off screen, so a return to it reads it again. */
+      missedMessages: boolean;
+      reads: Reads;
+    };
+
+/** A read to run: the product's room list, or the messages of one of its rooms. */
+type ReadRequest =
+  | { read: 'contacts'; target: { productId: string } }
+  | { read: 'messages'; target: { productId: string; roomId: string } };
+
+type ChatEvent =
+  | { kind: 'followed'; next: ChatFollow | null }
+  | { kind: 'changed'; change: ChatChange }
+  | ({ kind: 'readAsked' } & ReadRequest)
+  // The read due after the one that ended, or a `null` target when nothing followed has one to read.
+  | ({ kind: 'readEnded' } & (ReadRequest | { read: keyof Reads; target: null }))
+  | { kind: 'contactsRead'; productId: string; contacts: ChatContacts }
+  | { kind: 'contactsFailed'; productId: string; error: unknown }
+  | { kind: 'messagesRead'; productId: string; roomId: string; messages: ChatMessageRecord[] }
+  | { kind: 'messagesFailed'; productId: string; roomId: string; error: unknown };
+
+type ChatEffect = { kind: 'readFailed'; step: 'chat_contacts_read' | 'chat_messages_read'; error: unknown };
+
+type ChatMachine = MachineTypes<ChatState, ChatEvent, ChatEffect>;
+
+type ReadMachine = MachineTypes<ReadPhase, ChatEvent>;
+
+/**
  * Builds a chat store over `repo` that announces each write it makes and shows the followed view. Building one reads
  * nothing and never throws.
  */
 export function createChatStore({ repo, connections, timers = realTimers }: Params) {
   // A broken subscriber must not fail the product's call that made the write.
   const listeners = createListenerSet<ChatChange>({ onListenerError: report.listener('chat_store.change') });
-  const viewChange = atom<ChatView>(NO_VIEW);
-  viewChange.eq = isShallowEqual;
-  registerAtomReset(viewChange);
-  const view: ReadableAtom<ChatView> = viewChange;
-  let target: ChatFollow | null = null;
-  // One read of each kind at a time, so results land in the order they were read. A change marks its read stale, and
-  // a queued read that finds it fresh does nothing, so a burst of changes costs one more read.
-  const reads = createAsyncTaskPool({ poolSize: 1 });
-  let contactsStale = false;
-  let messagesStale = false;
-  // Messages reorder the list, which is re-read for them only while it shows, and once on return if any arrived.
-  let listMissedMessages = false;
-
-  function patch(next: Partial<ChatView>): void {
-    viewChange.set({ ...viewChange.get(), ...next });
-  }
+  const handleRead = nest<ChatMachine, 'unfollowed' | 'following', ReadMachine, 'readAsked' | 'readEnded'>({
+    find: ({ reads }, { read }) => reads[read],
+    store: (state, { read }, next) => ({ ...state, reads: { ...state.reads, [read]: next } }),
+    handlers: {
+      idle: {
+        readAsked(_phase, request, transition) {
+          startRead(request, transition);
+        },
+      },
+      reading: {
+        readAsked(_phase, _event, { emitState }) {
+          emitState({ kind: 'rereading' });
+        },
+        readEnded(_phase, _event, { emitState }) {
+          emitState({ kind: 'idle' });
+        },
+      },
+      rereading: {
+        readEnded(_phase, request, transition) {
+          if (request.target === null) {
+            transition.emitState({ kind: 'idle' });
+            return;
+          }
+          startRead(request, transition);
+        },
+      },
+    },
+  });
+  // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.
+  const handleContactsRead: HandlerOf<ChatMachine, 'unfollowed' | 'following', 'contactsRead'> = (
+    state,
+    { productId, contacts },
+    { emitState, update },
+  ) => {
+    if (state.kind === 'following' && state.follow.productId === productId) {
+      emitState({ ...state, view: { ...state.view, contacts, contactsFailed: false } });
+    }
+    update(getContactsReadEnd(state));
+  };
+  const handleContactsFailed: HandlerOf<ChatMachine, 'unfollowed' | 'following', 'contactsFailed'> = (
+    state,
+    { productId, error },
+    { emitState, emitSideEffect, update },
+  ) => {
+    if (state.kind === 'following' && state.follow.productId === productId) {
+      emitState({ ...state, view: { ...state.view, contactsFailed: true } });
+    }
+    emitSideEffect({ kind: 'readFailed', step: 'chat_contacts_read', error });
+    update(getContactsReadEnd(state));
+  };
+  const handleMessagesRead: HandlerOf<ChatMachine, 'unfollowed' | 'following', 'messagesRead'> = (
+    state,
+    { productId, roomId, messages },
+    { emitState, update },
+  ) => {
+    if (state.kind === 'following' && state.follow.productId === productId && state.follow.roomId === roomId) {
+      emitState({ ...state, view: { ...state.view, messages, messagesFailed: false } });
+    }
+    update(getMessagesReadEnd(state));
+  };
+  const handleMessagesFailed: HandlerOf<ChatMachine, 'unfollowed' | 'following', 'messagesFailed'> = (
+    state,
+    { productId, roomId, error },
+    { emitState, emitSideEffect, update },
+  ) => {
+    if (state.kind === 'following' && state.follow.productId === productId && state.follow.roomId === roomId) {
+      emitState({ ...state, view: { ...state.view, messagesFailed: true } });
+    }
+    emitSideEffect({ kind: 'readFailed', step: 'chat_messages_read', error });
+    update(getMessagesReadEnd(state));
+  };
+  const machine = createStateMachine<ChatMachine>({
+    initial: { kind: 'unfollowed', reads: { contacts: { kind: 'idle' }, messages: { kind: 'idle' } } },
+    handlers: {
+      unfollowed: {
+        followed(state, { next }, { emitState, update }) {
+          if (next === null) {
+            return;
+          }
+          emitState({
+            kind: 'following',
+            follow: next,
+            view: { ...NO_VIEW, productId: next.productId, roomId: next.roomId },
+            missedMessages: false,
+            reads: state.reads,
+          });
+          update({ kind: 'readAsked', read: 'contacts', target: next });
+          if (next.roomId !== null) {
+            update({ kind: 'readAsked', read: 'messages', target: { productId: next.productId, roomId: next.roomId } });
+          }
+        },
+        readAsked: handleRead,
+        readEnded: handleRead,
+        contactsRead: handleContactsRead,
+        contactsFailed: handleContactsFailed,
+        messagesRead: handleMessagesRead,
+        messagesFailed: handleMessagesFailed,
+      },
+      following: {
+        followed(state, { next }, { emitState, update }) {
+          if (next === null) {
+            emitState({ kind: 'unfollowed', reads: state.reads });
+            return;
+          }
+          const { follow: previous, view: shown } = state;
+          const sameProduct = previous.productId === next.productId;
+          const sameRoom = sameProduct && previous.roomId === next.roomId;
+          const reloaded = !sameProduct || previous.loadId !== next.loadId;
+          if (sameRoom && !reloaded) {
+            return;
+          }
+          const readsContacts = reloaded || (next.roomId === null && state.missedMessages);
+          emitState({
+            ...state,
+            follow: next,
+            view: {
+              productId: next.productId,
+              contacts: sameProduct ? shown.contacts : null,
+              contactsFailed: sameProduct && shown.contactsFailed,
+              roomId: next.roomId,
+              messages: sameRoom ? shown.messages : null,
+              messagesFailed: sameRoom && shown.messagesFailed,
+            },
+            missedMessages: state.missedMessages && !readsContacts,
+          });
+          if (readsContacts) {
+            update({ kind: 'readAsked', read: 'contacts', target: next });
+          }
+          if (!sameRoom && next.roomId !== null) {
+            update({ kind: 'readAsked', read: 'messages', target: { productId: next.productId, roomId: next.roomId } });
+          }
+        },
+        // Messages reorder the list, which is re-read for them only while it shows, and once on return if any arrived.
+        changed(state, { change }, { emitState, update }) {
+          const { follow } = state;
+          if (change.productId !== follow.productId) {
+            return;
+          }
+          if (change.kind !== 'message' || follow.roomId === null) {
+            update({ kind: 'readAsked', read: 'contacts', target: follow });
+            return;
+          }
+          emitState({ ...state, missedMessages: true });
+          if (change.roomId === follow.roomId) {
+            update({
+              kind: 'readAsked',
+              read: 'messages',
+              target: { productId: follow.productId, roomId: follow.roomId },
+            });
+          }
+        },
+        readAsked: handleRead,
+        readEnded: handleRead,
+        contactsRead: handleContactsRead,
+        contactsFailed: handleContactsFailed,
+        messagesRead: handleMessagesRead,
+        messagesFailed: handleMessagesFailed,
+      },
+    },
+    onEffect: ({ step, error }) => {
+      reportFailedRead(error, step);
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'store_transition',
+        metric: storeTransitionMetric,
+        message: '[dot.li chat] A chat store transition threw',
+      });
+    },
+  });
+  const view = computed(machine.state, current => (current.kind === 'following' ? current.view : NO_VIEW));
+  view.eq = isShallowEqual;
 
   function reportFailedRead(
     error: unknown,
@@ -210,79 +394,42 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     });
   }
 
-  // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.
-  async function readContacts(): Promise<void> {
-    if (!contactsStale || target === null) {
-      return;
-    }
-    contactsStale = false;
-    const { productId } = target;
-    const isCurrent = (): boolean => target?.productId === productId;
-    try {
-      const [rooms, bots, lastMessageTimes] = await Promise.all([
-        repo.listRooms(productId),
-        repo.listBots(productId),
-        repo.readLatestMessageTimestamps(productId),
-      ]);
-      if (isCurrent()) {
-        patch({ contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false });
+  function startRead(request: ReadRequest, { emitState, update }: Transition<ReadMachine>): void {
+    emitState({ kind: 'reading' });
+    switch (request.read) {
+      case 'contacts': {
+        const { productId } = request.target;
+        update(
+          Promise.all([
+            repo.listRooms(productId),
+            repo.listBots(productId),
+            repo.readLatestMessageTimestamps(productId),
+          ]).then(
+            ([rooms, bots, lastMessageTimes]) => ({
+              kind: 'contactsRead',
+              productId,
+              contacts: { rooms, bots, lastMessageTimes },
+            }),
+            (error: unknown) => ({ kind: 'contactsFailed', productId, error }),
+          ),
+        );
+        return;
       }
-    } catch (error) {
-      reportFailedRead(error, 'chat_contacts_read');
-      if (isCurrent()) {
-        patch({ contactsFailed: true });
+      case 'messages': {
+        const { productId, roomId } = request.target;
+        update(
+          repo.listMessages(productId, roomId).then(
+            messages => ({ kind: 'messagesRead', productId, roomId, messages }),
+            (error: unknown) => ({ kind: 'messagesFailed', productId, roomId, error }),
+          ),
+        );
+        return;
       }
-    }
-  }
-
-  async function readMessages(): Promise<void> {
-    const following = target;
-    const roomId = following?.roomId ?? null;
-    if (!messagesStale || following === null || roomId === null) {
-      return;
-    }
-    messagesStale = false;
-    const { productId } = following;
-    const isCurrent = (): boolean => target?.productId === productId && target.roomId === roomId;
-    try {
-      const messages = await repo.listMessages(productId, roomId);
-      if (isCurrent()) {
-        patch({ messages, messagesFailed: false });
-      }
-    } catch (error) {
-      reportFailedRead(error, 'chat_messages_read');
-      if (isCurrent()) {
-        patch({ messagesFailed: true });
-      }
-    }
-  }
-
-  function refreshContacts(): void {
-    contactsStale = true;
-    void reads.call(readContacts, { pool: 'contacts' });
-  }
-
-  function refreshMessages(): void {
-    messagesStale = true;
-    void reads.call(readMessages, { pool: 'messages' });
-  }
-
-  function followChange(change: ChatChange): void {
-    if (target?.productId !== change.productId) {
-      return;
-    }
-    if (change.kind !== 'message' || target.roomId === null) {
-      refreshContacts();
-      return;
-    }
-    listMissedMessages = true;
-    if (change.roomId === target.roomId) {
-      refreshMessages();
     }
   }
 
   function notify(change: ChatChange): void {
-    followChange(change);
+    machine.update({ kind: 'changed', change });
     listeners.emit(change);
   }
 
@@ -299,47 +446,16 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     view,
 
     /**
-     * Points the view at `next`, or at nothing for null, which drops reads still in flight. Idempotent. Never throws: a
+     * Points the view at `next`, or at nothing for null, after which a read still running reaches no view and none due after it runs. Idempotent. Never throws: a
      * read that fails shows in the view's failed flags.
      */
     follow(next: ChatFollow | null): void {
-      const previous = target;
-      if (next === null) {
-        target = null;
-        contactsStale = false;
-        messagesStale = false;
-        listMissedMessages = false;
-        viewChange.set(NO_VIEW);
-        return;
-      }
-      const sameProduct = previous !== null && previous.productId === next.productId;
-      const sameRoom = sameProduct && previous.roomId === next.roomId;
-      const reloaded = !sameProduct || previous.loadId !== next.loadId;
-      if (sameRoom && !reloaded) {
-        return;
-      }
-      target = next;
-      const shown = viewChange.get();
-      viewChange.set({
-        productId: next.productId,
-        contacts: sameProduct ? shown.contacts : null,
-        contactsFailed: sameProduct && shown.contactsFailed,
-        roomId: next.roomId,
-        messages: sameRoom ? shown.messages : null,
-        messagesFailed: sameRoom && shown.messagesFailed,
-      });
-      if (reloaded || (next.roomId === null && listMissedMessages)) {
-        listMissedMessages = false;
-        refreshContacts();
-      }
-      if (!sameRoom && next.roomId !== null) {
-        refreshMessages();
-      }
+      machine.update({ kind: 'followed', next });
     },
 
     /** Resolves once no view read is queued or running. Never rejects, as a failed read is reported and shown. */
-    async settle(): Promise<void> {
-      await Promise.all([reads.settle('contacts'), reads.settle('messages')]);
+    settle(): Promise<void> {
+      return machine.await();
     },
 
     /**
@@ -477,103 +593,24 @@ export const chatStore = createChatStore({
   connections: chatConnections,
 });
 
-/**
- * Renders a custom message on the product's newest connection, and after a failed render on the next one, until the
- * returned function disposes it. Never throws.
- */
-function startCustomRender({ connections, productId, request, sink }: StartCustomRenderParams): () => void {
-  let state: RenderState;
-
-  const first = connections.get(productId);
-  if (first === undefined) {
-    wait();
-    sink.onError?.(new Error(NOT_CONNECTED));
-  } else {
-    renderOn(first);
+/** Ends a room list read, naming the one due next: the followed product's, or none. */
+function getContactsReadEnd(state: ChatState): ChatEvent {
+  switch (state.kind) {
+    case 'unfollowed':
+      return { kind: 'readEnded', read: 'contacts', target: null };
+    case 'following':
+      return { kind: 'readEnded', read: 'contacts', target: state.follow };
   }
-  return dispose;
+}
 
-  function renderOn(connection: ChatConnection): void {
-    const rendering: Rendering = {
-      kind: 'rendering',
-      connection,
-      stop: () => undefined,
-    };
-    state = rendering;
-    const stop = connection.render(request, followRender(rendering));
-    // A render that failed before it returned has already moved on, so its stop is not kept.
-    if (state === rendering) {
-      rendering.stop = stop;
-      return;
-    }
-    stop();
+/** Ends a conversation read, naming the one due next: the open room's, or none. */
+function getMessagesReadEnd(state: ChatState): ChatEvent {
+  if (state.kind === 'unfollowed' || state.follow.roomId === null) {
+    return { kind: 'readEnded', read: 'messages', target: null };
   }
-
-  function followRender(rendering: Rendering): RenderSink {
-    return {
-      onUpdate(node) {
-        if (state === rendering) {
-          sink.onUpdate(node);
-        }
-      },
-      onComplete() {
-        if (state !== rendering) {
-          return;
-        }
-        state = { kind: 'completed' };
-        sink.onComplete?.();
-      },
-      onError(error) {
-        if (state !== rendering) {
-          return;
-        }
-        // The sink hears the error before any tree of the next render, and may dispose the render as it hears it.
-        sink.onError?.(error);
-        if (state === rendering) {
-          moveOn(rendering.connection);
-        }
-      },
-    };
-  }
-
-  function moveOn(failed: ChatConnection): void {
-    const newest = connections.get(productId);
-    if (newest === undefined || newest === failed) {
-      wait();
-      return;
-    }
-    renderOn(newest);
-  }
-
-  function wait(): void {
-    const waiting: Waiting = { kind: 'waiting', stopListening: () => undefined };
-    state = waiting;
-    waiting.stopListening = connections.onRegister(registered => {
-      if (registered !== productId || state !== waiting) {
-        return;
-      }
-      const connection = connections.get(productId);
-      if (connection === undefined) {
-        return;
-      }
-      waiting.stopListening();
-      renderOn(connection);
-    });
-  }
-
-  function dispose(): void {
-    const previous = state;
-    state = { kind: 'disposed' };
-    switch (previous.kind) {
-      case 'rendering':
-        previous.stop();
-        return;
-      case 'waiting':
-        previous.stopListening();
-        return;
-      case 'completed':
-      case 'disposed':
-        return;
-    }
-  }
+  return {
+    kind: 'readEnded',
+    read: 'messages',
+    target: { productId: state.follow.productId, roomId: state.follow.roomId },
+  };
 }

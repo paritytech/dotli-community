@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { ACCOUNT_REQUEST_LOGIN, PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
+import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers } from '@dotli/shared/testing';
 import { encodeRequestFrame } from '../testing/encodeRequestFrame.js';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
@@ -11,6 +12,8 @@ import { createPermissionResponseGate } from './createPermissionResponseGate.js'
 type Params = {
   /** The frame's lifetime, one that never ends by default. */
   signal?: AbortSignal;
+  /** The first run held, a spy by default. */
+  reload?: () => void;
 };
 
 const WAIT_MS = 3_000;
@@ -109,13 +112,33 @@ describe('permission response gate', () => {
     expect(late).not.toHaveBeenCalled();
     expect(timers.countPending()).toBe(0);
   });
+
+  it('As a dApp user, I answer a permission prompt while one waiting reload throws, and the reload after it still runs while the throw is reported', () => {
+    // Given
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { gate, reload } = createWaitingGate({
+      reload: () => {
+        throw new Error('rebuild failed');
+      },
+    });
+    const second = vi.fn();
+    gate.runAfterResponse(second);
+
+    // When
+    gate.noteForwarded(PERMISSION_ANSWER);
+
+    // Then
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reports.exceptions).toMatchObject([{ step: 'response_gate_transition' }]);
+  });
 });
 
 /** A gate on manual timers with one reload waiting on the permission answer. */
-function createWaitingGate({ signal = new AbortController().signal }: Params = {}) {
+function createWaitingGate({ signal = new AbortController().signal, reload: run = () => {} }: Params = {}) {
   const timers = createManualTimers();
   const gate = createPermissionResponseGate({ signal, timeoutMs: WAIT_MS, timers });
-  const reload = vi.fn();
+  const reload = vi.fn(run);
   gate.runAfterResponse(reload);
   return { gate, timers, reload };
 }
