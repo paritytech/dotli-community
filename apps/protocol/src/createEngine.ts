@@ -10,7 +10,8 @@ import type { ProtocolContext, ProtocolHandler, protocolSchema } from '@dotli/pr
 import { createStateMachine, nest, type HandlerOf, type MachineTypes } from '@dotli/shared';
 import { ok, type MethodTypes } from '@dotli/transport';
 
-import { assertNonEmpty, createNameReads, type EngineResolver } from './createNameReads.js';
+import { assertNonEmpty } from './assertNonEmpty.js';
+import { createNameReads, type EngineResolver } from './createNameReads.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
 const report = createReporter({ flow: 'protocol' });
@@ -47,10 +48,15 @@ type Held = { connection: StringJsonRpcConnection; sink: ChainSink };
  */
 type Connection = ({ kind: 'connected' } & Held) | ({ kind: 'answered' } & Held) | { kind: 'gone' };
 
-/** One tab's live connections. A scope with none leaves the map, and its next connection adds it again. */
-type Scope = { kind: 'open'; connections: ReadonlyMap<string, Exclude<Connection, { kind: 'gone' }>> };
+type LiveConnection = Exclude<Connection, { kind: 'gone' }>;
 
-type EngineState = { kind: 'open'; scopes: ReadonlyMap<string, Scope> } | { kind: 'disposed' };
+/**
+ * Each tab's live connections by scope id, then by connection id. A scope with none leaves the map, and its next
+ * connection adds it again.
+ */
+type Scopes = ReadonlyMap<string, ReadonlyMap<string, LiveConnection>>;
+
+type EngineState = { kind: 'open'; scopes: Scopes } | { kind: 'disposed' };
 
 type ConnectionEvent = { scopeId: string; connectionId: string };
 
@@ -73,8 +79,6 @@ type EngineEffect =
   | { kind: 'poolReleased' };
 
 type EngineMachine = MachineTypes<EngineState, EngineEvent, EngineEffect>;
-
-type ScopeMachine = MachineTypes<Scope, EngineEvent, EngineEffect>;
 
 type ConnectionMachine = MachineTypes<Connection, EngineEvent, EngineEffect>;
 
@@ -113,21 +117,12 @@ export function createEngine({
     emitSideEffect({ kind: 'disconnect', connection });
     emitSideEffect({ kind: 'chainDisconnected', connectionId });
   };
-  const handleConnection = nest<ScopeMachine, 'open', ConnectionMachine, 'messaged' | 'halted' | 'disconnected'>({
-    find: ({ connections }, { connectionId }) => connections.get(connectionId) ?? null,
-    store(scope, { connectionId }, next) {
-      const connections = new Map(scope.connections);
-      switch (next.kind) {
-        case 'connected':
-        case 'answered':
-          connections.set(connectionId, next);
-          break;
-        case 'gone':
-          connections.delete(connectionId);
-          break;
-      }
-      return { ...scope, connections };
-    },
+  const handleConnection = nest<EngineMachine, 'open', ConnectionMachine, 'messaged' | 'halted' | 'disconnected'>({
+    find: ({ scopes }, { scopeId, connectionId }) => scopes.get(scopeId)?.get(connectionId) ?? null,
+    store: (state, { scopeId, connectionId }, next) => ({
+      ...state,
+      scopes: withConnection(state.scopes, { scopeId, connectionId }, next),
+    }),
     handlers: {
       connected: {
         messaged(held, { connectionId, message }, { emitState, emitSideEffect }) {
@@ -148,55 +143,39 @@ export function createEngine({
       gone: null,
     },
   });
-  const handleScope = nest<EngineMachine, 'open', ScopeMachine, 'messaged' | 'halted' | 'disconnected'>({
-    find: ({ scopes }, { scopeId }) => scopes.get(scopeId) ?? null,
-    store(state, { scopeId }, next) {
-      const scopes = new Map(state.scopes);
-      if (next.connections.size === 0) {
-        scopes.delete(scopeId);
-      } else {
-        scopes.set(scopeId, next);
-      }
-      return { ...state, scopes };
-    },
-    handlers: {
-      open: { messaged: handleConnection, halted: handleConnection, disconnected: handleConnection },
-    },
-  });
   const machine = createStateMachine<EngineMachine>({
     initial: { kind: 'open', scopes: new Map() },
     handlers: {
       open: {
         connected(state, { scopeId, connectionId, connection, sink }, { emitState, emitSideEffect }) {
-          const connections = new Map(state.scopes.get(scopeId)?.connections).set(connectionId, {
-            kind: 'connected',
-            connection,
-            sink,
-          });
-          emitState({ ...state, scopes: new Map(state.scopes).set(scopeId, { kind: 'open', connections }) });
+          const scopes = withConnection(
+            state.scopes,
+            { scopeId, connectionId },
+            { kind: 'connected', connection, sink },
+          );
+          emitState({ ...state, scopes });
           emitSideEffect({ kind: 'chainConnected', connectionId });
           emitSideEffect({ kind: 'sent', sink, value: { tag: 'connected', value: undefined } });
         },
-        messaged: handleScope,
-        halted: handleScope,
-        disconnected: handleScope,
+        messaged: handleConnection,
+        halted: handleConnection,
+        disconnected: handleConnection,
         scopeClosed(state, { scopeId }, { emitState, emitSideEffect }) {
-          const scope = state.scopes.get(scopeId);
-          if (scope === undefined) {
+          const connections = state.scopes.get(scopeId);
+          if (connections === undefined) {
             return;
           }
-          // Dropped first, so a halt the disconnect causes finds nothing to end again.
           const scopes = new Map(state.scopes);
           scopes.delete(scopeId);
           emitState({ ...state, scopes });
-          for (const { connection, sink } of scope.connections.values()) {
+          for (const { connection, sink } of connections.values()) {
             emitSideEffect({ kind: 'disconnect', connection });
             emitSideEffect({ kind: 'sinkEnded', sink });
           }
         },
         disposed(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed' });
-          for (const { connections } of state.scopes.values()) {
+          for (const connections of state.scopes.values()) {
             for (const { connection } of connections.values()) {
               emitSideEffect({ kind: 'disconnect', connection });
             }
@@ -298,7 +277,7 @@ export function createEngine({
       assertNonEmpty(genesisHash, 'genesisHash');
       assertNonEmpty(connectionId, 'connectionId');
       // Connection ids are unique only within a scope, so each scope checks its own.
-      const connections: ReadonlyMap<string, unknown> = state.scopes.get(scopeId)?.connections ?? new Map();
+      const connections: ReadonlyMap<string, unknown> = state.scopes.get(scopeId) ?? new Map();
       if (connections.has(connectionId)) {
         throw new Error(`Duplicate chain connection: ${connectionId}`);
       }
@@ -335,7 +314,7 @@ export function createEngine({
       assertNonEmpty(connectionId, 'connectionId');
       assertNonEmpty(message, 'message');
       const state = machine.state.get();
-      const held = state.kind === 'open' ? state.scopes.get(scopeId)?.connections.get(connectionId) : undefined;
+      const held = state.kind === 'open' ? state.scopes.get(scopeId)?.get(connectionId) : undefined;
       if (held === undefined) {
         throw new Error(`Unknown chain connection: ${connectionId}`);
       }
@@ -358,7 +337,7 @@ function countConnections(state: EngineState): number {
   switch (state.kind) {
     case 'open': {
       let total = 0;
-      for (const { connections } of state.scopes.values()) {
+      for (const connections of state.scopes.values()) {
         total += connections.size;
       }
       return total;
@@ -366,4 +345,29 @@ function countConnections(state: EngineState): number {
     case 'disposed':
       return 0;
   }
+}
+
+/** `scopes` with the connection set to `next`, or dropped when `next` is gone, and a scope left empty dropped too. */
+function withConnection(
+  scopes: Scopes,
+  { scopeId, connectionId }: { scopeId: string; connectionId: string },
+  next: Connection,
+): Scopes {
+  const connections = new Map(scopes.get(scopeId));
+  switch (next.kind) {
+    case 'connected':
+    case 'answered':
+      connections.set(connectionId, next);
+      break;
+    case 'gone':
+      connections.delete(connectionId);
+      break;
+  }
+  const nextScopes = new Map(scopes);
+  if (connections.size === 0) {
+    nextScopes.delete(scopeId);
+  } else {
+    nextScopes.set(scopeId, connections);
+  }
+  return nextScopes;
 }

@@ -16,6 +16,7 @@ import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
 import { err, ok, type AnyMethod, type CallError, type MethodTypes, type ResultPayload } from '@dotli/transport';
 
+import { assertNonEmpty } from './assertNonEmpty.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
 export type EngineResolver = Pick<
@@ -133,13 +134,6 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
       assertNonEmpty(label, 'label');
       return reader.resolveRootManifest(label, toSyncOptions(methods.resolve.rootManifest));
     });
-  }
-}
-
-/** Throws when a protocol field that must name something is empty. */
-export function assertNonEmpty(value: string, name: string): void {
-  if (value.length === 0) {
-    throw new Error(`Invalid ${name}: expected non-empty string`);
   }
 }
 
