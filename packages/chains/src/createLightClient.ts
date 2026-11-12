@@ -275,13 +275,9 @@ export function createLightClient({
         left: dropConnection,
       },
       restoring: {
-        restored(state, { key }, transition) {
-          connectChain(state, key, transition);
-        },
+        restored: connectChain,
         // A store that cannot answer starts the chain from the chain-spec checkpoint, as a miss does.
-        restoreMissed(state, { key }, transition) {
-          connectChain(state, key, transition);
-        },
+        restoreMissed: connectChain,
         sent: queueMessage,
         left: dropConnection,
       },
@@ -557,7 +553,7 @@ export function createLightClient({
           return;
         case 'readBroke':
           log.warn(
-            `[dot.li provider] chain ${effect.genesis} read failed, halting it: ${getErrorMessage(effect.error)}`,
+            `[dot.li provider] chain ${effect.genesis} failed, halting it: ${getErrorMessage(effect.error)}`,
             effect.error,
           );
           return;
@@ -593,7 +589,7 @@ export function createLightClient({
   /** Moves a restored connection to `connecting` and starts its connect. */
   function connectChain(
     { chain, engine, queued }: RestoringConnection,
-    key: ConnectionKey,
+    { key }: { key: ConnectionKey },
     { emitState, update }: Transition<ConnectionMachine>,
   ): void {
     emitState({ kind: 'connecting', chain, engine, queued });
