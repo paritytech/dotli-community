@@ -12,7 +12,7 @@ import { createReporter, defineCount, type CountAttributes } from '@dotli/metric
 import { computed, type ReadableAtom } from 'nanostores';
 import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
-import type { Responder } from '../sessionHandoff/createResponder.js';
+import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import type { RefusalReason } from '../sessionHandoff/sessionMessages.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import { MainAccountError, type MainAccount } from './mainAccount.js';
@@ -219,7 +219,7 @@ type RoundEvent<Result> =
   | GrantKeep
   | { kind: 'unsentForgotten' }
   | { kind: 'unsentForgetFailed'; error: unknown }
-  | { kind: 'responderMoved' }
+  | { kind: 'responderMoved'; state: ResponderState }
   | { kind: 'retried' }
   | { kind: 'cancelled' };
 
@@ -480,8 +480,9 @@ export function createSiteRound<Result, Outcome extends string>({
         cancelled: closeAgain,
       },
       sent: {
-        responderMoved({ stop, screen }, _event, { emitState, emitSideEffect }) {
-          if (responder.state.get().kind !== 'answered') {
+        responderMoved({ stop, screen }, { state }, { emitState, emitSideEffect }) {
+          // A window restored from the back-forward cache meanwhile is answered only with its next vetting.
+          if (state.kind !== 'answered') {
             return;
           }
           stop();
@@ -670,14 +671,12 @@ export function createSiteRound<Result, Outcome extends string>({
     siteToken: string | undefined,
     { emitState, emitSideEffect, update }: Transition<Machine>,
   ): void {
-    const stop = responder.state.listen(() => {
-      update({ kind: 'responderMoved' });
+    const stop = responder.state.listen(state => {
+      update({ kind: 'responderMoved', state });
     });
     emitState({ kind: 'sent', stop, screen });
     emitSideEffect({ kind: 'sent', result, siteToken, reason: getGrantReason(group, known) });
     emitSideEffect({ kind: 'actionEnded' });
-    // A window restored from the back-forward cache meanwhile is answered only with its next vetting.
-    update({ kind: 'responderMoved' });
   }
 
   /** Has the window flow sign in or resume the stored sign-in. */
