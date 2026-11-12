@@ -74,7 +74,7 @@ type EngineEffect =
   | { kind: 'firstMessage'; connectionId: string; bytes: number }
   | { kind: 'chainHalted'; connectionId: string }
   | { kind: 'chainDisconnected'; connectionId: string }
-  | { kind: 'disconnect'; connection: StringJsonRpcConnection }
+  | { kind: 'connectionClosed'; connection: StringJsonRpcConnection }
   | { kind: 'sinkEnded'; sink: ChainSink }
   | { kind: 'poolReleased' };
 
@@ -114,7 +114,7 @@ export function createEngine({
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'gone' });
-    emitSideEffect({ kind: 'disconnect', connection });
+    emitSideEffect({ kind: 'connectionClosed', connection });
     emitSideEffect({ kind: 'chainDisconnected', connectionId });
   };
   const handleConnection = nest<EngineMachine, 'open', ConnectionMachine, 'messaged' | 'halted' | 'disconnected'>({
@@ -169,7 +169,7 @@ export function createEngine({
           scopes.delete(scopeId);
           emitState({ ...state, scopes });
           for (const { connection, sink } of connections.values()) {
-            emitSideEffect({ kind: 'disconnect', connection });
+            emitSideEffect({ kind: 'connectionClosed', connection });
             emitSideEffect({ kind: 'sinkEnded', sink });
           }
         },
@@ -177,7 +177,7 @@ export function createEngine({
           emitState({ kind: 'disposed' });
           for (const connections of state.scopes.values()) {
             for (const { connection } of connections.values()) {
-              emitSideEffect({ kind: 'disconnect', connection });
+              emitSideEffect({ kind: 'connectionClosed', connection });
             }
           }
           emitSideEffect({ kind: 'poolReleased' });
@@ -204,7 +204,7 @@ export function createEngine({
             `Chain disconnected: ${effect.connectionId} (${String(countConnections(machine.state.get()))} remaining)`,
           );
           break;
-        case 'disconnect':
+        case 'connectionClosed':
           effect.connection.disconnect();
           break;
         case 'sinkEnded':
