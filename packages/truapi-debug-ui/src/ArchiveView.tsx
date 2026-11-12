@@ -1,24 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ArchiveFiles } from '@dotli/content';
-import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createStateMachine,
-  formatSize,
-  getErrorMessage,
-  type HandlerOf,
-  type MachineTypes,
-  type Transition,
-} from '@dotli/shared';
+import { formatSize } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
+import { createArchiveReader } from './createArchiveReader.js';
 import { getImageType } from './getImageType.js';
 import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
 import { formatArchiveSummary } from './formatArchiveSummary.js';
-import { toLoadedArchive, type LoadedArchive } from './toLoadedArchive.js';
+import type { LoadedArchive } from './toLoadedArchive.js';
 import type { ArchiveLoader } from './host.js';
 import type { HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
@@ -30,30 +22,8 @@ import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
-const report = createReporter({ flow: 'ui' });
-const archiveViewTransitionMetric = defineCount<'error'>('archive_view.transition');
-
 /** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARACTERS = 1_000_000;
-
-/** The tab reads on its first show, again for a new CID, and again on the next show after a failed read. */
-type ArchiveState =
-  | { kind: 'unread' }
-  | ReadingState
-  | { kind: 'read'; cid: string; archive: LoadedArchive }
-  | { kind: 'failed'; cid: string; reason: string }
-  | { kind: 'disposed' };
-
-type ReadingState = { kind: 'reading'; cid: string };
-
-/** A read's outcome carries the read it settles, so a read the tab has moved past changes nothing. */
-type ArchiveEvent =
-  | { kind: 'shown'; cid: string }
-  | { kind: 'archiveRead'; reading: ReadingState; archive: LoadedArchive }
-  | { kind: 'readFailed'; reading: ReadingState; reason: string }
-  | { kind: 'disposed' };
-
-type ArchiveMachine = MachineTypes<ArchiveState, ArchiveEvent>;
 
 export function ArchiveView(props: {
   active: boolean;
@@ -68,61 +38,9 @@ export function ArchiveView(props: {
     const state = product();
     return state.status === 'loaded' ? state.cid : undefined;
   }
-  const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
-  const [imageUrl, setImageUrl] = createSignal<string | null>(null);
-
-  const readShown: HandlerOf<ArchiveMachine, 'unread' | 'failed', 'shown'> = (_state, { cid }, transition) => {
-    startReading(cid, transition);
-  };
-  const readNewCid: HandlerOf<ArchiveMachine, 'reading' | 'read', 'shown'> = (state, { cid }, transition) => {
-    if (state.cid === cid) {
-      return;
-    }
-    startReading(cid, transition);
-  };
-  const dispose: HandlerOf<ArchiveMachine, 'unread' | 'reading' | 'read' | 'failed', 'disposed'> = (
-    _state,
-    _event,
-    { emitState },
-  ) => {
-    emitState({ kind: 'disposed' });
-  };
-  const reader = createStateMachine<ArchiveMachine>({
-    initial: { kind: 'unread' },
-    handlers: {
-      unread: { shown: readShown, disposed: dispose },
-      reading: {
-        shown: readNewCid,
-        archiveRead(state, { reading, archive }, { emitState }) {
-          if (state !== reading) {
-            return;
-          }
-          emitState({ kind: 'read', cid: state.cid, archive });
-        },
-        readFailed(state, { reading, reason }, { emitState }) {
-          if (state !== reading) {
-            return;
-          }
-          emitState({ kind: 'failed', cid: state.cid, reason });
-        },
-        disposed: dispose,
-      },
-      read: { shown: readNewCid, disposed: dispose },
-      failed: { shown: readShown, disposed: dispose },
-      disposed: null,
-    },
-    onError: error => {
-      report.defect(error, {
-        step: 'transition',
-        metric: archiveViewTransitionMetric,
-        message: '[dot.li] An archive view transition threw',
-      });
-    },
-  });
+  const reader = createArchiveReader({ load: cid => props.load(cid) });
   const state = useStore(reader.state);
-  onCleanup(() => {
-    reader.update({ kind: 'disposed' });
-  });
+  const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
   createEffect(
     () => (props.active ? (getCid() ?? null) : null),
@@ -135,9 +53,12 @@ export function ArchiveView(props: {
   );
 
   const selected = createMemo((): ArchiveFile | undefined => {
-    const loaded = getLoadedArchive();
-    const path = selectedPath();
-    return loaded !== undefined && path !== null ? loaded.files.find(file => file.path === path) : undefined;
+    const current = state();
+    if (current.kind !== 'read') {
+      return undefined;
+    }
+    const { archive, selectedPath } = current;
+    return archive.files.find(file => file.path === selectedPath);
   });
   const shown = createMemo((): Preview | undefined => {
     const file = selected();
@@ -160,22 +81,6 @@ export function ArchiveView(props: {
     },
   );
 
-  /** Moves to a new read of `cid`, whose outcome settles that read only. */
-  function startReading(cid: string, { emitState, update }: Transition<ArchiveMachine>): void {
-    const reading: ReadingState = { kind: 'reading', cid };
-    const load = props.load;
-    emitState(reading);
-    setSelectedPath(null);
-    update(
-      // A load that throws rejects this promise, so it ends as a failed read too.
-      new Promise<ArchiveFiles>(resolve => {
-        resolve(load(cid));
-      }).then(
-        (files): ArchiveEvent => ({ kind: 'archiveRead', reading, archive: toLoadedArchive(files) }),
-        (error: unknown): ArchiveEvent => ({ kind: 'readFailed', reading, reason: getErrorMessage(error) }),
-      ),
-    );
-  }
   function getShownText(): string | undefined {
     const current = shown();
     return current?.kind === 'text' ? current.text : undefined;
@@ -223,11 +128,11 @@ export function ArchiveView(props: {
                       <Item
                         testId="td-archive-file"
                         value={file.path}
-                        selected={selectedPath() === file.path}
+                        selected={selected()?.path === file.path}
                         title={file.path}
                         meta={formatSize(file.bytes.length)}
                         onSelect={() => {
-                          setSelectedPath(file.path);
+                          reader.update({ kind: 'fileSelected', path: file.path });
                         }}
                       >
                         {file.path}
@@ -245,7 +150,7 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
-                      {source => <img class={s['image']} src={source()} alt={selectedPath() ?? ''} />}
+                      {source => <img class={s['image']} src={source()} alt={selected()?.path ?? ''} />}
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
