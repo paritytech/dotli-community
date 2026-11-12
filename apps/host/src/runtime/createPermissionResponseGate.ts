@@ -26,9 +26,12 @@ type GateState =
   { kind: 'idle' } | { kind: 'holding'; runs: readonly (() => void)[]; timer: unknown } | { kind: 'ended' };
 
 type GateEvent =
-  { kind: 'asked'; run: () => void } | { kind: 'answered' } | { kind: 'timedOut'; timer: unknown } | { kind: 'ended' };
+  | { kind: 'asked'; run: () => void }
+  | { kind: 'forwarded'; message: Uint8Array }
+  | { kind: 'timedOut' }
+  | { kind: 'ended' };
 
-type GateEffect = { kind: 'released'; run: () => void };
+type GateEffect = { kind: 'released'; run: () => void } | { kind: 'waitStopped'; timer: unknown };
 
 type GateMachine = MachineTypes<GateState, GateEvent, GateEffect>;
 
@@ -40,7 +43,7 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
       idle: {
         asked(_state, { run }, { emitState, update }) {
           const timer = timers.setTimeout(() => {
-            update({ kind: 'timedOut', timer });
+            update({ kind: 'timedOut' });
           }, timeoutMs);
           emitState({ kind: 'holding', runs: [run], timer });
         },
@@ -52,25 +55,32 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
         asked(state, { run }, { emitState }) {
           emitState({ ...state, runs: [...state.runs, run] });
         },
-        answered(state, _event, transition) {
-          releaseRuns(state, transition);
-        },
-        timedOut(state, { timer }, transition) {
-          // A timer from a wait that already ended releases nothing.
-          if (timer !== state.timer) {
+        // Only a holding gate decodes, so a frame forwarded while nothing waits costs no decode.
+        forwarded(state, { message }, transition) {
+          if (!isDevicePermissionAnswer(message)) {
             return;
           }
           releaseRuns(state, transition);
         },
-        ended(state, _event, { emitState }) {
+        timedOut(state, _event, transition) {
+          releaseRuns(state, transition);
+        },
+        ended(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended' });
-          timers.clearTimeout(state.timer);
+          emitSideEffect({ kind: 'waitStopped', timer: state.timer });
         },
       },
       ended: null,
     },
-    onEffect: ({ run }) => {
-      run();
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'released':
+          effect.run();
+          return;
+        case 'waitStopped':
+          timers.clearTimeout(effect.timer);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -81,15 +91,14 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
     },
   });
 
-  if (!signal.aborted) {
-    signal.addEventListener(
-      'abort',
-      () => {
-        gate.update({ kind: 'ended' });
-      },
-      { once: true },
-    );
-  }
+  // An aborted signal fires no more, so its listener never runs.
+  signal.addEventListener(
+    'abort',
+    () => {
+      gate.update({ kind: 'ended' });
+    },
+    { once: true },
+  );
 
   return {
     /**
@@ -109,23 +118,7 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
   }
 
   function noteForwarded(message: Uint8Array): void {
-    // Frames are decoded only while something waits, so the hot path stays a length check.
-    if (gate.state.get().kind !== 'holding') {
-      return;
-    }
-    const decoded = decodeWireMessage(message);
-    if (decoded.isErr()) {
-      return;
-    }
-    const { payload } = decoded.value;
-    if (
-      payload.messageType !== MESSAGE_TYPE_RESPONSE ||
-      payload.traitId !== PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait ||
-      payload.methodId !== PERMISSIONS_REQUEST_DEVICE_PERMISSION.method
-    ) {
-      return;
-    }
-    gate.update({ kind: 'answered' });
+    gate.update({ kind: 'forwarded', message });
   }
 
   /** Moves a wait to `idle`, stops its timer and releases its runs in order. */
@@ -134,9 +127,22 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
     { emitState, emitSideEffect }: Transition<GateMachine>,
   ): void {
     emitState({ kind: 'idle' });
-    timers.clearTimeout(state.timer);
+    emitSideEffect({ kind: 'waitStopped', timer: state.timer });
     for (const run of state.runs) {
       emitSideEffect({ kind: 'released', run });
     }
   }
+}
+
+function isDevicePermissionAnswer(message: Uint8Array): boolean {
+  const decoded = decodeWireMessage(message);
+  if (decoded.isErr()) {
+    return false;
+  }
+  const { payload } = decoded.value;
+  return (
+    payload.messageType === MESSAGE_TYPE_RESPONSE &&
+    payload.traitId === PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait &&
+    payload.methodId === PERMISSIONS_REQUEST_DEVICE_PERMISSION.method
+  );
 }
