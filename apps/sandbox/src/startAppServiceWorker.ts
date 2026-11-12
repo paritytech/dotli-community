@@ -52,30 +52,16 @@ type Archives = {
   newest: ServedArchive | null;
 };
 
-/** What a restarted worker read back from the store, unpacked. */
-type RestoredArchives = {
-  byClient: ReadonlyMap<string, ServedArchive>;
-  workerPages: ReadonlyMap<string, string>;
-  /** The client whose archive was handed last, or `null` when none was. */
-  newestId: string | null;
-};
-
-/** A fetch the read-back holds, and the response it is answered with. */
-type HeldFetch = {
-  request: Request;
-  clientId: string;
-  pathname: string;
-  response: ReturnType<typeof createDeferred<Response>>;
-};
+/** A read-back of the store, which ends with the archives the fetches it held are answered from. */
+type ReadBack = ReturnType<typeof createDeferred<Archives>>;
 
 /**
- * The archives in memory, and whether the worker has read the store back since it started. `held` are the fetches the
- * read in flight answers, and `missedBefore` says whether a read failed before, since only the first failure is
- * reported to the pages.
+ * The archives in memory, and whether the worker has read the store back since it started. `read` is the read in
+ * flight, and `missedBefore` says whether a read failed before, since only the first failure is reported to the pages.
  */
 type WorkerState =
   | { kind: 'unread'; archives: Archives; missedBefore: boolean }
-  | { kind: 'reading'; archives: Archives; held: readonly HeldFetch[]; missedBefore: boolean }
+  | { kind: 'reading'; archives: Archives; read: ReadBack; missedBefore: boolean }
   | { kind: 'read'; archives: Archives };
 
 type WorkerEvent =
@@ -83,22 +69,20 @@ type WorkerEvent =
   | { kind: 'archiveHanded'; clientId: string; archive: ServedArchive }
   | { kind: 'workerLinked'; workerId: string; pageId: string }
   | { kind: 'clientsClosed'; closed: IsClosedClientParams }
-  | { kind: 'archivesRestored'; restored: RestoredArchives }
+  | { kind: 'archivesRestored'; restored: Archives }
   | { kind: 'restoreMissed'; error: unknown };
 
 /**
- * A fetch answered from the archive, held fetches answered once the read-back ended, a read-back that failed, for the
- * worker's log, and its first failure, for the pages.
+ * A fetch answered, a read-back that ended with the archives its fetches are answered from, a read-back that failed,
+ * for the worker's log, and its first failure, for the pages.
  */
 type WorkerEffect =
   | { kind: 'respond'; event: FetchEvent; response: Response | Promise<Response> }
-  | { kind: 'answerHeld'; held: readonly HeldFetch[]; archives: Archives }
+  | { kind: 'readEnded'; read: ReadBack; archives: Archives }
   | { kind: 'restoreMissed'; error: unknown }
   | { kind: 'firstRestoreMissed'; error: unknown };
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
-
-type AnyKind = WorkerState['kind'];
 
 /** A handoff as the worker reads it. Each field stays unchecked until it is read. */
 type SetArchiveRequest = {
@@ -134,7 +118,7 @@ const PAGE_MESSAGE_TYPES: readonly PageMessageType[] = [
 const WORKER_VERSION = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
 
 /** A handed archive serves its page, and is the newest. */
-const handArchive: HandlerOf<WorkerMachine, AnyKind, 'archiveHanded'> = (
+const handArchive: HandlerOf<WorkerMachine, WorkerState['kind'], 'archiveHanded'> = (
   state,
   { clientId, archive },
   { emitState },
@@ -144,13 +128,21 @@ const handArchive: HandlerOf<WorkerMachine, AnyKind, 'archiveHanded'> = (
 };
 
 /** A worker a page started is served that page's archive. */
-const linkWorker: HandlerOf<WorkerMachine, AnyKind, 'workerLinked'> = (state, { workerId, pageId }, { emitState }) => {
+const linkWorker: HandlerOf<WorkerMachine, WorkerState['kind'], 'workerLinked'> = (
+  state,
+  { workerId, pageId },
+  { emitState },
+) => {
   const workerPages = new Map(state.archives.workerPages).set(workerId, pageId);
   emitState({ ...state, archives: { ...state.archives, workerPages } });
 };
 
 /** Drops the archives and links of clients that are not open, except the sender's, which was open to send. */
-const dropClosed: HandlerOf<WorkerMachine, AnyKind, 'clientsClosed'> = (state, { closed }, { emitState }) => {
+const dropClosed: HandlerOf<WorkerMachine, WorkerState['kind'], 'clientsClosed'> = (
+  state,
+  { closed },
+  { emitState },
+) => {
   const { archives } = state;
   const byClient = new Map([...archives.byClient].filter(([clientId]) => !isClosedClient(clientId, closed)));
   const workerPages = new Map([...archives.workerPages].filter(([workerId]) => !isClosedClient(workerId, closed)));
@@ -191,9 +183,9 @@ export function startAppServiceWorker({
           }
           // A restarted worker reads the archives back first, since nginx answers every path with the shell as
           // `text/html`.
-          const held = holdFetch(event, pathname);
-          emitState({ kind: 'reading', archives: state.archives, held: [held], missedBefore: state.missedBefore });
-          emitSideEffect({ kind: 'respond', event, response: held.response.promise });
+          const read: ReadBack = createDeferred();
+          emitState({ kind: 'reading', archives: state.archives, read, missedBefore: state.missedBefore });
+          emitSideEffect({ kind: 'respond', event, response: answerAfterRead(read, event, pathname) });
           update(
             loadPersistedArchives(indexedDB)
               .then(unpackRestored)
@@ -208,28 +200,31 @@ export function startAppServiceWorker({
         clientsClosed: dropClosed,
       },
       reading: {
-        requested(state, { event, pathname }, { emitState, emitSideEffect }) {
-          const own = getClientArchive(state.archives, event.clientId);
+        requested({ archives, read }, { event, pathname }, { emitSideEffect }) {
+          const own = getClientArchive(archives, event.clientId);
           if (own !== null) {
             serveFromMemory({ event, archive: own, pathname }, emitSideEffect);
             return;
           }
-          const held = holdFetch(event, pathname);
-          emitState({ ...state, held: [...state.held, held] });
-          emitSideEffect({ kind: 'respond', event, response: held.response.promise });
+          emitSideEffect({ kind: 'respond', event, response: answerAfterRead(read, event, pathname) });
         },
-        archivesRestored({ archives, held }, { restored }, { emitState, emitSideEffect }) {
-          const merged = mergeRestored(archives, restored);
+        archivesRestored({ archives, read }, { restored }, { emitState, emitSideEffect }) {
+          // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
+          const merged: Archives = {
+            byClient: new Map([...restored.byClient, ...archives.byClient]),
+            workerPages: new Map([...restored.workerPages, ...archives.workerPages]),
+            newest: archives.newest ?? restored.newest,
+          };
           emitState({ kind: 'read', archives: merged });
-          emitSideEffect({ kind: 'answerHeld', held, archives: merged });
+          emitSideEffect({ kind: 'readEnded', read, archives: merged });
         },
-        restoreMissed({ archives, held, missedBefore }, { error }, { emitState, emitSideEffect }) {
+        restoreMissed({ archives, read, missedBefore }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'unread', archives, missedBefore: true });
           emitSideEffect({ kind: 'restoreMissed', error });
           if (!missedBefore) {
             emitSideEffect({ kind: 'firstRestoreMissed', error });
           }
-          emitSideEffect({ kind: 'answerHeld', held, archives });
+          emitSideEffect({ kind: 'readEnded', read, archives });
         },
         archiveHanded: handArchive,
         workerLinked: linkWorker,
@@ -252,13 +247,8 @@ export function startAppServiceWorker({
         case 'respond':
           effect.event.respondWith(effect.response);
           return;
-        case 'answerHeld':
-          for (const { request, clientId, pathname, response } of effect.held) {
-            answerFromMemory({ request, clientId, pathname, archives: effect.archives }).then(
-              response.resolve,
-              response.reject,
-            );
-          }
+        case 'readEnded':
+          effect.read.resolve(effect.archives);
           return;
         case 'restoreMissed':
           // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
@@ -334,18 +324,13 @@ export function startAppServiceWorker({
   }
 
   /**
-   * Answers a held fetch from its client's archive or the newest, and else from the network. Rejects as the network's
-   * fetch does, or with what the lookup throws.
+   * Answers a fetch once `read` ends, from its client's archive or the newest, and else from the network. Rejects as
+   * the network's fetch does, or with what the lookup throws.
    */
-  function answerFromMemory({
-    request,
-    clientId,
-    pathname,
-    archives,
-  }: Omit<HeldFetch, 'response'> & { archives: Archives }): Promise<Response> {
-    return new Promise(resolve => {
+  function answerAfterRead(read: ReadBack, { request, clientId }: FetchEvent, pathname: string): Promise<Response> {
+    return read.promise.then(archives => {
       const archive = getClientArchive(archives, clientId) ?? archives.newest;
-      resolve((archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request));
+      return (archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request);
     });
   }
 
@@ -455,22 +440,6 @@ function getClientArchive({ byClient, workerPages }: Archives, clientId: string)
   return pageId === undefined ? null : (byClient.get(pageId) ?? null);
 }
 
-/** Fills in what the store kept only where memory has nothing, since a handoff that landed during the read is newer. */
-function mergeRestored(archives: Archives, { byClient, workerPages, newestId }: RestoredArchives): Archives {
-  const mergedByClient = new Map([...byClient, ...archives.byClient]);
-  const newest = archives.newest ?? (newestId === null ? null : (mergedByClient.get(newestId) ?? null));
-  return {
-    byClient: mergedByClient,
-    workerPages: new Map([...workerPages, ...archives.workerPages]),
-    newest,
-  };
-}
-
-/** A fetch held until the read-back ends, with the response it will be answered with. */
-function holdFetch({ request, clientId }: FetchEvent, pathname: string): HeldFetch {
-  return { request, clientId, pathname, response: createDeferred<Response>() };
-}
-
 /** Whether a page's message has a type the worker acts on. */
 function isPageMessage(data: unknown): data is PageMessage {
   return isRecord(data) && PAGE_MESSAGE_TYPES.some(type => type === data['type']);
@@ -498,12 +467,12 @@ function getSender({ source }: ExtendableMessageEvent): Client | null {
 }
 
 /** The store's records with each page's archive unpacked. */
-function unpackRestored({ pages, workerPages, newest }: PersistedArchives): RestoredArchives {
+function unpackRestored({ pages, workerPages, newest }: PersistedArchives): Archives {
   const byClient = new Map<string, ServedArchive>();
   for (const [clientId, { packed, index, directory }] of pages) {
     byClient.set(clientId, { files: unpackArchive(packed, index), directory });
   }
-  return { byClient, workerPages, newestId: newest };
+  return { byClient, workerPages, newest: newest === null ? null : (byClient.get(newest) ?? null) };
 }
 
 /** Whether a request fetches the script of a product's worker. */
