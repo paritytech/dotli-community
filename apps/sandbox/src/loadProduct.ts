@@ -123,7 +123,7 @@ type LoadEffect =
   | { kind: 'contentSettled'; content: ContentOutcome }
   | { kind: 'decrypted'; files: ArchiveFiles }
   | { kind: 'archiveStored'; files: ArchiveFiles }
-  | { kind: 'writing'; bytes: number }
+  | { kind: 'writing'; result: FetchResult }
   | { kind: 'rendered' };
 
 type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
@@ -133,7 +133,7 @@ type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
  * the frame goes away mid-load, or `failed` with the step that failed and its error.
  */
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
-  const { cid, resolutionId } = params;
+  const { cid } = params;
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
 
@@ -144,7 +144,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
         started(_state, _event, transition) {
           transition.emitSideEffect({ kind: 'started' });
           if (!freshStart) {
-            startPreparing(transition);
+            startPreparing({ waitForFreshController: false }, transition);
             return;
           }
           // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
@@ -160,7 +160,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       },
       purging: {
         purged(_state, _event, transition) {
-          startPreparing(transition);
+          startPreparing({ waitForFreshController: true }, transition);
         },
         stepFailed: failStep,
       },
@@ -213,19 +213,13 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       rendering: {
         htmlPrepared({ result }, { html }, { emitState, emitSideEffect, update }) {
           emitState({ kind: 'writing', html });
-          const bytes = countResultBytes(result);
           try {
-            deps.hostMessages.reportDebug({
-              event: 'document_written',
-              flowId: resolutionId ?? cid,
-              payload: { cid, totalMs: deps.measureSinceStart(), bytes, fileCount: countResultFiles(result) },
-            });
             deps.hostMessages.notifyLoadingDone({ outcome: 'loaded' });
           } catch (error) {
             emitState(toFailure('render', error));
             return;
           }
-          emitSideEffect({ kind: 'writing', bytes });
+          emitSideEffect({ kind: 'writing', result });
           // Queued behind the effects, so the load's timer and mark end before the page is replaced.
           update({ kind: 'write' });
         },
@@ -248,7 +242,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       failed: null,
       tornDown: null,
     },
-    onEffect: createLoadReports({ params, attempt, measureSinceStart: deps.measureSinceStart }),
+    onEffect: createLoadReports({ params, attempt }, deps),
     onError: error => {
       report.defect(error, {
         step: 'load_transition',
@@ -261,12 +255,15 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   await machine.await();
   return toOutcome(machine.state.get());
 
-  /** Starts the registration and the fetch side by side. */
-  function startPreparing({ emitState, emitSideEffect, update }: Transition<LoadMachine>): void {
+  /** Starts the registration and the fetch side by side. A load that purged waits for a fresh worker. */
+  function startPreparing(
+    registration: Parameters<LoadProductDeps['registerWorker']>[0],
+    { emitState, emitSideEffect, update }: Transition<LoadMachine>,
+  ): void {
     emitState({ kind: 'preparing' });
     emitSideEffect({ kind: 'registering' });
     update(
-      startStep(() => deps.registerWorker({ waitForFreshController: freshStart }))
+      startStep(() => deps.registerWorker(registration))
         // Read within the registration, so a check that throws fails the load there, as the registration itself would.
         .then(() => deps.isControlled())
         .then(
@@ -348,12 +345,11 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
 }
 
 /** Turns what happens to one load into its log lines, timers and marks. */
-function createLoadReports({
-  params,
-  attempt,
-  measureSinceStart,
-}: LoadInput & Pick<LoadProductDeps, 'measureSinceStart'>): (effect: LoadEffect) => void {
-  const { cid, backend } = params;
+function createLoadReports(
+  { params, attempt }: LoadInput,
+  { hostMessages, measureSinceStart }: Pick<LoadProductDeps, 'hostMessages' | 'measureSinceStart'>,
+): (effect: LoadEffect) => void {
+  const { cid, backend, resolutionId } = params;
   const stopApp = m.timer('app.total');
   // Set once the registration starts, so the timer leaves out a full reset's purge.
   let stopWorkerTimer: () => void = noop;
@@ -419,11 +415,19 @@ function createLoadReports({
           ms: measureSinceStart(),
         });
         return;
-      case 'writing':
-        report.log.event('Writing content into the window', { bytes: effect.bytes, ms: measureSinceStart() });
+      case 'writing': {
+        const bytes = countResultBytes(effect.result);
+        const totalMs = measureSinceStart();
+        report.log.event('Writing content into the window', { bytes, ms: totalMs });
         performance.mark('dotli:app:end');
         stopApp();
+        hostMessages.reportDebug({
+          event: 'document_written',
+          flowId: resolutionId ?? cid,
+          payload: { cid, totalMs, bytes, fileCount: countResultFiles(effect.result) },
+        });
         return;
+      }
       case 'rendered':
         report.log.event('Content rendered', { ms: measureSinceStart() });
         return;
