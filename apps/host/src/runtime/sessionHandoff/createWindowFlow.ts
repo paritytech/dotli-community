@@ -183,8 +183,7 @@ type Event =
   | { kind: 'pairedRead'; blob: string; localWallet: SessionResult['localWallet'] }
   | { kind: 'accountCached' }
   | { kind: 'workFailed'; error: unknown }
-  | { kind: 'roundEnded'; result: SessionResult }
-  | { kind: 'doneWithoutOpener' };
+  | { kind: 'roundEnded'; result: SessionResult };
 
 type Effect =
   | { kind: 'stepFailed'; name: StepName; error: unknown }
@@ -199,10 +198,7 @@ type WindowMachine = MachineTypes<State, Event, Effect>;
 type FlowMachine = MachineTypes<Flow, Event, Effect>;
 
 /** The events the flow hears. The window's own handle the round's end and the window's life. */
-type FlowEventKind = Exclude<
-  Event['kind'],
-  'responderMoved' | 'disposed' | 'cancelAsked' | 'roundEnded' | 'doneWithoutOpener'
->;
+type FlowEventKind = Exclude<Event['kind'], 'responderMoved' | 'disposed' | 'cancelAsked' | 'roundEnded'>;
 
 /**
  * The steps whose failure leaves the failed view, since their view cannot go on, with the step each reports its failure
@@ -337,19 +333,40 @@ export function createWindowFlow({
     emitState({ kind: 'goingBack', round, shown });
     update(toStoredRead(reads.readStored()));
   };
-  const offerStored: HandlerOf<FlowMachine, 'readingToOffer' | 'goingBack', 'storedRead'> = (
-    state,
-    { stored },
-    transition,
-  ) => {
-    offerOrPair(state, stored, transition);
+  /**
+   * Offers what the store holds, else pairs. With nothing stored, a flag left set claims a sign-in that is gone, and
+   * the keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
+   */
+  const offerOrPair: HandlerOf<
+    FlowMachine,
+    'readingToOffer' | 'goingBack' | 'readingToSend' | 'readingForContinue',
+    'storedRead'
+  > = ({ round, shown }, { stored }, { emitState, update }) => {
+    const offered = getOffered(stored);
+    if (offered !== null) {
+      emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: null } });
+      return;
+    }
+    emitState({ kind: 'clearingFlag', round, shown });
+    // Never rejects, since no drop runs.
+    update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
   };
-  const sendStored: HandlerOf<FlowMachine, 'readingToSend' | 'readingForContinue', 'storedRead'> = (
+  /**
+   * Sends what the store holds, with the flag landed first, since the page reads it as it takes the result. A store
+   * with nothing to send, such as a flag left set over an empty store, drops the flag and pairs.
+   */
+  const send: HandlerOf<FlowMachine, 'readingToSend' | 'readingForContinue', 'storedRead'> = (
     state,
-    { stored },
+    event,
     transition,
   ) => {
-    send(state, stored, transition);
+    if (getOffered(event.stored) === null) {
+      offerOrPair(state, event, transition);
+      return;
+    }
+    transition.emitState({ kind: 'storingFlag', round: state.round, shown: state.shown, stored: event.stored });
+    // Never rejects, since the write does nothing.
+    transition.update(signIns.store(noop).then(() => ({ kind: 'flagLanded' })));
   };
 
   const followFlow = nest<WindowMachine, 'live', FlowMachine, FlowEventKind>({
@@ -376,11 +393,11 @@ export function createWindowFlow({
         },
       },
       readingToOffer: {
-        storedRead: offerStored,
+        storedRead: offerOrPair,
         workFailed: failStep,
       },
       readingToSend: {
-        storedRead: sendStored,
+        storedRead: send,
         workFailed: failStep,
       },
       clearingFlag: {
@@ -389,8 +406,8 @@ export function createWindowFlow({
         },
       },
       storingFlag: {
-        flagLanded({ round, stored }, _event, transition) {
-          endRound(round, stored, transition);
+        flagLanded({ stored }, _event, { update }) {
+          update({ kind: 'roundEnded', result: stored });
         },
       },
       continue: {
@@ -413,7 +430,7 @@ export function createWindowFlow({
         },
       },
       readingForContinue: {
-        storedRead: sendStored,
+        storedRead: send,
         workFailed: failStep,
       },
       loggingOut: {
@@ -486,7 +503,7 @@ export function createWindowFlow({
         closePhraseAsked: goBack,
       },
       goingBack: {
-        storedRead: offerStored,
+        storedRead: offerOrPair,
         workFailed: failStep,
       },
       savingPhrase: {
@@ -513,8 +530,8 @@ export function createWindowFlow({
         },
       },
       readingAfterPhrase: {
-        sessionRead({ round, entropy }, { session }, transition) {
-          endRound(round, { session, localWallet: { entropy, identity: null } }, transition);
+        sessionRead({ entropy }, { session }, { update }) {
+          update({ kind: 'roundEnded', result: { session, localWallet: { entropy, identity: null } } });
         },
         workFailed: failStep,
       },
@@ -566,8 +583,8 @@ export function createWindowFlow({
         authChanged: followAuth,
       },
       cachingAccount: {
-        accountCached({ round, result }, _event, transition) {
-          endRound(round, result, transition);
+        accountCached({ result }, _event, { update }) {
+          update({ kind: 'roundEnded', result });
         },
         workFailed: failStep,
         authChanged: followAuth,
@@ -610,18 +627,19 @@ export function createWindowFlow({
               return;
           }
         },
+        // The round's result goes to the page that opened the window, or is said as done when no page did.
         roundEnded({ flow }, { result }, { emitState, emitSideEffect }) {
+          if (flow.round.page === null) {
+            emitState({ kind: 'ended', screen: getStopScreen(flow, 'done-no-opener') });
+            emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
+            return;
+          }
           emitState({ kind: 'ended', screen: getSignInScreen(flow) });
           emitSideEffect({ kind: 'logged', line: 'sign-in window sends its result' });
           emitSideEffect({ kind: 'delivered', result });
         },
-        doneWithoutOpener({ flow }, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'ended', screen: getStopScreen(flow, 'done-no-opener') });
-          emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
-        },
         cancelAsked: closeWindow,
         disposed: disposeWindow,
-        openerKnown: followFlow,
         authChanged: followFlow,
         continueAsked: followFlow,
         anotherAsked: followFlow,
@@ -797,39 +815,6 @@ export function createWindowFlow({
     readToOffer({ round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } }, transition);
   }
 
-  /**
-   * Offers what the store holds, else pairs. With nothing stored, a flag left set claims a sign-in that is gone, and
-   * the keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
-   */
-  function offerOrPair(
-    { round, shown }: Step,
-    stored: SessionResult,
-    { emitState, update }: Transition<FlowMachine>,
-  ): void {
-    const offered = getOffered(stored);
-    if (offered !== null) {
-      emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: null } });
-      return;
-    }
-    emitState({ kind: 'clearingFlag', round, shown });
-    // Never rejects, since no drop runs.
-    update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
-  }
-
-  /**
-   * Sends what the store holds, with the flag landed first, since the page reads it as it takes the result. A store
-   * with nothing to send, such as a flag left set over an empty store, drops the flag and pairs.
-   */
-  function send(step: Step, stored: SessionResult, transition: Transition<FlowMachine>): void {
-    if (getOffered(stored) === null) {
-      offerOrPair(step, stored, transition);
-      return;
-    }
-    transition.emitState({ kind: 'storingFlag', round: step.round, shown: step.shown, stored });
-    // Never rejects, since the write does nothing.
-    transition.update(signIns.store(noop).then(() => ({ kind: 'flagLanded' })));
-  }
-
   /** Shows the pairing and logs in. The login waits on the phone, so it answers outside `await()`. */
   function pair(round: Round, { emitState, update }: Transition<FlowMachine>): void {
     emitState({ kind: 'loggingIn', round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } });
@@ -866,11 +851,6 @@ export function createWindowFlow({
     emitState({ kind: 'checkingSignedOut', round, shown });
     // A store that cannot be read may still hold the session, so the window does not go on over it.
     update(reads.isSessionGone().then(gone => ({ kind: gone ? 'sessionGone' : 'sessionHeld' }), mapWorkFailure));
-  }
-
-  /** Ends the round with what the store holds: handed to `deliver`, or said as done when no page opened the window. */
-  function endRound({ page }: Round, result: SessionResult, { update }: Transition<FlowMachine>): void {
-    update(page === null ? { kind: 'doneWithoutOpener' } : { kind: 'roundEnded', result });
   }
 }
 
