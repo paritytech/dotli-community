@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createAsyncTaskPool,
-  createStateMachine,
-  nest,
-  type HandlerOf,
-  type MachineTypes,
-  type Transition,
-} from '@dotli/shared';
+import { createAsyncTaskPool, createStateMachine, type MachineTypes, type Transition } from '@dotli/shared';
 import { toBlockingModalAbortError } from './throwIfModalAborted.js';
 
 const report = createReporter({ flow: 'ui' });
@@ -37,42 +30,42 @@ type Params = {
 type PromptRun = (signal: AbortSignal, hold: HoldSlot) => Promise<() => void>;
 
 /**
- * One prompt: `waiting` for its slot, `shown` while its task runs, `holding` the slot past its answer. `done` frees its
- * slot in the pool, and `stopAbort` stops hearing its scope's abort.
+ * One prompt of the scope that `signal` belongs to: `waiting` for its slot, `shown` while its task runs, `holding` the
+ * slot past its answer. `done` frees its slot in the pool.
  */
 type Prompt =
-  | { kind: 'waiting'; signal: AbortSignal; run: PromptRun; reject: (error: unknown) => void; stopAbort: () => void }
+  | { kind: 'waiting'; signal: AbortSignal; run: PromptRun; reject: (error: unknown) => void }
   | {
       kind: 'shown';
       signal: AbortSignal;
       run: PromptRun;
       reject: (error: unknown) => void;
-      stopAbort: () => void;
       done: () => void;
       holds: number;
     }
-  | { kind: 'holding'; stopAbort: () => void; done: () => void; holds: number }
-  | { kind: 'settled' };
+  | { kind: 'holding'; signal: AbortSignal; done: () => void; holds: number };
 
-/** A settled prompt leaves the map, so `prompts` holds the shown and waiting ones, oldest first. */
-type CoordinatorState = { kind: 'running'; prompts: ReadonlyMap<symbol, Exclude<Prompt, { kind: 'settled' }>> };
+/** The shown and waiting prompts, oldest first. An ended prompt leaves the map. */
+type CoordinatorState = { kind: 'running'; prompts: ReadonlyMap<symbol, Prompt> };
 
 type CoordinatorEvent =
   | { kind: 'enqueued'; id: symbol; prompt: Extract<Prompt, { kind: 'waiting' }> }
   | { kind: 'promptShown'; id: symbol; done: () => void }
-  | { kind: 'taskStarted'; id: symbol }
   | { kind: 'answered'; id: symbol; answer: () => void }
   | { kind: 'taskFailed'; id: symbol; error: unknown }
   | { kind: 'held'; id: symbol; promise: Promise<unknown> }
   | { kind: 'holdSettled'; id: symbol }
-  | { kind: 'promptAborted'; id: symbol };
+  | { kind: 'scopeAborted'; signal: AbortSignal };
 
-/** A prompt came, moved between `waiting`, `shown` and `holding`, or left, so the counts may have changed. */
-type CoordinatorEffect = { kind: 'countsChanged' };
+type CoordinatorEffect =
+  | { kind: 'askSlot'; id: symbol; signal: AbortSignal }
+  | { kind: 'runTask'; id: symbol; signal: AbortSignal; run: PromptRun }
+  | { kind: 'answer'; answer: () => void }
+  | { kind: 'reject'; reject: (error: unknown) => void; error: unknown }
+  | { kind: 'freeSlot'; done: () => void }
+  | { kind: 'countsChanged'; counts: BlockingModalCounts };
 
 type CoordinatorMachine = MachineTypes<CoordinatorState, CoordinatorEvent, CoordinatorEffect>;
-
-type PromptMachine = MachineTypes<Prompt, CoordinatorEvent, CoordinatorEffect>;
 
 export type BlockingModalCoordinator = ReturnType<typeof createBlockingModalCoordinator>;
 
@@ -80,125 +73,110 @@ export type BlockingModalScope = ReturnType<BlockingModalCoordinator['createScop
 
 /** One prompt on screen at a time, across every scope. `report` hears how many wait and whether one shows. */
 export function createBlockingModalCoordinator({ report: reportCounts = () => undefined }: Params = {}) {
-  const prompts = createAsyncTaskPool({ poolSize: 1 });
-
-  const holdSlot: HandlerOf<PromptMachine, 'shown' | 'holding', 'held'> = (
-    prompt,
-    { id, promise },
-    { emitState, update },
-  ) => {
-    emitState({ ...prompt, holds: prompt.holds + 1 });
-    // A held step reports its own failure, so only its end matters here.
-    update(
-      promise.then(
-        () => ({ kind: 'holdSettled', id }),
-        () => ({ kind: 'holdSettled', id }),
-      ),
-    );
-  };
-  const abortPrompt: HandlerOf<PromptMachine, 'waiting' | 'shown', 'promptAborted'> = (prompt, _event, transition) => {
-    leave(prompt, transition);
-    prompt.reject(toBlockingModalAbortError(prompt.signal.reason));
-  };
-
-  const handlePrompt = nest<
-    CoordinatorMachine,
-    'running',
-    PromptMachine,
-    'taskStarted' | 'answered' | 'taskFailed' | 'held' | 'holdSettled' | 'promptAborted'
-  >({
-    find: (state, { id }) => state.prompts.get(id) ?? null,
-    store(state, { id }, next) {
-      const open = new Map(state.prompts);
-      switch (next.kind) {
-        case 'waiting':
-        case 'shown':
-        case 'holding':
-          open.set(id, next);
-          break;
-        case 'settled':
-          open.delete(id);
-          break;
-      }
-      return { ...state, prompts: open };
-    },
-    handlers: {
-      waiting: { promptAborted: abortPrompt },
-      shown: {
-        taskStarted(prompt, { id }, transition) {
-          const { signal, run, reject } = prompt;
-          const { update } = transition;
-          // A report of the counts runs between the prompt's showing and this event, and may have disposed the scope.
-          if (signal.aborted) {
-            leave(prompt, transition);
-            reject(toBlockingModalAbortError(signal.reason));
-            return;
-          }
-          update(
-            run(signal, promise => {
-              update({ kind: 'held', id, promise });
-            }).then(
-              answer => ({ kind: 'answered', id, answer }),
-              (error: unknown) => ({ kind: 'taskFailed', id, error }),
-            ),
-          );
-        },
-        held: holdSlot,
-        answered(prompt, { answer }, transition) {
-          const { stopAbort, done, holds } = prompt;
-          if (holds > 0) {
-            transition.emitState({ kind: 'holding', stopAbort, done, holds });
-            transition.emitSideEffect({ kind: 'countsChanged' });
-          } else {
-            leave(prompt, transition);
-          }
-          answer();
-        },
-        taskFailed(prompt, { error }, transition) {
-          leave(prompt, transition);
-          prompt.reject(error);
-        },
-        holdSettled(prompt, _event, { emitState }) {
-          emitState({ ...prompt, holds: prompt.holds - 1 });
-        },
-        promptAborted: abortPrompt,
-      },
-      holding: {
-        held: holdSlot,
-        holdSettled(prompt, _event, transition) {
-          if (prompt.holds > 1) {
-            transition.emitState({ ...prompt, holds: prompt.holds - 1 });
-            return;
-          }
-          leave(prompt, transition);
-        },
-        promptAborted(prompt, _event, transition) {
-          leave(prompt, transition);
-        },
-      },
-      settled: null,
-    },
-  });
-
-  let reported: BlockingModalCounts | null = null;
+  const slots = createAsyncTaskPool({ poolSize: 1 });
   const machine = createStateMachine<CoordinatorMachine>({
     initial: { kind: 'running', prompts: new Map() },
     handlers: {
       running: {
-        enqueued(state, { id, prompt }, { emitState, emitSideEffect, update }) {
-          emitState({ ...state, prompts: new Map(state.prompts).set(id, prompt) });
-          emitSideEffect({ kind: 'countsChanged' });
-          prompts
+        enqueued(state, { id, prompt }, transition) {
+          emitPrompts(state, new Map(state.prompts).set(id, prompt), transition);
+          transition.emitSideEffect({ kind: 'askSlot', id, signal: prompt.signal });
+        },
+        promptShown(state, { id, done }, transition) {
+          const prompt = state.prompts.get(id);
+          // The scope's abort already ended the prompt.
+          if (prompt?.kind !== 'waiting') {
+            transition.emitSideEffect({ kind: 'freeSlot', done });
+            return;
+          }
+          emitPrompts(state, new Map(state.prompts).set(id, { ...prompt, kind: 'shown', done, holds: 0 }), transition);
+          transition.emitSideEffect({ kind: 'runTask', id, signal: prompt.signal, run: prompt.run });
+        },
+        answered(state, { id, answer }, transition) {
+          const prompt = state.prompts.get(id);
+          if (prompt?.kind !== 'shown') {
+            return;
+          }
+          const { signal, done, holds } = prompt;
+          if (holds > 0) {
+            emitPrompts(state, new Map(state.prompts).set(id, { kind: 'holding', signal, done, holds }), transition);
+          } else {
+            emitPrompts(state, without(state.prompts, id), transition);
+            transition.emitSideEffect({ kind: 'freeSlot', done });
+          }
+          transition.emitSideEffect({ kind: 'answer', answer });
+        },
+        taskFailed(state, { id, error }, transition) {
+          const prompt = state.prompts.get(id);
+          if (prompt?.kind !== 'shown') {
+            return;
+          }
+          emitPrompts(state, without(state.prompts, id), transition);
+          transition.emitSideEffect({ kind: 'freeSlot', done: prompt.done });
+          transition.emitSideEffect({ kind: 'reject', reject: prompt.reject, error });
+        },
+        held(state, { id, promise }, transition) {
+          const prompt = state.prompts.get(id);
+          if (prompt === undefined || prompt.kind === 'waiting') {
+            return;
+          }
+          emitPrompts(state, new Map(state.prompts).set(id, { ...prompt, holds: prompt.holds + 1 }), transition);
+          // A held step reports its own failure, so only its end matters here.
+          transition.update(
+            promise.then(
+              () => ({ kind: 'holdSettled', id }),
+              () => ({ kind: 'holdSettled', id }),
+            ),
+          );
+        },
+        holdSettled(state, { id }, transition) {
+          const prompt = state.prompts.get(id);
+          if (prompt === undefined || prompt.kind === 'waiting') {
+            return;
+          }
+          if (prompt.kind === 'holding' && prompt.holds === 1) {
+            emitPrompts(state, without(state.prompts, id), transition);
+            transition.emitSideEffect({ kind: 'freeSlot', done: prompt.done });
+            return;
+          }
+          emitPrompts(state, new Map(state.prompts).set(id, { ...prompt, holds: prompt.holds - 1 }), transition);
+        },
+        scopeAborted(state, { signal }, transition) {
+          const open = new Map(state.prompts);
+          for (const [id, prompt] of state.prompts) {
+            if (prompt.signal !== signal) {
+              continue;
+            }
+            open.delete(id);
+            if (prompt.kind !== 'waiting') {
+              transition.emitSideEffect({ kind: 'freeSlot', done: prompt.done });
+            }
+            if (prompt.kind !== 'holding') {
+              transition.emitSideEffect({
+                kind: 'reject',
+                reject: prompt.reject,
+                error: toBlockingModalAbortError(signal.reason),
+              });
+            }
+          }
+          emitPrompts(state, open, transition);
+        },
+      },
+    },
+    onEffect(effect) {
+      switch (effect.kind) {
+        case 'askSlot':
+          slots
             .call(
               () =>
                 new Promise<void>(done => {
-                  update({ kind: 'promptShown', id, done });
+                  machine.update({ kind: 'promptShown', id: effect.id, done });
                 }),
-              { signal: prompt.signal },
+              { signal: effect.signal },
             )
             .catch((error: unknown) => {
-              // `promptAborted` already turned the scope's abort into the prompt's end.
-              if (error === prompt.signal.reason) {
+              // `scopeAborted` already turned the scope's abort into the prompt's end.
+              if (error === effect.signal.reason) {
                 return;
               }
               report.defect(error, {
@@ -207,50 +185,45 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
                 message: '[dot.li] A blocking modal prompt slot failed',
               });
             });
-        },
-        promptShown(state, { id, done }, { emitState, emitSideEffect, update }) {
-          const prompt = state.prompts.get(id);
-          if (prompt?.kind !== 'waiting') {
-            done();
+          return;
+        case 'runTask': {
+          const { id, signal, run } = effect;
+          // A report of the counts runs just before, and may have disposed the scope. Its `scopeAborted` is next.
+          if (signal.aborted) {
             return;
           }
-          emitState({
-            ...state,
-            prompts: new Map(state.prompts).set(id, { ...prompt, kind: 'shown', done, holds: 0 }),
-          });
-          emitSideEffect({ kind: 'countsChanged' });
-          // Sent, not run here, so an abort the scope's holder sends meanwhile is heard before the task runs.
-          update({ kind: 'taskStarted', id });
-        },
-        taskStarted: handlePrompt,
-        answered: handlePrompt,
-        taskFailed: handlePrompt,
-        held: handlePrompt,
-        holdSettled: handlePrompt,
-        promptAborted: handlePrompt,
-      },
-    },
-    // Runs after the transition's emits, so a throw from `report`, or from a listener of a store it sets, finds the
-    // prompt already moved and its caller settled.
-    onEffect() {
-      const open = machine.state.get().prompts;
-      // Shown and waiting prompts together, so the bar never reads idle between two that follow each other.
-      const counts: BlockingModalCounts = {
-        waiting: [...open.values()].filter(prompt => prompt.kind === 'waiting').length,
-        active: open.size > 0,
-      };
-      if (reported?.waiting === counts.waiting && reported.active === counts.active) {
-        return;
-      }
-      reported = counts;
-      try {
-        reportCounts(counts);
-      } catch (error) {
-        report.defect(error, {
-          step: 'counts',
-          metric: blockingModalTransitionMetric,
-          message: '[dot.li] A blocking modal counts report threw',
-        });
+          machine.update(
+            run(signal, promise => {
+              machine.update({ kind: 'held', id, promise });
+            }).then(
+              answer => ({ kind: 'answered', id, answer }),
+              (error: unknown) => ({ kind: 'taskFailed', id, error }),
+            ),
+          );
+          return;
+        }
+        case 'answer':
+          effect.answer();
+          return;
+        case 'reject':
+          effect.reject(effect.error);
+          return;
+        case 'freeSlot':
+          effect.done();
+          return;
+        case 'countsChanged':
+          // Reported apart from the transition, so a throw from `report`, or from a listener of a store it sets, finds
+          // the prompt already moved and its caller settled.
+          try {
+            reportCounts(effect.counts);
+          } catch (error) {
+            report.defect(error, {
+              step: 'counts',
+              metric: blockingModalTransitionMetric,
+              message: '[dot.li] A blocking modal counts report threw',
+            });
+          }
+          return;
       }
     },
     onError(error) {
@@ -262,43 +235,19 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
     },
   });
 
-  function enqueue<T>(signal: AbortSignal, task: BlockingModalTask<T>): Promise<T> {
-    if (signal.aborted) {
-      return Promise.reject(toBlockingModalAbortError(signal.reason));
-    }
-    return new Promise<T>((resolve, reject) => {
-      const id = Symbol('prompt');
-      function abort(): void {
-        machine.update({ kind: 'promptAborted', id });
-      }
-      // Ahead of the pool's own abort listener, so the counts drop before the pool moves on. A later prompt of the same
-      // scope can still be started then, and its abort is heard before its task runs.
-      signal.addEventListener('abort', abort, { once: true });
-      machine.update({
-        kind: 'enqueued',
-        id,
-        prompt: {
-          kind: 'waiting',
-          signal,
-          run: (taskSignal, hold) =>
-            new Promise<T>(settle => {
-              settle(task(taskSignal, hold));
-            }).then(value => () => {
-              resolve(value);
-            }),
-          reject,
-          stopAbort() {
-            signal.removeEventListener('abort', abort);
-          },
-        },
-      });
-    });
-  }
-
   return {
     /** Returns a new scope, whose prompts queue with every other scope's. Never throws. */
     createScope() {
       const controller = new AbortController();
+      const { signal } = controller;
+      // Heard ahead of the pool's own abort listeners, so the counts drop before the pool moves on.
+      signal.addEventListener(
+        'abort',
+        () => {
+          machine.update({ kind: 'scopeAborted', signal });
+        },
+        { once: true },
+      );
       return {
         /**
          * Resolves with the task's value as soon as it returns. A promise the task holds keeps the slot, and the
@@ -306,11 +255,26 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
          * with an AbortError when the scope is disposed before the task answers, so a caller must handle it.
          */
         enqueue<T>(task: BlockingModalTask<T>): Promise<T> {
-          return enqueue(controller.signal, task);
+          if (signal.aborted) {
+            return Promise.reject(toBlockingModalAbortError(signal.reason));
+          }
+          return new Promise<T>((resolve, reject) => {
+            const run: PromptRun = (taskSignal, hold) =>
+              new Promise<T>(settle => {
+                settle(task(taskSignal, hold));
+              }).then(value => () => {
+                resolve(value);
+              });
+            machine.update({
+              kind: 'enqueued',
+              id: Symbol('prompt'),
+              prompt: { kind: 'waiting', signal, run, reject },
+            });
+          });
         },
         /** Ends the scope's prompts with an AbortError that carries `reason`. Idempotent, and never throws. */
         dispose(reason = 'TrUAPI host disposed'): void {
-          if (!controller.signal.aborted) {
+          if (!signal.aborted) {
             controller.abort(toBlockingModalAbortError(reason));
           }
         },
@@ -319,15 +283,30 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
   };
 }
 
-/** Ends a prompt: it leaves the map, stops hearing its scope's abort, and frees its slot when it has one. */
-function leave(
-  prompt: Exclude<Prompt, { kind: 'settled' }>,
-  { emitState, emitSideEffect }: Pick<Transition<PromptMachine>, 'emitState' | 'emitSideEffect'>,
+/** Moves to `prompts`, and tells the bar when the counts change. */
+function emitPrompts(
+  state: CoordinatorState,
+  prompts: ReadonlyMap<symbol, Prompt>,
+  { emitState, emitSideEffect }: Transition<CoordinatorMachine>,
 ): void {
-  emitState({ kind: 'settled' });
-  emitSideEffect({ kind: 'countsChanged' });
-  prompt.stopAbort();
-  if (prompt.kind !== 'waiting') {
-    prompt.done();
+  emitState({ ...state, prompts });
+  const before = countPrompts(state.prompts);
+  const after = countPrompts(prompts);
+  if (before.waiting !== after.waiting || before.active !== after.active) {
+    emitSideEffect({ kind: 'countsChanged', counts: after });
   }
+}
+
+/** Shown and waiting prompts together, so the bar never reads idle between two that follow each other. */
+function countPrompts(prompts: ReadonlyMap<symbol, Prompt>): BlockingModalCounts {
+  return {
+    waiting: [...prompts.values()].filter(prompt => prompt.kind === 'waiting').length,
+    active: prompts.size > 0,
+  };
+}
+
+function without(prompts: ReadonlyMap<symbol, Prompt>, id: symbol): ReadonlyMap<symbol, Prompt> {
+  const open = new Map(prompts);
+  open.delete(id);
+  return open;
 }
