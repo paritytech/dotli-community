@@ -14,7 +14,6 @@ import {
   fromHex,
   noop,
   toHex,
-  waitForStatus,
   type HandlerOf,
   type MachineTypes,
   type Transition,
@@ -83,13 +82,20 @@ type Params = {
 /** A block reads pin. A retired one is a block finality left behind while a read held it, unpinned once no read does. */
 type Pin = { kind: 'held' | 'retired'; count: number };
 
-/** Where the follow stands. A ready follow keeps the best block, finality's newest block and the blocks reads hold. */
+/** A caller of `whenReady`, settled once the follow is ready or stopped. */
+type Waiter = { resolve: () => void; reject: (error: ApiStoppedError) => void };
+
+/**
+ * Where the follow stands. A following one keeps who waits for it to be ready. A ready follow keeps the best block,
+ * finality's newest block and the blocks reads hold.
+ */
 type FollowState =
-  | { kind: 'following' }
+  | { kind: 'following'; waiters: readonly Waiter[] }
   | { kind: 'ready'; bestHash: string; newestFinalized: string; pins: ReadonlyMap<string, Pin> }
   | { kind: 'stopped'; error: ApiStoppedError };
 
 type FollowEvent =
+  | { kind: 'waited'; waiter: Waiter }
   | { kind: 'initialized'; finalized: readonly string[] }
   | { kind: 'bestBlockChanged'; hash: string }
   | { kind: 'finalized'; finalized: readonly string[]; pruned: readonly string[] }
@@ -101,6 +107,8 @@ type FollowEvent =
   | { kind: 'destroyed' };
 
 type FollowEffect =
+  | { kind: 'wake'; waiters: readonly Waiter[] }
+  | { kind: 'fail'; waiters: readonly Waiter[]; error: ApiStoppedError }
   | { kind: 'unpin'; hashes: readonly string[] }
   | { kind: 'unpinRefused'; error: unknown }
   | { kind: 'unfollow' }
@@ -116,38 +124,43 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
   const stops = createListenerSet<undefined>({ onListenerError: report.listener('resolver.stop') });
   const operations = createAsyncTaskPool({ poolSize: MAX_STORAGE_OPERATIONS });
 
-  const endFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'followEnded'> = (
-    _state,
-    { cause },
-    { emitState, emitSideEffect },
-  ) => {
-    emitState({ kind: 'stopped', error: new ApiStoppedError(cause) });
-    emitSideEffect({ kind: 'stopped' });
+  const endFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'followEnded'> = (state, { cause }, transition) => {
+    stop(state, new ApiStoppedError(cause), transition);
   };
 
-  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (_state, _event, transition) => {
-    unfollow(new ApiStoppedError(), transition);
+  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (state, _event, transition) => {
+    // `unfollow` stops the follow without calling its error callback, so the stop is told here.
+    transition.emitSideEffect({ kind: 'unfollow' });
+    stop(state, new ApiStoppedError(), transition);
   };
 
   const machine = createStateMachine<FollowMachine>({
-    initial: { kind: 'following' },
+    initial: { kind: 'following', waiters: [] },
     handlers: {
       following: {
-        initialized(_state, { finalized }, transition) {
+        waited(state, { waiter }, { emitState }) {
+          emitState({ ...state, waiters: [...state.waiters, waiter] });
+        },
+        initialized(state, { finalized }, transition) {
           const newest = finalized.at(-1);
           // papi does not know a follow with no finalized block is dead, so it is ended here.
           if (newest === undefined) {
             const cause = new Error('chainHead follow initialized with no finalized block');
-            unfollow(new ApiStoppedError(cause), transition);
+            transition.emitSideEffect({ kind: 'unfollow' });
+            stop(state, new ApiStoppedError(cause), transition);
             return;
           }
           transition.emitState({ kind: 'ready', bestHash: newest, newestFinalized: newest, pins: new Map() });
           transition.emitSideEffect({ kind: 'unpin', hashes: finalized.slice(0, -1) });
+          transition.emitSideEffect({ kind: 'wake', waiters: state.waiters });
         },
         followEnded: endFollow,
         destroyed: destroyFollow,
       },
       ready: {
+        waited(_state, { waiter }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'wake', waiters: [waiter] });
+        },
         bestBlockChanged(state, { hash }, { emitState }) {
           emitState({ ...state, bestHash: hash });
         },
@@ -196,7 +209,12 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
         followEnded: endFollow,
         destroyed: destroyFollow,
       },
-      stopped: null,
+      // A stopped follow handles nothing else, but a `whenReady` after the stop would otherwise never settle.
+      stopped: {
+        waited({ error }, { waiter }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'fail', waiters: [waiter], error });
+        },
+      },
     },
     onEffect: runEffect,
     onError(error) {
@@ -231,15 +249,29 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     },
   );
 
-  /** Ends the follow itself. `unfollow` stops it without calling its error callback, so the stop is told here. */
-  function unfollow(error: ApiStoppedError, { emitState, emitSideEffect }: Transition<FollowMachine>): void {
+  /** Moves a running follow to `stopped`, fails who waits for it to be ready, and tells the stop listeners. */
+  function stop(
+    state: Exclude<FollowState, { kind: 'stopped' }>,
+    error: ApiStoppedError,
+    { emitState, emitSideEffect }: Transition<FollowMachine>,
+  ): void {
     emitState({ kind: 'stopped', error });
-    emitSideEffect({ kind: 'unfollow' });
+    emitSideEffect({ kind: 'fail', waiters: state.kind === 'following' ? state.waiters : [], error });
     emitSideEffect({ kind: 'stopped' });
   }
 
   function runEffect(effect: FollowEffect): void {
     switch (effect.kind) {
+      case 'wake':
+        for (const { resolve } of effect.waiters) {
+          resolve();
+        }
+        return;
+      case 'fail':
+        for (const { reject } of effect.waiters) {
+          reject(effect.error);
+        }
+        return;
       case 'unpin':
         if (effect.hashes.length === 0) {
           return;
@@ -272,8 +304,10 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     }
   }
 
-  async function whenReady(): Promise<void> {
-    await waitForStatus(machine.state, getReadiness);
+  function whenReady(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      machine.update({ kind: 'waited', waiter: { resolve, reject } });
+    });
   }
 
   // Each attempt queues on its own, so a retry wait holds no operation slot. A papi read in flight when the follow
@@ -356,16 +390,4 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       machine.update({ kind: 'destroyed' });
     },
   };
-}
-
-/** A ready follow settles a wait for it, and a stopped one fails it with its stop. */
-function getReadiness(state: FollowState): boolean | ApiStoppedError {
-  switch (state.kind) {
-    case 'following':
-      return false;
-    case 'ready':
-      return true;
-    case 'stopped':
-      return state.error;
-  }
 }
