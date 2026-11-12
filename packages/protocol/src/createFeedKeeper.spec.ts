@@ -106,6 +106,23 @@ describe('createFeedKeeper', () => {
     expect([openedBeforeWait, opened.length]).toEqual([3, 4]);
   });
 
+  it('As the host, I see a feed that stayed open for a while and then keeps ending wait twice as long again from the first wait', async () => {
+    // Given a feed that stayed open for 30 s, then ended and reopened after the first wait
+    createKeeper('telemetry').follow();
+    await timers.advance(30_000);
+    opened.at(-1)?.end(null);
+    await timers.advance(1_000);
+
+    // When the frame ends the reopened feed at once
+    opened.at(-1)?.end(null);
+    await timers.advance(1_999);
+    const openedBeforeWait = opened.length;
+    await timers.advance(1);
+
+    // Then the wait is the second one, not the first again
+    expect([openedBeforeWait, opened.length]).toEqual([2, 3]);
+  });
+
   it('As an operator, I see every end of a feed counted and logged as it happens, and captured once while it is held', async () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });

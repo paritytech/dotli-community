@@ -551,6 +551,30 @@ describe('createProtocolFrame', () => {
     expect(captured).toMatchObject([{ step: 'frame_lost' }, { step: 'frame_lost' }]);
   });
 
+  it('As the host, I see a frame that stayed up and then keeps dying rebuilt after twice the first wait, not the first wait again', async () => {
+    // Given a frame that stayed ready for the stable span, died, and was rebuilt after the first wait
+    const dom = createFrameDom({ timers });
+    const iframes = recordIframes(dom);
+    const frame = createProtocolFrame(iframes.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    const first = await dom.bringUp();
+    await advance(DEFAULT_FRAME_TIMEOUTS.stableMs);
+    first.fail(new ProtocolFatalError('boom'));
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+    const second = await dom.bringUp();
+    const rebuilt = iframes.getNewest();
+
+    // When the rebuilt frame dies soon after ready
+    second.fail(new ProtocolFatalError('boom'));
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+    const builtAfterFirstWait = iframes.getNewest() !== rebuilt;
+    await advance(DEFAULT_FRAME_TIMEOUTS.rebuildMs);
+
+    // Then
+    expect([builtAfterFirstWait, iframes.getNewest() !== rebuilt]).toEqual([false, true]);
+  });
+
   it('As the host, I see a frame that dies soon after ready captured when the frame before it stayed up and was reconfigured away', async () => {
     // Given a frame that died soon after ready, and the rebuilt frame that stayed ready for the stable span
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
