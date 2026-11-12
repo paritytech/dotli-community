@@ -317,7 +317,7 @@ describe('paired sign-out', () => {
     const missed = await fakes.signOut.signOut();
 
     // When the phone is told again
-    const again = missed.phone === 'untold' ? await missed.tellAgain() : missed;
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
 
     // Then it is told and the same session was ended twice
     expect(again).toEqual({ phone: 'told' });
@@ -332,7 +332,7 @@ describe('paired sign-out', () => {
 
     // When the user signs out and tells the phone again
     const outcome = await fakes.signOut.signOut();
-    const again = outcome.phone === 'untold' ? await outcome.tellAgain() : outcome;
+    const again = outcome.phone === 'untold' ? await fakes.signOut.tellAgain(outcome) : outcome;
 
     // Then each try is reported, and the page is signed out
     expect(outcome.phone).toBe('untold');
@@ -352,7 +352,7 @@ describe('paired sign-out', () => {
     fakes.copy.readFailure = null;
 
     // When the phone is told again
-    const again = missed.phone === 'untold' ? await missed.tellAgain() : missed;
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
 
     // Then the copy's session is ended and the copy emptied
     expect(again).toEqual({ phone: 'told' });
@@ -675,6 +675,20 @@ describe('local sign-out', () => {
     expect(fakes.endSession).not.toHaveBeenCalled();
     expect(outcome.phone).toBe('untold');
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'no_window' }]);
+  });
+
+  it('As a user in local mode on a page with no sign-in window, I tell the phone again and it stays untold with nothing ended', async () => {
+    // Given a local sign-out on a page with no sign-in window, which left the phone untold
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
+    const missed = await fakes.signOut.signOut();
+
+    // When the phone is told again
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
+
+    // Then it stays untold and nothing more is ended or dropped
+    expect(again).toEqual(missed);
+    expect(fakes.endSession).not.toHaveBeenCalled();
+    expect(fakes.calls).toEqual(['drop 0xsession', 'leave local', 'forget wallet']);
   });
 
   it('As a user in local mode on a page with no sign-in window and no paired copy, I sign out and my wallet goes through the flag keeper with nothing to tell', async () => {

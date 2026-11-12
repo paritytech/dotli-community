@@ -7,6 +7,7 @@
 import type { HandlerOf, MachineTypes, StateHandlers, Transition } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { AuthModalView } from '../state/authModalState.js';
+import type { LoginParams } from './createAuthCommands.js';
 import type { BlockingModalScope } from './createBlockingModalCoordinator.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
 import type { DotliAuthState, PairingState } from './session/types.js';
@@ -47,10 +48,14 @@ export type InPagePhrase = {
  * The round the route shows in the modal. `windowOpen` waits for the sign-in window, and `resultWriting` writes its
  * result while the wait stays on show. `windowClosed` shows why the window could not sign in, and its Retry opens the
  * window again with the round's intent. `phraseShown` is the phrase view with its loaded check, and `phraseFailed` shows
- * that the check could not load, so Retry asks for a phrase again.
+ * that the check could not load, so Retry asks for a phrase again. `rereading` reads the saved session again for a
+ * sign-in asked while it could not be reached, before the sign-in goes on, and `rereadMissed` shows that the read still
+ * could not reach it, so Retry asks for the same again.
  */
 export type SignInRound =
   | { kind: 'idle' }
+  | { kind: 'rereading'; asked: 'login' | 'phrase'; reason: StartLoginParams['reason'] }
+  | { kind: 'rereadMissed'; asked: 'login' | 'phrase' }
   | { kind: 'windowOpen'; intent: SignInIntent }
   | { kind: 'resultWriting'; intent: SignInIntent }
   | { kind: 'windowClosed'; intent: SignInIntent }
@@ -58,63 +63,84 @@ export type SignInRound =
   | { kind: 'phraseShown'; phrase: InPagePhrase }
   | { kind: 'phraseFailed' };
 
+/** The sign-in modal's hold on the blocking-modal queue. */
+export type ModalLease =
+  | { kind: 'closed' }
+  | { kind: 'queued'; scope: BlockingModalScope }
+  | { kind: 'open'; scope: BlockingModalScope; release: () => void }
+  | { kind: 'disabled' };
+
 /**
- * The sign-in modal's hold on the blocking-modal queue, with the round it shows. `disabled` keeps its round, so a
- * window already open still signs in.
+ * The sign-in modal: its lease, the round the route shows, the auth step the page showed last, and the view on show. A
+ * disabled lease keeps its round, so a window already open still signs in.
  */
-export type AuthModalLease =
-  | { kind: 'closed'; round: SignInRound }
-  | { kind: 'queued'; round: SignInRound; scope: BlockingModalScope }
-  | { kind: 'open'; round: SignInRound; scope: BlockingModalScope; release: () => void }
-  | { kind: 'disabled'; round: SignInRound }
+export type AuthModalState =
+  | { kind: 'live'; lease: ModalLease; round: SignInRound; auth: DotliAuthState; view: AuthModalView }
   | { kind: 'disposed' };
 
-export type LiveLease = Exclude<AuthModalLease, { kind: 'disposed' }>;
+export type LiveModal = Extract<AuthModalState, { kind: 'live' }>;
 
 /** The round events carry the round they are for, so a late one finds a round that moved on and changes nothing. */
 export type AuthModalEvent =
   | { kind: 'opened'; params: OpenAuthModalParams }
   | { kind: 'loginAsked'; params: StartLoginParams }
-  | { kind: 'loginCommanded'; reason: StartLoginParams['reason'] }
   | { kind: 'phraseAsked' }
+  | { kind: 'retryAsked' }
   | { kind: 'closeAsked'; params: CloseAuthModalParams }
   | { kind: 'disableAsked' }
   | { kind: 'disposeAsked' }
   | { kind: 'logoutAsked' }
   | { kind: 'focusAsked' }
-  | { kind: 'authStepped'; state: DotliAuthState; wasSignedIn: boolean }
+  | { kind: 'authStepped'; state: DotliAuthState }
   | { kind: 'leaseGranted'; scope: BlockingModalScope; signal: AbortSignal; release: () => void }
   | { kind: 'failureShown'; failure: LoginFailureKind; reason: string }
+  // No state handles it, so a command's work ends with an event `await()` covers.
   | { kind: 'commandEnded' }
   | { kind: 'windowEnded'; round: SignInRound; outcome: SignInOutcome }
   | { kind: 'resultWritten'; round: SignInRound; written: 'applied' | 'reloading' }
   | { kind: 'resultFailed'; round: SignInRound; reason: string }
   | { kind: 'phraseLoaded'; round: SignInRound; phrase: InPagePhrase }
-  | { kind: 'phraseMissed'; round: SignInRound; reason: string };
+  | { kind: 'phraseMissed'; round: SignInRound; reason: string }
+  // A round asks the modal to show a view, as a nested value never moves the state around it.
+  | { kind: 'viewAsked'; view: AuthModalView }
+  | { kind: 'rereadEnded'; round: SignInRound }
+  | { kind: 'rereadFailed'; round: SignInRound; error: unknown };
 
-/** The auth state's tag and failure kind only, since a failure's reason can carry wallet text. */
-export type AuthModalEffect = { kind: 'authLogged'; tag: DotliAuthState['tag']; failure: LoginFailureKind | null };
+/** A sign-in command the controller runs on the core once the bridge chunk loads. */
+export type AuthCommand = { step: 'login'; params: LoginParams } | { step: 'logout' } | { step: 'cancel_login' };
 
-export type AuthModalMachine = MachineTypes<AuthModalLease, AuthModalEvent, AuthModalEffect>;
+/**
+ * What the controller does once a transition moved the modal. `authLogged` keeps the auth state's tag and failure kind
+ * only, since a failure's reason can carry wallet text. `modalReset` puts a fresh modal on its spinner.
+ */
+export type AuthModalEffect =
+  | { kind: 'authLogged'; tag: DotliAuthState['tag']; failure: LoginFailureKind | null }
+  | { kind: 'modalReset'; productLabel: string | null; reason: string | null }
+  | { kind: 'viewShown'; view: AuthModalView }
+  | { kind: 'modalShown' }
+  | { kind: 'leaseQueued'; scope: BlockingModalScope }
+  | { kind: 'leaseReleased'; lease: ModalLease }
+  | { kind: 'leaseRefused'; release: () => void }
+  | { kind: 'commandRun'; command: AuthCommand }
+  | { kind: 'rereadStarted'; round: SignInRound }
+  | { kind: 'rereadLogged'; error: unknown }
+  | { kind: 'roundEnded'; reason: PageCancelReason }
+  | { kind: 'stepsUnfollowed' }
+  | { kind: 'signOutOpened' }
+  | { kind: 'windowFocused' };
+
+export type AuthModalMachine = MachineTypes<AuthModalState, AuthModalEvent, AuthModalEffect>;
 
 export type SignInRoundMachine = MachineTypes<SignInRound, AuthModalEvent, AuthModalEffect>;
-
-/** What a sign-in may do with the page's sign-in modal before the route takes over. */
-export type AuthModalPort = {
-  /** Returns the modal's current lease, compared by identity, or null while none is held. Never throws. */
-  getLease(): object | null;
-  /** Shows `view` in the modal. Never throws. */
-  show(view: AuthModalView): void;
-};
 
 /** One way a page signs in, as handlers of the modal's machine. Two routes implement it. */
 export type SignInRoute = {
   /** Called only while signed out and while the saved session is reachable. Never throws. */
-  startLogin: HandlerOf<AuthModalMachine, LiveLease['kind'], 'loginAsked'>;
+  startLogin: HandlerOf<AuthModalMachine, 'live', 'loginAsked'>;
   /** Called only while the saved session is reachable. Never throws. */
-  importPhrase: HandlerOf<AuthModalMachine, LiveLease['kind'], 'phraseAsked'>;
+  importPhrase: HandlerOf<AuthModalMachine, 'live', 'phraseAsked'>;
   /** The core paired, or a product asked to log in. Never throws. */
-  pairing(state: LiveLease, pairing: PairingState, transition: Transition<AuthModalMachine>): void;
+  pairing(state: LiveModal, pairing: PairingState, transition: Transition<AuthModalMachine>): void;
   /** Opens the sign-out window first, where the route has one. Never throws. */
   signOut(): void;
   /** Brings the route's sign-in window to the front, where it has one. Never throws. */
@@ -126,20 +152,19 @@ export type SignInRoute = {
 };
 
 /** Whether `lease` holds a place in the blocking-modal queue, waiting for the screen or on it. */
-export function isLeaseHeld(lease: AuthModalLease): boolean {
+export function isLeaseHeld(lease: ModalLease): boolean {
   switch (lease.kind) {
     case 'queued':
     case 'open':
       return true;
     case 'closed':
     case 'disabled':
-    case 'disposed':
       return false;
   }
 }
 
 /** Whether the modal is disabled, so a login the page asks for is cancelled rather than shown. */
-export function isLeaseDisabled(lease: LiveLease): boolean {
+export function isLeaseDisabled(lease: ModalLease): boolean {
   switch (lease.kind) {
     case 'disabled':
       return true;
@@ -150,38 +175,30 @@ export function isLeaseDisabled(lease: LiveLease): boolean {
   }
 }
 
-/** The blocking-modal scope `lease` holds, or null when it holds none. */
-export function getLeaseScope(lease: AuthModalLease): BlockingModalScope | null {
-  switch (lease.kind) {
-    case 'queued':
-    case 'open':
-      return lease.scope;
-    case 'closed':
-    case 'disabled':
-    case 'disposed':
-      return null;
-  }
-}
-
-/** The round `lease` holds, or null once the modal is disposed. */
-export function getRound(lease: AuthModalLease): SignInRound | null {
-  switch (lease.kind) {
-    case 'closed':
-    case 'queued':
-    case 'open':
-    case 'disabled':
-      return lease.round;
+/** The round the modal holds, or null once it is disposed. */
+export function getRound(state: AuthModalState): SignInRound | null {
+  switch (state.kind) {
+    case 'live':
+      return state.round;
     case 'disposed':
       return null;
   }
 }
 
 /** Gives up the place `lease` holds in the blocking-modal queue: ends its screen time and disposes its scope. */
-export function releaseLeaseHold(lease: LiveLease): void {
-  if (lease.kind === 'open') {
-    lease.release();
+export function releaseLeaseHold(lease: ModalLease): void {
+  switch (lease.kind) {
+    case 'open':
+      lease.release();
+      lease.scope.dispose('Authentication modal closed');
+      return;
+    case 'queued':
+      lease.scope.dispose('Authentication modal closed');
+      return;
+    case 'closed':
+    case 'disabled':
+      return;
   }
-  getLeaseScope(lease)?.dispose('Authentication modal closed');
 }
 
 /**
@@ -194,6 +211,8 @@ export function isWaiting(round: SignInRound): boolean {
     case 'resultWriting':
       return true;
     case 'idle':
+    case 'rereading':
+    case 'rereadMissed':
     case 'windowClosed':
     case 'phraseLoading':
     case 'phraseShown':
@@ -209,6 +228,9 @@ export function isPhraseRound(round: SignInRound): boolean {
     case 'resultWriting':
     case 'windowClosed':
       return round.intent === 'phrase';
+    case 'rereading':
+    case 'rereadMissed':
+      return round.asked === 'phrase';
     case 'phraseFailed':
       return true;
     case 'idle':
@@ -224,6 +246,8 @@ export function getShownPhrase(round: SignInRound): InPagePhrase | null {
     case 'phraseShown':
       return round.phrase;
     case 'idle':
+    case 'rereading':
+    case 'rereadMissed':
     case 'windowOpen':
     case 'resultWriting':
     case 'windowClosed':

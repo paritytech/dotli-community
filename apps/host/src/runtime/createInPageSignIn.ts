@@ -7,12 +7,13 @@
 import { getErrorMessage } from '@dotli/shared';
 import { createReporter } from '@dotli/metrics';
 import { reportLazyMiss } from '../reportLazyMiss.js';
-import type { ModalSteps } from './createAuthController.js';
+import { showView, type ModalSteps } from './authModalSteps.js';
 import {
   isLeaseHeld,
   isPhraseRound,
   type AuthModalEvent,
   type InPagePhrase,
+  type LiveModal,
   type SignInRound,
   type SignInRoute,
 } from './signInRoute.js';
@@ -22,8 +23,8 @@ const report = createReporter({ flow: 'wallet' });
 type Params = {
   /** Loaded the first time the page asks for a phrase, so a page that never asks loads none of it. */
   inPagePhrase: () => Promise<InPagePhrase>;
-  /** The page's sign-in modal, which this route shows its views on, and the core's login. */
-  modal: Pick<ModalSteps, 'open' | 'show' | 'getViewKind' | 'login'>;
+  /** The page's sign-in modal, which this route opens. */
+  modal: Pick<ModalSteps, 'open'>;
 };
 
 /** Returns the sign-in route of a page with no sign-in window. Never throws. */
@@ -32,13 +33,16 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
     startLogin(state, { params: { reason, label } }, transition) {
       // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
       // shows none, so its Retry logs in again.
-      if (isLeaseHeld(state) && modal.getViewKind() !== 'error') {
+      if (isLeaseHeld(state.lease) && state.view.kind !== 'error') {
         return;
       }
-      if (modal.open(state, { reason, label }, transition) === null) {
+      const opened = modal.open(state, { reason, label }, transition);
+      if (opened === null) {
         return;
       }
-      modal.login({ reason }, transition);
+      // A login replaces a phrase round on show, so a Retry after it logs in again.
+      transition.emitState({ ...opened, round: { kind: 'idle' } });
+      transition.emitSideEffect({ kind: 'commandRun', command: { step: 'login', params: { reason } } });
     },
     importPhrase(state, _event, transition) {
       const opened = modal.open(state, {}, transition);
@@ -65,12 +69,13 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
         transition,
       );
       // A pairing on show replaces a phrase view that failed to load, so Retry logs in again.
-      transition.emitState({
+      const next: LiveModal = {
         ...(opened ?? state),
         round: isPhraseRound(state.round) ? { kind: 'idle' } : state.round,
-      });
+      };
+      transition.emitState(next);
       if (pairing.deeplink) {
-        modal.show({ kind: 'pairing', payload: pairing.deeplink });
+        showView(next, { kind: 'pairing', payload: pairing.deeplink }, transition);
       }
     },
     signOut() {
@@ -84,13 +89,15 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
     },
     rounds: {
       idle: null,
+      rereading: null,
+      rereadMissed: null,
       windowOpen: null,
       resultWriting: null,
       windowClosed: null,
       phraseLoading: {
-        phraseLoaded(_round, { phrase }, { emitState }) {
+        phraseLoaded(_round, { phrase }, { emitState, update }) {
           emitState({ kind: 'phraseShown', phrase });
-          modal.show({ kind: 'phrase' });
+          update({ kind: 'viewAsked', view: { kind: 'phrase' } });
         },
         phraseMissed(_round, { reason }, { emitState, update }) {
           emitState({ kind: 'phraseFailed' });

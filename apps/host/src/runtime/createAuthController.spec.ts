@@ -6,8 +6,10 @@ import { asProductId } from '@parity/truapi';
 import { withActiveTld } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import type { AuthCommands, LoginOutcome } from './createAuthCommands.js';
-import { authControl, createAuthControlSlot, createAuthController } from './createAuthController.js';
+import type { LoginOutcome } from './createAuthCommands.js';
+import type { AuthCommands } from './createAuthController.js';
+import { authControl, createAuthControlSlot } from './authControl.js';
+import { createAuthController } from './createAuthController.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
@@ -475,6 +477,159 @@ describe('auth controller: login requests', () => {
     // Then no window opened before the prompt, and its button opened one
     expect(signInsAtPrompt).toEqual([]);
     expect(handoff.signIns).toEqual(['signin']);
+  });
+
+  it('As a user whose saved sign-in still cannot be reached, I click Sign in and am told so with a retry', async () => {
+    // Given a page whose saved session stays out of reach when read again
+    const { controller, auth, calls, changes } = startController();
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // Then the modal offers a retry and the core was asked nothing
+    expect(getAuthModalState().view).toMatchObject({ kind: 'error', retry: true });
+    expect(calls.logins).toEqual([]);
+  });
+
+  it.each<[string, DotliAuthState]>([
+    ['reads signed in', SIGNED_IN],
+    ['finds a pairing started meanwhile', PAIRING],
+  ])('As a user whose saved session %s when read again, I click Sign in and no login starts', async (_case, read) => {
+    // Given a page whose saved session cannot be reached until it is read again
+    const { controller, auth, calls } = startController({
+      rereadSession() {
+        auth.set(read);
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked and the session is read
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the core was asked no login
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user who closes the dialog while the saved session is read again, I see nothing more', async () => {
+    // Given a page whose saved session cannot be reached, closed by the user while it is read again
+    let close = (): void => undefined;
+    const { controller, auth, calls } = startController({
+      rereadSession() {
+        close();
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    close = () => {
+      controller.closeAuthModal();
+    };
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked and the session is read
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the modal stays closed and the core was asked no login
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user whose page failed to load its sign-in code, I click Sign in and am told the sign-in cannot be reached', async () => {
+    // Given a page whose saved session cannot be reached and whose read of it fails to load
+    const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const { controller, auth, changes } = startController({
+      rereadSession: () => Promise.reject(new Error('Failed to fetch dynamically imported module')),
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // Then the modal offers a retry and the failure was logged once
+    expect(getAuthModalState().view).toMatchObject({ kind: 'error', retry: true });
+    expect(logged).toHaveLength(1);
+  });
+
+  it('As a user who asked for a recovery phrase while my saved session could not be read, I press Retry and am asked for the phrase again', async () => {
+    // Given a page that pairs in place, whose first read of the saved session fails and whose second reads signed out
+    let reads = 0;
+    let phraseLoads = 0;
+    const { controller, auth, calls, changes } = startController({
+      rereadSession() {
+        reads += 1;
+        if (reads === 1) {
+          return Promise.reject(new Error('Failed to fetch dynamically imported module'));
+        }
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+      loadRecoveryPhrase() {
+        phraseLoads += 1;
+        return rejectNoPhrase();
+      },
+    });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    auth.set({ tag: 'Unreachable' });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // When Retry is pressed
+    controller.retryLogin();
+    await untilPromisesSettled();
+
+    // Then the phrase is asked for again and no login starts
+    expect(phraseLoads).toBe(1);
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user whose phrase failed to load, I sign in instead and press Retry after that login fails, and a login starts again', async () => {
+    // Given a page that pairs in place, whose phrase import failed to load and whose login then failed
+    let phraseLoads = 0;
+    const { controller, auth, calls, changes } = startController({
+      loadRecoveryPhrase() {
+        phraseLoads += 1;
+        return rejectNoPhrase();
+      },
+    });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    controller.startLogin();
+    await changes.until(() => calls.logins.length === 1);
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'the phone said no' });
+
+    // When Retry is pressed
+    controller.retryLogin();
+    await untilPromisesSettled();
+
+    // Then a login starts again and no phrase is asked for
+    expect(calls.logins).toHaveLength(2);
+    expect(phraseLoads).toBe(1);
+  });
+
+  it('As a user whose sign-in modal is disabled, I click Sign in while my saved session cannot be reached and nothing is read', async () => {
+    // Given a page whose modal is disabled and whose saved session cannot be reached
+    let reads = 0;
+    const { controller, auth } = startController({
+      rereadSession() {
+        reads += 1;
+        return Promise.resolve();
+      },
+    });
+    controller.disableAuthModal();
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the saved session was not read again
+    expect(reads).toBe(0);
   });
 
   it('As a user, I click Sign in again while the QR is shown and the QR stays while the core is asked once', async () => {

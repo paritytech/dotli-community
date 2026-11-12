@@ -38,12 +38,8 @@ import { closeWindow } from './sessionWindowPage.js';
 import { reportWalletFailure } from './runtime/walletFailure.js';
 import { loadRecoveryPhrase } from './lazy.js';
 import type { HostBridge } from './runtime/bridge.js';
-import {
-  createWindowFlow,
-  getResponderScreen,
-  type WindowFlow,
-  type WindowFlowParams,
-} from './runtime/sessionHandoff/createWindowFlow.js';
+import { createWindowFlow, type WindowFlow, type WindowFlowParams } from './runtime/sessionHandoff/createWindowFlow.js';
+import { getResponderScreen } from './runtime/sessionHandoff/windowScreen.js';
 import { sessionWindowSignoutResultMetric } from './runtime/sessionHandoff/sessionWindowSignoutResultMetric.js';
 import { signOutInWindow, type WindowSignOutParams } from './runtime/sessionHandoff/signOutInWindow.js';
 import publicSuffixListUrl from './runtime/siteSignIn/public-suffix-list.dat?url';
@@ -213,6 +209,7 @@ function startFlow(
   const started = createWindowFlow({
     auth: authState.store,
     commands: bridge.authCommands,
+    signOut: bridge.pageSignOut,
     ...bridge.windowStore,
     loadPhrase: loadRecoveryPhrase,
     ...flow,

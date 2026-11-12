@@ -3,7 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { authState } from '../runtime/state/authState.js';
-import { authControl } from '../runtime/createAuthController.js';
+import { authControl } from '../runtime/authControl.js';
 import { sessionElsewhereState } from '../runtime/state/sessionElsewhereState.js';
 import { signingOutState } from '../runtime/state/signingOutState.js';
 import { walletModeState } from '../runtime/state/walletModeState.js';

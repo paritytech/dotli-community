@@ -12,7 +12,7 @@ import { offerDesktopApp } from './offerDesktopApp.js';
 import { getPageStandIns, reportIslandErrors } from './reportIslandErrors.js';
 import { pageLocalStorage } from '@dotli/shared';
 import { markAndReload } from './createContinuation.js';
-import { authControl } from './runtime/createAuthController.js';
+import { authControl } from './runtime/authControl.js';
 
 /** Measured with a PerformanceObserver. */
 const WASM_LOAD = 'wasm.load';

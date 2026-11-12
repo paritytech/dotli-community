@@ -17,7 +17,7 @@ import { createBlockingModalCoordinator } from './runtime/createBlockingModalCoo
 import { networkPause } from './runtime/createNetworkPause.js';
 import { pendingResets } from './runtime/createPendingResets.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/sharedMode.js';
-import { authControl } from './runtime/createAuthController.js';
+import { authControl } from './runtime/authControl.js';
 import { getPageSignInHandoff } from './runtime/sessionHandoff/createSessionHandoff.js';
 import { pageRole, isSessionShown, getSignInSurface, type PageRole } from './runtime/pageRole.js';
 import { readBootSettings } from './readBootSettings.js';

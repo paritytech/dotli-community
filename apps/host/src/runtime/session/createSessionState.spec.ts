@@ -7,7 +7,8 @@ import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
 import { createCoreStorage, type HostCoreStorage } from './createCoreStorage.js';
 import { createNonOwnerSignInFlag } from './signInFlag.js';
-import { createSessionState, type PairingPresentation, type SessionState } from './createSessionState.js';
+import { createSessionState, type SessionState } from './createSessionState.js';
+import type { PairingPresentation } from './getCoreReport.js';
 import { atom, type WritableAtom } from 'nanostores';
 import { createChanges } from '../../testing/changes.js';
 import { recordNotified } from '../../testing/recordNotified.js';
@@ -197,6 +198,30 @@ describe('session state', () => {
 
     // Then the session was read once
     expect(shared.reads.filter(key => key === SESSION_KEY)).toHaveLength(1);
+  });
+
+  it('As a returning user whose restore rule broke on load, I am shown unreachable rather than left restoring', async () => {
+    // Given session state whose restore rejects
+    const broken = createSessionState({
+      store: coreStorage,
+      restore: () => Promise.reject(new Error('restore rule broke')),
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
+      setElsewhere: noop,
+      isLocalWallet: () => false,
+      isResumeOffered: () => isResumeOffered(role),
+    });
+
+    // When it starts
+    onTestFinished(broken.start());
+    await waitForStatus(auth, state => state.tag !== 'Restoring');
+
+    // Then the page leaves Restoring for Unreachable
+    expect(auth.get()).toEqual({ tag: 'Unreachable' });
   });
 
   it('As a signed-out user, I lose the shared store and am shown unreachable, not signed out', async () => {

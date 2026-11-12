@@ -4,7 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { authControl } from '../runtime/createAuthController.js';
+import { authControl } from '../runtime/authControl.js';
 import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
 import { useStore } from '@dotli/stores-solid';
 import { productFrameLayout } from '../createProductFrameLayout.js';
