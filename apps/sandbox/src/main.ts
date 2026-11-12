@@ -137,8 +137,10 @@ runSandbox(
             document,
             pathname: window.location.pathname,
           }),
-        registerWorker: options => registerAppServiceWorker(appWorker, options),
-        isControlled: () => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null,
+        registerWorker: async options => {
+          await registerAppServiceWorker(appWorker, options);
+          return 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null;
+        },
         fetchArchive,
         blockSource,
         decrypt: decryptIfNeeded,

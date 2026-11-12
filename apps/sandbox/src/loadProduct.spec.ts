@@ -77,9 +77,8 @@ function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}):
     registerWorker(options) {
       events.push('worker');
       workers.push(options);
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
-    isControlled: () => true,
     fetchArchive(_cid, params) {
       const { onStatus: _onStatus, ...options } = params ?? {};
       fetches.push(options);
@@ -228,25 +227,6 @@ describe('loadProduct', () => {
       expect(page.written).toEqual([]);
     },
   );
-
-  it("As an operator, I break the page's check for a controlling worker and see the failure reported at the worker registration", async () => {
-    // Given a check for a controlling worker that throws
-    const broken = new Error('isControlled broke');
-    const page = createHarness(
-      { type: 'single', content: encode('<h1>hi</h1>') },
-      {
-        isControlled: () => {
-          throw broken;
-        },
-      },
-    );
-
-    // When the first attempt loads it
-    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
-
-    // Then the failure names the registration
-    expect(outcome).toEqual({ outcome: 'failed', step: 'sw_register', error: broken });
-  });
 
   it.each<[string, (broken: Error) => Overrides, FetchResult]>([
     ['decrypt', broken => ({ decrypt: () => Promise.reject(broken) }), { type: 'single', content: encode('sealed') }],

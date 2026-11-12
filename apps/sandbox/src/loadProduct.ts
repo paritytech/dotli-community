@@ -4,7 +4,6 @@
 // One load of the product the host named: fetch and verify its content, hand an archive to the service worker, and
 // write its page into this window. It never throws, and its outcome names the step that failed.
 
-import { hasLightClient } from '@dotli/config';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
@@ -58,10 +57,8 @@ export type LoadProductDeps = {
   hostMessages: Pick<HostMessages, 'showStatus' | 'reportDebug' | 'notifyLoadingDone'>;
   /** Wipes what earlier products left in this origin. */
   purge: () => Promise<void>;
-  /** Settles once a service worker controls the page, or the page goes on without one. */
-  registerWorker: (options: { waitForFreshController: boolean }) => Promise<void>;
-  /** Whether a service worker controls the page now. A throw fails the load at the registration. */
-  isControlled: () => boolean;
+  /** Resolves once a service worker controls the page, or the page goes on without one, with whether one does. */
+  registerWorker: (options: { waitForFreshController: boolean }) => Promise<boolean>;
   /** Fetches and verifies the content a CID names. Rejects when it cannot, or when the bytes do not match the CID. */
   fetchArchive: typeof fetchArchive;
   /** The block source the host relays, or null on the IPFS gateway. */
@@ -119,7 +116,7 @@ type LoadEffect =
   | { kind: 'purging' }
   | { kind: 'registering' }
   | { kind: 'workerSettled'; worker: WorkerOutcome }
-  | { kind: 'fetching'; via: 'gateway' | 'bitswap' }
+  | { kind: 'fetching' }
   | { kind: 'contentSettled'; content: ContentOutcome }
   | { kind: 'decrypted'; files: ArchiveFiles }
   | { kind: 'archiveStored'; files: ArchiveFiles }
@@ -263,28 +260,26 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     emitState({ kind: 'preparing' });
     emitSideEffect({ kind: 'registering' });
     update(
-      startStep(() => deps.registerWorker(registration))
-        // Read within the registration, so a check that throws fails the load there, as the registration itself would.
-        .then(() => deps.isControlled())
-        .then(
-          controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
-          (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
-        ),
+      startStep(() => deps.registerWorker(registration)).then(
+        controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
+        (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
+      ),
     );
     // The fetch needs no worker, so it runs while the worker registers. A single page waits for the worker too, so a
     // failed registration is still reported and the worker never claims a document that was already replaced.
-    const { blockSource } = deps;
-    emitSideEffect({ kind: 'fetching', via: blockSource === null ? 'gateway' : 'bitswap' });
+    emitSideEffect({ kind: 'fetching' });
     update(
-      startStep(() => fetchContent(blockSource)).then(
+      startStep(fetchContent).then(
         result => ({ kind: 'contentSettled', content: { kind: 'fetched', result } }),
         (error: unknown) => ({ kind: 'contentSettled', content: { kind: 'failed', error } }),
       ),
     );
   }
 
-  function fetchContent(blockSource: LoadProductDeps['blockSource']): Promise<FetchResult> {
-    const { showStatus } = deps.hostMessages;
+  /** Says on the host how the content is fetched, as the fetch's own status does, then fetches it. */
+  function fetchContent(): Promise<FetchResult> {
+    const { blockSource, hostMessages } = deps;
+    const { showStatus } = hostMessages;
     if (blockSource === null) {
       showStatus('Fetching via IPFS gateway...');
       return deps.fetchArchive(cid, { onStatus: showStatus, useGateway: true });
@@ -347,9 +342,14 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
 /** Turns what happens to one load into its log lines, timers and marks. */
 function createLoadReports(
   { params, attempt }: LoadInput,
-  { hostMessages, measureSinceStart }: Pick<LoadProductDeps, 'hostMessages' | 'measureSinceStart'>,
+  {
+    hostMessages,
+    measureSinceStart,
+    blockSource,
+  }: Pick<LoadProductDeps, 'hostMessages' | 'measureSinceStart' | 'blockSource'>,
 ): (effect: LoadEffect) => void {
   const { cid, backend, resolutionId } = params;
+  const via = blockSource === null ? 'gateway' : 'bitswap';
   const stopApp = m.timer('app.total');
   // Set once the registration starts, so the timer leaves out a full reset's purge.
   let stopWorkerTimer: () => void = noop;
@@ -377,7 +377,7 @@ function createLoadReports(
         return;
       }
       case 'fetching':
-        switch (effect.via) {
+        switch (via) {
           case 'gateway':
             report.log.event(`Fetching ${cid} via IPFS gateway`, { ms: measureSinceStart() });
             break;
@@ -392,7 +392,7 @@ function createLoadReports(
           return;
         }
         const { result } = content;
-        report.log.event(`Content fetched via ${hasLightClient(backend) ? 'bitswap' : 'gateway'}`, {
+        report.log.event(`Content fetched via ${via}`, {
           type: result.type,
           bytes: countResultBytes(result),
           files: countResultFiles(result),
