@@ -166,12 +166,8 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
         viewsChanged(state, { viewing }, { emitState }) {
           emitState({ ...state, viewing });
         },
-        cleared(state, _event, { emitState }) {
-          emitState({ ...state, expanded: false });
-        },
-        disposed(state, _event, { emitState }) {
-          emitState({ ...state, expanded: false });
-        },
+        cleared: collapseUnbound,
+        disposed: collapseUnbound,
       },
       bound: {
         pushed(state, { id, input }, transition) {
@@ -182,7 +178,7 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
           if (toast === undefined || toast.kind === 'leaving') {
             return;
           }
-          stopTimer(toast, transition.emitSideEffect);
+          abortTimer(toast, transition.emitSideEffect);
           emitStack({ ...state, toasts: new Map(state.toasts).set(id, holdToast(toast, dismissMs)) }, transition);
         },
         dismissed: leaveToast,
@@ -192,7 +188,7 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
           if (toast === undefined) {
             return;
           }
-          stopTimer(toast, transition.emitSideEffect);
+          abortTimer(toast, transition.emitSideEffect);
           const toasts = new Map(state.toasts);
           toasts.delete(id);
           emitStack({ ...state, toasts, expanded: state.expanded && toasts.size > 1 }, transition);
@@ -213,16 +209,16 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
         visibilityChanged(state, { visible }, transition) {
           emitStack({ ...state, visible }, transition);
         },
-        cleared(state, _event, transition) {
+        cleared(state, _event, { emitState, emitSideEffect }) {
+          emitState({ ...state, expanded: false, toasts: new Map() });
           for (const toast of state.toasts.values()) {
-            stopTimer(toast, transition.emitSideEffect);
+            abortTimer(toast, emitSideEffect);
           }
-          emitStack({ ...state, expanded: false, toasts: new Map() }, transition);
         },
         disposed(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'unbound', viewing: state.viewing, expanded: false });
           for (const toast of state.toasts.values()) {
-            stopTimer(toast, emitSideEffect);
+            abortTimer(toast, emitSideEffect);
           }
           emitSideEffect({ kind: 'abort', controller: state.listening });
         },
@@ -406,6 +402,14 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
 /** The page's toast stack, over the document and the page's own timers. */
 export const toasts = createToasts();
 
+function collapseUnbound(
+  state: Extract<ToastsMachineState, { kind: 'unbound' }>,
+  _event: ToastsEvent,
+  { emitState }: Transition<ToastsMachine>,
+): void {
+  emitState({ ...state, expanded: false });
+}
+
 /** Marks the toast leaving, as a close or its countdown's end asks. A toast unknown or already leaving is ignored. */
 function leaveToast(
   state: BoundState,
@@ -424,7 +428,7 @@ function endToast(toast: Toast, emitSideEffect: EmitSideEffect): Toast {
   if (toast.kind === 'leaving') {
     return toast;
   }
-  stopTimer(toast, emitSideEffect);
+  abortTimer(toast, emitSideEffect);
   if (toast.onDismiss !== undefined) {
     emitSideEffect({ kind: 'dismissed', onDismiss: toast.onDismiss });
   }
@@ -432,7 +436,7 @@ function endToast(toast: Toast, emitSideEffect: EmitSideEffect): Toast {
 }
 
 /** Stops the toast's countdown, if it runs one. */
-function stopTimer(toast: Toast, emitSideEffect: EmitSideEffect): void {
+function abortTimer(toast: Toast, emitSideEffect: EmitSideEffect): void {
   if (toast.kind === 'counting') {
     emitSideEffect({ kind: 'abort', controller: toast.timer });
   }
