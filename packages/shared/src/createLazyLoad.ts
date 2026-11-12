@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createStateMachine, type HandlerOf, type HandlersOf, type MachineTypes } from './createStateMachine.js';
+import { createDeferred } from './createDeferred.js';
+import { createStateMachine, type MachineTypes } from './createStateMachine.js';
 import { rejectUnhandled } from './rejectUnhandled.js';
 
 type Params<T> = {
@@ -9,19 +10,27 @@ type Params<T> = {
   onFirstMiss?: (error: unknown) => void;
 };
 
-/** `asker` is the token of the call whose ask started the load, so its failure goes to that caller only. */
+type Caller<T> = ReturnType<typeof createDeferred<T>>;
+
+/**
+ * `missed` is true once a load has failed. `asker` is the caller whose ask started the load in flight, so its failure
+ * goes to that caller only, and `queued` wait behind it in the order they asked.
+ */
 type LoadState<T> =
-  | { kind: 'unloaded' }
-  | { kind: 'loading'; asker: symbol; missedBefore: boolean }
-  | { kind: 'loaded'; value: T }
-  | { kind: 'missed'; asker: symbol; error: unknown };
+  | { kind: 'unloaded'; missed: boolean }
+  | { kind: 'loading'; asker: Caller<T>; queued: readonly Caller<T>[]; missed: boolean }
+  | { kind: 'loaded'; value: T };
 
 type LoadEvent<T> =
-  { kind: 'asked'; asker: symbol } | { kind: 'valueLoaded'; value: T } | { kind: 'loadFailed'; error: unknown };
+  { kind: 'asked'; caller: Caller<T> } | { kind: 'valueLoaded'; value: T } | { kind: 'loadFailed'; error: unknown };
 
-type LoadEffect = { kind: 'firstMissed'; error: unknown };
+type LoadEffect<T> =
+  | { kind: 'load' }
+  | { kind: 'resolve'; callers: readonly Caller<T>[]; value: T }
+  | { kind: 'reject'; caller: Caller<T>; error: unknown }
+  | { kind: 'firstMissed'; error: unknown };
 
-type LoadMachine<T> = MachineTypes<LoadState<T>, LoadEvent<T>, LoadEffect>;
+type LoadMachine<T> = MachineTypes<LoadState<T>, LoadEvent<T>, LoadEffect<T>>;
 
 /**
  * Loads a value on the first call and keeps it for every later one. A failed load rejects the caller that ran it and is
@@ -33,71 +42,75 @@ type LoadMachine<T> = MachineTypes<LoadState<T>, LoadEvent<T>, LoadEffect>;
  * const runtime = await getRuntime(); // later calls get the kept value
  */
 export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promise<T> {
-  const startLoad: HandlerOf<LoadMachine<T>, 'unloaded' | 'missed', 'asked'> = (
-    state,
-    { asker },
-    { emitState, update },
-  ) => {
-    emitState({ kind: 'loading', asker, missedBefore: state.kind === 'missed' });
-    update(
-      // A `load` that throws before it returns a promise rejects this one, so its error reaches the caller too.
-      new Promise<T>(resolve => {
-        resolve(load());
-      }).then(
-        value => ({ kind: 'valueLoaded', value }),
-        (error: unknown) => ({ kind: 'loadFailed', error }),
-      ),
-    );
-  };
-  // An `asked` here is ignored: that caller waits for the load in flight.
-  const loading: HandlersOf<LoadMachine<T>, 'loading'> = {
-    valueLoaded(_state, { value }, { emitState }) {
-      emitState({ kind: 'loaded', value });
-    },
-    loadFailed({ asker, missedBefore }, { error }, { emitState, emitSideEffect }) {
-      emitState({ kind: 'missed', asker, error });
-      if (!missedBefore) {
-        emitSideEffect({ kind: 'firstMissed', error });
-      }
-    },
-  };
   const machine = createStateMachine<LoadMachine<T>>({
-    initial: { kind: 'unloaded' },
+    initial: { kind: 'unloaded', missed: false },
     handlers: {
-      unloaded: { asked: startLoad },
-      loading,
-      loaded: null,
-      missed: { asked: startLoad },
+      unloaded: {
+        asked({ missed }, { caller }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'loading', asker: caller, queued: [], missed });
+          emitSideEffect({ kind: 'load' });
+        },
+      },
+      loading: {
+        asked(state, { caller }, { emitState }) {
+          emitState({ ...state, queued: [...state.queued, caller] });
+        },
+        valueLoaded({ asker, queued }, { value }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'loaded', value });
+          emitSideEffect({ kind: 'resolve', callers: [asker, ...queued], value });
+        },
+        loadFailed({ asker, queued, missed }, { error }, { emitState, emitSideEffect }) {
+          emitSideEffect({ kind: 'reject', caller: asker, error });
+          if (!missed) {
+            emitSideEffect({ kind: 'firstMissed', error });
+          }
+          const [next, ...rest] = queued;
+          if (next === undefined) {
+            emitState({ kind: 'unloaded', missed: true });
+            return;
+          }
+          emitState({ kind: 'loading', asker: next, queued: rest, missed: true });
+          emitSideEffect({ kind: 'load' });
+        },
+      },
+      loaded: {
+        asked({ value }, { caller }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'resolve', callers: [caller], value });
+        },
+      },
     },
-    onEffect: ({ error }) => {
-      onFirstMiss?.(error);
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'load':
+          machine.update(
+            // A `load` that throws before it returns a promise rejects this one, so its error reaches the caller too.
+            new Promise<T>(resolve => {
+              resolve(load());
+            }).then(
+              value => ({ kind: 'valueLoaded', value }),
+              (error: unknown) => ({ kind: 'loadFailed', error }),
+            ),
+          );
+          return;
+        case 'resolve':
+          for (const caller of effect.callers) {
+            caller.resolve(effect.value);
+          }
+          return;
+        case 'reject':
+          effect.caller.reject(effect.error);
+          return;
+        case 'firstMissed':
+          onFirstMiss?.(effect.error);
+          return;
+      }
     },
     onError: rejectUnhandled,
   });
 
-  return getValue;
-
-  async function getValue(): Promise<T> {
-    const asker = Symbol('asker');
-    // Waiters wake in the order they called `await()`. A caller that woke after another one's failure, or after
-    // another waiter started the next load, asks again and waits on that load.
-    for (;;) {
-      machine.update({ kind: 'asked', asker });
-      await machine.await();
-      const settled = machine.state.get();
-      switch (settled.kind) {
-        case 'loaded':
-          return settled.value;
-        case 'missed':
-          if (settled.asker === asker) {
-            throw settled.error;
-          }
-          continue;
-        // No waiter wakes to `unloaded`, since its own ask left it.
-        case 'unloaded':
-        case 'loading':
-          continue;
-      }
-    }
-  }
+  return () => {
+    const caller = createDeferred<T>();
+    machine.update({ kind: 'asked', caller });
+    return caller.promise;
+  };
 }
