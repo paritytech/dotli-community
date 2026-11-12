@@ -24,6 +24,8 @@ type ReportDebugParams = {
   payload: Record<string, unknown>;
 };
 
+export type HostMessages = ReturnType<typeof createHostMessages>;
+
 /** The messages this sandbox posts to `parent`, the host page that framed it. */
 export function createHostMessages({ parent, timers = realTimers }: Params) {
   return {

@@ -3,6 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { atom } from 'nanostores';
 import type { PageUiModule } from './lazy.js';
@@ -23,7 +24,16 @@ function createHarness(load: () => Promise<PageUiModule>, { queued = [] }: { que
   const toasts = atom<{ items: readonly unknown[] }>({ items: queued });
   const texts: string[] = [];
   const hideFallback = vi.fn<() => void>();
-  const ui: SandboxUi = createSandboxUi({ load, toasts, showFallback: text => texts.push(text), hideFallback });
+  const ui: SandboxUi = createSandboxUi({
+    load,
+    toasts,
+    fallback: {
+      show: text => {
+        texts.push(text);
+      },
+      hide: hideFallback,
+    },
+  });
   return { ui, toasts, texts, captures, hideFallback };
 }
 
@@ -224,4 +234,63 @@ describe('sandbox UI', () => {
     // Then
     expect(module.showError).not.toHaveBeenCalled();
   });
+
+  it('As an operator, I watch the screens that wait for the UI throw as it comes up and see each counted as a defect of the UI', async () => {
+    // Given a UI whose error page and retry screen throw
+    const module = createFakeUi();
+    const brokenError = new Error('error page blew up');
+    const brokenRetry = new Error('retry screen blew up');
+    vi.mocked(module.showError).mockImplementation(() => {
+      throw brokenError;
+    });
+    const retryShown = createDeferred<undefined>();
+    vi.mocked(module.showRetryScreen).mockImplementation(() => {
+      retryShown.resolve(undefined);
+      throw brokenRetry;
+    });
+    const { ui, captures } = createHarness(() => Promise.resolve(module));
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+    // When a failure and a retry both need the UI before it loads, and the sandbox waits on the retry screen alone
+    ui.showError('Failed to load content', 'The network did not answer');
+    ui.showRetryScreen();
+    await retryShown.promise;
+
+    // Then the overlays are up once and each throw is a defect of the UI
+    expect(module.mountOverlays).toHaveBeenCalledOnce();
+    expect(captures.exception).toHaveBeenCalledWith(brokenError, expect.objectContaining({ step: 'ui_transition' }));
+    expect(captures.exception).toHaveBeenCalledWith(brokenRetry, expect.objectContaining({ step: 'ui_transition' }));
+    expect(sentry.counted('sandbox.ui_transition')).toEqual([
+      { outcome: 'error', reason: 'Error' },
+      { outcome: 'error', reason: 'Error' },
+    ]);
+  });
+
+  it.each([
+    ['error page', (ui: SandboxUi) => ui.showError('Failed to load content', 'The network did not answer')],
+    ['retry screen', (ui: SandboxUi) => ui.showRetryScreen()],
+  ])(
+    'As an operator, I watch the %s throw once the UI is up and see it counted as a defect of the UI',
+    async (_label, show) => {
+      // Given a UI that is up, whose screens throw
+      const module = createFakeUi();
+      const broken = new Error('screen blew up');
+      vi.mocked(module.showError).mockImplementation(() => {
+        throw broken;
+      });
+      vi.mocked(module.showRetryScreen).mockImplementation(() => {
+        throw broken;
+      });
+      const { ui, captures } = createHarness(() => Promise.resolve(module));
+      await ui.loadUi();
+      const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+      // When the screen is shown
+      show(ui);
+
+      // Then the throw is a defect of the UI
+      expect(captures.exception).toHaveBeenCalledWith(broken, expect.objectContaining({ step: 'ui_transition' }));
+      expect(sentry.counted('sandbox.ui_transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    },
+  );
 });

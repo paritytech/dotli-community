@@ -33,6 +33,8 @@ type Params = {
 /** The screen's element in the page's static markup. */
 const SCREEN_ID = 'sandbox-fallback';
 
+export type FallbackScreen = ReturnType<typeof createFallbackScreen>;
+
 /** The screen in `page`'s static markup, with a Reload button that calls `reload`. */
 export function createFallbackScreen({ page, reload }: Params) {
   return {

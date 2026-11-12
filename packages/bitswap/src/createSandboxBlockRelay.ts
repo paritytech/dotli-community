@@ -6,7 +6,14 @@
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createListenerSet, getErrorName, setErrorName, serializeError } from '@dotli/shared';
+import {
+  createListenerSet,
+  createStateMachine,
+  getErrorName,
+  setErrorName,
+  serializeError,
+  type MachineTypes,
+} from '@dotli/shared';
 
 import { readDagTotal } from './readDagTotal.js';
 import { errorCode } from './errors.js';
@@ -18,6 +25,7 @@ const report = createReporter({ flow: 'content' });
  * cache_delete, cache_write`).
  */
 const contentBlockRelayMetric = defineCount<'error'>('content.block_relay');
+const blockRelayTransitionMetric = defineCount<'error'>('block_relay.transition');
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
 export type ContentProgress = {
@@ -90,6 +98,30 @@ type FrameAddress = {
   source: MessageEventSource | null;
 };
 
+/** A block a frame asked for, with the controller its frame's abort stops. */
+type BlockRequest = {
+  key: FrameKey;
+  id: string;
+  cid: string;
+  origin: string;
+  source: MessageEventSource;
+  aborter: AbortController;
+};
+
+/**
+ * Live requests per frame, then per id, so a sandbox can abort its own on `pagehide`. Keyed by frame because ids restart
+ * at 1 in each frame. A frame is the id it sends together with its origin, since its abort arrives after it is gone and
+ * without a source, and another product's sandbox may send the same id. A sandbox that sends no id is keyed by its
+ * window. A frame with no request left leaves `frames`.
+ */
+type RelayState = { kind: 'serving'; frames: ReadonlyMap<FrameKey, ReadonlyMap<string, BlockRequest>> };
+
+type RelayEvent =
+  | { kind: 'blockAsked'; request: BlockRequest }
+  | { kind: 'abortAsked'; key: FrameKey; ids: readonly string[] }
+  | { kind: 'blockServed'; request: BlockRequest; served: ServedBlock }
+  | { kind: 'blockFailed'; request: BlockRequest; error: unknown };
+
 /**
  * Spelled as `CONTENT_ERRORS.VERIFICATION`, which bitswap may not import. The sandbox branches on this name.
  */
@@ -113,13 +145,6 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
   });
   /** The running load's count. A walk asks for its root first and only once, so the root asked again is a new load. */
   let load: { root: string; totalBytes: number | null; bytesFetched: number; startedAt: number } | null = null;
-  /**
-   * Live fetches per frame, then per id, so a sandbox can abort its own on `pagehide`. Keyed by frame because ids
-   * restart at 1 in each frame. A frame is the id it sends together with its origin, since its abort arrives after it
-   * is gone and without a source, and another product's sandbox may send the same id. A sandbox that sends no id is
-   * keyed by its window.
-   */
-  const inFlight = new Map<FrameKey, Map<string, AbortController>>();
   function getFrameKey(address: FrameAddress & { source: MessageEventSource }): FrameKey;
   function getFrameKey(address: FrameAddress): FrameKey | null;
   function getFrameKey({ frame, origin, source }: FrameAddress): FrameKey | null {
@@ -212,75 +237,102 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
     return { bytes, from: 'network' };
   }
 
+  const relay = createStateMachine<MachineTypes<RelayState, RelayEvent>>({
+    initial: { kind: 'serving', frames: new Map() },
+    handlers: {
+      serving: {
+        blockAsked(state, { request }, { emitState, update }) {
+          // A reused id replaces the request under it, so the frame's abort stops the newer one.
+          const own = new Map(state.frames.get(request.key)).set(request.id, request);
+          emitState({ ...state, frames: withFrame(state.frames, request.key, own) });
+          update(
+            serve(request.cid, request.aborter.signal).then(
+              served => ({ kind: 'blockServed', request, served }),
+              (error: unknown) => ({ kind: 'blockFailed', request, error }),
+            ),
+          );
+        },
+        abortAsked(state, { key, ids }, { emitState }) {
+          // Only this frame's own fetches, so one product cannot cancel another's.
+          const own = state.frames.get(key);
+          if (own === undefined || !ids.some(id => own.has(id))) {
+            return;
+          }
+          const left = new Map(own);
+          for (const id of ids) {
+            left.delete(id);
+          }
+          emitState({ ...state, frames: withFrame(state.frames, key, left) });
+          for (const id of ids) {
+            own.get(id)?.aborter.abort();
+          }
+        },
+        blockServed(state, { request, served }, { emitState }) {
+          emitState(withoutRequest(state, request));
+          // An aborted request's block is not part of the frame's load.
+          if (!request.aborter.signal.aborted) {
+            noteBlock(request.cid, served);
+          }
+          const reply: BitswapResultMessage = {
+            type: 'dotli:bitswap-result',
+            id: request.id,
+            ok: true,
+            bytes: served.bytes,
+          };
+          // The cache and the client return a fresh copy, so its buffer is an `ArrayBuffer` holding this block alone.
+          request.source.postMessage(reply, {
+            targetOrigin: request.origin,
+            transfer: [served.bytes.buffer as ArrayBuffer],
+          });
+        },
+        blockFailed(state, { request, error }, { emitState }) {
+          emitState(withoutRequest(state, request));
+          const name = getErrorName(error);
+          const code = errorCode(error);
+          const reply: BitswapResultMessage = {
+            type: 'dotli:bitswap-result',
+            id: request.id,
+            ok: false,
+            error: serializeError(error),
+            ...(name !== undefined ? { errorName: name } : {}),
+            ...(code !== null ? { code } : {}),
+          };
+          request.source.postMessage(reply, { targetOrigin: request.origin });
+        },
+      },
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: blockRelayTransitionMetric,
+        message: '[dot.li bitswap-relay] A block relay transition threw',
+      });
+    },
+  });
+
   const stopAborts = channel.on('dotli:bitswap-abort', (data, { origin, source }) => {
     const key = getFrameKey({ frame: data.frame, origin, source });
     if (key === null) {
       return;
     }
-    // Only this frame's own fetches, so one product cannot cancel another's.
-    const own = inFlight.get(key);
-    if (own === undefined) {
-      return;
-    }
-    for (const id of data.ids) {
-      own.get(id)?.abort();
-      own.delete(id);
-    }
-    if (own.size === 0) {
-      inFlight.delete(key);
-    }
+    relay.update({ kind: 'abortAsked', key, ids: data.ids });
   });
 
   const stopGets = channel.on('dotli:bitswap-get', (data, { origin, source }) => {
     if (source === null) {
       return;
     }
-    const aborter = new AbortController();
-    const key = getFrameKey({ frame: data.frame, origin, source });
-    let own = inFlight.get(key);
-    if (own === undefined) {
-      own = new Map<string, AbortController>();
-      inFlight.set(key, own);
-    }
-    own.set(data.id, aborter);
-    void serve(data.cid, aborter.signal)
-      .finally(() => {
-        // A reused id must not have the earlier fetch's cleanup drop the newer entry.
-        if (own.get(data.id) === aborter) {
-          own.delete(data.id);
-        }
-        // An abort may have emptied this map and a newer request of the frame replaced it.
-        if (own.size === 0 && inFlight.get(key) === own) {
-          inFlight.delete(key);
-        }
-      })
-      .then(served => {
-        // An aborted request's block is not part of the frame's load.
-        if (!aborter.signal.aborted) {
-          noteBlock(data.cid, served);
-        }
-        const reply: BitswapResultMessage = {
-          type: 'dotli:bitswap-result',
-          id: data.id,
-          ok: true,
-          bytes: served.bytes,
-        };
-        // The cache and the client return a fresh copy, so its buffer is an `ArrayBuffer` holding this block alone.
-        source.postMessage(reply, { targetOrigin: origin, transfer: [served.bytes.buffer as ArrayBuffer] });
-      })
-      .catch((err: unknown) => {
-        const name = getErrorName(err);
-        const code = errorCode(err);
-        const reply: BitswapResultMessage = {
-          type: 'dotli:bitswap-result',
-          id: data.id,
-          ok: false,
-          error: serializeError(err),
-          ...(name !== undefined ? { errorName: name } : {}),
-          ...(code !== null ? { code } : {}),
-        };
-        source.postMessage(reply, { targetOrigin: origin });
-      });
+    relay.update({
+      kind: 'blockAsked',
+      request: {
+        key: getFrameKey({ frame: data.frame, origin, source }),
+        id: data.id,
+        cid: data.cid,
+        origin,
+        source,
+        aborter: new AbortController(),
+      },
+    });
   });
 
   return {
@@ -306,4 +358,32 @@ function reportRelayFailure({ step, error, cid, reason }: ReportRelayFailurePara
     message: `[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}:`,
     ...(reason === undefined ? {} : { reason }),
   });
+}
+
+/** `frames` with the frame's requests set to `own`, or without the frame once it has none. */
+function withFrame(
+  frames: RelayState['frames'],
+  key: FrameKey,
+  own: ReadonlyMap<string, BlockRequest>,
+): RelayState['frames'] {
+  const next = new Map(frames);
+  if (own.size === 0) {
+    next.delete(key);
+    return next;
+  }
+  return next.set(key, own);
+}
+
+/**
+ * `state` without `request`, or `state` itself once the request left, such as for an abort or a newer request under
+ * its id.
+ */
+function withoutRequest(state: RelayState, request: BlockRequest): RelayState {
+  const own = state.frames.get(request.key);
+  if (own?.get(request.id) !== request) {
+    return state;
+  }
+  const left = new Map(own);
+  left.delete(request.id);
+  return { ...state, frames: withFrame(state.frames, request.key, left) };
 }

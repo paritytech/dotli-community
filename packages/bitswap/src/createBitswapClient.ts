@@ -10,14 +10,20 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createPendingReplies,
-  createSharedRun,
+  createStateMachine,
   fromHex,
   isChainHaltedRpcError,
+  listen,
+  nest,
+  noop,
   setErrorName,
   realTimers,
   serializeError,
-  type Timers,
   toError,
+  type HandlerOf,
+  type MachineTypes,
+  type Timers,
+  type Transition,
 } from '@dotli/shared';
 
 import { BITSWAP_ERRORS, errorCode, withCode } from './errors.js';
@@ -29,6 +35,7 @@ const report = createReporter({ flow: 'content' });
  * (the error name).
  */
 const contentBitswapReleaseMetric = defineCount<'error'>('content.bitswap_release');
+const bitswapClientTransitionMetric = defineCount<'error'>('bitswap_client.transition');
 
 type Params = {
   /**
@@ -50,11 +57,39 @@ type FetchAttempts = {
   transient: number;
 };
 
-/** Callers of one CID and the bytes its fetch left for those still waiting. */
-type SharedFetch = {
-  holders: number;
-  bytes: Uint8Array | null;
+/** One call of `get`, with the budget it spends on its own and the promise it settles. */
+type Caller = {
+  deadline: number;
+  signal: AbortSignal | undefined;
+  resolve: (bytes: Uint8Array) => void;
+  reject: (error: unknown) => void;
 };
+
+/** The fetch of one CID. Its runner is the caller whose fetch runs, and the others wait behind it. */
+type SharedFetch = { kind: 'fetching'; runner: Caller; queued: readonly Caller[] } | { kind: 'ended' };
+
+type Fetching = Extract<SharedFetch, { kind: 'fetching' }>;
+
+/**
+ * The connection is held while any fetch runs, retry waits included, and closed after the last. `holding` has fetches
+ * and no connection yet, since the first request dials. An ended fetch leaves `fetches`.
+ */
+type ClientState =
+  | { kind: 'idle' }
+  | { kind: 'holding'; fetches: ReadonlyMap<string, Fetching> }
+  | { kind: 'dialed'; connection: JsonRpcConnection; fetches: ReadonlyMap<string, Fetching> };
+
+type ClientEvent =
+  | { kind: 'asked'; cid: string; caller: Caller }
+  | { kind: 'callerAborted'; cid: string; caller: Caller }
+  | { kind: 'blockFetched'; cid: string; runner: Caller; bytes: Uint8Array }
+  | { kind: 'fetchFailed'; cid: string; runner: Caller; error: unknown }
+  | { kind: 'fetchEnded' }
+  | { kind: 'requested'; id: number; cid: string };
+
+type ClientEffect = { kind: 'releaseFailed'; error: unknown };
+
+type ClientMachine = MachineTypes<ClientState, ClientEvent, ClientEffect>;
 
 type SendOnceParams = {
   /** The block to request. */
@@ -63,6 +98,8 @@ type SendOnceParams = {
   timeoutMs: number;
   /** Stops the wait when it fires. */
   signal: AbortSignal | undefined;
+  /** Sends the request through the client's machine, which holds the connection. */
+  update: Transition<ClientMachine>['update'];
 };
 
 type ClassifyFailureParams = {
@@ -81,6 +118,8 @@ type FetchBlockParams = {
   deadline: number;
   /** Stops the fetch when it fires. */
   signal: AbortSignal | undefined;
+  /** Sends each attempt's request through the client's machine. */
+  update: Transition<ClientMachine>['update'];
 };
 
 // `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
@@ -88,24 +127,11 @@ const ERROR_FAIL = -32810;
 const ERROR_FAIL_RETRY = -32811;
 const ERROR_FAIL_BACKOFF = -32812;
 
-/** Marks a local abort by name, since any numeric code outside the JSON-RPC reserved range could be the chain's. */
-const ABORT_ERROR_NAME = 'AbortError';
-
-const PER_CALL_TIMEOUT_MS = 60_000;
-const BACKOFF_BASE_MS = 500;
-const BACKOFF_CAP_MS = 5_000;
-
-// smoldot calls -32810 permanent, but it only means the peers connected at that instant lacked the block,
-// so a retry meets a larger set. Counted in attempts, not time, which slow -32812 runs would drain.
-const DISCOVERY_RETRIES = 8;
-
 /** Creates a client that fetches blocks by CID over the provider's bitswap JSON-RPC, sharing one fetch per CID. */
 export function createBitswapClient({ provider, timers = realTimers }: Params) {
   const replies = createPendingReplies<number, Uint8Array>();
-  const shared = new Map<string, SharedFetch>();
   let nextId = 1;
-  let connection: JsonRpcConnection | null = null;
-  // Size 1 per name: one fetch per CID at a time, and one attempt at a time within it.
+  // Size 1 per name: one attempt at a time within the fetch of a CID.
   const pool = createAsyncTaskPool({
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
@@ -113,71 +139,260 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     retryDelay: (_retry, error) => (error instanceof RetryLater ? error.delayMs : 0),
     timers,
   });
-  // Every fetch holds the connection from its call until it settles, retry waits included.
-  const holding = createSharedRun({ begin: () => release });
 
-  function dial(): JsonRpcConnection {
-    if (connection !== null) {
-      return connection;
-    }
-    const bulletin = provider();
-    if (bulletin === null) {
-      throw setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE);
-    }
-    connection = bulletin((message: JsonRpcMessage) => {
-      if (!isResponse(message) || typeof message.id !== 'number') {
-        return;
-      }
-      if ('error' in message) {
-        const error = setErrorName(
-          new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
-          BITSWAP_ERRORS.RPC,
-        );
-        // A halt is retried on the same connection.
-        const halted = isChainHaltedRpcError(message.error);
-        replies.reject(message.id, withCode(error, halted ? ERROR_FAIL_RETRY : message.error.code));
-        return;
-      }
-      if (typeof message.result !== 'string') {
-        replies.reject(
-          message.id,
-          setErrorName(
-            new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
-            BITSWAP_ERRORS.RPC,
-          ),
-        );
-        return;
-      }
-      // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
-      replies.resolve(message.id, fromHex(message.result));
-    });
-    return connection;
-  }
-
-  function release(): void {
-    const held = connection;
-    if (held === null) {
+  /** A CID with no fetch gets the caller as its runner, and a CID with one queues the caller behind it. */
+  const addCaller: HandlerOf<ClientMachine, 'holding' | 'dialed', 'asked'> = (
+    state,
+    { cid, caller },
+    { emitState, update },
+  ) => {
+    const fetch = state.fetches.get(cid);
+    if (fetch !== undefined) {
+      emitState({
+        ...state,
+        fetches: new Map(state.fetches).set(cid, { ...fetch, queued: [...fetch.queued, caller] }),
+      });
       return;
     }
-    connection = null;
-    try {
-      held.disconnect();
-    } catch (error) {
+    emitState({ ...state, fetches: new Map(state.fetches).set(cid, { kind: 'fetching', runner: caller, queued: [] }) });
+    startFetch(cid, caller, update);
+  };
+
+  const handleFetch = nest<
+    ClientMachine,
+    'holding' | 'dialed',
+    MachineTypes<SharedFetch, ClientEvent, ClientEffect>,
+    'blockFetched' | 'fetchFailed' | 'callerAborted'
+  >({
+    find(state, event) {
+      const fetch = state.fetches.get(event.cid);
+      if (fetch === undefined) {
+        return null;
+      }
+      switch (event.kind) {
+        // A settle carries the runner it was started for, so one from an earlier runner of the CID finds nothing.
+        case 'blockFetched':
+        case 'fetchFailed':
+          return fetch.runner === event.runner ? fetch : null;
+        case 'callerAborted':
+          return fetch;
+      }
+    },
+    store(state, { cid }, next) {
+      const fetches = new Map(state.fetches);
+      switch (next.kind) {
+        case 'fetching':
+          fetches.set(cid, next);
+          break;
+        case 'ended':
+          fetches.delete(cid);
+          break;
+      }
+      return { ...state, fetches };
+    },
+    handlers: {
+      fetching: {
+        blockFetched({ runner, queued }, { bytes }, { emitState, update }) {
+          emitState({ kind: 'ended' });
+          runner.resolve(bytes);
+          for (const caller of queued) {
+            // A copy each, since a caller may transfer its buffer away.
+            caller.resolve(bytes.slice());
+          }
+          update({ kind: 'fetchEnded' });
+        },
+        fetchFailed({ runner, queued }, { cid, error }, { emitState, update }) {
+          const [next, ...rest] = queued;
+          if (next === undefined) {
+            emitState({ kind: 'ended' });
+            update({ kind: 'fetchEnded' });
+          } else {
+            emitState({ kind: 'fetching', runner: next, queued: rest });
+            startFetch(cid, next, update);
+          }
+          runner.reject(runner.signal?.aborted === true ? abortError(cid, error) : error);
+        },
+        // A runner's abort ends its fetch instead, which `fetchFailed` hears.
+        callerAborted(state, { cid, caller }, { emitState }) {
+          if (!state.queued.includes(caller)) {
+            return;
+          }
+          emitState({ ...state, queued: state.queued.filter(queued => queued !== caller) });
+          caller.reject(abortError(cid, caller.signal?.reason));
+        },
+      },
+      ended: null,
+    },
+  });
+
+  const client = createStateMachine<ClientMachine>({
+    initial: { kind: 'idle' },
+    handlers: {
+      // No `requested`: a request comes only from a fetch the state holds.
+      idle: {
+        asked(_state, { cid, caller }, { emitState, update }) {
+          emitState({ kind: 'holding', fetches: new Map([[cid, { kind: 'fetching', runner: caller, queued: [] }]]) });
+          startFetch(cid, caller, update);
+        },
+      },
+      holding: {
+        asked: addCaller,
+        blockFetched: handleFetch,
+        fetchFailed: handleFetch,
+        callerAborted: handleFetch,
+        fetchEnded(state, _event, { emitState }) {
+          if (state.fetches.size > 0) {
+            return;
+          }
+          emitState({ kind: 'idle' });
+        },
+        requested(state, { id, cid }, { emitState }) {
+          // A request of a fetch that has ended would dial with nothing to close the connection.
+          if (!state.fetches.has(cid)) {
+            return;
+          }
+          let connection: JsonRpcConnection;
+          // A dial that throws fails this attempt at once, and the next request dials again.
+          try {
+            const bulletin = provider();
+            if (bulletin === null) {
+              replies.reject(
+                id,
+                setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE),
+              );
+              return;
+            }
+            connection = bulletin(hearReply);
+          } catch (error) {
+            replies.reject(id, toError(error));
+            return;
+          }
+          emitState({ kind: 'dialed', connection, fetches: state.fetches });
+          sendRequest(connection, id, cid);
+        },
+      },
+      dialed: {
+        asked: addCaller,
+        blockFetched: handleFetch,
+        fetchFailed: handleFetch,
+        callerAborted: handleFetch,
+        fetchEnded({ connection, fetches }, _event, { emitState, emitSideEffect }) {
+          if (fetches.size > 0) {
+            return;
+          }
+          emitState({ kind: 'idle' });
+          try {
+            connection.disconnect();
+          } catch (error) {
+            emitSideEffect({ kind: 'releaseFailed', error });
+          }
+        },
+        requested({ connection, fetches }, { id, cid }) {
+          if (!fetches.has(cid)) {
+            return;
+          }
+          sendRequest(connection, id, cid);
+        },
+      },
+    },
+    onEffect: ({ error }) => {
       report.defect(error, {
         step: 'bitswap_release',
         metric: contentBitswapReleaseMetric,
         message: '[dot.li bitswap] closing the Bulletin connection failed:',
       });
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: bitswapClientTransitionMetric,
+        message: '[dot.li bitswap] A bitswap client transition threw',
+      });
+    },
+  });
+
+  return {
+    /**
+     * Fetches one block. Pass `signal` from anything that can be torn down, since a retrying call runs for minutes. A
+     * second call for a CID already being fetched waits for that fetch and gets a copy of its bytes. Rejects with an
+     * abort error when `signal` fires, and with a coded error when the retries or the total budget run out.
+     */
+    get(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
+      if (signal?.aborted === true) {
+        return Promise.reject(abortError(cid, signal.reason));
+      }
+      // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
+      const deadline = timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
+      let stopListening = noop;
+      return new Promise<Uint8Array>((resolve, reject) => {
+        const caller: Caller = { deadline, signal, resolve, reject };
+        if (signal !== undefined) {
+          stopListening = listen({
+            target: signal,
+            type: 'abort',
+            handler: () => {
+              client.update({ kind: 'callerAborted', cid, caller });
+            },
+          });
+        }
+        client.update({ kind: 'asked', cid, caller });
+      }).finally(() => {
+        stopListening();
+      });
+    },
+  };
+
+  function hearReply(message: JsonRpcMessage): void {
+    if (!isResponse(message) || typeof message.id !== 'number') {
+      return;
+    }
+    if ('error' in message) {
+      const error = setErrorName(
+        new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
+        BITSWAP_ERRORS.RPC,
+      );
+      // A halt is retried on the same connection.
+      const halted = isChainHaltedRpcError(message.error);
+      replies.reject(message.id, withCode(error, halted ? ERROR_FAIL_RETRY : message.error.code));
+      return;
+    }
+    if (typeof message.result !== 'string') {
+      replies.reject(
+        message.id,
+        setErrorName(
+          new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
+          BITSWAP_ERRORS.RPC,
+        ),
+      );
+      return;
+    }
+    // Parsed once here, so the sandbox gets a transferred buffer instead of a cloned hex string.
+    replies.resolve(message.id, fromHex(message.result));
+  }
+
+  function sendRequest(connection: JsonRpcConnection, id: number, cid: string): void {
+    try {
+      connection.send({ jsonrpc: '2.0', id, method: 'bitswap_v1_get', params: [cid] });
+    } catch (error) {
+      replies.reject(id, toError(error));
     }
   }
 
-  function sendOnce({ cid, timeoutMs, signal }: SendOnceParams): Promise<Uint8Array> {
-    const id = nextId++;
-    const active = dial();
+  function startFetch(cid: string, runner: Caller, update: Transition<ClientMachine>['update']): void {
+    update(
+      fetchBlock({ cid, deadline: runner.deadline, signal: runner.signal, update }).then(
+        bytes => ({ kind: 'blockFetched', cid, runner, bytes }),
+        (error: unknown) => ({ kind: 'fetchFailed', cid, runner, error }),
+      ),
+    );
+  }
+
+  function sendOnce({ cid, timeoutMs, signal, update }: SendOnceParams): Promise<Uint8Array> {
     // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
       return Promise.reject(abortError(cid));
     }
+    const id = nextId++;
     const timer = timers.setTimeout(() => {
       replies.reject(
         id,
@@ -191,20 +406,22 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
       );
     }, timeoutMs);
     // smoldot cannot cancel an issued request, so the wait is dropped and its late reply finds no slot.
-    function rejectOnAbort(): void {
-      replies.reject(id, abortError(cid));
-    }
-    signal?.addEventListener('abort', rejectOnAbort, { once: true });
+    const stopListening =
+      signal === undefined
+        ? noop
+        : listen({
+            target: signal,
+            type: 'abort',
+            handler: () => {
+              replies.reject(id, abortError(cid));
+            },
+          });
     const reply = replies.wait(id);
-    try {
-      active.send({ jsonrpc: '2.0', id, method: 'bitswap_v1_get', params: [cid] });
-    } catch (error) {
-      replies.reject(id, toError(error));
-    }
+    update({ kind: 'requested', id, cid });
     // Every exit shares one teardown, since the caller's signal outlives the call and would collect listeners.
     return reply.finally(() => {
       timers.clearTimeout(timer);
-      signal?.removeEventListener('abort', rejectOnAbort);
+      stopListening();
     });
   }
 
@@ -215,7 +432,9 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     let backoffAttempt: number;
     if (code === ERROR_FAIL) {
       attempts.discovery += 1;
-      if (attempts.discovery > DISCOVERY_RETRIES) {
+      // smoldot calls -32810 permanent, but it only means the peers connected at that instant lacked the block,
+      // so a retry meets a larger set. Counted in attempts, not time, which slow -32812 runs would drain.
+      if (attempts.discovery > 8) {
         return withCode(
           setErrorName(
             new Error(
@@ -235,8 +454,8 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     }
     // The 1ms floor keeps a nearly spent budget off a zero delay. The deadline check then ends the fetch.
     const delay = Math.min(
-      BACKOFF_CAP_MS,
-      BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
+      5_000,
+      500 * 2 ** Math.min(backoffAttempt - 1, 4),
       Math.max(1, attempts.deadline - timers.now()),
     );
     // Expected while providers are found, so a breadcrumb. The final failure goes back to the caller.
@@ -244,7 +463,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     return new RetryLater(delay, error);
   }
 
-  function fetchBlock({ cid, deadline, signal }: FetchBlockParams): Promise<Uint8Array> {
+  function fetchBlock({ cid, deadline, signal, update }: FetchBlockParams): Promise<Uint8Array> {
     const attempts: FetchAttempts = { deadline, made: 0, discovery: 0, transient: 0 };
     async function attemptFetch(): Promise<Uint8Array> {
       attempts.made += 1;
@@ -258,53 +477,13 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
         );
       }
       try {
-        return await sendOnce({ cid, timeoutMs: Math.min(PER_CALL_TIMEOUT_MS, remaining), signal });
+        return await sendOnce({ cid, timeoutMs: Math.min(60_000, remaining), signal, update });
       } catch (error) {
         throw classifyFailure({ cid, error, attempts });
       }
     }
     return pool.call(attemptFetch, { pool: `fetch:${cid}`, ...(signal !== undefined ? { signal } : {}) });
   }
-
-  return {
-    /**
-     * Fetches one block. Pass `signal` from anything that can be torn down, since a retrying call runs for minutes. A
-     * second call for a CID already being fetched waits for that fetch and gets a copy of its bytes. Rejects with an
-     * abort error when `signal` fires, and with a coded error when the retries or the total budget run out.
-     */
-    get(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
-      // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
-      const deadline = timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
-      const stop = holding.join();
-      const entry = shared.get(cid) ?? { holders: 0, bytes: null };
-      shared.set(cid, entry);
-      entry.holders += 1;
-      // Idempotent: a call queued behind a fetch of the same CID finds its bytes and returns them.
-      async function fetchOnce(): Promise<Uint8Array> {
-        if (entry.bytes !== null) {
-          return entry.bytes.slice();
-        }
-        const bytes = await fetchBlock({ cid, deadline, signal });
-        if (entry.holders > 1) {
-          // A copy each, since a caller may transfer its buffer away.
-          entry.bytes = bytes.slice();
-        }
-        return bytes;
-      }
-      return pool
-        .call(fetchOnce, { pool: `get:${cid}`, ...(signal !== undefined ? { signal } : {}) })
-        .catch((error: unknown) => {
-          throw signal?.aborted === true ? abortError(cid, error) : error;
-        })
-        .finally(() => {
-          entry.holders -= 1;
-          if (entry.holders === 0) {
-            shared.delete(cid);
-          }
-          stop();
-        });
-    },
-  };
 }
 
 /** A failure worth another attempt once `delayMs` has passed. */
@@ -320,6 +499,7 @@ class RetryLater extends Error {
 function abortError(cid: string, cause?: unknown): Error {
   return setErrorName(
     new Error(`bitswap_v1_get(${cid}): aborted`, cause === undefined ? undefined : { cause }),
-    ABORT_ERROR_NAME,
+    // Marks a local abort by name, since any numeric code outside the JSON-RPC reserved range could be the chain's.
+    'AbortError',
   );
 }

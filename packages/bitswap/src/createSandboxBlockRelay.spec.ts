@@ -4,6 +4,7 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
+import { createDeferred } from '@dotli/shared';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
 import { createSandboxBlockRelay, type BlockOrigin, type ContentProgress } from './createSandboxBlockRelay.js';
 
@@ -257,6 +258,40 @@ describe('createSandboxBlockRelay', () => {
     ]);
   });
 
+  it('As an operator, I see a reply that cannot reach its frame reported, and the relay serves the next request', async () => {
+    // Given a frame whose first reply throws, as one posted to a window that went away may
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const network = createFakeNetwork();
+    const { channel, send } = createFakeChannel();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
+    const frame = createFakeFrame();
+    const thrown = createRecording<Error>();
+    const flakyFrame = {
+      postMessage(message: unknown, options?: WindowPostMessageOptions): void {
+        if (thrown.length === 0) {
+          const error = new Error('frame is gone');
+          thrown.push(error);
+          throw error;
+        }
+        frame.postMessage(message, options);
+      },
+    };
+
+    // When it asks for a block, then for another once the first reply threw
+    send(flakyFrame, createGetRequest('req-1'));
+    await waitForLength(thrown);
+    send(flakyFrame, createGetRequest('req-2'));
+    await waitForLength(frame.replies);
+    send(flakyFrame, createAbortRequest('req-1'));
+
+    // Then the throw is reported, the second request gets its block, and the first left the table before the throw
+    expect(captured).toMatchObject([{ step: 'transition', error: thrown[0] }]);
+    expect(sentry.counted('block_relay.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(frame.replies).toEqual([{ type: 'dotli:bitswap-result', id: 'req-2', ok: true, bytes: BLOCK }]);
+    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false, false]);
+  });
+
   it('As a user, I leave a page and the fetches that page asked for stop', async () => {
     // Given
     const network = createFakeNetwork(() => 'hold');
@@ -359,6 +394,27 @@ describe('createSandboxBlockRelay', () => {
     expect(network.fetches.find(fetch => fetch.cid === 'bafySlow')?.signal.aborted).toBe(true);
   });
 
+  it('As a user, I ask for a block again under the same id while the first request still runs, and my abort still stops the newer one', async () => {
+    // Given a network that answers the first fetch at once and holds the second
+    let asked = 0;
+    const network = createFakeNetwork(() => {
+      asked += 1;
+      return asked === 1 ? BLOCK.slice() : 'hold';
+    });
+    const { channel, send } = createFakeChannel();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
+    const frame = createFakeFrame();
+    send(frame, createGetRequest('req-1'));
+    send(frame, createGetRequest('req-1'));
+    await waitForLength(frame.replies);
+
+    // When the frame aborts the id after the first request settled
+    send(frame, createAbortRequest('req-1'));
+
+    // Then the newer request's fetch stopped
+    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false, true]);
+  });
+
   it("As a user, I reload a product frame while its old request still reads the cache, and my new frame's fetches still stop when it leaves", async () => {
     // Given an old frame whose request was aborted while its cache read is pending, and a new frame reusing its frame id
     const network = createFakeNetwork(() => 'hold');
@@ -403,6 +459,28 @@ describe('createSandboxBlockRelay', () => {
 
     // Then nothing was counted
     expect(progress).toEqual([]);
+  });
+
+  it('As the host, I stop the relay mid-fetch and the frame still gets its block', async () => {
+    // Given a fetch the network is still answering
+    const answer = createDeferred<Uint8Array>();
+    const { channel, send } = createFakeChannel();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: () => answer.promise,
+      cache: null,
+      verify: verifyBlock,
+    });
+    const frame = createFakeFrame();
+    send(frame, createGetRequest('req-1'));
+
+    // When the relay stops and the network answers
+    relay.stop();
+    answer.resolve(BLOCK.slice());
+    await waitForLength(frame.replies);
+
+    // Then
+    expect(frame.replies).toEqual([{ type: 'dotli:bitswap-result', id: 'req-1', ok: true, bytes: BLOCK }]);
   });
 
   it('As the host, I stop the relay and it stops listening to the channel', () => {

@@ -29,7 +29,7 @@ type Params = {
   window: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** The host page that framed this sandbox. */
   parent: Pick<Window, 'postMessage'>;
-  /** Whether a message from `origin` may come from the host. Never throws. */
+  /** Whether a message from `origin` may come from the host. */
   isHostOrigin: (origin: string) => boolean;
   /** The clock that stamps each request id, and the timers its wait for an answer runs on. */
   timers?: Timers;
@@ -134,7 +134,7 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
     });
   }
 
-  /** Tells the host to drop the fetches `ids` name. Never throws. */
+  /** Tells the host to drop the fetches `ids` name. */
   function postAbort(ids: string[]): void {
     // The abort is best effort: each request fails as it would even when the abort cannot be posted.
     try {

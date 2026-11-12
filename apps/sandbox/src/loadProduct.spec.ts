@@ -6,9 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
 import { setErrorName } from '@dotli/shared';
 
+import type { HostMessages } from './createHostMessages.js';
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
 
 type FetchArchive = LoadProductDeps['fetchArchive'];
+
+/** Deps a case replaces. A host message it replaces leaves the others recording. */
+type Overrides = Partial<Omit<LoadProductDeps, 'hostMessages'>> & {
+  hostMessages?: Partial<LoadProductDeps['hostMessages']>;
+};
 
 type Harness = {
   deps: LoadProductDeps;
@@ -19,7 +25,7 @@ type Harness = {
   workers: { waitForFreshController: boolean }[];
   written: string[];
   stored: ArchiveFiles[];
-  reports: Parameters<LoadProductDeps['report']>[0][];
+  reports: Parameters<HostMessages['reportDebug']>[0][];
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
@@ -43,16 +49,26 @@ function encode(text: string): Uint8Array {
 }
 
 /** A sandbox page whose network, worker and window are fakes. `fetched` is what the fetch gives back or throws. */
-function createHarness(fetched: FetchResult | Error, overrides: Partial<LoadProductDeps> = {}): Harness {
+function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}): Harness {
   const events: string[] = [];
   const fetches: Parameters<FetchArchive>[1][] = [];
   const workers: { waitForFreshController: boolean }[] = [];
   const written: string[] = [];
   const stored: ArchiveFiles[] = [];
   const reports: Harness['reports'] = [];
+  const { hostMessages, ...depOverrides } = overrides;
   const deps: LoadProductDeps = {
-    showStatus: message => {
-      events.push(`status: ${message}`);
+    hostMessages: {
+      showStatus: message => {
+        events.push(`status: ${message}`);
+      },
+      reportDebug: report => {
+        reports.push(report);
+      },
+      notifyLoadingDone: ({ outcome }) => {
+        events.push(outcome);
+      },
+      ...hostMessages,
     },
     purge() {
       events.push('purge');
@@ -77,18 +93,12 @@ function createHarness(fetched: FetchResult | Error, overrides: Partial<LoadProd
       return Promise.resolve();
     },
     prepareHtml: html => Promise.resolve(html),
-    report: report => {
-      reports.push(report);
-    },
-    notifyLoaded: () => {
-      events.push('loaded');
-    },
     write(html) {
       events.push('write');
       written.push(html);
     },
     measureSinceStart: () => 42,
-    ...overrides,
+    ...depOverrides,
   };
   return { deps, events, fetches, workers, written, stored, reports };
 }
@@ -219,7 +229,26 @@ describe('loadProduct', () => {
     },
   );
 
-  it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([
+  it("As an operator, I break the page's check for a controlling worker and see the failure reported at the worker registration", async () => {
+    // Given a check for a controlling worker that throws
+    const broken = new Error('isControlled broke');
+    const page = createHarness(
+      { type: 'single', content: encode('<h1>hi</h1>') },
+      {
+        isControlled: () => {
+          throw broken;
+        },
+      },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the failure names the registration
+    expect(outcome).toEqual({ outcome: 'failed', step: 'sw_register', error: broken });
+  });
+
+  it.each<[string, (broken: Error) => Overrides, FetchResult]>([
     ['decrypt', broken => ({ decrypt: () => Promise.reject(broken) }), { type: 'single', content: encode('sealed') }],
     [
       'sw_store',
@@ -246,6 +275,63 @@ describe('loadProduct', () => {
       expect(page.written).toEqual([]);
     },
   );
+
+  it("As an operator, I break the host's notice of the written page and see the failure reported at the render step", async () => {
+    // Given an archive with an index and a host notice that throws
+    const broken = new Error('notifyLoadingDone broke');
+    const page = createHarness(
+      { type: 'archive', files: { 'index.html': encode('<main>app</main>') } },
+      {
+        hostMessages: {
+          notifyLoadingDone: () => {
+            throw broken;
+          },
+        },
+      },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the failure names the render, and nothing is written
+    expect(outcome).toEqual({ outcome: 'failed', step: 'render', error: broken });
+    expect(page.written).toEqual([]);
+  });
+
+  it('As an operator, I break the write of the page into the window and see the failure reported at the render step', async () => {
+    // Given an archive with an index and a write that throws
+    const broken = new Error('write broke');
+    const page = createHarness(
+      { type: 'archive', files: { 'index.html': encode('<main>app</main>') } },
+      {
+        write: () => {
+          throw broken;
+        },
+      },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the failure names the render
+    expect(outcome).toEqual({ outcome: 'failed', step: 'render', error: broken });
+  });
+
+  it('As an operator asking for a full reset, I break the purge and see the failure reported at the init step', async () => {
+    // Given a full reset whose purge rejects
+    const broken = new Error('purge broke');
+    const page = createHarness(
+      { type: 'single', content: encode('<main>app</main>') },
+      { purge: () => Promise.reject(broken) },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams({ fullReset: true }), attempt: 1 }, page.deps);
+
+    // Then the failure names the init step, and no worker registered
+    expect(outcome).toEqual({ outcome: 'failed', step: 'init', error: broken });
+    expect(page.workers).toEqual([]);
+  });
 
   it('As a visitor, I leave mid-load and the fetch the frame tore down ends the load quietly', async () => {
     // Given a relay fetch aborted by the frame's teardown

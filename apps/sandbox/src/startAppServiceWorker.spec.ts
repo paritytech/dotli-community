@@ -413,6 +413,59 @@ describe('app service worker', () => {
     expect(pageInbox.filter(message => isRecord(message) && message['stage'] === 'restore')).toHaveLength(1);
   });
 
+  it('As a visitor with two tabs open, I load a chunk in each while a restarted worker fails its read-back and both go to the network, reported once', async () => {
+    // Given two tabs that each handed over their own archive, and a restarted worker whose first read fails
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    const restarted = startWorker(
+      { ...origin, indexedDB: createFailingFirstIndexedDb(origin.indexedDB, 1) },
+      { liveClients: ['page-1', 'page-2'] },
+    );
+    const reported = waitForPageMessage();
+
+    // When both tabs load their chunk before the read-back ends
+    const [firstChunk, secondChunk] = await Promise.all([
+      request(restarted, '/late.js', { clientId: 'page-1' }),
+      request(restarted, '/late.js', { clientId: 'page-2' }),
+    ]);
+    await reported;
+
+    // Then both were answered from the network, and each of the two pages heard of the miss once
+    expect(await firstChunk?.text()).toBe('<!doctype html>shell');
+    expect(await secondChunk?.text()).toBe('<!doctype html>shell');
+    expect(pageInbox.filter(message => isRecord(message) && message['stage'] === 'restore')).toHaveLength(2);
+  });
+
+  it('As a visitor with two tabs open, I load a chunk in each while a restarted worker reads the archives back and one read serves both', async () => {
+    // Given two tabs that each handed over their own archive to a worker the browser then stopped, over storage that
+    // counts its reads
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    let opens = 0;
+    // The archive store calls only `open`.
+    const counted = {
+      open(...args: Parameters<IDBFactory['open']>) {
+        opens += 1;
+        return origin.indexedDB.open(...args);
+      },
+    } as unknown as IDBFactory;
+    const restarted = startWorker({ ...origin, indexedDB: counted }, { liveClients: ['page-1', 'page-2'] });
+
+    // When both tabs load their chunk before the read-back ends
+    const [firstChunk, secondChunk] = await Promise.all([
+      request(restarted, '/late.js', { clientId: 'page-1' }),
+      request(restarted, '/late.js', { clientId: 'page-2' }),
+    ]);
+
+    // Then each comes from its own archive, after one read of the store
+    expect(await firstChunk?.text()).toBe('first()');
+    expect(await secondChunk?.text()).toBe('second()');
+    expect(opens).toBe(1);
+    expect(network).not.toHaveBeenCalled();
+  });
+
   it('As a product developer, I fetch an HTML file from my archive and it comes back byte for byte', async () => {
     // Given an archive holding an HTML file beside the page
     const scope = startWorker(origin);

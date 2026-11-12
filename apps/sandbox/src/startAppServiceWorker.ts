@@ -6,7 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import { createAsyncTaskPool, createLazyLoad, isRecord } from '@dotli/shared';
+import { createAsyncTaskPool, createStateMachine, isRecord, type MachineTypes } from '@dotli/shared';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import {
@@ -52,8 +52,40 @@ type Archives = {
   newest: ServedArchive | null;
 };
 
-/** Whether the worker has read the store back since it started. */
-type Restore = { readonly phase: 'unread' } | { readonly phase: 'read' };
+/** What a restarted worker read back from the store, unpacked. */
+type RestoredArchives = {
+  byClient: ReadonlyMap<string, ServedArchive>;
+  workerPages: ReadonlyMap<string, string>;
+  /** The client whose archive was handed last, or `null` when none was. */
+  newestId: string | null;
+};
+
+/** A fetch the read-back holds, and how to answer it. */
+type HeldFetch = {
+  request: Request;
+  clientId: string;
+  pathname: string;
+  answer: (response: Promise<Response>) => void;
+};
+
+/**
+ * Whether the worker has read the store back since it started. `held` are the fetches the read in flight answers, and
+ * `missedBefore` says whether a read failed before, since only the first failure is reported to the pages.
+ */
+type RestoreState =
+  | { kind: 'unread'; missedBefore: boolean }
+  | { kind: 'reading'; held: readonly HeldFetch[]; missedBefore: boolean }
+  | { kind: 'read' };
+
+type RestoreEvent =
+  | { kind: 'requested'; event: FetchEvent; pathname: string }
+  | { kind: 'archivesRestored'; restored: RestoredArchives }
+  | { kind: 'restoreMissed'; error: unknown };
+
+/** A read-back that failed, for the worker's log, and its first failure, for the pages. */
+type RestoreEffect = { kind: 'restoreMissed'; error: unknown } | { kind: 'firstRestoreMissed'; error: unknown };
+
+type RestoreMachine = MachineTypes<RestoreState, RestoreEvent, RestoreEffect>;
 
 /** A handoff as the worker reads it. Each field stays unchecked until it is read. */
 type SetArchiveRequest = {
@@ -102,22 +134,83 @@ export function startAppServiceWorker({
 
   const archives: Archives = { byClient: new Map(), workerPages: new Map(), newest: null };
 
-  let restore: Restore = { phase: 'unread' };
-
   // One write at a time, so the store's newest archive is the last one handed over, whatever order the reads finish in.
   const persists = createAsyncTaskPool({ poolSize: 1 });
 
-  /**
-   * The archives kept for restarts, read back by the first fetch whose client has none in memory. A failed read is not
-   * kept, so the next such fetch reads them again, while only the first failure is reported to the pages.
-   */
-  const restoreArchive = createLazyLoad({
-    load: async (): Promise<void> => {
-      keepRestored(await loadPersistedArchives(indexedDB));
-      restore = { phase: 'read' };
+  // The archives kept for restarts are read back by the first fetch whose client has none in memory, and the fetches
+  // that arrive during the read wait for it. A failed read is not kept, so the next such fetch reads them again, while
+  // only the first failure is reported to the pages. A read that succeeded is merged and kept by nothing else.
+  const restore = createStateMachine<RestoreMachine>({
+    initial: { kind: 'unread', missedBefore: false },
+    handlers: {
+      unread: {
+        requested({ missedBefore }, { event, pathname }, { emitState, update }) {
+          const own = getClientArchive(event.clientId);
+          if (own !== null) {
+            serveFromMemory(event, own, pathname);
+            return;
+          }
+          // A restarted worker reads the archives back first, since nginx answers every path with the shell as
+          // `text/html`.
+          holdFetch(event, pathname, held => {
+            emitState({ kind: 'reading', held: [held], missedBefore });
+            update(
+              loadPersistedArchives(indexedDB)
+                .then(unpackRestored)
+                .then(
+                  restored => ({ kind: 'archivesRestored', restored }),
+                  (error: unknown) => ({ kind: 'restoreMissed', error }),
+                ),
+            );
+          });
+        },
+      },
+      reading: {
+        requested(state, { event, pathname }, { emitState }) {
+          const own = getClientArchive(event.clientId);
+          if (own !== null) {
+            serveFromMemory(event, own, pathname);
+            return;
+          }
+          holdFetch(event, pathname, held => {
+            emitState({ ...state, held: [...state.held, held] });
+          });
+        },
+        archivesRestored({ held }, { restored }, { emitState }) {
+          emitState({ kind: 'read' });
+          keepRestored(restored);
+          answerHeld(held);
+        },
+        restoreMissed({ held, missedBefore }, { error }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'unread', missedBefore: true });
+          emitSideEffect({ kind: 'restoreMissed', error });
+          if (!missedBefore) {
+            emitSideEffect({ kind: 'firstRestoreMissed', error });
+          }
+          answerHeld(held);
+        },
+      },
+      read: {
+        requested(_state, { event, pathname }) {
+          serveFromMemory(event, getClientArchive(event.clientId) ?? archives.newest, pathname);
+        },
+      },
     },
-    onFirstMiss: error => {
-      // Not awaited: the fetch waiting on this read-back must not wait on the report too.
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'restoreMissed':
+          // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+          console.error('Failed to restore the archives after a worker restart:', effect.error);
+          return;
+        case 'firstRestoreMissed':
+          // Not awaited: the fetches this read-back held must not wait on the report too.
+          void reportToPages({ stage: 'restore', error: effect.error });
+          return;
+      }
+    },
+    onError: error => {
+      // eslint-disable-next-line no-console -- the worker has no logger, and it reports the defect to its pages
+      console.error('The read-back of the archives failed a transition:', error);
       void reportToPages({ stage: 'restore', error });
     },
   });
@@ -164,30 +257,43 @@ export function startAppServiceWorker({
       return;
     }
     linkWorkerPage(event);
+    restore.update({ kind: 'requested', event, pathname: url.pathname });
+  }
 
-    const own = getClientArchive(event.clientId);
-    if (own === null && restore.phase === 'unread') {
-      // A restarted worker reads the archives back first, since nginx answers every path with the shell as `text/html`.
-      event.respondWith(answerAfterRestore(event, url.pathname));
-      return;
-    }
-    const archive = own ?? archives.newest;
-    const found = archive === null ? null : lookupServedFile(archive, url.pathname);
+  /** Answers `event` from `archive` when it holds the path, and else leaves the request to the network. */
+  function serveFromMemory(event: FetchEvent, archive: ServedArchive | null, pathname: string): void {
+    const found = archive === null ? null : lookupServedFile(archive, pathname);
     if (found !== null) {
       event.respondWith(found);
     }
   }
 
-  /** Reads the archives back, then answers from the client's archive or the newest, and else from the network. */
-  async function answerAfterRestore({ request, clientId }: FetchEvent, pathname: string): Promise<Response> {
-    try {
-      await restoreArchive();
-    } catch (error: unknown) {
-      // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-      console.error('Failed to restore the archives after a worker restart:', error);
+  /** Hands the fetch of `event` to `hold` at once, and answers `event` with whatever the held fetch is answered. */
+  function holdFetch(event: FetchEvent, pathname: string, hold: (held: HeldFetch) => void): void {
+    const { request, clientId } = event;
+    event.respondWith(
+      new Promise<Response>(answer => {
+        hold({ request, clientId, pathname, answer });
+      }),
+    );
+  }
+
+  /** Answers each held fetch from memory, once the read-back that held it has ended. */
+  function answerHeld(held: readonly HeldFetch[]): void {
+    for (const fetchHeld of held) {
+      fetchHeld.answer(answerFromMemory(fetchHeld));
     }
-    const archive = getClientArchive(clientId) ?? archives.newest;
-    return (archive === null ? null : lookupServedFile(archive, pathname)) ?? fetchFromNetwork(request);
+  }
+
+  /**
+   * Answers a held fetch from its client's archive or the newest, and else from the network. Rejects as the network's
+   * fetch does, or with what the lookup throws.
+   */
+  function answerFromMemory({ request, clientId, pathname }: HeldFetch): Promise<Response> {
+    return new Promise(resolve => {
+      const archive = getClientArchive(clientId) ?? archives.newest;
+      resolve((archive === null ? null : lookupServedFile(archive, pathname)) ?? fetchFromNetwork(request));
+    });
   }
 
   /** The client's own archive, else the archive of the page that started it. `null` when memory holds neither. */
@@ -200,17 +306,11 @@ export function startAppServiceWorker({
     return pageId === undefined ? null : (archives.byClient.get(pageId) ?? null);
   }
 
-  /**
-   * Fills in what the store kept only where memory has nothing, since a handoff that landed during the read is newer.
-   * The newest is the page's own entry, so each record's buffers are unpacked once.
-   */
-  function keepRestored({ pages, workerPages, newest }: PersistedArchives): void {
-    for (const [clientId, record] of pages) {
+  /** Fills in what the store kept only where memory has nothing, since a handoff that landed during the read is newer. */
+  function keepRestored({ byClient, workerPages, newestId }: RestoredArchives): void {
+    for (const [clientId, archive] of byClient) {
       if (!archives.byClient.has(clientId)) {
-        archives.byClient.set(clientId, {
-          files: unpackArchive(record.packed, record.index),
-          directory: record.directory,
-        });
+        archives.byClient.set(clientId, archive);
       }
     }
     for (const [workerId, pageId] of workerPages) {
@@ -218,8 +318,8 @@ export function startAppServiceWorker({
         archives.workerPages.set(workerId, pageId);
       }
     }
-    if (newest !== null) {
-      archives.newest ??= archives.byClient.get(newest) ?? null;
+    if (newestId !== null) {
+      archives.newest ??= archives.byClient.get(newestId) ?? null;
     }
   }
 
@@ -394,6 +494,15 @@ function getSender({ source }: ExtendableMessageEvent): Client | null {
   // A page the worker controls sends as a `Client`, the one source with an id. No `instanceof` check, since Node has
   // no `Client` global.
   return source !== null && 'id' in source ? source : null;
+}
+
+/** The store's records with each page's archive unpacked. */
+function unpackRestored({ pages, workerPages, newest }: PersistedArchives): RestoredArchives {
+  const byClient = new Map<string, ServedArchive>();
+  for (const [clientId, { packed, index, directory }] of pages) {
+    byClient.set(clientId, { files: unpackArchive(packed, index), directory });
+  }
+  return { byClient, workerPages, newestId: newest };
 }
 
 /** Whether a request fetches the script of a product's worker. */

@@ -229,6 +229,38 @@ describe('createBitswapClient retry policy', () => {
     // Then
     await expect(block).rejects.toMatchObject({ name: 'BitswapUnavailableError' });
   });
+
+  it.each([
+    [
+      'its provider throws when it is called',
+      () =>
+        createBitswapClient({
+          provider: () => {
+            throw new Error('Bulletin would not open');
+          },
+          timers,
+        }),
+    ],
+    [
+      'its connection throws when it is dialled',
+      () =>
+        createBitswapClient({
+          provider: () => () => {
+            throw new Error('Bulletin would not open');
+          },
+          timers,
+        }),
+    ],
+  ])('As a user whose Bulletin connection cannot open because %s, I see the fetch fail at once', async (_, build) => {
+    // Given a client whose Bulletin connection cannot open
+    const client = build();
+
+    // When
+    const block = client.get('bafyNoOpen');
+
+    // Then it failed with the error with the timers never moved
+    await expect(block).rejects.toThrow('Bulletin would not open');
+  });
 });
 
 describe('createBitswapClient aborts', () => {
@@ -264,6 +296,29 @@ describe('createBitswapClient aborts', () => {
     // Then
     await expect(block).rejects.toThrow(/aborted/);
     expect(chain.sent()).toBe(0);
+  });
+
+  it('As a user, I give up on a block another part of the page still wants and only my call stops', async () => {
+    // Given two callers of one block on a chain that answers only later, the first without a signal
+    const chain = createFakeChain(['silent']);
+    const client = createClient(chain.provider);
+    const aborter = new AbortController();
+    const wanted = client.get('bafyWanted');
+    const abandoned = client.get('bafyWanted', aborter.signal);
+    // Holds the rejection across the timer moves.
+    const abandonedOutcome = Promise.allSettled([abandoned]);
+    await timers.advance(100);
+
+    // When the second caller gives up, and the chain then answers
+    aborter.abort();
+    const [abandonedResult] = await abandonedOutcome;
+    const dial = getDial(chain.dials, 0);
+    dial.onMessage({ jsonrpc: '2.0', id: getSentId(dial, 0), result: '0xabcd' });
+
+    // Then only the second call stopped, and the first got the block from the one request
+    expect(abandonedResult).toMatchObject({ status: 'rejected', reason: { name: 'AbortError' } });
+    await expect(wanted).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.sent()).toBe(1);
   });
 
   it('As a user, I keep a long-lived subscription and it gathers no abort listeners', async () => {
