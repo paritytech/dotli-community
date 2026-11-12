@@ -34,8 +34,8 @@ type Params = {
   store: StoredSession;
   /**
    * What the restore rule left of the page's copy on load: the wallet the page boots on and the session. A session read
-   * after it never finds a dead one. Never rejects, as a read the store could not answer is a failed read in the
-   * result.
+   * after it never finds a dead one. A read the store could not answer is a failed read in the result. Rejects only
+   * when the restore rule breaks its contract.
    */
   restore: () => Promise<LoadRestore>;
   /** The auth store this session state is the one writer of. Read once, for the state the page shows at build. */
@@ -81,7 +81,6 @@ type Live = Extract<State, { kind: 'live' }>;
 type Event =
   | { kind: 'started'; run: Run }
   | { kind: 'stopped'; run: Run }
-  | { kind: 'followed' }
   | { kind: 'disposed' }
   | { kind: 'sessionReadsHeard'; failed: boolean }
   | { kind: 'storeStatus'; status: SharedStoreStatus }
@@ -94,6 +93,7 @@ type Event =
   | { kind: 'retryAsked' }
   | { kind: 'uiCacheWritten' }
   | { kind: 'savedSessionRead'; session: TruapiSessionUiState | null }
+  | { kind: 'savedSessionFailed' }
   | { kind: 'readAsked'; source: SavedSessionSource }
   | { kind: 'readLanded'; session: TruapiSessionUiState | null; flag: Presence | null }
   | { kind: 'readRejected'; error: unknown };
@@ -111,9 +111,6 @@ type SessionMachine = MachineTypes<State, Event, Effect>;
 
 /** The read nested in `live`. Its events and effects are some of the machine's. */
 type ReadMachine = MachineTypes<Read, Event, Effect>;
-
-/** The follow nested in `live`. Its events and effects are some of the machine's. */
-type FollowMachine = MachineTypes<Follow, Event, Effect>;
 
 /** The page's session state, as its factory builds it. */
 export type SessionState = ReturnType<typeof createSessionState>;
@@ -143,43 +140,7 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
         readRejected({ rerun }, { error }, transition) {
           transition.emitSideEffect({ kind: 'readFailed', error });
           endRead(rerun, transition);
-        },
-      },
-    },
-  });
-  const runFollow = nest<SessionMachine, 'live', FollowMachine, 'started' | 'stopped'>({
-    find: state => state.follow,
-    store: (state, _event, follow) => ({ ...state, follow }),
-    handlers: {
-      idle: {
-        started(_follow, { run }, { emitState, update }) {
-          // The listeners start before the state that holds their stop.
-          const stopStatus = store.getStatusStore().listen(status => {
-            update({ kind: 'storeStatus', status });
-          });
-          // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
-          const stopChanges = store.subscribeStoredSession(() => {
-            update({ kind: 'storedSessionChanged' });
-          });
-          emitState({
-            kind: 'following',
-            run,
-            stopListening: () => {
-              stopStatus();
-              stopChanges();
-            },
-          });
-          update({ kind: 'followed' });
-        },
-      },
-      following: {
-        stopped(follow, { run }, { emitState, emitSideEffect }) {
-          // The stop of a start that already ended ends nothing.
-          if (run !== follow.run) {
-            return;
-          }
-          emitState({ kind: 'idle' });
-          emitSideEffect({ kind: 'stopped', stops: [follow.stopListening] });
+          transition.update({ kind: 'savedSessionFailed' });
         },
       },
     },
@@ -199,13 +160,36 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
     },
     handlers: {
       live: {
-        started: runFollow,
-        stopped: runFollow,
-        followed(state, _event, { update }) {
+        started(state, { run }, { emitState, update }) {
+          // A second start joins the follow the first one began.
+          if (state.follow.kind === 'following') {
+            return;
+          }
+          // The listeners start before the state that holds their stop.
+          const stopStatus = store.getStatusStore().listen(status => {
+            update({ kind: 'storeStatus', status });
+          });
+          // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
+          const stopChanges = store.subscribeStoredSession(() => {
+            update({ kind: 'storedSessionChanged' });
+          });
+          const stopListening = (): void => {
+            stopStatus();
+            stopChanges();
+          };
+          emitState({ ...state, follow: { kind: 'following', run, stopListening } });
           // The load's own read, which the restore rule already made.
           if (sessionDisplay.isCopyAllowedToShow(state.coreReport, state.shown)) {
             update({ kind: 'readAsked', source: 'load' });
           }
+        },
+        stopped(state, { run }, { emitState, emitSideEffect }) {
+          // The stop of a start that already ended ends nothing.
+          if (state.follow.kind !== 'following' || run !== state.follow.run) {
+            return;
+          }
+          emitState({ ...state, follow: { kind: 'idle' } });
+          emitSideEffect({ kind: 'stopped', stops: [state.follow.stopListening] });
         },
         storeStatus(state, { status }, transition) {
           // A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it.
@@ -216,14 +200,9 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
         },
         disposed(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed', coreReport: state.coreReport });
-          switch (state.follow.kind) {
-            case 'following':
-              emitSideEffect({ kind: 'stopped', stops: [state.stopReads, state.follow.stopListening] });
-              return;
-            case 'idle':
-              emitSideEffect({ kind: 'stopped', stops: [state.stopReads] });
-              return;
-          }
+          const { follow } = state;
+          const stops = follow.kind === 'following' ? [state.stopReads, follow.stopListening] : [state.stopReads];
+          emitSideEffect({ kind: 'stopped', stops });
         },
         sessionReadsHeard(state, { failed }, { emitState, update }) {
           emitState({ ...state, storeReadFailed: failed });
@@ -305,6 +284,16 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
           }
           if (authViews.isAwaitingSavedSession(state.shown)) {
             show(state, { shown: { tag: state.storeReadFailed ? 'Unreachable' : 'Disconnected' } }, transition);
+          }
+        },
+        // A read that broke says nothing of the session, so a page still waiting for one shows it out of reach, which a
+        // retry reads again.
+        savedSessionFailed(state, _event, transition) {
+          if (
+            sessionDisplay.isCopyAllowedToShow(state.coreReport, state.shown) &&
+            authViews.isAwaitingSavedSession(state.shown)
+          ) {
+            show(state, { shown: { tag: 'Unreachable' } }, transition);
           }
         },
         readAsked: runRead,

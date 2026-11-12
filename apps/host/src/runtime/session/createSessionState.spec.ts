@@ -200,6 +200,30 @@ describe('session state', () => {
     expect(shared.reads.filter(key => key === SESSION_KEY)).toHaveLength(1);
   });
 
+  it('As a returning user whose restore rule broke on load, I am shown unreachable rather than left restoring', async () => {
+    // Given session state whose restore rejects
+    const broken = createSessionState({
+      store: coreStorage,
+      restore: () => Promise.reject(new Error('restore rule broke')),
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
+      setElsewhere: noop,
+      isLocalWallet: () => false,
+      isResumeOffered: () => isResumeOffered(role),
+    });
+
+    // When it starts
+    onTestFinished(broken.start());
+    await waitForStatus(auth, state => state.tag !== 'Restoring');
+
+    // Then the page leaves Restoring for Unreachable
+    expect(auth.get()).toEqual({ tag: 'Unreachable' });
+  });
+
   it('As a signed-out user, I lose the shared store and am shown unreachable, not signed out', async () => {
     // Given
     onTestFinished(session.start());
