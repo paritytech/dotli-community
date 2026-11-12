@@ -84,6 +84,7 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
     },
     rounds: {
       idle: null,
+      rereading: null,
       windowOpen: null,
       resultWriting: null,
       windowClosed: null,

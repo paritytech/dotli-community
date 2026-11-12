@@ -48,10 +48,12 @@ export type InPagePhrase = {
  * The round the route shows in the modal. `windowOpen` waits for the sign-in window, and `resultWriting` writes its
  * result while the wait stays on show. `windowClosed` shows why the window could not sign in, and its Retry opens the
  * window again with the round's intent. `phraseShown` is the phrase view with its loaded check, and `phraseFailed` shows
- * that the check could not load, so Retry asks for a phrase again.
+ * that the check could not load, so Retry asks for a phrase again. `rereading` reads the saved session again for a
+ * sign-in asked while it could not be reached, before the sign-in goes on.
  */
 export type SignInRound =
   | { kind: 'idle' }
+  | { kind: 'rereading'; asked: 'login' | 'phrase'; reason: StartLoginParams['reason'] }
   | { kind: 'windowOpen'; intent: SignInIntent }
   | { kind: 'resultWriting'; intent: SignInIntent }
   | { kind: 'windowClosed'; intent: SignInIntent }
@@ -79,8 +81,8 @@ export type LiveModal = Extract<AuthModalState, { kind: 'live' }>;
 export type AuthModalEvent =
   | { kind: 'opened'; params: OpenAuthModalParams }
   | { kind: 'loginAsked'; params: StartLoginParams }
-  | { kind: 'loginCommanded'; reason: StartLoginParams['reason'] }
   | { kind: 'phraseAsked' }
+  | { kind: 'retryAsked' }
   | { kind: 'closeAsked'; params: CloseAuthModalParams }
   | { kind: 'disableAsked' }
   | { kind: 'disposeAsked' }
@@ -95,7 +97,9 @@ export type AuthModalEvent =
   | { kind: 'resultWritten'; round: SignInRound; written: 'applied' | 'reloading' }
   | { kind: 'resultFailed'; round: SignInRound; reason: string }
   | { kind: 'phraseLoaded'; round: SignInRound; phrase: InPagePhrase }
-  | { kind: 'phraseMissed'; round: SignInRound; reason: string };
+  | { kind: 'phraseMissed'; round: SignInRound; reason: string }
+  | { kind: 'rereadEnded'; round: SignInRound }
+  | { kind: 'rereadFailed'; round: SignInRound; error: unknown };
 
 /** A sign-in command the controller runs on the core once the bridge chunk loads. */
 export type AuthCommand = { step: 'login'; params: LoginParams } | { step: 'logout' } | { step: 'cancel_login' };
@@ -113,6 +117,8 @@ export type AuthModalEffect =
   | { kind: 'leaseReleased'; lease: ModalLease }
   | { kind: 'leaseRefused'; release: () => void }
   | { kind: 'commandRun'; command: AuthCommand }
+  | { kind: 'rereadStarted'; round: SignInRound }
+  | { kind: 'rereadMissed'; error: unknown }
   | { kind: 'roundEnded'; reason: PageCancelReason }
   | { kind: 'stepsUnfollowed' }
   | { kind: 'signOutOpened' }
@@ -121,14 +127,6 @@ export type AuthModalEffect =
 export type AuthModalMachine = MachineTypes<AuthModalState, AuthModalEvent, AuthModalEffect>;
 
 export type SignInRoundMachine = MachineTypes<SignInRound, AuthModalEvent, AuthModalEffect>;
-
-/** What a sign-in may do with the page's sign-in modal before the route takes over. */
-export type AuthModalPort = {
-  /** Returns the modal's current lease, compared by identity, or null while none is held. Never throws. */
-  getLease(): object | null;
-  /** Shows `view` in the modal. Never throws. */
-  show(view: AuthModalView): void;
-};
 
 /** One way a page signs in, as handlers of the modal's machine. Two routes implement it. */
 export type SignInRoute = {
@@ -172,21 +170,6 @@ export function isLeaseDisabled(lease: ModalLease): boolean {
   }
 }
 
-/** The blocking-modal scope the modal holds, or null when it holds none or was disposed. */
-export function getLeaseScope(state: AuthModalState): BlockingModalScope | null {
-  if (state.kind === 'disposed') {
-    return null;
-  }
-  switch (state.lease.kind) {
-    case 'queued':
-    case 'open':
-      return state.lease.scope;
-    case 'closed':
-    case 'disabled':
-      return null;
-  }
-}
-
 /** The round the modal holds, or null once it is disposed. */
 export function getRound(state: AuthModalState): SignInRound | null {
   switch (state.kind) {
@@ -223,6 +206,7 @@ export function isWaiting(round: SignInRound): boolean {
     case 'resultWriting':
       return true;
     case 'idle':
+    case 'rereading':
     case 'windowClosed':
     case 'phraseLoading':
     case 'phraseShown':
@@ -238,6 +222,8 @@ export function isPhraseRound(round: SignInRound): boolean {
     case 'resultWriting':
     case 'windowClosed':
       return round.intent === 'phrase';
+    case 'rereading':
+      return round.asked === 'phrase';
     case 'phraseFailed':
       return true;
     case 'idle':
@@ -253,6 +239,7 @@ export function getShownPhrase(round: SignInRound): InPagePhrase | null {
     case 'phraseShown':
       return round.phrase;
     case 'idle':
+    case 'rereading':
     case 'windowOpen':
     case 'resultWriting':
     case 'windowClosed':

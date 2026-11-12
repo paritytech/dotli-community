@@ -479,6 +479,102 @@ describe('auth controller: login requests', () => {
     expect(handoff.signIns).toEqual(['signin']);
   });
 
+  it('As a user whose saved sign-in still cannot be reached, I click Sign in and am told so with a retry', async () => {
+    // Given a page whose saved session stays out of reach when read again
+    const { controller, auth, calls, changes } = startController();
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // Then the modal offers a retry and the core was asked nothing
+    expect(getAuthModalState().view).toMatchObject({ kind: 'error', retry: true });
+    expect(calls.logins).toEqual([]);
+  });
+
+  it.each<[string, DotliAuthState]>([
+    ['reads signed in', SIGNED_IN],
+    ['finds a pairing started meanwhile', PAIRING],
+  ])('As a user whose saved session %s when read again, I click Sign in and no login starts', async (_case, read) => {
+    // Given a page whose saved session cannot be reached until it is read again
+    const { controller, auth, calls } = startController({
+      rereadSession() {
+        auth.set(read);
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked and the session is read
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the core was asked no login
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user who closes the dialog while the saved session is read again, I see nothing more', async () => {
+    // Given a page whose saved session cannot be reached, closed by the user while it is read again
+    let close = (): void => undefined;
+    const { controller, auth, calls } = startController({
+      rereadSession() {
+        close();
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    close = () => {
+      controller.closeAuthModal();
+    };
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked and the session is read
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the modal stays closed and the core was asked no login
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user whose page failed to load its sign-in code, I click Sign in and am told the sign-in cannot be reached', async () => {
+    // Given a page whose saved session cannot be reached and whose read of it fails to load
+    const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const { controller, auth, changes } = startController({
+      rereadSession: () => Promise.reject(new Error('Failed to fetch dynamically imported module')),
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // Then the modal offers a retry and the failure was logged once
+    expect(getAuthModalState().view).toMatchObject({ kind: 'error', retry: true });
+    expect(logged).toHaveLength(1);
+  });
+
+  it('As a user whose sign-in modal is disabled, I click Sign in while my saved session cannot be reached and nothing is read', async () => {
+    // Given a page whose modal is disabled and whose saved session cannot be reached
+    let reads = 0;
+    const { controller, auth } = startController({
+      rereadSession() {
+        reads += 1;
+        return Promise.resolve();
+      },
+    });
+    controller.disableAuthModal();
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is clicked
+    controller.startLogin();
+    await untilPromisesSettled();
+
+    // Then the saved session was not read again
+    expect(reads).toBe(0);
+  });
+
   it('As a user, I click Sign in again while the QR is shown and the QR stays while the core is asked once', async () => {
     // Given: a login whose pairing QR is on screen
     const { controller, auth, calls, changes } = startController();

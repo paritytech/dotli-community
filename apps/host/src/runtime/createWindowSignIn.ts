@@ -116,6 +116,7 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     },
     rounds: {
       idle: null,
+      rereading: null,
       windowOpen: {
         windowEnded({ intent }, { outcome }, transition) {
           const { emitState, update } = transition;

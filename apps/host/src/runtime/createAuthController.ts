@@ -8,7 +8,7 @@
 
 import { withActiveTld } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, getErrorMessage, log, nest, type Transition } from '@dotli/shared';
+import { createStateMachine, getErrorMessage, log, nest, type HandlerOf, type Transition } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
 import type { LoginOutcome, LoginParams } from './createAuthCommands.js';
@@ -20,7 +20,6 @@ import { authViews, type LoginStep } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import {
-  getLeaseScope,
   getRound,
   getShownPhrase,
   isLeaseDisabled,
@@ -31,12 +30,12 @@ import {
   type AuthCommand,
   type AuthModalEvent,
   type AuthModalMachine,
-  type AuthModalPort,
   type CloseAuthModalParams,
   type InPagePhrase,
   type LiveModal,
   type ModalLease,
   type OpenAuthModalParams,
+  type SignInRound,
   type SignInRoundMachine,
   type StartLoginParams,
 } from './signInRoute.js';
@@ -44,7 +43,6 @@ import type { AuthState } from './state/authState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
 import { authModalState, type AuthModalView } from '../state/authModalState.js';
 import { getLoginFailureView } from './getLoginFailureView.js';
-import { rereadBeforeSignIn } from './rereadBeforeSignIn.js';
 import type { toEntropy } from './recoveryPhrase.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
 
@@ -114,6 +112,15 @@ type Params = {
   elsewhere: () => boolean;
 };
 
+const UNREACHABLE_VIEW: AuthModalView = {
+  kind: 'error',
+  message: 'The saved session cannot be read',
+  retry: true,
+  pending: false,
+  title: "Can't reach your saved sign-in",
+  subtitle: 'dot.li could not check whether you are signed in. Try again in a moment.',
+};
+
 /** The events of the route's round, which the round's own handlers take. */
 type RoundEventKind = 'windowEnded' | 'resultWritten' | 'resultFailed' | 'phraseLoaded' | 'phraseMissed';
 
@@ -163,6 +170,36 @@ export function createAuthController({
     handlers: route.rounds,
   });
 
+  /**
+   * Starts a sign-in, or while the saved session cannot be reached reads it again first, since a pairing started while
+   * the store is down would lose its session.
+   */
+  const askLogin: HandlerOf<AuthModalMachine, 'live', 'loginAsked'> = (state, event, transition) => {
+    const { reason, label } = event.params;
+    if (authViews.isSessionUnreachable(state.auth)) {
+      const opened = modalSteps.open(state, { reason, label }, transition);
+      if (opened !== null) {
+        startReread(opened, { kind: 'rereading', asked: 'login', reason }, transition);
+      }
+      return;
+    }
+    if (authViews.getSignedInSession(state.auth) !== null) {
+      return;
+    }
+    route.startLogin(state, event, transition);
+  };
+  /** Asks for a recovery phrase, or while the saved session cannot be reached reads it again first. */
+  const askPhrase: HandlerOf<AuthModalMachine, 'live', 'phraseAsked'> = (state, event, transition) => {
+    if (authViews.isSessionUnreachable(state.auth)) {
+      const opened = modalSteps.open(state, {}, transition);
+      if (opened !== null) {
+        startReread(opened, { kind: 'rereading', asked: 'phrase', reason: undefined }, transition);
+      }
+      return;
+    }
+    route.importPhrase(state, event, transition);
+  };
+
   const machine = createStateMachine<AuthModalMachine>({
     initial: { kind: 'live', lease: { kind: 'closed' }, round: { kind: 'idle' }, auth: auth.get() },
     handlers: {
@@ -170,16 +207,60 @@ export function createAuthController({
         opened(state, { params }, transition) {
           modalSteps.open(state, params, transition);
         },
-        loginAsked(state, event, transition) {
-          if (authViews.getSignedInSession(state.auth) !== null) {
+        loginAsked: askLogin,
+        phraseAsked: askPhrase,
+        retryAsked(state, _event, transition) {
+          if (isPhraseRound(state.round)) {
+            askPhrase(state, { kind: 'phraseAsked' }, transition);
             return;
           }
-          route.startLogin(state, event, transition);
+          askLogin(state, { kind: 'loginAsked', params: {} }, transition);
         },
-        loginCommanded(_state, { reason }, transition) {
-          modalSteps.login({ reason }, transition);
+        /** The saved session was read again, so the sign-in it held up goes on, or the modal says why it cannot. */
+        rereadEnded(state, { round }, transition) {
+          // A modal closed or moved on meanwhile stays as it is.
+          if (round !== state.round || round.kind !== 'rereading') {
+            return;
+          }
+          const next: LiveModal = { ...state, round: { kind: 'idle' } };
+          transition.emitState(next);
+          switch (authViews.getSessionKnowledge(state.auth)) {
+            case 'unreachable':
+              modalSteps.show(UNREACHABLE_VIEW, transition);
+              return;
+            case 'reading':
+              // A read is under way, so the click starts nothing.
+              return;
+            case 'known':
+              break;
+          }
+          // A sign-in is under way, or the user is signed in, so the click starts nothing.
+          if (!authViews.isSignInIdle(state.auth)) {
+            return;
+          }
+          // A window opens only in a click's own turn, which has passed, so the page asks for one.
+          if (handoff !== null) {
+            modalSteps.show({ kind: 'prompt', resume: elsewhere() }, transition);
+            return;
+          }
+          switch (round.asked) {
+            case 'login':
+              modalSteps.login({ reason: round.reason }, transition);
+              return;
+            case 'phrase':
+              route.importPhrase(next, { kind: 'phraseAsked' }, transition);
+              return;
+          }
         },
-        phraseAsked: route.importPhrase,
+        rereadFailed(state, { round, error }, transition) {
+          transition.emitSideEffect({ kind: 'rereadMissed', error });
+          // A modal closed or moved on meanwhile stays as it is.
+          if (round !== state.round) {
+            return;
+          }
+          transition.emitState({ ...state, round: { kind: 'idle' } });
+          modalSteps.show(UNREACHABLE_VIEW, transition);
+        },
         closeAsked(state, { params }, transition) {
           close(state, params, transition);
         },
@@ -308,6 +389,19 @@ export function createAuthController({
         case 'commandRun':
           runCommand(effect.command);
           return;
+        case 'rereadStarted': {
+          const { round } = effect;
+          machine.update(
+            rereadSession().then(
+              (): AuthModalEvent => ({ kind: 'rereadEnded', round }),
+              (error: unknown): AuthModalEvent => ({ kind: 'rereadFailed', round, error }),
+            ),
+          );
+          return;
+        }
+        case 'rereadMissed':
+          log.error('[dot.li auth] saved session re-read failed:', effect.error);
+          return;
         case 'roundEnded':
           route.end(effect.reason);
           return;
@@ -334,13 +428,6 @@ export function createAuthController({
   const unlisten = subscribeAuthSteps(state => {
     machine.update({ kind: 'authStepped', state });
   });
-
-  const modal: AuthModalPort = {
-    getLease: () => getLeaseScope(machine.state.get()),
-    show: view => {
-      authModalState.update({ view });
-    },
-  };
 
   /** Takes the modal off screen and ends the route's round, cancelling the core's login unless `params` says not to. */
   function close(
@@ -434,49 +521,6 @@ export function createAuthController({
     );
   }
 
-  function openAuthModal(params: OpenAuthModalParams = {}): boolean {
-    machine.update({ kind: 'opened', params });
-    const state = machine.state.get();
-    return state.kind === 'live' && isLeaseHeld(state.lease);
-  }
-
-  function startLogin(params: StartLoginParams = {}): void {
-    askWhenReachable(
-      { kind: 'loginAsked', params },
-      { kind: 'loginCommanded', reason: params.reason },
-      { reason: params.reason, label: params.label },
-    );
-  }
-
-  function importPhrase(): void {
-    askWhenReachable({ kind: 'phraseAsked' }, { kind: 'phraseAsked' }, {});
-  }
-
-  /**
-   * Sends `asked`, or while the saved session cannot be reached reads it again first, since a pairing started while the
-   * store is down would lose its session. A page with no window then sends `reread`, and a page with one asks for a
-   * click instead.
-   */
-  function askWhenReachable(asked: AuthModalEvent, reread: AuthModalEvent, opened: OpenAuthModalParams): void {
-    if (!authViews.isSessionUnreachable(auth.get())) {
-      machine.update(asked);
-      return;
-    }
-    void rereadBeforeSignIn({
-      open: () => openAuthModal(opened),
-      modal,
-      rereadSession,
-      auth,
-      proceed:
-        handoff === null
-          ? () => {
-              machine.update(reread);
-            }
-          : null,
-      elsewhere,
-    });
-  }
-
   return {
     /**
      * Opens the sign-in window and waits for it, asking it to resume a sign-in made elsewhere when one waits, or with
@@ -485,14 +529,18 @@ export function createAuthController({
      * saved session cannot be reached, reads it again first, and then signs in, asks for a click to open the window, or
      * says why it cannot. Never throws.
      */
-    startLogin,
+    startLogin(params: StartLoginParams = {}): void {
+      machine.update({ kind: 'loginAsked', params });
+    },
     /**
      * Opens the sign-in window at its recovery phrase view and waits for it, or with no window opens the modal at its
      * phrase view. Also runs for a signed-in user, who replaces the local wallet. While the saved session cannot be
      * reached, reads it again first, and then goes on, asks for a click to open the window, or says why it cannot.
      * Never throws.
      */
-    importPhrase,
+    importPhrase(): void {
+      machine.update({ kind: 'phraseAsked' });
+    },
     /** Whether the modal's phrase view takes `phrase`. Never throws. */
     isValidPhrase(phrase: string): boolean {
       const round = getRound(machine.state.get());
@@ -533,15 +581,7 @@ export function createAuthController({
      * starts a sign-in. Never throws.
      */
     retryLogin(): void {
-      const round = getRound(machine.state.get());
-      if (round === null) {
-        return;
-      }
-      if (isPhraseRound(round)) {
-        importPhrase();
-      } else {
-        startLogin();
-      }
+      machine.update({ kind: 'retryAsked' });
     },
     /** Opens the sign-out window before this returns, then asks the core to log out. Never throws. */
     logout(): void {
@@ -555,7 +595,11 @@ export function createAuthController({
      * Opens the modal and returns true, or returns false when the modal is disabled, having cancelled the login, and
      * returns false after dispose, cancelling nothing.
      */
-    openAuthModal,
+    openAuthModal(params: OpenAuthModalParams = {}): boolean {
+      machine.update({ kind: 'opened', params });
+      const state = machine.state.get();
+      return state.kind === 'live' && isLeaseHeld(state.lease);
+    },
     /** Closes the modal, cancelling the login it showed unless `params` says not to. Never throws. */
     closeAuthModal(params: CloseAuthModalParams = {}): void {
       machine.update({ kind: 'closeAsked', params });
@@ -648,6 +692,16 @@ function login(params: LoginParams, { emitSideEffect }: Transition<AuthModalMach
 /** Cancels the core's login. */
 function cancelLogin({ emitSideEffect }: Transition<AuthModalMachine>): void {
   emitSideEffect({ kind: 'commandRun', command: { step: 'cancel_login' } });
+}
+
+/** Reads the saved session again for a sign-in asked while it could not be reached, the modal on its spinner. */
+function startReread(
+  opened: LiveModal,
+  round: Extract<SignInRound, { kind: 'rereading' }>,
+  { emitState, emitSideEffect }: Transition<AuthModalMachine>,
+): void {
+  emitState({ ...opened, round });
+  emitSideEffect({ kind: 'rereadStarted', round });
 }
 
 /** The core's failure kind of a login step, or null when the step is not a failure. */
