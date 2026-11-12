@@ -12,7 +12,9 @@ import {
   getErrorName,
   log,
   nest,
+  noop,
   setErrorName,
+  toError,
   type HandlerOf,
   type MachineTypes,
   type Timers,
@@ -66,34 +68,17 @@ type Params<T> = {
   timers: Timers;
 };
 
-type OpenFeedParams = {
-  holdId: symbol;
-  open: FeedOpen;
-  failures: number;
-};
-
-type WaitToReopenParams = OpenFeedParams & {
-  openedAt: number;
-  error: unknown;
-};
-
-type ReportEndParams = {
-  feed: FeedName;
-  error: unknown;
-  /** Set for the first end of a held feed only, so a frame that keeps ending it does not flood the error tracker. */
-  capture: boolean;
-};
-
 /** The feed held on one transport. Its events carry `id`, so those of a hold it replaced find nothing. */
 type Hold<T> = { id: symbol; transport: T; reopen: Reopen };
 
 /**
- * A hold's reopen loop. Each kind keeps how the feed is opened, and `failures` counts the ends since it was last
- * stable.
+ * A hold's reopen loop. Each kind keeps how the feed is opened, `failures` counts the ends since it was last stable,
+ * and `captured` is set once an end of the hold was captured, so a frame that keeps ending it does not flood the error
+ * tracker.
  */
 type Reopen =
-  | { kind: 'open'; open: FeedOpen; unsubscribe: () => void; openedAt: number; failures: number }
-  | { kind: 'backingOff'; open: FeedOpen; timer: unknown; failures: number };
+  | { kind: 'open'; open: FeedOpen; unsubscribe: () => void; openedAt: number; failures: number; captured: boolean }
+  | { kind: 'backingOff'; open: FeedOpen; timer: unknown; failures: number; captured: boolean };
 
 type FeedState<T> =
   | { kind: 'stopped' }
@@ -114,19 +99,19 @@ type FeedEvent<T> =
   | { kind: 'holdClosed'; holdId: symbol };
 
 type FeedEffect =
-  { kind: 'holdStarted' } | { kind: 'feedEnded'; error: unknown } | { kind: 'askFailed'; error: unknown };
+  | { kind: 'ask'; ask: symbol }
+  | { kind: 'release'; reopen: Reopen }
+  | { kind: 'feedEnded'; error: Error; capture: boolean }
+  | { kind: 'askFailed'; error: unknown };
 
 type FeedMachine<T> = MachineTypes<FeedState<T>, FeedEvent<T>, FeedEffect>;
 
 type ReopenMachine<T> = MachineTypes<Reopen, FeedEvent<T>, FeedEffect>;
 
-/** What a hold's feed sends through, the same in the keeper's transitions and in those of its reopen loop. */
-type FeedSends<T> = Pick<Transition<FeedMachine<T>>, 'emitSideEffect' | 'update'>;
-
 /** Holds `feed` on the frame there is now once asked to `follow`. Subscribes to the frame's status at once. */
 export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Params<T>) {
   /** Asks for the frame's transport. An answer that a later ask overtook finds another token and is dropped. */
-  function askTransport(state: FeedState<T>, { emitState, update }: Transition<FeedMachine<T>>): void {
+  function askTransport(state: FeedState<T>, { emitState, emitSideEffect }: Transition<FeedMachine<T>>): void {
     const ask = Symbol(`${feed} ask`);
     switch (state.kind) {
       case 'stopped':
@@ -139,62 +124,32 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         emitState({ kind: 'reasking', hold: state.hold, ask });
         break;
     }
-    update(
-      frame.getTransport().then(
-        (transport): FeedEvent<T> => ({ kind: 'transportAnswered', ask, transport }),
-        (error: unknown): FeedEvent<T> => ({ kind: 'askFailed', ask, error }),
-      ),
-    );
+    emitSideEffect({ kind: 'ask', ask });
   }
 
-  /** Opens the feed of a hold and returns its reopen. A refused open is an end, which waits to reopen. */
-  function openFeed(params: OpenFeedParams, sends: FeedSends<T>): Reopen {
-    const { holdId, open, failures } = params;
-    const openedAt = timers.now();
-    try {
-      // An end or a close that `open` calls at once is queued, and runs once the hold is emitted.
-      const unsubscribe = open({
-        end(error) {
-          sends.update({ kind: 'feedEnded', holdId, error });
-        },
-        close() {
-          sends.update({ kind: 'feedClosed', holdId });
-        },
-      });
-      return { kind: 'open', open, unsubscribe, openedAt, failures };
-    } catch (error: unknown) {
-      return waitToReopen({ ...params, openedAt, error }, sends);
-    }
-  }
-
-  /** Reports an end of a hold's feed, and returns the wait before its reopen, which starts over after a stable span. */
-  function waitToReopen(
-    { holdId, open, openedAt, failures, error }: WaitToReopenParams,
-    { emitSideEffect, update }: FeedSends<T>,
+  /** Opens the feed of a hold. A refused open is an end, which waits to reopen. */
+  function openFeed(
+    holdId: symbol,
+    { open, failures, captured }: Pick<Reopen, 'open' | 'failures' | 'captured'>,
+    update: Transition<FeedMachine<T>>['update'],
   ): Reopen {
-    emitSideEffect({ kind: 'feedEnded', error });
-    // A feed open this long before it ended had recovered, so the waits start over.
-    const stable = timers.now() - openedAt >= 30_000;
-    const timer = timers.setTimeout(
-      () => {
-        update({ kind: 'reopenDue', holdId });
+    const openedAt = timers.now();
+    // An end or a close that `open` calls at once is queued, and runs once the hold is emitted.
+    const ends: FeedEnds = {
+      end(error) {
+        update({ kind: 'feedEnded', holdId, error });
       },
-      // The first wait is a second, and it doubles after each end on the same frame, up to 30 seconds.
-      stable ? 1_000 : Math.min(1_000 * 2 ** failures, 30_000),
-    );
-    return { kind: 'backingOff', open, timer, failures: stable ? 0 : failures + 1 };
-  }
-
-  /** Ends a hold's feed, or the wait before it reopens. */
-  function releaseHold({ reopen }: Hold<T>): void {
-    switch (reopen.kind) {
-      case 'open':
-        reopen.unsubscribe();
-        return;
-      case 'backingOff':
-        timers.clearTimeout(reopen.timer);
-        return;
+      close() {
+        update({ kind: 'feedClosed', holdId });
+      },
+    };
+    let unsubscribe: () => void = noop;
+    try {
+      unsubscribe = open(ends);
+    } catch (error: unknown) {
+      ends.end(toError(error));
     }
+    return { kind: 'open', open, unsubscribe, openedAt, failures, captured };
   }
 
   // A new frame relays nothing to a feed held on the one it replaces. A frame that starts listening may have replaced a
@@ -214,23 +169,21 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
   const takeTransport: HandlerOf<FeedMachine<T>, 'asking' | 'reasking', 'transportAnswered'> = (
     state,
     { ask, transport },
-    transition,
+    { emitState, emitSideEffect, update },
   ) => {
     if (ask !== state.ask) {
       return;
     }
     if (state.kind === 'reasking' && state.hold.transport === transport) {
-      transition.emitState({ kind: 'holding', hold: state.hold });
+      emitState({ kind: 'holding', hold: state.hold });
       return;
     }
-    const open = opener(transport);
-    transition.emitSideEffect({ kind: 'holdStarted' });
     const id = Symbol(`${feed} hold`);
-    const reopen = openFeed({ holdId: id, open, failures: 0 }, transition);
-    transition.emitState({ kind: 'holding', hold: { id, transport, reopen } });
+    const reopen = openFeed(id, { open: opener(transport), failures: 0, captured: false }, update);
+    emitState({ kind: 'holding', hold: { id, transport, reopen } });
     // The old hold's late events carry its own id and find nothing, so the brief overlap is safe.
     if (state.kind === 'reasking') {
-      releaseHold(state.hold);
+      emitSideEffect({ kind: 'release', reopen: state.hold.reopen });
     }
   };
 
@@ -262,9 +215,13 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     emitState({ kind: 'stopped' });
   };
 
-  const dropHold: HandlerOf<FeedMachine<T>, 'holding' | 'reasking', 'stopped'> = ({ hold }, _event, { emitState }) => {
+  const dropHold: HandlerOf<FeedMachine<T>, 'holding' | 'reasking', 'stopped'> = (
+    { hold },
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
     emitState({ kind: 'stopped' });
-    releaseHold(hold);
+    emitSideEffect({ kind: 'release', reopen: hold.reopen });
   };
 
   const handleReopen = nest<
@@ -277,24 +234,31 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     store: (state, _event, reopen) => ({ ...state, hold: { ...state.hold, reopen } }),
     handlers: {
       open: {
-        feedEnded({ open, openedAt, failures }, { holdId, error }, transition) {
+        feedEnded({ open, openedAt, failures, captured }, { holdId, error }, { emitState, emitSideEffect, update }) {
           const ended = error ?? setErrorName(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
-          transition.emitState(waitToReopen({ holdId, open, openedAt, failures, error: ended }, transition));
+          // A feed open this long before it ended had recovered, so the waits start over.
+          const stable = timers.now() - openedAt >= 30_000;
+          const timer = timers.setTimeout(
+            () => {
+              update({ kind: 'reopenDue', holdId });
+            },
+            // The first wait is a second, and it doubles after each end on the same frame, up to 30 seconds.
+            stable ? 1_000 : Math.min(1_000 * 2 ** failures, 30_000),
+          );
+          emitState({ kind: 'backingOff', open, timer, failures: stable ? 0 : failures + 1, captured: true });
+          emitSideEffect({ kind: 'feedEnded', error: ended, capture: !captured });
         },
         feedClosed(_reopen, { holdId }, { update }) {
           update({ kind: 'holdClosed', holdId });
         },
       },
       backingOff: {
-        reopenDue({ open, failures }, { holdId }, transition) {
-          transition.emitState(openFeed({ holdId, open, failures }, transition));
+        reopenDue(reopen, { holdId }, { emitState, update }) {
+          emitState(openFeed(holdId, reopen, update));
         },
       },
     },
   });
-
-  // Whether the current hold captured an end, so a frame that keeps ending it does not flood the error tracker.
-  let captured = false;
 
   const keeper = createStateMachine<FeedMachine<T>>({
     initial: { kind: 'stopped' },
@@ -337,21 +301,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         stopped: dropHold,
       },
     },
-    onEffect(effect) {
-      switch (effect.kind) {
-        case 'holdStarted':
-          captured = false;
-          return;
-        case 'feedEnded':
-          reportEnd({ feed, error: effect.error, capture: !captured });
-          captured = true;
-          return;
-        case 'askFailed':
-          // The frame reports its own loss and boot failure, and a config change that drops a frame is no failure.
-          report.log.event('protocol feed ask failed', { feed, reason: getErrorName(effect.error) ?? 'unknown' });
-          return;
-      }
-    },
+    onEffect: runEffect,
     onError: error => {
       report.defect(error, {
         step: 'feed_transition',
@@ -379,6 +329,55 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
       keeper.update({ kind: 'stopped' });
     },
   };
+
+  function runEffect(effect: FeedEffect): void {
+    switch (effect.kind) {
+      case 'ask': {
+        const { ask } = effect;
+        keeper.update(
+          frame.getTransport().then(
+            (transport): FeedEvent<T> => ({ kind: 'transportAnswered', ask, transport }),
+            (error: unknown): FeedEvent<T> => ({ kind: 'askFailed', ask, error }),
+          ),
+        );
+        return;
+      }
+      case 'release':
+        release(effect.reopen);
+        return;
+      case 'feedEnded':
+        reportEnd(effect.error, effect.capture);
+        return;
+      case 'askFailed':
+        // The frame reports its own loss and boot failure, and a config change that drops a frame is no failure.
+        report.log.event('protocol feed ask failed', { feed, reason: getErrorName(effect.error) ?? 'unknown' });
+        return;
+    }
+  }
+
+  /** Ends a hold's feed, or the wait before it reopens. */
+  function release(reopen: Reopen): void {
+    switch (reopen.kind) {
+      case 'open':
+        reopen.unsubscribe();
+        return;
+      case 'backingOff':
+        timers.clearTimeout(reopen.timer);
+        return;
+    }
+  }
+
+  /** Counts and logs an end, and captures it when `capture` says so. */
+  function reportEnd(error: Error, capture: boolean): void {
+    const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
+    const attributes = { feed };
+    if (capture) {
+      report.defect(error, { step: 'feed_end', tags: { feed }, attributes, metric: protocolFeedEndMetric, message });
+      return;
+    }
+    log.error(message, error);
+    protocolFeedEndMetric.count({ outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
+  }
 }
 
 /** A frame that is booting or up has a transport to hear. */
@@ -392,22 +391,4 @@ function hasFrame(status: ProtocolStatus): boolean {
     case 'failed':
       return false;
   }
-}
-
-/** Counts and logs each end, and captures it when `capture` says so. */
-function reportEnd({ feed, error, capture }: ReportEndParams): void {
-  const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
-  const attributes = { feed };
-  if (capture) {
-    report.defect(error, {
-      step: 'feed_end',
-      tags: { feed },
-      attributes,
-      metric: protocolFeedEndMetric,
-      message,
-    });
-    return;
-  }
-  log.error(message, error);
-  protocolFeedEndMetric.count({ outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
 }
