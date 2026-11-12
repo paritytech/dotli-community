@@ -49,16 +49,12 @@ type BlockRequest = {
 type Load = { root: string; totalBytes: number | null; bytesFetched: number; startedAt: number };
 
 /**
- * Live requests per frame, then per id, so a sandbox can abort its own on `pagehide`. Keyed by frame because ids restart
- * at 1 in each frame. A frame is the id it sends together with its origin, since its abort arrives after it is gone and
- * without a source, and another product's sandbox may send the same id. A sandbox that sends no id is keyed by its
- * window. A frame with no request left leaves `frames`. `load` is `null` until the first block is served.
+ * The live requests, so a sandbox can abort its own on `pagehide`. One request per frame and id, since ids restart at 1
+ * in each frame. A frame is the id it sends together with its origin, since its abort arrives after it is gone and
+ * without a source, and another product's sandbox may send the same id. A sandbox that sends no id is known by its
+ * window. `load` is `null` until the first block is served.
  */
-type RelayState = {
-  kind: 'serving';
-  frames: ReadonlyMap<FrameKey, ReadonlyMap<string, BlockRequest>>;
-  load: Load | null;
-};
+type RelayState = { kind: 'serving'; requests: readonly BlockRequest[]; load: Load | null };
 
 type RelayEvent =
   | { kind: 'blockAsked'; request: BlockRequest }
@@ -90,13 +86,13 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
   });
 
   const relay = createStateMachine<MachineTypes<RelayState, RelayEvent, RelayEffect>>({
-    initial: { kind: 'serving', frames: new Map(), load: null },
+    initial: { kind: 'serving', requests: [], load: null },
     handlers: {
       serving: {
         blockAsked(state, { request }, { emitState, update }) {
           // A reused id replaces the request under it, so the frame's abort stops the newer one.
-          const own = new Map(state.frames.get(request.key)).set(request.id, request);
-          emitState({ ...state, frames: withFrame(state.frames, request.key, own) });
+          const others = state.requests.filter(r => r.key !== request.key || r.id !== request.id);
+          emitState({ ...state, requests: [...others, request] });
           update(
             serveBlock(request.cid, request.aborter.signal, sources).then(
               served => ({ kind: 'blockServed', request, served }),
@@ -106,32 +102,24 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
         },
         abortAsked(state, { key, ids }, { emitState, emitSideEffect }) {
           // Only this frame's own fetches, so one product cannot cancel another's.
-          const own = state.frames.get(key) ?? new Map<string, BlockRequest>();
-          const aborted = ids.flatMap(id => own.get(id) ?? []);
+          const aborted = state.requests.filter(r => r.key === key && ids.includes(r.id));
           if (aborted.length === 0) {
             return;
           }
-          const left = new Map(own);
-          for (const { id } of aborted) {
-            left.delete(id);
-          }
-          emitState({ ...state, frames: withFrame(state.frames, key, left) });
+          emitState({ ...state, requests: state.requests.filter(r => !aborted.includes(r)) });
           emitSideEffect({ kind: 'abort', requests: aborted });
         },
         blockServed(state, { request, served }, { emitState, emitSideEffect }) {
-          const next = withoutRequest(state, request);
-          // An aborted request's block is not part of the frame's load.
-          if (request.aborter.signal.aborted) {
-            emitState(next);
-          } else {
+          // A request its frame aborted, or a newer one under its id replaced, is not part of the frame's load.
+          if (state.requests.includes(request)) {
             const load = countBlock(state.load, request.cid, served.bytes);
-            emitState({ ...next, load });
+            emitState({ ...state, requests: state.requests.filter(r => r !== request), load });
             emitSideEffect({ kind: 'progress', load, from: served.from });
           }
           emitSideEffect({ kind: 'reply', request, bytes: served.bytes });
         },
         blockFailed(state, { request, error }, { emitState, emitSideEffect }) {
-          emitState(withoutRequest(state, request));
+          emitState({ ...state, requests: state.requests.filter(r => r !== request) });
           emitSideEffect({ kind: 'replyFailure', request, error });
         },
       },
@@ -188,6 +176,7 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
   });
 
   const stopAborts = channel.on('dotli:bitswap-abort', ({ frame, ids }, { origin, source }) => {
+    // A sandbox that sends no frame id is known by its window, so an abort from no window names no frame.
     const key = getFrameKey(frame, origin, source);
     if (key === null) {
       return;
@@ -233,32 +222,4 @@ function getFrameKey<Source extends MessageEventSource | null>(
   source: Source,
 ): Source | string {
   return frame === undefined ? source : `${origin} ${frame}`;
-}
-
-/** `frames` with the frame's requests set to `own`, or without the frame once it has none. */
-function withFrame(
-  frames: RelayState['frames'],
-  key: FrameKey,
-  own: ReadonlyMap<string, BlockRequest>,
-): RelayState['frames'] {
-  const next = new Map(frames);
-  if (own.size === 0) {
-    next.delete(key);
-    return next;
-  }
-  return next.set(key, own);
-}
-
-/**
- * `state` without `request`, or `state` itself once the request left, such as for an abort or a newer request under
- * its id.
- */
-function withoutRequest(state: RelayState, request: BlockRequest): RelayState {
-  const own = state.frames.get(request.key);
-  if (own?.get(request.id) !== request) {
-    return state;
-  }
-  const left = new Map(own);
-  left.delete(request.id);
-  return { ...state, frames: withFrame(state.frames, request.key, left) };
 }
