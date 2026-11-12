@@ -10,14 +10,16 @@ import { bindLogSink, createDeferred, type LogLevel } from '@dotli/shared';
 import {
   createLightClient,
   createLightClientDeps,
-  LightClientCapError,
-  withConnectionCapError,
   type LightClient,
   type LightClientChange,
   type LightClientDeps,
+} from './createLightClient.js';
+import {
+  LightClientCapError,
+  withConnectionCapError,
   type LightClientEngine,
   type StartEngineParams,
-} from './createLightClient.js';
+} from './startTruapiProvider.js';
 import type { ChainSyncReporter } from './createChainSyncReporter.js';
 import type { SmoldotDb } from './createSmoldotDb.js';
 import type { ChainTransport, ChainTransportHooks } from './transportHooks.js';

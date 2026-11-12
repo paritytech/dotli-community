@@ -21,8 +21,8 @@ export type {
   LightClientDeps,
   LightClientStatus,
   SmoldotDbChain,
-  SmoldotDbOutcome,
 } from './createLightClient.js';
+export type { SmoldotDbOutcome } from './createPrefetchingStore.js';
 export { createLightClient, createLightClientDeps } from './createLightClient.js';
 export { SMOLDOT_DB_NAME } from './createSmoldotDb.js';
 export { loadProvider } from './lazy.js';
