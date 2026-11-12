@@ -3,13 +3,22 @@
 
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { getErrorMessage, formatSize } from '@dotli/shared';
+import type { ArchiveFiles } from '@dotli/content';
+import { createReporter, defineCount } from '@dotli/metrics';
+import {
+  createStateMachine,
+  formatSize,
+  getErrorMessage,
+  type HandlerOf,
+  type MachineTypes,
+  type Transition,
+} from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import { getImageType } from './getImageType.js';
 import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
 import { formatArchiveSummary } from './formatArchiveSummary.js';
-import { toLoadedArchive, type ArchiveRead, type LoadedArchive } from './toLoadedArchive.js';
+import { toLoadedArchive, type LoadedArchive } from './toLoadedArchive.js';
 import type { ArchiveLoader } from './host.js';
 import type { HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
@@ -21,118 +30,163 @@ import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
-export type ObjectUrls = {
-  /** Returns a URL that serves `blob`. Never throws. */
-  create: (blob: Blob) => string;
-  /** Frees `url`, a URL `create` returned. Never throws. */
-  revoke: (url: string) => void;
-};
+const report = createReporter({ flow: 'ui' });
+const archiveViewTransitionMetric = defineCount<'error'>('archive_view.transition');
 
 /** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARACTERS = 1_000_000;
 
-const pageObjectUrls: ObjectUrls = {
-  create: blob => URL.createObjectURL(blob),
-  revoke: url => {
-    URL.revokeObjectURL(url);
-  },
-};
+/** The tab reads on its first show, again for a new CID, and again on the next show after a failed read. */
+type ArchiveState =
+  | { kind: 'unread' }
+  | ReadingState
+  | { kind: 'read'; cid: string; archive: LoadedArchive }
+  | { kind: 'failed'; cid: string; reason: string }
+  | { kind: 'disposed' };
 
-/** The read of one CID and how it went, or `null` before the first read. */
-type Reading = { cid: string; read: ArchiveRead } | null;
+type ReadingState = { kind: 'reading'; cid: string };
+
+/** A read's outcome carries the read it settles, so a read the tab has moved past changes nothing. */
+type ArchiveEvent =
+  | { kind: 'shown'; cid: string }
+  | { kind: 'archiveRead'; reading: ReadingState; archive: LoadedArchive }
+  | { kind: 'readFailed'; reading: ReadingState; reason: string }
+  | { kind: 'disposed' };
+
+type ArchiveMachine = MachineTypes<ArchiveState, ArchiveEvent>;
 
 export function ArchiveView(props: {
   active: boolean;
   load: ArchiveLoader;
   product: ReadableAtom<HostProduct>;
-  /** Without them, the browser's own object URLs. */
-  objectUrls?: ObjectUrls | undefined;
+  /** Without them, the browser's own object URLs. Read once when the tab mounts. */
+  objectUrls?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'> | undefined;
 }): JSX.Element {
-  const objectUrls = (): ObjectUrls => props.objectUrls ?? pageObjectUrls;
+  const objectUrls = untrack(() => props.objectUrls) ?? URL;
   const product = useStore(untrack(() => props.product));
   function getCid(): string | undefined {
     const state = product();
     return state.status === 'loaded' ? state.cid : undefined;
   }
-  // The variable is for the effect's identity checks, which must see a write at once. The signal is for the render.
-  let reading: Reading = null;
-  const [readingSignal, setReadingSignal] = createSignal<Reading>(null);
-  function setReading(next: Reading): void {
-    reading = next;
-    setReadingSignal(next);
-  }
-  function read(): ArchiveRead {
-    return readingSignal()?.read ?? { status: 'loading' };
-  }
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
-  // Read on first show, again for a new CID, and again on the next show after a failed read.
+  const readShown: HandlerOf<ArchiveMachine, 'unread' | 'failed', 'shown'> = (_state, { cid }, transition) => {
+    startReading(cid, transition);
+  };
+  const readNewCid: HandlerOf<ArchiveMachine, 'reading' | 'read', 'shown'> = (state, { cid }, transition) => {
+    if (state.cid === cid) {
+      return;
+    }
+    startReading(cid, transition);
+  };
+  const dispose: HandlerOf<ArchiveMachine, 'unread' | 'reading' | 'read' | 'failed', 'disposed'> = (
+    _state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'disposed' });
+  };
+  const reader = createStateMachine<ArchiveMachine>({
+    initial: { kind: 'unread' },
+    handlers: {
+      unread: { shown: readShown, disposed: dispose },
+      reading: {
+        shown: readNewCid,
+        archiveRead(state, { reading, archive }, { emitState }) {
+          if (state !== reading) {
+            return;
+          }
+          emitState({ kind: 'read', cid: state.cid, archive });
+        },
+        readFailed(state, { reading, reason }, { emitState }) {
+          if (state !== reading) {
+            return;
+          }
+          emitState({ kind: 'failed', cid: state.cid, reason });
+        },
+        disposed: dispose,
+      },
+      read: { shown: readNewCid, disposed: dispose },
+      failed: { shown: readShown, disposed: dispose },
+      disposed: null,
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: archiveViewTransitionMetric,
+        message: '[dot.li] An archive view transition threw',
+      });
+    },
+  });
+  const state = useStore(reader.state);
+  onCleanup(() => {
+    reader.update({ kind: 'disposed' });
+  });
+
   createEffect(
     () => (props.active ? (getCid() ?? null) : null),
-    next => {
-      if (next === null || (reading?.cid === next && reading.read.status !== 'failed')) {
+    cid => {
+      if (cid === null) {
         return;
       }
-      const started: NonNullable<Reading> = { cid: next, read: { status: 'loading' } };
-      setSelectedPath(null);
-      setReading(started);
-      props.load(next).then(
-        files => {
-          if (reading === started) {
-            setReading({ cid: next, read: toLoadedArchive(files) });
-          }
-        },
-        (error: unknown) => {
-          if (reading === started) {
-            setReading({ cid: next, read: { status: 'failed', reason: getErrorMessage(error) } });
-          }
-        },
-      );
+      reader.update({ kind: 'shown', cid });
     },
   );
 
   const selected = createMemo((): ArchiveFile | undefined => {
-    const current = read();
+    const loaded = getLoadedArchive();
     const path = selectedPath();
-    return current.status === 'loaded' && path !== null ? current.files.find(file => file.path === path) : undefined;
+    return loaded !== undefined && path !== null ? loaded.files.find(file => file.path === path) : undefined;
   });
   const shown = createMemo((): Preview | undefined => {
     const file = selected();
     return file === undefined ? undefined : previewFile(file);
   });
 
-  let url: string | null = null;
-  function revokeUrl(): void {
-    if (url !== null) {
-      objectUrls().revoke(url);
-      url = null;
-    }
-  }
   createEffect(
     () => (shown()?.kind === 'image' ? selected() : undefined),
     file => {
-      revokeUrl();
       const type = file === undefined ? undefined : getImageType(file.path);
-      if (file !== undefined && type !== undefined) {
-        url = objectUrls().create(new Blob([file.bytes.slice()], { type }));
+      if (file === undefined || type === undefined) {
+        setImageUrl(null);
+        return;
       }
+      const url = objectUrls.createObjectURL(new Blob([file.bytes.slice()], { type }));
       setImageUrl(url);
+      return () => {
+        objectUrls.revokeObjectURL(url);
+      };
     },
   );
-  onCleanup(revokeUrl);
 
+  /** Moves to a new read of `cid`, whose outcome settles that read only. */
+  function startReading(cid: string, { emitState, update }: Transition<ArchiveMachine>): void {
+    const reading: ReadingState = { kind: 'reading', cid };
+    const load = props.load;
+    emitState(reading);
+    setSelectedPath(null);
+    update(
+      // A load that throws rejects this promise, so it ends as a failed read too.
+      new Promise<ArchiveFiles>(resolve => {
+        resolve(load(cid));
+      }).then(
+        (files): ArchiveEvent => ({ kind: 'archiveRead', reading, archive: toLoadedArchive(files) }),
+        (error: unknown): ArchiveEvent => ({ kind: 'readFailed', reading, reason: getErrorMessage(error) }),
+      ),
+    );
+  }
   function getShownText(): string | undefined {
     const current = shown();
     return current?.kind === 'text' ? current.text : undefined;
   }
   function getLoadedArchive(): LoadedArchive | undefined {
-    const current = read();
-    return current.status === 'loaded' ? current : undefined;
+    const current = state();
+    return current.kind === 'read' ? current.archive : undefined;
   }
   function getFailure(): string | undefined {
-    const current = read();
-    return current.status === 'failed' ? current.reason : undefined;
+    const current = state();
+    return current.kind === 'failed' ? current.reason : undefined;
   }
 
   return (

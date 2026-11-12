@@ -13,7 +13,7 @@ describe('archive summary', () => {
     ];
 
     // When
-    const summary = formatArchiveSummary({ status: 'loaded', files, total: 16 });
+    const summary = formatArchiveSummary({ files, total: 16 });
 
     // Then
     expect(summary).toBe('2 files · 16 B');

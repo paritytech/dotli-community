@@ -54,12 +54,15 @@ function createFakeDb(name: string) {
   };
 }
 
-/** Opens the given connections in turn, and fails once they run out. */
-function createOpener(...results: FakeDb[]): Mock<() => Promise<IDBDatabase>> {
+/** Opens the given connections in turn, rejects with each given error in its turn, and fails once they run out. */
+function createOpener(...results: (FakeDb | Error)[]): Mock<() => Promise<IDBDatabase>> {
   return vi.fn<() => Promise<IDBDatabase>>(() => {
     const next = results.shift();
     if (next === undefined) {
       return Promise.reject(new Error('no more opens in this test'));
+    }
+    if (next instanceof Error) {
+      return Promise.reject(next);
     }
     return Promise.resolve(next.db);
   });
@@ -149,5 +152,54 @@ describe('createDbConnection', () => {
     // Then
     expect(db).toBe(second.db);
     expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a page whose database open fails, I get its error and my next read opens again', async () => {
+    // Given an open that fails once, then serves a connection
+    const error = new Error('open failed');
+    const first = createFakeDb('first');
+    const open = createOpener(error, first);
+    const getDb = createDbConnection({ open });
+
+    // When one read runs, then a second
+    const failure = await getFailure(getDb());
+    const db = await getDb();
+
+    // Then
+    expect(failure).toBe(error);
+    expect(db).toBe(first.db);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a page reading behind an open that fails, I open the database myself', async () => {
+    // Given an open that fails once, then serves a connection
+    const error = new Error('open failed');
+    const first = createFakeDb('first');
+    const open = createOpener(error, first);
+    const getDb = createDbConnection({ open });
+
+    // When two reads start at once
+    const [failure, db] = await Promise.all([getFailure(getDb()), getDb()]);
+
+    // Then
+    expect(failure).toBe(error);
+    expect(db).toBe(first.db);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a page whose open throws before it returns, I get its error', async () => {
+    // Given an open that throws synchronously
+    const error = new Error('open threw');
+    const getDb = createDbConnection({
+      open: () => {
+        throw error;
+      },
+    });
+
+    // When
+    const failure = await getFailure(getDb());
+
+    // Then
+    expect(failure).toBe(error);
   });
 });
