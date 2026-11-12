@@ -6,9 +6,9 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { Button } from '../primitives/Button.js';
 import { BottomSheet } from './BottomSheet.js';
-import { handOffSheet } from './SheetFrame.js';
+import { sheetHandOff } from './createSheetHandOff.js';
 
-/** What a hand-off left on both frames, read as `handOffSheet` returns, before any frame is drawn. */
+/** What a hand-off left on both frames, read as `sheetHandOff.run` returns, before any frame is drawn. */
 type HandOffMarks = {
   taken: boolean;
   leaving: { open: boolean; handoff: boolean };
@@ -145,7 +145,7 @@ function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMar
             testId="hand-off"
             onClick={() => {
               const opensNext = props.opensNext;
-              const taken = handOffSheet(() => {
+              const taken = sheetHandOff.run(() => {
                 setFirst(false);
                 if (opensNext) {
                   setSecond(true);
@@ -224,7 +224,7 @@ function ThrowingHandOffHarness() {
           testId="hand-off"
           onClick={() => {
             try {
-              handOffSheet(() => {
+              sheetHandOff.run(() => {
                 setOpen(false);
                 // The sheet is held from here, waiting on the hand-off's outcome.
                 flush();

@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers } from '@dotli/shared/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { createTooltipVisibility, TOOLTIP_HIDE_MS, TOOLTIP_SHOW_MS } from './createTooltipVisibility.js';
 
 describe('createTooltipVisibility', () => {
@@ -84,6 +85,42 @@ describe('createTooltipVisibility', () => {
     // Then it stays shown
     expect(opens).toEqual([true]);
     expect(visibility.isOpen()).toBe(true);
+  });
+
+  it('As a tooltip whose listener throws, I still open and the throw is reported', () => {
+    // Given a tooltip whose listener throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const visibility = createTooltipVisibility({
+      onChange: () => {
+        throw new Error('listener failed');
+      },
+      timers: createManualTimers(),
+    });
+
+    // When it is asked to show
+    visibility.show();
+
+    // Then it is open and the throw is reported as a transition defect
+    expect(visibility.isOpen()).toBe(true);
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+  });
+
+  it('As a mouse user, I leave again within the grace, and the tooltip stays a full grace from my last leave', async () => {
+    // Given a shown tooltip the mouse left, with part of the grace gone
+    const { timers, opens, visibility } = setup();
+    visibility.show();
+    visibility.leave();
+    await timers.advance(TOOLTIP_HIDE_MS - 10);
+
+    // When the mouse leaves again and almost a full grace passes
+    visibility.leave();
+    await timers.advance(TOOLTIP_HIDE_MS - 1);
+    const openBeforeGrace = visibility.isOpen();
+    await timers.advance(1);
+
+    // Then it stays open until the second grace ends
+    expect(openBeforeGrace).toBe(true);
+    expect(opens).toEqual([true, false]);
   });
 
   it('As a tooltip whose component is gone, I hear nothing more', async () => {

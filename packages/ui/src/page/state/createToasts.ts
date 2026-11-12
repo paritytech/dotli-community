@@ -4,14 +4,26 @@
 // A countdown runs only while a view shows the toasts. It pauses while the tab is hidden or the stack is expanded and
 // resumes from what was left.
 
-import { createReporter } from '@dotli/metrics';
-import { isShallowEqual, realTimers, registerStoreStateReset, registerAtomReset, type Timers } from '@dotli/shared';
-import { atom, type ReadableAtom } from 'nanostores';
+import { createReporter, defineCount } from '@dotli/metrics';
+import {
+  createSharedRun,
+  createStateMachine,
+  isShallowEqual,
+  nest,
+  realTimers,
+  registerStoreStateReset,
+  type HandlerOf,
+  type MachineTypes,
+  type Timers,
+  type Transition,
+} from '@dotli/shared';
+import { computed, type ReadableAtom } from 'nanostores';
 import type { StatusTone } from '../statusTone.js';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
 
 const report = createReporter({ flow: 'ui' });
+const toastsTransitionMetric = defineCount<'error'>('toasts.transition');
 
 export type ToastAction = {
   label: string;
@@ -55,296 +67,479 @@ export type ToastPage = {
 } & EventTarget;
 
 type Params = {
-  /** The page whose visibility pauses the countdowns. The document without one, read on the first `show` or `push`. */
+  /** The page whose visibility pauses the countdowns. The document without one, read on the first `push`. */
   page?: ToastPage | undefined;
   /** The clock and timers the countdowns run on. */
   timers?: Timers | undefined;
 };
 
-type Countdown = {
-  remaining: number;
-  startedAt: number;
-  handle: unknown;
-  onDismiss: (() => void) | undefined;
-};
+type Dismiss = ToastInput['onDismiss'];
 
-const INITIAL: ToastsState = { items: [], expanded: false };
+/** One toast. `waiting` holds what is left of its countdown while the stack is paused. `kept` stays until closed. */
+type Toast =
+  | { kind: 'counting'; entry: ToastEntry; onDismiss: Dismiss; remaining: number; startedAt: number; timer: unknown }
+  | { kind: 'waiting'; entry: ToastEntry; onDismiss: Dismiss; remaining: number }
+  | { kind: 'kept'; entry: ToastEntry; onDismiss: Dismiss }
+  | { kind: 'leaving'; entry: ToastEntry };
 
-const reportDismissError = report.listener('toast.dismiss');
+type LiveToast = Exclude<Toast, { kind: 'leaving' }>;
+
+type BoundPage = { page: ToastPage; stopListening: () => void };
+
+/** A bound stack runs its countdowns while a view shows it collapsed on a visible page, and is paused otherwise. */
+type ToastsMachineState =
+  | { kind: 'unbound'; expanded: boolean }
+  | { kind: 'paused'; bound: BoundPage; expanded: boolean; toasts: ReadonlyMap<number, Toast> }
+  | { kind: 'running'; bound: BoundPage; expanded: boolean; toasts: ReadonlyMap<number, Toast> };
+
+type BoundState = Extract<ToastsMachineState, { kind: 'paused' | 'running' }>;
+
+type ToastsEvent =
+  | { kind: 'pushed'; id: number; input: ToastInput }
+  | { kind: 'dismissMsSet'; id: number; dismissMs: number }
+  | { kind: 'dismissed'; id: number }
+  | { kind: 'countdownEnded'; id: number }
+  | { kind: 'removed'; id: number }
+  | { kind: 'allDismissed' }
+  | { kind: 'expandedSet'; expanded: boolean }
+  | { kind: 'viewsChanged' }
+  | { kind: 'visibilityChanged' }
+  | { kind: 'cleared' }
+  | { kind: 'disposed' };
+
+type ToastsEffect = { kind: 'dismissed'; onDismiss: () => void };
+
+type ToastsMachine = MachineTypes<ToastsMachineState, ToastsEvent, ToastsEffect>;
+
+type ToastMachine = MachineTypes<Toast, ToastsEvent, ToastsEffect>;
+
+/** The view of an unbound stack that is not expanded, for a read before the store has a value. */
+export const EMPTY_TOASTS: ToastsState = { items: [], expanded: false };
 
 /**
  * Builds a toast stack whose countdowns run on `timers` and pause with `page`. Building one reads neither the page nor
  * the clock.
  */
 export function createToasts({ page, timers = realTimers }: Params = {}) {
-  const state = atom<ToastsState>(INITIAL);
-  state.eq = isShallowEqual;
-  registerAtomReset(state);
-  const store: ReadableAtom<ToastsState> = state;
-  const countdowns = new Map<number, Countdown>();
+  let viewing = false;
   let nextId = 0;
-  let views = 0;
-  // Bumped by a reset, so a view mounted before it releases nothing when it unmounts after it.
-  let viewGeneration = 0;
-  let bound: ToastPage | undefined;
-  // Removes the bound page's listener, so a reset never leaves one behind.
-  let pageBinding: AbortController | undefined;
+  const addToast: HandlerOf<ToastsMachine, 'paused' | 'running', 'pushed'> = (state, { id, input }, transition) => {
+    emitBound({ ...state, toasts: new Map(state.toasts).set(id, buildToast(id, input)) }, transition);
+  };
+  const removeToast: HandlerOf<ToastsMachine, 'paused' | 'running', 'removed'> = (state, { id }, transition) => {
+    const toast = state.toasts.get(id);
+    if (toast === undefined) {
+      return;
+    }
+    clearTimer(toast);
+    const toasts = new Map(state.toasts);
+    toasts.delete(id);
+    emitBound({ ...state, toasts, expanded: state.expanded && toasts.size > 1 }, transition);
+  };
+  const dismissEvery: HandlerOf<ToastsMachine, 'paused' | 'running', 'allDismissed'> = (state, _event, transition) => {
+    const toasts = new Map<number, Toast>();
+    for (const [id, toast] of state.toasts) {
+      toasts.set(id, endToast(toast, transition.emitSideEffect));
+    }
+    emitBound({ ...state, toasts }, transition);
+  };
+  const expandOrCollapse: HandlerOf<ToastsMachine, 'paused' | 'running', 'expandedSet'> = (
+    state,
+    { expanded },
+    transition,
+  ) => {
+    emitBound({ ...state, expanded }, transition, state);
+  };
+  const clearToasts: HandlerOf<ToastsMachine, 'paused' | 'running', 'cleared'> = (state, _event, transition) => {
+    for (const toast of state.toasts.values()) {
+      clearTimer(toast);
+    }
+    emitBound({ bound: state.bound, expanded: false, toasts: new Map() }, transition);
+  };
+  const unbindPage: HandlerOf<ToastsMachine, 'paused' | 'running', 'disposed'> = (state, _event, { emitState }) => {
+    emitState({ kind: 'unbound', expanded: false });
+    for (const toast of state.toasts.values()) {
+      clearTimer(toast);
+    }
+    state.bound.stopListening();
+  };
+  const restartCountdown: HandlerOf<ToastMachine, LiveToast['kind'], 'dismissMsSet'> = (
+    toast,
+    { id, dismissMs },
+    { emitState, update },
+  ) => {
+    clearTimer(toast);
+    emitState(startCountdown(id, holdToast(toast, dismissMs), update));
+  };
+  const holdCountdown: HandlerOf<ToastMachine, LiveToast['kind'], 'dismissMsSet'> = (
+    toast,
+    { dismissMs },
+    { emitState },
+  ) => {
+    clearTimer(toast);
+    emitState(holdToast(toast, dismissMs));
+  };
+  const routeRunning = nest<ToastsMachine, 'running', ToastMachine, 'dismissed' | 'countdownEnded' | 'dismissMsSet'>({
+    find: findToast,
+    store: storeToast,
+    handlers: {
+      counting: { dismissed: leaveToast, countdownEnded: leaveToast, dismissMsSet: restartCountdown },
+      waiting: { dismissed: leaveToast, dismissMsSet: restartCountdown },
+      kept: { dismissed: leaveToast, dismissMsSet: restartCountdown },
+      leaving: null,
+    },
+  });
+  const routePaused = nest<ToastsMachine, 'paused', ToastMachine, 'dismissed' | 'countdownEnded' | 'dismissMsSet'>({
+    find: findToast,
+    store: storeToast,
+    handlers: {
+      counting: { dismissed: leaveToast, countdownEnded: leaveToast, dismissMsSet: holdCountdown },
+      waiting: { dismissed: leaveToast, dismissMsSet: holdCountdown },
+      kept: { dismissed: leaveToast, dismissMsSet: holdCountdown },
+      leaving: null,
+    },
+  });
+  const machine = createStateMachine<ToastsMachine>({
+    initial: { kind: 'unbound', expanded: false },
+    handlers: {
+      unbound: {
+        pushed(state, { id, input }, transition) {
+          const target = page ?? document;
+          const binding = new AbortController();
+          target.addEventListener(
+            'visibilitychange',
+            () => {
+              transition.update({ kind: 'visibilityChanged' });
+            },
+            { signal: binding.signal },
+          );
+          const bound = {
+            page: target,
+            stopListening: () => {
+              binding.abort();
+            },
+          };
+          emitBound(
+            { bound, expanded: state.expanded, toasts: new Map<number, Toast>().set(id, buildToast(id, input)) },
+            transition,
+          );
+        },
+        expandedSet(_state, { expanded }, { emitState }) {
+          emitState({ kind: 'unbound', expanded });
+        },
+        cleared: collapseUnbound,
+        disposed: collapseUnbound,
+      },
+      paused: {
+        pushed: addToast,
+        dismissMsSet: routePaused,
+        dismissed: routePaused,
+        countdownEnded: routePaused,
+        removed: removeToast,
+        allDismissed: dismissEvery,
+        expandedSet: expandOrCollapse,
+        viewsChanged: settleCountdowns,
+        visibilityChanged: settleCountdowns,
+        cleared: clearToasts,
+        disposed: unbindPage,
+      },
+      running: {
+        pushed: addToast,
+        dismissMsSet: routeRunning,
+        dismissed: routeRunning,
+        countdownEnded: routeRunning,
+        removed: removeToast,
+        allDismissed: dismissEvery,
+        expandedSet: expandOrCollapse,
+        viewsChanged: settleCountdowns,
+        visibilityChanged: settleCountdowns,
+        cleared: clearToasts,
+        disposed: unbindPage,
+      },
+    },
+    onEffect: ({ onDismiss }) => {
+      try {
+        onDismiss();
+      } catch (error) {
+        report.listener('toast.dismiss')(error);
+      }
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: toastsTransitionMetric,
+        message: '[dot.li ui] A toast transition threw',
+      });
+    },
+  });
+  const store: ReadableAtom<ToastsState> = computed(machine.state, toView);
+  store.eq = isSameView;
+  const views = createSharedRun({
+    begin: () => {
+      viewing = true;
+      machine.update({ kind: 'viewsChanged' });
+      return () => {
+        viewing = false;
+        machine.update({ kind: 'viewsChanged' });
+      };
+    },
+  });
 
-  registerStoreStateReset(resetState);
+  registerStoreStateReset(() => {
+    views.end();
+    nextId = 0;
+    machine.update({ kind: 'disposed' });
+  });
 
   return {
     /** The toasts on screen and whether the stack is expanded. */
     store,
     /**
      * A view calls it on mount and the returned function on unmount. The first view starts the countdowns, the last
-     * pauses them. The returned function releases once, and nothing after a reset. Never throws.
+     * pauses them. The returned function releases once, and nothing after a reset.
      */
     show,
-    /** Adds a toast as the newest and returns its id. Its countdown starts while a view shows the stack. Never throws. */
+    /**
+     * Adds a toast as the newest and returns its id. Its countdown starts while a view shows the stack. Called from an
+     * `onDismiss`, the toast is added right after that dismissal.
+     */
     push,
     /**
      * Gives the toast a new countdown of `dismissMs`, which runs while a view shows the stack. 0 keeps it until closed. A
-     * toast unknown or leaving is ignored. Never throws.
+     * toast unknown or leaving is ignored.
      */
     setDismissMs,
     /**
      * Marks the toast leaving and calls its `onDismiss` once, reporting a throw from it. A toast unknown or already
-     * leaving is ignored. Never throws.
+     * leaving is ignored.
      */
     dismiss,
-    /** Drops the toast once its exit animation has finished. An unknown id is ignored. Never throws. */
+    /** Drops the toast once its exit animation has finished. An unknown id is ignored. */
     remove,
-    /** Marks every toast leaving and calls each `onDismiss` once, reporting a throw from it. Never throws. */
+    /** Marks every toast leaving, then calls each `onDismiss` once in order, reporting a throw from it. */
     dismissAll,
-    /** Expands or collapses the stack. Every countdown pauses while it is expanded. Never throws. */
+    /** Expands or collapses the stack. Every countdown pauses while it is expanded. */
     setExpanded,
-    /** Drops every toast without calling its `onDismiss`, for when overlays cannot render. Never throws. */
+    /** Drops every toast without calling its `onDismiss`, for when overlays cannot render. */
     clear,
     /**
-     * Drops every toast without calling its `onDismiss` and stops the countdowns and the page listener. Never
-     * throws. Safe to repeat. The stack works as a fresh one afterwards.
+     * Drops every toast without calling its `onDismiss` and stops the countdowns and the page listener. Safe to repeat.
+     * The stack works as a fresh one afterwards.
      */
     dispose,
   };
 
   function show(): () => void {
-    views++;
-    if (views === 1) {
-      resumeAll();
-    }
-    const generation = viewGeneration;
-    let shown = true;
-    return release;
-
-    function release(): void {
-      if (!shown || generation !== viewGeneration) {
-        return;
-      }
-      shown = false;
-      views--;
-      if (views === 0) {
-        pauseAll();
-      }
-    }
+    return views.join();
   }
 
   function push(input: ToastInput): number {
-    bindPageOnce();
-    const id = nextId++;
-    countdowns.set(id, {
-      remaining: input.dismissMs,
-      startedAt: 0,
-      handle: undefined,
-      onDismiss: input.onDismiss,
-    });
-    const entry: ToastEntry = {
-      id,
-      text: input.text,
-      label: input.label,
-      tone: input.tone ?? 'info',
-      leaving: false,
-    };
-    if (input.deeplink !== undefined) {
-      entry.deeplink = input.deeplink;
-    }
-    if (input.icon !== undefined) {
-      entry.icon = input.icon;
-    }
-    if (input.action !== undefined) {
-      entry.action = input.action;
-    }
-    const current = state.get();
-    state.set({ ...current, items: [...current.items, entry] });
-    start(id);
+    const id = nextId;
+    nextId += 1;
+    machine.update({ kind: 'pushed', id, input });
     return id;
   }
 
   function setDismissMs(id: number, dismissMs: number): void {
-    const countdown = countdowns.get(id);
-    if (countdown === undefined) {
-      return;
-    }
-    pause(id);
-    countdown.remaining = dismissMs;
-    start(id);
+    machine.update({ kind: 'dismissMsSet', id, dismissMs });
   }
 
   function dismiss(id: number): void {
-    const current = state.get();
-    const entry = current.items.find(toast => toast.id === id);
-    if (entry === undefined || entry.leaving) {
-      return;
-    }
-    finishCountdown(id);
-    state.set({
-      ...current,
-      items: current.items.map(toast => (toast.id === id ? { ...toast, leaving: true } : toast)),
-    });
+    machine.update({ kind: 'dismissed', id });
   }
 
   function remove(id: number): void {
-    const current = state.get();
-    if (!current.items.some(toast => toast.id === id)) {
-      return;
-    }
-    countdowns.delete(id);
-    const items = current.items.filter(toast => toast.id !== id);
-    const collapse = current.expanded && items.length <= 1;
-    state.set({ items, expanded: collapse ? false : current.expanded });
-    if (collapse) {
-      resumeAll();
-    }
+    machine.update({ kind: 'removed', id });
   }
 
   function dismissAll(): void {
-    const current = state.get();
-    const active = current.items.filter(toast => !toast.leaving);
-    if (active.length === 0) {
-      return;
-    }
-    pauseAll();
-    for (const toast of active) {
-      finishCountdown(toast.id);
-    }
-    state.set({
-      ...current,
-      items: current.items.map(toast => (toast.leaving ? toast : { ...toast, leaving: true })),
-    });
+    machine.update({ kind: 'allDismissed' });
   }
 
   function setExpanded(expanded: boolean): void {
-    const current = state.get();
-    if (current.expanded === expanded) {
-      return;
-    }
-    state.set({ ...current, expanded });
-    if (expanded) {
-      pauseAll();
-    } else {
-      resumeAll();
-    }
+    machine.update({ kind: 'expandedSet', expanded });
   }
 
   function clear(): void {
-    pauseAll();
-    countdowns.clear();
-    state.set(INITIAL);
+    machine.update({ kind: 'cleared' });
   }
 
   function dispose(): void {
-    clear();
-    unbindPage();
+    machine.update({ kind: 'disposed' });
   }
 
-  /** The page the countdowns pause with, bound on first use so building the stack never reads the document. */
-  function bindPageOnce(): ToastPage {
-    if (bound !== undefined) {
-      return bound;
+  /**
+   * Emits the bound stack as `running` while a view shows it collapsed on a visible page, else as `paused`, with each
+   * countdown started or stopped to match. With `previous`, it emits nothing when the stack comes out as it was.
+   */
+  function emitBound(
+    stack: Omit<BoundState, 'kind'>,
+    { emitState, update }: Transition<ToastsMachine>,
+    previous?: BoundState,
+  ): void {
+    const running = viewing && !stack.expanded && stack.bound.page.visibilityState === 'visible';
+    const toasts = new Map<number, Toast>();
+    for (const [id, toast] of stack.toasts) {
+      toasts.set(id, running ? startCountdown(id, toast, update) : stopCountdown(toast));
     }
-    const target = page ?? document;
-    const binding = new AbortController();
-    pageBinding = binding;
-    bound = target;
-    target.addEventListener(
-      'visibilitychange',
-      () => {
-        if (target.visibilityState === 'visible') {
-          resumeAll();
-        } else {
-          pauseAll();
+    const next: BoundState = { ...stack, kind: running ? 'running' : 'paused', toasts };
+    if (previous !== undefined && isSameStack(previous, next)) {
+      return;
+    }
+    emitState(next);
+  }
+
+  function settleCountdowns(
+    state: BoundState,
+    _event: Extract<ToastsEvent, { kind: 'viewsChanged' | 'visibilityChanged' }>,
+    transition: Transition<ToastsMachine>,
+  ): void {
+    emitBound(state, transition, state);
+  }
+
+  function leaveToast(
+    toast: LiveToast,
+    _event: Extract<ToastsEvent, { kind: 'dismissed' | 'countdownEnded' }>,
+    { emitState, emitSideEffect }: Transition<ToastMachine>,
+  ): void {
+    emitState(endToast(toast, emitSideEffect));
+  }
+
+  /** The toast leaving, its countdown stopped and its `onDismiss` queued. A toast already leaving stays as it is. */
+  function endToast(toast: Toast, emitSideEffect: Transition<ToastsMachine>['emitSideEffect']): Toast {
+    switch (toast.kind) {
+      case 'leaving':
+        return toast;
+      case 'counting':
+      case 'waiting':
+      case 'kept':
+        clearTimer(toast);
+        if (toast.onDismiss !== undefined) {
+          emitSideEffect({ kind: 'dismissed', onDismiss: toast.onDismiss });
         }
-      },
-      { signal: binding.signal },
-    );
-    return target;
-  }
-
-  function unbindPage(): void {
-    pageBinding?.abort();
-    pageBinding = undefined;
-    bound = undefined;
-  }
-
-  function shouldPause(): boolean {
-    return views === 0 || state.get().expanded || bindPageOnce().visibilityState !== 'visible';
-  }
-
-  function start(id: number): void {
-    const countdown = countdowns.get(id);
-    if (countdown === undefined || countdown.remaining <= 0 || countdown.handle !== undefined || shouldPause()) {
-      return;
-    }
-    countdown.startedAt = timers.now();
-    countdown.handle = timers.setTimeout(() => {
-      countdown.handle = undefined;
-      dismiss(id);
-    }, countdown.remaining);
-  }
-
-  function pause(id: number): void {
-    const countdown = countdowns.get(id);
-    if (countdown?.handle === undefined) {
-      return;
-    }
-    timers.clearTimeout(countdown.handle);
-    countdown.handle = undefined;
-    countdown.remaining = Math.max(0, countdown.remaining - (timers.now() - countdown.startedAt));
-  }
-
-  function pauseAll(): void {
-    for (const id of countdowns.keys()) {
-      pause(id);
+        return { kind: 'leaving', entry: { ...toast.entry, leaving: true } };
     }
   }
 
-  function resumeAll(): void {
-    if (shouldPause()) {
-      return;
-    }
-    for (const id of countdowns.keys()) {
-      start(id);
-    }
-  }
-
-  function finishCountdown(id: number): void {
-    const countdown = countdowns.get(id);
-    pause(id);
-    countdowns.delete(id);
-    try {
-      countdown?.onDismiss?.();
-    } catch (error) {
-      reportDismissError(error);
+  /** The toast counting down what it has left, with a timer that ends it. Any other toast stays as it is. */
+  function startCountdown(id: number, toast: Toast, update: Transition<ToastsMachine>['update']): Toast {
+    switch (toast.kind) {
+      case 'waiting': {
+        const timer = timers.setTimeout(() => {
+          update({ kind: 'countdownEnded', id });
+        }, toast.remaining);
+        return { ...toast, kind: 'counting', startedAt: timers.now(), timer };
+      }
+      case 'counting':
+      case 'kept':
+      case 'leaving':
+        return toast;
     }
   }
 
-  function resetState(): void {
-    clear();
-    nextId = 0;
-    views = 0;
-    viewGeneration++;
-    unbindPage();
+  /** The toast waiting with what was left of its countdown. Any other toast stays as it is. */
+  function stopCountdown(toast: Toast): Toast {
+    switch (toast.kind) {
+      case 'counting':
+        timers.clearTimeout(toast.timer);
+        return {
+          kind: 'waiting',
+          entry: toast.entry,
+          onDismiss: toast.onDismiss,
+          remaining: Math.max(0, toast.remaining - (timers.now() - toast.startedAt)),
+        };
+      case 'waiting':
+      case 'kept':
+      case 'leaving':
+        return toast;
+    }
+  }
+
+  function clearTimer(toast: Toast): void {
+    switch (toast.kind) {
+      case 'counting':
+        timers.clearTimeout(toast.timer);
+        return;
+      case 'waiting':
+      case 'kept':
+      case 'leaving':
+        return;
+    }
   }
 }
 
 /** The page's toast stack, over the document and the page's own timers. */
 export const toasts = createToasts();
+
+/** A live toast that waits out `dismissMs` once its stack runs, or is kept until closed for 0. */
+function holdToast({ entry, onDismiss }: Pick<LiveToast, 'entry' | 'onDismiss'>, dismissMs: number): Toast {
+  if (dismissMs === 0) {
+    return { kind: 'kept', entry, onDismiss };
+  }
+  return { kind: 'waiting', entry, onDismiss, remaining: dismissMs };
+}
+
+/** A toast, new on the stack, from what a caller pushed. */
+function buildToast(id: number, input: ToastInput): Toast {
+  const entry: ToastEntry = {
+    id,
+    text: input.text,
+    label: input.label,
+    tone: input.tone ?? 'info',
+    leaving: false,
+  };
+  if (input.deeplink !== undefined) {
+    entry.deeplink = input.deeplink;
+  }
+  if (input.icon !== undefined) {
+    entry.icon = input.icon;
+  }
+  if (input.action !== undefined) {
+    entry.action = input.action;
+  }
+  return holdToast({ entry, onDismiss: input.onDismiss }, input.dismissMs);
+}
+
+/** Whether the stack kept its phase, its expansion and every toast as it was. */
+function isSameStack(previous: BoundState, next: BoundState): boolean {
+  if (previous.kind !== next.kind || previous.expanded !== next.expanded || previous.toasts.size !== next.toasts.size) {
+    return false;
+  }
+  for (const [id, toast] of next.toasts) {
+    if (previous.toasts.get(id) !== toast) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collapseUnbound(
+  _state: Extract<ToastsMachineState, { kind: 'unbound' }>,
+  _event: Extract<ToastsEvent, { kind: 'cleared' | 'disposed' }>,
+  { emitState }: Transition<ToastsMachine>,
+): void {
+  emitState({ kind: 'unbound', expanded: false });
+}
+
+function findToast({ toasts }: BoundState, { id }: { id: number }): Toast | null {
+  return toasts.get(id) ?? null;
+}
+
+function storeToast<State extends BoundState>(state: State, { id }: { id: number }, next: Toast): State {
+  return { ...state, toasts: new Map(state.toasts).set(id, next) };
+}
+
+function toView(state: ToastsMachineState): ToastsState {
+  switch (state.kind) {
+    case 'unbound':
+      return { ...EMPTY_TOASTS, expanded: state.expanded };
+    case 'paused':
+    case 'running':
+      return { items: Array.from(state.toasts.values(), toast => toast.entry), expanded: state.expanded };
+  }
+}
+
+/** The previous value is missing on a computed store's first run. */
+function isSameView(previous: ToastsState | undefined, next: ToastsState): boolean {
+  return previous?.expanded === next.expanded && isShallowEqual(previous.items, next.items);
+}

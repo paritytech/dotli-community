@@ -1,14 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { flush, onCleanup, Show } from 'solid-js';
+import { onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../createDrags.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './inSheet.js';
 import { dragSheet } from './dragSheet.js';
-import { topLayer } from './modalStack.js';
 import s from './SheetFrame.module.css';
 
 export type SheetFrameProps = {
@@ -38,11 +37,6 @@ export type SheetFrameProps = {
     | undefined;
   children: JSX.Element;
 };
-
-/** `pending` while a sheet's chosen item runs, `taken` once a sheet opened in its place. */
-let pendingHandoff: 'pending' | 'taken' | undefined;
-/** Sheets that closed inside the pending hand-off, held up until told how it ended. */
-const leaving = new Set<(taken: boolean) => void>();
 
 /** The bottom sheet inside a ModalLayer. A drag down that starts on the head swipes it closed. */
 export function SheetFrame(props: SheetFrameProps): JSX.Element {
@@ -112,110 +106,4 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
       </div>
     </div>
   );
-}
-
-/**
- * Runs `activate` so a sheet it opens replaces the closing one in the same frame. Returns whether one did, and
- * rethrows what `activate` throws.
- */
-export function handOffSheet(activate: () => void): boolean {
-  pendingHandoff = 'pending';
-  try {
-    activate();
-    return finishHandOff();
-  } finally {
-    endHandOff();
-  }
-}
-
-type HandOffSheetOnPressParams = { frame: HTMLElement; dismiss: () => void };
-
-/** A press's hand-off waits on its click or a zero timer, then ends. */
-type PressPhase = { kind: 'pending'; timer: ReturnType<typeof setTimeout> } | { kind: 'ended' };
-
-/**
- * For a press on a bar control outside the top sheet `frame`: `dismiss` closes the sheet now and the press's click is
- * the hand-off's activation. The hand-off stays pending only while that sheet leaves. When `frame` is still the top
- * layer and no sheet is leaving, it ends at once, so a sheet the press opens slides in. Otherwise it ends when the
- * press reaches the window, or next task if a listener stopped it. Throws only what `dismiss` throws.
- */
-export function handOffSheetOnPress({ frame, dismiss }: HandOffSheetOnPressParams): void {
-  pendingHandoff = 'pending';
-  function release(pending: PressPhase & { kind: 'pending' }): void {
-    phase = { kind: 'ended' };
-    window.removeEventListener('click', end);
-    clearTimeout(pending.timer);
-  }
-  function end(): void {
-    if (phase.kind === 'ended') {
-      return;
-    }
-    release(phase);
-    try {
-      finishHandOff();
-    } finally {
-      endHandOff();
-    }
-  }
-  window.addEventListener('click', end, { once: true });
-  const pending: PressPhase = { kind: 'pending', timer: setTimeout(end, 0) };
-  let phase: PressPhase = pending;
-  dismiss();
-  // Solid 2 batches the close until a microtask, and a hand-off is pending only while the pressed-over sheet leaves,
-  // so a sheet the press opens over a sheet that stays slides in.
-  flush();
-  // A dismiss handler can end the press itself.
-  if (phase !== pending || topLayer() !== frame || leaving.size > 0) {
-    return;
-  }
-  release(pending);
-  endHandOff();
-}
-
-function finishHandOff(): boolean {
-  // Solid 2 batches writes until a microtask, and the opening sheet's effect must read the hand-off while pending.
-  flush();
-  const taken = pendingHandoff === 'taken';
-  // Settled in this task, so both sheets change in the same frame.
-  settleLeaving(taken);
-  flush();
-  return taken;
-}
-
-function endHandOff(): void {
-  pendingHandoff = undefined;
-  // A sheet still held (the activation threw, or one closed during the last flush) closes as without a hand-off
-  // rather than stay up over an inert page.
-  if (leaving.size > 0) {
-    settleLeaving(false);
-    flush();
-  }
-}
-
-function settleLeaving(taken: boolean): void {
-  for (const settle of leaving) {
-    leaving.delete(settle);
-    settle(taken);
-  }
-}
-
-/** True for an opening that `handOffSheet` is running. Read once, as a sheet opens. Never throws. */
-export function takeHandOff(): boolean {
-  if (pendingHandoff !== 'pending') {
-    return false;
-  }
-  pendingHandoff = 'taken';
-  return true;
-}
-
-/**
- * Inside a hand-off, a closing sheet stays up until `settle` says whether another took its place. Returns whether it
- * held the sheet. Never throws.
- */
-export function holdForHandOff(settle: (taken: boolean) => void): boolean {
-  if (pendingHandoff === undefined) {
-    return false;
-  }
-  leaving.add(settle);
-  return true;
 }

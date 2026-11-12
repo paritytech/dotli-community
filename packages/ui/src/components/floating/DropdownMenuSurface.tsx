@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { AnchoredContent } from './AnchoredContent.js';
 import type { MenuState } from './DropdownMenu.js';
 import type { Placement } from './FloatingLayer.js';
-import { handOffSheet } from './SheetFrame.js';
+import { sheetHandOff } from './createSheetHandOff.js';
 import s from './DropdownMenu.module.css';
 
 type MoveFocusParams = {
@@ -42,7 +42,7 @@ export function DropdownMenuSurface(props: {
   return (
     <SheetChoice
       value={select => {
-        handOffSheet(select);
+        sheetHandOff.run(select);
       }}
     >
       <AnchoredContent

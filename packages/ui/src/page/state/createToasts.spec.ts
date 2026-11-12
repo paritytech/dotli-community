@@ -164,6 +164,20 @@ describe('toast store', () => {
     expect(readLeaving()).toEqual([true]);
   });
 
+  it('As a dotli user, I hide the tab at the very end of a countdown, and the toast leaves once I come back', async () => {
+    // Given
+    toasts.push(buildInput({ dismissMs: 1000 }));
+    timers.freeze(1000);
+
+    // When
+    page.setVisibility('hidden');
+    page.setVisibility('visible');
+    await timers.advance(0);
+
+    // Then
+    expect(readLeaving()).toEqual([true]);
+  });
+
   it('As a dotli user, I expand the stack and every countdown pauses until it collapses', async () => {
     // Given
     toasts.push(buildInput());
@@ -222,6 +236,29 @@ describe('toast store', () => {
     expect(onSecondDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dotli user, I close a toast whose onDismiss shows another, and the new one counts down', async () => {
+    // Given
+    const id = toasts.push(
+      buildInput({
+        onDismiss: () => {
+          toasts.push(buildInput({ dismissMs: 1000 }));
+        },
+      }),
+    );
+
+    // When
+    toasts.dismiss(id);
+
+    // Then
+    expect(readLeaving()).toEqual([true, false]);
+
+    // When
+    await timers.advance(1000);
+
+    // Then
+    expect(readLeaving()).toEqual([true, true]);
+  });
+
   it('As a dotli user, I close a toast whose onDismiss throws and it still leaves, and the error is reported, logged and counted', () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
@@ -246,6 +283,28 @@ describe('toast store', () => {
     expect(sentry.counted('listener.delivery')).toEqual([
       { outcome: 'error', reason: 'TypeError', owner: 'toast.dismiss' },
     ]);
+  });
+
+  it('As a dotli user, I dismiss all and a toast whose onDismiss throws does not stop the next toast from being told', () => {
+    // Given two toasts, the first of which throws on dismiss
+    const reports = recordReports({ onFinished: onTestFinished });
+    const onSecondDismiss = vi.fn();
+    toasts.push(
+      buildInput({
+        onDismiss: () => {
+          throw new TypeError('callback broke');
+        },
+      }),
+    );
+    toasts.push(buildInput({ onDismiss: onSecondDismiss }));
+
+    // When I dismiss all
+    toasts.dismissAll();
+
+    // Then both left, and the second was still told
+    expect(readLeaving()).toEqual([true, true]);
+    expect(onSecondDismiss).toHaveBeenCalledTimes(1);
+    expect(reports.exceptions).toMatchObject([{ step: 'listener' }]);
   });
 
   it('As a dotli integrator, I remove a toast and clear the rest and the store empties without callbacks', async () => {

@@ -7,7 +7,7 @@ import { lockScroll } from '../createScrollLock.js';
 import { containTab, isFocusLostOrInside } from '../focus.js';
 import { ModalFocusFallback } from './layerContext.js';
 import { hideLayer, setLayerLayout, showLayer, topLayer, type LayerLayout } from './modalStack.js';
-import { handOffSheetOnPress } from './SheetFrame.js';
+import { sheetHandOff } from './createSheetHandOff.js';
 import s from './ModalLayer.module.css';
 
 export type ModalLayerProps = {
@@ -67,7 +67,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     ) {
       return;
     }
-    handOffSheetOnPress({ frame, dismiss: props.onDismiss });
+    const pressed = frame;
+    sheetHandOff.press({ dismiss: props.onDismiss, isTop: () => topLayer() === pressed });
   }
 
   function hide(): void {

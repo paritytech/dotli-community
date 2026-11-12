@@ -150,7 +150,7 @@ export function createModals() {
     open,
     /**
      * Answers the dialog `id` with `result` and, for one with an input, `value`. A dialog already settled is ignored.
-     * A `handoff` that throws is reported and the dialog closes as without one. Never throws.
+     * A `handoff` that throws is reported and the dialog closes as without one.
      */
     settle,
     /**
@@ -160,9 +160,9 @@ export function createModals() {
      */
     refuseAll,
     /**
-     * Rejects every open dialog with an AbortError, then tells each handed-off view `aborted`. Never throws, as
-     * `closed` must not. A `closed` that throws anyway propagates after every open dialog has rejected, and the views
-     * after it are not told. Safe to repeat. The queue works as a fresh one afterwards.
+     * Rejects every open dialog with an AbortError, then tells each handed-off view `aborted`. A `closed` must not
+     * throw. One that throws anyway propagates after every open dialog has rejected, and the views after it are not
+     * told. Safe to repeat. The queue works as a fresh one afterwards.
      */
     dispose,
   };
