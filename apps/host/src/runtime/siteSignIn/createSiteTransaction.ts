@@ -179,8 +179,31 @@ export function createSiteTransactionAction({
       ),
     );
   }
+  /** Builds the decode the review showed, so the phone signs the call the user confirmed. */
+  function startBuild(
+    { run, session, decoded }: DecodedRun,
+    publicKey: Uint8Array,
+    { emitState, update }: Transition<TransactionMachine>,
+  ): void {
+    emitState({ kind: 'building', run, session, decoded });
+    // Async, so a creator that throws fails the build like a signing that rejects.
+    async function build(): Promise<string> {
+      const creator = txSigner.creator(account, {
+        onAsk() {
+          update({ kind: 'asked', session });
+        },
+      });
+      return toHex(await session.create({ call: decoded, creator, publicKey }));
+    }
+    update(
+      build().then(
+        transaction => ({ kind: 'built', transaction }),
+        (error: unknown) => ({ kind: 'buildFailed', error }),
+      ),
+    );
+  }
   /** Lets the chain go at once, rather than once the phone answers. */
-  const endRun: HandlerOf<
+  const endSession: HandlerOf<
     TransactionMachine,
     'opened' | 'decoding' | 'reviewing' | 'sharing' | 'building' | 'approving',
     'ended'
@@ -238,7 +261,7 @@ export function createSiteTransactionAction({
         started({ session }, { main }, transition) {
           startDecode({ main, readKey: null }, session, transition);
         },
-        ended: endRun,
+        ended: endSession,
       },
       openFailed: {
         started({ failure }, _event, { emitState }) {
@@ -276,7 +299,7 @@ export function createSiteTransactionAction({
           }
           transition.emitSideEffect({ kind: 'sessionEnded', session });
         },
-        ended: endRun,
+        ended: endSession,
       },
       reviewing: {
         confirmed({ run, session, decoded }, _event, transition) {
@@ -293,7 +316,7 @@ export function createSiteTransactionAction({
             ),
           );
         },
-        ended: endRun,
+        ended: endSession,
       },
       sharing: {
         keyRead({ run, session, decoded }, { key }, transition) {
@@ -314,7 +337,7 @@ export function createSiteTransactionAction({
           }
           transition.emitSideEffect({ kind: 'sessionEnded', session });
         },
-        ended: endRun,
+        ended: endSession,
       },
       building: {
         asked(state, event, { emitState }) {
@@ -326,12 +349,12 @@ export function createSiteTransactionAction({
         },
         built: finishBuild,
         buildFailed: failBuild,
-        ended: endRun,
+        ended: endSession,
       },
       approving: {
         built: finishBuild,
         buildFailed: failBuild,
-        ended: endRun,
+        ended: endSession,
       },
       done: null,
       refused: null,
@@ -387,10 +410,9 @@ export function createSiteTransactionAction({
       case 'closing':
       case 'ended':
         return { kind: 'idle' };
+      // The extensions fill before the phone is asked, so Approve shows only once it is.
       case 'opening':
       case 'decoding':
-        return signing;
-      // The extensions fill before the phone is asked, so Approve shows only once it is.
       case 'building':
         return signing;
       case 'reviewing':
@@ -413,30 +435,6 @@ export function createSiteTransactionAction({
     }
   });
   state.eq = isShallowEqual;
-
-  /** Builds the decode the review showed, so the phone signs the call the user confirmed. */
-  function startBuild(
-    { run, session, decoded }: DecodedRun,
-    publicKey: Uint8Array,
-    { emitState, update }: Transition<TransactionMachine>,
-  ): void {
-    emitState({ kind: 'building', run, session, decoded });
-    // Async, so a creator that throws fails the build like a signing that rejects.
-    async function build(): Promise<string> {
-      const creator = txSigner.creator(account, {
-        onAsk() {
-          update({ kind: 'asked', session });
-        },
-      });
-      return toHex(await session.create({ call: decoded, creator, publicKey }));
-    }
-    update(
-      build().then(
-        transaction => ({ kind: 'built', transaction }),
-        (error: unknown) => ({ kind: 'buildFailed', error }),
-      ),
-    );
-  }
 
   return {
     route: 'sign',
