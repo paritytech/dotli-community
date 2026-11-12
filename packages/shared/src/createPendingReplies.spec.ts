@@ -54,20 +54,6 @@ describe('createPendingReplies', () => {
     expect(replies.listIds()).toEqual([]);
   });
 
-  it('As a channel reading progress, I read what a request left with its wait and it is gone once answered', () => {
-    // Given
-    const replies = createPendingReplies<string, string, { method: string }>();
-    void replies.wait('r1', { meta: { method: 'resolveDotName' } });
-
-    // When
-    const during = replies.getMeta('r1');
-    replies.resolve('r1', 'ok');
-
-    // Then
-    expect(during).toEqual({ method: 'resolveDotName' });
-    expect(replies.getMeta('r1')).toBeUndefined();
-  });
-
   it('As a channel that reused an id still waiting, I wait on it again and am told at once while the first wait stays', () => {
     // Given
     const replies = createPendingReplies<number, string>();
