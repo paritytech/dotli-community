@@ -630,26 +630,9 @@ export function createProductPermissions({ registry, product, timers = realTimer
           statuses: NAMES.map((name, i) => (landed.includes(name) ? (targets[name] ?? 'ask') : (current[i] ?? 'ask'))),
         })
       : store.shown;
-    const getStatusBefore = (name: EnforceablePermissionName): PermissionStatus | undefined =>
-      before === null ? undefined : getPermissionStatus(before, name);
-    const changed = landed.filter(name => getStatusBefore(name) !== targets[name]);
-    if (changed.length > 0) {
-      emitSideEffect({
-        kind: 'announced',
-        change: {
-          label: job.label,
-          permissions: changed,
-          // A status that was never read may have held a grant, so its change asks for a rebuild.
-          allowChanged: changed.some(name => {
-            const statusBefore = getStatusBefore(name);
-            return (
-              hasFrameDirective(name) &&
-              (statusBefore === undefined || statusBefore === 'granted' || targets[name] === 'granted')
-            );
-          }),
-          fromPrompt: job.kind === 'decision',
-        },
-      });
+    const change = getLandedChange(job, landed, before);
+    if (change !== null) {
+      emitSideEffect({ kind: 'announced', change });
     }
     emitSideEffect(failing.length > 0 ? { kind: 'changeFailed', errors } : { kind: 'changed' });
     const label = getLabelOnShow();
@@ -666,6 +649,34 @@ export function createProductPermissions({ registry, product, timers = realTimer
       emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
     }
   }
+}
+
+/** The change a write run made with the names that `landed`, against the statuses `before` it, or null for none. */
+function getLandedChange(
+  job: ChangeJob | DecisionJob,
+  landed: readonly EnforceablePermissionName[],
+  before: readonly PermissionStatus[] | null,
+): PermissionsChange | null {
+  const targets = getTargets(job);
+  const getStatusBefore = (name: EnforceablePermissionName): PermissionStatus | undefined =>
+    before === null ? undefined : getPermissionStatus(before, name);
+  const changed = landed.filter(name => getStatusBefore(name) !== targets[name]);
+  if (changed.length === 0) {
+    return null;
+  }
+  return {
+    label: job.label,
+    permissions: changed,
+    // A status that was never read may have held a grant, so its change asks for a rebuild.
+    allowChanged: changed.some(name => {
+      const statusBefore = getStatusBefore(name);
+      return (
+        hasFrameDirective(name) &&
+        (statusBefore === undefined || statusBefore === 'granted' || targets[name] === 'granted')
+      );
+    }),
+    fromPrompt: job.kind === 'decision',
+  };
 }
 
 /** The statuses read and the product they belong to, or undefined while none are read. Never throws. */
