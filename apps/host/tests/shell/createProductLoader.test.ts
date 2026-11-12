@@ -25,6 +25,7 @@ import { rethrow } from '../../src/testing/rethrow.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
 import { pageLoading } from '../../src/createLoadingController.js';
 import type { NameSource } from '../../src/createNameSource.js';
+import { createLoadTelemetry } from '../../src/createLoadTelemetry.js';
 import { createProductLoader } from '../../src/createProductLoader.js';
 import type { PageCidCache } from '../../src/createPageCidCache.js';
 import type { ProductFrame } from '../../src/runtime/createProductFrame.js';
@@ -521,6 +522,22 @@ describe('createProductLoader', () => {
     expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
   });
 
+  it('As a visitor with the app open whose frame throws as it halts, I meet a protocol frame from a newer release and still see the reload screen', async () => {
+    // Given an app on screen whose frame throws as it halts
+    const { loader, ports, failures, refuseWire } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+    ports.product.halt.mockImplementation(() => {
+      throw new Error('the frame threw as it halted');
+    });
+
+    // When
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await waitForStatus(productState.store, product => product.status === 'error');
+
+    // Then
+    expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
+  });
+
   it('As an operator, I see a failure screen that throws after the app was on screen captured and counted', async () => {
     // Given a loader whose failure screen throws, and an app that was on screen
     const { loader, refuseWire, captured, counted } = setupLoader({
@@ -720,13 +737,20 @@ function setupLoader(params: Params = {}) {
   const loader = createProductLoader({
     backend: params.backend ?? 'smoldot-direct',
     skipCidCache: params.skipCidCache ?? false,
-    flowId: 'boot-1',
-    startedAt: 0,
+    report: createLoadTelemetry({
+      backend: params.backend ?? 'smoldot-direct',
+      skipCidCache: params.skipCidCache ?? false,
+      flowId: 'boot-1',
+      startedAt: 0,
+      blockRelay: ports.content,
+      timers,
+      now: timers.now,
+      debugBus: bus,
+    }).report,
     names,
     productFrame: ports.product,
     bridge: ports.core,
     sandboxLoad: ports.sandbox,
-    blockRelay: ports.content,
     cidCache,
     bitswap: { get: () => new Promise<Uint8Array>(() => undefined) },
     recents: {
@@ -757,8 +781,6 @@ function setupLoader(params: Params = {}) {
       };
     },
     timers,
-    now: timers.now,
-    debugBus: bus,
   });
   return {
     loader,

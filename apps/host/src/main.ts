@@ -54,6 +54,7 @@ import { loadResolve } from '@dotli/resolver';
 import { createReporter } from '@dotli/metrics';
 import { startShellState } from './startShellState.js';
 import { createProductLoader } from './createProductLoader.js';
+import { createLoadTelemetry } from './createLoadTelemetry.js';
 import { createPageCidCache, type EarlyCidRead } from './createPageCidCache.js';
 import { startSandboxContent } from './startSandboxContent.js';
 import { watchSandboxLoad, type SandboxLoad } from './watchSandboxLoad.js';
@@ -232,14 +233,18 @@ async function openProduct({ route, shell, cidRead }: OpenProductParams): Promis
   const loader = createProductLoader({
     backend: settings.backend,
     skipCidCache: settings.cache.skipCidCache,
-    flowId: shell.flowId,
-    startedAt: PAGE_START,
+    report: createLoadTelemetry({
+      backend: settings.backend,
+      skipCidCache: settings.cache.skipCidCache,
+      flowId: shell.flowId,
+      startedAt: PAGE_START,
+      blockRelay: relay,
+    }).report,
     names,
     base,
     productFrame: shell.productFrame,
     bridge,
     sandboxLoad: shell.sandboxLoad,
-    blockRelay: relay,
     cidCache: createPageCidCache({ names, cidRead, runWhenIdle: runWhenPageIdle }),
     bitswap: bridge.hostBitswapClient,
     recents: { record: recentLabels.record },
