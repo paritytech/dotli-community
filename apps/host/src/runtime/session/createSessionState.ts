@@ -152,6 +152,7 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
       coreReport: null,
       flag: 'unknown',
       storeReadFailed: false,
+      // Heard from the build, not from `start`, so a page that never starts still knows whether the last read failed.
       stopReads: store.subscribeSessionReads(failed => {
         machine.update({ kind: 'sessionReadsHeard', failed });
       }),
