@@ -8,13 +8,12 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createStateMachine, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import { reportLocalWalletFailure, walletLocalActivateMetric } from './walletFailure.js';
-import { getLoadReader, pageRole, isPairingOnly, isFlagShared, type PageRole } from './pageRole.js';
-import { signInFlag } from './session/createCoreStorage.js';
-import { reconcilePage, type PresenceReader, type Reconciled } from './session/restoreRule.js';
+import { getLoadReader, isPairingOnly, isFlagShared, type PageRole } from './pageRole.js';
+import type { PresenceReader, Reconciled } from './session/restoreRule.js';
 import { sessionPresenceMetric } from './session/sessionPresenceMetric.js';
 import type { WalletRead } from './session/siteWallet.js';
 import type { SignInFlag } from './session/signInFlag.js';
-import { walletModeState, type WalletModeState } from './state/walletModeState.js';
+import type { WalletModeState } from './state/walletModeState.js';
 
 const walletReport = createReporter({ flow: 'wallet' });
 
@@ -53,25 +52,23 @@ type Caller =
   | { kind: 'read'; resolve: (local: LocalWalletBoot | null) => void; reject: (error: unknown) => void };
 
 /**
- * What the passes so far found, short of an answer to keep. `walletUnread` and `walletRead` hold the first dead
- * session a pass found, since a later pass finds the store already empty, and `last`, what the last pass left.
- * `walletRead` holds the first wallet the frame answered, which set the mode, so a later pass only reconciles the
- * session.
- */
-type Found =
-  | { kind: 'unread' }
-  | { kind: 'walletUnread'; dead: Reconciled['dead']; last: Restored }
-  | { kind: 'walletRead'; wallet: AnsweredWallet; dead: Reconciled['dead']; last: Restored };
-
-/**
- * `passing` runs a pass for `asker`, with the callers `queued` behind it in the order they asked. `kept` is the answer
- * for the page. `servesSites` is whether the window serves a site, so it boots on the stored wallet it otherwise keeps
- * as data.
+ * `idle` and `passing` hold what the passes so far found short of an answer to keep: the first dead session a pass
+ * found, since a later pass finds the store already empty, and the first wallet the frame answered, which set the mode,
+ * so a later pass only reconciles the session. `passing` runs a pass for `asker`, with the callers `queued` behind it
+ * in the order they asked. `kept` is the answer for the page. `bootsOnStored` is whether a stored wallet picks the
+ * mode, which a page that only pairs keeps as data until it serves a site.
  */
 type BootState =
-  | { kind: 'idle'; found: Found; servesSites: boolean }
-  | { kind: 'passing'; found: Found; asker: Caller; queued: readonly Caller[]; servesSites: boolean }
-  | { kind: 'kept'; wallet: AnsweredWallet; answer: Restored; servesSites: boolean };
+  | { kind: 'idle'; dead: Reconciled['dead']; wallet: AnsweredWallet | null; bootsOnStored: boolean }
+  | {
+      kind: 'passing';
+      dead: Reconciled['dead'];
+      wallet: AnsweredWallet | null;
+      bootsOnStored: boolean;
+      asker: Caller;
+      queued: readonly Caller[];
+    }
+  | { kind: 'kept'; wallet: AnsweredWallet; answer: Restored; bootsOnStored: boolean };
 
 type PassingState = Extract<BootState, { kind: 'passing' }>;
 
@@ -87,7 +84,8 @@ type BootEffect =
   | { kind: 'walletUnavailable'; error: unknown }
   | { kind: 'walletForgotten' }
   | { kind: 'modeChanged'; mode: WalletModeState }
-  | { kind: 'restoreKept'; restored: Restored }
+  | { kind: 'flagUnreadable' }
+  | { kind: 'walletKeptAsData' }
   | { kind: 'flagRenewed' }
   | { kind: 'answer'; callers: readonly Caller[]; restored: Restored; local: LocalWalletBoot | null }
   | { kind: 'reject'; caller: Caller; error: unknown };
@@ -97,28 +95,27 @@ type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
 const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
 
+/** A wallet already answered picks the mode again, as the window now boots on a stored local wallet. */
+const serveSites: HandlerOf<BootMachine, 'idle' | 'passing' | 'kept', 'sitesServed'> = (
+  state,
+  _event,
+  { emitState, emitSideEffect },
+) => {
+  emitState({ ...state, bootsOnStored: true });
+  if (state.wallet !== null) {
+    emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(state.wallet, true) });
+  }
+};
+
 /** Builds the restore on load. Building it never throws. */
 export function createWalletBoot({ reconcile, report, flag, role }: Params) {
-  const pairingOnly = isPairingOnly(role);
   const reader: PresenceReader = getLoadReader(role);
-
-  /** A wallet already answered picks the mode again, as the window now boots on a stored local wallet. */
-  const serveSites: HandlerOf<BootMachine, 'idle' | 'passing', 'sitesServed'> = (
-    state,
-    _event,
-    { emitState, emitSideEffect },
-  ) => {
-    emitState({ ...state, servesSites: true });
-    if (state.found.kind === 'walletRead') {
-      emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(state.found.wallet, true) });
-    }
-  };
   const machine = createStateMachine<BootMachine>({
-    initial: { kind: 'idle', found: { kind: 'unread' }, servesSites: false },
+    initial: { kind: 'idle', dead: null, wallet: null, bootsOnStored: !isPairingOnly(role) },
     handlers: {
       idle: {
-        asked({ found, servesSites }, { caller }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'passing', found, asker: caller, queued: [], servesSites });
+        asked(state, { caller }, { emitState, emitSideEffect }) {
+          emitState({ ...state, kind: 'passing', asker: caller, queued: [] });
           emitSideEffect({ kind: 'runPass' });
         },
         sitesServed: serveSites,
@@ -128,30 +125,35 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
           emitState({ ...state, queued: [...state.queued, caller] });
         },
         passed(state, { reconciled }, transition) {
-          const { found, servesSites } = state;
           const { emitState, emitSideEffect } = transition;
-          const dead = (found.kind === 'unread' ? null : found.dead) ?? reconciled.dead;
-          const wallet = found.kind === 'walletRead' ? found.wallet : reconciled.wallet;
-          const last: Restored = { ...reconciled, wallet, dead, local: getLocalWallet(wallet, servesSites) };
+          const dead = state.dead ?? reconciled.dead;
+          const wallet = state.wallet ?? reconciled.wallet;
+          const last: Restored = { ...reconciled, wallet, dead, local: getLocalWallet(wallet, state.bootsOnStored) };
           if (wallet.status === 'failed') {
             emitSideEffect({ kind: 'walletUnavailable', error: wallet.error });
-            answerPass(state, { kind: 'walletUnread', dead, last }, transition);
+            emitSideEffect({ kind: 'modeChanged', mode: { mode: 'app', failure: UNAVAILABLE } });
+            answerPass({ ...state, dead }, last, transition);
             return;
           }
-          if (found.kind !== 'walletRead') {
+          if (state.wallet === null) {
             if (wallet.status === 'unreadable') {
               emitSideEffect({ kind: 'walletForgotten' });
             }
             // It tells the mode even when the session read failed, so cores can boot, and core storage reports that.
-            emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(wallet, servesSites) });
+            emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(wallet, state.bootsOnStored) });
           }
           const { presence, session } = reconciled;
           if (session.status === 'failed') {
-            answerPass(state, { kind: 'walletRead', wallet, dead, last }, transition);
+            answerPass({ ...state, dead, wallet }, last, transition);
             return;
           }
-          emitState({ kind: 'kept', wallet, answer: last, servesSites });
-          emitSideEffect({ kind: 'restoreKept', restored: last });
+          emitState({ kind: 'kept', wallet, answer: last, bootsOnStored: state.bootsOnStored });
+          if (presence === 'unknown' && isFlagShared(role)) {
+            emitSideEffect({ kind: 'flagUnreadable' });
+          }
+          if (wallet.status === 'ok' && last.local === null) {
+            emitSideEffect({ kind: 'walletKeptAsData' });
+          }
           // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
           if (presence === 'present' && (session.blob !== null || wallet.status === 'ok')) {
             emitSideEffect({ kind: 'flagRenewed' });
@@ -170,23 +172,20 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
             caller: state.asker,
             error: new Error('The restore rule failed', { cause: error }),
           });
-          passOn(state, state.found, transition);
+          passOn(state, transition);
         },
         sitesServed: serveSites,
       },
       kept: {
-        asked({ wallet, answer, servesSites }, { caller }, { emitSideEffect }) {
+        asked({ wallet, answer, bootsOnStored }, { caller }, { emitSideEffect }) {
           emitSideEffect({
             kind: 'answer',
             callers: [caller],
             restored: answer,
-            local: getLocalWallet(wallet, servesSites),
+            local: getLocalWallet(wallet, bootsOnStored),
           });
         },
-        sitesServed(state, _event, { emitState, emitSideEffect }) {
-          emitState({ ...state, servesSites: true });
-          emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(state.wallet, true) });
-        },
+        sitesServed: serveSites,
       },
     },
     onEffect(effect) {
@@ -216,7 +215,6 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
             metric: walletLocalActivateMetric,
             reason: 'read',
           });
-          report({ mode: 'app', failure: UNAVAILABLE });
           return;
         case 'walletForgotten':
           reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
@@ -224,17 +222,13 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
         case 'modeChanged':
           report(effect.mode);
           return;
-        case 'restoreKept': {
-          const { presence, wallet, local } = effect.restored;
-          if (presence === 'unknown' && isFlagShared(role)) {
-            walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
-            sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
-          }
-          if (wallet.status === 'ok' && local === null) {
-            walletReport.log.event('local wallet kept as data, page pairs');
-          }
+        case 'flagUnreadable':
+          walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
+          sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
           return;
-        }
+        case 'walletKeptAsData':
+          walletReport.log.event('local wallet kept as data, page pairs');
+          return;
         case 'flagRenewed':
           flag.renew();
           return;
@@ -263,19 +257,6 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       });
     },
   });
-
-  /** The stored wallet the page boots on, or null when there is none or the page keeps it as data. */
-  function getLocalWallet(wallet: WalletRead, servesSites: boolean): LocalWalletBoot | null {
-    return wallet.status === 'ok' && (!pairingOnly || servesSites) ? wallet : null;
-  }
-
-  /** The mode `wallet` picks, with why a wallet that no longer decrypts was forgotten. */
-  function getWalletMode(wallet: AnsweredWallet, servesSites: boolean): WalletModeState {
-    return {
-      mode: getLocalWallet(wallet, servesSites) === null ? 'app' : 'local',
-      failure: getWalletFailure(wallet),
-    };
-  }
 
   return {
     /**
@@ -314,88 +295,32 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
 }
 
 /** Answers the pass's asker with what it left, short of a kept answer, and hands the pass on. */
-function answerPass(
-  state: PassingState,
-  found: Exclude<Found, { kind: 'unread' }>,
-  transition: Transition<BootMachine>,
-): void {
-  transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored: found.last, local: found.last.local });
-  passOn(state, found, transition);
+function answerPass(state: PassingState, last: Restored, transition: Transition<BootMachine>): void {
+  transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored: last, local: last.local });
+  passOn(state, transition);
 }
 
 /** Runs the next queued caller's own pass over what the passes found, or goes idle when none waits. */
-function passOn(
-  { queued, servesSites }: PassingState,
-  found: Found,
-  { emitState, emitSideEffect }: Transition<BootMachine>,
-): void {
-  const [asker, ...rest] = queued;
+function passOn(state: PassingState, { emitState, emitSideEffect }: Transition<BootMachine>): void {
+  const { dead, wallet, bootsOnStored } = state;
+  const [asker, ...queued] = state.queued;
   if (asker === undefined) {
-    emitState({ kind: 'idle', found, servesSites });
+    emitState({ kind: 'idle', dead, wallet, bootsOnStored });
     return;
   }
-  emitState({ kind: 'passing', found, asker, queued: rest, servesSites });
+  emitState({ ...state, asker, queued });
   emitSideEffect({ kind: 'runPass' });
 }
 
-/** Why the wallet `wallet` found was forgotten, or null when it was not. */
-function getWalletFailure(wallet: AnsweredWallet): string | null {
-  switch (wallet.status) {
-    case 'unreadable':
-      return UNREADABLE;
-    case 'ok':
-    case 'none':
-      return null;
-  }
+/** The stored wallet the page boots on, or null when there is none or the page keeps it as data. */
+function getLocalWallet(wallet: WalletRead, bootsOnStored: boolean): LocalWalletBoot | null {
+  return wallet.status === 'ok' && bootsOnStored ? wallet : null;
 }
 
-/**
- * Builds the slot of the page's one wallet boot, which builds the boot on first use, after the page's boot chose its
- * role. Never throws, and each member throws or rejects when used before the page's boot chose its role.
- */
-function createPageWalletBoot() {
-  let boot: WalletBoot | undefined;
-
-  function getBoot(): WalletBoot {
-    boot ??= createWalletBoot({
-      reconcile: reconcilePage,
-      report: walletModeState.set,
-      flag: signInFlag,
-      role: pageRole.get(),
-    });
-    return boot;
-  }
-
-  async function read(): Promise<LocalWalletBoot | null> {
-    return getBoot().read();
-  }
-
-  function serveSites(): void {
-    getBoot().serveSites();
-  }
-
-  async function restore(): Promise<Restored> {
-    return getBoot().restore();
-  }
-
+/** The mode `wallet` picks, with why a wallet that no longer decrypts was forgotten. */
+function getWalletMode(wallet: AnsweredWallet, bootsOnStored: boolean): WalletModeState {
   return {
-    /**
-     * The local wallet the page boots on, or null to boot the pairing host. Rejects before the role is chosen, and when
-     * the restore rule breaks its contract and rejects.
-     */
-    read,
-    /**
-     * The sign-in window serves a site, so its cores boot on a stored local wallet. Throws only before the role is
-     * chosen.
-     */
-    serveSites,
-    /**
-     * Settles once the restore rule ran on the page's copy, with what it left. Rejects before the role is chosen, and
-     * when the restore rule breaks its contract and rejects.
-     */
-    restore,
+    mode: getLocalWallet(wallet, bootsOnStored) === null ? 'app' : 'local',
+    failure: wallet.status === 'unreadable' ? UNREADABLE : null,
   };
 }
-
-/** The page's one wallet boot. */
-export const pageWalletBoot = createPageWalletBoot();

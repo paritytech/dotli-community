@@ -54,7 +54,7 @@ import type { WindowSignOutParams } from './sessionHandoff/signOutInWindow.js';
 import { authState } from './state/authState.js';
 import { signingOutState } from './state/signingOutState.js';
 import { walletModeState } from './state/walletModeState.js';
-import { pageWalletBoot } from './createWalletBoot.js';
+import { pageWalletBoot } from './pageWalletBoot.js';
 import { walletSwitch } from './createWalletSwitch.js';
 
 /** Dynamic import of the container chunk. */
