@@ -10,7 +10,6 @@ import {
   createAsyncTaskPool,
   createDeferred,
   createStateMachine,
-  isRecord,
   type HandlerOf,
   type MachineTypes,
 } from '@dotli/shared';
@@ -25,8 +24,8 @@ import {
   persistPageArchive,
   persistWorkerPage,
 } from './archiveDb.js';
-import type { SetArchiveMessage } from './handOverArchive.js';
 import { lookupServedFile, type ServedArchive } from './lookupServedFile.js';
+import { getSender, hasArchivePayload, isPageMessage, replyToPage, type SetArchiveRequest } from './pageMessages.js';
 import { reportArchiveFailure } from './reportArchiveFailure.js';
 import { unpackArchive } from './unpackArchive.js';
 
@@ -83,35 +82,6 @@ type WorkerEffect =
   | { kind: 'firstRestoreMissed'; error: unknown };
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
-
-/** A handoff as the worker reads it. Each field stays unchecked until it is read. */
-type SetArchiveRequest = {
-  type: typeof APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE;
-  packed?: unknown;
-  index?: unknown;
-  directory?: unknown;
-};
-
-/** The types of a page's message the worker acts on. */
-type PageMessageType =
-  | typeof APP_SERVICE_WORKER_MESSAGES.CLAIM
-  | typeof APP_SERVICE_WORKER_MESSAGES.GET_VERSION
-  | typeof APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE;
-
-/** A page's message the worker acts on. */
-type PageMessage = { type: Exclude<PageMessageType, SetArchiveRequest['type']> } | SetArchiveRequest;
-
-/** The worker's answer to a page's message. */
-type WorkerReply =
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.VERSION; version: string }
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_READY }
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR; reason: string };
-
-const PAGE_MESSAGE_TYPES: readonly PageMessageType[] = [
-  APP_SERVICE_WORKER_MESSAGES.CLAIM,
-  APP_SERVICE_WORKER_MESSAGES.GET_VERSION,
-  APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE,
-];
 
 // The build the worker names when a page asks for its version. A build inlines it as a literal, so the worker's bytes
 // change between releases and the browser never skips the update as byte-identical.
@@ -440,32 +410,6 @@ function getClientArchive({ byClient, workerPages }: Archives, clientId: string)
   return pageId === undefined ? null : (byClient.get(pageId) ?? null);
 }
 
-/** Whether a page's message has a type the worker acts on. */
-function isPageMessage(data: unknown): data is PageMessage {
-  return isRecord(data) && PAGE_MESSAGE_TYPES.some(type => type === data['type']);
-}
-
-/**
- * Answers a page's message on the port it sent, so a late answer cannot settle a later request and no global listener
- * is needed. A page from the previous release sends no port and hears the answer as a message to its page. Throws what
- * posting throws.
- */
-function replyToPage(event: ExtendableMessageEvent, message: WorkerReply): void {
-  const [port] = event.ports;
-  if (port !== undefined) {
-    port.postMessage(message);
-    return;
-  }
-  getSender(event)?.postMessage(message);
-}
-
-/** The page that sent a message, or `null` when no client did. */
-function getSender({ source }: ExtendableMessageEvent): Client | null {
-  // A page the worker controls sends as a `Client`, the one source with an id. No `instanceof` check, since Node has
-  // no `Client` global.
-  return source !== null && 'id' in source ? source : null;
-}
-
 /** The store's records with each page's archive unpacked. */
 function unpackRestored({ pages, workerPages, newest }: PersistedArchives): Archives {
   const byClient = new Map<string, ServedArchive>();
@@ -478,11 +422,4 @@ function unpackRestored({ pages, workerPages, newest }: PersistedArchives): Arch
 /** Whether a request fetches the script of a product's worker. */
 function isWorkerScript(request: Request): boolean {
   return request.destination === 'worker' || request.destination === 'sharedworker';
-}
-
-/** Whether a `SET_ARCHIVE` message carries the packed archive and its index. */
-function hasArchivePayload(
-  data: SetArchiveRequest,
-): data is SetArchiveRequest & Pick<SetArchiveMessage, 'packed' | 'index'> {
-  return data.packed instanceof ArrayBuffer && Array.isArray(data.index);
 }
