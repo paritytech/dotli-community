@@ -13,7 +13,7 @@ import { createArchiveTransport } from './createArchiveTransport.js';
 import { productFrameLayout, type ProductFrameLayout } from './createProductFrameLayout.js';
 import { topbarState } from './state/topbarState.js';
 import { closeDebugMode } from './debugMode.js';
-import { authControl } from './runtime/createAuthController.js';
+import { authControl } from './runtime/authControl.js';
 import { authState } from './runtime/state/authState.js';
 import { pageDiagnostics } from './runtime/createPageDiagnostics.js';
 import { productState } from './runtime/state/productState.js';

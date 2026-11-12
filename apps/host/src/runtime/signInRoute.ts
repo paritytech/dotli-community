@@ -92,8 +92,19 @@ export type AuthModalEvent =
   | { kind: 'phraseLoaded'; round: SignInRound; phrase: InPagePhrase }
   | { kind: 'phraseMissed'; round: SignInRound; reason: string };
 
-/** The auth state's tag and failure kind only, since a failure's reason can carry wallet text. */
-export type AuthModalEffect = { kind: 'authLogged'; tag: DotliAuthState['tag']; failure: LoginFailureKind | null };
+/**
+ * What the controller does once a transition moved the modal. `authLogged` keeps the auth state's tag and failure kind
+ * only, since a failure's reason can carry wallet text.
+ */
+export type AuthModalEffect =
+  | { kind: 'authLogged'; tag: DotliAuthState['tag']; failure: LoginFailureKind | null }
+  | { kind: 'roundEnded'; reason: PageCancelReason }
+  | { kind: 'leaseReleased'; held: LiveLease }
+  | { kind: 'leaseRefused'; release: () => void }
+  | { kind: 'modalShown' }
+  | { kind: 'stepsUnfollowed' }
+  | { kind: 'signOutOpened' }
+  | { kind: 'windowFocused' };
 
 export type AuthModalMachine = MachineTypes<AuthModalLease, AuthModalEvent, AuthModalEffect>;
 

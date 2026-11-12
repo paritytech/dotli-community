@@ -12,7 +12,7 @@ import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { byId, byTestId } from '@dotli/ui/testing';
 import type { AuthCommands } from '../../src/runtime/createAuthController.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
-import { authControl } from '../../src/runtime/createAuthController.js';
+import { authControl } from '../../src/runtime/authControl.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { topbarState } from '../../src/state/topbarState.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
