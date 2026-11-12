@@ -362,9 +362,8 @@ function createTransactionAction(
 ) {
   return createSiteTransactionAction({
     origin: SITE_ORIGIN,
-    genesis: SERVICES.assethub.genesis,
+    request: { account: ACCOUNT, chain: SERVICES.assethub.genesis },
     call: CALL,
-    account: ACCOUNT,
     chain,
     txSigner,
     accountReader,

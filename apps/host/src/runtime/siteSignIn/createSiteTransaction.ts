@@ -7,7 +7,6 @@
 // the phone only after it. The site gets the signed transaction to send itself, and the window never sends it.
 // Nothing of the main account reaches the site.
 
-import type { ProductAccountId } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { computed } from 'nanostores';
 import {
@@ -61,10 +60,8 @@ type CreateSiteTransactionActionParams = Pick<
   CreateSiteTransactionParams,
   'origin' | 'call' | 'chain' | 'txSigner' | 'accountReader'
 > & {
-  /** The product account the site names, which signs the call. */
-  account: ProductAccountId;
-  /** The genesis of the Asset Hub the site asked for. */
-  genesis: string;
+  /** The product account that signs the call, and the genesis of the Asset Hub the site asked for. */
+  request: Pick<SiteSignRequest, 'account' | 'chain'>;
 };
 
 /**
@@ -131,7 +128,7 @@ type TransactionEvent =
   | { kind: 'built'; transaction: string }
   | { kind: 'buildFailed'; error: unknown };
 
-type TransactionEffect = { kind: 'chainCloseFailed'; error: unknown };
+type TransactionEffect = { kind: 'sessionEnded'; session: SiteChainSession };
 
 type TransactionMachine = MachineTypes<TransactionState, TransactionEvent, TransactionEffect>;
 
@@ -146,24 +143,15 @@ export function createSiteTransaction({
 }: CreateSiteTransactionParams): SiteRound {
   return createSiteRound({
     ...round,
-    request: { round: request.round, siteToken: request.siteToken, groupToken: request.groupToken },
-    action: createSiteTransactionAction({
-      origin: round.origin,
-      account: request.account,
-      genesis: request.chain,
-      call,
-      chain,
-      txSigner,
-      accountReader,
-    }),
+    request,
+    action: createSiteTransactionAction({ origin: round.origin, request, call, chain, txSigner, accountReader }),
   });
 }
 
 /** Has the account the site names sign the site's call, and gives the signed transaction without sending it. */
 export function createSiteTransactionAction({
   origin,
-  account,
-  genesis,
+  request: { account, chain: genesis },
   call,
   chain,
   txSigner,
@@ -194,11 +182,11 @@ export function createSiteTransactionAction({
   /** Lets the chain go at once, rather than once the phone answers. */
   const endRun: HandlerOf<
     TransactionMachine,
-    'decoding' | 'reviewing' | 'sharing' | 'building' | 'approving',
+    'opened' | 'decoding' | 'reviewing' | 'sharing' | 'building' | 'approving',
     'ended'
-  > = ({ session }, _event, transition) => {
-    transition.emitState({ kind: 'ended' });
-    closeSession(session, transition);
+  > = ({ session }, _event, { emitState, emitSideEffect }) => {
+    emitState({ kind: 'ended' });
+    emitSideEffect({ kind: 'sessionEnded', session });
   };
   const finishBuild: HandlerOf<TransactionMachine, 'building' | 'approving', 'built'> = (
     { session },
@@ -206,7 +194,7 @@ export function createSiteTransactionAction({
     transition,
   ) => {
     transition.emitState({ kind: 'done', result: { transaction } });
-    closeSession(session, transition);
+    transition.emitSideEffect({ kind: 'sessionEnded', session });
   };
   const failBuild: HandlerOf<TransactionMachine, 'building' | 'approving', 'buildFailed'> = (
     { run, session },
@@ -214,7 +202,7 @@ export function createSiteTransactionAction({
     transition,
   ) => {
     transition.emitState(getBuildOutcome(error, run.readKey));
-    closeSession(session, transition);
+    transition.emitSideEffect({ kind: 'sessionEnded', session });
   };
 
   const machine = createStateMachine<TransactionMachine>({
@@ -250,10 +238,7 @@ export function createSiteTransactionAction({
         started({ session }, { main }, transition) {
           startDecode({ main, readKey: null }, session, transition);
         },
-        ended({ session }, _event, transition) {
-          transition.emitState({ kind: 'ended' });
-          closeSession(session, transition);
-        },
+        ended: endRun,
       },
       openFailed: {
         started({ failure }, _event, { emitState }) {
@@ -289,7 +274,7 @@ export function createSiteTransactionAction({
             });
             transition.emitState({ kind: 'failed', failure, readKey: run.readKey });
           }
-          closeSession(session, transition);
+          transition.emitSideEffect({ kind: 'sessionEnded', session });
         },
         ended: endRun,
       },
@@ -327,7 +312,7 @@ export function createSiteTransactionAction({
             });
             transition.emitState({ kind: 'failed', failure, readKey: run.readKey });
           }
-          closeSession(session, transition);
+          transition.emitSideEffect({ kind: 'sessionEnded', session });
         },
         ended: endRun,
       },
@@ -361,7 +346,7 @@ export function createSiteTransactionAction({
       closing: {
         chainOpened(_state, { session }, transition) {
           transition.emitState({ kind: 'ended' });
-          closeSession(session, transition);
+          transition.emitSideEffect({ kind: 'sessionEnded', session });
         },
         chainFailed(_state, _event, { emitState }) {
           // The round no longer needs the chain, so its failure to open is no failure of the round.
@@ -370,14 +355,19 @@ export function createSiteTransactionAction({
       },
       ended: null,
     },
-    onEffect({ error }) {
-      const failure = new SiteRoundFailure({
-        step: 'chain',
-        retry: false,
-        message: 'Asset Hub could not be closed',
-        cause: error,
-      });
-      reportSiteFailure(failure, SITE_ROUTE_METRICS.sign);
+    onEffect({ session }) {
+      // A close that fails is reported and counted, and never takes the place of how the run ended.
+      try {
+        session.close();
+      } catch (error) {
+        const failure = new SiteRoundFailure({
+          step: 'chain',
+          retry: false,
+          message: 'Asset Hub could not be closed',
+          cause: error,
+        });
+        reportSiteFailure(failure, SITE_ROUTE_METRICS.sign);
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -483,15 +473,6 @@ async function openChain(chain: SiteChain, genesis: string): Promise<ChainEvent>
       cause: error,
     });
     return { kind: 'chainFailed', failure };
-  }
-}
-
-/** Ends a chain session. A close that fails is reported and counted, and never takes the place of how the run ended. */
-function closeSession(session: SiteChainSession, { emitSideEffect }: Transition<TransactionMachine>): void {
-  try {
-    session.close();
-  } catch (error) {
-    emitSideEffect({ kind: 'chainCloseFailed', error });
   }
 }
 
