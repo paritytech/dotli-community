@@ -54,11 +54,7 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     initial: { kind: 'hidden' },
     handlers: {
       hidden: {
-        rested(_state, _event, { emitState, emitSideEffect }) {
-          const timer = new AbortController();
-          emitState({ kind: 'showing', timer });
-          emitSideEffect({ kind: 'startTimer', timer, ms: TOOLTIP_SHOW_MS, ends: 'delayEnded' });
-        },
+        rested: armShow,
         showAsked: showNow,
         disposed: dispose,
       },
@@ -155,7 +151,7 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
 /** Opens at once, ending a pending show or hide. Tells `onChange` only when the tooltip was closed. */
 function showNow(
   state: Extract<TooltipState, { kind: 'hidden' | 'showing' | 'hiding' }>,
-  _event: Extract<TooltipEvent, { kind: 'showAsked' | 'rested' | 'held' | 'delayEnded' }>,
+  _event: TooltipEvent,
   { emitState, emitSideEffect }: Transition<TooltipMachine>,
 ): void {
   emitState({ kind: 'shown' });
@@ -168,7 +164,7 @@ function showNow(
 /** Closes at once, ending a pending show or hide. Tells `onChange` only when the tooltip was open. */
 function hideNow(
   state: Extract<TooltipState, { kind: 'showing' | 'shown' | 'hiding' }>,
-  _event: Extract<TooltipEvent, { kind: 'hideAsked' | 'left' | 'showCancelled' | 'graceEnded' }>,
+  _event: TooltipEvent,
   { emitState, emitSideEffect }: Transition<TooltipMachine>,
 ): void {
   emitState({ kind: 'hidden' });
@@ -178,10 +174,21 @@ function hideNow(
   }
 }
 
+/** Starts the show delay. */
+function armShow(
+  _state: TooltipState,
+  _event: TooltipEvent,
+  { emitState, emitSideEffect }: Transition<TooltipMachine>,
+): void {
+  const timer = new AbortController();
+  emitState({ kind: 'showing', timer });
+  emitSideEffect({ kind: 'startTimer', timer, ms: TOOLTIP_SHOW_MS, ends: 'delayEnded' });
+}
+
 /** Starts the hide grace, restarting one already running. */
 function armHide(
   state: Extract<TooltipState, { kind: 'shown' | 'hiding' }>,
-  _event: Extract<TooltipEvent, { kind: 'left' }>,
+  _event: TooltipEvent,
   { emitState, emitSideEffect }: Transition<TooltipMachine>,
 ): void {
   const timer = new AbortController();
@@ -193,7 +200,7 @@ function armHide(
 /** Ends the unit and its timer, telling `onChange` nothing since its listener is going away. */
 function dispose(
   state: Exclude<TooltipState, { kind: 'disposed' }>,
-  _event: Extract<TooltipEvent, { kind: 'disposed' }>,
+  _event: TooltipEvent,
   { emitState, emitSideEffect }: Transition<TooltipMachine>,
 ): void {
   emitState({ kind: 'disposed' });
