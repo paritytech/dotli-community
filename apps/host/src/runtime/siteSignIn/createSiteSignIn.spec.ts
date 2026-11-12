@@ -9,8 +9,9 @@ import { createSiteGrantStore, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { MainAccount } from './createMainAccountSource.js';
 import type { SiteRequest } from './parseSiteRequest.js';
-import type { SiteScreen } from './createSiteRound.js';
-import { createSiteSignIn, getSiteSignInAction } from './createSiteSignIn.js';
+import type { SiteActionState, SiteScreen } from './createSiteRound.js';
+import { createSiteSignIn, createSiteSignInAction } from './createSiteSignIn.js';
+import type { SiteSignInResult } from './createSiteSignInResult.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
 import { getResult } from '../../testing/getResult.js';
@@ -149,27 +150,22 @@ describe('site sign-in', () => {
 });
 
 describe('site sign-in action', () => {
-  it('As a site, I sign in and get the username of the main account the action runs for, with nothing shown or confirmed', async () => {
-    // Given the sign-in action, and a round that records what the action shows or asks to confirm
-    const action = getSiteSignInAction();
-    const asked: string[] = [];
+  it('As a site, I sign in and get the username of the main account the action runs for, with nothing shown or confirmed', () => {
+    // Given the sign-in action, and the states it moves through
+    const action = createSiteSignInAction();
+    const states: SiteActionState<SiteSignInResult>[] = [];
+    onTestFinished(
+      action.state.listen(state => {
+        states.push(state);
+      }),
+    );
 
-    // When the action runs for the main account
-    const result = await action.run({
-      main: MAIN_ACCOUNT,
-      show(screen) {
-        asked.push(screen.view);
-      },
-      confirmed() {
-        asked.push('confirm');
-        return Promise.resolve();
-      },
-      signal: new AbortController().signal,
-    });
+    // When the action starts for the main account
+    action.start(MAIN_ACCOUNT);
 
-    // Then the result carries the main account's username alone, on the auth route, and nothing was shown or confirmed
-    expect(result).toEqual({ username: MAIN_ACCOUNT.username });
-    expect(asked).toEqual([]);
+    // Then it is done at once with the main account's username alone, on the auth route, and it showed no view to work
+    // on or confirm
+    expect(states).toEqual([{ kind: 'done', result: { username: MAIN_ACCOUNT.username } }]);
     expect(action.route).toBe('auth');
   });
 });

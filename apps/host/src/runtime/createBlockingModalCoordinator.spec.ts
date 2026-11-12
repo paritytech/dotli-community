@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createBlockingModalCoordinator, type BlockingModalCounts } from './createBlockingModalCoordinator.js';
 
@@ -67,6 +69,29 @@ describe('blocking modal queue', () => {
     await expect(failed).rejects.toThrow('render failed');
     await expect(completed).resolves.toBe('next');
     expect(throwing).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, I report the counts to a store whose listener throws, and every prompt still answers and the next one shows', async () => {
+    // Given counts reported to a store whose listener throws on every change
+    const reports = recordReports({ onFinished: onTestFinished });
+    const counts = atom<BlockingModalCounts>({ waiting: 0, active: false });
+    onTestFinished(
+      counts.listen(() => {
+        throw new Error('listener failed');
+      }),
+    );
+    const scope = createBlockingModalCoordinator({ report: next => counts.set(next) }).createScope();
+    onTestFinished(() => {
+      scope.dispose();
+    });
+
+    // When two prompts are queued
+    const first = scope.enqueue(() => 'first');
+    const second = scope.enqueue(() => 'second');
+
+    // Then both answer, and each throw is reported as the counts' own
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(new Set(reports.exceptions.map(({ step }) => step))).toEqual(new Set(['counts']));
   });
 
   it('As a dotli integrator, I run a prompt that disposes its own scope and then rejects, and it settles as aborted', async () => {
@@ -160,6 +185,29 @@ describe('blocking modal queue, waiting count', () => {
     expect(answer).toBe('answered');
     expect(next).not.toHaveBeenCalled();
     expect(bar.latest()).toEqual({ waiting: 1, active: true });
+  });
+
+  it('As a user, I hold the slot past an answer and the bar is told only when the counts change', async () => {
+    // Given a prompt that holds the slot past its answer, with every report seen
+    const seen: BlockingModalCounts[] = [];
+    const bar = createCountsSink({ onReport: counts => seen.push(counts) });
+    const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
+    const step = createDeferred<undefined>();
+
+    // When it answers and then what it holds settles
+    await scope.enqueue((_signal, hold) => {
+      hold(step.promise);
+      return 'answered';
+    });
+    step.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(bar.latest()).toEqual({ waiting: 0, active: false });
+    });
+
+    // Then no report repeats the one before it
+    expect(
+      seen.filter((counts, index) => index > 0 && JSON.stringify(counts) === JSON.stringify(seen[index - 1])),
+    ).toEqual([]);
   });
 
   it('As a dotli integrator, I hold the slot past my answer and the next prompt shows once what I hold settles', async () => {

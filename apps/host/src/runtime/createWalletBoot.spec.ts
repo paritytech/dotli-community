@@ -53,15 +53,11 @@ function createBootHarness({ answer, role = 'page' }: CreateBootHarnessParams) {
   const reconcile = vi.fn((_reader: PresenceReader) => Promise.resolve(answer()));
   const flag = { renew: vi.fn() };
   const mode = atom<WalletModeState>({ mode: 'app', failure: null });
-  const walletBoot = createWalletBoot({
-    reconcile,
-    report: value => {
-      mode.set(value);
-    },
-    flag,
-    role,
+  const report = vi.fn((value: WalletModeState) => {
+    mode.set(value);
   });
-  return { reconcile, flag, mode, walletBoot, captures, counted };
+  const walletBoot = createWalletBoot({ reconcile, report, flag, role });
+  return { reconcile, flag, mode, report, walletBoot, captures, counted };
 }
 
 describe('wallet boot', () => {
@@ -222,6 +218,64 @@ describe('wallet boot', () => {
     expect(first).toEqual(WALLET);
     expect(mode.get()).toEqual({ mode: 'local', failure: null });
     expect(reconcile).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a page whose session read failed, I restore twice and each restore runs its own pass, while the mode is reported once', async () => {
+    // Given a store that cannot answer the session read
+    const { reconcile, report, walletBoot } = createBootHarness({
+      answer: () => buildReconciled(WALLET, { session: STORE_DOWN }),
+    });
+
+    // When the page restores twice
+    const first = await walletBoot.restore();
+    const second = await walletBoot.restore();
+
+    // Then each restore answers its own pass, and the mode went out once
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(second).not.toBe(first);
+    expect(second.session).toEqual(STORE_DOWN);
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a page whose restore rule broke a pass after my wallet was read, I keep the first wallet and the mode is reported again for the served sites', async () => {
+    // Given a rule that reads my wallet but not the session on the first pass, breaks on the second, then finds a newer wallet
+    const newer = { ...WALLET, entropy: Uint8Array.from({ length: 16 }, (_, index) => index + 101) };
+    const { reconcile, report, walletBoot } = createBootHarness({
+      answer: () => buildReconciled(newer),
+    });
+    reconcile
+      .mockImplementationOnce(() => Promise.resolve(buildReconciled(WALLET, { session: STORE_DOWN })))
+      .mockImplementationOnce(() => Promise.reject(new Error('restore rule broke')));
+    await walletBoot.restore();
+    await walletBoot.restore().catch(() => undefined);
+
+    // When the sign-in window serves sites, then the page restores again
+    walletBoot.serveSites();
+    const restored = await walletBoot.restore();
+
+    // Then the mode was reported again for the first wallet, and the restore kept it over the newer one
+    expect(restored.wallet).toEqual(WALLET);
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenLastCalledWith({ mode: 'local', failure: null });
+  });
+
+  it('As an operator, I see a restore rule that rejects reported, and the restore that ran it fails', async () => {
+    // Given a restore rule that rejects once, then finds my local wallet
+    const broken = new Error('restore rule broke');
+    const { reconcile, walletBoot, captures } = createBootHarness({ answer: () => buildReconciled(WALLET) });
+    reconcile.mockImplementationOnce(() => Promise.reject(broken));
+
+    // When the page restores, then restores again
+    const failure: unknown = await walletBoot.restore().catch((error: unknown) => error);
+    const next = await walletBoot.restore();
+
+    // Then the first restore fails with the rejection as its cause, the defect is reported and the next restore runs
+    // a pass of its own
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ cause: broken });
+    expect(captures.exception).toHaveBeenCalledWith(broken, expect.objectContaining({ step: 'restore' }));
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(next.wallet).toEqual(WALLET);
   });
 
   it('As an operator, I watch a page whose session read failed on load restore later and see an unreadable cookie counted once', async () => {

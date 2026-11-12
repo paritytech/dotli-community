@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createDeferred } from '@dotli/shared';
+import { recordReports } from '@dotli/metrics/testing';
 import { catchError } from '@dotli/shared/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ResponderState } from '../sessionHandoff/createResponder.js';
 import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './createRedirectResponder.js';
 import type { sealRedirect } from './siteSeal.js';
@@ -268,5 +269,34 @@ describe('redirect responder', () => {
 
     // Then nothing threw
     expect(thrown).toBeUndefined();
+  });
+
+  it('As an operator, I see a redirect responder whose navigation throws reported as a defect', async () => {
+    // Given a responder whose navigation throws, once its seal resolves
+    const reports = recordReports({ onFinished: onTestFinished });
+    const sealed = createDeferred<string>();
+    const navigating = createDeferred<undefined>();
+    const responder = createRedirectResponder({
+      origin: ORIGIN,
+      returnTo: RETURN_TO,
+      sitePublicKey: SITE_PUBLIC_KEY,
+      round: ROUND,
+      seal: () => sealed.promise,
+      forgetRequest: () => undefined,
+      navigate() {
+        navigating.resolve(undefined);
+        throw new Error('navigate failed');
+      },
+      failed: () => undefined,
+    });
+
+    // When it sends a result and the seal resolves
+    responder.send({ account: 'a' });
+    sealed.resolve(SEALED);
+    await navigating.promise;
+
+    // Then the throw is reported as a defect and the delivery is sent
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(responder.delivery()).toBe('sent');
   });
 });

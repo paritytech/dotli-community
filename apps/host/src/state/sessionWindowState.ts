@@ -80,34 +80,34 @@ export type WindowScreen =
 
 /** What the window's controls ask of its flow. Only the phrase import rejects, and every failure is reported. */
 export type WindowIntents = {
-  /** Signs in with what Continue offers. Never rejects: a failure is reported and shown on the window. */
+  /** Signs in with what Continue offers. A failure is reported and shown on the window. */
   continueWithStored(): Promise<void>;
   /**
-   * Signs the offered account out, telling the phone, to sign in another one. Never rejects: a failure is reported and
-   * shown on the window.
+   * Signs the offered account out, telling the phone, to sign in another one. A failure is reported and shown on the
+   * window.
    */
   useAnotherAccount(): Promise<void>;
   /**
-   * After Use another account could not tell the phone, goes on to sign in another account anyway. Never rejects: a
-   * failure is reported and shown on the window.
+   * After Use another account could not tell the phone, goes on to sign in another account anyway. A failure is
+   * reported and shown on the window.
    */
   goOnWithoutPhone(): Promise<void>;
   /**
-   * Whether `phrase` is a recovery phrase, false until the check loaded, which it has once the phrase view shows. Never
-   * throws.
+   * Whether `phrase` is a recovery phrase, false until the check loaded, which it has once the phrase view shows.
    */
   isValidPhrase(phrase: string): boolean;
   /** Rejects when the phrase could not be imported, which is already reported, so the form only says so. */
   importPhrase(phrase: string): Promise<void>;
-  /** Back to what the store offers, or to the pairing. Never rejects: a failure is reported and shown on the window. */
+  /** Back to what the store offers, or to the pairing. A failure is reported and shown on the window. */
   closePhrase(): Promise<void>;
   /**
    * From the failed view, decides again what to show from the main store, and after a failed pairing pairs again.
-   * After a failed pairing, a sign-in stored meanwhile is offered first. Never rejects: a failure is reported and shown
-   * on the window.
+   * After a failed pairing, a sign-in stored meanwhile is offered first. Over a failed pairing whose login still runs,
+   * it resolves once the retry is recorded, before the login answers, and the window decides once the login answered:
+   * a paired login finishes, any other answer decides again. A failure is reported and shown on the window.
    */
   retry(): Promise<void>;
-  /** Ends a round the user gave up on and closes the window. Never throws. */
+  /** Ends a round the user gave up on and closes the window. */
   cancel(): void;
 };
 

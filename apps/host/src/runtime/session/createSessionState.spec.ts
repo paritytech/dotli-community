@@ -271,10 +271,12 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
-  it('As a signed-in user, I lose the shared store and stay signed in', () => {
-    // Given
+  it('As a signed-in user, I lose the shared store and stay signed in', async () => {
+    // Given a page signed in from its saved copy
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     onTestFinished(session.start());
-    auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    await waitForStatus(auth, state => state.tag === 'Connected');
 
     // When
     shared.setStatus('unavailable');
@@ -356,6 +358,42 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
+  it('As a page, I change the copy twice while a read runs and the later read is the last word', async () => {
+    // Given a page whose core reported signed out, each read answering the copy as it was when the read began
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Disconnected');
+    reportFromCore({ tag: 'Disconnected' });
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    onTestFinished(() => {
+      gate.resolve();
+    });
+    shared.readGate = gate.promise;
+    const begun: PromiseWithResolvers<void> = Promise.withResolvers();
+    const read = shared.read.bind(shared);
+    shared.read = async key => {
+      const held = shared.entries.get(key) ?? null;
+      begun.resolve();
+      await read(key);
+      return held;
+    };
+    const states = recordNotified(auth);
+    const countSessionReads = (): number => shared.reads.filter(key => key === SHARED_CORE_SESSION_KEY).length;
+    const readsBefore = countSessionReads();
+    shared.changeFromOtherTab(SESSION_KEY, '0x010203');
+    await begun.promise;
+
+    // When the copy changes twice while that read runs, the last change leaving it empty
+    shared.changeFromOtherTab(SESSION_KEY, '0x040506');
+    shared.changeFromOtherTab(SESSION_KEY, '');
+    gate.resolve();
+    await waitForAuth(() => states.length === 2);
+
+    // Then the read that began first showed its sign-in, and one read after both changes withdrew it
+    expect(states).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }, { tag: 'Disconnected' }]);
+    expect(countSessionReads() - readsBefore).toBe(2);
+  });
+
   it('As a user whose page refreshes its session after a change, I see the cached account read only after the session', async () => {
     // Given a page started and settled with no session, then every read held and the first one watched
     onTestFinished(session.start());
@@ -397,24 +435,37 @@ describe('session state', () => {
 
   it('As a dotli integrator, I start session state twice and it keeps one subscription to the shared store', () => {
     // Given session state started once
-    const first = session.start();
+    session.start();
     const once = shared.statusListenerCount();
 
     // When it starts again
     const second = session.start();
 
     // Then
-    expect(second).toBe(first);
     expect(shared.statusListenerCount()).toBe(once);
 
-    // When the one stop runs
-    first();
+    // When the second call's stop runs
+    second();
 
-    // Then
+    // Then the follow both calls share has ended
     expect(shared.statusListenerCount()).toBe(0);
   });
 
-  it('As a dotli integrator, I dispose session state and a session read that failed after it leaves a core sign-out a plain logout', async () => {
+  it('As a dotli integrator, I stop session state with the stop of a follow that ended and the follow begun since goes on', () => {
+    // Given session state started and stopped, then started again
+    const ended = session.start();
+    ended();
+    onTestFinished(session.start());
+    const following = shared.statusListenerCount();
+
+    // When the ended follow's stop runs again
+    ended();
+
+    // Then
+    expect(shared.statusListenerCount()).toBe(following);
+  });
+
+  it('As a dotli integrator, I dispose session state and a session read that failed and a core sign-out after it leave the auth state as it was', async () => {
     // Given a disposed session state
     const storage = coreStorage.createAdapters();
     session.dispose();
@@ -424,8 +475,25 @@ describe('session state', () => {
     await storage.readCoreStorage(AUTH_SESSION_KEY);
     reportFromCore({ tag: 'Disconnected' });
 
-    // Then the page shows a plain logout rather than an unreachable store
-    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+    // Then the page still shows the state it had before the dispose
+    expect(auth.get()).toEqual(RESTORING);
+  });
+
+  it('As a page, I dispose the session state while a read runs and the read writes nothing', async () => {
+    // Given a stored session whose read on load is held in flight
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    shared.readGate = gate.promise;
+    session.start();
+
+    // When the session state is disposed and the read then answers
+    session.dispose();
+    gate.resolve();
+    await session.retryRead();
+
+    // Then the page still shows the state it had before the dispose
+    expect(auth.get()).toEqual(RESTORING);
   });
 
   it('As a dotli integrator, I dispose started session state and it no longer follows the shared store or its stored session', async () => {
@@ -690,9 +758,11 @@ describe('session state', () => {
   });
 
   it('As a user whose logout found no core, I am shown signed out and my cached account stays for the next boot', async () => {
-    // Given
+    // Given a page signed in from its saved copy
+    shared.entries.set(SESSION_KEY, '0x010203');
     shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
-    auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Connected');
 
     // When
     session.reportSignedOut();
@@ -989,9 +1059,11 @@ describe('session state', () => {
       expect(elsewhere).toBe(false);
     });
 
-    it('As a signed-in user, I come back to the page and later sign out and nothing waits at either point', () => {
-      // Given a signed-in page
-      auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    it('As a signed-in user, I come back to the page and later sign out and nothing waits at either point', async () => {
+      // Given a page signed in from its saved copy
+      shared.entries.set(SESSION_KEY, '0x010203');
+      onTestFinished(session.start());
+      await waitForStatus(auth, state => state.tag === 'Connected');
 
       // When a recheck reads the flag present
       session.reportFlag('present');

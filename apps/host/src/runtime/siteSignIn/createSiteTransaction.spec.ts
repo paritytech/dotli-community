@@ -5,8 +5,8 @@ import { asProductId, type ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { TxCreator } from 'polkadot-api';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { hashBlake2b, createDeferred, fromHex, toHex } from '@dotli/shared';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
+import { hashBlake2b, createDeferred, fromHex, toHex, waitForStatus } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -15,9 +15,13 @@ import type { MainAccount } from './createMainAccountSource.js';
 import { toDisplayAccount } from './toDisplayAccount.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import { SiteChainError, type SiteChain, type SiteDecodedCall } from './createSiteChain.js';
-import type { SiteScreen } from './createSiteRound.js';
+import type { SiteAction, SiteActionScreen, SiteScreen } from './createSiteRound.js';
 import { SiteAccountReadError, SiteAccountRejectedError, type SiteAccountReader } from './createSiteAccountReader.js';
-import { createSiteTransaction, getSiteTransactionAction } from './createSiteTransaction.js';
+import {
+  createSiteTransaction,
+  createSiteTransactionAction,
+  type SiteTransactionResult,
+} from './createSiteTransaction.js';
 import { SiteTxError, type SiteTxSigner } from './createSiteTxSigner.js';
 import { createRecordingResponder, createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
@@ -48,6 +52,8 @@ type CreateFakeChainParams = {
   buildFailures?: Error[];
   /** What each build waits on while it fills the extensions, before it asks the creator. */
   filling?: () => Promise<void>;
+  /** What each decode waits on before it decodes. */
+  decoding?: () => Promise<void>;
   /** Where each decode and build adds its name. */
   steps?: string[];
 };
@@ -148,18 +154,19 @@ function createFakeChain({ steps = [], ...script }: CreateFakeChainParams) {
       record.opened += 1;
       allClosed = createDeferred<undefined>();
       return Promise.resolve({
-        decode() {
+        async decode() {
           record.decoded += 1;
           steps.push('decode');
+          await script.decoding?.();
           if (script.decodeFailure !== undefined) {
-            return Promise.reject(script.decodeFailure);
+            throw script.decodeFailure;
           }
           const decoded: SiteDecodedCall = {
             display: DISPLAY,
             transaction: { create: () => Promise.reject(new Error('The fake chain builds through its session')) },
           };
           decodedCalls.push(decoded);
-          return Promise.resolve(decoded);
+          return decoded;
         },
         async create({ call: decoded, creator, publicKey }) {
           record.built += 1;
@@ -342,6 +349,42 @@ async function signOnReview(round: StartedTransaction): Promise<void> {
   round.flow.confirm();
 }
 
+/**
+ * The transaction action on Asset Hub `chain`, whose creator signs at once and whose account reader reads the site
+ * account at once, unless the test gives its own.
+ */
+function createTransactionAction(
+  chain: SiteChain,
+  {
+    txSigner = createFakeTxSigner().txSigner,
+    accountReader = createFakeAccountReader().accountReader,
+  }: { txSigner?: SiteTxSigner; accountReader?: Pick<SiteAccountReader, 'account'> } = {},
+) {
+  return createSiteTransactionAction({
+    origin: SITE_ORIGIN,
+    genesis: SERVICES.assethub.genesis,
+    call: CALL,
+    account: ACCOUNT,
+    chain,
+    txSigner,
+    accountReader,
+  });
+}
+
+/** The action of a site's transaction. */
+type TransactionAction = SiteAction<SiteTransactionResult, 'signed'>;
+
+/** Resolves once `action` shows `view`. */
+async function waitForActionView(action: TransactionAction, view: SiteActionScreen['view']): Promise<void> {
+  await waitForStatus(action.state, current => current.kind === 'working' && current.screen.view === view);
+}
+
+/** Confirms the action's review once it shows. */
+async function confirmOnReview(action: TransactionAction): Promise<void> {
+  await waitForActionView(action, 'site-review');
+  action.confirm();
+}
+
 describe('site transaction', () => {
   it("As a user on a site's transaction, I am still asked for consent while the window already opens Asset Hub", async () => {
     // Given a site of no group the main store keeps no grant for
@@ -361,9 +404,9 @@ describe('site transaction', () => {
     await round.waitForView('consent');
 
     // When the user declines and the window closes
-    // The round ends before it closes the window, so the session's close is queued ahead of this wait.
     round.flow.decline();
     await round.closed;
+    await round.chain.waitForClosed();
 
     // Then the session the round opened was closed once and nothing was decoded
     expect(round.chain.record).toMatchObject({ opened: 1, closed: 1, decoded: 0 });
@@ -522,10 +565,9 @@ describe('site transaction', () => {
     const failed = round.flow.screen.get();
 
     // When the user tries again and signs once more
-    // The retry runs until the round ends, so the user signs while it runs.
-    const retried = round.flow.retry();
+    // The retry resolves once the action has no work in flight, here once the review shows.
+    await round.flow.retry();
     await signOnReview(round);
-    await retried;
     await round.closed;
 
     // Then the failure offered Try again, the retry opened the chain again and built again, the site account was read
@@ -608,9 +650,8 @@ describe('site transaction', () => {
     const failed = round.flow.screen.get();
 
     // When the user tries again
-    // The retry runs until the round ends, so the review shows while it runs.
-    void round.flow.retry();
-    await round.waitForView('site-review');
+    // The retry resolves once the action has no work in flight, here once the review shows.
+    await round.flow.retry();
 
     // Then the failure offered Try again, the window asked for Asset Hub twice, the second open succeeded, and the
     // review shows
@@ -785,39 +826,20 @@ describe('site transaction', () => {
 
 describe('site transaction action', () => {
   it('As a user who ended the round before its transaction ran, I leave the chain session closed once and nothing is asked of it or the phone', async () => {
-    // Given the transaction action of a round that already ended
+    // Given the transaction action of a round that prepared its chain, which opened
     const chain = createFakeChain({});
     const { accountReader, accounts } = createFakeAccountReader();
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
-      txSigner: createFakeTxSigner().txSigner,
-      accountReader,
-    });
-    const ended = new AbortController();
-    ended.abort();
-    const shown: string[] = [];
+    const action = createTransactionAction(chain.chain, { accountReader });
+    action.prepare();
+    await action.await();
 
-    // When the action runs
-    const outcome: unknown = await action
-      .run({
-        main: { owner: MAIN_OWNER, username: null },
-        show(screen) {
-          shown.push(screen.view);
-        },
-        confirmed: () => Promise.resolve(),
-        signal: ended.signal,
-      })
-      .catch((caught: unknown) => caught);
+    // When the round ends
+    action.end();
+    await action.await();
 
-    // Then the run rejected with the round's end, the session closed once, and nothing was decoded, read or shown
-    expect(outcome).toBe(ended.signal.reason);
+    // Then the session closed once, and nothing was decoded or read
     expect(chain.record).toMatchObject({ opened: 1, closed: 1, decoded: 0 });
     expect(accounts).toEqual([]);
-    expect(shown).toEqual([]);
   });
 
   it('As a user who signs in again with another account before Try again, I retry and the site account is read again for the nonce', async () => {
@@ -827,13 +849,7 @@ describe('site transaction action', () => {
     const secondKey = new Uint8Array(32).fill(0x32);
     const keys = [firstKey, secondKey];
     const accounts: ProductAccountId[] = [];
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
-      txSigner: createFakeTxSigner().txSigner,
+    const action = createTransactionAction(chain.chain, {
       accountReader: {
         account(account) {
           accounts.push(account);
@@ -841,20 +857,18 @@ describe('site transaction action', () => {
         },
       },
     });
-    const runFor = (main: MainAccount) =>
-      action.run({
-        main,
-        show: () => undefined,
-        confirmed: () => Promise.resolve(),
-        signal: new AbortController().signal,
-      });
-    await runFor(MAIN_ACCOUNT).catch(() => undefined);
+    action.start(MAIN_ACCOUNT);
+    await confirmOnReview(action);
+    await action.await();
     const otherMain: MainAccount = { owner: toHex(hashBlake2b(fromHex(`0x${'b'.repeat(64)}`), 32)), username: null };
 
     // When the round runs again for the other main account
-    await runFor(otherMain);
+    action.start(otherMain);
+    await confirmOnReview(action);
+    await action.await();
 
     // Then the site account was read again, and the second build filled the nonce from the second key
+    expect(action.state.get()).toMatchObject({ kind: 'done' });
     expect(accounts).toEqual([ACCOUNT, ACCOUNT]);
     expect(chain.builtKeys).toEqual([firstKey, secondKey]);
   });
@@ -863,34 +877,18 @@ describe('site transaction action', () => {
     // Given the transaction action waiting on a phone that has not answered yet
     const chain = createFakeChain({});
     const built = createDeferred<string>();
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
+    const action = createTransactionAction(chain.chain, {
       txSigner: createFakeTxSigner({ builds: [() => built.promise] }).txSigner,
-      accountReader: createFakeAccountReader().accountReader,
     });
-    const ended = new AbortController();
-    const signing = createDeferred<undefined>();
-    const running = action.run({
-      main: { owner: MAIN_OWNER, username: null },
-      show(screen) {
-        if (screen.view === 'site-approving') {
-          signing.resolve(undefined);
-        }
-      },
-      confirmed: () => Promise.resolve(),
-      signal: ended.signal,
-    });
-    await signing.promise;
+    action.start(MAIN_ACCOUNT);
+    await confirmOnReview(action);
+    await waitForActionView(action, 'site-approving');
 
     // When the round ends, and the phone answers after the chain was let go
-    ended.abort();
+    action.end();
     await chain.waitForClosed();
     built.resolve(SIGNED_TX);
-    await running;
+    await action.await();
 
     // Then the session closed once, when the round ended, and not again as the run ended
     expect(chain.record).toMatchObject({ opened: 1, closed: 1 });
@@ -900,69 +898,43 @@ describe('site transaction action', () => {
     // Given the transaction action waiting on a phone that has not answered the site account read yet
     const chain = createFakeChain({});
     const read = createDeferred<Uint8Array>();
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
-      txSigner: createFakeTxSigner().txSigner,
+    const action = createTransactionAction(chain.chain, {
       accountReader: createFakeAccountReader({ reads: [() => read.promise] }).accountReader,
     });
-    const ended = new AbortController();
-    const sharing = createDeferred<undefined>();
-    const running = action.run({
-      main: { owner: MAIN_OWNER, username: null },
-      show: screen => {
-        if (screen.view === 'site-sharing') {
-          sharing.resolve(undefined);
-        }
-      },
-      confirmed: () => Promise.resolve(),
-      signal: ended.signal,
-    });
-    await sharing.promise;
+    action.start(MAIN_ACCOUNT);
+    await confirmOnReview(action);
+    await waitForActionView(action, 'site-sharing');
 
     // When the round ends, and the phone answers after
-    ended.abort();
+    action.end();
     read.resolve(SITE_KEY);
+    await action.await();
 
-    // Then the run rejects with the round's end, and the session closed once with nothing built
-    await expect(running).rejects.toBe(ended.signal.reason);
+    // Then the action is idle, and the session closed once with nothing built
+    expect(action.state.get()).toEqual({ kind: 'idle' });
     expect(chain.record).toMatchObject({ opened: 1, closed: 1, built: 0 });
   });
 
   it('As a site whose round already ended, I prepare a transaction and no Asset Hub opens', () => {
     // Given the transaction action of a round that already ended
     const chain = createFakeChain({});
-    const action = getSiteTransactionAction({
-      origin: SITE_ORIGIN,
-      genesis: SERVICES.assethub.genesis,
-      call: CALL,
-      account: ACCOUNT,
-      chain: chain.chain,
-      txSigner: createFakeTxSigner().txSigner,
-      accountReader: createFakeAccountReader().accountReader,
-    });
-    const ended = new AbortController();
-    ended.abort();
+    const action = createTransactionAction(chain.chain);
+    action.end();
 
-    // When the action prepares with the ended round's signal
-    must(action.prepare?.bind(action), 'the action prepares')(ended.signal);
+    // When the action prepares
+    action.prepare();
 
     // Then the chain was not opened
     expect(chain.opens).toEqual([]);
   });
 
   it('As a user who leaves while Asset Hub still opens, I end the round and its session is closed once it opens', async () => {
-    // Given a chain whose open the test holds, and the transaction action prepared with a live round's signal
+    // Given a chain whose open the test holds, and the transaction action of a live round prepared on it
     const opening = createDeferred<undefined>();
-    let opens = 0;
     let closes = 0;
     const chain: SiteChain = {
       async open() {
         await opening.promise;
-        opens += 1;
         return {
           decode: () => Promise.reject(new Error('The held chain decodes nothing')),
           create: () => Promise.reject(new Error('The held chain builds nothing')),
@@ -972,30 +944,82 @@ describe('site transaction action', () => {
         };
       },
     };
-    function prepare(signal: AbortSignal): void {
-      const action = getSiteTransactionAction({
-        origin: SITE_ORIGIN,
-        genesis: SERVICES.assethub.genesis,
-        call: CALL,
-        account: ACCOUNT,
-        chain,
-        txSigner: createFakeTxSigner().txSigner,
-        accountReader: createFakeAccountReader().accountReader,
-      });
-      must(action.prepare?.bind(action), 'the action prepares')(signal);
-    }
-    const ended = new AbortController();
-    prepare(ended.signal);
+    const action = createTransactionAction(chain);
+    action.prepare();
 
     // When the round ends, and the chain opens after
-    ended.abort();
+    action.end();
     opening.resolve(undefined);
-    await expect.poll(() => closes).toBe(1);
+    await action.await();
     // A later open on the same chain, by which a second close of the ended round's session would have landed.
-    prepare(new AbortController().signal);
-    await expect.poll(() => opens).toBe(2);
+    const later = createTransactionAction(chain);
+    later.prepare();
+    await later.await();
 
     // Then the ended round's session was closed once
     expect(closes).toBe(1);
+  });
+
+  it('As a user, I press confirm before the review shows and nothing reaches the phone', async () => {
+    // Given the transaction action whose decode the chain holds
+    const decoding = createDeferred<undefined>();
+    const decoded = createDeferred<undefined>();
+    const chain = createFakeChain({
+      decoding() {
+        decoding.resolve(undefined);
+        return decoded.promise;
+      },
+    });
+    const { accountReader, accounts } = createFakeAccountReader();
+    const action = createTransactionAction(chain.chain, { accountReader });
+    action.start(MAIN_ACCOUNT);
+    await decoding.promise;
+
+    // When the user confirms, and then the decode lands
+    action.confirm();
+    decoded.resolve(undefined);
+    await action.await();
+
+    // Then the review shows, and the site account was not read
+    expect(action.state.get()).toMatchObject({ kind: 'working', screen: { view: 'site-review' } });
+    expect(accounts).toEqual([]);
+  });
+
+  it('As a user, I end the round while the review shows, then press confirm, and nothing reaches the phone', async () => {
+    // Given the transaction action on its review
+    const chain = createFakeChain({});
+    const { accountReader, accounts } = createFakeAccountReader();
+    const action = createTransactionAction(chain.chain, { accountReader });
+    action.start(MAIN_ACCOUNT);
+    await waitForActionView(action, 'site-review');
+
+    // When the round ends, and then the user confirms
+    action.end();
+    action.confirm();
+    await action.await();
+
+    // Then the session closed once, and the site account was not read
+    expect(chain.record).toMatchObject({ opened: 1, closed: 1 });
+    expect(accounts).toEqual([]);
+  });
+
+  it('As an operator, I see a site transaction whose account reader throws at once reported as a defect', async () => {
+    // Given the transaction action on its review, whose account reader throws as it is called
+    const reports = recordReports({ onFinished: onTestFinished });
+    const action = createTransactionAction(createFakeChain({}).chain, {
+      accountReader: {
+        account() {
+          throw new Error('The account reader broke');
+        },
+      },
+    });
+    action.start(MAIN_ACCOUNT);
+    await waitForActionView(action, 'site-review');
+
+    // When the user confirms the review
+    action.confirm();
+
+    // Then the throw was reported as a defect of a transition
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
   });
 });

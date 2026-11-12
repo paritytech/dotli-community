@@ -3,6 +3,7 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
+import { atom } from 'nanostores';
 import { defineCount } from '@dotli/metrics';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
@@ -12,7 +13,7 @@ import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import { CoreRedialError } from '../coreRedialError.js';
 import { createChanges } from '../../testing/changes.js';
 import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
-import { createSiteRound, type SiteAction, type SiteScreen } from './createSiteRound.js';
+import { createSiteRound, type SiteAction, type SiteActionState, type SiteScreen } from './createSiteRound.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
 import { createGrant } from '../../testing/createGrant.js';
@@ -27,7 +28,7 @@ import {
 } from '../../testing/siteRoundConstants.js';
 import { waitForView } from '../../testing/waitForView.js';
 import { SITE_GROUPS } from './createSiteGroups.fake.js';
-import { SiteRoundFailure, SiteRoundRefusal, SiteRoundRejected } from './siteRoundErrors.js';
+import { SiteRoundFailure, SiteRoundRefusal } from './siteRoundErrors.js';
 import type { SiteGroups } from './createSiteGroups.js';
 
 /** What the fake action answers the site. */
@@ -35,19 +36,20 @@ type FakeResult = {
   done: string;
 };
 
-type RunInput = Parameters<SiteAction<FakeResult, 'granted'>['run']>[0];
-
 /** One run of the action, which the test may finish itself. */
 type ActionRun = {
-  input: RunInput;
-  /** Ends the run with its result, or with `error`. */
+  main: MainAccount;
+  /** Ends the run in its state, `done` with {@link RESULT} by default. */
   finish: (options?: FinishParams) => void;
 };
 
 type FinishParams = {
-  /** The failure the run ends with, in place of its result. */
-  error?: Error | undefined;
+  /** The state the run ends in, in place of its result. */
+  state?: SiteActionState<FakeResult>;
 };
+
+/** A call the round made on the fake action. */
+type ActionCall = 'prepare' | 'confirm' | 'end';
 
 type StartRoundParams = {
   /** The site's origin, {@link SITE_ORIGIN} by default. */
@@ -66,20 +68,20 @@ type StartRoundParams = {
   grants?: SiteGrant[];
   /** Reads the main account the window's core reports, {@link MAIN_ACCOUNT} at once by default. */
   mainAccount?: (signal: AbortSignal) => Promise<MainAccount>;
-  /** Failures the action throws, one per run, before it runs to its result. */
-  failures?: Error[];
+  /** The state each run ends in at once, one per run, in place of its result. */
+  failures?: SiteActionState<FakeResult>[];
   /** Whether each run waits for the test to finish it. */
   held?: boolean;
   /** Held until it settles before a grant is saved, and a rejection fails the save. */
   saveGate?: Promise<void>;
   /** Whether saving a grant fails. */
   saveFails?: boolean;
-  /** Whether the first start of the window flow throws. */
+  /** Whether the first start of the window flow fails. */
   windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
-  /** The action's `prepare`, which the action lacks by default. */
-  prepare?: (signal: AbortSignal) => void;
+  /** Whether closing the window throws. */
+  closeFails?: boolean;
 };
 
 const SHOP = 'https://shop.my-site.com';
@@ -151,33 +153,41 @@ async function startRound(options: StartRoundParams = {}) {
   const readMain = options.mainAccount ?? (() => Promise.resolve(MAIN_ACCOUNT));
   const failures = [...(options.failures ?? [])];
   const runs: ActionRun[] = [];
+  const actionCalls: ActionCall[] = [];
+  const actionState = atom<SiteActionState<FakeResult>>({ kind: 'idle' });
   const action: SiteAction<FakeResult, 'granted'> = {
     route: 'sign',
     metric: METRIC,
     outcome: () => 'granted',
-    run(input) {
+    state: actionState,
+    prepare() {
+      actionCalls.push('prepare');
+    },
+    start(main) {
       const failure = failures.shift();
-      const done = createDeferred<FakeResult>();
-      function finish({ error }: FinishParams = {}): void {
-        if (error === undefined) {
-          done.resolve(RESULT);
-        } else {
-          done.reject(error);
-        }
+      function finish({ state = { kind: 'done', result: RESULT } }: FinishParams = {}): void {
+        actionState.set(state);
       }
-      runs.push({ input, finish });
+      runs.push({ main, finish });
       changes.notify();
       if (failure !== undefined) {
-        finish({ error: failure });
-      } else if (options.held !== true) {
+        finish({ state: failure });
+      } else if (options.held === true) {
+        actionState.set({ kind: 'working', screen: { view: 'site-signing', origin, route: 'sign' } });
+      } else {
         finish();
       }
-      return done.promise;
     },
-    ...(options.prepare === undefined ? {} : { prepare: options.prepare }),
+    confirm() {
+      actionCalls.push('confirm');
+    },
+    end() {
+      actionCalls.push('end');
+    },
+    await: () => Promise.resolve(),
   };
   let windowFlowFails = options.windowFlowFails === true;
-  const windowFlows: { stored: () => void; close: () => void }[] = [];
+  const windowFlows: { stored: () => void; close: () => void; failed: (error: unknown) => void }[] = [];
   const closed = createDeferred<undefined>();
   let closes = 0;
   const flow = createSiteRound({
@@ -196,18 +206,22 @@ async function startRound(options: StartRoundParams = {}) {
       changes.notify();
       return readMain(signal);
     },
-    startWindowFlow(storedSignIn, close) {
+    startWindowFlow(storedSignIn, close, failed) {
       if (windowFlowFails) {
         windowFlowFails = false;
-        throw new Error('The window flow could not start');
+        failed(new Error('The window flow could not start'));
+        return;
       }
-      windowFlows.push({ stored: storedSignIn, close });
+      windowFlows.push({ stored: storedSignIn, close, failed });
     },
     now: () => ROUND_NOW,
     randomToken: () => options.newToken ?? NEW_SITE_TOKEN,
     close() {
       closes += 1;
       closed.resolve(undefined);
+      if (options.closeFails === true) {
+        throw new Error('The window could not close');
+      }
     },
     action,
   });
@@ -222,6 +236,8 @@ async function startRound(options: StartRoundParams = {}) {
     posts,
     stored,
     runs,
+    /** The round's calls of `call` on the action. */
+    countCalls: (call: ActionCall) => actionCalls.filter(made => made === call).length,
     mainReads,
     screens,
     readViews: () => screens.map(shown => shown.view),
@@ -267,7 +283,7 @@ describe('site round', () => {
 
     // Then the action ran once for the main account, and the site got its result and a new token for a grant that keeps
     // no key
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
+    expect(round.runs.map(run => run.main)).toEqual([MAIN_ACCOUNT]);
     expect(round.posts).toEqual([{ type: 'dotli:s:result', result: RESULT, site_token: NEW_SITE_TOKEN }]);
     expect(await round.stored.list()).toEqual([
       { token: NEW_SITE_TOKEN, origin: SITE_ORIGIN, owner: MAIN_OWNER, firstUsedAt: ROUND_NOW, lastUsedAt: ROUND_NOW },
@@ -335,12 +351,11 @@ describe('site round', () => {
     await round.flow.retry();
     await round.closed;
 
-    // Then the failure offered Try again, which read the main account again with the round's signal, and the action ran
+    // Then the failure offered Try again, which read the main account again, and the action ran
     expect(failed).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: true });
     expect(round.mainReads).toHaveLength(2);
-    expect(round.mainReads.every(signal => signal.aborted)).toBe(true);
     expect(round.windowFlows).toHaveLength(1);
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
+    expect(round.runs.map(run => run.main)).toEqual([MAIN_ACCOUNT]);
     expect(round.metrics.counted('test.site_round')).toEqual([
       { outcome: 'error', reason: 'main_account' },
       { outcome: 'granted', reason: 'new' },
@@ -420,7 +435,7 @@ describe('site round', () => {
     // Then no consent showed, the action ran for the main account, the site got no new token and the grant's last use
     // moved on
     expect(round.readViews()).not.toContain('consent');
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
+    expect(round.runs.map(run => run.main)).toEqual([MAIN_ACCOUNT]);
     expect(getResult(round.posts).site_token).toBeUndefined();
     expect(await round.stored.list()).toEqual([createGrant({ lastUsedAt: ROUND_NOW })]);
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'granted', reason: 'known' }]);
@@ -477,29 +492,20 @@ describe('site round', () => {
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'refused', reason: 'declined' }]);
   });
 
-  it('As a site, I start a round and the window prepares its action at once with a signal that aborts once the round ends', async () => {
-    // Given an action that records its prepare and keeps its signal, a round started up to its consent view, and
-    // whether the signal was aborted there
-    const events: string[] = [];
-    const signals: AbortSignal[] = [];
-    const round = await startRound({
-      prepare(signal) {
-        events.push('prepare');
-        signals.push(signal);
-      },
-    });
+  it('As a site, I start a round and the window prepares its action at once and ends it once the round ends', async () => {
+    // Given a round just started, what it called on its action at once, and a consent view
+    const round = await startRound();
+    const atStart = { prepare: round.countCalls('prepare'), end: round.countCalls('end') };
     await round.waitForView('consent');
-    events.push('consent');
-    const abortedAtConsent = signals.map(signal => signal.aborted);
 
     // When the user declines
     round.flow.decline();
     await round.closed;
 
-    // Then the action prepared once before the consent showed, with a signal that stayed live until the round ended
-    expect(events).toEqual(['prepare', 'consent']);
-    expect(abortedAtConsent).toEqual([false]);
-    expect(signals.map(signal => signal.aborted)).toEqual([true]);
+    // Then the action prepared once at the start, and ended once with the round
+    expect(atStart).toEqual({ prepare: 1, end: 0 });
+    expect(round.countCalls('prepare')).toBe(1);
+    expect(round.countCalls('end')).toBe(1);
   });
 
   it('As a user, I cancel while the grant is kept and no grant is left for a token the site never got', async () => {
@@ -530,7 +536,7 @@ describe('site round', () => {
     // When the user cancels and the save then fails
     round.flow.cancel();
     gate.resolve(undefined);
-    // A Retry queues behind the running step, so it resolves once the save's failure was handled.
+    // A Retry does nothing once the round ended, and resolves once the save's failure was handled.
     await round.flow.retry();
 
     // Then the round ended with the cancel alone and showed no failure, and the failed save was reported and counted
@@ -543,6 +549,21 @@ describe('site round', () => {
     ]);
   });
 
+  it('As a user who cancels while the main account is read, I leave and the read is aborted', async () => {
+    // Given a core that has not reported the main account yet, while the round reads it
+    const round = await startRound({ mainAccount: () => new Promise<MainAccount>(() => undefined) });
+    await consentAndStore(round);
+    const read = must(round.mainReads[0], 'a read of the main account');
+
+    // When the user cancels
+    round.flow.cancel();
+    await round.closed;
+
+    // Then the open read was aborted, and the site heard only the cancel
+    expect(read.aborted).toBe(true);
+    expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
+  });
+
   it('As a user who cancels while the action runs, I stop the action and the site hears only the cancel', async () => {
     // Given an action that runs until the test ends it
     const round = await startRound({ held: true });
@@ -552,11 +573,11 @@ describe('site round', () => {
     // When the user cancels and the action then ends with its result
     round.flow.cancel();
     run.finish();
-    // A Retry queues behind the running step, so it resolves once the action's end was handled.
+    // A Retry does nothing once the round ended, and resolves once the round has no work in flight.
     await round.flow.retry();
 
-    // Then the action's signal aborted, and the round ended with the cancel alone and kept no grant
-    expect(run.input.signal.aborted).toBe(true);
+    // Then the action was ended once, and the round ended with the cancel alone and kept no grant
+    expect(round.countCalls('end')).toBe(1);
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(await round.stored.list()).toEqual([]);
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
@@ -600,7 +621,7 @@ describe('site round', () => {
 
   it('As a site the action refuses, I am refused with its reason and the main store keeps no grant', async () => {
     // Given an action that refuses the site
-    const round = await startRound({ failures: [new SiteRoundRefusal('bad_request')] });
+    const round = await startRound({ failures: [{ kind: 'refused', refusal: new SiteRoundRefusal('bad_request') }] });
 
     // When the round reaches the action
     await consentAndStore(round);
@@ -617,7 +638,9 @@ describe('site round', () => {
     // Given an action that refuses the site for a failure behind the refusal
     const failure = new Error('The chain refused the transaction');
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const round = await startRound({ failures: [new SiteRoundRefusal('transaction_invalid', { cause: failure })] });
+    const round = await startRound({
+      failures: [{ kind: 'refused', refusal: new SiteRoundRefusal('transaction_invalid', { cause: failure }) }],
+    });
 
     // When the round reaches the action
     await consentAndStore(round);
@@ -642,8 +665,8 @@ describe('site round', () => {
     await round.closed;
 
     // When the action then refuses the site
-    run.finish({ error: new SiteRoundRefusal('bad_request') });
-    // A Retry queues behind the running step, so it resolves once the refusal was handled.
+    run.finish({ state: { kind: 'refused', refusal: new SiteRoundRefusal('bad_request') } });
+    // A Retry does nothing once the round ended, and resolves once the round has no work in flight.
     await round.flow.retry();
 
     // Then the site heard only the cancel, counted once, and the window was not closed again
@@ -654,7 +677,7 @@ describe('site round', () => {
 
   it('As a user who rejects the request on the phone, I cancel the round and keep no grant', async () => {
     // Given an action the user rejects on the phone
-    const round = await startRound({ failures: [new SiteRoundRejected()] });
+    const round = await startRound({ failures: [{ kind: 'rejected' }] });
 
     // When the round reaches the action
     await consentAndStore(round);
@@ -669,7 +692,12 @@ describe('site round', () => {
   it('As a user whose action failed, I see the failure with Try again, retry and the site gets its result', async () => {
     // Given an action that fails once at a step that may be tried again
     const round = await startRound({
-      failures: [new SiteRoundFailure({ step: 'chain', retry: true, message: 'The chain is out of reach' })],
+      failures: [
+        {
+          kind: 'failed',
+          failure: new SiteRoundFailure({ step: 'chain', retry: true, message: 'The chain is out of reach' }),
+        },
+      ],
     });
     await consentAndStore(round);
     await round.waitForView('site-failed');
@@ -696,7 +724,9 @@ describe('site round', () => {
   it('As a user whose action failed past trying again, I see the failure without Try again and a Retry does nothing', async () => {
     // Given an action that fails at a step that may not be tried again
     const round = await startRound({
-      failures: [new SiteRoundFailure({ step: 'chain', retry: false, message: 'Another network' })],
+      failures: [
+        { kind: 'failed', failure: new SiteRoundFailure({ step: 'chain', retry: false, message: 'Another network' }) },
+      ],
     });
     await consentAndStore(round);
     await round.waitForView('site-failed');
@@ -711,78 +741,87 @@ describe('site round', () => {
     expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'chain' }]);
   });
 
-  it('As a user whose action failed for a reason it does not name, I start the round and see the failure with Try again, counted for the action', async () => {
-    // Given an action that throws an error of its own
-    const round = await startRound({ failures: [new Error('Something broke')] });
-
-    // When the round reaches the action
-    await consentAndStore(round);
-    await round.waitForView('site-failed');
-
-    // Then the failure shows with Try again, is reported and counted for the action, and the site heard nothing
-    expect(round.flow.screen.get()).toEqual({ view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: true });
-    expect(round.errors).toHaveLength(1);
-    expect(round.posts).toEqual([]);
-    expect(round.metrics.counted('test.site_round')).toEqual([{ outcome: 'error', reason: 'action' }]);
-  });
-
-  it('As a user, I press confirm before the action asks for one and the press goes nowhere', async () => {
+  it('As a user, I press confirm and the round hands it to the action', async () => {
     // Given an action that runs until the test ends it
     const round = await startRound({ held: true });
     await consentAndStore(round);
-    const run = await round.waitForRun();
-    const settled: string[] = [];
+    await round.waitForRun();
 
-    // When the user presses confirm before the action asks, then the action asks and the user presses again
+    // When the user presses confirm
     round.flow.confirm();
-    const asked = run.input.confirmed();
-    void asked.then(() => settled.push('asked'));
-    const witness = Promise.resolve().then(() => settled.push('witness'));
-    await witness;
-    round.flow.confirm();
-    await asked;
 
-    // Then the ask settled only with the press made while it was pending
-    expect(settled).toEqual(['witness', 'asked']);
+    // Then the action got the confirm once
+    expect(round.countCalls('confirm')).toBe(1);
   });
 
-  it('As a user, I press confirm after the action showed another view and only its next ask settles', async () => {
-    // Given an action that asks for a confirm and then shows another view
-    const round = await startRound({ held: true });
+  it('As a user who pressed Try again, I see the earlier window flow store its sign-in late and the round goes on only for the new flow', async () => {
+    // Given a round whose stored session was gone after its first window flow, and a Try again that started a second
+    let reads = 0;
+    const round = await startRound({
+      mainAccount() {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+          : Promise.resolve(MAIN_ACCOUNT);
+      },
+    });
     await consentAndStore(round);
-    const run = await round.waitForRun();
-    const settled: string[] = [];
-    const first = run.input.confirmed();
-    void first.then(
-      () => settled.push('first'),
-      () => settled.push('first rejected'),
-    );
-    run.input.show({ view: 'site-signing', origin: SITE_ORIGIN, route: 'sign' });
+    await round.waitForView('site-failed');
+    await round.flow.retry();
 
-    // When the user presses confirm, then the action asks again and the user presses once more
-    round.flow.confirm();
-    const second = run.input.confirmed();
-    void second.then(() => settled.push('second'));
-    round.flow.confirm();
-    await second;
+    // When the first window flow delivers again, and then the second one stores its own
+    round.storeSignIn();
+    const late = { view: round.flow.screen.get().view, reads: round.mainReads.length };
+    must(round.windowFlows[1], 'a second window flow').stored();
+    await round.closed;
 
-    // Then the first ask rejected as the other view showed, and only the second settled with a press
-    expect(settled).toEqual(['first rejected', 'second']);
+    // Then the late sign-in left the round on the window flow, and only the second flow's read the main account
+    expect(late).toEqual({ view: 'window', reads: 1 });
+    expect(round.mainReads).toHaveLength(2);
+    expect(getResult(round.posts).result).toEqual(RESULT);
   });
 
-  it('As a user, I cancel while the action waits for my confirm and its wait ends', async () => {
-    // Given an action that waits for the user's confirm
-    const round = await startRound({ held: true });
+  it('As a user who pressed Try again, I see the earlier window flow fail and the round goes on for the new flow', async () => {
+    // Given a round whose stored session was gone after its first window flow, and a Try again that started a second
+    let reads = 0;
+    const round = await startRound({
+      mainAccount() {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+          : Promise.resolve(MAIN_ACCOUNT);
+      },
+    });
     await consentAndStore(round);
-    const run = await round.waitForRun();
-    const asked = run.input.confirmed();
+    await round.waitForView('site-failed');
+    await round.flow.retry();
 
-    // When the user cancels
-    round.flow.cancel();
+    // When the first window flow fails late, and then the second one stores its own
+    must(round.windowFlows[0], 'a first window flow').failed(new Error('The first window flow failed'));
+    const afterFailure = round.flow.screen.get().view;
+    must(round.windowFlows[1], 'a second window flow').stored();
+    await round.closed;
 
-    // Then the wait rejects and the site heard only the cancel
-    await expect(asked).rejects.toThrow();
-    expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
+    // Then the late failure left the round on the window flow, and the site got its result
+    expect(afterFailure).toBe('window');
+    expect(getResult(round.posts).result).toEqual(RESULT);
+  });
+
+  it('As an operator, I see a site round whose window close throws reported as a defect', async () => {
+    // Given a round on its consent view whose window close throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const round = await startRound({ closeFails: true });
+    await round.waitForView('consent');
+
+    // When the user declines
+    round.flow.decline();
+    await round.closed;
+
+    // Then the throw was reported as a defect of a transition, and the site was refused as declined
+    expect([reports.exceptions, round.posts]).toMatchObject([
+      [{ step: 'transition' }],
+      [{ type: 'dotli:s:refused', reason: 'declined' }],
+    ]);
   });
 });
 
@@ -798,7 +837,7 @@ describe('site round of a group', () => {
     // Then the consent named the group's registrable domain, the action ran for the main account, and the site got a
     // new token for a grant of the group
     expect(round.screens).toContainEqual({ view: 'consent', origin: SITE_ORIGIN, group: 'my-site.com' });
-    expect(round.runs.map(run => run.input.main)).toEqual([MAIN_ACCOUNT]);
+    expect(round.runs.map(run => run.main)).toEqual([MAIN_ACCOUNT]);
     expect(getResult(round.posts).site_token).toBe(NEW_SITE_TOKEN);
     expect(await round.stored.list()).toEqual([
       {
@@ -983,7 +1022,7 @@ describe('site round of a group', () => {
     // When the user cancels round A and its save then commits
     roundA.flow.cancel();
     gate.resolve(undefined);
-    // A Retry queues behind the running step, so it resolves once the save's end was handled.
+    // A Retry does nothing once the round ended, and resolves once the save's end was handled.
     await roundA.flow.retry();
 
     // Then round A's site heard only the cancel, and the group keeps the one grant round B's site holds, with both

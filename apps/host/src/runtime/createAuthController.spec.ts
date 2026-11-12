@@ -1383,6 +1383,38 @@ describe('auth controller: the sign-in window', () => {
     expect(getAuthModalState()).toEqual(CLOSED_MODAL);
   });
 
+  it("As a user, I close the sign-in window's wait and start a new sign-in, and the first window's late result changes nothing on screen", async () => {
+    // Given a first window round the user closed, and a second one opened after it
+    const held = createHeldResults();
+    const rounds: ReturnType<typeof createDeferred<SignInOutcome>>[] = [];
+    const handoff: SessionHandoff = {
+      signIn() {
+        const round = createDeferred<SignInOutcome>();
+        rounds.push(round);
+        return round.promise;
+      },
+      signOut: () => undefined,
+      signOutRead: () => Promise.resolve(),
+      focus: () => undefined,
+      // The first window sent its result before it heard the cancel, so the cancel ends nothing.
+      cancel: () => undefined,
+    };
+    const { controller, auth } = startController({ handoff, applyResult: held.applyResult });
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
+    controller.closeAuthModal();
+    controller.startLogin();
+
+    // When the first window's result arrives
+    nth(rounds, 0).resolve({ kind: 'result', result: RESULT });
+    // The controller hears the outcome through its handoff port, and tells no fake when it saw it.
+    await untilPromisesSettled();
+
+    // Then the second round's wait stays on show and the first result was never written
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'window' } });
+    expect(held.results).toEqual([]);
+  });
+
   it('As a user, I close the sign-in window and am back to signed out with no error', async () => {
     // Given a sign-in window round under way
     const { handoff, changes } = startWindowRound();

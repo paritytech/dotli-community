@@ -5,21 +5,25 @@
 // before any core reported one, and a local wallet's copy carries no key, so the source reads only the core's report.
 // It holds a lease on that core, so the core stays up from the read to the round's signer calls.
 
+import { createReporter, defineCount } from '@dotli/metrics';
 import {
-  hashBlake2b,
-  createAsyncTaskPool,
-  createDeferred,
+  createStateMachine,
   fromHex,
-  noop,
+  hashBlake2b,
+  listen,
   toHex,
-  waitForStatus,
-  type StatusSource,
+  type HandlerOf,
+  type MachineTypes,
+  type Transition,
 } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
 import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
+
+const report = createReporter({ flow: 'wallet' });
+const mainAccountTransitionMetric = defineCount<'error'>('session_pages.main_account_transition');
 
 /** The main account an action runs for. The round never sends any of it. */
 export type MainAccount = {
@@ -37,9 +41,6 @@ type MainAccountErrorKind = 'unavailable' | 'signed_out';
 /** The two lease calls the source makes. */
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
-/** The core's report while the leased core is up, or `down` once it went down. */
-type LeasedReport = DotliAuthState | null | 'down';
-
 type Params = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
@@ -51,123 +52,177 @@ type Params = {
   coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'>;
 };
 
+/** How one read settles. */
+type Reply = { resolve: (account: MainAccount) => void; reject: (error: MainAccountError) => void };
+
+/** The reads open, each with the stop of its abort listener. */
+type Reads = ReadonlyMap<Reply, () => void>;
+
+type Report = DotliAuthState | null;
+
+/**
+ * `stale` is the report on show when the last held lease went down. A read skips it, since it is the dead core's and
+ * not an answer of a core that is up. `stop` removes the held lease's down listener and the report listener.
+ */
+type SourceState =
+  | { kind: 'unleased'; stale: Report }
+  | { kind: 'leasing'; stale: Report; reads: Reads }
+  | { kind: 'holding'; stale: Report; reads: Reads; lease: HeldLease; stop: () => void }
+  | { kind: 'disposing' }
+  | { kind: 'disposed' };
+
+type SourceEvent =
+  | { kind: 'readAsked'; reply: Reply; signal: AbortSignal }
+  | { kind: 'readAborted'; reply: Reply; reason: unknown }
+  | { kind: 'leased'; lease: HeldLease }
+  | { kind: 'leaseFailed'; error: unknown }
+  | { kind: 'reported'; lease: HeldLease }
+  | { kind: 'down'; lease: HeldLease }
+  | { kind: 'disposed' };
+
+type SourceMachine = MachineTypes<SourceState, SourceEvent>;
+
 /** A key the core reports as `0x` hex of whole bytes. */
 const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
 
 /** Makes the source, which takes its lease on the first read. */
 export function createMainAccountSource({ acquire, coreReport }: Params) {
-  // One lease at a time, so overlapping reads share the one the first read takes. A read whose signal aborts leaves its
-  // lease being taken in the slot, so the next read holds that lease rather than a second one.
-  const leases = createAsyncTaskPool({ poolSize: 1, holdSlotOnAbort: true });
-  // Aborts on dispose, which ends every read open then or started after.
-  const lifetime = new AbortController();
-  // The lease held, with its own signal that aborts once its core goes down, and the removal of its down listener.
-  let held: { lease: HeldLease; down: AbortSignal; unsubscribeDown: () => void } | null = null;
-  // The report on show when the last held lease went down. A read skips it, since it is the dead core's and not an
-  // answer of a core that is up.
-  let staleReport: DotliAuthState | null = null;
-
-  /** Takes a lease unless one is held, and lets it go once its core goes down. Resolves with the lease's down signal. */
-  async function holdLease(): Promise<AbortSignal> {
-    if (held !== null) {
-      return held.down;
-    }
-    const lease = await acquire();
-    // The read that took it has already failed, so a lease landing after dispose is let go and never held.
-    if (lifetime.signal.aborted) {
-      lease.release();
-      throw new MainAccountError('unavailable', 'The main account source was disposed while it took a lease');
-    }
-    const down = new AbortController();
-    const current = { lease, down: down.signal, unsubscribeDown: noop };
-    // Held before the subscribe, which calls the listener at once for a core that went down since it was acquired.
-    held = current;
-    current.unsubscribeDown = lease.subscribeDown(() => {
-      if (held === current) {
-        held = null;
-      }
-      staleReport = coreReport.get();
-      down.abort();
-      lease.release();
-    });
-    return down.signal;
-  }
-
-  function dispose(): void {
-    lifetime.abort(new Error('The main account source was disposed'));
-    if (held === null) {
+  /** Fails a read whose signal aborted while it was open. */
+  const abortRead: HandlerOf<SourceMachine, 'leasing' | 'holding', 'readAborted'> = (
+    state,
+    { reply, reason },
+    { emitState },
+  ) => {
+    const stopAbort = state.reads.get(reply);
+    // A read that settled in a transition queued before its abort has nothing left to fail.
+    if (stopAbort === undefined) {
       return;
     }
-    const { lease, unsubscribeDown } = held;
-    held = null;
-    unsubscribeDown();
-    lease.release();
-  }
-
-  /**
-   * The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. It
-   * answers no report for the one on show when the source's last held lease went down.
-   */
-  function watchLeasedReport(down: AbortSignal): StatusSource<LeasedReport> {
-    function getReport(): LeasedReport {
-      if (down.aborted) {
-        return 'down';
-      }
-      const report = coreReport.get();
-      return report === staleReport ? null : report;
+    stopAbort();
+    const reads = new Map(state.reads);
+    reads.delete(reply);
+    emitState({ ...state, reads });
+    reply.reject(createReadError(reason));
+  };
+  /** Fails a read asked of a disposed source at once, since its reply must still settle. */
+  const refuseRead: HandlerOf<SourceMachine, 'disposing' | 'disposed', 'readAsked'> = (_state, { reply }) => {
+    reply.reject(createReadError(createDisposedError()));
+  };
+  /** Fails a read asked with an aborted signal at once, and tells whether it did. */
+  function refuseAborted({ reply, signal }: Extract<SourceEvent, { kind: 'readAsked' }>): boolean {
+    if (!signal.aborted) {
+      return false;
     }
-    return {
-      get: getReport,
-      listen(listener) {
-        function notify(): void {
-          listener(getReport());
-        }
-        down.addEventListener('abort', notify, { once: true });
-        const unsubscribeReport = coreReport.listen(notify);
-        function unsubscribe(): void {
-          down.removeEventListener('abort', notify);
-          unsubscribeReport();
-        }
-        return unsubscribe;
-      },
-    };
+    reply.reject(createReadError(signal.reason));
+    return true;
   }
-
-  /**
-   * The session the core reports once it reports one, null once its core goes down first, or the reason it never
-   * will.
-   */
-  function waitForSession(down: AbortSignal, signal: AbortSignal): Promise<TruapiSessionUiState | null> {
-    const session = createDeferred<TruapiSessionUiState | null>();
-    waitForStatus(
-      watchLeasedReport(down),
-      report => {
-        if (report === 'down') {
-          session.resolve(null);
-          return true;
-        }
-        // No report yet keeps the wait.
-        if (report === null) {
-          return false;
-        }
-        const signedIn = authViews.getSignedInSession(report);
-        if (signedIn !== null) {
-          session.resolve(signedIn);
-          return true;
-        }
-        if (authViews.isSignInIdle(report)) {
-          return new MainAccountError('signed_out', `The window's core reports the main session ${report.tag}`);
-        }
-        if (authViews.isSessionUnreachable(report)) {
-          return new MainAccountError('unavailable', "The window's core cannot read the main session");
-        }
-        // A report on the way to a session keeps the wait.
-        return false;
+  const machine = createStateMachine<SourceMachine>({
+    initial: { kind: 'unleased', stale: null },
+    handlers: {
+      unleased: {
+        readAsked({ stale }, event, { emitState, update }) {
+          if (refuseAborted(event)) {
+            return;
+          }
+          emitState({ kind: 'leasing', stale, reads: addRead(new Map(), event, update) });
+          takeLease(update);
+        },
+        disposed(_state, _event, { emitState }) {
+          emitState({ kind: 'disposed' });
+        },
       },
-      { signal },
-    ).catch(session.reject);
-    return session.promise;
-  }
+      leasing: {
+        readAsked(state, event, { emitState, update }) {
+          if (refuseAborted(event)) {
+            return;
+          }
+          emitState({ ...state, reads: addRead(state.reads, event, update) });
+        },
+        readAborted: abortRead,
+        leased({ stale, reads }, { lease }, { emitState, update }) {
+          // A core already down calls its listener during the subscribe, so its `down` runs before the `reported` below.
+          const stopDown = lease.subscribeDown(() => {
+            update({ kind: 'down', lease });
+          });
+          const stopReport = coreReport.listen(() => {
+            update({ kind: 'reported', lease });
+          });
+          function stop(): void {
+            stopDown();
+            stopReport();
+          }
+          emitState({ kind: 'holding', stale, reads, lease, stop });
+          update({ kind: 'reported', lease });
+        },
+        leaseFailed({ stale, reads }, { error }, { emitState }) {
+          stopAbortListeners(reads);
+          emitState({ kind: 'unleased', stale });
+          failReads(reads, error);
+        },
+        disposed({ reads }, _event, { emitState }) {
+          stopAbortListeners(reads);
+          emitState({ kind: 'disposing' });
+          failReads(reads, createDisposedError());
+        },
+      },
+      holding: {
+        readAsked(state, event, transition) {
+          if (refuseAborted(event)) {
+            return;
+          }
+          answerReads({ ...state, reads: addRead(state.reads, event, transition.update) }, transition);
+        },
+        readAborted: abortRead,
+        reported(state, { lease }, transition) {
+          if (lease !== state.lease) {
+            return;
+          }
+          answerReads(state, transition);
+        },
+        down({ reads, lease, stop }, event, { emitState, update }) {
+          if (event.lease !== lease) {
+            return;
+          }
+          stop();
+          const stale = coreReport.get();
+          // A replacement reports anew, so the reads still open wait for it on a new lease.
+          if (reads.size > 0) {
+            emitState({ kind: 'leasing', stale, reads });
+            takeLease(update);
+          } else {
+            emitState({ kind: 'unleased', stale });
+          }
+          lease.release();
+        },
+        disposed({ reads, lease, stop }, _event, { emitState }) {
+          stop();
+          stopAbortListeners(reads);
+          emitState({ kind: 'disposed' });
+          // Every read settles before the release, so a release that throws leaves no read open.
+          failReads(reads, createDisposedError());
+          lease.release();
+        },
+      },
+      disposing: {
+        readAsked: refuseRead,
+        leased(_state, { lease }, { emitState }) {
+          emitState({ kind: 'disposed' });
+          lease.release();
+        },
+        leaseFailed(_state, _event, { emitState }) {
+          emitState({ kind: 'disposed' });
+        },
+      },
+      disposed: { readAsked: refuseRead },
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: mainAccountTransitionMetric,
+        message: '[dot.li] A main account source transition threw',
+      });
+    },
+  });
 
   return {
     /**
@@ -175,38 +230,66 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
      * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
      * for a core that cannot boot, a core that cannot read the main session, a session without a readable key,
      * `signal` aborting first, or the source disposed while the read is open or before it starts, which then takes no
-     * new lease. After the leased core went down, the read waits for its replacement's own report.
+     * new lease. A lease that cannot be taken fails every read waiting on it. After the leased core went down, the read
+     * waits for its replacement's own report.
      */
-    async read(signal: AbortSignal): Promise<MainAccount> {
-      const ended = AbortSignal.any([signal, lifetime.signal]);
-      try {
-        for (;;) {
-          // A core that went down while the read waited is leased again, and a replacement that cannot boot fails the
-          // read with its error.
-          const down = await leases.call(holdLease, { signal: ended });
-          const session = await waitForSession(down, ended);
-          if (session === null) {
-            continue;
-          }
-          const account = getMainAccount(session);
-          if (account === null) {
-            throw new MainAccountError('unavailable', "The core's session has no readable public key");
-          }
-          return account;
-        }
-      } catch (error) {
-        if (error instanceof MainAccountError) {
-          throw error;
-        }
-        throw new MainAccountError('unavailable', 'The main account could not be read', { cause: error });
-      }
+    read(signal: AbortSignal): Promise<MainAccount> {
+      return new Promise<MainAccount>((resolve, reject) => {
+        machine.update({ kind: 'readAsked', reply: { resolve, reject }, signal });
+      });
     },
     /**
      * Removes the down listener of the held lease and lets the lease go, lets go of a lease still being taken as soon
      * as it lands, fails every open read as `unavailable`, is safe to call twice and never throws.
      */
-    dispose,
+    dispose(): void {
+      machine.update({ kind: 'disposed' });
+    },
   };
+
+  /** Takes a lease, whose landing or failure comes back as an event. */
+  function takeLease(update: Transition<SourceMachine>['update']): void {
+    update(
+      acquire().then(
+        (lease): SourceEvent => ({ kind: 'leased', lease }),
+        (error: unknown): SourceEvent => ({ kind: 'leaseFailed', error }),
+      ),
+    );
+  }
+
+  /** Stops the abort listeners of the reads, empties them from the state and answers each reply. */
+  function settleReads(
+    state: Extract<SourceState, { kind: 'holding' }>,
+    { emitState }: Transition<SourceMachine>,
+    answer: (reply: Reply) => void,
+  ): void {
+    stopAbortListeners(state.reads);
+    emitState({ ...state, reads: new Map() });
+    for (const reply of state.reads.keys()) {
+      answer(reply);
+    }
+  }
+
+  /** Settles every read of `state` once the core's report answers them, and keeps them open otherwise. */
+  function answerReads(state: Extract<SourceState, { kind: 'holding' }>, transition: Transition<SourceMachine>): void {
+    const { emitState } = transition;
+    const verdict = judgeReport(coreReport.get(), state.stale);
+    switch (verdict.kind) {
+      case 'waiting':
+        emitState(state);
+        return;
+      case 'read':
+        settleReads(state, transition, reply => {
+          reply.resolve(verdict.account);
+        });
+        return;
+      case 'failed':
+        settleReads(state, transition, reply => {
+          reply.reject(verdict.error);
+        });
+        return;
+    }
+  }
 }
 
 /** The main account of a session, or null for one without a readable public key. */
@@ -237,4 +320,79 @@ export class MainAccountError extends Error {
     super(message, { cause });
     this.kind = kind;
   }
+}
+
+/** `reads` with the read of `event` added, whose signal's abort comes back as an event. */
+function addRead(
+  reads: Reads,
+  { reply, signal }: Extract<SourceEvent, { kind: 'readAsked' }>,
+  update: Transition<SourceMachine>['update'],
+): Reads {
+  const stopAbort = listen({
+    target: signal,
+    type: 'abort',
+    handler: () => {
+      update({ kind: 'readAborted', reply, reason: signal.reason });
+    },
+  });
+  return new Map(reads).set(reply, stopAbort);
+}
+
+/** Stops the abort listeners of `reads`, which the state emitted next no longer holds. */
+function stopAbortListeners(reads: Reads): void {
+  for (const stopAbort of reads.values()) {
+    stopAbort();
+  }
+}
+
+/** Fails every read of `reads` as unavailable, each with `cause`. */
+function failReads(reads: Reads, cause: unknown): void {
+  for (const reply of reads.keys()) {
+    reply.reject(createReadError(cause));
+  }
+}
+
+function createReadError(cause: unknown): MainAccountError {
+  return new MainAccountError('unavailable', 'The main account could not be read', { cause });
+}
+
+function createDisposedError(): Error {
+  return new Error('The main account source was disposed');
+}
+
+/**
+ * What the core's report `shown` answers a read. No report, the dead core's `stale` one and one on the way to a
+ * session keep the read waiting.
+ */
+function judgeReport(
+  shown: Report,
+  stale: Report,
+): { kind: 'waiting' } | { kind: 'read'; account: MainAccount } | { kind: 'failed'; error: MainAccountError } {
+  if (shown === null || shown === stale) {
+    return { kind: 'waiting' };
+  }
+  const session = authViews.getSignedInSession(shown);
+  if (session !== null) {
+    const account = getMainAccount(session);
+    if (account === null) {
+      return {
+        kind: 'failed',
+        error: new MainAccountError('unavailable', "The core's session has no readable public key"),
+      };
+    }
+    return { kind: 'read', account };
+  }
+  if (authViews.isSignInIdle(shown)) {
+    return {
+      kind: 'failed',
+      error: new MainAccountError('signed_out', `The window's core reports the main session ${shown.tag}`),
+    };
+  }
+  if (authViews.isSessionUnreachable(shown)) {
+    return {
+      kind: 'failed',
+      error: new MainAccountError('unavailable', "The window's core cannot read the main session"),
+    };
+  }
+  return { kind: 'waiting' };
 }

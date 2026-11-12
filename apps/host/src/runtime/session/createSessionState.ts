@@ -4,19 +4,25 @@
 // The one writer of the auth store. It shows the session of the saved copy or of the core that speaks for the page,
 // and whether a sign-in made elsewhere waits for the page.
 
+import type { SharedStoreStatus } from '@dotli/protocol';
 import type { AuthState as CoreAuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAsyncTaskPool, noop, registerAtomReset } from '@dotli/shared';
-import { atom, type ReadableAtom } from 'nanostores';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { createStateMachine, nest, noop, type MachineTypes, type Transition } from '@dotli/shared';
+import { computed } from 'nanostores';
 import { isResumeOffered, pageRole } from '../pageRole.js';
 import { authState, type AuthState } from '../state/authState.js';
 import { walletModeState } from '../state/walletModeState.js';
 import { sessionElsewhereState } from '../state/sessionElsewhereState.js';
 import { pageWalletBoot, type Restored } from '../createWalletBoot.js';
-import { coreStorage, type StoredSession } from './createCoreStorage.js';
+import { coreStorage, type SessionRead, type StoredSession } from './createCoreStorage.js';
 import { getLocalSessionUiState } from './getLocalSessionUiState.js';
 import { parseUiStateCache, type TruapiSessionUiState } from './parseUiStateCache.js';
 import { authViews } from './authViews.js';
 import type { DotliAuthState, Presence } from './types.js';
+
+const report = createReporter({ flow: 'wallet' });
+const sessionStateTransitionMetric = defineCount<'error'>('session.state_transition');
+const savedSessionReadMetric = defineCount<'error'>('session.saved_session_read');
 
 /** The auth store as its one writer sees it. */
 export type AuthStateWriter = Pick<AuthState, 'store' | 'set'>;
@@ -33,7 +39,7 @@ type Params = {
    * result.
    */
   restore: () => Promise<LoadRestore>;
-  /** The auth store this session state is the one writer of. */
+  /** The auth store this session state is the one writer of. Read once, for the state the page shows at build. */
   auth: AuthStateWriter;
   /** Where the page learns that it shows signed out while a sign-in exists elsewhere on the site. */
   setElsewhere: (next: boolean) => void;
@@ -43,10 +49,11 @@ type Params = {
   isResumeOffered: () => boolean;
 };
 
-type ReadSessionToShowParams = {
+type GetSessionToShowParams = {
   local: LoadRestore['local'];
   raw: string | null;
-  readCachedAccount: () => Promise<string | null>;
+  /** The raw cached account, read only for a session of the saved copy. */
+  cached: string | null;
 };
 
 /** How pairing presents itself. */
@@ -59,244 +66,357 @@ export type PairingPresentation = {
   hostGlobal?: boolean | undefined;
 };
 
-/** Where session state is in its life. Only a started state follows the copy, and a disposed one never starts again. */
-type Lifecycle = { kind: 'idle' } | { kind: 'started'; stop: () => void } | { kind: 'disposed' };
+/** Which read of the saved copy: the load's own, whose session the restore rule already read, or a read of the store. */
+type Source = 'load' | 'store';
+
+/** The read of the saved copy in flight, with the read asked meanwhile, which runs once it lands. */
+type Read = { kind: 'none' } | { kind: 'reading'; rerun: Source | null };
+
+/** One call of `start`, so a stop acts only on the follow that call began. */
+type Run = object;
+
+/** Following the shared store's status and the saved copy's changes, which only a started state does. */
+type Follow = { kind: 'idle' } | { kind: 'following'; run: Run; stopListening: () => void };
+
+/**
+ * `shown` is the state the page shows. `coreReport` is the state the page's core reported last, and null while the
+ * saved copy speaks for the page. `flag` is the flag as last read while the page held no sign-in. `storeReadFailed`
+ * says whether the store's last session read failed, whichever reader made it. A disposed state keeps only the core's
+ * last report.
+ */
+type State =
+  | {
+      kind: 'live';
+      shown: DotliAuthState;
+      coreReport: DotliAuthState | null;
+      flag: Presence;
+      storeReadFailed: boolean;
+      follow: Follow;
+      read: Read;
+    }
+  | { kind: 'disposed'; coreReport: DotliAuthState | null };
+
+type Live = Extract<State, { kind: 'live' }>;
+
+type Event =
+  | { kind: 'started'; run: Run }
+  | { kind: 'stopped'; run: Run }
+  | { kind: 'followed' }
+  | { kind: 'disposed' }
+  | { kind: 'sessionReadsHeard'; failed: boolean }
+  | { kind: 'storeStatus'; status: SharedStoreStatus }
+  | { kind: 'storedSessionChanged' }
+  | { kind: 'coresGone' }
+  | { kind: 'coreReported'; state: CoreAuthState; pairing: PairingPresentation }
+  | { kind: 'loginFailed'; reason: string }
+  | { kind: 'signedOut' }
+  | { kind: 'flagRead'; presence: Presence }
+  | { kind: 'retryAsked' }
+  | { kind: 'uiCacheWritten' }
+  | { kind: 'savedSessionRead'; session: TruapiSessionUiState | null }
+  | { kind: 'readAsked'; source: Source }
+  // `flag` is the flag the load's restore read beside a copy that held nothing, and null for any other read.
+  | { kind: 'readLanded'; session: TruapiSessionUiState | null; flag: Presence | null }
+  | { kind: 'readRejected' };
+
+type SessionMachine = MachineTypes<State, Event>;
+
+/** The read nested in `live`. Its events are some of the machine's. */
+type ReadMachine = MachineTypes<Read, Event>;
+
+/** The follow nested in `live`. Its events are some of the machine's. */
+type FollowMachine = MachineTypes<Follow, Event>;
 
 /** The page's session state, as its factory builds it. */
 export type SessionState = ReturnType<typeof createSessionState>;
 
-export function createSessionState({
-  store,
-  restore,
-  auth: authStore,
-  setElsewhere,
-  isLocalWallet,
-  isResumeOffered,
-}: Params) {
-  // The flag as last read while the page held no sign-in. A sign-in the page shows makes it unknown, since a read made
-  // before it says nothing of another sign-in once this one ends.
-  let flag: Presence = 'unknown';
-  const auth: AuthStateWriter = {
-    store: authStore.store,
-    set(next) {
-      if (next.tag === 'Connected') {
-        flag = 'unknown';
-      }
-      // First, so a listener of the auth state reads the answer that goes with it.
-      setElsewhere(hasSignInElsewhere(next.tag));
-      authStore.set(next);
+export function createSessionState({ store, restore, auth, setElsewhere, isLocalWallet, isResumeOffered }: Params) {
+  const runRead = nest<SessionMachine, 'live', ReadMachine, 'readAsked' | 'readLanded' | 'readRejected'>({
+    find: state => state.read,
+    store: (state, _event, read) => ({ ...state, read }),
+    handlers: {
+      none: {
+        readAsked(_read, { source }, transition) {
+          startRead(source, transition);
+        },
+      },
+      reading: {
+        // One read at a time, so a read that started before the copy changed is never the last word.
+        readAsked({ rerun }, { source }, { emitState }) {
+          emitState({ kind: 'reading', rerun: source === 'load' || rerun === 'load' ? 'load' : 'store' });
+        },
+        readLanded({ rerun }, { session, flag }, transition) {
+          endRead(rerun, transition);
+          if (flag !== null) {
+            transition.update({ kind: 'flagRead', presence: flag });
+          }
+          transition.update({ kind: 'savedSessionRead', session });
+        },
+        readRejected({ rerun }, _event, transition) {
+          endRead(rerun, transition);
+        },
+      },
     },
-  };
-  // One read at a time, so a read that started before the store changed is never the last word.
-  const savedSessionReads = createAsyncTaskPool({ poolSize: 1 });
-
-  let lastReadFailed = false;
+  });
+  const runFollow = nest<SessionMachine, 'live', FollowMachine, 'started' | 'stopped'>({
+    find: state => state.follow,
+    store: (state, _event, follow) => ({ ...state, follow }),
+    handlers: {
+      idle: {
+        started(_follow, { run }, { emitState, update }) {
+          // The listeners start before the state that holds their stop.
+          const stopStatus = store.getStatusStore().listen(status => {
+            update({ kind: 'storeStatus', status });
+          });
+          // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
+          const stopChanges = store.subscribeStoredSession(() => {
+            update({ kind: 'storedSessionChanged' });
+          });
+          emitState({
+            kind: 'following',
+            run,
+            stopListening: () => {
+              stopStatus();
+              stopChanges();
+            },
+          });
+          update({ kind: 'followed' });
+        },
+      },
+      following: {
+        stopped(follow, { run }, { emitState }) {
+          // The stop of a start that already ended ends nothing.
+          if (run !== follow.run) {
+            return;
+          }
+          emitState({ kind: 'idle' });
+          follow.stopListening();
+        },
+      },
+    },
+  });
+  const machine = createStateMachine<SessionMachine>({
+    initial: {
+      kind: 'live',
+      shown: auth.store.get(),
+      coreReport: null,
+      flag: 'unknown',
+      storeReadFailed: false,
+      follow: { kind: 'idle' },
+      read: { kind: 'none' },
+    },
+    handlers: {
+      live: {
+        started: runFollow,
+        stopped: runFollow,
+        followed(state, _event, { update }) {
+          // The load's own read, which the restore rule already made.
+          if (isCopyAllowedToShow(state)) {
+            update({ kind: 'readAsked', source: 'load' });
+          }
+        },
+        storeStatus(state, { status }, transition) {
+          // A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it.
+          const { tag } = state.shown;
+          if (status === 'unavailable' && (tag === 'Restoring' || tag === 'Disconnected')) {
+            show(state, { shown: { tag: 'Unreachable' } }, transition);
+          }
+        },
+        disposed(state, _event, { emitState }) {
+          emitState({ kind: 'disposed', coreReport: state.coreReport });
+          stopSessionReads();
+          switch (state.follow.kind) {
+            case 'following':
+              state.follow.stopListening();
+              return;
+            case 'idle':
+              return;
+          }
+        },
+        sessionReadsHeard(state, { failed }, { emitState, update }) {
+          emitState({ ...state, storeReadFailed: failed });
+          if (!failed && state.shown.tag === 'Unreachable') {
+            update({ kind: 'readAsked', source: 'store' });
+          }
+        },
+        storedSessionChanged(state, _event, { update }) {
+          if (isCopyAllowedToShow(state)) {
+            update({ kind: 'readAsked', source: 'store' });
+          }
+        },
+        coresGone(state, _event, { emitState, update }) {
+          emitState({ ...state, coreReport: null });
+          update({ kind: 'readAsked', source: 'store' });
+        },
+        coreReported(state, { state: core, pairing }, transition) {
+          const local = isLocalWallet();
+          const reported = getCoreReport(core, pairing);
+          // The core reads an unreadable store as no session, which is not a logout, so the cached account stays.
+          const coreReport: DotliAuthState =
+            reported.tag === 'Disconnected' && !local && state.storeReadFailed ? { tag: 'Unreachable' } : reported;
+          show(state, { shown: coreReport, coreReport }, transition);
+          if (local) {
+            return;
+          }
+          switch (coreReport.tag) {
+            case 'Connected':
+              writeUiCache(JSON.stringify(coreReport.session), transition);
+              return;
+            case 'Disconnected':
+              writeUiCache(null, transition);
+              return;
+            // Only a sign-in or a sign-out changes the cached account.
+            case 'Restoring':
+            case 'Unreachable':
+            case 'Pairing':
+            case 'Authenticating':
+            case 'LoginFailed':
+              return;
+          }
+        },
+        loginFailed(state, { reason }, transition) {
+          show(state, { shown: { tag: 'LoginFailed', kind: 'Other', reason } }, transition);
+        },
+        signedOut(state, _event, transition) {
+          // Every such sign-out deleted the flag, here or on the page that signed out.
+          show(state, { shown: { tag: 'Disconnected' }, flag: 'absent' }, transition);
+        },
+        flagRead(state, { presence }, { emitState }) {
+          // A page that shows a sign-in ignores the flag.
+          if (state.shown.tag === 'Connected') {
+            return;
+          }
+          emitState({ ...state, flag: presence });
+          setElsewhere(hasSignInElsewhere(presence, state.shown.tag));
+        },
+        retryAsked(state, _event, { update }) {
+          if (state.shown.tag === 'Unreachable') {
+            update({ kind: 'readAsked', source: 'store' });
+          }
+        },
+        // Shows the local wallet when there is one, else what was saved, while the copy may show it. A read that finds
+        // nothing ends only `Restoring` or `Unreachable`, and, while a core speaks, withdraws a sign-in the copy showed
+        // to the core's own report. It leaves a sign-out or a failure on show alone.
+        savedSessionRead(state, { session }, transition) {
+          if (!isCopyAllowedToShow(state)) {
+            return;
+          }
+          if (session !== null) {
+            show(state, { shown: { tag: 'Connected', session } }, transition);
+            return;
+          }
+          // A store that could not be read says nothing of a sign-out, so a sign-in on show stays.
+          // A sign-in the core reported itself is its own report, so withdrawing to that report leaves it on show.
+          if (state.coreReport !== null && !state.storeReadFailed && state.shown.tag === 'Connected') {
+            show(state, { shown: getWithdrawnState(state.coreReport) }, transition);
+            return;
+          }
+          if (authViews.isAwaitingSavedSession(state.shown)) {
+            show(state, { shown: { tag: state.storeReadFailed ? 'Unreachable' : 'Disconnected' } }, transition);
+          }
+        },
+        readAsked: runRead,
+        readLanded: runRead,
+        readRejected: runRead,
+      },
+      disposed: null,
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: sessionStateTransitionMetric,
+        message: '[dot.li] A session state transition threw',
+      });
+    },
+  });
   const stopSessionReads = store.subscribeSessionReads(failed => {
-    lastReadFailed = failed;
-    if (!failed && auth.store.get().tag === 'Unreachable') {
-      void retryRead();
-    }
+    machine.update({ kind: 'sessionReadsHeard', failed });
   });
 
-  // Who speaks for the page's session: the saved copy, read here, or a core that reported, which follows the copy
-  // itself. The page core says when its last core went.
-  let speaker: 'copy' | 'core' = 'copy';
+  /**
+   * Shows `changes.shown` with the facts that change beside it, and first says whether a sign-in made elsewhere waits,
+   * so a listener of the auth state reads the answer that goes with it.
+   */
+  function show(
+    state: Live,
+    changes: Pick<Live, 'shown'> & Partial<Pick<Live, 'flag' | 'coreReport'>>,
+    { emitState }: Transition<SessionMachine>,
+  ): void {
+    const next = { ...state, ...changes };
+    // A read of the flag made before a sign-in says nothing of another sign-in once this one ends.
+    const flag: Presence = next.shown.tag === 'Connected' ? 'unknown' : next.flag;
+    emitState({ ...next, flag });
+    setElsewhere(hasSignInElsewhere(flag, next.shown.tag));
+    auth.set(next.shown);
+  }
 
-  const coreReportStore = atom<DotliAuthState | null>(null);
-  registerAtomReset(coreReportStore);
-  const coreReport: ReadableAtom<DotliAuthState | null> = coreReportStore;
-
-  let lifecycle: Lifecycle = { kind: 'idle' };
-
-  function hasSignInElsewhere(tag: DotliAuthState['tag']): boolean {
+  function hasSignInElsewhere(flag: Presence, tag: DotliAuthState['tag']): boolean {
     return flag === 'present' && isShowingSignedOut(tag) && isResumeOffered();
   }
 
-  function reportFlag(presence: Presence): void {
-    const { tag } = auth.store.get();
-    if (tag === 'Connected') {
+  function writeUiCache(value: string | null, { update }: Transition<SessionMachine>): void {
+    // No state handles the event, which only lets `await()` cover the write.
+    update(store.writeUiCache(value).then((): Event => ({ kind: 'uiCacheWritten' })));
+  }
+
+  function startRead(source: Source, { emitState, update }: Transition<ReadMachine>): void {
+    emitState({ kind: 'reading', rerun: null });
+    update(readSavedSession(source));
+  }
+
+  function endRead(rerun: Source | null, transition: Transition<ReadMachine>): void {
+    if (rerun === null) {
+      transition.emitState({ kind: 'none' });
       return;
     }
-    flag = presence;
-    setElsewhere(hasSignInElsewhere(tag));
+    startRead(rerun, transition);
   }
 
-  function writeUiCache(state: TruapiSessionUiState): Promise<void> {
-    return store.writeUiCache(state.connected ? JSON.stringify(state) : null);
-  }
-
-  function parseCachedAccount(raw: string | null): TruapiSessionUiState | null {
-    return raw === null ? null : parseUiStateCache(raw);
-  }
-
-  // A core takes seconds to connect with a session stored for it, so while the page shows it signed out the copy may
-  // show one at once. A store that comes back may end `Unreachable` with no news from the core, whose session read
-  // already ended. A pairing stays the core's, and the core's next report decides from there. While a core's own report
-  // is open to it, the copy may also replace a sign-in it showed itself.
-  function isCopyAllowedToShow(): boolean {
-    const report = coreReport.get();
-    return speaker === 'copy' || isOpenToCopy(auth.store.get().tag) || (report !== null && isOpenToCopy(report.tag));
-  }
-
-  /** The session to show: the local wallet's when there is one, else the saved one with its cached account. */
-  async function readSessionToShow({
-    local,
-    raw,
-    readCachedAccount,
-  }: ReadSessionToShowParams): Promise<TruapiSessionUiState | null> {
-    if (local !== null) {
-      return getLocalSessionUiState(local.identity);
-    }
-    if (raw === null) {
-      return null;
-    }
-    return parseCachedAccount(await readCachedAccount()) ?? { connected: true };
-  }
-
-  /**
-   * Shows the local wallet when there is one, else what was saved, while the copy may show it. A read that finds
-   * nothing ends only `Restoring` or `Unreachable`, and, while a core speaks, withdraws a sign-in the copy showed
-   * to the core's own report. It leaves a sign-out or a failure on show alone. `readCachedAccount` is the raw read of
-   * the cached account, called only when a session of the saved copy is to be shown and never rejecting.
-   */
-  async function applySavedSession(
-    readSession: (restored: LoadRestore) => Promise<string | null>,
-    readCachedAccount: () => Promise<string | null>,
-  ): Promise<void> {
-    if (!isCopyAllowedToShow()) {
-      return;
-    }
-    // The restore first, since the session read must come after the rule.
-    const restored = await restore();
-    const raw = await readSession(restored);
-    const session = await readSessionToShow({ local: restored.local, raw, readCachedAccount });
-    if (!isCopyAllowedToShow()) {
-      return;
-    }
-    if (session !== null) {
-      auth.set({ tag: 'Connected', session });
-      return;
-    }
-    const shown = auth.store.get();
-    // A store that could not be read says nothing of a sign-out, so a sign-in on show stays.
-    // A sign-in the core reported itself is its own report, so withdrawing to that report leaves it on show.
-    if (speaker === 'core' && !lastReadFailed && shown.tag === 'Connected') {
-      auth.set(getWithdrawnState(coreReport.get()));
-      return;
-    }
-    if (authViews.isAwaitingSavedSession(shown)) {
-      auth.set({ tag: lastReadFailed ? 'Unreachable' : 'Disconnected' });
-    }
-  }
-
-  /** Reads the saved session and shows it. Never rejects. */
-  function readAndApply(): Promise<void> {
-    return applySavedSession(
-      async () => {
-        const read = await store.readSession();
-        return read.status === 'ok' ? read.blob : null;
-      },
-      // A sign-in elsewhere writes the cached account right after the session whose change started this read, so
-      // the read waits for the session's.
-      () => store.readUiCache(),
-    );
-  }
-
-  /** Reads the saved session again and shows it, queued behind the read in flight, so the later read decides. */
-  function refresh(): Promise<void> {
-    return savedSessionReads.call(readAndApply);
-  }
-
-  function retryRead(): Promise<void> {
-    return savedSessionReads.call(async () => {
-      if (auth.store.get().tag !== 'Unreachable') {
-        return;
-      }
-      await readAndApply();
-    });
-  }
-
-  /** A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it. */
-  function markUnreachable(): void {
-    const tag = auth.store.get().tag;
-    if (tag === 'Restoring' || tag === 'Disconnected') {
-      auth.set({ tag: 'Unreachable' });
-    }
-  }
-
-  /** Shows what the core reported, and keeps it as the core's own report. */
-  function reportCore(next: DotliAuthState): void {
-    coreReportStore.set(next);
-    auth.set(next);
-  }
-
-  /** Follows the shared store and the saved copy, and returns the stop that ends it. */
-  function follow(): () => void {
-    const stops: (() => void)[] = [];
-    const started: Lifecycle = { kind: 'started', stop: stopState };
-
-    function stopState(): void {
-      for (const stop of stops.splice(0)) {
-        stop();
-      }
-      // A stop that runs after dispose leaves the state disposed.
-      if (lifecycle === started) {
-        lifecycle = { kind: 'idle' };
-      }
-    }
-
-    // A stop or dispose that re-enters from a call below has already run, so what it missed ends at once.
-    function keep(stop: () => void): void {
-      if (lifecycle !== started) {
-        stop();
-        return;
-      }
-      stops.push(stop);
-    }
-
-    // Written before any call out, so a call that re-enters finds the state started.
-    lifecycle = started;
-    keep(
-      store.getStatusStore().listen(status => {
-        if (status === 'unavailable') {
-          markUnreachable();
+  /** Reads the saved session to show, in one step. A read that rejects is a defect, and ends as `readRejected`. */
+  async function readSavedSession(source: Source): Promise<Event> {
+    try {
+      switch (source) {
+        case 'load': {
+          // The restore rule clears the cached account only with the session it drops, which makes the cache unused,
+          // so the read starts beside the rule.
+          const cachedAccount = store.readUiCache();
+          const restored = await restore();
+          const raw = getBlob(restored.session);
+          return {
+            kind: 'readLanded',
+            session: getSessionToShow({ local: restored.local, raw, cached: await cachedAccount }),
+            flag: hasHeldNothing(restored) ? restored.presence : null,
+          };
         }
-      }),
-    );
-    // The load's own read, which the restore rule already made, with the flag it read beside a copy that held
-    // nothing.
-    void savedSessionReads.call(() => {
-      // The restore rule clears the cached account only with the session it drops, which makes the cache unused, so
-      // the read starts beside the rule. It never rejects.
-      const cachedAccount = store.readUiCache();
-      return applySavedSession(
-        restored => {
-          if (hasHeldNothing(restored)) {
-            reportFlag(restored.presence);
-          }
-          const { session } = restored;
-          return Promise.resolve(session.status === 'ok' ? session.blob : null);
-        },
-        () => cachedAccount,
-      );
-    });
-    // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
-    keep(
-      store.subscribeStoredSession(() => {
-        if (isCopyAllowedToShow()) {
-          void refresh();
+        case 'store': {
+          // The restore first, since the session read must come after the rule.
+          const { local } = await restore();
+          const raw = getBlob(await store.readSession());
+          // A sign-in elsewhere writes the cached account right after the session whose change started this read, so
+          // the read waits for the session's.
+          const cached = raw === null || local !== null ? null : await store.readUiCache();
+          return { kind: 'readLanded', session: getSessionToShow({ local, raw, cached }), flag: null };
         }
-      }),
-    );
-    return stopState;
+      }
+    } catch (error) {
+      report.defect(error, {
+        step: 'saved_session_read',
+        metric: savedSessionReadMetric,
+        message: '[dot.li] A saved session read failed',
+      });
+      return { kind: 'readRejected' };
+    }
   }
 
-  function dispose(): void {
-    const ended = lifecycle;
-    lifecycle = { kind: 'disposed' };
-    stopSessionReads();
-    if (ended.kind === 'started') {
-      ended.stop();
+  function getFollowStop(follow: Follow): () => void {
+    switch (follow.kind) {
+      case 'following':
+        return () => {
+          machine.update({ kind: 'stopped', run: follow.run });
+        };
+      // A start whose follow threw follows nothing.
+      case 'idle':
+        return noop;
     }
   }
 
@@ -305,79 +425,38 @@ export function createSessionState({
      * The state the page's core itself reported last, as the page shows it. Null before any core reported and again
      * once the page's last core went. The saved copy never writes it, so it holds only a core's own report.
      */
-    coreReport,
+    coreReport: computed(machine.state, state => state.coreReport),
     /**
      * Shows the session the load's restore left, reads the saved copy again whenever it changes, such as by a sign-in
      * from the window or the shared store coming back, and shows `Unreachable` while the shared store is down. The copy
-     * speaks for the page only while no core does. A second call returns the first one's stop. A disposed state
-     * follows nothing and returns a stop that does nothing.
+     * speaks for the page only while no core does. A second call joins the follow the first one began, and a stop from
+     * either call ends it. A stop called after its follow ended does nothing, and so does the stop a disposed state
+     * returns.
      */
     start(): () => void {
-      switch (lifecycle.kind) {
-        case 'idle':
-          return follow();
-        case 'started':
-          return lifecycle.stop;
+      machine.update({ kind: 'started', run: {} });
+      const state = machine.state.get();
+      switch (state.kind) {
+        case 'live':
+          return getFollowStop(state.follow);
         case 'disposed':
           return noop;
       }
     },
     /** The page's last core went, so the saved copy speaks for the page again, read at once and on each change. */
     reportCoresGone(): void {
-      speaker = 'copy';
-      coreReportStore.set(null);
-      void refresh();
+      machine.update({ kind: 'coresGone' });
     },
     /**
      * A state the core reported, which also keeps the UI-state cache. From then the page is
      * that core's, which follows the copy itself, until the page's last core went.
      */
     reportCoreAuthState(state: CoreAuthState, pairing: PairingPresentation): void {
-      speaker = 'core';
-      switch (state.tag) {
-        case 'Pairing': {
-          reportCore({
-            tag: 'Pairing',
-            deeplink: state.value.deeplink,
-            label: pairing.label,
-            dotSuffix: pairing.dotSuffix,
-            hostGlobal: pairing.hostGlobal,
-          });
-          break;
-        }
-        case 'Authenticating': {
-          reportCore({ tag: 'Authenticating' });
-          break;
-        }
-        case 'Connected': {
-          const session = getSessionUiState(state.value);
-          if (!isLocalWallet()) {
-            void writeUiCache(session);
-          }
-          reportCore({ tag: 'Connected', session });
-          break;
-        }
-        case 'Disconnected': {
-          if (!isLocalWallet()) {
-            // The core reads an unreadable store as no session, which is not a logout, so the cached account stays.
-            if (lastReadFailed) {
-              reportCore({ tag: 'Unreachable' });
-              break;
-            }
-            void writeUiCache({ connected: false });
-          }
-          reportCore({ tag: 'Disconnected' });
-          break;
-        }
-        case 'LoginFailed': {
-          reportCore({ tag: 'LoginFailed', kind: state.value.kind, reason: state.value.reason });
-          break;
-        }
-      }
+      machine.update({ kind: 'coreReported', state, pairing });
     },
     /** A login that failed before the core could report it. */
     reportLoginFailure(reason: string): void {
-      auth.set({ tag: 'LoginFailed', kind: 'Other', reason });
+      machine.update({ kind: 'loginFailed', reason });
     },
     /**
      * The page is signed out with no core to report it: a logout whose core never booted, shown signed out although
@@ -385,9 +464,7 @@ export function createSessionState({
      * page already dropped.
      */
     reportSignedOut(): void {
-      // Every such sign-out deleted the flag, here or on the page that signed out.
-      flag = 'absent';
-      auth.set({ tag: 'Disconnected' });
+      machine.update({ kind: 'signedOut' });
     },
     /**
      * The signed-in flag as a recheck read it while the page held no sign-in, so the page says whether a sign-in made
@@ -395,19 +472,27 @@ export function createSessionState({
      * copy. A page that shows a sign-in ignores it. A page that pairs in place offers none, as only the window resumes
      * one.
      */
-    reportFlag,
+    reportFlag(presence: Presence): void {
+      machine.update({ kind: 'flagRead', presence });
+    },
     /**
-     * Reads the saved session again while the page shows `Unreachable`, queued behind the read in flight, and settles
-     * once that read was applied. Settles without a read in any other state. Never rejects. `Unreachable` is left by a
-     * read that answers, whichever reader made it, so a core's read that answers also starts one.
+     * Asks a read of the saved session when the page shows `Unreachable` at the call, and settles once the session
+     * state's work has settled, that read and any read it started included. Asks none in any other state. A read
+     * that left `Unreachable` meanwhile only makes the asked read redundant. `Unreachable` is left by a read that
+     * answers, whichever reader made it, so a core's read that answers also asks one.
      */
-    retryRead,
+    retryRead(): Promise<void> {
+      machine.update({ kind: 'retryAsked' });
+      return machine.await();
+    },
     /**
-     * Stops hearing the store's session reads and ends the follow `start` began, is safe to call twice and never
-     * throws, and leaves a state that is not started again, while a read already queued still settles and writes the
-     * auth state once.
+     * Stops hearing the store's session reads and ends the follow `start` began, and leaves a state that is not
+     * started again. After it, a read in flight writes nothing, and every report and ask changes nothing. Safe to
+     * call twice.
      */
-    dispose,
+    dispose(): void {
+      machine.update({ kind: 'disposed' });
+    },
   };
 }
 
@@ -422,6 +507,14 @@ export const sessionState = createSessionState({
   // Read when first needed, as the role is chosen after this module loads.
   isResumeOffered: () => isResumeOffered(pageRole.get()),
 });
+
+// A core takes seconds to connect with a session stored for it, so while the page shows it signed out the copy may
+// show one at once. A store that comes back may end `Unreachable` with no news from the core, whose session read
+// already ended. A pairing stays the core's, and the core's next report decides from there. While a core's own report
+// is open to it, the copy may also replace a sign-in it showed itself.
+function isCopyAllowedToShow({ coreReport, shown }: Pick<Live, 'coreReport' | 'shown'>): boolean {
+  return coreReport === null || isOpenToCopy(shown.tag) || isOpenToCopy(coreReport.tag);
+}
 
 /** The states in which the page holds no sign-in of its own and its button offers one. */
 function isShowingSignedOut(tag: DotliAuthState['tag']): boolean {
@@ -460,6 +553,43 @@ function hasHeldNothing({ session, wallet }: Pick<Restored, 'session' | 'wallet'
   );
 }
 
+function getBlob(read: SessionRead): string | null {
+  return read.status === 'ok' ? read.blob : null;
+}
+
+/** The session to show: the local wallet's when there is one, else the saved one with its cached account. */
+function getSessionToShow({ local, raw, cached }: GetSessionToShowParams): TruapiSessionUiState | null {
+  if (local !== null) {
+    return getLocalSessionUiState(local.identity);
+  }
+  if (raw === null) {
+    return null;
+  }
+  return (cached === null ? null : parseUiStateCache(cached)) ?? { connected: true };
+}
+
+/** The state the page shows for what the core reported. */
+function getCoreReport(core: CoreAuthState, pairing: PairingPresentation): DotliAuthState {
+  switch (core.tag) {
+    case 'Pairing':
+      return {
+        tag: 'Pairing',
+        deeplink: core.value.deeplink,
+        label: pairing.label,
+        dotSuffix: pairing.dotSuffix,
+        hostGlobal: pairing.hostGlobal,
+      };
+    case 'Authenticating':
+      return { tag: 'Authenticating' };
+    case 'Connected':
+      return { tag: 'Connected', session: getSessionUiState(core.value) };
+    case 'Disconnected':
+      return { tag: 'Disconnected' };
+    case 'LoginFailed':
+      return { tag: 'LoginFailed', kind: core.value.kind, reason: core.value.reason };
+  }
+}
+
 function getSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
   return {
@@ -476,9 +606,9 @@ function getSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
  * The state a page shows once the copy withdraws its sign-in, the core's own report, with `Unreachable` shown as
  * `Disconnected` since the read that withdrew the sign-in has just answered.
  */
-function getWithdrawnState(report: DotliAuthState | null): DotliAuthState {
-  if (report === null || report.tag === 'Unreachable') {
+function getWithdrawnState(coreReport: DotliAuthState): DotliAuthState {
+  if (coreReport.tag === 'Unreachable') {
     return { tag: 'Disconnected' };
   }
-  return report;
+  return coreReport;
 }

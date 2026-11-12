@@ -108,6 +108,26 @@ async function startAnsweredLogin() {
   return { fakes, done };
 }
 
+/** A login waiting for a cold wallet core to boot, whose user closes the sign-in as the boot's failure arrives. */
+async function startLoginClosedAsBootFails() {
+  const fakes = createHarness();
+  fakes.holdBoots();
+  const acquire = fakes.core.acquire.bind(fakes.core);
+  vi.spyOn(fakes.core, 'acquire').mockImplementationOnce(() => {
+    const lease = acquire();
+    // Hooked a microtask late, so the close lands after the login heard the failure and before it acts on it.
+    queueMicrotask(() => {
+      lease.catch(() => {
+        fakes.commands.cancelLogin();
+      });
+    });
+    return lease;
+  });
+  const done = fakes.commands.login();
+  await fakes.changes.until(() => fakes.heldBoots.length === 1);
+  return { fakes, done };
+}
+
 describe('topbar login over the page core', () => {
   it('As a user on the landing page, I log in and the core goes once my login is done', async () => {
     // Given a login whose core answers with success
@@ -417,6 +437,59 @@ describe('topbar login over the page core', () => {
     expect(fakes.connections).toHaveLength(1);
   });
 
+  it('As a user, I cancel a topbar login while the core boots, and the lease the core hands over later is released', async () => {
+    // Given a login waiting for a cold wallet core to boot, whose lease the test watches
+    const fakes = createHarness();
+    fakes.holdBoots();
+    const release = vi.fn<() => void>(fakes.changes.notify);
+    let leaseArrived = false;
+    const acquire = fakes.core.acquire.bind(fakes.core);
+    vi.spyOn(fakes.core, 'acquire').mockImplementationOnce(async () => {
+      const lease = await acquire();
+      leaseArrived = true;
+      return {
+        ...lease,
+        release() {
+          lease.release();
+          release();
+        },
+      };
+    });
+    const done = fakes.commands.login().then(outcome => ({ outcome, leaseArrived }));
+    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+
+    // When the user cancels, the login answers, and then the core finishes booting
+    fakes.commands.cancelLogin();
+    const answer = await done;
+    nth(fakes.heldBoots, 0).resolve(undefined);
+    await fakes.changes.until(() => release.mock.calls.length > 0);
+
+    // Then the login answered cancelled before the lease arrived, and the lease was released once
+    expect(answer).toEqual({ outcome: { kind: 'cancelled' }, leaseArrived: false });
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a user whose topbar login's connection fails to close, I see the login fail and my next login runs", async () => {
+    // Given a login whose core answers with success over a connection that throws once it is closed
+    const fakes = createHarness();
+    const done = fakes.commands.login();
+    const login = createAnsweringProvider({ result: { kind: 'success', value: 'Success' } });
+    login.dispose.mockImplementation(() => {
+      throw new Error('the connection refused to close');
+    });
+
+    // When the core answers and the connection fails to close, then the user logs in again
+    await answerConnection(fakes, 0, { provider: login });
+    const outcome = await done;
+    void fakes.commands.login();
+    await fakes.changes.until(() => fakes.connections.length === 2);
+
+    // Then the login answered failed, its lease was released, and the next login reached the core
+    expect(outcome).toEqual({ kind: 'failed' });
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.connections).toHaveLength(2);
+  });
+
   it('As a user, I close the sign-in while the wallet core still boots and its late boot failure is still reported', async () => {
     // Given a login the user closed while a cold wallet core still boots
     const fakes = createHarness();
@@ -439,23 +512,27 @@ describe('topbar login over the page core', () => {
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
 
+  it('As a user who closes the sign-in in the same turn a boot failure arrives, I see the login answer cancelled and session state is not told', async () => {
+    // Given a login waiting for a cold wallet core to boot, whose user closes the sign-in as the boot's failure arrives
+    const { fakes, done } = await startLoginClosedAsBootFails();
+
+    // When the boot fails
+    const failure = new Error('worker fatal error: boot');
+    nth(fakes.heldBoots, 0).reject(failure);
+    const outcome = await done;
+
+    // Then the login answered cancelled, the failure was reported once, and session state was told nothing
+    expect(outcome).toEqual({ kind: 'cancelled' });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({ step: 'login' }),
+    );
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+  });
+
   it('As an operator, I see a boot failure that lands in the same turn as the user closing the sign-in still reported', async () => {
     // Given: a login waiting for a cold wallet core to boot, whose user closes the sign-in as the boot's failure arrives
-    const fakes = createHarness();
-    fakes.holdBoots();
-    const acquire = fakes.core.acquire.bind(fakes.core);
-    vi.spyOn(fakes.core, 'acquire').mockImplementationOnce(() => {
-      const lease = acquire();
-      // Hooked a microtask late, so the close lands after the login heard the failure and before it acts on it.
-      queueMicrotask(() => {
-        lease.catch(() => {
-          fakes.commands.cancelLogin();
-        });
-      });
-      return lease;
-    });
-    const done = fakes.commands.login();
-    await fakes.changes.until(() => fakes.heldBoots.length === 1);
+    const { fakes, done } = await startLoginClosedAsBootFails();
 
     // When the boot fails
     const failure = new Error('worker fatal error: boot');

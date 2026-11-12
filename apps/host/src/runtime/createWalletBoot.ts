@@ -4,9 +4,9 @@
 // The page's restore on load. It applies the restore rule to the page's copy, and the wallet the rule leaves is the
 // page's wallet mode.
 
-import { createReporter } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { createAsyncTaskPool } from '@dotli/shared';
+import { createAsyncTaskPool, createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
 import { reportLocalWalletFailure, walletLocalActivateMetric } from './walletFailure.js';
 import { getLoadReader, pageRole, isPairingOnly, isFlagShared, type PageRole } from './pageRole.js';
 import { signInFlag } from './session/createCoreStorage.js';
@@ -17,6 +17,9 @@ import type { SignInFlag } from './session/signInFlag.js';
 import { walletModeState, type WalletModeState } from './state/walletModeState.js';
 
 const walletReport = createReporter({ flow: 'wallet' });
+
+/** A wallet boot's transition or effect that threw, or a restore rule that rejected. Tagged `outcome` (error). */
+const walletBootTransitionMetric = defineCount<'error'>('wallet_boot.transition');
 
 export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 
@@ -44,6 +47,33 @@ export type WalletBoot = ReturnType<typeof createWalletBoot>;
 /** A wallet read the frame answered, whatever it found. */
 type AnsweredWallet = Exclude<WalletRead, { status: 'failed' }>;
 
+/**
+ * `walletUnread` and `walletRead` hold the first dead session a pass found, since a later pass finds the store already
+ * empty, and `last`, what the last pass left. `walletRead` holds the first wallet the frame answered, which set the mode,
+ * so a later pass only reconciles the session. `kept` is the answer for the page. `passFailed` holds the state the
+ * broken pass left, which the next pass starts from.
+ */
+type BootState =
+  | { kind: 'unread' }
+  | { kind: 'walletUnread'; dead: Reconciled['dead']; last: Restored }
+  | { kind: 'walletRead'; wallet: AnsweredWallet; dead: Reconciled['dead']; last: Restored }
+  | { kind: 'kept'; wallet: AnsweredWallet; answer: Restored }
+  | { kind: 'passFailed'; previous: Exclude<BootState, { kind: 'kept' | 'passFailed' }>; error: unknown };
+
+type BootEvent =
+  | { kind: 'asked' }
+  | { kind: 'passed'; reconciled: Reconciled }
+  | { kind: 'passBroke'; error: unknown }
+  | { kind: 'sitesServed' };
+
+type BootEffect =
+  | { kind: 'walletUnavailable'; error: unknown }
+  | { kind: 'modeChosen'; wallet: AnsweredWallet }
+  | { kind: 'modeReported'; wallet: AnsweredWallet }
+  | { kind: 'restoreKept'; restored: Restored };
+
+type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
+
 const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
 const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
 
@@ -55,11 +85,134 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   const reader: PresenceReader = getLoadReader(role);
   // One restore at a time, so a caller that queued behind an answered one takes its answer.
   const restores = createAsyncTaskPool({ poolSize: 1 });
-  let answer: Restored | undefined;
-  // The first wallet the frame answered, which set the mode. A later pass only reconciles the session.
-  let walletAnswer: AnsweredWallet | undefined;
-  // The first dead session a pass found, kept until a pass is kept, since a later pass finds the store already empty.
-  let dead: Reconciled['dead'] = null;
+
+  const startPass: HandlerOf<BootMachine, 'unread' | 'walletUnread' | 'walletRead' | 'passFailed', 'asked'> = (
+    state,
+    _event,
+    { emitState, update },
+  ) => {
+    if (state.kind === 'passFailed') {
+      emitState(state.previous);
+    }
+    update(
+      // Started in the chain, so a rule that throws before it returns a promise breaks the pass like a rejection.
+      Promise.resolve(reader)
+        .then(reconcile)
+        .then(
+          reconciled => ({ kind: 'passed', reconciled }),
+          (error: unknown) => {
+            walletReport.defect(error, {
+              step: 'restore',
+              metric: walletBootTransitionMetric,
+              message: '[dot.li wallet] the restore rule rejected:',
+            });
+            return { kind: 'passBroke', error };
+          },
+        ),
+    );
+  };
+  const applyPass: HandlerOf<BootMachine, 'unread' | 'walletUnread' | 'walletRead', 'passed'> = (
+    state,
+    { reconciled },
+    { emitState, emitSideEffect },
+  ) => {
+    const dead = (state.kind === 'unread' ? null : state.dead) ?? reconciled.dead;
+    const wallet = state.kind === 'walletRead' ? state.wallet : reconciled.wallet;
+    const last: Restored = { ...reconciled, wallet, dead, local: getLocalWallet(wallet) };
+    if (wallet.status === 'failed') {
+      emitState({ kind: 'walletUnread', dead, last });
+      emitSideEffect({ kind: 'walletUnavailable', error: wallet.error });
+      return;
+    }
+    if (state.kind !== 'walletRead') {
+      // It tells the mode even when the session read failed, so cores can boot, and core storage reports that.
+      emitSideEffect({ kind: 'modeChosen', wallet });
+    }
+    const { presence, session } = reconciled;
+    if (session.status === 'failed') {
+      emitState({ kind: 'walletRead', wallet, dead, last });
+      return;
+    }
+    emitState({ kind: 'kept', wallet, answer: last });
+    emitSideEffect({ kind: 'restoreKept', restored: last });
+    // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
+    if (presence === 'present' && (session.blob !== null || wallet.status === 'ok')) {
+      flag.renew();
+    }
+  };
+  // The pass's work reported the rejection.
+  const failPass: HandlerOf<BootMachine, 'unread' | 'walletUnread' | 'walletRead', 'passBroke'> = (
+    state,
+    { error },
+    { emitState },
+  ) => {
+    emitState({ kind: 'passFailed', previous: state, error });
+  };
+  // Reported once already, so only the mode goes out again.
+  const reportServedMode: HandlerOf<BootMachine, 'walletRead' | 'kept', 'sitesServed'> = (
+    { wallet },
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'modeReported', wallet });
+  };
+  const machine = createStateMachine<BootMachine>({
+    initial: { kind: 'unread' },
+    handlers: {
+      unread: { asked: startPass, passed: applyPass, passBroke: failPass },
+      walletUnread: { asked: startPass, passed: applyPass, passBroke: failPass },
+      walletRead: { asked: startPass, passed: applyPass, passBroke: failPass, sitesServed: reportServedMode },
+      kept: { sitesServed: reportServedMode },
+      passFailed: {
+        asked: startPass,
+        sitesServed({ previous }, _event, { emitSideEffect }) {
+          if (previous.kind === 'walletRead') {
+            emitSideEffect({ kind: 'modeReported', wallet: previous.wallet });
+          }
+        },
+      },
+    },
+    onEffect(effect) {
+      switch (effect.kind) {
+        case 'walletUnavailable':
+          // The environment's failure, so each pass that met it is a breadcrumb and a count.
+          walletReport.expected(effect.error, {
+            step: 'local_wallet',
+            metric: walletLocalActivateMetric,
+            reason: 'read',
+          });
+          report({ mode: 'app', failure: UNAVAILABLE });
+          return;
+        case 'modeChosen':
+          if (effect.wallet.status === 'unreadable') {
+            reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
+          }
+          report(getWalletMode(effect.wallet));
+          return;
+        case 'modeReported':
+          report(getWalletMode(effect.wallet));
+          return;
+        case 'restoreKept': {
+          const { presence, wallet, local } = effect.restored;
+          if (presence === 'unknown' && isFlagShared(role)) {
+            walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
+            sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
+          }
+          if (wallet.status === 'ok' && local === null) {
+            walletReport.log.event('local wallet kept as data, page pairs');
+          }
+          return;
+        }
+      }
+    },
+    onError(error) {
+      walletReport.defect(error, {
+        step: 'transition',
+        metric: walletBootTransitionMetric,
+        message: '[dot.li wallet] A wallet boot transition threw',
+      });
+    },
+  });
 
   /** The stored wallet the page boots on, or null when there is none or the page keeps it as data. */
   function getLocalWallet(wallet: WalletRead): LocalWalletBoot | null {
@@ -74,65 +227,24 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
     };
   }
 
-  /** A frame that cannot answer is the environment's failure, so each pass that met it is a breadcrumb and a count. */
-  function reportOutage(error: unknown): void {
-    walletReport.expected(error, { step: 'local_wallet', metric: walletLocalActivateMetric, reason: 'read' });
-    report({ mode: 'app', failure: UNAVAILABLE });
-  }
-
-  /** Reports the mode the first wallet the frame answered picks, once. */
-  function reportMode(wallet: AnsweredWallet): void {
-    if (wallet.status === 'unreadable') {
-      reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
-    }
-    report(getWalletMode(wallet));
-  }
-
-  /**
-   * Counts a flag that could not be read and renews the flag for a sign-in the page keeps. Once per page, since
-   * the answer is kept from here.
-   */
-  function settle({ presence, session, wallet }: Restored): void {
-    if (presence === 'unknown' && isFlagShared(role)) {
-      walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
-      sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
-    }
-    // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
-    const signedIn = (session.status === 'ok' && session.blob !== null) || wallet.status === 'ok';
-    if (presence === 'present' && signedIn) {
-      flag.renew();
-    }
-    if (wallet.status === 'ok' && getLocalWallet(wallet) === null) {
-      walletReport.log.event('local wallet kept as data, page pairs');
-    }
-  }
-
-  async function restoreOnce(): Promise<Restored> {
-    if (answer !== undefined) {
-      return answer;
-    }
-    const reconciled = await reconcile(reader);
-    if (walletAnswer === undefined) {
-      if (reconciled.wallet.status === 'failed') {
-        reportOutage(reconciled.wallet.error);
-      } else {
-        // It tells the mode even when the session read failed, so cores can boot, and core storage reports that.
-        walletAnswer = reconciled.wallet;
-        reportMode(walletAnswer);
-      }
-    }
-    dead ??= reconciled.dead;
-    const wallet = walletAnswer ?? reconciled.wallet;
-    const restored: Restored = { ...reconciled, wallet, dead, local: getLocalWallet(wallet) };
-    if (walletAnswer !== undefined && restored.session.status !== 'failed') {
-      answer = restored;
-      settle(restored);
-    }
-    return restored;
-  }
-
   function restore(): Promise<Restored> {
-    return restores.call(restoreOnce);
+    return restores.call(async () => {
+      machine.update({ kind: 'asked' });
+      await machine.await();
+      const settled = machine.state.get();
+      switch (settled.kind) {
+        case 'kept':
+          return settled.answer;
+        case 'walletUnread':
+        case 'walletRead':
+          return settled.last;
+        case 'passFailed':
+          throw new Error('The restore rule failed', { cause: settled.error });
+        // A pass always leaves it.
+        case 'unread':
+          throw new Error('The wallet boot has no pass of its own');
+      }
+    });
   }
 
   // By the rule that holds now, as the restore keeps its first answer for the saved copy.
@@ -142,10 +254,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
 
   function serveSites(): void {
     servesSites = true;
-    // Reported once already, so only the mode goes out again.
-    if (walletAnswer !== undefined) {
-      report(getWalletMode(walletAnswer));
-    }
+    machine.update({ kind: 'sitesServed' });
   }
 
   return {
@@ -153,13 +262,15 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
      * What the restore rule left of the stored sign-in. Kept for the page once the frame answered both the session and
      * the wallet read, so the rule runs before boot picks a wallet mode and before any core or session state reads the
      * session. A read it could not answer was not reconciled, so the next caller applies the rule again. The first
-     * wallet answered keeps the mode, and the first dead session found stays in the answer. Never rejects.
+     * wallet answered keeps the mode, and the first dead session found stays in the answer. Rejects only when the
+     * restore rule breaks its contract and rejects, with that rejection as the cause.
      */
     restore,
     /**
      * Null boots the pairing host. A failed read cannot tell the mode, so it falls back to Polkadot App. On a page that
      * only pairs, the sign-in and sign-out windows, a stored wallet never picks the mode, except in a sign-in window
-     * that serves a site, which boots on a stored local wallet. Never rejects.
+     * that serves a site, which boots on a stored local wallet. Rejects only when the restore rule breaks its contract
+     * and rejects, with that rejection as the cause.
      */
     read,
     /**
@@ -212,7 +323,10 @@ function createPageWalletBoot() {
   }
 
   return {
-    /** The local wallet the page boots on, or null to boot the pairing host. Rejects only before the role is chosen. */
+    /**
+     * The local wallet the page boots on, or null to boot the pairing host. Rejects before the role is chosen, and when
+     * the restore rule breaks its contract and rejects.
+     */
     read,
     /**
      * The sign-in window serves a site, so its cores boot on a stored local wallet. Throws only before the role is
@@ -220,8 +334,8 @@ function createPageWalletBoot() {
      */
     serveSites,
     /**
-     * Settles once the restore rule ran on the page's copy, with what it left. Rejects only before the role is
-     * chosen.
+     * Settles once the restore rule ran on the page's copy, with what it left. Rejects before the role is chosen, and
+     * when the restore rule breaks its contract and rejects.
      */
     restore,
   };

@@ -504,7 +504,7 @@ describe('session window flow', () => {
 
     // When the core reports Connected
     auth.set(CONNECTED);
-    await flow.settled();
+    await flow.await();
 
     // Then nothing went out on the report alone
     expect(readSent()).toEqual([]);
@@ -725,7 +725,7 @@ describe('session window flow', () => {
 
     // When the opener is vetted
     vet();
-    await flow.settled();
+    await flow.await();
 
     // Then the failed view shows, counted and logged
     expect(flow.screen.get().view).toBe('failed');
@@ -831,6 +831,20 @@ describe('session window flow', () => {
     expect(readSent()).toEqual([
       { session: { blob: BLOB, uiState: UI_STATE }, localWallet: { entropy: PHRASE_ENTROPY, identity: null } },
     ]);
+  });
+
+  it('As a user in the sign-in window, I press Import twice while the first saves and the second press is ignored and resolves', async () => {
+    // Given a phrase window
+    const { flow, readSent, calls } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+
+    // When the user imports a phrase twice at once
+    const imports = Promise.all([flow.importPhrase(PHRASE), flow.importPhrase(PHRASE)]);
+
+    // Then both presses resolve, the wallet is saved once and one result is sent
+    await expect(imports).resolves.toEqual([undefined, undefined]);
+    expect(calls).toEqual(['save', 'close']);
+    expect(readSent()).toHaveLength(1);
   });
 
   it('As a user in the sign-in window whose wallet could not be saved, I see the form say so and the failure is reported and the cookie deleted', async () => {
@@ -993,7 +1007,7 @@ describe('session window flow', () => {
     const { flow, calls } = openWindow({ opener: false, intent: 'phrase' });
 
     // When the flow settles
-    await flow.settled();
+    await flow.await();
 
     // Then the phrase view shows and no login starts
     expect(flow.screen.get().view).toBe('phrase');
@@ -1009,7 +1023,7 @@ describe('session window flow', () => {
     });
 
     // When the flow settles
-    await flow.settled();
+    await flow.await();
 
     // Then Continue offers the stored account and nothing is sent
     expect(flow.screen.get().view).toBe('continue');
@@ -1048,7 +1062,7 @@ describe('session window flow', () => {
 
     // When its opener vets the request's round again
     vet();
-    await flow.settled();
+    await flow.await();
 
     // Then the login under way still shows its code, no step read the store and no second login started
     expect(flow.screen.get().view).toBe('pairing');
@@ -1120,6 +1134,8 @@ describe('session window flow', () => {
     const retried = flow.retry();
     answerLogin({ outcome: { kind: 'failed' } });
     await retried;
+    await waitForPairing(flow, 'spinner');
+    await flow.await();
 
     // Then a new login started only once the failed one answered, and the failure gave way to a fresh pairing
     expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
@@ -1254,7 +1270,7 @@ describe('session window flow', () => {
 
     // When the core reports a pairing
     auth.set(PAIRING);
-    await flow.settled();
+    await flow.await();
 
     // Then the failed view stays
     expect(flow.screen.get()).toBe(shown);
@@ -1268,7 +1284,7 @@ describe('session window flow', () => {
 
     // When the core reports Connected
     auth.set(CONNECTED);
-    await flow.settled();
+    await flow.await();
 
     // Then the user still chooses
     expect(flow.screen.get().view).toBe('continue');
@@ -1394,6 +1410,24 @@ describe('session window flow', () => {
     expect(flow.screen.get()).toBe(shown);
     expect(calls).toEqual([]);
     expect(responder.state.get()).toMatchObject({ kind: 'vetted', origin: PAGE });
+  });
+
+  it("As a dotli integrator, I dispose a flow while a step reads the store and the step's answer changes nothing", async () => {
+    // Given a window on Continue whose Continue reads the store
+    const { flow, vet, delivered, calls } = openWindow({ stored: { session: BLOB, uiState: UI_STATE } });
+    vet();
+    await waitForView(flow, 'continue');
+    const continued = flow.continueWithStored();
+    const shown = flow.screen.get();
+
+    // When it is disposed before the read answers
+    flow.dispose();
+    await continued;
+
+    // Then the read's answer delivered nothing and the screen stayed
+    expect(delivered).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(flow.screen.get()).toBe(shown);
   });
 
   it('As a dotli integrator, I dispose a flow that delivered and it closes nothing when its responder answers after it', async () => {

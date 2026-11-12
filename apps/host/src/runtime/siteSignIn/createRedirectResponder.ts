@@ -8,7 +8,9 @@
  * the navigation ends the window's page.
  */
 
-import { atom } from 'nanostores';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { createStateMachine, type MachineTypes } from '@dotli/shared';
+import { computed } from 'nanostores';
 import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import {
   createCancelledMessage,
@@ -35,12 +37,18 @@ type Params = {
   failed: (error: unknown, siteToken: string | undefined) => void;
 };
 
-type SendAnswerParams = {
-  /** The responder's state once the round ends. */
-  state: ResponderState;
-  message: PageMessage;
-  siteToken?: string | undefined;
-};
+type RedirectState =
+  | { kind: 'waiting' }
+  | { kind: 'sealing'; answer: ResponderState; siteToken: string | undefined }
+  | { kind: 'sent'; answer: ResponderState }
+  | { kind: 'failed'; answer: ResponderState };
+
+type RedirectEvent =
+  | { kind: 'answered'; answer: ResponderState; message: PageMessage; siteToken: string | undefined }
+  | { kind: 'sealed'; url: string }
+  | { kind: 'sealFailed'; error: unknown };
+
+type RedirectMachine = MachineTypes<RedirectState, RedirectEvent>;
 
 /**
  * Where the round's one answer stands: `none` before the round ends, `pending` while it is sealed, `sent` once the
@@ -50,6 +58,9 @@ export type RedirectDelivery = 'none' | 'pending' | 'sent' | 'failed';
 
 /** The window's responder in a redirect sign-in, which also says where its answer stands. */
 export type RedirectResponder = ReturnType<typeof createRedirectResponder>;
+
+const report = createReporter({ flow: 'wallet' });
+const redirectResponderTransitionMetric = defineCount<'error'>('session_pages.redirect_responder_transition');
 
 // Redirect mode sends no payload, so the call never comes.
 const NO_PAYLOAD = new Promise<string>(() => undefined);
@@ -65,47 +76,80 @@ export function createRedirectResponder({
   navigate,
   failed,
 }: Params) {
-  const store = atom<ResponderState>({ kind: 'vetted', origin, party: 'third' });
-  let delivery: RedirectDelivery = 'none';
+  const machine = createStateMachine<RedirectMachine>({
+    initial: { kind: 'waiting' },
+    handlers: {
+      waiting: {
+        answered(_state, { answer, message, siteToken }, { emitState, update }) {
+          emitState({ kind: 'sealing', answer, siteToken });
+          update(
+            seal({ returnTo, sitePublicKey, round, message }).then(
+              (url): RedirectEvent => ({ kind: 'sealed', url }),
+              (error: unknown): RedirectEvent => ({ kind: 'sealFailed', error }),
+            ),
+          );
+        },
+      },
+      sealing: {
+        sealed({ answer }, { url }, { emitState }) {
+          emitState({ kind: 'sent', answer });
+          // Forgotten first, so the page the browser keeps in history never answers this round again.
+          forgetRequest();
+          navigate(url);
+        },
+        sealFailed({ answer, siteToken }, { error }, { emitState }) {
+          emitState({ kind: 'failed', answer });
+          failed(error, siteToken);
+        },
+      },
+      sent: null,
+      failed: null,
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'transition',
+        metric: redirectResponderTransitionMetric,
+        message: '[dot.li] A redirect responder transition threw',
+      });
+    },
+  });
 
-  /**
-   * Ends the round with `state` and sends `message` back sealed, once. The delivery is pending before the seal, so a
-   * second call while it runs does nothing.
-   */
-  function sendAnswer({ state, message, siteToken }: SendAnswerParams): void {
-    if (delivery !== 'none') {
-      return;
+  const state = computed(machine.state, (current): ResponderState => {
+    switch (current.kind) {
+      case 'waiting':
+        return { kind: 'vetted', origin, party: 'third' };
+      case 'sealing':
+      case 'sent':
+      case 'failed':
+        return current.answer;
     }
-    delivery = 'pending';
-    store.set(state);
-    seal({ returnTo, sitePublicKey, round, message }).then(
-      url => {
-        delivery = 'sent';
-        // Forgotten first, so the page the browser keeps in history never answers this round again.
-        forgetRequest();
-        navigate(url);
-      },
-      (error: unknown) => {
-        delivery = 'failed';
-        failed(error, siteToken);
-      },
-    );
-  }
+  });
 
   const responder: Responder<unknown> = {
-    state: store,
+    state,
     send(result, { siteToken } = {}) {
-      sendAnswer({
-        state: { kind: 'answered' },
+      machine.update({
+        kind: 'answered',
+        answer: { kind: 'answered' },
         message: createResultMessage({ round, result, siteToken }),
         siteToken,
       });
     },
     refuse(reason) {
-      sendAnswer({ state: { kind: 'refused' }, message: createRefusedMessage(round, reason) });
+      machine.update({
+        kind: 'answered',
+        answer: { kind: 'refused' },
+        message: createRefusedMessage(round, reason),
+        siteToken: undefined,
+      });
     },
     cancel() {
-      sendAnswer({ state: { kind: 'answered' }, message: createCancelledMessage(round) });
+      machine.update({
+        kind: 'answered',
+        answer: { kind: 'answered' },
+        message: createCancelledMessage(round),
+        siteToken: undefined,
+      });
     },
     payload: () => NO_PAYLOAD,
     /**
@@ -118,6 +162,17 @@ export function createRedirectResponder({
   return {
     ...responder,
     /** Where the round's one answer stands now. */
-    delivery: (): RedirectDelivery => delivery,
+    delivery(): RedirectDelivery {
+      switch (machine.state.get().kind) {
+        case 'waiting':
+          return 'none';
+        case 'sealing':
+          return 'pending';
+        case 'sent':
+          return 'sent';
+        case 'failed':
+          return 'failed';
+      }
+    },
   };
 }
