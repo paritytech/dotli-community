@@ -115,17 +115,6 @@ type ClassifyFailureParams = {
   attempts: FetchAttempts;
 };
 
-type FetchBlockParams = {
-  /** The block to fetch. */
-  cid: string;
-  /** The time the whole fetch must end by, on the client's clock. */
-  deadline: number;
-  /** Stops the fetch when it fires. */
-  signal: AbortSignal | undefined;
-  /** Sends each attempt's request through the client's machine. */
-  update: Transition<ClientMachine>['update'];
-};
-
 // `bitswap_v1_get` error codes. Anything else, an invalid CID included, is terminal.
 const ERROR_FAIL = -32810;
 const ERROR_FAIL_RETRY = -32811;
@@ -380,15 +369,6 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     replies.resolve(message.id, fromHex(message.result));
   }
 
-  function startFetch(cid: string, runner: Caller, update: Transition<ClientMachine>['update']): void {
-    update(
-      fetchBlock({ cid, deadline: runner.deadline, signal: runner.signal, update }).then(
-        bytes => ({ kind: 'blockFetched', cid, runner, bytes }),
-        (error: unknown) => ({ kind: 'fetchFailed', cid, runner, error }),
-      ),
-    );
-  }
-
   function sendOnce({ cid, timeoutMs, signal, update }: SendOnceParams): Promise<Uint8Array> {
     // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
@@ -465,7 +445,9 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     return new RetryLater(delay, error);
   }
 
-  function fetchBlock({ cid, deadline, signal, update }: FetchBlockParams): Promise<Uint8Array> {
+  /** Runs the fetch of `cid` for `runner`, one attempt at a time, and sends its outcome to the machine. */
+  function startFetch(cid: string, runner: Caller, update: Transition<ClientMachine>['update']): void {
+    const { deadline, signal } = runner;
     const attempts: FetchAttempts = { deadline, made: 0, discovery: 0, transient: 0 };
     async function attemptFetch(): Promise<Uint8Array> {
       attempts.made += 1;
@@ -484,7 +466,12 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
         throw classifyFailure({ cid, error, attempts });
       }
     }
-    return pool.call(attemptFetch, { pool: `fetch:${cid}`, ...(signal !== undefined ? { signal } : {}) });
+    update(
+      pool.call(attemptFetch, { pool: `fetch:${cid}`, ...(signal !== undefined ? { signal } : {}) }).then(
+        bytes => ({ kind: 'blockFetched', cid, runner, bytes }),
+        (error: unknown) => ({ kind: 'fetchFailed', cid, runner, error }),
+      ),
+    );
   }
 }
 
