@@ -148,13 +148,11 @@ export function shareNetBytes({
   }
 
   function tick(): void {
-    let total: number;
+    // `update` never throws, so only the read is caught.
     try {
-      total = read();
+      meter.update({ kind: 'ticked', total: read() });
     } catch (error) {
       meter.update({ kind: 'readFailed', error });
-      return;
     }
-    meter.update({ kind: 'ticked', total });
   }
 }
