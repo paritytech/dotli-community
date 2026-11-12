@@ -13,7 +13,6 @@ import {
   getErrorName,
   noop,
   type HandlerOf,
-  type HandlersOf,
   type MachineTypes,
   type Transition,
 } from '@dotli/shared';
@@ -138,143 +137,113 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
 
-  const idle: HandlersOf<LoadMachine, 'idle'> = {
-    started(_state, _event, transition) {
-      transition.emitSideEffect({ kind: 'started' });
-      if (!freshStart) {
-        startPreparing(transition);
-        return;
-      }
-      // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
-      transition.emitState({ kind: 'purging' });
-      transition.emitSideEffect({ kind: 'purging' });
-      transition.update(
-        startStep(deps.purge).then(
-          () => ({ kind: 'purged' }),
-          (error: unknown) => ({ kind: 'stepFailed', step: 'init', error }),
-        ),
-      );
-    },
-  };
-
-  const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'rendering', 'stepFailed'> = (
-    _state,
-    { step, error },
-    { emitState },
-  ) => {
-    emitState(toFailure(step, error));
-  };
-
-  const purging: HandlersOf<LoadMachine, 'purging'> = {
-    stepFailed: failStep,
-    purged(_state, _event, transition) {
-      startPreparing(transition);
-    },
-  };
-
-  const preparing: HandlersOf<LoadMachine, 'preparing'> = {
-    workerSettled(_state, { worker }, { emitState, emitSideEffect }) {
-      emitSideEffect({ kind: 'workerSettled', worker });
-      emitState({ kind: 'awaitingContent', worker });
-    },
-    contentSettled(_state, { content }, { emitState, emitSideEffect }) {
-      emitSideEffect({ kind: 'contentSettled', content });
-      emitState({ kind: 'awaitingWorker', content });
-    },
-  };
-
-  const awaitingContent: HandlersOf<LoadMachine, 'awaitingContent'> = {
-    contentSettled({ worker }, { content }, transition) {
-      transition.emitSideEffect({ kind: 'contentSettled', content });
-      goOnPrepared(worker, content, transition);
-    },
-  };
-
-  const awaitingWorker: HandlersOf<LoadMachine, 'awaitingWorker'> = {
-    workerSettled({ content }, { worker }, transition) {
-      transition.emitSideEffect({ kind: 'workerSettled', worker });
-      goOnPrepared(worker, content, transition);
-    },
-  };
-
-  const decrypting: HandlersOf<LoadMachine, 'decrypting'> = {
-    stepFailed: failStep,
-    decrypted({ content }, { files }, transition) {
-      if (files === null) {
-        startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
-        return;
-      }
-      transition.emitSideEffect({ kind: 'decrypted', files });
-      startStoring(files, transition);
-    },
-  };
-
-  const storing: HandlersOf<LoadMachine, 'storing'> = {
-    stepFailed: failStep,
-    archiveStored({ files }, _event, transition) {
-      transition.emitSideEffect({ kind: 'archiveStored', files });
-      const index = files['index.html'];
-      if (index === undefined) {
-        transition.emitState(
-          toFailure(
-            'archive_index',
-            new Error('Archive missing index.html. Cannot render a sandbox without a root document.'),
-          ),
-        );
-        return;
-      }
-      startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
-    },
-  };
-
-  const rendering: HandlersOf<LoadMachine, 'rendering'> = {
-    stepFailed: failStep,
-    htmlPrepared({ result }, { html }, { emitState, emitSideEffect, update }) {
-      emitState({ kind: 'writing', html });
-      const bytes = countResultBytes(result);
-      try {
-        deps.hostMessages.reportDebug({
-          event: 'document_written',
-          flowId: resolutionId ?? cid,
-          payload: { cid, totalMs: deps.measureSinceStart(), bytes, fileCount: countResultFiles(result) },
-        });
-        deps.hostMessages.notifyLoadingDone({ outcome: 'loaded' });
-      } catch (error) {
-        emitState(toFailure('render', error));
-        return;
-      }
-      emitSideEffect({ kind: 'writing', bytes });
-      // Queued behind the effects, so the load's timer and mark end before the page is replaced.
-      update({ kind: 'write' });
-    },
-  };
-
-  const writing: HandlersOf<LoadMachine, 'writing'> = {
-    write({ html }, _event, { emitState, emitSideEffect }) {
-      emitState({ kind: 'loaded' });
-      // Written into this window, so the host's container bridge reaches the dApp through this iframe.
-      try {
-        deps.write(html);
-      } catch (error) {
-        emitState(toFailure('render', error));
-        return;
-      }
-      emitSideEffect({ kind: 'rendered' });
-    },
-  };
-
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
     handlers: {
-      idle,
-      purging,
-      preparing,
-      awaitingContent,
-      awaitingWorker,
-      decrypting,
-      storing,
-      rendering,
-      writing,
+      idle: {
+        started(_state, _event, transition) {
+          transition.emitSideEffect({ kind: 'started' });
+          if (!freshStart) {
+            startPreparing(transition);
+            return;
+          }
+          // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
+          transition.emitState({ kind: 'purging' });
+          transition.emitSideEffect({ kind: 'purging' });
+          transition.update(
+            startStep(deps.purge).then(
+              () => ({ kind: 'purged' }),
+              (error: unknown) => ({ kind: 'stepFailed', step: 'init', error }),
+            ),
+          );
+        },
+      },
+      purging: {
+        purged(_state, _event, transition) {
+          startPreparing(transition);
+        },
+        stepFailed: failStep,
+      },
+      preparing: {
+        workerSettled(_state, { worker }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'awaitingContent', worker });
+          emitSideEffect({ kind: 'workerSettled', worker });
+        },
+        contentSettled(_state, { content }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'awaitingWorker', content });
+          emitSideEffect({ kind: 'contentSettled', content });
+        },
+      },
+      awaitingContent: {
+        contentSettled({ worker }, { content }, transition) {
+          transition.emitSideEffect({ kind: 'contentSettled', content });
+          goOnPrepared(worker, content, transition);
+        },
+      },
+      awaitingWorker: {
+        workerSettled({ content }, { worker }, transition) {
+          transition.emitSideEffect({ kind: 'workerSettled', worker });
+          goOnPrepared(worker, content, transition);
+        },
+      },
+      decrypting: {
+        decrypted({ content }, { files }, transition) {
+          if (files === null) {
+            startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
+            return;
+          }
+          transition.emitSideEffect({ kind: 'decrypted', files });
+          startStoring(files, transition);
+        },
+        stepFailed: failStep,
+      },
+      storing: {
+        archiveStored({ files }, _event, transition) {
+          transition.emitSideEffect({ kind: 'archiveStored', files });
+          const index = files['index.html'];
+          if (index === undefined) {
+            const error = new Error('Archive missing index.html. Cannot render a sandbox without a root document.');
+            transition.emitState(toFailure('archive_index', error));
+            return;
+          }
+          startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
+        },
+        stepFailed: failStep,
+      },
+      rendering: {
+        htmlPrepared({ result }, { html }, { emitState, emitSideEffect, update }) {
+          emitState({ kind: 'writing', html });
+          const bytes = countResultBytes(result);
+          try {
+            deps.hostMessages.reportDebug({
+              event: 'document_written',
+              flowId: resolutionId ?? cid,
+              payload: { cid, totalMs: deps.measureSinceStart(), bytes, fileCount: countResultFiles(result) },
+            });
+            deps.hostMessages.notifyLoadingDone({ outcome: 'loaded' });
+          } catch (error) {
+            emitState(toFailure('render', error));
+            return;
+          }
+          emitSideEffect({ kind: 'writing', bytes });
+          // Queued behind the effects, so the load's timer and mark end before the page is replaced.
+          update({ kind: 'write' });
+        },
+        stepFailed: failStep,
+      },
+      writing: {
+        write({ html }, _event, { emitState, emitSideEffect }) {
+          emitState({ kind: 'loaded' });
+          // Written into this window, so the host's container bridge reaches the dApp through this iframe.
+          try {
+            deps.write(html);
+          } catch (error) {
+            emitState(toFailure('render', error));
+            return;
+          }
+          emitSideEffect({ kind: 'rendered' });
+        },
+      },
       loaded: null,
       failed: null,
       tornDown: null,
@@ -461,6 +430,15 @@ function createLoadReports({
     }
   }
 }
+
+/** Ends the load at the step that failed. */
+const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'rendering', 'stepFailed'> = (
+  _state,
+  { step, error },
+  { emitState },
+) => {
+  emitState(toFailure(step, error));
+};
 
 /** `work`'s promise, with a throw before it returns one turned into its rejection. */
 function startStep<T>(work: () => Promise<T>): Promise<T> {
