@@ -7,8 +7,9 @@ export { getSandboxLabel, isValidDotLabel, isValidDotName, validateDotLabel, val
 export { dotNsUrl } from './dotNsUrl.js';
 export type { ResolverErrorName } from './resolverError.js';
 export { isExecutableKind } from './isExecutableKind.js';
-export type { ChainClient, DotnsResolver, ResolveOptions } from './createDotnsResolver.js';
+export type { DotnsResolver, ResolveOptions } from './createDotnsResolver.js';
 export { createDotnsResolver } from './createDotnsResolver.js';
+export type { ChainClient } from './createSyncedClient.js';
 // The exports below must import no chain-storage code, so a caller on an eager path can take them.
 export type { AppVersion, ExecutableManifest, ManifestResult, RootManifest } from './manifestTypes.js';
 export { toExecutableManifestResult } from './toExecutableManifestResult.js';

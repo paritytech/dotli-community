@@ -7,14 +7,14 @@
 
 import { createClient, DisjointError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
-import { atom } from 'nanostores';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { createReporter, m, spans as S } from '@dotli/metrics';
+import { createReporter, m } from '@dotli/metrics';
 import { createAsyncTaskPool, isChainHaltedRpcError, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
 import { ContenthashDecodeError } from './contenthashDecodeError.js';
 import { createRawApi, type Api } from './createRawApi.js';
+import { createSyncedClient, type ChainClient, type SyncedClientState } from './createSyncedClient.js';
 import { decodeIpfsContenthashResult } from './decodeIpfsContenthashResult.js';
 import type { ExecutableKind } from './manifestTypes.js';
 import { NetworkSyncTimeoutError } from './networkSyncTimeoutError.js';
@@ -28,23 +28,12 @@ import { UnsupportedContenthashCodecError } from './unsupportedContenthashCodecE
 
 const report = createReporter({ flow: 'resolve' });
 
-/** From client creation to first finalized block. */
-const SMOLDOT_FINALIZED_BLOCK = 'smoldot.finalized_block';
-
 const RESOLVE_STORAGE_READ = 'resolve.storage_read';
 
 export type ResolveOptions = {
   onPhase?: PhaseCallback | undefined;
   /** What is left of the caller's deadline, if it set one. */
   syncTimeoutMs?: number;
-};
-
-/** A chain client: its raw reads, and the teardown of its follow and connection. */
-export type ChainClient = {
-  /** The raw reads over this client's follow. */
-  readonly api: Api;
-  /** Tears down the follow and the connection. Never throws. */
-  destroy: () => void;
 };
 
 export type DotnsResolver = ReturnType<typeof createDotnsResolver>;
@@ -65,31 +54,13 @@ type Params = {
   open?: (provider: JsonRpcProvider) => ChainClient;
 };
 
-/**
- * Where the Asset Hub client stands, with the client once it is ready. A stopped follow takes it back to `idle`, and
- * the next read builds it again.
- */
-type HubState =
-  | { kind: 'idle' }
-  | { kind: 'connecting' }
-  | { kind: 'syncing' }
-  | { kind: 'ready'; client: ChainClient }
-  | { kind: 'failed' };
-
-type DotnsResolverStatus = HubState['kind'];
-
-/** The People client the warm-keep holds. A stopped follow takes it back to `idle`, and the next warm builds it again. */
-type PeopleState = { kind: 'idle' } | { kind: 'ready'; client: ChainClient };
-
-const PEOPLE_CHAIN = 'People Paseo';
-/** Upper bound on the background People-chain warm for legacy-account auth. */
-const PEOPLE_FINALIZED_SYNC_MS = 180_000;
-
-const PHASES: Partial<Record<DotnsResolverStatus, ResolvePhase>> = {
+const PHASES = {
+  idle: null,
   connecting: 'asset-hub-connecting',
   syncing: 'asset-hub-syncing',
   ready: 'asset-hub-ready',
-};
+  failed: null,
+} satisfies Record<SyncedClientState['kind'], ResolvePhase | null>;
 
 const HUB_CHAIN: Record<Params['source'], string> = {
   'light-client': 'Asset Hub Paseo',
@@ -115,94 +86,27 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
   const hubChain = HUB_CHAIN[source];
   // A gateway's timings would skew the light client's dashboards.
   const timed = source === 'light-client';
-  // One build at a time per chain. A queued caller finds the client its predecessor built.
-  const clients = createAsyncTaskPool({ poolSize: 1 });
   const reads = createAsyncTaskPool({
     poolSize: Number.POSITIVE_INFINITY,
     retryCount: MAX_HALT_ATTEMPTS - 1,
     retryIf: isChainHalt,
   });
-
-  const hub = atom<HubState>({ kind: 'idle' });
-
-  let peopleState: PeopleState = { kind: 'idle' };
-
-  function measureSpan<T>(name: string, work: () => Promise<T>): Promise<T> {
-    return timed ? m.span(name, work) : work();
-  }
-
-  async function buildAssetHub(): Promise<Api> {
-    const initStart = performance.now();
-    let outcome: 'ok' | 'error' | 'timeout' = 'error';
-    try {
-      hub.set({ kind: 'connecting' });
-      const client = open(assetHub());
-      hub.set({ kind: 'syncing' });
-      const syncStart = performance.now();
-      let syncMs: number;
-      // Kept only once ready, and torn down on failure, so no orphaned client keeps a subscription alive.
-      try {
-        // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the cause.
-        await measureSpan(SMOLDOT_FINALIZED_BLOCK, () =>
-          withTimeout({
-            work: client.api.whenReady(),
-            ms: TIMEOUTS.HUB_FINALIZED_SYNC,
-            timeoutError: () => new NetworkSyncTimeoutError(hubChain, TIMEOUTS.HUB_FINALIZED_SYNC),
-          }),
-        );
-        syncMs = performance.now() - syncStart;
-        if (timed) {
-          m.measure(SMOLDOT_FINALIZED_BLOCK, syncMs);
-          m.distribution(SMOLDOT_FINALIZED_BLOCK, syncMs);
-        }
-      } catch (error) {
-        client.destroy();
-        throw error;
-      }
-
-      // Kept before its follow is watched, so a follow that already stopped finds the client it must drop.
-      const ready: HubState = { kind: 'ready', client };
-      try {
-        hub.set(ready);
-      } catch (error) {
-        // A listener of a store an `onPhase` callback writes threw, and no read will hold this client.
-        client.destroy();
-        throw error;
-      }
-
-      // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
-      client.api.onStop(() => {
-        log.warn('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
-        if (hub.get() === ready) {
-          hub.set({ kind: 'idle' });
-          client.destroy();
-        }
-      });
-
-      outcome = 'ok';
-      report.log.event('Asset Hub client ready', {
-        source,
-        sync_ms: Math.round(syncMs),
-        total_ms: Math.round(performance.now() - initStart),
-      });
-      return client.api;
-    } catch (error) {
-      if (error instanceof NetworkSyncTimeoutError) {
-        outcome = 'timeout';
-      }
-      hub.set({ kind: 'failed' });
-      throw error;
-    } finally {
-      // Recorded here alone, since the SharedWorker presync and direct mode both come through here.
-      if (timed) {
-        const totalMs = performance.now() - initStart;
-        if (outcome === 'ok') {
-          m.measure(S.SMOLDOT_PRESYNC, totalMs);
-        }
-        m.distribution(S.SMOLDOT_PRESYNC, totalMs, { unit: 'millisecond', attributes: { outcome } });
-      }
-    }
-  }
+  const assetHubClient = createSyncedClient({
+    chain: hubChain,
+    syncTimeoutMs: TIMEOUTS.HUB_FINALIZED_SYNC,
+    timed,
+    openClient: () => open(assetHub()),
+  });
+  const peopleClient =
+    people === undefined
+      ? null
+      : createSyncedClient({
+          chain: 'People Paseo',
+          // Upper bound on the background People-chain warm for legacy-account auth.
+          syncTimeoutMs: 180_000,
+          timed: false,
+          openClient: () => open(people()),
+        });
 
   /** The caller hears how far the client has come while it waits. */
   function reportProgress(onPhase: PhaseCallback | undefined): () => void {
@@ -210,7 +114,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       return () => undefined;
     }
     // A caller that arrives after a phase was reached hears it too.
-    return hub.subscribe(next => {
+    return assetHubClient.state.subscribe(next => {
       tellPhase(onPhase, next.kind);
     });
   }
@@ -222,21 +126,16 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
 
   function getAssetHubApi(options: ResolveOptions): Promise<Api> {
     const stopReporting = reportProgress(options.onPhase);
+    // Aborted when this caller gives up, so it starts no build nobody waits for.
     const gaveUp = new AbortController();
-    // Checked in the task, not passed to the pool: aborting a running build would free its slot for a second one.
-    const ready = clients.call(
-      () => {
-        gaveUp.signal.throwIfAborted();
-        const state = hub.get();
-        return state.kind === 'ready' ? state.client.api : buildAssetHub();
-      },
-      { pool: 'asset-hub' },
-    );
     // The shared client keeps the full budget, so a short caller cannot cut short a longer one.
     const budget = getBudget(options);
-    return withTimeout({ work: ready, ms: budget, timeoutError: () => new NetworkSyncTimeoutError(hubChain, budget) })
+    return withTimeout({
+      work: assetHubClient.getApi({ signal: gaveUp.signal }),
+      ms: budget,
+      timeoutError: () => new NetworkSyncTimeoutError(hubChain, budget),
+    })
       .catch((error: unknown) => {
-        // A caller that gave up while queued must not start a build nobody waits for.
         gaveUp.abort(error);
         throw error;
       })
@@ -278,14 +177,14 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     options.onPhase?.('resolving-content');
     const contentStart = performance.now();
 
-    const contenthashBytes = await measureSpan(RESOLVE_STORAGE_READ, () =>
+    const readContenthash = () =>
       readMappingBytes({
         api,
         contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
         mappingKey: node,
         mappingSlot: dotns.STORAGE_SLOTS.CONTENTHASH,
-      }),
-    );
+      });
+    const contenthashBytes = await (timed ? m.span(RESOLVE_STORAGE_READ, readContenthash) : readContenthash());
     const contentMs = performance.now() - contentStart;
     if (timed) {
       m.measure(RESOLVE_STORAGE_READ, contentMs);
@@ -307,32 +206,6 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
       case 'decode-error':
         throw new ContenthashDecodeError(domain, decoded.cause);
     }
-  }
-
-  async function buildPeople(connect: () => JsonRpcProvider): Promise<void> {
-    const initStart = performance.now();
-    const client = open(connect());
-    try {
-      await withTimeout({
-        work: client.api.whenReady(),
-        ms: PEOPLE_FINALIZED_SYNC_MS,
-        timeoutError: () => new NetworkSyncTimeoutError(PEOPLE_CHAIN, PEOPLE_FINALIZED_SYNC_MS),
-      });
-    } catch (error) {
-      client.destroy();
-      throw error;
-    }
-    // Kept before its follow is watched, so a follow that already stopped finds the client it must drop.
-    const ready: PeopleState = { kind: 'ready', client };
-    peopleState = ready;
-    client.api.onStop(() => {
-      log.warn('[dot.li resolve] People chainHead follow stopped, invalidating warm client');
-      if (peopleState === ready) {
-        peopleState = { kind: 'idle' };
-        client.destroy();
-      }
-    });
-    report.log.event('People chain warmed', { ms: Math.round(performance.now() - initStart) });
   }
 
   return {
@@ -378,14 +251,14 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     /**
      * Keeps People synced for legacy-account auth, whose cold read would race the warp sync. Resolution never needs
      * People, so callers must not gate on it. Rejects with `NetworkSyncTimeoutError` when People does not sync in
-     * time, or the client's own error.
+     * time, with `ApiStoppedError` when its follow stops as it syncs, or the client's own error.
      */
     waitForPeopleFinalized: async (): Promise<void> => {
-      if (people === undefined) {
+      if (peopleClient === null) {
         log.debug('[dot.li resolve] No People connection, so no warm-keep. People resolves on demand via the broker.');
         return;
       }
-      await clients.call(() => (peopleState.kind === 'idle' ? buildPeople(people) : undefined), { pool: 'people' });
+      await peopleClient.getApi();
     },
   };
 }
@@ -399,13 +272,13 @@ function isChainHalt(error: unknown): boolean {
 }
 
 /** Tells `onPhase` the phase a client status stands for, if it stands for one, and reports a throw from it. */
-function tellPhase(onPhase: PhaseCallback, next: DotnsResolverStatus): void {
+function tellPhase(onPhase: PhaseCallback, next: SyncedClientState['kind']): void {
   const phase = PHASES[next];
-  if (phase === undefined) {
+  if (phase === null) {
     return;
   }
   // The callback's own throw must not fail the shared build, nor leave the status behind a client already kept. A throw
-  // from a listener of a store the callback writes still reaches the build.
+  // from a listener of a store the callback writes still reaches the client's transition, which reports it.
   try {
     onPhase(phase);
   } catch (error) {

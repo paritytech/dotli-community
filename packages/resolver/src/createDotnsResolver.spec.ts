@@ -11,8 +11,9 @@ import { atom } from 'nanostores';
 import { getActiveServicesConfig } from '@dotli/config';
 import { bindLogSink } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
-import { createDotnsResolver, type ChainClient, type DotnsResolver } from './createDotnsResolver.js';
+import { createDotnsResolver, type DotnsResolver } from './createDotnsResolver.js';
 import type { Api } from './createRawApi.js';
+import type { ChainClient } from './createSyncedClient.js';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 /** A chain client whose follow can be stopped from the test. */
@@ -444,8 +445,9 @@ describe('createDotnsResolver', () => {
     expect(phases).toEqual(['asset-hub-syncing', 'asset-hub-syncing', 'asset-hub-ready', 'resolving-content']);
   });
 
-  it('As the host whose store listener throws as Asset Hub turns ready, I see my read fail and the client it built let go', async () => {
+  it('As the host whose store listener throws as Asset Hub turns ready, I get my answer, the client stays, and the throw is reported', async () => {
     // Given a store the phase callback writes, whose listener throws on asset-hub-ready
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const { dotns, opened } = createResolver();
     const phase = atom<string | null>(null);
     onTestFinished(
@@ -457,20 +459,16 @@ describe('createDotnsResolver', () => {
     );
 
     // When
-    const failure = await dotns
-      .resolveOwner('alice', {
-        onPhase: next => {
-          phase.set(next);
-        },
-      })
-      .then(
-        () => null,
-        (error: unknown) => error,
-      );
+    const owner = await dotns.resolveOwner('alice', {
+      onPhase: next => {
+        phase.set(next);
+      },
+    });
 
     // Then
-    expect(failure).toEqual(new Error('listener broke'));
-    expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
+    expect(owner).toBeNull();
+    expect(must(opened[0], 'first client').destroy).not.toHaveBeenCalled();
+    expect(captured).toMatchObject([{ step: 'synced_client_transition' }]);
   });
 
   it("As the host waiting on a name, I hear the client's phases while it is built, then the content read", async () => {
@@ -527,8 +525,8 @@ describe('createDotnsResolver', () => {
     expect(fake.opened).toHaveLength(1);
   });
 
-  it('As the protocol frame, I warm People again when its follow stopped just as it synced', async () => {
-    // Given a People client whose follow stops as it reaches its first block, warmed once
+  it('As the protocol frame, I see my People warm fail as stopped when its follow stops just as it syncs, and the next warm opens a new client', async () => {
+    // Given a People client whose follow stops as it reaches its first block
     const people = vi.fn<() => JsonRpcProvider>(() => () => ({ send: () => undefined, disconnect: () => undefined }));
     const { open } = createFakeClients([{ stopsAsReady: true }]);
     const dotns = createDotnsResolver({
@@ -538,12 +536,36 @@ describe('createDotnsResolver', () => {
       source: 'light-client',
       open,
     });
-    await dotns.waitForPeopleFinalized();
 
     // When
+    const first = await dotns.waitForPeopleFinalized().then(
+      () => null,
+      (error: unknown) => error,
+    );
     await dotns.waitForPeopleFinalized();
 
     // Then
+    expect(first).toBeInstanceOf(ApiStoppedError);
     expect(people).toHaveBeenCalledTimes(2);
+  });
+
+  it('As the host whose Asset Hub connection cannot open, I see my read fail with that error, and the next read opens one', async () => {
+    // Given
+    assetHub.mockImplementationOnce(() => {
+      throw new Error('no connection');
+    });
+    const { dotns } = createResolver();
+
+    // When
+    const failure = await dotns.resolveOwner('alice').then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const owner = await dotns.resolveOwner('alice');
+
+    // Then
+    expect(failure).toEqual(new Error('no connection'));
+    expect(owner).toBeNull();
+    expect(assetHub).toHaveBeenCalledTimes(2);
   });
 });

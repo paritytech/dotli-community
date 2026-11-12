@@ -286,6 +286,21 @@ describe('createRawApi', () => {
       expect(error).toBeUndefined();
       expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'resolver.stop' } }]);
     });
+
+    it('As the resolver, I read on a follow that initialized with no finalized block, and the read fails as stopped', async () => {
+      // Given
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+
+      // When
+      follow.emit({ type: 'initialized', finalizedBlockHashes: [] });
+      const waited = api.whenReady().catch((error: unknown) => error);
+      const read = api.readSlot(CONTRACT_ADDRESS, '0x01').catch((error: unknown) => error);
+
+      // Then
+      expect(await waited).toBeInstanceOf(ApiStoppedError);
+      expect(await read).toBeInstanceOf(ApiStoppedError);
+    });
   });
 
   it('As the resolver, I destroy the raw API twice before its follow is ready and the wait fails as stopped and stop listeners hear it once', async () => {
@@ -310,22 +325,52 @@ describe('createRawApi', () => {
     expect(heard).toBe(1);
   });
 
-  it('As a dotli user, I let finality move on after the follow stopped and the refused unpin is not reported', async () => {
+  it('As a dotli user, I let finality move on, the follow stops while an unpin is in flight, and its refusal is not reported', async () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const { client, follow } = createFakeSubstrateClient();
-    const refused = Promise.reject(new DisjointError());
-    follow.unpin.mockImplementation(() => refused);
+    const unpinAnswer = createDeferred<undefined>();
+    follow.unpin.mockImplementation(() => unpinAnswer.promise);
     createRawApi({ client });
-
-    // When finality leaves a block behind
     follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
-    await refused.catch(() => undefined);
+
+    // When the follow stops, then the light client refuses the unpin
+    follow.stop();
+    unpinAnswer.reject(new TypeError('Invalid block hash'));
+    // The refusal reaches the machine only as a reaction, and nothing it does can be polled for.
+    await new Promise(resolve => {
+      setImmediate(resolve);
+    });
 
     // Then
     expect(captured).toEqual([]);
     expect(metrics.counted('resolve.unpin')).toEqual([]);
+  });
+
+  it('As a dotli user, I let finality move on and an unpin refused because the follow is gone is not reported, while a later refusal is', async () => {
+    // Given
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { client, follow } = createFakeSubstrateClient();
+    follow.unpin
+      .mockImplementationOnce(() => Promise.reject(new DisjointError()))
+      .mockImplementationOnce(() => Promise.reject(new TypeError('Invalid block hash')));
+    createRawApi({ client });
+
+    // When finality leaves a block behind twice, and the second refusal is the signal both were judged
+    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
+    follow.emit(createNewBlockEvent('0x1a', '0x0a'));
+    follow.emit({ type: 'finalized', finalizedBlockHashes: ['0x1a'], prunedBlockHashes: [] });
+    await vi.waitFor(() => {
+      if (metrics.counted('resolve.unpin').length === 0) {
+        throw new Error('the second refusal is not judged yet');
+      }
+    });
+
+    // Then
+    expect(metrics.counted('resolve.unpin')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(captured).toMatchObject([{ step: 'unpin' }]);
   });
 
   it('As an operator, I see an unpin the light client refuses while the follow runs reported and counted', async () => {
@@ -339,7 +384,11 @@ describe('createRawApi', () => {
 
     // When finality leaves a block behind
     follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x00', '0x0a'] });
-    await refused.catch(() => undefined);
+    await vi.waitFor(() => {
+      if (metrics.counted('resolve.unpin').length === 0) {
+        throw new Error('the refusal is not judged yet');
+      }
+    });
 
     // Then
     expect(captured).toMatchObject([{ step: 'unpin', tags: undefined }]);
