@@ -151,11 +151,7 @@ type LifecycleEvent =
   | { kind: 'flushFailed'; error: unknown }
   | { kind: 'disposed' };
 
-/**
- * `statusEnded`, `transportDisposed`, `scopeClosed`, `listeningStopped`, `portShut`, `beatSent`,
- * `heartbeatStopped`, `timerCleared` and `workerClosed` each make one call-out, so one that throws skips none of the
- * others.
- */
+/** Each call-out is an effect of its own, so one that throws skips none of the others. */
 type LifecycleEffect =
   | { kind: 'portConnected'; engine: 'syncing' | 'ready' | 'failed' }
   | { kind: 'portReleased' }
@@ -186,7 +182,7 @@ type Params = {
   /** The worker global, closed once a dead worker's ports all heard why. */
   scope: Pick<WorkerScope, 'close'>;
   /** What every port hears through its `frame.status` subscription. */
-  status: FrameStatus;
+  status: Pick<FrameStatus, 'markReady' | 'fail'>;
   /**
    * Sends buffered telemetry before the worker closes. May reject. A rejection is captured, logged and counted, and the
    * close goes on.
@@ -633,7 +629,6 @@ export function createWorkerLifecycle({
           status.fail(effect.error);
           break;
         case 'statusEnded':
-          // Each status ends with why, typed, before its transport goes.
           effect.sink.interrupt(err(toFrameStatusEnd(effect.reason)));
           break;
         case 'transportDisposed':
