@@ -21,20 +21,16 @@ type RepliesEvent<Id, Value, Meta> =
   | { kind: 'failed'; id: Id; error: Error }
   | { kind: 'allFailed'; errorFor: (id: Id) => Error };
 
-type RepliesEffect<Id, Value> =
+type RepliesEffect<Id, Value, Meta> =
   | { kind: 'resolve'; reply: Reply<Value>; value: Value }
   | { kind: 'reject'; reply: Reply<Value>; error: Error }
-  | { kind: 'rejectEach'; replies: ReadonlyMap<Id, Reply<Value>>; errorFor: (id: Id) => Error };
+  | { kind: 'rejectEach'; waits: ReadonlyMap<Id, Wait<Value, Meta>>; errorFor: (id: Id) => Error };
 
 type RepliesMachine<Id, Value, Meta> = MachineTypes<
   RepliesState<Id, Value, Meta>,
   RepliesEvent<Id, Value, Meta>,
-  RepliesEffect<Id, Value>
+  RepliesEffect<Id, Value, Meta>
 >;
-
-type WaitParams<Meta> = {
-  meta?: Meta;
-};
 
 export type PendingReplies<Id, Value, Meta = undefined> = ReturnType<typeof createPendingReplies<Id, Value, Meta>>;
 
@@ -76,8 +72,7 @@ export function createPendingReplies<Id, Value, Meta = undefined>() {
         },
         allFailed(state, { errorFor }, { emitState, emitSideEffect }) {
           emitState({ ...state, waits: new Map() });
-          const replies = new Map([...state.waits].map(([id, { reply }]) => [id, reply]));
-          emitSideEffect({ kind: 'rejectEach', replies, errorFor });
+          emitSideEffect({ kind: 'rejectEach', waits: state.waits, errorFor });
         },
       },
     },
@@ -90,7 +85,7 @@ export function createPendingReplies<Id, Value, Meta = undefined>() {
           effect.reply.reject(effect.error);
           return;
         case 'rejectEach':
-          for (const [id, reply] of effect.replies) {
+          for (const [id, { reply }] of effect.waits) {
             // A factory that throws still fails its wait, so the waits after it are not left open.
             try {
               reply.reject(effect.errorFor(id));
@@ -110,7 +105,7 @@ export function createPendingReplies<Id, Value, Meta = undefined>() {
      * on `id` is already open, except inside a `rejectAll` error factory, where the second wait rejects with the
      * already-awaited error instead of throwing. Otherwise rejects with the error `reject` or `rejectAll` gives it.
      */
-    wait(id: Id, { meta }: WaitParams<Meta> = {}): Promise<Value> {
+    wait(id: Id, { meta }: { meta?: Meta } = {}): Promise<Value> {
       // A second wait would orphan the first, which then never settles.
       if (machine.state.get().waits.has(id)) {
         throw createAwaitedError(id);
