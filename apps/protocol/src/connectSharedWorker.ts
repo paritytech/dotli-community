@@ -73,7 +73,6 @@ type LinkEffect =
   | { kind: 'heartbeatSent' }
   | { kind: 'heartbeatFailed'; error: Error }
   | { kind: 'transportDisposed'; error: Error }
-  | { kind: 'statusDisposed' }
   | { kind: 'beatsUnsubscribed'; unsubscribe: () => void }
   | { kind: 'workerListenerRemoved' }
   | { kind: 'pageHideStopped' };
@@ -255,19 +254,11 @@ export function connectSharedWorker({
         beatHeard: handleBeats,
         heartbeatFailed: handleBeats,
         beatsEnded: handleBeats,
-        letGo({ wait, beats }, _event, { emitState, emitSideEffect }) {
+        letGo({ wait }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'letGo', wait });
-          // One effect per call-out, so a throw skips none of the rest. The transport goes first, since its close is
-          // what ends the status, and an unsubscribe tells no listener.
+          // One effect per call-out, so a throw skips none of the rest. The transport's close ends the status and the
+          // beats, one still waiting on the handshake included, which an unsubscribe would end telling no listener.
           emitSideEffect({ kind: 'transportDisposed', error: new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED) });
-          emitSideEffect({ kind: 'statusDisposed' });
-          switch (beats.kind) {
-            case 'answering':
-              emitSideEffect({ kind: 'beatsUnsubscribed', unsubscribe: beats.unsubscribe });
-              break;
-            case 'stopped':
-              break;
-          }
           emitSideEffect({ kind: 'workerListenerRemoved' });
           emitSideEffect({ kind: 'pageHideStopped' });
         },
@@ -296,19 +287,16 @@ export function connectSharedWorker({
           break;
         case 'heartbeatSent':
           // Heard from a callback, not as an update's work, so neither `await()` nor `ready` waits on a heartbeat.
-          void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
-            outcome => {
+          transport
+            .request(protocolSchema.sections.frame.heartbeat, undefined)
+            .then(outcome => {
               if (!outcome.success) {
-                machine.update({
-                  kind: 'heartbeatFailed',
-                  error: getFailure(protocolSchema.sections.frame.heartbeat, outcome.value),
-                });
+                throw getFailure(protocolSchema.sections.frame.heartbeat, outcome.value);
               }
-            },
-            (error: unknown) => {
+            })
+            .catch((error: unknown) => {
               machine.update({ kind: 'heartbeatFailed', error: toError(error) });
-            },
-          );
+            });
           break;
         case 'heartbeatFailed':
           report.defect(effect.error, {
@@ -319,9 +307,6 @@ export function connectSharedWorker({
           break;
         case 'transportDisposed':
           transport.dispose(effect.error);
-          break;
-        case 'statusDisposed':
-          status.dispose();
           break;
         case 'beatsUnsubscribed':
           effect.unsubscribe();

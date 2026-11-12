@@ -580,6 +580,26 @@ describe('connectSharedWorker', () => {
     await worker.portClosed;
   });
 
+  it('As a tab whose worker script still loads, I let go of my link and my ready wait fails at once as the port closed', async () => {
+    // Given a worker whose port nothing answers on yet, and timers that never run
+    const channel = new MessageChannel();
+    channels.add(channel);
+    const linked = connectSharedWorker({
+      worker: Object.assign(new EventTarget(), { port: channel.port2 }),
+      page: createFakePage().window,
+      resolutionId: null,
+      readyTimeoutMs: READY_TIMEOUT_MS,
+      timers: createManualTimers(),
+    });
+    const failed = linked.ready.catch((error: unknown) => error);
+
+    // When
+    linked.dispose();
+
+    // Then
+    await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
+  });
+
   it('As a tab whose worker stopped serving it, I stop answering its beats and a heartbeat it then fails is not reported', async () => {
     // Given a ready tab whose last heartbeat the worker holds
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
