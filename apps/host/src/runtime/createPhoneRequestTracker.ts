@@ -66,7 +66,7 @@ type TrackerEvent =
   | { kind: 'coreFrame'; tap: TapId; message: Uint8Array }
   | { kind: 'claimed'; tap: TapId; requestId: string; settle: Settle }
   // The claimer gave up on its claim made inside a transition, which has no holder to settle it.
-  | { kind: 'claimDropped'; tap: TapId; requestId: string; settle: Settle }
+  | { kind: 'claimDropped'; settle: Settle }
   | { kind: 'tapClosed'; tap: TapId }
   | { kind: 'disposed' };
 
@@ -152,15 +152,15 @@ export function createPhoneRequestTracker({
           const claimed: Request = { ...request, kind: 'claimed', settle };
           emitState({ ...state, requests: state.requests.map(held => (held === request ? claimed : held)) });
         },
-        claimDropped(state, { tap, requestId, settle }, { emitState }) {
-          const request = findRequest(state, tap, requestId);
-          if (request?.kind !== 'claimed' || request.settle !== settle) {
+        claimDropped(state, { settle }, { emitState }) {
+          const request = findClaim(state, settle);
+          if (request === undefined) {
             return;
           }
           const tracked: Request = {
             kind: 'tracked',
-            tap,
-            requestId,
+            tap: request.tap,
+            requestId: request.requestId,
             request: request.request,
             release: request.release,
           };
@@ -257,9 +257,8 @@ export function createPhoneRequestTracker({
     // A claim made inside a tracker transition has its event run after this returns, so it holds nothing yet. It
     // returns no claim, and drops it in an event that runs right after the claim's, so the request stays claimable.
     const now = machine.state.get();
-    const held = now.kind === 'live' ? findRequest(now, tap, requestId) : undefined;
-    if (held?.kind !== 'claimed' || held.settle !== settle) {
-      machine.update({ kind: 'claimDropped', tap, requestId, settle });
+    if (now.kind !== 'live' || findClaim(now, settle) === undefined) {
+      machine.update({ kind: 'claimDropped', settle });
       return undefined;
     }
     return { request, ended: promise };
@@ -286,6 +285,14 @@ function findRequest(
   requestId: string,
 ): Request | undefined {
   return requests.find(request => request.tap === tap && request.requestId === requestId);
+}
+
+/** The request the claim that `settle` ends holds, while it does. */
+function findClaim({ requests }: Extract<TrackerState, { kind: 'live' }>, settle: Settle) {
+  return requests.find(
+    (request): request is Extract<Request, { kind: 'claimed' }> =>
+      request.kind === 'claimed' && request.settle === settle,
+  );
 }
 
 /** Ends `requests`: each network hold is released, and a claimed one settles `gone`. */
