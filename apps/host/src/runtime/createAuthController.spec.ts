@@ -555,6 +555,38 @@ describe('auth controller: login requests', () => {
     expect(logged).toHaveLength(1);
   });
 
+  it('As a user who asked for a recovery phrase while my saved session could not be read, I press Retry and am asked for the phrase again', async () => {
+    // Given a page that pairs in place, whose first read of the saved session fails and whose second reads signed out
+    let reads = 0;
+    let phraseLoads = 0;
+    const { controller, auth, calls, changes } = startController({
+      rereadSession() {
+        reads += 1;
+        if (reads === 1) {
+          return Promise.reject(new Error('Failed to fetch dynamically imported module'));
+        }
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+      loadRecoveryPhrase() {
+        phraseLoads += 1;
+        return rejectNoPhrase();
+      },
+    });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    auth.set({ tag: 'Unreachable' });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // When Retry is pressed
+    controller.retryLogin();
+    await untilPromisesSettled();
+
+    // Then the phrase is asked for again and no login starts
+    expect(phraseLoads).toBe(1);
+    expect(calls.logins).toEqual([]);
+  });
+
   it('As a user whose sign-in modal is disabled, I click Sign in while my saved session cannot be reached and nothing is read', async () => {
     // Given a page whose modal is disabled and whose saved session cannot be reached
     let reads = 0;

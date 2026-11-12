@@ -49,11 +49,13 @@ export type InPagePhrase = {
  * result while the wait stays on show. `windowClosed` shows why the window could not sign in, and its Retry opens the
  * window again with the round's intent. `phraseShown` is the phrase view with its loaded check, and `phraseFailed` shows
  * that the check could not load, so Retry asks for a phrase again. `rereading` reads the saved session again for a
- * sign-in asked while it could not be reached, before the sign-in goes on.
+ * sign-in asked while it could not be reached, before the sign-in goes on, and `rereadMissed` shows that the read still
+ * could not reach it, so Retry asks for the same again.
  */
 export type SignInRound =
   | { kind: 'idle' }
   | { kind: 'rereading'; asked: 'login' | 'phrase'; reason: StartLoginParams['reason'] }
+  | { kind: 'rereadMissed'; asked: 'login' | 'phrase' }
   | { kind: 'windowOpen'; intent: SignInIntent }
   | { kind: 'resultWriting'; intent: SignInIntent }
   | { kind: 'windowClosed'; intent: SignInIntent }
@@ -69,11 +71,12 @@ export type ModalLease =
   | { kind: 'disabled' };
 
 /**
- * The sign-in modal: its lease, the round the route shows, and the auth step the page showed last. A disabled lease
- * keeps its round, so a window already open still signs in.
+ * The sign-in modal: its lease, the round the route shows, the auth step the page showed last, and the view on show. A
+ * disabled lease keeps its round, so a window already open still signs in.
  */
 export type AuthModalState =
-  { kind: 'live'; lease: ModalLease; round: SignInRound; auth: DotliAuthState } | { kind: 'disposed' };
+  | { kind: 'live'; lease: ModalLease; round: SignInRound; auth: DotliAuthState; view: AuthModalView }
+  | { kind: 'disposed' };
 
 export type LiveModal = Extract<AuthModalState, { kind: 'live' }>;
 
@@ -98,6 +101,8 @@ export type AuthModalEvent =
   | { kind: 'resultFailed'; round: SignInRound; reason: string }
   | { kind: 'phraseLoaded'; round: SignInRound; phrase: InPagePhrase }
   | { kind: 'phraseMissed'; round: SignInRound; reason: string }
+  // A round asks the modal to show a view, as a nested value never moves the state around it.
+  | { kind: 'viewAsked'; view: AuthModalView }
   | { kind: 'rereadEnded'; round: SignInRound }
   | { kind: 'rereadFailed'; round: SignInRound; error: unknown };
 
@@ -118,7 +123,7 @@ export type AuthModalEffect =
   | { kind: 'leaseRefused'; release: () => void }
   | { kind: 'commandRun'; command: AuthCommand }
   | { kind: 'rereadStarted'; round: SignInRound }
-  | { kind: 'rereadMissed'; error: unknown }
+  | { kind: 'rereadLogged'; error: unknown }
   | { kind: 'roundEnded'; reason: PageCancelReason }
   | { kind: 'stepsUnfollowed' }
   | { kind: 'signOutOpened' }
@@ -207,6 +212,7 @@ export function isWaiting(round: SignInRound): boolean {
       return true;
     case 'idle':
     case 'rereading':
+    case 'rereadMissed':
     case 'windowClosed':
     case 'phraseLoading':
     case 'phraseShown':
@@ -223,6 +229,7 @@ export function isPhraseRound(round: SignInRound): boolean {
     case 'windowClosed':
       return round.intent === 'phrase';
     case 'rereading':
+    case 'rereadMissed':
       return round.asked === 'phrase';
     case 'phraseFailed':
       return true;
@@ -240,6 +247,7 @@ export function getShownPhrase(round: SignInRound): InPagePhrase | null {
       return round.phrase;
     case 'idle':
     case 'rereading':
+    case 'rereadMissed':
     case 'windowOpen':
     case 'resultWriting':
     case 'windowClosed':
