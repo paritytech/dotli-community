@@ -115,7 +115,7 @@ type Params = {
   /** Beats each port. */
   startHeartbeat?: Ticker;
   /** The light client's inbound byte total, which every tab hears. Unset, nothing is reported. */
-  netBytes?: Pick<Parameters<typeof shareNetBytes>[0], 'read' | 'startTicker'> | undefined;
+  netBytes?: Parameters<typeof shareNetBytes>[0] | undefined;
   /**
    * Sends buffered telemetry before the worker closes. May reject. A rejection is captured, logged and counted, and the
    * close goes on.

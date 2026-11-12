@@ -4,11 +4,17 @@
 // The light client's inbound byte total, reported for the host's speed readout from wherever the light client runs.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createListenerSet, createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
+import {
+  createListenerSet,
+  createSharedRun,
+  createStateMachine,
+  type HandlerOf,
+  type MachineTypes,
+} from '@dotli/shared';
 
 import { createIntervalTicker, type Ticker } from './createIntervalTicker.js';
 
-const protocolReport = createReporter({ flow: 'protocol' });
+const report = createReporter({ flow: 'protocol' });
 
 /**
  * The light client's byte meter could not be read on a tick, so the speed readout misses that reading. Counted once per
@@ -22,16 +28,12 @@ type Params = {
   read: () => number;
   /** Runs the ticks while anyone listens. Defaults to a real interval of half a second. */
   startTicker?: Ticker | undefined;
-  /** Hears a subscriber that throws, so the others still hear the tick. */
-  report?: (error: unknown) => void;
-  /**
-   * Hears the first read that throws on a tick after a good one, so a meter that stays broken is reported once. A run
-   * of failures ends at a good read or when the ticker stops.
-   */
-  reportRead?: (error: unknown) => void;
 };
 
-/** `failing` is a ticker whose last read threw, so the next throw is not reported again. */
+/**
+ * `failing` is a ticker whose last read threw, so the next throw is not reported again. A run of failures ends at a
+ * good read or when the ticker stops.
+ */
 type MeterState =
   { kind: 'idle' } | { kind: 'ticking'; stopTicker: () => void } | { kind: 'failing'; stopTicker: () => void };
 
@@ -40,9 +42,12 @@ type MeterEvent =
   | { kind: 'tickerStarted'; stopTicker: () => void }
   | { kind: 'ticked'; total: number }
   | { kind: 'readFailed'; error: unknown }
-  | { kind: 'lastLeft' };
+  | { kind: 'tickerStopped' };
 
-type MeterEffect = { kind: 'readFailed'; error: unknown };
+type MeterEffect =
+  | { kind: 'posted'; total: number }
+  | { kind: 'readFailed'; error: unknown }
+  | { kind: 'tickerStopped'; stopTicker: () => void };
 
 type MeterMachine = MachineTypes<MeterState, MeterEvent, MeterEffect>;
 
@@ -56,27 +61,15 @@ export function shareNetBytes({
   read,
   // How often the total is reported.
   startTicker = createIntervalTicker(500),
-  report = protocolReport.listener('protocol.net_bytes'),
-  reportRead = error => {
-    protocolReport.defect(error, {
-      step: 'net_bytes_read',
-      metric: protocolNetBytesReadMetric,
-      message: '[dot.li] The net bytes meter could not be read',
-    });
-  },
 }: Params): (post: (total: number) => void) => () => void {
-  const posts = createListenerSet<number>({ onListenerError: report });
-  const stopTicking: HandlerOf<MeterMachine, 'ticking' | 'failing', 'lastLeft'> = (
+  const posts = createListenerSet<number>({ onListenerError: report.listener('protocol.net_bytes') });
+  const stopTicking: HandlerOf<MeterMachine, 'ticking' | 'failing', 'tickerStopped'> = (
     { stopTicker },
     _event,
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
-    // A tab that subscribed while this event waited behind a tick keeps the ticker.
-    if (posts.size > 0) {
-      return;
-    }
     emitState({ kind: 'idle' });
-    stopTicker();
+    emitSideEffect({ kind: 'tickerStopped', stopTicker });
   };
   const meter = createStateMachine<MeterMachine>({
     initial: { kind: 'idle' },
@@ -87,34 +80,57 @@ export function shareNetBytes({
         },
       },
       ticking: {
-        ticked(_state, { total }) {
-          posts.emit(total);
+        ticked(_state, { total }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'posted', total });
         },
         readFailed({ stopTicker }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'failing', stopTicker });
           emitSideEffect({ kind: 'readFailed', error });
         },
-        lastLeft: stopTicking,
+        tickerStopped: stopTicking,
       },
       // A read that throws again finds no handler. The run's first failure was reported, so a meter that stays broken
       // does not flood the log.
       failing: {
-        ticked({ stopTicker }, { total }, { emitState }) {
+        ticked({ stopTicker }, { total }, { emitState, emitSideEffect }) {
           emitState({ kind: 'ticking', stopTicker });
-          posts.emit(total);
+          emitSideEffect({ kind: 'posted', total });
         },
-        lastLeft: stopTicking,
+        tickerStopped: stopTicking,
       },
     },
-    onEffect: ({ error }) => {
-      reportRead(error);
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'posted':
+          posts.emit(effect.total);
+          return;
+        case 'readFailed':
+          report.defect(effect.error, {
+            step: 'net_bytes_read',
+            metric: protocolNetBytesReadMetric,
+            message: '[dot.li] The net bytes meter could not be read',
+          });
+          return;
+        case 'tickerStopped':
+          effect.stopTicker();
+          return;
+      }
     },
     onError: error => {
-      protocolReport.defect(error, {
+      report.defect(error, {
         step: 'transition',
         metric: protocolNetBytesTransitionMetric,
         message: '[dot.li] A transition of the net bytes meter failed:',
       });
+    },
+  });
+  // Rethrows a ticker that cannot start, so the subscribe that began it throws and leaves no run behind.
+  const ticking = createSharedRun({
+    begin: () => {
+      meter.update({ kind: 'tickerStarted', stopTicker: startTicker(tick) });
+      return () => {
+        meter.update({ kind: 'tickerStopped' });
+      };
     },
   });
   return subscribe;
@@ -122,26 +138,13 @@ export function shareNetBytes({
   function subscribe(post: (total: number) => void): () => void {
     // Read first, so a subscribe that throws leaves nothing behind.
     const baseline = read();
+    const leave = ticking.join();
     const unsubscribe = posts.subscribe(post);
-    if (meter.state.get().kind === 'idle') {
-      let stopTicker: () => void;
-      try {
-        stopTicker = startTicker(tick);
-      } catch (error) {
-        unsubscribe();
-        throw error;
-      }
-      meter.update({ kind: 'tickerStarted', stopTicker });
-    }
     posts.deliver(post, baseline);
-    return stop;
-
-    function stop(): void {
+    return () => {
       unsubscribe();
-      if (posts.size === 0) {
-        meter.update({ kind: 'lastLeft' });
-      }
-    }
+      leave();
+    };
   }
 
   function tick(): void {
