@@ -233,60 +233,10 @@ export function createTopbarAutoHide({
     handlers: {
       stopped: {
         started(_state, _event, { emitState, update }) {
-          const page = getPage();
           const listeners = new AbortController();
-          const { signal } = listeners;
           // Started before any listener is added, so a stop releases those added before one threw.
           emitState({ kind: 'unarmed', listeners, contentShown: false });
-          const unlisten = productState.store.listen(() => {
-            if (productState.store.get().status === 'error') {
-              update({ kind: 'contentChanged', shown: false });
-            }
-          });
-          signal.addEventListener('abort', unlisten);
-          page.document.addEventListener(
-            'focusin',
-            () => {
-              update({ kind: 'focusChanged', listeners });
-            },
-            { signal },
-          );
-          page.document.addEventListener(
-            'focusout',
-            () => {
-              // activeElement only settles after focusout, so check on the next tick.
-              timers.setTimeout(() => {
-                update({ kind: 'focusChanged', listeners });
-              }, 0);
-            },
-            { signal },
-          );
-          page.document.addEventListener(
-            'keydown',
-            press => {
-              if (isRevealShortcut(press)) {
-                update({ kind: 'shortcutPressed', press });
-              }
-            },
-            { signal },
-          );
-          // A press or Tab into the cross-origin frame shows only as this window's blur. Checked on the next
-          // tick, after popovers that close on blur have closed.
-          page.window.addEventListener(
-            'blur',
-            () => {
-              timers.setTimeout(() => {
-                update({ kind: 'windowBlurred', listeners });
-              }, 0);
-            },
-            { signal },
-          );
-          signal.addEventListener(
-            'abort',
-            watchPhone(() => {
-              update({ kind: 'viewportChanged' });
-            }),
-          );
+          listenToPage(listeners, update);
         },
         revealFocusAsked: focusBar,
       },
@@ -452,6 +402,63 @@ export function createTopbarAutoHide({
         revealButton = undefined;
       }
     };
+  }
+
+  /** Sends the machine focus, keys, blur, the viewport and a failed product until `listeners` aborts. */
+  function listenToPage(listeners: AbortController, update: Transition<AutoHideMachine>['update']): void {
+    const { signal } = listeners;
+    const page = getPage();
+    signal.addEventListener(
+      'abort',
+      productState.store.listen(() => {
+        if (productState.store.get().status === 'error') {
+          update({ kind: 'contentChanged', shown: false });
+        }
+      }),
+    );
+    page.document.addEventListener(
+      'focusin',
+      () => {
+        update({ kind: 'focusChanged', listeners });
+      },
+      { signal },
+    );
+    page.document.addEventListener(
+      'focusout',
+      () => {
+        // activeElement only settles after focusout, so check on the next tick.
+        timers.setTimeout(() => {
+          update({ kind: 'focusChanged', listeners });
+        }, 0);
+      },
+      { signal },
+    );
+    page.document.addEventListener(
+      'keydown',
+      press => {
+        if (isRevealShortcut(press)) {
+          update({ kind: 'shortcutPressed', press });
+        }
+      },
+      { signal },
+    );
+    // A press or Tab into the cross-origin frame shows only as this window's blur. Checked on the next tick, after
+    // popovers that close on blur have closed.
+    page.window.addEventListener(
+      'blur',
+      () => {
+        timers.setTimeout(() => {
+          update({ kind: 'windowBlurred', listeners });
+        }, 0);
+      },
+      { signal },
+    );
+    signal.addEventListener(
+      'abort',
+      watchPhone(() => {
+        update({ kind: 'viewportChanged' });
+      }),
+    );
   }
 
   function canArm(): boolean {
