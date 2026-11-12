@@ -4,7 +4,7 @@
 // One light client per context, shared by the resolver, the broker and every product.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
+import { DEBUG, getActiveSupportedGenesisHashes } from '@dotli/config/fixed';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createListenerSet,
@@ -17,8 +17,8 @@ import {
   type Transition,
 } from '@dotli/shared';
 import { pageChainSyncReporter, type ChainSyncReporter } from './createChainSyncReporter.js';
-import { createChainSyncTaps, type ChainSyncSource } from './createChainSyncTaps.js';
-import { createPrefetchingStore, type SmoldotDbOutcome } from './createPrefetchingStore.js';
+import { createChainSyncTaps } from './createChainSyncTaps.js';
+import { createPrefetchingStore, type SmoldotDbChain, type SmoldotDbOutcome } from './createPrefetchingStore.js';
 import { createSmoldotDb, type SmoldotDb } from './createSmoldotDb.js';
 import { LIGHT_CLIENT_FOLLOW_LIMIT, type ChainTransport, type ChainTransportHooks } from './transportHooks.js';
 import {
@@ -66,9 +66,6 @@ export type LightClientDeps = {
   /** Defaults to the page's sync reporter. */
   attachChainSync?: ChainSyncReporter['attachChainSync'];
 };
-
-// Observed at the store, since the crate reads it for the relay it dials internally.
-export type SmoldotDbChain = Exclude<ChainRole, 'people'>;
 
 export type LightClientStatus = {
   /** Why no chain can be opened, once one could not. It never clears. */
@@ -132,9 +129,10 @@ type ChainConnection =
   | { kind: 'connecting'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
   | { kind: 'closing'; chain: Chain }
   | { kind: 'stopped'; connection: LightClientConnection }
-  | { kind: 'reading'; chain: Chain; connection: LightClientConnection; source: ChainSyncSource }
+  | { kind: 'reading'; chain: Chain; connection: LightClientConnection; engine: LightClientEngine }
   | { kind: 'ended' };
 
+type RestoringConnection = Extract<ChainConnection, { kind: 'restoring' }>;
 type ReadingConnection = Extract<ChainConnection, { kind: 'reading' }>;
 
 type ClientEvent =
@@ -164,7 +162,7 @@ type ClientEffect =
   | { kind: 'deliver'; key: ConnectionKey; reading: ReadingConnection; message: JsonRpcMessage }
   | { kind: 'send'; connection: LightClientConnection; raw: string }
   | { kind: 'close'; connection: LightClientConnection }
-  | { kind: 'leaveSync'; reading: ReadingConnection }
+  | { kind: 'leaveSync'; key: ConnectionKey; genesis: string }
   | { kind: 'capRefused'; error: LightClientCapError; genesis: string }
   | { kind: 'readBroke'; error: unknown; genesis: string }
   | { kind: 'halted'; hooks: ChainTransportHooks | null; error: unknown };
@@ -194,8 +192,15 @@ export function createLightClient({
   const listeners = createListenerSet<LightClientChange>({
     onListenerError: report.listener('light_client'),
   });
-  const dbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
-  const prefetching = db === null ? null : createPrefetchingStore({ db, onRead: noteDbRead });
+  const prefetching =
+    db === null
+      ? null
+      : createPrefetchingStore({
+          db,
+          onFirstRead: (chain, outcome) => {
+            listeners.emit({ kind: 'db', chain, outcome });
+          },
+        });
   const syncTaps = createChainSyncTaps({ attachChainSync });
 
   // A message sent before the chain connects goes out once it does, in order.
@@ -221,7 +226,7 @@ export function createLightClient({
     { emitState, emitSideEffect },
   ) => {
     const connection = state.connections.get(key);
-    // Only a connect fails, and a connection that left before it is gone.
+    // Narrows the type: only a connecting connection, or one that left while it connected, waits on a connect.
     if (connection?.kind !== 'connecting' && connection?.kind !== 'closing') {
       return;
     }
@@ -282,17 +287,7 @@ export function createLightClient({
       },
       connecting: {
         chainConnected({ chain, engine, queued }, { key, connection }, { emitState, emitSideEffect, update }) {
-          const reading: ReadingConnection = {
-            kind: 'reading',
-            chain,
-            connection,
-            source: {
-              send: raw => {
-                connection.send(raw);
-              },
-              watchLifecycle: () => engine.lifecycle(chain.genesis),
-            },
-          };
+          const reading: ReadingConnection = { kind: 'reading', chain, connection, engine };
           emitState(reading);
           update(readResponse(key, connection));
           emitSideEffect({ kind: 'connected', key, reading, queued });
@@ -314,19 +309,19 @@ export function createLightClient({
           emitSideEffect({ kind: 'deliver', key, reading: state, message });
         },
         // Only the consumer's leave ends the stream in order. Otherwise the transport died or overflowed its send budget.
-        streamEnded(state, _event, transition) {
-          haltReading(state, new Error(`chain ${state.chain.genesis} stopped responding`), transition);
+        streamEnded(state, { key }, transition) {
+          haltReading(state, { key, error: new Error(`chain ${state.chain.genesis} stopped responding`) }, transition);
         },
-        readFailed(state, { error }, transition) {
+        readFailed(state, { key, error }, transition) {
           transition.emitSideEffect({ kind: 'readBroke', error, genesis: state.chain.genesis });
-          haltReading(state, error, transition);
+          haltReading(state, { key, error }, transition);
         },
         sent({ connection }, { message }, { emitSideEffect }) {
           emitSideEffect({ kind: 'send', connection, raw: JSON.stringify(message) });
         },
-        left(state, _event, { emitState, emitSideEffect }) {
+        left(state, { key }, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended' });
-          emitSideEffect({ kind: 'leaveSync', reading: state });
+          emitSideEffect({ kind: 'leaveSync', key, genesis: state.chain.genesis });
           emitSideEffect({ kind: 'close', connection: state.connection });
         },
       },
@@ -384,7 +379,7 @@ export function createLightClient({
           emitSideEffect({ kind: 'prefetch', genesis: chain.genesis });
         },
         engineStarted({ connections }, { engine }, { emitState, emitSideEffect, update }) {
-          const restoring = new Map<ConnectionKey, Extract<ChainConnection, { kind: 'restoring' }>>();
+          const restoring = new Map<ConnectionKey, RestoringConnection>();
           for (const [key, connection] of connections) {
             // Narrows the type: every connection of a starting light client waits on the start.
             if (connection.kind === 'waiting') {
@@ -519,7 +514,12 @@ export function createLightClient({
               reading.connection.send(raw);
             }
             // After the flush, so the sync request cannot jump ahead of a caller's.
-            syncTaps.join(reading.chain.genesis, reading.source);
+            syncTaps.join(reading.chain.genesis, key, {
+              send: raw => {
+                reading.connection.send(raw);
+              },
+              watchLifecycle: () => reading.engine.lifecycle(reading.chain.genesis),
+            });
             reading.chain.hooks?.onStatus('connected');
           } catch (error) {
             machine.update({ kind: 'readFailed', key, error });
@@ -530,7 +530,7 @@ export function createLightClient({
           const { key, reading, message } = effect;
           try {
             // polkadot-api would reject a string id it never issued.
-            if (!syncTaps.intercept(reading.chain.genesis, reading.source, message)) {
+            if (!syncTaps.intercept(reading.chain.genesis, key, message)) {
               reading.chain.onMessage(message);
             }
           } catch (error) {
@@ -545,7 +545,7 @@ export function createLightClient({
           effect.connection.close();
           return;
         case 'leaveSync':
-          syncTaps.leave(effect.reading.chain.genesis, effect.reading.source);
+          syncTaps.leave(effect.genesis, effect.key);
           return;
         case 'capRefused':
           report.expected(effect.error, {
@@ -585,25 +585,14 @@ export function createLightClient({
     isChainSupported,
     status: () => {
       const state = machine.state.get();
-      return { fatal: state.kind === 'fatal' ? state.message : null, db: new Map(dbOutcomes) };
+      return { fatal: state.kind === 'fatal' ? state.message : null, db: prefetching?.getFirstReads() ?? new Map() };
     },
     subscribe: listeners.subscribe,
   };
 
-  // First read wins, since only the chain's first add consumes the store. People is left out, as nothing the page waits
-  // on depends on it.
-  function noteDbRead(genesis: string, outcome: SmoldotDbOutcome): void {
-    const chain = getChainRoleForGenesis(genesis);
-    if (chain === null || chain === 'people' || dbOutcomes.has(chain)) {
-      return;
-    }
-    dbOutcomes.set(chain, outcome);
-    listeners.emit({ kind: 'db', chain, outcome });
-  }
-
   /** Moves a restored connection to `connecting` and starts its connect. */
   function connectChain(
-    { chain, engine, queued }: Extract<ChainConnection, { kind: 'restoring' }>,
+    { chain, engine, queued }: RestoringConnection,
     key: ConnectionKey,
     { emitState, update }: Transition<ConnectionMachine>,
   ): void {
@@ -618,13 +607,13 @@ export function createLightClient({
 
   /** Halts a reading chain and hands its sync tap on. The engine's connection stays until the consumer leaves. */
   function haltReading(
-    reading: ReadingConnection,
-    error: unknown,
+    { chain, connection }: ReadingConnection,
+    { key, error }: { key: ConnectionKey; error: unknown },
     { emitState, emitSideEffect }: Transition<ConnectionMachine>,
   ): void {
-    emitState({ kind: 'stopped', connection: reading.connection });
-    emitSideEffect({ kind: 'halted', hooks: reading.chain.hooks, error });
-    emitSideEffect({ kind: 'leaveSync', reading });
+    emitState({ kind: 'stopped', connection });
+    emitSideEffect({ kind: 'halted', hooks: chain.hooks, error });
+    emitSideEffect({ kind: 'leaveSync', key, genesis: chain.genesis });
   }
 
   function isChainSupported(genesisHash: string): boolean {

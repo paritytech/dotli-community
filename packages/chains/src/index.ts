@@ -15,14 +15,8 @@ export {
   isCoreRpcChainSupported,
 } from './createCoreRpcChainTransport.js';
 export { createJsonRpcError } from './createJsonRpcError.js';
-export type {
-  LightClient,
-  LightClientChange,
-  LightClientDeps,
-  LightClientStatus,
-  SmoldotDbChain,
-} from './createLightClient.js';
-export type { SmoldotDbOutcome } from './createPrefetchingStore.js';
+export type { LightClient, LightClientChange, LightClientDeps, LightClientStatus } from './createLightClient.js';
+export type { SmoldotDbChain, SmoldotDbOutcome } from './createPrefetchingStore.js';
 export { createLightClient, createLightClientDeps } from './createLightClient.js';
 export { SMOLDOT_DB_NAME } from './createSmoldotDb.js';
 export { loadProvider } from './lazy.js';
