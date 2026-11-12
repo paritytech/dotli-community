@@ -21,12 +21,12 @@ export type ChainClient = {
 
 /**
  * Where the client stands. `asker` is the token of the call whose ask started the build, so its failure goes to that
- * call only.
+ * call only. `startedAt` and `syncStartedAt` mark the build's steps for its timings.
  */
 export type SyncedClientState =
   | { kind: 'idle' }
-  | { kind: 'connecting'; asker: symbol }
-  | { kind: 'syncing'; asker: symbol; client: ChainClient }
+  | { kind: 'connecting'; asker: symbol; startedAt: number }
+  | { kind: 'syncing'; asker: symbol; client: ChainClient; startedAt: number; syncStartedAt: number }
   | { kind: 'ready'; client: ChainClient }
   | { kind: 'failed'; asker: symbol; error: unknown };
 
@@ -38,11 +38,10 @@ type SyncedClientEvent =
   | { kind: 'stopped' };
 
 type SyncedClientEffect =
-  | { kind: 'connecting' }
-  | { kind: 'syncing' }
-  | { kind: 'synced' }
-  | { kind: 'syncFailed'; error: unknown }
-  | { kind: 'stopped' };
+  | { kind: 'synced'; syncMs: number; totalMs: number }
+  | { kind: 'syncFailed'; error: unknown; totalMs: number }
+  | { kind: 'stopped' }
+  | { kind: 'destroy'; client: ChainClient };
 
 type SyncedClientMachine = MachineTypes<SyncedClientState, SyncedClientEvent, SyncedClientEffect>;
 
@@ -84,12 +83,11 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
   const startBuild: HandlerOf<SyncedClientMachine, 'idle' | 'failed', 'asked'> = (
     _state,
     { asker },
-    { emitState, emitSideEffect, update },
+    { emitState, update },
   ) => {
-    // The open waits for the next transition, so the build's start is reported before the open's own calls log.
-    emitSideEffect({ kind: 'connecting' });
+    // The open runs in the next transition, so `connecting` is told before the open's own calls log.
     update({ kind: 'connect' });
-    emitState({ kind: 'connecting', asker });
+    emitState({ kind: 'connecting', asker, startedAt: performance.now() });
   };
 
   const machine = createStateMachine<SyncedClientMachine>({
@@ -99,64 +97,45 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
     handlers: {
       idle: { asked: startBuild },
       connecting: {
-        connect({ asker }, _event, { emitState, emitSideEffect, update }) {
+        connect({ asker, startedAt }, _event, { emitState, emitSideEffect, update }) {
           let client: ChainClient;
           try {
             client = openClient();
           } catch (error) {
-            emitSideEffect({ kind: 'syncFailed', error });
+            emitSideEffect({ kind: 'syncFailed', error, totalMs: performance.now() - startedAt });
             emitState({ kind: 'failed', asker, error });
             return;
           }
-          // Built inside the promise, so a synchronous throw becomes `syncFailed` and the state never waits on nothing.
-          const sync = new Promise<void>(resolve => {
-            // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the
-            // cause.
-            const waitForFirstBlock = () =>
-              withTimeout({
-                work: client.api.whenReady(),
-                ms: syncTimeoutMs,
-                timeoutError: () => new NetworkSyncTimeoutError(chain, syncTimeoutMs),
-              });
-            resolve(timed ? m.span(SMOLDOT_FINALIZED_BLOCK, waitForFirstBlock) : waitForFirstBlock());
-          });
-          update(
-            sync.then(
-              () => ({ kind: 'synced' }),
-              (error: unknown) => ({ kind: 'syncFailed', error }),
-            ),
-          );
-          emitSideEffect({ kind: 'syncing' });
-          emitState({ kind: 'syncing', asker, client });
+          update(waitForSync(client));
+          emitState({ kind: 'syncing', asker, client, startedAt, syncStartedAt: performance.now() });
         },
       },
       syncing: {
-        synced({ client }, _event, { emitState, emitSideEffect, update }) {
+        synced({ client, startedAt, syncStartedAt }, _event, { emitState, emitSideEffect, update }) {
           // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
           client.api.onStop(() => {
             update({ kind: 'stopped' });
           });
-          emitSideEffect({ kind: 'synced' });
+          const now = performance.now();
+          emitSideEffect({ kind: 'synced', syncMs: now - syncStartedAt, totalMs: now - startedAt });
           emitState({ kind: 'ready', client });
         },
-        syncFailed({ asker, client }, { error }, { emitState, emitSideEffect }) {
-          // Destroyed before the emit, since a listener that throws there stops this handler.
-          client.destroy();
-          emitSideEffect({ kind: 'syncFailed', error });
+        syncFailed({ asker, client, startedAt }, { error }, { emitState, emitSideEffect }) {
+          emitSideEffect({ kind: 'destroy', client });
+          emitSideEffect({ kind: 'syncFailed', error, totalMs: performance.now() - startedAt });
           emitState({ kind: 'failed', asker, error });
         },
       },
       ready: {
         stopped({ client }, _event, { emitState, emitSideEffect }) {
-          // Destroyed before the emit, since a listener that throws there stops this handler.
-          client.destroy();
+          emitSideEffect({ kind: 'destroy', client });
           emitSideEffect({ kind: 'stopped' });
           emitState({ kind: 'idle' });
         },
       },
       failed: { asked: startBuild },
     },
-    onEffect: createSyncReports({ chain, timed }),
+    onEffect: runEffect,
     onError: error => {
       report.defect(error, {
         step: 'synced_client_transition',
@@ -203,47 +182,49 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
       }
     },
   };
-}
 
-/** Turns a client's effects into its timings and breadcrumbs. */
-function createSyncReports({ chain, timed }: Pick<Params, 'chain' | 'timed'>): (effect: SyncedClientEffect) => void {
-  // Facts beside the machine, not phases. Builds of one client never overlap, so one pair of marks serves them all.
-  let connectingAt = 0;
-  let syncingAt = 0;
-  return effect => {
-    const now = performance.now();
+  /** Waits for the follow's first block. Never rejects: any failure, a synchronous one too, is `syncFailed`. */
+  async function waitForSync(client: ChainClient): Promise<SyncedClientEvent> {
+    // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the cause.
+    const waitForFirstBlock = () =>
+      withTimeout({
+        work: client.api.whenReady(),
+        ms: syncTimeoutMs,
+        timeoutError: () => new NetworkSyncTimeoutError(chain, syncTimeoutMs),
+      });
+    try {
+      await (timed ? m.span(SMOLDOT_FINALIZED_BLOCK, waitForFirstBlock) : waitForFirstBlock());
+      return { kind: 'synced' };
+    } catch (error) {
+      return { kind: 'syncFailed', error };
+    }
+  }
+
+  function runEffect(effect: SyncedClientEffect): void {
     switch (effect.kind) {
-      case 'connecting':
-        connectingAt = now;
-        return;
-      case 'syncing':
-        syncingAt = now;
-        return;
       case 'synced': {
-        const syncMs = now - syncingAt;
-        const totalMs = now - connectingAt;
+        const { syncMs, totalMs } = effect;
         if (timed) {
           m.measure(SMOLDOT_FINALIZED_BLOCK, syncMs);
           m.distribution(SMOLDOT_FINALIZED_BLOCK, syncMs);
           m.measure(spans.SMOLDOT_PRESYNC, totalMs);
           m.distribution(spans.SMOLDOT_PRESYNC, totalMs, { unit: 'millisecond', attributes: { outcome: 'ok' } });
         }
-        report.log.event('Chain client ready', {
-          chain,
-          sync_ms: Math.round(syncMs),
-          total_ms: Math.round(totalMs),
-        });
+        report.log.event('Chain client ready', { chain, sync_ms: Math.round(syncMs), total_ms: Math.round(totalMs) });
         return;
       }
       case 'syncFailed':
         if (timed) {
           const outcome = effect.error instanceof NetworkSyncTimeoutError ? 'timeout' : 'error';
-          m.distribution(spans.SMOLDOT_PRESYNC, now - connectingAt, { unit: 'millisecond', attributes: { outcome } });
+          m.distribution(spans.SMOLDOT_PRESYNC, effect.totalMs, { unit: 'millisecond', attributes: { outcome } });
         }
         return;
       case 'stopped':
         log.warn('[dot.li resolve] chainHead follow stopped, dropping its client', { chain });
         return;
+      case 'destroy':
+        effect.client.destroy();
+        return;
     }
-  };
+  }
 }
