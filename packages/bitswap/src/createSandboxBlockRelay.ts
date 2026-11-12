@@ -6,25 +6,14 @@
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createListenerSet,
-  createStateMachine,
-  getErrorName,
-  setErrorName,
-  serializeError,
-  type MachineTypes,
-} from '@dotli/shared';
+import { createListenerSet, createStateMachine, getErrorName, serializeError, type MachineTypes } from '@dotli/shared';
 
 import { readDagTotal } from './readDagTotal.js';
 import { errorCode } from './errors.js';
+import { serveBlock, type BlockOrigin, type BlockSources, type ServedBlock } from './serveBlock.js';
 
 const report = createReporter({ flow: 'content' });
 
-/**
- * A bitswap relay step that failed. Tag `outcome` (`error`), `reason` (the error name) and `step` (`verify, cache_read,
- * cache_delete, cache_write`).
- */
-const contentBlockRelayMetric = defineCount<'error'>('content.block_relay');
 const blockRelayTransitionMetric = defineCount<'error'>('block_relay.transition');
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
@@ -34,69 +23,17 @@ export type ContentProgress = {
   bytesPerSecond: number;
 };
 
-export type BlockOrigin = 'cache' | 'network';
-
-export type BlockCache = {
-  /**
-   * Must return a fresh copy, since the relay transfers the buffer to the sandbox and detaches it. Resolves null on a
-   * miss and rejects when the store cannot be read.
-   */
-  get: (cid: string) => Promise<Uint8Array | null>;
-  /** Stores the bytes under the CID. Rejects when the store cannot be written. */
-  put: (cid: string, bytes: Uint8Array) => Promise<void>;
-  /** Removes the CID's entry, and resolves when there is none. Rejects when the store cannot be written. */
-  delete: (cid: string) => Promise<void>;
-};
-
-type Params = {
+type Params = BlockSources & {
   /** Hands over only messages from a trusted sandbox origin. */
   channel: SandboxChannel;
-  /** Fetches one block over the network. The signal aborts when the frame that asked goes away. */
-  blocks: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
-  /** Null when the settings skip the archive cache. */
-  cache: BlockCache | null;
-  /**
-   * Whether the bytes hash to the CID. This relay is the one check of every block on its path. A rejection leaves the
-   * answer unknown, so the block is not served or written, and a cached copy is kept for a verifier that loads later.
-   * The verifier reports why it could not run.
-   */
-  verify: (cid: string, bytes: Uint8Array) => Promise<boolean>;
   /** The clock the transfer speed is measured on. */
   now?: () => number;
 };
 
 export type SandboxBlockRelay = ReturnType<typeof createSandboxBlockRelay>;
 
-/** `unknown` when the verifier could not run, which says nothing about the bytes. */
-type Verdict = { kind: 'match' } | { kind: 'mismatch' } | { kind: 'unknown'; cause: unknown };
-
-type ServedBlock = {
-  bytes: Uint8Array;
-  from: BlockOrigin;
-};
-
-type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
-
-type ReportRelayFailureParams = {
-  /** The relay step that failed. */
-  step: RelayStep;
-  /** What the step threw. */
-  error: unknown;
-  /** The block the step handled, when there was one. */
-  cid?: string;
-  /** The metric reason. The error's name when not given. */
-  reason?: string;
-};
-
 /** A frame's id with its origin, or the window of a sandbox that sends no id. */
 type FrameKey = MessageEventSource | string;
-
-/** Where a block request or abort came from: the frame id the sandbox sent, if any, its origin and its window. */
-type FrameAddress = {
-  frame: string | undefined;
-  origin: string;
-  source: MessageEventSource | null;
-};
 
 /** A block a frame asked for, with the controller its frame's abort stops. */
 type BlockRequest = {
@@ -108,13 +45,20 @@ type BlockRequest = {
   aborter: AbortController;
 };
 
+/** The running load's count. A walk asks for its root first and only once, so the root asked again is a new load. */
+type Load = { root: string; totalBytes: number | null; bytesFetched: number; startedAt: number };
+
 /**
  * Live requests per frame, then per id, so a sandbox can abort its own on `pagehide`. Keyed by frame because ids restart
  * at 1 in each frame. A frame is the id it sends together with its origin, since its abort arrives after it is gone and
  * without a source, and another product's sandbox may send the same id. A sandbox that sends no id is keyed by its
- * window. A frame with no request left leaves `frames`.
+ * window. A frame with no request left leaves `frames`. `load` is `null` until the first block is served.
  */
-type RelayState = { kind: 'serving'; frames: ReadonlyMap<FrameKey, ReadonlyMap<string, BlockRequest>> };
+type RelayState = {
+  kind: 'serving';
+  frames: ReadonlyMap<FrameKey, ReadonlyMap<string, BlockRequest>>;
+  load: Load | null;
+};
 
 type RelayEvent =
   | { kind: 'blockAsked'; request: BlockRequest }
@@ -122,10 +66,11 @@ type RelayEvent =
   | { kind: 'blockServed'; request: BlockRequest; served: ServedBlock }
   | { kind: 'blockFailed'; request: BlockRequest; error: unknown };
 
-/**
- * Spelled as `CONTENT_ERRORS.VERIFICATION`, which bitswap may not import. The sandbox branches on this name.
- */
-const VERIFICATION_ERROR = 'ContentVerificationError';
+type RelayEffect =
+  | { kind: 'abort'; requests: readonly BlockRequest[] }
+  | { kind: 'progress'; load: Load; from: BlockOrigin }
+  | { kind: 'reply'; request: BlockRequest; bytes: Uint8Array }
+  | { kind: 'replyFailure'; request: BlockRequest; error: unknown };
 
 /**
  * Creates the host side of the sandbox's block channel, which serves, verifies and caches the blocks the sandbox asks
@@ -135,7 +80,7 @@ const VERIFICATION_ERROR = 'ContentVerificationError';
  * const relay = createSandboxBlockRelay({ channel, blocks: fetchBlock, cache: null, verify: verifyBlock });
  * const stop = relay.onProgress(showProgress);
  */
-export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = () => performance.now() }: Params) {
+export function createSandboxBlockRelay({ channel, now = () => performance.now(), ...sources }: Params) {
   // A listener's throw must not fail a block the sandbox already got, nor keep the next listener from hearing it.
   const progressListeners = createListenerSet<ContentProgress>({
     onListenerError: report.listener('bitswap_relay.progress'),
@@ -143,102 +88,9 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
   const servedListeners = createListenerSet<BlockOrigin>({
     onListenerError: report.listener('bitswap_relay.served'),
   });
-  /** The running load's count. A walk asks for its root first and only once, so the root asked again is a new load. */
-  let load: { root: string; totalBytes: number | null; bytesFetched: number; startedAt: number } | null = null;
-  function getFrameKey(address: FrameAddress & { source: MessageEventSource }): FrameKey;
-  function getFrameKey(address: FrameAddress): FrameKey | null;
-  function getFrameKey({ frame, origin, source }: FrameAddress): FrameKey | null {
-    return frame === undefined ? source : `${origin} ${frame}`;
-  }
 
-  function noteBlock(cid: string, { bytes, from }: ServedBlock): void {
-    // A retry in the sandbox, or a frame the host rendered again, walks from the root again and counts from zero.
-    if (load === null || cid === load.root) {
-      load = { root: cid, totalBytes: readDagTotal(bytes), bytesFetched: 0, startedAt: now() };
-    }
-    load.bytesFetched += bytes.length;
-    const elapsed = now() - load.startedAt;
-    progressListeners.emit({
-      bytesFetched: load.bytesFetched,
-      totalBytes: load.totalBytes,
-      bytesPerSecond: elapsed > 0 ? (load.bytesFetched / elapsed) * 1000 : 0,
-    });
-    servedListeners.emit(from);
-  }
-
-  async function check(cid: string, bytes: Uint8Array): Promise<Verdict> {
-    try {
-      return (await verify(cid, bytes)) ? { kind: 'match' } : { kind: 'mismatch' };
-    } catch (error) {
-      // The verifier reported why it could not run, so each block it leaves unchecked is expected and counted.
-      report.expected(error, {
-        step: 'relay_verify',
-        metric: contentBlockRelayMetric,
-        attributes: { step: 'verify' },
-      });
-      return { kind: 'unknown', cause: error };
-    }
-  }
-
-  async function readCached(store: BlockCache, cid: string): Promise<Uint8Array | null> {
-    let bytes: Uint8Array | null;
-    try {
-      bytes = await store.get(cid);
-    } catch (error) {
-      reportRelayFailure({ step: 'cache_read', error });
-      return null;
-    }
-    if (bytes === null) {
-      return null;
-    }
-    const verdict = await check(cid, bytes);
-    if (verdict.kind === 'match') {
-      return bytes;
-    }
-    // Unverified, so this read goes to the network, and the copy waits for a verifier that loads.
-    if (verdict.kind === 'unknown') {
-      return null;
-    }
-    // Corrupted on disk. Dropped so the network copy takes its place.
-    void store.delete(cid).catch((error: unknown) => {
-      reportRelayFailure({ step: 'cache_delete', error });
-    });
-    return null;
-  }
-
-  async function serve(cid: string, signal: AbortSignal): Promise<ServedBlock> {
-    if (cache !== null) {
-      const cached = await readCached(cache, cid);
-      if (cached !== null) {
-        return { bytes: cached, from: 'cache' };
-      }
-    }
-    const bytes = await blocks(cid, signal);
-    // The sandbox re-hashes only the root block, so this is the check for every other block a peer sends.
-    const verdict = await check(cid, bytes);
-    if (verdict.kind === 'mismatch') {
-      const error = setErrorName(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
-      reportRelayFailure({ step: 'verify', error, cid, reason: 'mismatch' });
-      throw error;
-    }
-    // Fail closed. The verifier already reported why it could not run, so this refusal is not reported again.
-    if (verdict.kind === 'unknown') {
-      throw setErrorName(
-        new Error(`Block ${cid} could not be checked against its CID`, { cause: verdict.cause }),
-        VERIFICATION_ERROR,
-      );
-    }
-    if (cache !== null) {
-      // The reply detaches `bytes.buffer` before the IndexedDB write clones it.
-      void cache.put(cid, bytes.slice()).catch((error: unknown) => {
-        reportRelayFailure({ step: 'cache_write', error });
-      });
-    }
-    return { bytes, from: 'network' };
-  }
-
-  const relay = createStateMachine<MachineTypes<RelayState, RelayEvent>>({
-    initial: { kind: 'serving', frames: new Map() },
+  const relay = createStateMachine<MachineTypes<RelayState, RelayEvent, RelayEffect>>({
+    initial: { kind: 'serving', frames: new Map(), load: null },
     handlers: {
       serving: {
         blockAsked(state, { request }, { emitState, update }) {
@@ -246,47 +98,71 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
           const own = new Map(state.frames.get(request.key)).set(request.id, request);
           emitState({ ...state, frames: withFrame(state.frames, request.key, own) });
           update(
-            serve(request.cid, request.aborter.signal).then(
+            serveBlock(request.cid, request.aborter.signal, sources).then(
               served => ({ kind: 'blockServed', request, served }),
               (error: unknown) => ({ kind: 'blockFailed', request, error }),
             ),
           );
         },
-        abortAsked(state, { key, ids }, { emitState }) {
+        abortAsked(state, { key, ids }, { emitState, emitSideEffect }) {
           // Only this frame's own fetches, so one product cannot cancel another's.
-          const own = state.frames.get(key);
-          if (own === undefined || !ids.some(id => own.has(id))) {
+          const own = state.frames.get(key) ?? new Map<string, BlockRequest>();
+          const aborted = ids.flatMap(id => own.get(id) ?? []);
+          if (aborted.length === 0) {
             return;
           }
           const left = new Map(own);
-          for (const id of ids) {
+          for (const { id } of aborted) {
             left.delete(id);
           }
           emitState({ ...state, frames: withFrame(state.frames, key, left) });
-          for (const id of ids) {
-            own.get(id)?.aborter.abort();
-          }
+          emitSideEffect({ kind: 'abort', requests: aborted });
         },
-        blockServed(state, { request, served }, { emitState }) {
-          emitState(withoutRequest(state, request));
+        blockServed(state, { request, served }, { emitState, emitSideEffect }) {
+          const next = withoutRequest(state, request);
           // An aborted request's block is not part of the frame's load.
-          if (!request.aborter.signal.aborted) {
-            noteBlock(request.cid, served);
+          if (request.aborter.signal.aborted) {
+            emitState(next);
+          } else {
+            const load = countBlock(state.load, request.cid, served.bytes);
+            emitState({ ...next, load });
+            emitSideEffect({ kind: 'progress', load, from: served.from });
           }
-          const reply: BitswapResultMessage = {
-            type: 'dotli:bitswap-result',
-            id: request.id,
-            ok: true,
-            bytes: served.bytes,
-          };
-          // The cache and the client return a fresh copy, so its buffer is an `ArrayBuffer` holding this block alone.
-          request.source.postMessage(reply, {
-            targetOrigin: request.origin,
-            transfer: [served.bytes.buffer as ArrayBuffer],
-          });
+          emitSideEffect({ kind: 'reply', request, bytes: served.bytes });
         },
-        blockFailed(state, { request, error }, { emitState }) {
+        blockFailed(state, { request, error }, { emitState, emitSideEffect }) {
           emitState(withoutRequest(state, request));
+          emitSideEffect({ kind: 'replyFailure', request, error });
+        },
+      },
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'abort':
+          for (const request of effect.requests) {
+            request.aborter.abort();
+          }
+          return;
+        case 'progress': {
+          const { bytesFetched, totalBytes, startedAt } = effect.load;
+          const elapsed = now() - startedAt;
+          progressListeners.emit({
+            bytesFetched,
+            totalBytes,
+            bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0,
+          });
+          servedListeners.emit(effect.from);
+          return;
+        }
+        case 'reply': {
+          const { request, bytes } = effect;
+          const reply: BitswapResultMessage = { type: 'dotli:bitswap-result', id: request.id, ok: true, bytes };
+          // The cache and the client return a fresh copy, so its buffer is an `ArrayBuffer` holding this block alone.
+          request.source.postMessage(reply, { targetOrigin: request.origin, transfer: [bytes.buffer as ArrayBuffer] });
+          return;
+        }
+        case 'replyFailure': {
+          const { request, error } = effect;
           const name = getErrorName(error);
           const code = errorCode(error);
           const reply: BitswapResultMessage = {
@@ -298,8 +174,9 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
             ...(code !== null ? { code } : {}),
           };
           request.source.postMessage(reply, { targetOrigin: request.origin });
-        },
-      },
+          return;
+        }
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -310,29 +187,20 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
     },
   });
 
-  const stopAborts = channel.on('dotli:bitswap-abort', (data, { origin, source }) => {
-    const key = getFrameKey({ frame: data.frame, origin, source });
+  const stopAborts = channel.on('dotli:bitswap-abort', ({ frame, ids }, { origin, source }) => {
+    const key = getFrameKey(frame, origin, source);
     if (key === null) {
       return;
     }
-    relay.update({ kind: 'abortAsked', key, ids: data.ids });
+    relay.update({ kind: 'abortAsked', key, ids });
   });
 
-  const stopGets = channel.on('dotli:bitswap-get', (data, { origin, source }) => {
+  const stopGets = channel.on('dotli:bitswap-get', ({ frame, id, cid }, { origin, source }) => {
     if (source === null) {
       return;
     }
-    relay.update({
-      kind: 'blockAsked',
-      request: {
-        key: getFrameKey({ frame: data.frame, origin, source }),
-        id: data.id,
-        cid: data.cid,
-        origin,
-        source,
-        aborter: new AbortController(),
-      },
-    });
+    const key = getFrameKey(frame, origin, source);
+    relay.update({ kind: 'blockAsked', request: { key, id, cid, origin, source, aborter: new AbortController() } });
   });
 
   return {
@@ -346,18 +214,25 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
       stopGets();
     },
   };
+
+  /** `load` with the block `cid` added. */
+  function countBlock(load: Load | null, cid: string, bytes: Uint8Array): Load {
+    // A retry in the sandbox, or a frame the host rendered again, walks from the root again and counts from zero.
+    const counted =
+      load === null || cid === load.root
+        ? { root: cid, totalBytes: readDagTotal(bytes), bytesFetched: 0, startedAt: now() }
+        : load;
+    return { ...counted, bytesFetched: counted.bytesFetched + bytes.length };
+  }
 }
 
-/** A relay step that failed and was worked around, reported so the workaround does not hide it. */
-function reportRelayFailure({ step, error, cid, reason }: ReportRelayFailureParams): void {
-  report.defect(error, {
-    step: `relay_${step}`,
-    ...(cid === undefined ? {} : { tags: { cid } }),
-    metric: contentBlockRelayMetric,
-    attributes: { step },
-    message: `[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}:`,
-    ...(reason === undefined ? {} : { reason }),
-  });
+/** The frame a message came from: the id the sandbox sent with its origin, or its window when it sent none. */
+function getFrameKey<Source extends MessageEventSource | null>(
+  frame: string | undefined,
+  origin: string,
+  source: Source,
+): Source | string {
+  return frame === undefined ? source : `${origin} ${frame}`;
 }
 
 /** `frames` with the frame's requests set to `own`, or without the frame once it has none. */
