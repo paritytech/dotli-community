@@ -29,6 +29,8 @@ type SheetLayerMachine = MachineTypes<SheetLayerState, SheetLayerEvent>;
 
 /** A bottom sheet's layer: whether it is up, and whether it came or went in a hand-off with another sheet. */
 export function createSheetLayer({ handOff = sheetHandOff }: Params = {}) {
+  // `take` and `hold` are asked inside the transition, since their answer picks the next state and asking claims the
+  // hand-off, which only a sheet that really opens or closes may do.
   const open: HandlerOf<SheetLayerMachine, 'closed' | 'held', 'opened'> = (_state, _event, { emitState }) => {
     emitState({ kind: 'open', handedOff: handOff.take() });
   };
