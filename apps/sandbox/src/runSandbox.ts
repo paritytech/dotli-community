@@ -42,8 +42,8 @@ type ContractStep = 'contract_top_level' | 'contract_origin' | 'contract_params'
 export type SandboxStep = LoadStep | ContractStep | 'retry_limit';
 
 /**
- * What the run needs from the page. A throw from the host messages or the UI while a failure is shown, and a throw or
- * rejection from `load`, is reported and the run goes on. A throw from `configure` escapes the run.
+ * What the run needs from the page. A throw from `configure`, from the host messages or the UI while a failure is
+ * shown, and a throw or rejection from `load`, is reported and the run goes on.
  */
 export type RunSandboxDeps = {
   /** Applies the contract's settings to the page, once, before the first load. */
@@ -79,7 +79,7 @@ type ContractFailure = {
   step: ContractStep;
   title: string;
   /** Why the contract is unusable, shown and captured. */
-  reason: string;
+  message: string;
   /** What the check or the ask threw, kept on the captured error. */
   cause: unknown;
 };
@@ -109,6 +109,7 @@ type RunEvent =
 
 /** What happened to the run, for its reports, and what it shows. */
 type RunEffect =
+  | { kind: 'configure'; params: SandboxParams }
   | { kind: 'topLevel' }
   | ({ kind: 'contractFailed' } & ContractFailure)
   | { kind: 'recoverAsked'; reason: string }
@@ -123,15 +124,11 @@ type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
 
 /**
  * Runs the sandbox: reads the host's contract from the URL, then loads the product, and again on each retry the
- * visitor asks for, up to a limit. A failure is shown, never thrown. Throws when `href` is no URL, when the contract
- * check fails with anything but a contract error, or when `configure` throws.
+ * visitor asks for, up to a limit. A failure is shown, never thrown. Throws when `href` is no URL, or when the
+ * contract check fails with anything but a contract error.
  */
 export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   const timers = deps.timers ?? realTimers;
-  const contract = readSandboxContract(page, deps.baseDomain);
-  if (contract.kind === 'readable') {
-    deps.configure(contract.params);
-  }
 
   const machine = createStateMachine<RunMachine>({
     initial: { kind: 'starting' },
@@ -159,7 +156,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
                 {
                   step: 'contract_origin',
                   title: 'Sandbox URL not supported',
-                  reason: `This page must load as a dotns app subdomain (e.g. myapp.app.${deps.baseDomain}) through dot.li.`,
+                  message: `This page must load as a dotns app subdomain (e.g. myapp.app.${deps.baseDomain}) through dot.li.`,
                   cause: undefined,
                 },
                 transition,
@@ -175,13 +172,15 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
                 {
                   step: 'contract_params',
                   title: 'Invalid sandbox URL',
-                  reason: read.error.message,
+                  message: read.error.message,
                   cause: read.error,
                 },
                 transition,
               );
               return;
             case 'readable':
+              // Before the first load, which reads the settings it applies.
+              transition.emitSideEffect({ kind: 'configure', params: read.params });
               startAttempt(read.params, 1, transition);
               return;
           }
@@ -195,7 +194,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         recoverFailed({ error }, { cause }, transition) {
           transition.emitState({ kind: 'ended' });
           failContract(
-            { step: 'contract_rerender', title: 'Invalid sandbox URL', reason: error.message, cause },
+            { step: 'contract_rerender', title: 'Invalid sandbox URL', message: error.message, cause },
             transition,
           );
         },
@@ -252,7 +251,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
       });
     },
   });
-  machine.update({ kind: 'started', contract });
+  machine.update({ kind: 'started', contract: readSandboxContract(page, deps.baseDomain) });
 
   return {
     /** Resolves once no load and no wait for the host is in flight. */
@@ -332,13 +331,16 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     emitSideEffect({ kind: 'contractFailed', ...failure });
     emitSideEffect({
       kind: 'showFailure',
-      failure: { kind: 'worded', step: failure.step, title: failure.title, message: failure.reason },
+      failure: { kind: 'worded', step: failure.step, title: failure.title, message: failure.message },
     });
   }
 
   /** Each effect becomes what the visitor sees, or the log line, count or capture it stands for. */
   function runEffect(effect: RunEffect): void {
     switch (effect.kind) {
+      case 'configure':
+        deps.configure(effect.params);
+        return;
       case 'showFailure':
         showFailure(effect.failure);
         return;
@@ -355,7 +357,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         return;
       case 'contractFailed': {
         const error = setErrorName(
-          new Error(`${effect.title}: ${effect.reason}`, { cause: effect.cause }),
+          new Error(`${effect.title}: ${effect.message}`, { cause: effect.cause }),
           'SandboxContractError',
         );
         report.capture(error, { step: effect.step, tags: { surface: 'sandbox_main' } });
