@@ -186,14 +186,18 @@ export function createLoadTelemetry({
       payload: { label, reason: getErrorMessage(error), dependency },
     });
   };
-  const reportScreenFailure: HandlerOf<TelemetryMachine, TracedKind, 'screenFailed'> = (_state, { error, failure }) => {
+  // Only a product in its frame has a failure screen of its own to report, and content outcomes to settle.
+  const reportScreenFailure: HandlerOf<TelemetryMachine, 'render_handoff' | 'content', 'screenFailed'> = (
+    _state,
+    { error, failure },
+  ) => {
     resolveReport.defect(error, {
       step: 'failure_screen',
       metric: resolveFailureScreenMetric,
       message: `[dot.li] The failure screen for ${failure} failed:`,
     });
   };
-  const settleContent: HandlerOf<TelemetryMachine, TracedKind, 'contentSettled'> = (
+  const settleContent: HandlerOf<TelemetryMachine, 'render_handoff' | 'content', 'contentSettled'> = (
     { traced: { trace } },
     { report: { outcome, failedStep } },
   ) => {
@@ -299,8 +303,6 @@ export function createLoadTelemetry({
           resolveReport.log.event('Resolving name', { name: withActiveTld(`app.${traced.label}`), backend });
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       cached_launch_gate: {
         rendering({ traced }, _event, { emitState }) {
@@ -309,8 +311,6 @@ export function createLoadTelemetry({
           traced.progress.enterContentFetch();
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       name_resolve: {
         namePhase({ traced: { label, progress }, flowId: resolveFlowId }, { phase }) {
@@ -354,8 +354,6 @@ export function createLoadTelemetry({
           performance.mark('dotli:main:end');
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       manifest_read: {
         manifestsRead({ traced, path }, { manifests }, { emitState }) {
@@ -363,8 +361,6 @@ export function createLoadTelemetry({
           resolveReport.log.event('Manifests read', { root: manifests.root.kind, app: manifests.app.kind });
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       launch_gate: {
         rendering({ traced, path }, _event, { emitState }) {
@@ -372,8 +368,6 @@ export function createLoadTelemetry({
           traced.progress.enterContentFetch();
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       render_handoff: {
         handedOff({ traced, path }, _event, { emitState }) {
