@@ -114,8 +114,6 @@ type ViewEffect =
 
 type ViewMachine = MachineTypes<ViewState, ViewEvent, ViewEffect>;
 
-type Emits = Pick<Transition<ViewMachine>, 'emitSideEffect'>;
-
 /** Builds the chat panel's view over `repo`. Building one reads nothing and never throws. */
 export function createChatView({ repo }: Params) {
   // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.
@@ -327,7 +325,7 @@ export function createChatView({ repo }: Params) {
 }
 
 /** The reads with `request` asked for: started when none of its kind runs, and due after the one that does. */
-function askRead(reads: Reads, request: ReadRequest | null, { emitSideEffect }: Emits): Reads {
+function askRead(reads: Reads, request: ReadRequest | null, { emitSideEffect }: Transition<ViewMachine>): Reads {
   if (request === null) {
     return reads;
   }
@@ -342,7 +340,7 @@ function askRead(reads: Reads, request: ReadRequest | null, { emitSideEffect }: 
 }
 
 /** The reads with the one of kind `read` ended, and the read due after it started for what `state` follows now. */
-function endRead(state: ViewState, read: keyof Reads, { emitSideEffect }: Emits): Reads {
+function endRead(state: ViewState, read: keyof Reads, { emitSideEffect }: Transition<ViewMachine>): Reads {
   const request = getReadRequest(state.kind === 'following' ? state.follow : null, read);
   if (state.reads[read] === 'rereading' && request !== null) {
     emitSideEffect({ kind: 'readStarted', request });
