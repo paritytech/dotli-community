@@ -397,62 +397,109 @@ Why: ownership of a resource is visible in the code that took it, and nothing le
 
 ### A lifecycle is one state value
 
-A unit whose behaviour depends on where it is in its life, such as starting, running, stopping or disposed, holds that
-as one state value: a discriminated union with one member per phase, written only by the unit's own transitions. What a
-phase owns lives in its member, such as the timer of a wait or the controller of a request in flight, never in a
-nullable slot or a flag beside it. A unit that can be disposed has a disposed member, and every entry point checks it
-first. A unit whose only phases are live and disposed may hold them as a lifetime `AbortController` instead, whose
-aborted signal is the disposed state. Facts that are not phases, such as a config or a count of holds, sit beside the
-state value.
+A unit has a lifecycle when it has three or more phases, or when an await, a callback or a timer reads its phase. It
+runs that lifecycle on `createStateMachine` from `@dotli/shared`. A latch that only makes a callback race settle once
+keeps a plain flag, and so does a unit with one or two flags and no async work.
 
-A transition writes the next state before it calls out, so a call that re-enters from a callback finds the state
-already moved. Work that outlives a call (an `await`, a callback, a timer) captures the state it started in, and acts
-when it returns only while the unit still holds that same state. Compare by identity, never by a second flag.
+The state is a discriminated union with one member per phase, and only the machine's transitions write it. What a phase
+owns lives in its member, such as the timer of a wait or the controller of a request in flight, never in a nullable slot
+or a flag beside it. Facts that are not phases, such as a config or a count of holds, sit beside the state. A unit that
+can be disposed has a disposed state with no handlers, so every later event is ignored.
 
-Work that runs on after its signal aborts stops on the signal, or checks that it still owns the state before it writes.
-A pool whose works must never overlap, even across an abort, holds its slots on abort.
+How a handler moves the machine:
 
-A caller that waits for a unit's outcome waits on the unit's own state, such as with `waitForStatus`. It never waits
-on a promise, a reply or a pending call kept beside that state.
+- A handler emits its next state before it calls out, so a collaborator that reads the state during the call sees it
+  moved. A resource whose stop the next state holds, such as a listener or a tick, starts before the state is emitted.
+- A handler sends through its transition's own `update`. No handler refers to the machine, and neither does a callback
+  or a timer it starts.
+- Async work that settles by itself enters the machine as `update(promise)`, a promise that resolves to the event, with
+  its failure mapped to an event too. Only such work does, so `await()` never waits out a timer. A timer, a tick or a
+  listener calls `update(event)` from its callback.
+- A timer or callback that can outlive its state carries that state value, and its handler acts only while the state is
+  still that value.
+- A handler that several states share is a named function typed `HandlerOf<Machine, Kind, EventKind>`, and each state's
+  table lists it by name. A table is never built by spreading a shared object into it.
+- A handler that can stop the work it starts threads an `AbortSignal` into it (see "Thread an `AbortSignal`").
 
-Why: one value names every phase, each transition has one place, and a stale callback is told apart by identity instead
-of by a flag that drifts.
+How the unit around the machine is shaped:
+
+- `state`, `update` and `await()` are the machine's whole API. A caller that waits for the machine to settle calls
+  `await()`. It never waits on work kept beside the state, such as a promise or a reply.
+- A unit's params are typed from their owners, as `Pick<Owner, ...>` or `Owner['member']`, grouped by owner.
+- A unit that reports what happens to it emits effects, and one runner turns them into its reports.
+- No function returns a value of two unlike kinds, such as `boolean | Error`. Cases that lead to one value are the
+  default, not a branch each.
+- No module constant, type or function is used in one place only. A `defineCount` metric and a module reporter are
+  exceptions, and so is a name that saves the reader working out a block. A machine's state, event and effect unions
+  are such names, and so are a factory's `Params` type and the options type of one of its methods.
+
+One unit runs one machine, and every lifecycle nested in it is part of that machine's state:
+
+- A run whose steps hide inside one phase is nested. Its steps become states.
+- A sub-phase whose events change what the phase around it does is coupled to it, and is flattened into the kinds
+  around it.
+- A sub-phase that moves on events its phase ignores is independent. It is a field of the phase's member, typed as its
+  own union, and `nest` runs it.
+- A machine per key is a `ReadonlyMap` field of the phase's member, and `nest` runs each value. An event for a key that
+  left, or for a sub-phase that moved on, is ignored with no guard.
+- A keyed value leaves when its handler emits a state that `store` drops, and leaving a phase ends its independent
+  sub-phase.
+- A run that goes on beside other work has its steps as the kinds of its nested value.
+- A nested value never moves its parent. It sends the parent an event, and the parent's own handler moves it.
+- A collaborator from another module keeps its own machine. A parent that waits for it sends
+  `update(collaborator.await().then(...))`, so its own `await()` covers that wait. The phase that owns the collaborator
+  holds it in its member and hears its subscriptions as events of the parent.
+
+Why: one value names every phase, and the machine handles one event at a time. A stale event finds a state with no
+handler for it, so it needs no check.
 
 ```ts
 // Do
 type State =
   | { kind: 'idle' }
-  | { kind: 'opening'; abort: AbortController }
-  | { kind: 'open'; connection: Connection }
-  | { kind: 'disposed' };
+  | { kind: 'fetching' }
+  | { kind: 'fetched'; profile: Profile }
+  | { kind: 'failed'; error: unknown };
 
-let state: State = { kind: 'idle' };
+type Event =
+  | { kind: 'asked' }
+  | { kind: 'profileFetched'; profile: Profile }
+  | { kind: 'fetchFailed'; error: unknown };
 
-async function open(): Promise<void> {
-  if (state.kind !== 'idle') {
-    return;
-  }
-  const opening: State = { kind: 'opening', abort: new AbortController() };
-  state = opening;
-  try {
-    const connection = await connect({ signal: opening.abort.signal });
-    if (state !== opening) {
-      connection.close();
-      return;
-    }
-    state = { kind: 'open', connection };
-  } catch (error) {
-    if (state === opening) {
-      state = { kind: 'idle' };
-    }
-    throw new Error('Could not open the connection', { cause: error });
-  }
-}
+type ProfileMachine = MachineTypes<State, Event>;
+
+const startFetch: HandlerOf<ProfileMachine, 'idle' | 'failed', 'asked'> = (_state, _event, { emitState, update }) => {
+  emitState({ kind: 'fetching' });
+  update(
+    fetchProfile().then(
+      profile => ({ kind: 'profileFetched', profile }),
+      (error: unknown) => ({ kind: 'fetchFailed', error }),
+    ),
+  );
+};
+
+const machine = createStateMachine<ProfileMachine>({
+  initial: { kind: 'idle' },
+  handlers: {
+    idle: { asked: startFetch },
+    fetching: {
+      profileFetched(_state, { profile }, { emitState }) {
+        emitState({ kind: 'fetched', profile });
+      },
+      fetchFailed(_state, { error }, { emitState }) {
+        emitState({ kind: 'failed', error });
+      },
+    },
+    fetched: null,
+    failed: { asked: startFetch },
+  },
+  onError: error => report.defect(error),
+});
 
 // Don't
-let opening = false;
-let disposed = false;
-let connection: Connection | null = null;
+let fetching = false;
+let failed = false;
+let profile: Profile | null = null;
 ```
 
 ## Control flow
@@ -842,7 +889,8 @@ throw new Error('Unsupported');
 
 An async API that waits on the network, a timer or another context takes an optional `signal` once a caller can stop
 the work, and stops when it fires. With no such caller, leave the `signal` out and add it in the change that brings
-one. On an abort it rejects with `signal.reason`, so a timeout or a caller's own reason reaches the caller.
+one. On an abort it rejects with `signal.reason`, so a timeout or a caller's own reason reaches the caller. A pool whose
+works must never overlap, even across an abort, holds its slots on abort.
 
 Why: the caller that started the work can stop it, without a flag on the side.
 

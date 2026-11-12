@@ -3,7 +3,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { createDeferred } from './createDeferred.js';
-import { createStateMachine, type HandlersOf, type MachineTypes, type Transition } from './createStateMachine.js';
+import {
+  createStateMachine,
+  nest,
+  type HandlersOf,
+  type MachineTypes,
+  type StateHandlers,
+  type Transition,
+} from './createStateMachine.js';
 import { getErrorMessage } from './getErrorMessage.js';
 import { noop } from './noop.js';
 import { catchError } from './testing/catchError.js';
@@ -19,11 +26,29 @@ type TestMachine = MachineTypes<TestState, TestEvent, TestEffect>;
 
 type PlainMachine = MachineTypes<TestState, TestEvent>;
 
+type Watch = { kind: 'off' } | { kind: 'on'; token: string };
+
+type Entry = { kind: 'waiting'; watch: Watch } | { kind: 'done' };
+
+type KeyedState = { kind: 'open'; entries: ReadonlyMap<string, Entry> };
+
+type KeyedEvent =
+  | { kind: 'finished'; key: string }
+  | { kind: 'watched'; key: string; token: string }
+  | { kind: 'broke'; key: string }
+  | { kind: 'told'; note: string };
+
+type KeyedMachine = MachineTypes<KeyedState, KeyedEvent>;
+
+type EntryMachine = MachineTypes<Entry, KeyedEvent>;
+
+type WatchMachine = MachineTypes<Watch, Extract<KeyedEvent, { kind: 'watched' }>>;
+
 type Handle<Machine extends PlainMachine | TestMachine = PlainMachine> = (
   state: TestState,
   event: Extract<TestEvent, { kind: 'named' }>,
   transition: Transition<Machine>,
-) => Promise<void> | void;
+) => void;
 
 describe('createStateMachine', () => {
   it('As a unit, I send an event to a new machine and my state moves before update returns', () => {
@@ -74,55 +99,60 @@ describe('createStateMachine', () => {
     expect([machine.state.get(), errors]).toEqual([{ kind: 'idle' }, []]);
   });
 
-  it('As a unit, I send an event while a transition awaits and it runs after that transition', async () => {
-    // Given a first transition that awaits a deferred and then logs its end
-    const log: string[] = [];
-    const release = createDeferred<undefined>();
-    const secondHandled = createDeferred<undefined>();
+  it('As a unit, I send two events one after the other and my state reads the second before update returns', () => {
+    // Given a handler that emits a busy state whose step is the event's name
     const { machine } = createTestMachine({
-      handle: async (_state, { name }) => {
-        log.push(`handle:${name}`);
-        if (name === 'first') {
-          await release.promise;
-          log.push('end:first');
-          return;
-        }
-        secondHandled.resolve(undefined);
+      handle: (_state, { name }, transition) => {
+        transition.emitState({ kind: 'busy', step: Number(name) });
       },
     });
-    machine.update(named('first'));
 
-    // When a second event is sent, and then the first transition's wait ends
-    machine.update(named('second'));
-    release.resolve(undefined);
-    await secondHandled.promise;
+    // When
+    machine.update(named('1'));
+    machine.update(named('2'));
 
     // Then
-    expect(log).toEqual(['handle:first', 'end:first', 'handle:second']);
+    expect(machine.state.get()).toEqual({ kind: 'busy', step: 2 });
   });
 
-  it('As a handler, I send an event from my own transition and it runs after my transition ends', async () => {
+  it('As a handler, I send an event from my own transition and it runs after my transition ends', () => {
     // Given a handler that sends an event and then logs its end
     const log: string[] = [];
-    const fromHandlerHandled = createDeferred<undefined>();
     const { machine } = createTestMachine({
       handle: (_state, { name }, { update }) => {
         log.push(`handle:${name}`);
         if (name === 'start') {
           update(named('fromHandler'));
           log.push('end:start');
-          return;
         }
-        fromHandlerHandled.resolve(undefined);
       },
     });
 
     // When
     machine.update(named('start'));
-    await fromHandlerHandled.promise;
 
     // Then
     expect(log).toEqual(['handle:start', 'end:start', 'handle:fromHandler']);
+  });
+
+  it('As a handler, I send two events and then throw, and both run in order before update returns', () => {
+    // Given a handler that, for a, sends b and c and then throws
+    const { machine, log } = createEffectMachine({
+      handle: (_state, { name }, { update }) => {
+        log.push(`handle:${name}`);
+        if (name === 'a') {
+          update(named('b'));
+          update(named('c'));
+          throw new Error('a broke');
+        }
+      },
+    });
+
+    // When
+    machine.update(named('a'));
+
+    // Then
+    expect(log).toEqual(['handle:a', 'error:a broke', 'handle:b', 'handle:c']);
   });
 
   it('As a caller, I await an idle machine and it resolves at once', async () => {
@@ -136,15 +166,14 @@ describe('createStateMachine', () => {
     await expect(settled).resolves.toBeUndefined();
   });
 
-  it('As a caller, I await the machine and it resolves once the transitions its handlers queued are done', async () => {
-    // Given a first transition that awaits a deferred and then sends a second event
+  it('As a caller, I await the machine and it resolves once the work its handlers sent is handled', async () => {
+    // Given a first transition that sends work which resolves to a second event once released
     const log: string[] = [];
     const release = createDeferred<undefined>();
     const { machine } = createTestMachine({
-      handle: async (_state, { name }, { update }) => {
+      handle: (_state, { name }, { update }) => {
         if (name === 'first') {
-          await release.promise;
-          update(named('second'));
+          update(release.promise.then(() => named('second')));
         }
         log.push(`handled:${name}`);
       },
@@ -282,50 +311,28 @@ describe('createStateMachine', () => {
     expect(log).toEqual(['effect:a', 'error:effect broke', 'effect:b']);
   });
 
-  it.each<{ how: string; fail: (error: Error) => Promise<void> | undefined }>([
-    {
-      how: 'synchronous throw',
-      fail: error => {
-        throw error;
+  it('As a unit whose handler emits and then throws, I keep what it emitted and onError hears the error last', () => {
+    // Given a handler that emits a state and an effect before it throws, and handles the next event
+    const { machine, log } = createEffectMachine({
+      handle: (_state, { name }, transition) => {
+        if (name === 'fail') {
+          transition.emitState({ kind: 'busy', step: 1 });
+          transition.emitSideEffect(noted('kept'));
+          throw new Error('handler broke');
+        }
       },
-    },
-    {
-      how: 'rejection after an await',
-      fail: async error => {
-        await Promise.resolve();
-        throw error;
-      },
-    },
-  ])(
-    'As a unit whose handler emits and then fails by a $how, I keep what it emitted and onError hears the error last',
-    async ({ fail }) => {
-      // Given a handler that emits a state and an effect before it fails, and handles the next event
-      const nextHandled = createDeferred<undefined>();
-      const { machine, log } = createEffectMachine({
-        handle: (_state, { name }, transition) => {
-          if (name === 'fail') {
-            transition.emitState({ kind: 'busy', step: 1 });
-            transition.emitSideEffect(noted('kept'));
-            return fail(new Error('handler broke'));
-          }
-          nextHandled.resolve(undefined);
-          return undefined;
-        },
-      });
+    });
 
-      // When
-      machine.update(named('fail'));
-      machine.update(named('next'));
-      await nextHandled.promise;
+    // When
+    machine.update(named('fail'));
+    machine.update(named('next'));
 
-      // Then
-      expect([machine.state.get(), log]).toEqual([{ kind: 'busy', step: 1 }, ['effect:kept', 'error:handler broke']]);
-    },
-  );
+    // Then
+    expect([machine.state.get(), log]).toEqual([{ kind: 'busy', step: 1 }, ['effect:kept', 'error:handler broke']]);
+  });
 
-  it("As an effect runner, I send an event and it runs after the rest of the transition's effects", async () => {
+  it("As an effect runner, I send an event and it runs after the rest of the transition's effects", () => {
     // Given a handler that emits effects a and b on start, and a runner that sends an event on a
-    const fromEffectHandled = createDeferred<undefined>();
     const { machine, log } = createEffectMachine({
       handle: (_state, { name }, transition) => {
         if (name === 'start') {
@@ -334,7 +341,6 @@ describe('createStateMachine', () => {
           return;
         }
         log.push(`handle:${name}`);
-        fromEffectHandled.resolve(undefined);
       },
       runEffect: ({ note }) => {
         if (note === 'a') {
@@ -345,23 +351,18 @@ describe('createStateMachine', () => {
 
     // When
     machine.update(named('start'));
-    await fromEffectHandled.promise;
 
     // Then
     expect(log).toEqual(['effect:a', 'effect:b', 'handle:fromEffect']);
   });
 
-  it('As a unit, I type one group for two states with HandlersOf and it handles the event in each', async () => {
+  it('As a unit, I type one group for two states with HandlersOf and it handles the event in each', () => {
     // Given one group in the slots of both states, which moves idle to busy
     const handled: string[] = [];
-    const secondHandled = createDeferred<undefined>();
     const shared: HandlersOf<TestMachine, 'idle' | 'busy'> = {
       named(state, { name }, { emitState }) {
         handled.push(`${state.kind}:${name}`);
         emitState({ kind: 'busy', step: handled.length });
-        if (name === 'second') {
-          secondHandled.resolve(undefined);
-        }
       },
     };
     // and a machine the types refuse: a busy group in the idle slot, and a group that reads a step an idle state lacks
@@ -389,10 +390,72 @@ describe('createStateMachine', () => {
     // When
     machine.update(named('first'));
     machine.update(named('second'));
-    await secondHandled.promise;
 
     // Then
     expect(handled).toEqual(['idle:first', 'busy:second']);
+  });
+});
+
+describe('nest', () => {
+  it('As a keyed table, I settle an entry and it leaves, while a later event for its key moves nothing', () => {
+    // Given a table whose entry a settled
+    const { machine } = createKeyedMachine();
+    machine.update({ kind: 'finished', key: 'a' });
+    const settled = machine.state.get();
+
+    // When
+    machine.update({ kind: 'finished', key: 'a' });
+
+    // Then
+    expect(settled.entries.has('a')).toBe(false);
+    expect(machine.state.get()).toBe(settled);
+  });
+
+  it("As a nested handler, I send an event and the machine's own handler hears it after my transition", () => {
+    // Given a table whose entries send told once they finish
+    const { machine, log, handleEntry } = createKeyedMachine();
+    // and a table the types refuse, with the entry nest under told, an event it does not route
+    createStateMachine<KeyedMachine>({
+      initial: machine.state.get(),
+      // @ts-expect-error the entry nest does not fill the told slot
+      handlers: { open: { told: handleEntry } },
+      onError: noop,
+    });
+
+    // When
+    machine.update({ kind: 'finished', key: 'a' });
+
+    // Then told lists the entries left after a's transition stored it as gone
+    expect(log).toEqual(['told:a done:b']);
+  });
+
+  it('As a nested handler, I throw and onError hears it while the table keeps its entries', () => {
+    // Given a table whose entries throw when they break
+    const { machine, log } = createKeyedMachine();
+    const before = machine.state.get();
+
+    // When
+    machine.update({ kind: 'broke', key: 'a' });
+
+    // Then
+    expect(log).toEqual(['error:entry broke']);
+    expect(machine.state.get()).toBe(before);
+  });
+
+  it('As a keyed entry with a sub-phase, I move the sub-phase and the entry and its neighbours keep the rest', () => {
+    // Given a table whose entries watch once, through a sub-phase whose on state handles nothing
+    const { machine } = createKeyedMachine();
+    const before = machine.state.get();
+
+    // When a is watched twice
+    machine.update({ kind: 'watched', key: 'a', token: 't1' });
+    const watched = machine.state.get();
+    machine.update({ kind: 'watched', key: 'a', token: 't2' });
+
+    // Then
+    expect(watched.entries.get('a')).toEqual({ kind: 'waiting', watch: { kind: 'on', token: 't1' } });
+    expect(watched.entries.get('b')).toBe(before.entries.get('b'));
+    expect(machine.state.get()).toBe(watched);
   });
 });
 
@@ -439,6 +502,76 @@ function createEffectMachine({ handle, runEffect = noop }: CreateEffectMachinePa
   });
 
   return { machine, log };
+}
+
+/**
+ * A table of entries a and b run through `nest`, each with a watch sub-phase run through a `nest` of its own. It logs
+ * each `told` as `told:<note>:<keys left>` and each error `onError` hears as `error:<message>`.
+ */
+function createKeyedMachine() {
+  const log: string[] = [];
+  const watchHandlers: StateHandlers<WatchMachine> = {
+    off: {
+      watched(_watch, { token }, { emitState }) {
+        emitState({ kind: 'on', token });
+      },
+    },
+    on: null,
+  };
+  const entryHandlers: StateHandlers<EntryMachine> = {
+    waiting: {
+      finished(_entry, { key }, { emitState, update }) {
+        emitState({ kind: 'done' });
+        update({ kind: 'told', note: `${key} done` });
+      },
+      broke() {
+        throw new Error('entry broke');
+      },
+      watched: nest<EntryMachine, 'waiting', WatchMachine>({
+        find: entry => entry.watch,
+        store: (entry, _event, watch) => ({ ...entry, watch }),
+        handlers: watchHandlers,
+      }),
+    },
+    done: null,
+  };
+  const handleEntry = nest<KeyedMachine, 'open', EntryMachine, 'finished' | 'watched' | 'broke'>({
+    find: ({ entries }, { key }) => entries.get(key) ?? null,
+    store(state, { key }, next) {
+      const entries = new Map(state.entries);
+      if (next.kind === 'done') {
+        entries.delete(key);
+      } else {
+        entries.set(key, next);
+      }
+      return { ...state, entries };
+    },
+    handlers: entryHandlers,
+  });
+  const machine = createStateMachine<KeyedMachine>({
+    initial: {
+      kind: 'open',
+      entries: new Map<string, Entry>([
+        ['a', { kind: 'waiting', watch: { kind: 'off' } }],
+        ['b', { kind: 'waiting', watch: { kind: 'off' } }],
+      ]),
+    },
+    handlers: {
+      open: {
+        finished: handleEntry,
+        watched: handleEntry,
+        broke: handleEntry,
+        told({ entries }, { note }) {
+          log.push(`told:${note}:${[...entries.keys()].join(',')}`);
+        },
+      },
+    },
+    onError: error => {
+      log.push(`error:${getErrorMessage(error)}`);
+    },
+  });
+
+  return { machine, log, handleEntry };
 }
 
 function named(name: string): TestEvent {

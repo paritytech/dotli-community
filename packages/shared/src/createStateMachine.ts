@@ -19,7 +19,7 @@ export type Transition<Machine extends AnyMachine> = {
   emitSideEffect: (effect: Machine['effect']) => void;
   /**
    * Sends an event to the machine, handled after this transition and its effects. Still works once the transition has
-   * ended. Never throws.
+   * ended. Never throws while `onError` keeps its contract.
    */
   update: (event: Update<Machine>) => void;
 };
@@ -38,7 +38,7 @@ export type HandlersOf<Machine extends AnyMachine, Kind extends Machine['state']
     state: Extract<Machine['state'], { kind: Kind }>,
     event: Extract<Machine['event'], { kind: EventKind }>,
     transition: Transition<Machine>,
-  ) => Promise<void> | void;
+  ) => void;
 };
 
 /**
@@ -58,18 +58,25 @@ export type StateHandlers<Machine extends AnyMachine> = {
 
 type AnyMachine = MachineTypes<{ kind: string }, { kind: string }, unknown>;
 
+/** A lifecycle nested in a machine's state. Its events and effects are some of the machine's. */
+type NestedOf<Machine extends AnyMachine> = {
+  state: { kind: string };
+  event: Machine['event'];
+  effect: Machine['effect'];
+};
+
 type Handler<Machine extends AnyMachine> = (
   state: Machine['state'],
   event: Machine['event'],
   transition: Transition<Machine>,
-) => Promise<void> | void;
+) => void;
 
 type Params<Machine extends AnyMachine> = {
   initial: Machine['state'];
   handlers: StateHandlers<Machine>;
   /**
-   * Hears a handler or an effect that threw or rejected, and an update whose work rejected. MUST NOT throw. The feature
-   * wires its reporter here.
+   * Hears a handler or an effect that threw, and an update whose work rejected. MUST NOT throw. The feature wires its
+   * reporter here.
    */
   onError: (error: unknown) => void;
 } & ([Machine['effect']] extends [never]
@@ -79,18 +86,37 @@ type Params<Machine extends AnyMachine> = {
       onEffect: (effect: Machine['effect']) => void;
     });
 
+type NestParams<
+  Machine extends AnyMachine,
+  Kind extends Machine['state']['kind'],
+  Nested extends NestedOf<Machine>,
+  Routed extends Nested['event'],
+> = {
+  /** The nested state `event` is for, or `null` when there is none, such as a key that left. Must not throw. */
+  find: (state: Extract<Machine['state'], { kind: Kind }>, event: Routed) => Nested['state'] | null;
+  /** `state` with the nested state `event` is for replaced by `next`, or dropped when `next` is one that leaves. Must not throw. */
+  store: (
+    state: Extract<Machine['state'], { kind: Kind }>,
+    event: Routed,
+    next: Nested['state'],
+  ) => Extract<Machine['state'], { kind: Kind }>;
+  handlers: StateHandlers<Nested>;
+};
+
 /**
  * One state that moves only through transitions, each run by the handler of the state it starts in.
  *
  * A handler moves the state at once with `emitState` and queues side effects with `emitSideEffect`. Once the handler
- * settles, its transition ends and `onEffect` runs the effects in the order they were emitted. An effect that throws
- * goes to `onError`, and the next effect still runs. A handler's throw or rejection goes to `onError` after its
- * effects. An event its state has no handler for is ignored.
+ * returns, its transition ends and `onEffect` runs the effects in the order they were emitted. An effect that throws
+ * goes to `onError`, and the next effect still runs. A handler's throw goes to `onError` after its effects. An event
+ * its state has no handler for is ignored.
  *
- * Transitions never overlap. An event sent while a transition or its effects run, from a handler or an effect too,
- * waits until that transition and its effects are done. The state moves inside `update` only when no task holds the
- * machine's one task slot, and a slot frees one microtask after its task ends. Otherwise the state moves later. A
- * handler that never settles holds the machine, and every later event waits behind it.
+ * A handler returns nothing and sends async work as `update(promise)`. Transitions never overlap. An event sent from
+ * inside a transition or an effect runs right after that transition and its effects, before the outer `update`
+ * returns, so the state always moves inside `update`.
+ *
+ * A lifecycle nested in a state, such as one entry of a keyed set or an independent sub-phase, runs inside the same
+ * machine through `nest`.
  *
  * @example
  * type DoorMachine = MachineTypes<DoorState, DoorEvent>;
@@ -117,40 +143,60 @@ export function createStateMachine<Machine extends AnyMachine>({
 }: Params<Machine>) {
   const current = atom<Machine['state']>(initial);
   const state: ReadableAtom<Machine['state']> = current;
-  const transitions = createAsyncTaskPool({ poolSize: 1 });
-  // Each update from its call until its transition is done, with the work it waits on. A transition sends its own
-  // updates before it ends, so this pool is idle only when the machine has nothing pending.
+  // Each update whose work is a promise, until its event is handled. An event alone is handled before `update` returns,
+  // so this pool is idle only when the machine has nothing pending.
   const updates = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
+  // Events sent while a transition runs wait here, so transitions never overlap and an event sent from inside one
+  // still runs before the outer `update` returns.
+  let drain: { kind: 'idle' } | { kind: 'draining'; queued: Machine['event'][] } = { kind: 'idle' };
 
   return {
     /** The current state. A handler's `emitState` moves it. */
     state,
     /**
-     * Handles the event, once its work resolves to it when it is a promise, and once every earlier transition and its
-     * effects are done. Work that rejects goes to `onError`. Never throws.
+     * Handles the event now, or right after the transition that sent it. Work that is a promise is handled once it
+     * resolves, and work that rejects goes to `onError`. Never throws while `onError` keeps its contract.
      */
     update,
-    /**
-     * Resolves once nothing is pending: no transition queued or running, and no update waiting on its work. Resolves
-     * at once when nothing is. An update sent meanwhile keeps it waiting. Never rejects.
-     */
+    /** Resolves once no update waits on its work. Resolves at once when none does. Never rejects. */
     await(): Promise<void> {
       return updates.settle();
     },
   };
 
   function update(event: Update<Machine>): void {
-    void updates.call(() => (event instanceof Promise ? event.then(transit) : transit(event))).catch(onError);
+    if (event instanceof Promise) {
+      void updates.call(() => event.then(transit)).catch(onError);
+      return;
+    }
+    transit(event);
   }
 
-  function transit(event: Machine['event']): Promise<void> {
-    return transitions.call(() => runTransition(event));
+  function transit(event: Machine['event']): void {
+    if (drain.kind === 'draining') {
+      drain.queued.push(event);
+      return;
+    }
+    const queued = [event];
+    drain = { kind: 'draining', queued };
+    try {
+      let next = queued.shift();
+      while (next !== undefined) {
+        runTransition(next);
+        next = queued.shift();
+      }
+    } finally {
+      drain = { kind: 'idle' };
+    }
   }
 
-  /** Runs the handler for `event` in the current state, then its effects, and settles after them. Never rejects. */
-  async function runTransition(event: Machine['event']): Promise<void> {
+  /**
+   * Runs the handler for `event` in the current state, then its effects. Never throws while `onError` keeps its
+   * contract.
+   */
+  function runTransition(event: Machine['event']): void {
     const from = current.get();
-    const handle = getHandler(from, event);
+    const handle = getHandler(handlers, from, event);
     if (handle === null) {
       return;
     }
@@ -161,11 +207,7 @@ export function createStateMachine<Machine extends AnyMachine>({
       update,
     });
     try {
-      // Awaited only when async, so a synchronous handler moves the state and runs its effects inside `update`.
-      const returned = handle(from, event, transition.emits);
-      if (returned !== undefined) {
-        await returned;
-      }
+      handle(from, event, transition.emits);
     } catch (error) {
       runEffects(transition.end());
       onError(error);
@@ -183,13 +225,60 @@ export function createStateMachine<Machine extends AnyMachine>({
       }
     }
   }
+}
 
-  function getHandler(from: Machine['state'], event: Machine['event']): Handler<Machine> | null {
-    // A generic `kind` reads as a plain string, and so the table cannot narrow each handler's parameters to the kinds
-    // it is keyed by. The machine only calls a handler with the state and the event of its own keys.
-    const byEvent = handlers[from.kind as Machine['state']['kind']] as Partial<Record<string, Handler<Machine>>> | null;
-    return byEvent?.[event.kind] ?? null;
-  }
+/**
+ * A handler that runs a lifecycle nested in the states of `Kind`, such as one entry of a keyed set or an independent
+ * sub-phase, through its own handler table. `find` reads the nested state the event is for, and `store` writes the
+ * state the nested handler emits back into the parent's, or drops it. The nested handlers get the machine's own
+ * `update` and `emitSideEffect`.
+ *
+ * `EventKind` names the events this handler routes, and defaults to every event kind of the nested machine. Name them
+ * when the nested machine has events that the parent sends to it by another handler.
+ *
+ * @example
+ * // A table of waits keyed by id, each one its own small lifecycle.
+ * const handleWait = nest<RepliesMachine, 'open', WaitMachine, 'replied' | 'failed'>({
+ *   find: ({ waits }, { id }) => waits.get(id) ?? null,
+ *   store: (state, { id }, next) => ({ ...state, waits: withWait(state.waits, id, next) }),
+ *   handlers: { waiting: { replied: settleWait, failed: settleWait }, settled: null },
+ * });
+ * // The table row of the parent: { open: { replied: handleWait, failed: handleWait } }
+ */
+export function nest<
+  Machine extends AnyMachine,
+  Kind extends Machine['state']['kind'],
+  Nested extends NestedOf<Machine>,
+  EventKind extends Nested['event']['kind'] = Nested['event']['kind'],
+>({
+  find,
+  store,
+  handlers,
+}: NestParams<Machine, Kind, Nested, Extract<Nested['event'], { kind: EventKind }>>): (
+  state: Extract<Machine['state'], { kind: Kind }>,
+  event: Extract<Nested['event'], { kind: EventKind }>,
+  transition: Transition<Machine>,
+) => void {
+  return (state, event, transition) => {
+    const nested = find(state, event);
+    if (nested === null) {
+      return;
+    }
+    const handle = getHandler(handlers, nested, event);
+    if (handle === null) {
+      return;
+    }
+    // A second emit in one transition stores into the state the first one left, not the one it started in.
+    let latest = state;
+    handle(nested, event, {
+      emitState(next) {
+        latest = store(latest, event, next);
+        transition.emitState(latest);
+      },
+      emitSideEffect: transition.emitSideEffect,
+      update: transition.update,
+    });
+  };
 }
 
 /** One transition's emits, refused once it has ended. */
@@ -232,4 +321,15 @@ function createTransition<Machine extends AnyMachine>({
         throw new Error(`createStateMachine: ${action} was called after its transition ended`);
     }
   }
+}
+
+function getHandler<Machine extends AnyMachine>(
+  handlers: StateHandlers<Machine>,
+  from: Machine['state'],
+  event: Machine['event'],
+): Handler<Machine> | null {
+  // A generic `kind` reads as a plain string, and so the table cannot narrow each handler's parameters to the kinds it
+  // is keyed by. The machine only calls a handler with the state and the event of its own keys.
+  const byEvent = handlers[from.kind as Machine['state']['kind']] as Partial<Record<string, Handler<Machine>>> | null;
+  return byEvent?.[event.kind] ?? null;
 }

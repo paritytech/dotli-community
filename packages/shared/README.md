@@ -33,31 +33,31 @@ Small helpers every package may use. Imports no UI framework.
 
 ### `@dotli/shared`
 
-| Export                                                                                                   | What it does                                                         |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `createAsyncTaskPool`, `AsyncTaskPool`                                                                   | Named task pool.                                                     |
-| `createSharedRun`                                                                                        | One run shared by many callers.                                      |
-| `createStateMachine`, `MachineTypes`, `HandlersOf`, `HandlerOf`, `StateHandlers`, `Transition`, `Update` | Serial transitions over one state, with side effects run after each. |
-| `createLazyLoad`                                                                                         | Loads once, retries on failure.                                      |
-| `createListenerSet`, `ListenerSet`                                                                       | Ordered listener delivery.                                           |
-| `createPendingReplies`, `PendingReplies`                                                                 | Pairs replies with requests.                                         |
-| `createDeferred`, `markHandled`, `toAbortError`                                                          | Promise helpers.                                                     |
-| `waitForStatus`, `StatusSource`                                                                          | Waits for a store's verdict.                                         |
-| `registerStoreStateReset`, `registerAtomReset`                                                           | Test resets for stores.                                              |
-| `isShallowEqual`, `isRecord`, `isStringArray`, `getKeys`, `Branded`                                      | Value checks and types.                                              |
-| `log`, `LogLevel`, `bindLogSink`, `LogEntry`                                                             | The logger and its sink.                                             |
-| `serializeError`, `getErrorChain`, `getErrorName`, `getErrorMessage`, `toError`, `setErrorName`          | Error reading and shaping.                                           |
-| `combineErrors`, `runEvery`                                                                              | Several errors as one.                                               |
-| `getEndpointHost`, `describeGatewayUnreachable`                                                          | Endpoint copy for visitors.                                          |
-| `createSafeStorage`, `SafeStorage`, `ListableStorage`, `pageLocalStorage`, `pageSessionStorage`          | Web storage that never throws.                                       |
-| `openIdb`, `IdbOpenBlockedError`, `waitForIdbRequest`, `runIdbTransaction`, `deleteIdb`                  | IndexedDB as promises.                                               |
-| `wipeOriginStores`, `OriginWipeError`, `OriginStores`, `OriginWipePart`                                  | Wipes one origin's stores.                                           |
-| `listen`, `listenForDocumentVisible`, `listenForPageReturn`, `VisibilitySource`                          | Event listeners that return stop.                                    |
-| `formatSize`, `formatRate`, `formatDuration`, `formatElapsed`                                            | Human-readable numbers.                                              |
-| `areBytesEqual`, `toHex`, `fromHex`, `hashBlake2b`                                                       | Bytes and hashing.                                                   |
-| `withTimeout`, `sleep`, `Timers`, `realTimers`                                                           | Timing.                                                              |
-| `createRandomId`, `noop`                                                                                 | Small utilities.                                                     |
-| `CHAIN_HALTED_ERROR_DATA`, `isChainHaltedRpcError`                                                       | Halted chain marker.                                                 |
+| Export                                                                                                           | What it does                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `createAsyncTaskPool`, `AsyncTaskPool`                                                                           | Named task pool.                                                                                          |
+| `createSharedRun`                                                                                                | One run shared by many callers.                                                                           |
+| `createStateMachine`, `nest`, `MachineTypes`, `HandlersOf`, `HandlerOf`, `StateHandlers`, `Transition`, `Update` | Serial transitions over one state, with side effects run after each, and nested lifecycles run inside it. |
+| `createLazyLoad`                                                                                                 | Loads once, retries on failure.                                                                           |
+| `createListenerSet`, `ListenerSet`                                                                               | Ordered listener delivery.                                                                                |
+| `createPendingReplies`, `PendingReplies`                                                                         | Pairs replies with requests.                                                                              |
+| `createDeferred`, `markHandled`, `toAbortError`                                                                  | Promise helpers.                                                                                          |
+| `waitForStatus`, `StatusSource`                                                                                  | Waits for a store's verdict.                                                                              |
+| `registerStoreStateReset`, `registerAtomReset`                                                                   | Test resets for stores.                                                                                   |
+| `isShallowEqual`, `isRecord`, `isStringArray`, `getKeys`, `Branded`                                              | Value checks and types.                                                                                   |
+| `log`, `LogLevel`, `bindLogSink`, `LogEntry`                                                                     | The logger and its sink.                                                                                  |
+| `serializeError`, `getErrorChain`, `getErrorName`, `getErrorMessage`, `toError`, `setErrorName`                  | Error reading and shaping.                                                                                |
+| `combineErrors`, `runEvery`                                                                                      | Several errors as one.                                                                                    |
+| `getEndpointHost`, `describeGatewayUnreachable`                                                                  | Endpoint copy for visitors.                                                                               |
+| `createSafeStorage`, `SafeStorage`, `ListableStorage`, `pageLocalStorage`, `pageSessionStorage`                  | Web storage that never throws.                                                                            |
+| `openIdb`, `IdbOpenBlockedError`, `waitForIdbRequest`, `runIdbTransaction`, `deleteIdb`                          | IndexedDB as promises.                                                                                    |
+| `wipeOriginStores`, `OriginWipeError`, `OriginStores`, `OriginWipePart`                                          | Wipes one origin's stores.                                                                                |
+| `listen`, `listenForDocumentVisible`, `listenForPageReturn`, `VisibilitySource`                                  | Event listeners that return stop.                                                                         |
+| `formatSize`, `formatRate`, `formatDuration`, `formatElapsed`                                                    | Human-readable numbers.                                                                                   |
+| `areBytesEqual`, `toHex`, `fromHex`, `hashBlake2b`                                                               | Bytes and hashing.                                                                                        |
+| `withTimeout`, `startActiveTimeout`, `sleep`, `Timers`, `realTimers`                                             | Timing.                                                                                                   |
+| `createRandomId`, `noop`                                                                                         | Small utilities.                                                                                          |
+| `CHAIN_HALTED_ERROR_DATA`, `isChainHaltedRpcError`                                                               | Halted chain marker.                                                                                      |
 
 ### `@dotli/shared/testing`
 
@@ -73,11 +73,14 @@ Small helpers every package may use. Imports no UI framework.
 
 ## Design
 
-- **Task pool:** the one place for queues and concurrency limits. It is also the one place for retries and abort.
-- **State machine:** runs one transition at a time on the task pool. Each state handles the events it names and ignores
-  the rest. An event sent meanwhile, from a handler too, waits. Effects a transition emits run in order after it, before
-  the next event.
-- **Timeout:** counts only time the page runs, so a frozen background tab does not time out.
+- **Task pool:** the one place for async queues and concurrency limits. It is also the one place for retries and abort.
+- **State machine:** transitions run synchronously, one at a time. Each state handles the events it names and ignores
+  the rest. Effects a transition emits run in order after it. An event sent from inside a transition runs right after it
+  and its effects. Async work enters as a promise that resolves to its event. A lifecycle nested in a state, such as one
+  entry of a keyed set, is a value in that state. `nest` runs it through its own handlers. The state it emits is stored
+  back, or dropped when it leaves.
+- **Timing:** a deadline waits on active runtime. One the page was frozen past starts a whole span again on waking, and
+  a freeze that ends before its due time still counts. `withTimeout` races work against one.
 - **Safe storage:** blocked or full web storage reads as empty and drops writes. No module wraps storage itself.
 - **Logger:** prints to the console only in debug builds (`VITE_APP_DEBUG`). Warn, error and event always reach the
   bound sink.

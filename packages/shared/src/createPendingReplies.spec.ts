@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createPendingReplies } from './createPendingReplies.js';
+import { noop } from './noop.js';
 import { catchError } from './testing/catchError.js';
 
 describe('createPendingReplies', () => {
@@ -12,12 +13,14 @@ describe('createPendingReplies', () => {
     const reply = replies.wait(1);
 
     // When
-    const first = replies.resolve(1, 'block');
-    const again = replies.resolve(1, 'block again');
+    replies.resolve(1, 'block');
+    replies.resolve(1, 'block again');
+    const next = replies.wait(1);
+    replies.resolve(1, 'next block');
 
     // Then
     await expect(reply).resolves.toBe('block');
-    expect([first, again]).toEqual([true, false]);
+    await expect(next).resolves.toBe('next block');
     expect(replies.listIds()).toEqual([]);
   });
 
@@ -29,11 +32,11 @@ describe('createPendingReplies', () => {
 
     // When
     replies.reject(1, timeout);
-    const late = replies.resolve(1, 'block');
+    replies.resolve(1, 'block');
 
     // Then
     await expect(reply).rejects.toBe(timeout);
-    expect(late).toBe(false);
+    expect(replies.listIds()).toEqual([]);
   });
 
   it('As a channel closing down, I fail every wait while one error factory throws and none is left open', async () => {
@@ -57,6 +60,23 @@ describe('createPendingReplies', () => {
     // Then
     await Promise.all(settled);
     expect(replies.listIds()).toEqual([]);
+  });
+
+  it('As an error factory, I wait on one id twice while every wait fails, and the second wait is refused while the first stays', async () => {
+    // Given
+    const replies = createPendingReplies<string, string>();
+    void replies.wait('a').catch(noop);
+    const kept: Promise<string>[] = [];
+
+    // When
+    replies.rejectAll(id => {
+      kept.push(replies.wait('z'), replies.wait('z'));
+      return new Error(`lost ${id}`);
+    });
+
+    // Then
+    await expect(kept[1]).rejects.toThrow('A reply to id z is already awaited');
+    expect(replies.listIds()).toEqual(['z']);
   });
 
   it('As a channel reading progress, I read what a request left with its wait and it is gone once answered', () => {

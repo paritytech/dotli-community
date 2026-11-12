@@ -57,6 +57,45 @@ describe('createLazyLoad', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('As the third of three callers overlapping two failing loads, I load the chunk myself and each caller before me gets its own failure', async () => {
+    // Given a load that fails twice, then succeeds
+    const firstFailure = new Error('chunk fetch failed');
+    const secondFailure = new Error('chunk fetch failed again');
+    const load = vi
+      .fn<() => Promise<typeof RUNTIME>>()
+      .mockRejectedValueOnce(firstFailure)
+      .mockRejectedValueOnce(secondFailure)
+      .mockResolvedValue(RUNTIME);
+    const loadRuntime = createLazyLoad({ load });
+
+    // When three calls start before the first load settles
+    const first = loadRuntime();
+    const second = loadRuntime();
+    const third = loadRuntime();
+
+    // Then each earlier caller gets its own failure and the third loads the chunk
+    await expect(first).rejects.toBe(firstFailure);
+    await expect(second).rejects.toBe(secondFailure);
+    await expect(third).resolves.toBe(RUNTIME);
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('As a caller whose load throws before it returns a promise, I get its error', async () => {
+    // Given a load that throws before it returns a promise
+    const failure = new Error('chunk URL is malformed');
+    const loadRuntime = createLazyLoad<typeof RUNTIME>({
+      load: () => {
+        throw failure;
+      },
+    });
+
+    // When the caller asks for the chunk
+    const loaded = loadRuntime();
+
+    // Then it rejects with that error
+    await expect(loaded).rejects.toBe(failure);
+  });
+
   it('As a page whose chunk keeps failing, I load it twice and hear of the first miss only', async () => {
     // Given a load that always fails
     const failure = new Error('chunk missing');
@@ -67,7 +106,7 @@ describe('createLazyLoad', () => {
     const first = await loadRuntime().catch((error: unknown) => error);
     const second = await loadRuntime().catch((error: unknown) => error);
 
-    // Then
+    // Then both get the failure and the first miss is reported once
     expect(first).toBe(failure);
     expect(second).toBe(failure);
     expect(onFirstMiss).toHaveBeenCalledOnce();

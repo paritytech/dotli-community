@@ -154,11 +154,13 @@ above the linter: semantics, data flow and naming.
   delay instead of one refcounted owner.
 - **major** (AGENTS.md § Architecture, Tools:): In-flight work deduped with a promise flag or a join-by-key option
   instead of a named pool of size 1 and an idempotent task.
-- **major** (docs/code/style.md § A lifecycle is one state value): A lifecycle phase held in flags or nullable slots
-  beside each other, a transition that calls out before it writes the next state, or work that acts after an `await` or
-  an abort without checking it still holds the state it started in.
-- **major** (docs/code/style.md § A lifecycle is one state value): A caller that waits for a unit's outcome through a
-  promise, a reply or a pending call kept beside the unit's state, instead of waiting on that state.
+- **major** (docs/code/style.md § A lifecycle is one state value): A lifecycle held outside a `createStateMachine`'s
+  state, such as in flags or nullable slots beside each other, or a lifecycle nested in a unit that runs as a second machine.
+- **major** (docs/code/style.md § A lifecycle is one state value): A caller that waits for a machine to settle on
+  anything but its `await()`, such as a promise or a reply kept beside its state.
+- **major** (docs/code/style.md § A lifecycle is one state value): A handler that calls out before it emits its next
+  state, other than to start a resource whose stop that state holds, or a timer or callback that can outlive its state
+  and acts without the state value it carries.
 
 ## UI and styles
 
