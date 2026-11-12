@@ -7,7 +7,7 @@
 import { decodeWireMessage, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, realTimers, type MachineTypes, type Timers, type Transition } from '@dotli/shared';
+import { createStateMachine, type MachineTypes, type Timers, type Transition } from '@dotli/shared';
 
 const report = createReporter({ flow: 'wallet' });
 /** A transition of the gate that threw. */
@@ -16,11 +16,12 @@ const responseGateTransitionMetric = defineCount<'error'>('permissions.response_
 type Params = {
   /** The frame's lifetime. Once it aborts, nothing held back runs. */
   signal: AbortSignal;
-  /** How long a run waits for an answer that may never come, as a lost one would keep the old policy in force. */
-  timeoutMs: number;
-  /** The timers the wait runs on. The page's own by default. */
-  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
+  /** The timers the wait runs on. */
+  timers: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
+
+/** How long a run waits for an answer that may never come, as a lost one would keep the old policy in force. */
+export const PERMISSION_ANSWER_WAIT_MS = 3_000;
 
 type GateState =
   { kind: 'idle' } | { kind: 'holding'; runs: readonly (() => void)[]; timer: unknown } | { kind: 'ended' };
@@ -36,7 +37,7 @@ type GateEffect = { kind: 'released'; run: () => void } | { kind: 'waitStopped';
 type GateMachine = MachineTypes<GateState, GateEvent, GateEffect>;
 
 /** Builds a gate for one frame's lifetime. Building it never throws. */
-export function createPermissionResponseGate({ signal, timeoutMs, timers = realTimers }: Params) {
+export function createPermissionResponseGate({ signal, timers }: Params) {
   const gate = createStateMachine<GateMachine>({
     initial: signal.aborted ? { kind: 'ended' } : { kind: 'idle' },
     handlers: {
@@ -44,7 +45,7 @@ export function createPermissionResponseGate({ signal, timeoutMs, timers = realT
         asked(_state, { run }, { emitState, update }) {
           const timer = timers.setTimeout(() => {
             update({ kind: 'timedOut' });
-          }, timeoutMs);
+          }, PERMISSION_ANSWER_WAIT_MS);
           emitState({ kind: 'holding', runs: [run], timer });
         },
         ended(_state, _event, { emitState }) {

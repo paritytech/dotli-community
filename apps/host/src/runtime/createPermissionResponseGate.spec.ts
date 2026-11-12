@@ -7,7 +7,7 @@ import { recordReports } from '@dotli/metrics/testing';
 import { createManualTimers } from '@dotli/shared/testing';
 import { encodeRequestFrame } from '../testing/encodeRequestFrame.js';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
-import { createPermissionResponseGate } from './createPermissionResponseGate.js';
+import { createPermissionResponseGate, PERMISSION_ANSWER_WAIT_MS } from './createPermissionResponseGate.js';
 
 type Params = {
   /** The frame's lifetime, one that never ends by default. */
@@ -15,8 +15,6 @@ type Params = {
   /** The first run held, a spy by default. */
   reload?: () => void;
 };
-
-const WAIT_MS = 3_000;
 
 const REQUEST_ID = 'request-1';
 
@@ -76,7 +74,7 @@ describe('permission response gate', () => {
     const { timers, reload } = createWaitingGate();
 
     // When
-    await timers.advance(WAIT_MS);
+    await timers.advance(PERMISSION_ANSWER_WAIT_MS);
 
     // Then
     expect(reload).toHaveBeenCalledTimes(1);
@@ -105,7 +103,7 @@ describe('permission response gate', () => {
     frameLifetime.abort();
     gate.runAfterResponse(late);
     gate.noteForwarded(PERMISSION_ANSWER);
-    await timers.advance(WAIT_MS);
+    await timers.advance(PERMISSION_ANSWER_WAIT_MS);
 
     // Then
     expect(waiting).not.toHaveBeenCalled();
@@ -137,7 +135,7 @@ describe('permission response gate', () => {
 /** A gate on manual timers with one reload waiting on the permission answer. */
 function createWaitingGate({ signal = new AbortController().signal, reload: run = () => {} }: Params = {}) {
   const timers = createManualTimers();
-  const gate = createPermissionResponseGate({ signal, timeoutMs: WAIT_MS, timers });
+  const gate = createPermissionResponseGate({ signal, timers });
   const reload = vi.fn(run);
   gate.runAfterResponse(reload);
   return { gate, timers, reload };

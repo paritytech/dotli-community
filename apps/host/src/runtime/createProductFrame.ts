@@ -277,8 +277,6 @@ const RECOVER_MIN_INTERVAL_MS = 5_000;
 const CORE_DEATH_WINDOW_MS = 60_000;
 // Consecutive quick core deaths after which the frame stops rendering the product again and reports it failed.
 const CORE_DEATH_BUDGET = 3;
-// How long a rebuild after a device grant waits for the prompt's answer to reach the product.
-const PERMISSION_ANSWER_WAIT_MS = 3_000;
 
 const BROWSER_PAGE: ProductFramePage = {
   location: () => window.location,
@@ -366,7 +364,6 @@ export function createProductFrame({
             chat,
             responses: createPermissionResponseGate({
               signal: attempt.frame.signal,
-              timeoutMs: PERMISSION_ANSWER_WAIT_MS,
               timers,
             }),
           };
