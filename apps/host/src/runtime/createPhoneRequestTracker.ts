@@ -4,11 +4,11 @@
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createDeferred, createStateMachine, getKeys, isRecord, nest, type MachineTypes } from '@dotli/shared';
+import { createDeferred, createStateMachine, type MachineTypes, type Transition } from '@dotli/shared';
 import { decodeWireMessage, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
-import { compact } from '@parity/truapi/scale';
 import { networkPause, type NetworkPause } from './createNetworkPause.js';
-import { PHONE_METHODS, type PhoneMethod } from './phoneMethods.js';
+import { decodePhoneRequestBody, peekFrameHeader } from './phoneFrame.js';
+import type { PhoneMethod } from './phoneMethods.js';
 import { decodePhoneOutcome, type PhoneOutcome } from './phoneOutcome.js';
 import { reportUndecodablePhoneFrame, type PhoneLeg } from './phoneReport.js';
 
@@ -44,69 +44,38 @@ type Params = {
   holdNetwork?: NetworkPause['hold'];
 };
 
-type FrameHeader = {
-  requestId: string;
-  /** Undefined for a method that does not go to the phone. */
-  method: PhoneMethod | undefined;
-  messageType: number;
-};
-
 /** One connection's tap, told apart by identity. */
 type TapId = symbol;
 
-type TrackerState = { kind: 'live'; taps: ReadonlyMap<TapId, Tap> } | { kind: 'disposed' };
+type Settle = (outcome: PhoneOutcome) => void;
 
-/** A tap leaves the map when it closes, so `taps` holds the open ones. */
-type Tap = { kind: 'open'; inflight: ReadonlyMap<string, Request> } | { kind: 'closed' };
-
-/** A request leaves its tap's map when it ends. */
+/**
+ * A request in flight on an open tap, until its answer comes or its tap closes. `release` lets go of its network hold
+ * and acts once.
+ */
 type Request =
-  | {
-      kind: 'tracked';
-      /** The order the request was tracked in, so the oldest is claimed first. */
-      sequence: number;
-      request: PhoneRequest;
-      /** Releases this request's network hold. Acts once. */
-      release: () => void;
-    }
-  | {
-      kind: 'claimed';
-      sequence: number;
-      request: PhoneRequest;
-      release: () => void;
-      settle: (outcome: PhoneOutcome) => void;
-    }
-  | { kind: 'ended' };
+  | { kind: 'tracked'; tap: TapId; requestId: string; request: PhoneRequest; release: () => void }
+  | { kind: 'claimed'; tap: TapId; requestId: string; request: PhoneRequest; release: () => void; settle: Settle };
+
+/** `requests` runs oldest first, so the oldest is claimed first. */
+type TrackerState = { kind: 'live'; taps: ReadonlySet<TapId>; requests: readonly Request[] } | { kind: 'disposed' };
 
 type TrackerEvent =
   | { kind: 'tapOpened'; tap: TapId }
-  | { kind: 'requested'; tap: TapId; requestId: string; method: PhoneMethod; sequence: number; message: Uint8Array }
-  | { kind: 'answered'; tap: TapId; requestId: string; method: FrameHeader['method']; message: Uint8Array }
-  | { kind: 'claimed'; tap: TapId; requestId: string; settle: (outcome: PhoneOutcome) => void }
+  | { kind: 'productFrame'; tap: TapId; message: Uint8Array }
+  | { kind: 'coreFrame'; tap: TapId; message: Uint8Array }
+  | { kind: 'claimed'; tap: TapId; requestId: string; settle: Settle }
   // The claimer gave up on its claim made inside a transition, which has no holder to settle it.
-  | { kind: 'claimDropped'; tap: TapId; requestId: string; settle: (outcome: PhoneOutcome) => void }
+  | { kind: 'claimDropped'; tap: TapId; requestId: string; settle: Settle }
   | { kind: 'tapClosed'; tap: TapId }
   | { kind: 'disposed' };
 
-type TrackerEffect = { kind: 'undecodable'; method: PhoneMethod; error: unknown; leg: PhoneLeg };
+type TrackerEffect =
+  | { kind: 'released'; release: () => void }
+  | { kind: 'settled'; settle: Settle; outcome: PhoneOutcome }
+  | { kind: 'undecodable'; method: PhoneMethod; error: unknown; leg: PhoneLeg };
 
 type TrackerMachine = MachineTypes<TrackerState, TrackerEvent, TrackerEffect>;
-
-type TapMachine = MachineTypes<Tap, TrackerEvent, TrackerEffect>;
-
-type RequestMachine = MachineTypes<Request, TrackerEvent, TrackerEffect>;
-
-const METHOD_AT = new Map<number, PhoneMethod>(
-  getKeys(PHONE_METHODS).map(method => {
-    const { ids } = PHONE_METHODS[method];
-    return [(ids.trait << 8) | ids.method, method];
-  }),
-);
-
-const UTF8 = new TextDecoder();
-
-/** The bytes of a SCALE compact prefix by its mode, the low two bits. The big-integer mode never prefixes a frame. */
-const COMPACT_PREFIX_BYTES = [1, 2, 4] as const;
 
 /**
  * Builds the tracker of phone-bound requests in flight, read from the frames each connection's tap sees. Building it
@@ -118,133 +87,113 @@ export function createPhoneRequestTracker({
   decode = decodeWireMessage,
   holdNetwork = networkPause.hold,
 }: Params = {}) {
-  const handleRequest = nest<TapMachine, 'open', RequestMachine, 'answered' | 'claimed' | 'claimDropped'>({
-    find: ({ inflight }, { requestId }) => inflight.get(requestId) ?? null,
-    store(state, { requestId }, next) {
-      const inflight = new Map(state.inflight);
-      switch (next.kind) {
-        case 'tracked':
-        case 'claimed':
-          inflight.set(requestId, next);
-          break;
-        case 'ended':
-          inflight.delete(requestId);
-          break;
-      }
-      return { ...state, inflight };
-    },
+  const machine = createStateMachine<TrackerMachine>({
+    initial: { kind: 'live', taps: new Set(), requests: [] },
     handlers: {
-      tracked: {
-        answered({ request, release }, { method }, { emitState }) {
-          if (method !== request.method) {
+      live: {
+        tapOpened(state, { tap }, { emitState }) {
+          emitState({ ...state, taps: new Set(state.taps).add(tap) });
+        },
+        productFrame(state, { tap, message }, { emitState, emitSideEffect }) {
+          if (!state.taps.has(tap)) {
             return;
           }
-          emitState({ kind: 'ended' });
-          release();
-        },
-        claimed(state, { settle }, { emitState }) {
-          emitState({ ...state, kind: 'claimed', settle });
-        },
-      },
-      claimed: {
-        answered({ request, release, settle }, { method, message }, { emitState, emitSideEffect }) {
-          if (method !== request.method) {
+          const header = peekFrameHeader(message);
+          if (header?.method === undefined || header.messageType !== MESSAGE_TYPE_REQUEST) {
             return;
           }
-          emitState({ kind: 'ended' });
-          release();
-          try {
-            settle(decodePhoneOutcome(request.method, readPayload(message)));
-          } catch (error) {
-            emitSideEffect({ kind: 'undecodable', method: request.method, error, leg: 'response' });
-            settle({ kind: 'undecodable' });
-          }
-        },
-        claimDropped({ sequence, request, release, settle }, event, { emitState }) {
-          if (event.settle !== settle) {
-            return;
-          }
-          emitState({ kind: 'tracked', sequence, request, release });
-        },
-      },
-      ended: null,
-    },
-  });
-  const handleTap = nest<
-    TrackerMachine,
-    'live',
-    TapMachine,
-    'requested' | 'answered' | 'claimed' | 'claimDropped' | 'tapClosed'
-  >({
-    find: ({ taps }, { tap }) => taps.get(tap) ?? null,
-    store(state, { tap }, next) {
-      const taps = new Map(state.taps);
-      switch (next.kind) {
-        case 'open':
-          taps.set(tap, next);
-          break;
-        case 'closed':
-          taps.delete(tap);
-          break;
-      }
-      return { ...state, taps };
-    },
-    handlers: {
-      open: {
-        requested(state, { requestId, method, sequence, message }, { emitState, emitSideEffect }) {
-          if (state.inflight.has(requestId)) {
+          const { requestId, method } = header;
+          if (findRequest(state, tap, requestId) !== undefined) {
             return;
           }
           try {
-            const body = unwrapV1(PHONE_METHODS[method].request.dec(readPayload(message)));
+            const request = { method, body: decodePhoneRequestBody(method, readPayload(message)) };
             const release = holdNetwork();
             emitState({
               ...state,
-              inflight: new Map(state.inflight).set(requestId, {
-                kind: 'tracked',
-                sequence,
-                request: { method, body },
-                release,
-              }),
+              requests: [...state.requests, { kind: 'tracked', tap, requestId, request, release }],
             });
           } catch (error) {
             emitSideEffect({ kind: 'undecodable', method, error, leg: 'request' });
           }
         },
-        answered: handleRequest,
-        claimed: handleRequest,
-        claimDropped: handleRequest,
-        tapClosed(state, _event, { emitState }) {
-          emitState({ kind: 'closed' });
-          endRequests(state);
-        },
-      },
-      closed: null,
-    },
-  });
-  const machine = createStateMachine<TrackerMachine>({
-    initial: { kind: 'live', taps: new Map() },
-    handlers: {
-      live: {
-        tapOpened(state, { tap }, { emitState }) {
-          emitState({ ...state, taps: new Map(state.taps).set(tap, { kind: 'open', inflight: new Map() }) });
-        },
-        requested: handleTap,
-        answered: handleTap,
-        claimed: handleTap,
-        claimDropped: handleTap,
-        tapClosed: handleTap,
-        disposed({ taps }, _event, { emitState }) {
-          emitState({ kind: 'disposed' });
-          for (const tap of taps.values()) {
-            endRequests(tap);
+        coreFrame(state, { tap, message }, { emitState, emitSideEffect }) {
+          // Most frames answer no tracked request, so a tap that holds none skips the peek.
+          if (!state.requests.some(request => request.tap === tap)) {
+            return;
           }
+          const header = peekFrameHeader(message);
+          if (header?.messageType !== MESSAGE_TYPE_RESPONSE) {
+            return;
+          }
+          const answered = findRequest(state, tap, header.requestId);
+          if (answered === undefined || header.method !== answered.request.method) {
+            return;
+          }
+          emitState({ ...state, requests: state.requests.filter(request => request !== answered) });
+          emitSideEffect({ kind: 'released', release: answered.release });
+          if (answered.kind === 'tracked') {
+            return;
+          }
+          const { method } = answered.request;
+          try {
+            const outcome = decodePhoneOutcome(method, readPayload(message));
+            emitSideEffect({ kind: 'settled', settle: answered.settle, outcome });
+          } catch (error) {
+            emitSideEffect({ kind: 'settled', settle: answered.settle, outcome: { kind: 'undecodable' } });
+            emitSideEffect({ kind: 'undecodable', method, error, leg: 'response' });
+          }
+        },
+        claimed(state, { tap, requestId, settle }, { emitState }) {
+          const request = findRequest(state, tap, requestId);
+          if (request?.kind !== 'tracked') {
+            return;
+          }
+          const claimed: Request = { ...request, kind: 'claimed', settle };
+          emitState({ ...state, requests: state.requests.map(held => (held === request ? claimed : held)) });
+        },
+        claimDropped(state, { tap, requestId, settle }, { emitState }) {
+          const request = findRequest(state, tap, requestId);
+          if (request?.kind !== 'claimed' || request.settle !== settle) {
+            return;
+          }
+          const tracked: Request = {
+            kind: 'tracked',
+            tap,
+            requestId,
+            request: request.request,
+            release: request.release,
+          };
+          emitState({ ...state, requests: state.requests.map(held => (held === request ? tracked : held)) });
+        },
+        tapClosed(state, { tap }, transition) {
+          const taps = new Set(state.taps);
+          taps.delete(tap);
+          transition.emitState({ ...state, taps, requests: state.requests.filter(request => request.tap !== tap) });
+          endRequests(
+            state.requests.filter(request => request.tap === tap),
+            transition,
+          );
+        },
+        disposed({ requests }, _event, transition) {
+          transition.emitState({ kind: 'disposed' });
+          endRequests(requests, transition);
         },
       },
       disposed: null,
     },
-    onEffect({ method, error, leg }) {
-      reportUndecodable({ method, error, leg });
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'released':
+          effect.release();
+          return;
+        case 'settled':
+          effect.settle(effect.outcome);
+          return;
+        case 'undecodable':
+          reportUndecodable({ method: effect.method, error: effect.error, leg: effect.leg });
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -254,46 +203,29 @@ export function createPhoneRequestTracker({
       });
     },
   });
-  let sequence = 0;
 
-  /** The payload of a frame whose header was already peeked, so only a frame it cannot read fails. */
-  function readPayload(message: Uint8Array): Uint8Array {
-    const decoded = decode(message);
-    if (decoded.isErr()) {
-      throw decoded.error;
-    }
-    return decoded.value.payload.value;
-  }
+  return {
+    /** Opens a tap on one connection's frames, already closed once the tracker is disposed. Never throws. */
+    connect,
+    /**
+     * The oldest unclaimed in-flight request that `matches`, now claimed, or undefined. Throws only when `matches`
+     * does.
+     */
+    claim,
+    /** Ends every claim as `gone`. Idempotent, and never throws. */
+    dispose,
+  };
 
   function connect() {
     const tap: TapId = Symbol('phone request tap');
     machine.update({ kind: 'tapOpened', tap });
 
     function fromProduct(message: Uint8Array): void {
-      const header = peekHeader(message);
-      if (header?.method === undefined || header.messageType !== MESSAGE_TYPE_REQUEST) {
-        return;
-      }
-      machine.update({
-        kind: 'requested',
-        tap,
-        requestId: header.requestId,
-        method: header.method,
-        sequence: sequence++,
-        message,
-      });
+      machine.update({ kind: 'productFrame', tap, message });
     }
 
     function fromCore(message: Uint8Array): void {
-      // Most frames answer no tracked request, so a tap that holds none skips the peek.
-      if (getInflight(machine.state.get(), tap).size === 0) {
-        return;
-      }
-      const header = peekHeader(message);
-      if (header?.messageType !== MESSAGE_TYPE_RESPONSE) {
-        return;
-      }
-      machine.update({ kind: 'answered', tap, requestId: header.requestId, method: header.method, message });
+      machine.update({ kind: 'coreFrame', tap, message });
     }
 
     function closeTap(): void {
@@ -311,117 +243,57 @@ export function createPhoneRequestTracker({
   }
 
   function claim(matches: (request: PhoneRequest) => boolean): PhoneClaim | undefined {
-    const oldest = listUnclaimed(machine.state.get())
-      .sort((a, b) => a.sequence - b.sequence)
-      .find(({ request }) => matches(request));
+    const state = machine.state.get();
+    const oldest =
+      state.kind === 'live'
+        ? state.requests.find(request => request.kind === 'tracked' && matches(request.request))
+        : undefined;
     if (oldest === undefined) {
       return undefined;
     }
-    const { tap, requestId } = oldest;
+    const { tap, requestId, request } = oldest;
     const { promise, resolve: settle } = createDeferred<PhoneOutcome>();
     machine.update({ kind: 'claimed', tap, requestId, settle });
     // A claim made inside a tracker transition has its event run after this returns, so it holds nothing yet. It
     // returns no claim, and drops it in an event that runs right after the claim's, so the request stays claimable.
-    const held = getInflight(machine.state.get(), tap).get(requestId);
+    const now = machine.state.get();
+    const held = now.kind === 'live' ? findRequest(now, tap, requestId) : undefined;
     if (held?.kind !== 'claimed' || held.settle !== settle) {
       machine.update({ kind: 'claimDropped', tap, requestId, settle });
       return undefined;
     }
-    return { request: held.request, ended: promise };
+    return { request, ended: promise };
   }
 
   function dispose(): void {
     machine.update({ kind: 'disposed' });
   }
 
-  return {
-    /** Opens a tap on one connection's frames, already closed once the tracker is disposed. Never throws. */
-    connect,
-    /**
-     * The oldest unclaimed in-flight request that `matches`, now claimed, or undefined. Throws only when `matches`
-     * does.
-     */
-    claim,
-    /** Ends every claim as `gone`. Idempotent, and never throws. */
-    dispose,
-  };
+  /** The payload of a frame whose header was already peeked, so only a frame it cannot read fails. */
+  function readPayload(message: Uint8Array): Uint8Array {
+    const decoded = decode(message);
+    if (decoded.isErr()) {
+      throw decoded.error;
+    }
+    return decoded.value.payload.value;
+  }
 }
 
-/** Ends each request `tap` holds: its network hold is released, and a claimed one settles `gone`. */
-function endRequests(tap: Tap): void {
-  if (tap.kind === 'closed') {
-    return;
-  }
-  for (const request of tap.inflight.values()) {
-    switch (request.kind) {
-      case 'tracked':
-        request.release();
-        break;
-      case 'claimed':
-        request.release();
-        request.settle({ kind: 'gone' });
-        break;
-      case 'ended':
-        break;
+/** The request `requestId` on `tap`, while it is in flight. */
+function findRequest(
+  { requests }: Extract<TrackerState, { kind: 'live' }>,
+  tap: TapId,
+  requestId: string,
+): Request | undefined {
+  return requests.find(request => request.tap === tap && request.requestId === requestId);
+}
+
+/** Ends `requests`: each network hold is released, and a claimed one settles `gone`. */
+function endRequests(requests: readonly Request[], { emitSideEffect }: Transition<TrackerMachine>): void {
+  for (const request of requests) {
+    emitSideEffect({ kind: 'released', release: request.release });
+    if (request.kind === 'claimed') {
+      emitSideEffect({ kind: 'settled', settle: request.settle, outcome: { kind: 'gone' } });
     }
   }
-}
-
-/** The requests `tap` holds, none once it closed or the tracker was disposed. */
-function getInflight(state: TrackerState, tap: TapId): ReadonlyMap<string, Request> {
-  const held = state.kind === 'live' ? state.taps.get(tap) : undefined;
-  return held?.kind === 'open' ? held.inflight : new Map<string, Request>();
-}
-
-/** The tracked requests no claim holds yet, across the open taps. */
-function listUnclaimed(state: TrackerState) {
-  const unclaimed: { tap: TapId; requestId: string; sequence: number; request: PhoneRequest }[] = [];
-  if (state.kind === 'disposed') {
-    return unclaimed;
-  }
-  for (const [tap, held] of state.taps) {
-    if (held.kind === 'closed') {
-      continue;
-    }
-    for (const [requestId, request] of held.inflight) {
-      if (request.kind === 'tracked') {
-        unclaimed.push({ tap, requestId, sequence: request.sequence, request: request.request });
-      }
-    }
-  }
-  return unclaimed;
-}
-
-/**
- * A frame's header without copying its payload: `[requestId: compact length + UTF-8][trait][method][messageType]`.
- * Undefined for a frame too short to have one, which the core reports itself since the tap is passive.
- */
-function peekHeader(message: Uint8Array): FrameHeader | undefined {
-  const first = message[0];
-  const prefix = first === undefined ? undefined : COMPACT_PREFIX_BYTES[first & 0b11];
-  if (prefix === undefined || message.length < prefix) {
-    return undefined;
-  }
-  // A copy of the prefix only, as the codec reads from the start of a view's whole buffer.
-  const end = prefix + Number(compact.dec(message.slice(0, prefix)));
-  const traitId = message[end];
-  const methodId = message[end + 1];
-  const messageType = message[end + 2];
-  if (traitId === undefined || methodId === undefined || messageType === undefined) {
-    return undefined;
-  }
-  return {
-    requestId: UTF8.decode(message.subarray(prefix, end)),
-    method: METHOD_AT.get((traitId << 8) | methodId),
-    messageType,
-  };
-}
-
-/** The V1 value of a decoded `Versioned...Request`. Throws for any other version. */
-function unwrapV1(versioned: unknown): unknown {
-  const version = isRecord(versioned) ? versioned['tag'] : undefined;
-  if (!isRecord(versioned) || version !== 'V1') {
-    throw new Error(`unsupported request version ${String(version)}`);
-  }
-  return versioned['value'];
 }
