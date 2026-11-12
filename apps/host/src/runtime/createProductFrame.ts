@@ -22,7 +22,7 @@ import {
 } from '@dotli/shared';
 import { ownCoreConnection, type CoreProvider } from './ownCoreConnection.js';
 import { CoreRedialError } from './coreRedialError.js';
-import type { CoreConnection, CoreLease, PageCore } from './createPageCore.js';
+import type { CoreConnection, CoreLease, PageCore, PageProduct } from './createPageCore.js';
 import { createPermissionResponseGate } from './createPermissionResponseGate.js';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import { createSide, type Side } from './createSide.js';
@@ -247,6 +247,18 @@ type FrameEvent =
 
 type FrameEffect =
   | { kind: 'statusShown'; status: ProductFrameStatus }
+  /** Asks the page core for a lease on `attempt`, once the core was told the product. */
+  | { kind: 'leaseAsked'; attempt: Attempt }
+  | { kind: 'productNamed'; product: PageProduct }
+  | { kind: 'attemptEnded'; attempt: Attempt }
+  /** Ends only the core side of `attempt`: the product stays on screen without its core. */
+  | { kind: 'coreReleased'; attempt: Attempt }
+  | { kind: 'spacerCleared'; timer: unknown }
+  | { kind: 'frameAttached'; iframe: HTMLIFrameElement }
+  | ({ kind: 'screensCleared' } & Parameters<ProductFrameView['clearScreens']>[0])
+  | { kind: 'mountCleared' }
+  | { kind: 'productShown'; product: FrameProduct; link: Link }
+  | { kind: 'unsubscribed' }
   | { kind: 'runSettled'; origin: RunOrigin; outcome: RunOutcome }
   | ({ kind: 'traced' } & RenderTrace)
   | { kind: 'chatResolved'; capable: boolean }
@@ -295,8 +307,8 @@ export function createProductFrame({
     }
     const attempt = createAttempt(2);
     transition.emitState({ ...getRunParts(run), kind: 'leasing', attempt });
-    endAttempt(run.attempt);
-    acquireLease(attempt, transition.update);
+    transition.emitSideEffect({ kind: 'attemptEnded', attempt: run.attempt });
+    transition.emitSideEffect({ kind: 'leaseAsked', attempt });
   };
 
   /** Hands each event of the run's steps to its step, while the event's attempt is the run's. */
@@ -543,17 +555,18 @@ export function createProductFrame({
         origin: state.run.origin,
         outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
       });
-      dropRun(state.run, shown);
+      dropRun(state.run, shown, transition);
     }
-    clearSpacers(state);
+    clearSpacers(state, transition);
     // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
-    shown?.attempt.core.end();
+    if (shown !== null) {
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: shown.attempt });
+    }
   };
 
   const endFrame: HandlerOf<FrameMachine, 'idle' | LivelyKind | 'halted', 'disposed'> = (state, _event, transition) => {
     moveTo(state, { kind: 'disposed' }, transition);
-    stopPermissionChanges();
-    stopRecoverAsks();
+    transition.emitSideEffect({ kind: 'unsubscribed' });
     switch (state.kind) {
       case 'idle':
         return;
@@ -565,17 +578,17 @@ export function createProductFrame({
           origin: state.run.origin,
           outcome: { kind: 'superseded', setupStartedAt: state.run.setupStartedAt },
         });
-        clearSpacers(state);
-        endAttempt(state.run.attempt);
+        clearSpacers(state, transition);
+        transition.emitSideEffect({ kind: 'attemptEnded', attempt: state.run.attempt });
         break;
       case 'connected':
       case 'lost':
       case 'failed':
-        clearSpacers(state);
+        clearSpacers(state, transition);
         break;
     }
     if (state.shown !== null) {
-      endAttempt(state.shown.attempt);
+      transition.emitSideEffect({ kind: 'attemptEnded', attempt: state.shown.attempt });
     }
   };
 
@@ -622,13 +635,16 @@ export function createProductFrame({
           const next: Run =
             loadCheckerPanel === undefined ? run : { ...getRunParts(run), kind: 'loadingPanel', attempt, iframe };
           moveTo(state, { ...state, shown, run: next }, transition);
-          transition.emitSideEffect({ kind: 'traced', milestone: 'setupReady', run, iframe });
-          view.attachFrame(iframe);
+          transition.emitSideEffect({ kind: 'frameAttached', iframe });
           if (previous !== null) {
-            endAttempt(previous.attempt);
+            transition.emitSideEffect({ kind: 'attemptEnded', attempt: previous.attempt });
           }
           // On the initial app subdomain render the sandbox dismisses the overlay itself, with `dotli:loading-status`.
-          view.clearScreens({ loading: run.product.mode !== 'subdomain' || previous !== null });
+          transition.emitSideEffect({
+            kind: 'screensCleared',
+            loading: run.product.mode !== 'subdomain' || previous !== null,
+          });
+          transition.emitSideEffect({ kind: 'traced', milestone: 'setupReady', run, iframe });
           if (loadCheckerPanel === undefined) {
             endRun({ ...state, shown }, transition);
             return;
@@ -658,7 +674,7 @@ export function createProductFrame({
           }
           failRun(state, error, transition);
           if (run.kind !== 'loadingPanel') {
-            endAttempt(attempt);
+            transition.emitSideEffect({ kind: 'attemptEnded', attempt });
           }
         },
         halted: stopRendering,
@@ -704,6 +720,39 @@ export function createProductFrame({
     },
     onEffect: effect => {
       switch (effect.kind) {
+        case 'leaseAsked':
+          acquireLease(effect.attempt);
+          return;
+        case 'productNamed':
+          core.setProduct(effect.product);
+          return;
+        case 'attemptEnded':
+          effect.attempt.core.end();
+          effect.attempt.frame.end();
+          return;
+        case 'coreReleased':
+          effect.attempt.core.end();
+          return;
+        case 'spacerCleared':
+          timers.clearTimeout(effect.timer);
+          return;
+        case 'frameAttached':
+          view.attachFrame(effect.iframe);
+          return;
+        case 'screensCleared':
+          view.clearScreens({ loading: effect.loading });
+          return;
+        case 'mountCleared':
+          view.clearMount();
+          return;
+        case 'productShown':
+          view.showTitle(toTitledProduct(effect.product));
+          productState.setLoaded(toLoadedProduct(effect.product, effect.link));
+          return;
+        case 'unsubscribed':
+          stopPermissionChanges();
+          stopRecoverAsks();
+          return;
         case 'statusShown':
           view.showStatus(effect.status);
           return;
@@ -837,7 +886,7 @@ export function createProductFrame({
     } catch (error) {
       failRun({ ...lively, kind: from.kind, run: { origin } }, error, transition);
       if (previous !== null) {
-        dropRun(previous, lively.shown);
+        dropRun(previous, lively.shown, transition);
       }
       return;
     }
@@ -845,23 +894,26 @@ export function createProductFrame({
     const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
     moveTo(from, { ...lively, kind: 'connecting', run }, transition);
     if (previous !== null) {
-      dropRun(previous, lively.shown);
+      dropRun(previous, lively.shown, transition);
     }
     transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
     switch (product.mode) {
       case 'iframe':
         if (lively.shown === null) {
           // This path has no loading overlay to keep.
-          view.clearScreens({ loading: true });
-          view.clearMount();
+          transition.emitSideEffect({ kind: 'screensCleared', loading: true });
+          transition.emitSideEffect({ kind: 'mountCleared' });
         }
-        core.setProduct({ label: product.label, productId: product.productId });
+        transition.emitSideEffect({
+          kind: 'productNamed',
+          product: { label: product.label, productId: product.productId },
+        });
         break;
       case 'subdomain':
-        core.setProduct({ label: product.label });
+        transition.emitSideEffect({ kind: 'productNamed', product: { label: product.label } });
         break;
     }
-    acquireLease(run.attempt, transition.update);
+    transition.emitSideEffect({ kind: 'leaseAsked', attempt: run.attempt });
   }
 
   /**
@@ -880,14 +932,13 @@ export function createProductFrame({
       const lively = settleRun(state, { kind: 'shown', setupStartedAt: run.setupStartedAt }, transition);
       moveTo(state, { ...lively, kind: 'connected', shown }, transition);
     }
-    view.showTitle(toTitledProduct(run.product));
-    productState.setLoaded(toLoadedProduct(run.product, shown.link));
+    transition.emitSideEffect({ kind: 'productShown', product: run.product, link: shown.link });
     transition.emitSideEffect({ kind: 'traced', milestone: 'ready', run });
   }
 
   /** Leases the page core for `attempt`. The lease goes as the attempt's core side ends, at once when it already has. */
-  function acquireLease(attempt: Attempt, update: Transition<FrameMachine>['update']): void {
-    update(
+  function acquireLease(attempt: Attempt): void {
+    machine.update(
       runStepWork(
         attempt,
         () => core.acquire(),
@@ -947,7 +998,7 @@ export function createProductFrame({
     const lively = settleRun(state, { kind: 'failed', error }, transition);
     moveTo(state, { ...lively, kind: 'failed' }, transition);
     if (lively.shown?.core === 'down') {
-      lively.shown.attempt.core.end();
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: lively.shown.attempt });
     }
   }
 
@@ -967,7 +1018,7 @@ export function createProductFrame({
     if (deaths.count >= CORE_DEATH_BUDGET) {
       moveTo(lively, { ...lively, kind: 'failed', shown, deaths }, transition);
       // The product stays on screen under the reload notice, but its core is down for good, so its lease goes.
-      shown.attempt.core.end();
+      transition.emitSideEffect({ kind: 'coreReleased', attempt: shown.attempt });
       transition.emitSideEffect({ kind: 'gaveUp', deaths: deaths.count });
       return;
     }
@@ -990,12 +1041,12 @@ export function createProductFrame({
   }
 
   /** Clears the timers of the spacers that wait, as the frame starts no render of its own again. */
-  function clearSpacers({ recover, replacement }: Lively): void {
+  function clearSpacers({ recover, replacement }: Lively, { emitSideEffect }: Transition<FrameMachine>): void {
     if (recover.kind === 'spacing') {
-      timers.clearTimeout(recover.timer);
+      emitSideEffect({ kind: 'spacerCleared', timer: recover.timer });
     }
     if (replacement.kind === 'spacing') {
-      timers.clearTimeout(replacement.timer);
+      emitSideEffect({ kind: 'spacerCleared', timer: replacement.timer });
     }
   }
 
@@ -1082,16 +1133,10 @@ function createAttempt(n: Attempt['n']): Attempt {
   return { n, core: createSide(), frame: createSide() };
 }
 
-/** Ends both sides of `attempt`. */
-function endAttempt({ core, frame }: Attempt): void {
-  core.end();
-  frame.end();
-}
-
 /** Ends the attempt of `run`, a run the frame no longer waits on, unless its product is the one on screen. */
-function dropRun(run: Run, shown: Shown | null): void {
+function dropRun(run: Run, shown: Shown | null, { emitSideEffect }: Transition<FrameMachine>): void {
   if (run.attempt !== shown?.attempt) {
-    endAttempt(run.attempt);
+    emitSideEffect({ kind: 'attemptEnded', attempt: run.attempt });
   }
 }
 
