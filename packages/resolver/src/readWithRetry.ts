@@ -11,32 +11,18 @@ import { createAsyncTaskPool } from '@dotli/shared';
 
 const RETRY_WINDOW_MS = 30_000;
 
-// Failures past a read's window, which end its retries.
-const pastWindow = new WeakSet();
-
-const retriedReads = createAsyncTaskPool({
-  poolSize: Infinity,
-  retryCount: Number.POSITIVE_INFINITY,
-  retryDelay: 750,
-  retryIf: error => isRetried(error) && !pastWindow.has(error),
-});
-
 /**
  * Runs `read`, and again after each `OperationInaccessibleError` or `OperationLimitError`, until 30 s on `now` have
  * passed since the call. Rejects with `read`'s last error.
  */
 export function readWithRetry<T>(read: () => Promise<T>, now: () => number): Promise<T> {
   const started = now();
-  return retriedReads.call(async () => {
-    try {
-      return await read();
-    } catch (error) {
-      if (isRetried(error) && now() - started >= RETRY_WINDOW_MS) {
-        pastWindow.add(error);
-      }
-      throw error;
-    }
-  });
+  return createAsyncTaskPool({
+    poolSize: 1,
+    retryCount: Number.POSITIVE_INFINITY,
+    retryDelay: 750,
+    retryIf: error => isRetried(error) && now() - started < RETRY_WINDOW_MS,
+  }).call(read);
 }
 
 function isRetried(error: unknown): error is OperationInaccessibleError | OperationLimitError {

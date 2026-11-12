@@ -1,28 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Revive contract slots read straight from `chainHead_v1_storage`, with no runtime call or metadata.
-// Like `ReviveApi::get_storage`, the `trie_id` comes from `AccountInfoOf` in the main trie, then the slot
-// from that child trie. `trie_id` is never cached, because a redeploy would then return stale data.
+// Revive contract slots read straight from `chainHead_v1_storage`, with no runtime call or metadata. `trie_id` is
+// never cached, because a redeploy would then return stale data.
 
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
-import { DisjointError, StopError } from '@polkadot-api/substrate-client';
-import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
-import { mergeUint8 } from '@polkadot-api/utils';
+import { DisjointError } from '@polkadot-api/substrate-client';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
   createStateMachine,
   fromHex,
-  nest,
+  noop,
   toHex,
+  waitForStatus,
   type HandlerOf,
   type MachineTypes,
-  type Transition,
 } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
 import { readWithRetry } from './readWithRetry.js';
+import { decodeTrieId, getAccountInfoKey, getChildSlotKey } from './reviveStorageKeys.js';
 
 const report = createReporter({ flow: 'resolve' });
 
@@ -81,52 +79,33 @@ type Params = {
   now?: () => number;
 };
 
-type Waiter = { resolve: () => void; reject: (error: ApiStoppedError) => void };
-
 /** A block reads pin. A retired one is a block finality left behind while a read held it, unpinned once no read does. */
-type Pin = { kind: 'held'; count: number } | { kind: 'retired'; count: number } | { kind: 'released' };
-
-type HeldPin = Exclude<Pin, { kind: 'released' }>;
+type Pin = { kind: 'held' | 'retired'; count: number };
 
 /** Where the follow stands. A ready follow keeps the best block, finality's newest block and the blocks reads hold. */
 type FollowState =
-  | { kind: 'following'; waiters: readonly Waiter[] }
-  | { kind: 'ready'; bestHash: string; newestFinalized: string; pins: ReadonlyMap<string, HeldPin> }
+  | { kind: 'following' }
+  | { kind: 'ready'; bestHash: string; newestFinalized: string; pins: ReadonlyMap<string, Pin> }
   | { kind: 'stopped'; error: ApiStoppedError };
 
 type FollowEvent =
-  | { kind: 'waited'; waiter: Waiter }
   | { kind: 'initialized'; finalized: readonly string[] }
   | { kind: 'bestBlockChanged'; hash: string }
   | { kind: 'finalized'; finalized: readonly string[]; pruned: readonly string[] }
   | { kind: 'blockHeld'; hash: string }
   | { kind: 'blockReleased'; hash: string }
-  | { kind: 'blockRetired'; hash: string }
   | { kind: 'unpinned' }
   | { kind: 'unpinFailed'; error: unknown }
   | { kind: 'followEnded'; cause: unknown }
   | { kind: 'destroyed' };
 
 type FollowEffect =
-  | { kind: 'wake'; waiters: readonly Waiter[] }
-  | { kind: 'fail'; waiters: readonly Waiter[]; error: ApiStoppedError }
   | { kind: 'unpin'; hashes: readonly string[] }
   | { kind: 'unpinRefused'; error: unknown }
   | { kind: 'unfollow' }
   | { kind: 'stopped' };
 
 type FollowMachine = MachineTypes<FollowState, FollowEvent, FollowEffect>;
-
-type PinMachine = MachineTypes<Pin, FollowEvent, FollowEffect>;
-
-const encoder = new TextEncoder();
-
-const ACCOUNT_INFO_OF_PREFIX = mergeUint8([
-  Twox128(encoder.encode('Revive')),
-  Twox128(encoder.encode('AccountInfoOf')),
-]);
-
-const decodeVecU8 = Hex().dec;
 
 // A server refuses operations past its per-follow limit, so each follow stays well under a common one.
 const MAX_STORAGE_OPERATIONS = 8;
@@ -136,105 +115,85 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
   const stops = createListenerSet<undefined>({ onListenerError: report.listener('resolver.stop') });
   const operations = createAsyncTaskPool({ poolSize: MAX_STORAGE_OPERATIONS });
 
-  const endFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'followEnded'> = (state, { cause }, transition) => {
-    stop(state, new ApiStoppedError(cause), transition);
+  const endFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'followEnded'> = (
+    _state,
+    { cause },
+    { emitState, emitSideEffect },
+  ) => {
+    emitState({ kind: 'stopped', error: new ApiStoppedError(cause) });
+    emitSideEffect({ kind: 'stopped' });
   };
 
-  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (state, _event, transition) => {
+  const destroyFollow: HandlerOf<FollowMachine, 'following' | 'ready', 'destroyed'> = (
+    _state,
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
+    emitState({ kind: 'stopped', error: new ApiStoppedError() });
     // `unfollow` stops the follow without calling its error callback.
-    transition.emitSideEffect({ kind: 'unfollow' });
-    stop(state, new ApiStoppedError(), transition);
+    emitSideEffect({ kind: 'unfollow' });
+    emitSideEffect({ kind: 'stopped' });
   };
-
-  const releasePin = nest<FollowMachine, 'ready', PinMachine, 'blockReleased' | 'blockRetired'>({
-    find: ({ pins }, { hash }) => pins.get(hash) ?? null,
-    store(state, { hash }, next) {
-      const pins = new Map(state.pins);
-      switch (next.kind) {
-        case 'held':
-        case 'retired':
-          pins.set(hash, next);
-          break;
-        case 'released':
-          pins.delete(hash);
-          break;
-      }
-      return { ...state, pins };
-    },
-    handlers: {
-      held: {
-        blockReleased({ count }, _event, { emitState }) {
-          emitState(count > 1 ? { kind: 'held', count: count - 1 } : { kind: 'released' });
-        },
-        blockRetired({ count }, _event, { emitState }) {
-          emitState({ kind: 'retired', count });
-        },
-      },
-      retired: {
-        blockReleased({ count }, { hash }, { emitState, emitSideEffect }) {
-          if (count > 1) {
-            emitState({ kind: 'retired', count: count - 1 });
-            return;
-          }
-          emitState({ kind: 'released' });
-          emitSideEffect({ kind: 'unpin', hashes: [hash] });
-        },
-      },
-      released: null,
-    },
-  });
 
   const machine = createStateMachine<FollowMachine>({
-    initial: { kind: 'following', waiters: [] },
+    initial: { kind: 'following' },
     handlers: {
       following: {
-        waited(state, { waiter }, { emitState }) {
-          emitState({ ...state, waiters: [...state.waiters, waiter] });
-        },
-        initialized(state, { finalized }, transition) {
+        initialized(_state, { finalized }, { emitState, emitSideEffect }) {
           const newest = finalized.at(-1);
           if (newest === undefined) {
+            const cause = new Error('chainHead follow initialized with no finalized block');
+            emitState({ kind: 'stopped', error: new ApiStoppedError(cause) });
             // papi does not know the follow is dead, so it is ended here.
-            transition.emitSideEffect({ kind: 'unfollow' });
-            stop(
-              state,
-              new ApiStoppedError(new Error('chainHead follow initialized with no finalized block')),
-              transition,
-            );
+            emitSideEffect({ kind: 'unfollow' });
+            emitSideEffect({ kind: 'stopped' });
             return;
           }
-          transition.emitState({ kind: 'ready', bestHash: newest, newestFinalized: newest, pins: new Map() });
-          transition.emitSideEffect({ kind: 'unpin', hashes: finalized.slice(0, -1) });
-          transition.emitSideEffect({ kind: 'wake', waiters: state.waiters });
+          emitState({ kind: 'ready', bestHash: newest, newestFinalized: newest, pins: new Map() });
+          emitSideEffect({ kind: 'unpin', hashes: finalized.slice(0, -1) });
         },
         followEnded: endFollow,
         destroyed: destroyFollow,
       },
       ready: {
-        waited(_state, { waiter }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'wake', waiters: [waiter] });
-        },
         bestBlockChanged(state, { hash }, { emitState }) {
           emitState({ ...state, bestHash: hash });
         },
         // A server may stop a follow that lets pins pile up. Reads only target descendants of the newest finalized
         // block, so blocks finality leaves behind or prunes are unpinned, once the last read holding them ends.
-        finalized(state, { finalized, pruned }, { emitState, emitSideEffect, update }) {
+        finalized(state, { finalized, pruned }, { emitState, emitSideEffect }) {
           const behind = finalized.length === 0 ? [] : [state.newestFinalized, ...finalized.slice(0, -1)];
           const left = [...behind, ...pruned];
-          emitState({ ...state, newestFinalized: finalized.at(-1) ?? state.newestFinalized });
-          for (const hash of left.filter(h => state.pins.has(h))) {
-            update({ kind: 'blockRetired', hash });
+          const pins = new Map(state.pins);
+          for (const hash of left) {
+            const pin = pins.get(hash);
+            if (pin !== undefined) {
+              pins.set(hash, { kind: 'retired', count: pin.count });
+            }
           }
-          emitSideEffect({ kind: 'unpin', hashes: left.filter(h => !state.pins.has(h)) });
+          emitState({ ...state, newestFinalized: finalized.at(-1) ?? state.newestFinalized, pins });
+          emitSideEffect({ kind: 'unpin', hashes: left.filter(hash => !state.pins.has(hash)) });
         },
         blockHeld(state, { hash }, { emitState }) {
-          const pin = state.pins.get(hash);
-          const held: HeldPin = pin === undefined ? { kind: 'held', count: 1 } : { ...pin, count: pin.count + 1 };
-          emitState({ ...state, pins: new Map(state.pins).set(hash, held) });
+          const pin = state.pins.get(hash) ?? { kind: 'held', count: 0 };
+          emitState({ ...state, pins: new Map(state.pins).set(hash, { ...pin, count: pin.count + 1 }) });
         },
-        blockReleased: releasePin,
-        blockRetired: releasePin,
+        blockReleased(state, { hash }, { emitState, emitSideEffect }) {
+          const pin = state.pins.get(hash);
+          if (pin === undefined) {
+            return;
+          }
+          const pins = new Map(state.pins);
+          if (pin.count > 1) {
+            emitState({ ...state, pins: pins.set(hash, { ...pin, count: pin.count - 1 }) });
+            return;
+          }
+          pins.delete(hash);
+          emitState({ ...state, pins });
+          if (pin.kind === 'retired') {
+            emitSideEffect({ kind: 'unpin', hashes: [hash] });
+          }
+        },
         unpinFailed(_state, { error }, { emitSideEffect }) {
           // The follow stopped, and its pins went with it.
           if (error instanceof DisjointError) {
@@ -245,12 +204,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
         followEnded: endFollow,
         destroyed: destroyFollow,
       },
-      // A disposed state handles nothing else, but a `whenReady` after the stop would otherwise never settle.
-      stopped: {
-        waited({ error }, { waiter }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'fail', waiters: [waiter], error });
-        },
-      },
+      stopped: null,
     },
     onEffect: runEffect,
     onError(error) {
@@ -285,29 +239,8 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     },
   );
 
-  /** Moves a running follow to `stopped`, fails what waits on it and tells the stop listeners. */
-  function stop(
-    state: Exclude<FollowState, { kind: 'stopped' }>,
-    error: ApiStoppedError,
-    { emitState, emitSideEffect }: Transition<FollowMachine>,
-  ): void {
-    emitState({ kind: 'stopped', error });
-    emitSideEffect({ kind: 'fail', waiters: state.kind === 'following' ? state.waiters : [], error });
-    emitSideEffect({ kind: 'stopped' });
-  }
-
   function runEffect(effect: FollowEffect): void {
     switch (effect.kind) {
-      case 'wake':
-        for (const { resolve } of effect.waiters) {
-          resolve();
-        }
-        return;
-      case 'fail':
-        for (const { reject } of effect.waiters) {
-          reject(effect.error);
-        }
-        return;
       case 'unpin':
         if (effect.hashes.length === 0) {
           return;
@@ -340,49 +273,32 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     }
   }
 
-  function whenReady(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      machine.update({ kind: 'waited', waiter: { resolve, reject } });
-    });
+  async function whenReady(): Promise<void> {
+    await waitForStatus(machine.state, getReadiness);
   }
 
-  async function withStopGuard<T>(work: () => Promise<T>): Promise<T> {
-    if (machine.state.get().kind === 'stopped') {
-      throw new ApiStoppedError();
-    }
-    try {
-      return await work();
-    } catch (error) {
-      if (error instanceof StopError) {
-        machine.update({ kind: 'followEnded', cause: error });
-        throw new ApiStoppedError(error);
-      }
-      throw error;
-    }
-  }
-
-  // Each attempt queues on its own, so a retry wait holds no operation slot.
+  // Each attempt queues on its own, so a retry wait holds no operation slot. A papi read in flight when the follow
+  // stops rejects with its own `DisjointError`.
   function readStorage({ hash, key, childTrie }: ReadStorageParams): Promise<string | null> {
     return readWithRetry(
-      () => operations.call(() => withStopGuard(() => follow.storage(hash, 'value', key, childTrie))),
+      () =>
+        operations.call(() => {
+          if (machine.state.get().kind === 'stopped') {
+            throw new ApiStoppedError();
+          }
+          return follow.storage(hash, 'value', key, childTrie);
+        }),
       now,
     );
   }
 
   async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
-    // `AccountInfoOf` uses the Identity hasher.
-    const address = fromHex(contractAddress);
-    const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, address]);
-    const accountInfoHex = await readStorage({ hash: atHash, key: toHex(mainKey), childTrie: null });
-    if (accountInfoHex === null) {
-      return null;
-    }
-    const accountInfo = fromHex(accountInfoHex);
-    // Tag 0x00 is `Contract(ContractInfo)`, whose first field is `trie_id` as a SCALE `Vec<u8>`.
-    if (accountInfo[0] !== 0x00) {
-      return null;
-    }
-    return fromHex(decodeVecU8(accountInfo.slice(1)));
+    const accountInfoHex = await readStorage({
+      hash: atHash,
+      key: getAccountInfoKey(contractAddress),
+      childTrie: null,
+    });
+    return accountInfoHex === null ? null : decodeTrieId(accountInfoHex);
   }
 
   async function withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T> {
@@ -415,8 +331,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     if (trie === null) {
       return null;
     }
-    const childKey = Blake2256(fromHex(slotKey));
-    const valueHex = await readStorage({ hash, key: toHex(childKey), childTrie: toHex(trie) });
+    const valueHex = await readStorage({ hash, key: getChildSlotKey(slotKey), childTrie: toHex(trie) });
     return valueHex === null ? null : fromHex(valueHex);
   }
 
@@ -434,9 +349,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     onStop(callback) {
       if (machine.state.get().kind === 'stopped') {
         stops.deliver(callback, undefined);
-        return () => {
-          /* already stopped */
-        };
+        return noop;
       }
       return stops.subscribe(callback);
     },
@@ -444,4 +357,16 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       machine.update({ kind: 'destroyed' });
     },
   };
+}
+
+/** A ready follow settles a wait for it, and a stopped one fails it with its stop. */
+function getReadiness(state: FollowState): boolean | ApiStoppedError {
+  switch (state.kind) {
+    case 'following':
+      return false;
+    case 'ready':
+      return true;
+    case 'stopped':
+      return state.error;
+  }
 }
