@@ -65,7 +65,7 @@ type LeaseEffect =
   | { kind: 'send'; connection: JsonRpcConnection; message: JsonRpcRequest }
   | { kind: 'answerHalted'; message: JsonRpcRequest }
   | { kind: 'disconnect'; connection: JsonRpcConnection }
-  | { kind: 'healed'; answer: TakeAnswer };
+  | { kind: 'answered'; answer: TakeAnswer };
 
 type LeaseMachine = MachineTypes<LeaseState, LeaseEvent, LeaseEffect>;
 
@@ -94,7 +94,8 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     throw new Error(`No chain transport for ${key}`);
   }
   const lease = createStateMachine<LeaseMachine>({
-    // The first take that holds the chain is no heal, so it counts none.
+    // The first take that holds the chain is no heal, so it counts none. One that halted waits in `taking` only for its
+    // queued answer below.
     initial:
       answer.kind === 'attached'
         ? { kind: 'attached', take: first, connection: answer.connection }
@@ -102,7 +103,7 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     handlers: {
       taking: {
         taken({ reason, sends }, { take, answer: found }, transition) {
-          transition.emitSideEffect({ kind: 'healed', answer: found });
+          transition.emitSideEffect({ kind: 'answered', answer: found });
           switch (found.kind) {
             case 'attached':
               transition.emitState({ kind: 'attached', take, connection: found.connection });
@@ -166,7 +167,7 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
       releasing: {
         taken(_state, { answer: found }, { emitState, emitSideEffect }) {
           emitState({ kind: 'released' });
-          emitSideEffect({ kind: 'healed', answer: found });
+          emitSideEffect({ kind: 'answered', answer: found });
           // A release while it attached leaves nothing to keep the new lease.
           if (found.kind === 'attached') {
             emitSideEffect({ kind: 'disconnect', connection: found.connection });
@@ -214,7 +215,7 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
         case 'disconnect':
           effect.connection.disconnect();
           return;
-        case 'healed': {
+        case 'answered': {
           const { answer: found } = effect;
           if (found.kind === 'threw') {
             reportHealDefect(found.error, `${LEASE_TAG} ${holder} could not take ${key} again:`);
