@@ -587,6 +587,31 @@ describe('auth controller: login requests', () => {
     expect(calls.logins).toEqual([]);
   });
 
+  it('As a user whose phrase failed to load, I sign in instead and press Retry after that login fails, and a login starts again', async () => {
+    // Given a page that pairs in place, whose phrase import failed to load and whose login then failed
+    let phraseLoads = 0;
+    const { controller, auth, calls, changes } = startController({
+      loadRecoveryPhrase() {
+        phraseLoads += 1;
+        return rejectNoPhrase();
+      },
+    });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    controller.startLogin();
+    await changes.until(() => calls.logins.length === 1);
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'the phone said no' });
+
+    // When Retry is pressed
+    controller.retryLogin();
+    await untilPromisesSettled();
+
+    // Then a login starts again and no phrase is asked for
+    expect(calls.logins).toHaveLength(2);
+    expect(phraseLoads).toBe(1);
+  });
+
   it('As a user whose sign-in modal is disabled, I click Sign in while my saved session cannot be reached and nothing is read', async () => {
     // Given a page whose modal is disabled and whose saved session cannot be reached
     let reads = 0;

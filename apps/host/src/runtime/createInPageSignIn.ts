@@ -36,9 +36,12 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
       if (isLeaseHeld(state.lease) && state.view.kind !== 'error') {
         return;
       }
-      if (modal.open(state, { reason, label }, transition) === null) {
+      const opened = modal.open(state, { reason, label }, transition);
+      if (opened === null) {
         return;
       }
+      // A login replaces a phrase round on show, so a Retry after it logs in again.
+      transition.emitState({ ...opened, round: { kind: 'idle' } });
       transition.emitSideEffect({ kind: 'commandRun', command: { step: 'login', params: { reason } } });
     },
     importPhrase(state, _event, transition) {
