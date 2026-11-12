@@ -30,12 +30,10 @@ type Params = {
 type ExpectHeardWithinParams = {
   /** Hears the sandbox's silence once the deadline passes with nothing heard. */
   onSilent: (error: SandboxSilentError) => void;
-  /** How long the sandbox has to speak from the call. */
-  silenceMs?: number;
 };
 
 /** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
-type Ask = Required<ExpectHeardWithinParams>;
+type Ask = ExpectHeardWithinParams;
 
 /**
  * Each listening state holds the channel's unsubscribe. A deadline that ends leaves the sandbox `unheard` again. A
@@ -51,8 +49,9 @@ type SandboxLoadState =
 
 type SandboxLoadEvent =
   | { kind: 'started' }
-  /** `report` is the outcome a `done` carried, if any. */
-  | { kind: 'statusHeard'; done: boolean; report: SandboxLoadReport | null }
+  | { kind: 'spoke' }
+  /** `report` is the outcome the `done` carried, if any. */
+  | { kind: 'doneHeard'; report: SandboxLoadReport | null }
   | { kind: 'deadlineAsked'; ask: Ask }
   | { kind: 'deadlinePassed'; ask: Ask }
   | { kind: 'deadlineStopped'; ask: Ask }
@@ -80,21 +79,24 @@ const sandboxLoadTransitionMetric = defineCount<'error'>('sandbox_load.transitio
 export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers = realTimers }: Params = {}) {
   const clears = createListenerSet<undefined>({ onListenerError: report.listener('sandbox_load.cleared') });
   const outcomes = createListenerSet<SandboxLoadReport>({ onListenerError: report.listener('sandbox_load.outcome') });
-  /** Moves a sandbox that has not cleared the screen on, and clears it at the sandbox's first `done`. */
-  const hearStatus: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting' | 'heard', 'statusHeard'> = (
+  /** Moves a sandbox that speaks for the first time on. */
+  const hearSpeech: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting', 'spoke'> = (
     { stopListening },
-    { done, report },
-    { emitState, emitSideEffect },
+    _event,
+    { emitState },
   ) => {
-    if (!done) {
-      emitState({ kind: 'heard', stopListening });
-      return;
-    }
-    emitState({ kind: 'cleared', stopListening, latest: report });
+    emitState({ kind: 'heard', stopListening });
+  };
+  /** Clears the screen at the sandbox's first `done`, and ends the load in `cleared` when the `done` carries an outcome. */
+  const clearScreen: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting' | 'heard', 'doneHeard'> = (
+    { stopListening },
+    event,
+    { emitState, emitSideEffect, update },
+  ) => {
+    emitState({ kind: 'cleared', stopListening, latest: null });
     emitSideEffect({ kind: 'cleared' });
-    if (report !== null) {
-      emitSideEffect({ kind: 'outcome', report });
-    }
+    // After the clear's listeners, so one that follows the outcomes from there hears this one once.
+    update(event);
   };
   /** Starts the ask's deadline in place of any earlier one. */
   const startDeadline: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting', 'deadlineAsked'> = (
@@ -105,7 +107,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     emitState({ kind: 'waiting', stopListening, ask });
     timers.setTimeout(() => {
       update({ kind: 'deadlinePassed', ask });
-    }, ask.silenceMs);
+    }, SANDBOX_SILENCE_MS);
   };
   /** Stops listening, so nothing the sandbox says later counts, and a deadline left running ends nothing. */
   const stop: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting' | 'heard' | 'cleared', 'disposed'> = (
@@ -122,7 +124,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
       idle: {
         started(_state, _event, { emitState, update }) {
           const stopListening = channel.on('dotli:loading-status', status => {
-            update({ kind: 'statusHeard', done: status.done === true, report: toReport(status) });
+            update(status.done === true ? { kind: 'doneHeard', report: toReport(status) } : { kind: 'spoke' });
           });
           emitState({ kind: 'unheard', stopListening });
         },
@@ -130,9 +132,10 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
           emitState({ kind: 'disposed' });
         },
       },
-      unheard: { statusHeard: hearStatus, deadlineAsked: startDeadline, disposed: stop },
+      unheard: { spoke: hearSpeech, doneHeard: clearScreen, deadlineAsked: startDeadline, disposed: stop },
       waiting: {
-        statusHeard: hearStatus,
+        spoke: hearSpeech,
+        doneHeard: clearScreen,
         deadlineAsked: startDeadline,
         deadlinePassed({ stopListening, ask }, event, { emitState, emitSideEffect }) {
           if (event.ask !== ask) {
@@ -149,9 +152,9 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
         },
         disposed: stop,
       },
-      heard: { statusHeard: hearStatus, disposed: stop },
+      heard: { doneHeard: clearScreen, disposed: stop },
       cleared: {
-        statusHeard(state, { report }, { emitState, emitSideEffect }) {
+        doneHeard(state, { report }, { emitState, emitSideEffect }) {
           // A `done` without an outcome only clears the screen for a prompt the sandbox shows before its content loads.
           if (report === null) {
             return;
@@ -172,7 +175,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
           outcomes.emit(effect.report);
           return;
         case 'silent':
-          effect.ask.onSilent(new SandboxSilentError(effect.ask.silenceMs));
+          effect.ask.onSilent(new SandboxSilentError(SANDBOX_SILENCE_MS));
           return;
       }
     },
@@ -200,7 +203,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
      */
     subscribeCleared,
     /**
-     * Gives the sandbox `silenceMs` from the call to speak, and calls `onSilent` with a `SandboxSilentError` when it
+     * Gives the sandbox 30 seconds from the call to speak, and calls `onSilent` with a `SandboxSilentError` when it
      * stays silent. A later ask replaces this one. Asked once the sandbox spoke, or after `dispose`, it never calls
      * `onSilent`. The returned stop ends this deadline, is safe to call more than once and does nothing once a later
      * ask replaced it. Never throws: a throw of `onSilent` is reported.
@@ -230,8 +233,9 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     return clears.subscribe(listener);
   }
 
-  function expectHeardWithin({ onSilent, silenceMs = SANDBOX_SILENCE_MS }: ExpectHeardWithinParams): () => void {
-    const ask = { onSilent, silenceMs };
+  function expectHeardWithin({ onSilent }: ExpectHeardWithinParams): () => void {
+    // A new object, so an ask with the same `onSilent` as an earlier one is still told from it.
+    const ask = { onSilent };
     load.update({ kind: 'deadlineAsked', ask });
     return () => {
       load.update({ kind: 'deadlineStopped', ask });
@@ -253,15 +257,13 @@ export class SandboxSilentError extends Error {
 
 /** The outcome a `done` carries, its failed step cleaned for a tag, or `null` when it carries none. */
 function toReport({
-  done,
   outcome,
   failedStep,
 }: {
-  done?: boolean;
   outcome?: SandboxLoadOutcome;
   failedStep?: string;
 }): SandboxLoadReport | null {
-  if (done !== true || outcome === undefined) {
+  if (outcome === undefined) {
     return null;
   }
   if (isLoadedOutcome(outcome) || failedStep === undefined || !FAILED_STEP_RE.test(failedStep)) {
