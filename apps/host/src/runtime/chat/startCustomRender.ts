@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProductRendererRenderRequest } from '@parity/truapi';
+import type { ProductRendererRenderRequest, RendererNode } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
@@ -35,23 +35,21 @@ type RenderState =
 
 type RenderEvent =
   | { kind: 'started' }
-  | { kind: 'treeUpdated'; attempt: Attempt; node: Parameters<RenderSink['onUpdate']>[0] }
+  | { kind: 'treeUpdated'; attempt: Attempt; node: RendererNode }
   | { kind: 'renderCompleted'; attempt: Attempt }
   | { kind: 'renderFailed'; attempt: Attempt; error: Error }
   | { kind: 'movedOn' }
   | { kind: 'registered'; productId: string }
   | { kind: 'disposed' };
 
-/**
- * What the sink hears, and the stop of a render or a listener the state let go of. `renderFailed` moves the render on
- * once the sink heard it, so a sink that disposes the render as it hears the error stops it before any next render.
- */
+/** What the sink hears, and the stop of a render or a listener the state let go of. */
 type RenderEffect =
-  | { kind: 'treeUpdated'; node: Parameters<RenderSink['onUpdate']>[0] }
+  | { kind: 'treeUpdated'; node: RendererNode }
   | { kind: 'completed' }
-  | { kind: 'notConnected' }
-  | { kind: 'renderFailed'; error: Error }
-  | { kind: 'released'; stop: () => void };
+  | { kind: 'errored'; error: Error }
+  | { kind: 'released'; stop: () => void }
+  // Sent once the sink heard the error, so a sink that disposes the render as it hears it stops it before any next one.
+  | { kind: 'movedOn' };
 
 type RenderMachine = MachineTypes<RenderState, RenderEvent, RenderEffect>;
 
@@ -100,7 +98,7 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           wait(transition);
-          transition.emitSideEffect({ kind: 'notConnected' });
+          transition.emitSideEffect({ kind: 'errored', error: new Error(NOT_CONNECTED) });
         },
         disposed: disposeRender,
       },
@@ -123,8 +121,9 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           emitState({ kind: 'failing', failed: attempt.connection });
-          emitSideEffect({ kind: 'renderFailed', error });
+          emitSideEffect({ kind: 'errored', error });
           emitSideEffect({ kind: 'released', stop: state.stop });
+          emitSideEffect({ kind: 'movedOn' });
         },
         disposed: disposeRender,
       },
@@ -164,18 +163,14 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
         case 'completed':
           sink.onComplete?.();
           return;
-        case 'notConnected':
-          sink.onError?.(new Error(NOT_CONNECTED));
-          return;
-        case 'renderFailed':
-          try {
-            sink.onError?.(effect.error);
-          } finally {
-            render.update({ kind: 'movedOn' });
-          }
+        case 'errored':
+          sink.onError?.(effect.error);
           return;
         case 'released':
           effect.stop();
+          return;
+        case 'movedOn':
+          render.update({ kind: 'movedOn' });
           return;
       }
     },
