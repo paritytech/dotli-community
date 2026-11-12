@@ -14,7 +14,7 @@ const WALLET_GLOBALS: readonly WalletName[] = ['injectedWeb3', 'polkadot', 'ethe
 /** A wallet global, unregistered until its first write. */
 type Wallet = { kind: 'unregistered' } | { kind: 'registered'; value: unknown };
 
-type Wallets = ReadonlyMap<WalletName, Wallet>;
+type Wallets = Readonly<Record<WalletName, Wallet>>;
 
 /** Reads of a wallet global count only once the extensions have settled. */
 type TrapState = { kind: 'settling'; wallets: Wallets } | { kind: 'ready'; wallets: Wallets };
@@ -33,8 +33,8 @@ const writeWallet: HandlerOf<TrapMachine, 'settling' | 'ready', 'written'> = (
   { name, value },
   { emitState, emitSideEffect },
 ) => {
-  emitState({ ...state, wallets: new Map(state.wallets).set(name, { kind: 'registered', value }) });
-  if (state.wallets.get(name)?.kind === 'registered') {
+  emitState({ ...state, wallets: { ...state.wallets, [name]: { kind: 'registered', value } } });
+  if (state.wallets[name].kind === 'registered') {
     emitSideEffect({ kind: 'accessed', name, action: 'write' });
   }
 };
@@ -46,14 +46,12 @@ export function trapWallets(page: Window & typeof globalThis, report: ReportViol
   const machine = createStateMachine<TrapMachine>({
     initial: {
       kind: 'settling',
-      // An extension that set the global before the checker ran has already registered, so the next write, the
-      // product's included, is reported.
-      wallets: new Map(
-        WALLET_GLOBALS.map(name => {
-          const value = globals[name];
-          return [name, value === undefined ? { kind: 'unregistered' } : { kind: 'registered', value }];
-        }),
-      ),
+      // A global already set registers no more, so the next write, the product's included, is reported.
+      wallets: {
+        injectedWeb3: readWallet(globals.injectedWeb3),
+        polkadot: readWallet(globals.polkadot),
+        ethereum: readWallet(globals.ethereum),
+      },
     },
     handlers: {
       settling: {
@@ -64,8 +62,8 @@ export function trapWallets(page: Window & typeof globalThis, report: ReportViol
       },
       ready: {
         read({ wallets }, { name }, { emitSideEffect }) {
-          const wallet = wallets.get(name);
-          if (wallet?.kind !== 'registered' || wallet.value === undefined) {
+          const wallet = wallets[name];
+          if (wallet.kind !== 'registered' || wallet.value === undefined) {
             return;
           }
           emitSideEffect({ kind: 'accessed', name, action: 'read' });
@@ -86,17 +84,26 @@ export function trapWallets(page: Window & typeof globalThis, report: ReportViol
     machine.update({ kind: 'settled' });
   }, 3000);
   for (const name of WALLET_GLOBALS) {
+    // An extension may have defined its global for good before the checker ran, and that one cannot be trapped.
+    if (Object.getOwnPropertyDescriptor(page, name)?.configurable === false) {
+      continue;
+    }
     Object.defineProperty(page, name, {
       configurable: true,
       enumerable: true,
       get: () => {
         machine.update({ kind: 'read', name });
-        const wallet = machine.state.get().wallets.get(name);
-        return wallet?.kind === 'registered' ? wallet.value : undefined;
+        const wallet = machine.state.get().wallets[name];
+        return wallet.kind === 'registered' ? wallet.value : undefined;
       },
       set: (value: unknown) => {
         machine.update({ kind: 'written', name, value });
       },
     });
   }
+}
+
+/** An extension that set the global before the checker ran has already registered. */
+function readWallet(value: unknown): Wallet {
+  return value === undefined ? { kind: 'unregistered' } : { kind: 'registered', value };
 }
