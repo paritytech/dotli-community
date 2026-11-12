@@ -204,20 +204,10 @@ type FlowEventKind = Exclude<
   'responderMoved' | 'disposed' | 'cancelAsked' | 'roundEnded' | 'doneWithoutOpener'
 >;
 
-/** The steps whose failure leaves the failed view, since their view cannot go on. */
-type FailingKind =
-  | 'readingToOffer'
-  | 'readingToSend'
-  | 'goingBack'
-  | 'readingForContinue'
-  | 'readingAfterPhrase'
-  | 'loggingIn'
-  | 'loginFailing'
-  | 'loggingInThenRetry'
-  | 'finishing'
-  | 'cachingAccount';
-
-/** The step each failing kind reports its failure under. */
+/**
+ * The steps whose failure leaves the failed view, since their view cannot go on, with the step each reports its failure
+ * under.
+ */
 const FAILED_STEP = {
   readingToOffer: 'decide',
   readingToSend: 'decide',
@@ -229,7 +219,9 @@ const FAILED_STEP = {
   loggingInThenRetry: 'pairing',
   finishing: 'finish',
   cachingAccount: 'finish',
-} satisfies Record<FailingKind, StepName>;
+} satisfies Partial<Record<Flow['kind'], StepName>>;
+
+type FailingKind = keyof typeof FAILED_STEP;
 
 /**
  * The sign-in window's flow over `responder`, which starts deciding once the responder knows its opener. An intent
@@ -345,6 +337,20 @@ export function createWindowFlow({
     emitState({ kind: 'goingBack', round, shown });
     update(toStoredRead(reads.readStored()));
   };
+  const offerStored: HandlerOf<FlowMachine, 'readingToOffer' | 'goingBack', 'storedRead'> = (
+    state,
+    { stored },
+    transition,
+  ) => {
+    offerOrPair(state, stored, transition);
+  };
+  const sendStored: HandlerOf<FlowMachine, 'readingToSend' | 'readingForContinue', 'storedRead'> = (
+    state,
+    { stored },
+    transition,
+  ) => {
+    send(state, stored, transition);
+  };
 
   const followFlow = nest<WindowMachine, 'live', FlowMachine, FlowEventKind>({
     find: ({ flow }) => flow,
@@ -370,15 +376,11 @@ export function createWindowFlow({
         },
       },
       readingToOffer: {
-        storedRead(state, { stored }, transition) {
-          offerOrPair(state, stored, transition);
-        },
+        storedRead: offerStored,
         workFailed: failStep,
       },
       readingToSend: {
-        storedRead(state, { stored }, transition) {
-          send(state, stored, transition);
-        },
+        storedRead: sendStored,
         workFailed: failStep,
       },
       clearingFlag: {
@@ -411,9 +413,7 @@ export function createWindowFlow({
         },
       },
       readingForContinue: {
-        storedRead(state, { stored }, transition) {
-          send(state, stored, transition);
-        },
+        storedRead: sendStored,
         workFailed: failStep,
       },
       loggingOut: {
@@ -486,9 +486,7 @@ export function createWindowFlow({
         closePhraseAsked: goBack,
       },
       goingBack: {
-        storedRead(state, { stored }, transition) {
-          offerOrPair(state, stored, transition);
-        },
+        storedRead: offerStored,
         workFailed: failStep,
       },
       savingPhrase: {
@@ -594,19 +592,19 @@ export function createWindowFlow({
     },
     handlers: {
       live: {
-        responderMoved({ flow }, event, transition) {
+        responderMoved(state, event, transition) {
           switch (event.state.kind) {
             case 'refused':
-              transition.emitState({ kind: 'refused', screen: getStopScreen(flow, 'refused') });
+              transition.emitState({ kind: 'refused', screen: getStopScreen(state.flow, 'refused') });
               return;
             case 'answered':
               transition.emitSideEffect({ kind: 'closed' });
               return;
             case 'vetted':
-              transition.update({ kind: 'openerKnown', origin: event.state.origin });
+              followFlow(state, { kind: 'openerKnown', origin: event.state.origin }, transition);
               return;
             case 'no-opener':
-              transition.update({ kind: 'openerKnown', origin: null });
+              followFlow(state, { kind: 'openerKnown', origin: null }, transition);
               return;
             case 'connecting':
               return;
