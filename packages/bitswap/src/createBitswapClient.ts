@@ -127,11 +127,12 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           endFetch(state, cid, transition);
         },
         fetchFailed(state, { cid, runner, error }, transition) {
-          if (state.fetches.get(cid)?.runner !== runner) {
+          const fetch = state.fetches.get(cid);
+          if (fetch?.runner !== runner) {
             return;
           }
           transition.emitSideEffect({ kind: 'reject', caller: runner, error });
-          passFetchOn(state, cid, transition);
+          passFetchOn(state, { cid, queued: fetch.queued }, transition);
         },
         callerAborted(state, { cid, caller }, transition) {
           const fetch = state.fetches.get(cid);
@@ -141,7 +142,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           const error = createAbortError(cid, caller.signal?.reason);
           if (fetch.runner === caller) {
             transition.emitSideEffect({ kind: 'reject', caller, error });
-            passFetchOn(state, cid, transition);
+            passFetchOn(state, { cid, queued: fetch.queued }, transition);
             return;
           }
           if (!fetch.queued.includes(caller)) {
@@ -215,8 +216,12 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
   };
 
   /** Hands the fetch of `cid` to its next queued caller, who fetches again on its own budget, or ends it. */
-  function passFetchOn(state: Dialed, cid: string, transition: Transition<ClientMachine>): void {
-    const [next, ...rest] = state.fetches.get(cid)?.queued ?? [];
+  function passFetchOn(
+    state: Dialed,
+    { cid, queued }: { cid: string; queued: readonly Caller[] },
+    transition: Transition<ClientMachine>,
+  ): void {
+    const [next, ...rest] = queued;
     if (next === undefined) {
       endFetch(state, cid, transition);
       return;
