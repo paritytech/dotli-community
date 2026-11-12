@@ -84,13 +84,15 @@ export type ChainPool = {
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
    * and its later halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
    * `connectionId` already has a session. Throws when the chain halts while the session opens, with the halt's error as
-   * the cause.
+   * the cause. Called from inside a watcher or a status listener, it answers `null` for a chain the pool has not built
+   * yet, so such a caller asks after its callback returns.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
    * A provider whose connections are leases on the chain that take the rebuilt chain after a halt, or `null` when this
    * context cannot reach it. Calling the provider throws when no transport can be had for the chain at that call.
-   * `holder` names the lease in debug logs.
+   * `holder` names the lease in debug logs. Called from inside a watcher or a status listener, it answers `null` for a
+   * chain the pool has not built yet, so such a caller asks after its callback returns.
    */
   getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
@@ -285,17 +287,11 @@ export function createChainPool({
   };
 
   // A watch with no watcher left stops its follow, or its wait to follow again.
-  const leaveWhenUnwatched: HandlerOf<WatchMachine, 'starting' | 'open' | 'refused', 'syncDue'> = (
-    watch,
-    { key },
-    { emitState, emitSideEffect },
-  ) => {
+  const leaveWhenUnwatched: HandlerOf<WatchMachine, 'open' | 'refused', 'syncDue'> = (watch, { key }, transition) => {
     if (watchers.size > 0) {
       return;
     }
-    emitState({ kind: 'off', chain: watch.chain });
-    emitSideEffect({ kind: 'unfollowed', key });
-    emitSideEffect({ kind: 'endWatch', watch });
+    stopWatch(watch, key, transition);
   };
 
   // The watchers' follow runs exactly while the chain is held and watched.
@@ -335,7 +331,7 @@ export function createChainPool({
         syncDue(watch, event, transition) {
           // The last watcher may have left while the follow opened, such as one that a status change it opened told.
           if (watchers.size === 0) {
-            leaveWhenUnwatched(watch, event, transition);
+            stopWatch(watch, event.key, transition);
             return;
           }
           // Started here, since a start that throws leaves the watch off.
@@ -874,6 +870,13 @@ export function createChainPool({
         watch.retry.abort();
         return;
     }
+  }
+
+  /** Turns the watch off, and stops its follow or its wait to follow again. */
+  function stopWatch(watch: Watch, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
+    emitState({ kind: 'off', chain: watch.chain });
+    emitSideEffect({ kind: 'unfollowed', key });
+    emitSideEffect({ kind: 'endWatch', watch });
   }
 
   /** Holds the watchers' follow as refused until its gate's wait ends. */
