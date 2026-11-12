@@ -12,7 +12,8 @@ import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 
 import type { HostMessages } from './createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
-import { runSandbox, type RunSandboxDeps, type SandboxPage, type SandboxStep } from './runSandbox.js';
+import type { SandboxPage } from './readSandboxContract.js';
+import { runSandbox, type RunSandboxDeps, type SandboxStep } from './runSandbox.js';
 
 type Failure = {
   step: SandboxStep;
@@ -530,7 +531,7 @@ describe('runSandbox broken dependencies', () => {
     ]);
   });
 
-  it('As an operator, I watch the gateway host lookup throw while naming an unreachable gateway and see it counted as a defect of the run', async () => {
+  it('As a visitor whose gateway host lookup throws, I still end the host loading screen, and the operator sees the throw', async () => {
     // Given a load that fails on an unreachable gateway, and a gateway host lookup that throws
     const sandbox = createHarness([
       {
@@ -543,16 +544,15 @@ describe('runSandbox broken dependencies', () => {
     sandbox.deps.getGatewayHost = () => {
       throw broken;
     };
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
 
     // When
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
-    // Then the load's failure is reported and the throw is a defect of the run
+    // Then the host hears the failure, the load's failure is reported, and the throw is a defect of showing it
+    expect(sandbox.events).toContain('failed content_fetch');
     expect(captured).toMatchObject([
       { context: { step: 'content_fetch' } },
-      { error: broken, context: { step: 'run_transition' } },
+      { error: broken, context: { step: 'failure_show' } },
     ]);
-    expect(sentry.counted('sandbox.run_transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 });
