@@ -163,7 +163,7 @@ type PermissionsEvent =
   | { kind: 'statusesRead'; label: string; statuses: readonly PermissionStatus[] }
   | { kind: 'statusesFailed'; label: string; error: unknown }
   | { kind: 'sent'; failing: readonly EnforceablePermissionName[]; errors: readonly unknown[] }
-  | { kind: 'retryDue'; timer: unknown }
+  | { kind: 'retryDue' }
   | { kind: 'promptClosed'; prompt: AbortSignal };
 
 type PermissionsEffect =
@@ -171,7 +171,17 @@ type PermissionsEffect =
   | { kind: 'readFailed'; error: unknown }
   | { kind: 'changed' }
   | { kind: 'changeFailed'; errors: readonly unknown[] }
-  | { kind: 'announced'; change: PermissionsChange };
+  | { kind: 'announced'; change: PermissionsChange }
+  | { kind: 'refreshed'; waiters: readonly (() => void)[] }
+  | {
+      kind: 'writeSettled';
+      job: ChangeJob | DecisionJob;
+      failed: readonly EnforceablePermissionName[];
+      errors: readonly unknown[];
+    }
+  | { kind: 'decisionAborted'; job: DecisionJob }
+  | { kind: 'promptUnheard'; stopListening: () => void }
+  | { kind: 'retryCancelled'; timer: unknown };
 
 type PermissionsMachine = MachineTypes<PermissionsState, PermissionsEvent, PermissionsEffect>;
 
@@ -198,10 +208,10 @@ export function createProductPermissions({ registry, product, timers = realTimer
   const queueChange: HandlerOf<PermissionsMachine, 'reading' | 'stopping' | 'rereading', 'changeAsked'> = (
     state,
     { job },
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     emitState({ ...state, queue: withChange(state.queue, job) });
-    dropQueuedChanges(state.queue);
+    dropQueuedChanges(state.queue, emitSideEffect);
   };
 
   /** Reads on every load, a reload of the same product included. */
@@ -267,11 +277,11 @@ export function createProductPermissions({ registry, product, timers = realTimer
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
         productShown: followProduct,
-        changeAsked(state, { job }, { emitState }) {
+        changeAsked(state, { job }, { emitState, emitSideEffect }) {
           const queue = withChange(state.queue, job);
           // A newer change supersedes a running one, whose writes already sent still finish.
           emitState(state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue });
-          dropQueuedChanges(state.queue);
+          dropQueuedChanges(state.queue, emitSideEffect);
         },
         promptClosed(state, { prompt }, { emitState }) {
           if (state.job.kind !== 'decision' || state.job.prompt !== prompt) {
@@ -286,7 +296,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
             return;
           }
           const timer = timers.setTimeout(() => {
-            transition.update({ kind: 'retryDue', timer });
+            transition.update({ kind: 'retryDue' });
           }, 300);
           transition.emitState({ ...state, kind: 'retrying', failing, errors, timer });
         },
@@ -309,23 +319,20 @@ export function createProductPermissions({ registry, product, timers = realTimer
           if (state.job.kind === 'change') {
             // A newer change supersedes a running one, which makes no more attempts.
             finishWrite({ ...state, queue }, transition);
-            timers.clearTimeout(state.timer);
+            transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
           } else {
             transition.emitState({ ...state, queue });
           }
-          dropQueuedChanges(state.queue);
+          dropQueuedChanges(state.queue, transition.emitSideEffect);
         },
         promptClosed(state, { prompt }, transition) {
           if (state.job.kind !== 'decision' || state.job.prompt !== prompt) {
             return;
           }
           finishWrite(state, transition);
-          timers.clearTimeout(state.timer);
+          transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
         },
-        retryDue(state, { timer }, transition) {
-          if (timer !== state.timer) {
-            return;
-          }
+        retryDue(state, _event, transition) {
           send({ ...state, attempt: state.attempt + 1 }, transition);
         },
       },
@@ -365,6 +372,23 @@ export function createProductPermissions({ registry, product, timers = realTimer
           return;
         case 'announced':
           changes.emit(effect.change);
+          return;
+        case 'refreshed':
+          for (const waiter of effect.waiters) {
+            waiter();
+          }
+          return;
+        case 'writeSettled':
+          settleWrite(effect.job, effect.failed, effect.errors);
+          return;
+        case 'decisionAborted':
+          effect.job.reject(toBlockingModalAbortError(effect.job.prompt.reason));
+          return;
+        case 'promptUnheard':
+          effect.stopListening();
+          return;
+        case 'retryCancelled':
+          timers.clearTimeout(effect.timer);
           return;
       }
     },
@@ -491,9 +515,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
     const label = getLabelOnShow();
     if (label === null) {
       startNext(store, transition);
-      for (const waiter of job.waiters) {
-        waiter();
-      }
+      transition.emitSideEffect({ kind: 'refreshed', waiters: job.waiters });
       return;
     }
     transition.emitState({ kind: 'reading', label, job, ...store });
@@ -518,12 +540,10 @@ export function createProductPermissions({ registry, product, timers = realTimer
     startNext({ shown, queue: state.queue }, transition);
     switch (state.kind) {
       case 'reading':
-        for (const waiter of state.job.waiters) {
-          waiter();
-        }
+        transition.emitSideEffect({ kind: 'refreshed', waiters: state.job.waiters });
         return;
       case 'rereading':
-        settleWrite(state.job, state.failed, state.errors);
+        transition.emitSideEffect({ kind: 'writeSettled', job: state.job, failed: state.failed, errors: state.errors });
         return;
     }
   }
@@ -538,7 +558,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
         // With the statuses unread nothing is known to match, so every target is written.
         if (before !== null && names.every(name => getPermissionStatus(before, name) === targets[name])) {
           startNext(store, transition);
-          job.settle({ failed: [] });
+          transition.emitSideEffect({ kind: 'writeSettled', job, failed: [], errors: [] });
           return;
         }
         send({ job, attempt: 1, failing: names, written: { names, before }, ...store }, transition);
@@ -546,7 +566,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       case 'decision': {
         if (job.prompt.aborted) {
           startNext(store, transition);
-          job.reject(toBlockingModalAbortError(job.prompt.reason));
+          transition.emitSideEffect({ kind: 'decisionAborted', job });
           return;
         }
         const { prompt } = job;
@@ -594,8 +614,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
     const { emitState, emitSideEffect, update } = transition;
     if (job.kind === 'decision' && job.prompt.aborted) {
       startNext(store, transition);
-      job.stopListening();
-      job.reject(toBlockingModalAbortError(job.prompt.reason));
+      emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
+      emitSideEffect({ kind: 'decisionAborted', job });
       return;
     }
     const targets = getTargets(job);
@@ -640,10 +660,10 @@ export function createProductPermissions({ registry, product, timers = realTimer
       readStatuses(label, update);
     } else {
       startNext({ shown, queue: store.queue }, transition);
-      settleWrite(job, failing, errors);
+      emitSideEffect({ kind: 'writeSettled', job, failed: failing, errors });
     }
     if (job.kind === 'decision') {
-      job.stopListening();
+      emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
     }
   }
 }
@@ -700,7 +720,7 @@ function getPermissionStatus(statuses: readonly PermissionStatus[], name: Enforc
 
 /** Settles a write run's job with what still failed. */
 function settleWrite(
-  job: RunningWrite,
+  job: ChangeJob | DecisionJob,
   failed: readonly EnforceablePermissionName[],
   errors: readonly unknown[],
 ): void {
@@ -757,10 +777,13 @@ function withChange(queue: readonly Job[], job: ChangeJob): readonly Job[] {
 }
 
 /** Settles the change queued in `queue`, which a newer one dropped, as having nothing left to write. */
-function dropQueuedChanges(queue: readonly Job[]): void {
+function dropQueuedChanges(
+  queue: readonly Job[],
+  emitSideEffect: Transition<PermissionsMachine>['emitSideEffect'],
+): void {
   for (const job of queue) {
     if (job.kind === 'change') {
-      job.settle({ failed: [] });
+      emitSideEffect({ kind: 'writeSettled', job, failed: [], errors: [] });
     }
   }
 }
