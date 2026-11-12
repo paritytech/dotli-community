@@ -6,15 +6,7 @@
 // answer at once, and an event sent inside a transition waits until that transition ends.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createStateMachine,
-  listen,
-  realTimers,
-  type HandlerOf,
-  type MachineTypes,
-  type Timers,
-  type Transition,
-} from '@dotli/shared';
+import { createStateMachine, realTimers, type MachineTypes, type Timers, type Transition } from '@dotli/shared';
 import { flush as flushSolid } from 'solid-js';
 
 const report = createReporter({ flow: 'ui' });
@@ -38,12 +30,13 @@ type PressParams = {
 
 type Settle = (taken: boolean) => void;
 
+/** `leaving` are the closing sheets held up until the hand-off ends. `waiting` stops a press's wait on its click. */
 type HandOffState =
   | { kind: 'idle' }
   /** A press closed the top sheet, and its click or the next task ends the hand-off. */
-  | { kind: 'pressed'; leaving: readonly Settle[]; stopWaiting: () => void }
+  | { kind: 'pressed'; leaving: readonly Settle[]; waiting: AbortController }
   /** A sheet opened in the leaving sheets' place while the press waits on its click or the next task. */
-  | { kind: 'pressTaken'; leaving: readonly Settle[]; stopWaiting: () => void }
+  | { kind: 'pressTaken'; leaving: readonly Settle[]; waiting: AbortController }
   /** An activation runs, and no sheet has opened in the leaving sheets' place yet. */
   | { kind: 'pending'; leaving: readonly Settle[] }
   /** A sheet opened in their place. */
@@ -59,36 +52,21 @@ type HandOffEvent =
   | { kind: 'finished' }
   | { kind: 'failed' };
 
-/** A closing sheet is told whether a sheet took its place. One effect each, so a throwing sheet leaves the rest told. */
-type HandOffEffect = () => void;
+/** One `settle` per closing sheet, so a sheet that throws on hearing it leaves the rest told. */
+type HandOffEffect =
+  | { kind: 'waitForClick'; waiting: AbortController }
+  | { kind: 'stopWaiting'; waiting: AbortController }
+  | { kind: 'settle'; settle: Settle; taken: boolean };
 
 type HandOffMachine = MachineTypes<HandOffState, HandOffEvent, HandOffEffect>;
+
+type PressState = Extract<HandOffState, { kind: 'pressed' | 'pressTaken' }>;
 
 /** A page's sheet hand-off, as its factory builds it. */
 export type SheetHandOff = ReturnType<typeof createSheetHandOff>;
 
 /** A sheet hand-off: a closing sheet stays up until it hears whether a sheet opened in its place. */
 export function createSheetHandOff({ flush = flushSolid, target, timers = realTimers }: Params = {}) {
-  /** Holds a closing sheet up until the hand-off ends. */
-  const addLeaving: HandlerOf<HandOffMachine, 'pressed' | 'pressTaken' | 'pending' | 'taken', 'held'> = (
-    state,
-    { settle },
-    { emitState },
-  ) => {
-    emitState({ ...state, leaving: [...state.leaving, settle] });
-  };
-  /** Ends a press whose sheet stays on top with none leaving at once. A sheet still leaving keeps it waiting. */
-  const cutPress: HandlerOf<HandOffMachine, 'pressed' | 'pressTaken', 'pressCut'> = (
-    { leaving, stopWaiting },
-    _event,
-    { emitState },
-  ) => {
-    if (leaving.length > 0) {
-      return;
-    }
-    emitState({ kind: 'idle' });
-    stopWaiting();
-  };
   const machine = createStateMachine<HandOffMachine>({
     initial: { kind: 'idle' },
     handlers: {
@@ -96,29 +74,15 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
         begun(_state, _event, { emitState }) {
           emitState({ kind: 'pending', leaving: [] });
         },
-        pressed(_state, _event, { emitState, update }) {
-          // A DOM event and a timer fire from the event loop, outside any transition, so each may flush.
-          function endPress(): void {
-            update({ kind: 'pressEnded' });
-            flush();
-            update({ kind: 'finished' });
-            flush();
-          }
-          const stopListening = listen({ target: target ?? window, type: 'click', handler: endPress });
-          const timer = timers.setTimeout(endPress, 0);
-          emitState({
-            kind: 'pressed',
-            leaving: [],
-            stopWaiting: () => {
-              stopListening();
-              timers.clearTimeout(timer);
-            },
-          });
+        pressed(_state, _event, { emitState, emitSideEffect }) {
+          const waiting = new AbortController();
+          emitState({ kind: 'pressed', leaving: [], waiting });
+          emitSideEffect({ kind: 'waitForClick', waiting });
         },
       },
       pressed: {
-        begun: enterPending,
-        pressEnded: enterPending,
+        begun: endWait,
+        pressEnded: endWait,
         pressCut: cutPress,
         // A bar control's click handler can open its sheet in a flush before the click reaches the target.
         opened(state, _event, { emitState }) {
@@ -127,8 +91,8 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
         held: addLeaving,
       },
       pressTaken: {
-        begun: enterTaken,
-        pressEnded: enterTaken,
+        begun: endWait,
+        pressEnded: endWait,
         pressCut: cutPress,
         held: addLeaving,
       },
@@ -137,22 +101,40 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
           emitState({ kind: 'taken', leaving });
         },
         held: addLeaving,
-        finished: endUntaken,
-        failed: endUntaken,
+        finished: endHandOff,
+        failed: endHandOff,
       },
       taken: {
         held: addLeaving,
-        finished({ leaving }, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'idle' });
-          for (const settle of leaving) {
-            emitSideEffect(() => settle(true));
-          }
-        },
-        failed: endUntaken,
+        finished: endHandOff,
+        failed: endHandOff,
       },
     },
     onEffect: effect => {
-      effect();
+      switch (effect.kind) {
+        case 'waitForClick': {
+          // A DOM event and a timer fire from the event loop, outside any transition, so each may flush.
+          const endPress = (): void => {
+            machine.update({ kind: 'pressEnded' });
+            flush();
+            machine.update({ kind: 'finished' });
+            flush();
+          };
+          const { signal } = effect.waiting;
+          (target ?? window).addEventListener('click', endPress, { signal });
+          const timer = timers.setTimeout(endPress, 0);
+          signal.addEventListener('abort', () => {
+            timers.clearTimeout(timer);
+          });
+          return;
+        }
+        case 'stopWaiting':
+          effect.waiting.abort();
+          return;
+        case 'settle':
+          effect.settle(effect.taken);
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -228,37 +210,50 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
     machine.update({ kind: 'held', settle });
     return machine.state.get() !== before;
   }
+}
 
-  /** Stops the press's wait, and lets the activation it waited on run. */
-  function enterPending(
-    { leaving, stopWaiting }: Extract<HandOffState, { kind: 'pressed' }>,
-    _event: Extract<HandOffEvent, { kind: 'begun' | 'pressEnded' }>,
-    { emitState }: Transition<HandOffMachine>,
-  ): void {
-    emitState({ kind: 'pending', leaving });
-    stopWaiting();
+/** Holds a closing sheet up until the hand-off ends. */
+function addLeaving(
+  state: Exclude<HandOffState, { kind: 'idle' }>,
+  { settle }: Extract<HandOffEvent, { kind: 'held' }>,
+  { emitState }: Transition<HandOffMachine>,
+): void {
+  emitState({ ...state, leaving: [...state.leaving, settle] });
+}
+
+/** Ends a press's wait and lets the activation it waited on run. A press a sheet already took goes on as taken. */
+function endWait(
+  { kind, leaving, waiting }: PressState,
+  _event: Extract<HandOffEvent, { kind: 'begun' | 'pressEnded' }>,
+  { emitState, emitSideEffect }: Transition<HandOffMachine>,
+): void {
+  emitState({ kind: kind === 'pressTaken' ? 'taken' : 'pending', leaving });
+  emitSideEffect({ kind: 'stopWaiting', waiting });
+}
+
+/** Ends a press whose sheet stays on top with none leaving at once. A sheet still leaving keeps it waiting. */
+function cutPress(
+  { leaving, waiting }: PressState,
+  _event: Extract<HandOffEvent, { kind: 'pressCut' }>,
+  { emitState, emitSideEffect }: Transition<HandOffMachine>,
+): void {
+  if (leaving.length > 0) {
+    return;
   }
+  emitState({ kind: 'idle' });
+  emitSideEffect({ kind: 'stopWaiting', waiting });
+}
 
-  /** Stops the press's wait, with a sheet already in the leaving sheets' place. */
-  function enterTaken(
-    { leaving, stopWaiting }: Extract<HandOffState, { kind: 'pressTaken' }>,
-    _event: Extract<HandOffEvent, { kind: 'begun' | 'pressEnded' }>,
-    { emitState }: Transition<HandOffMachine>,
-  ): void {
-    emitState({ kind: 'taken', leaving });
-    stopWaiting();
-  }
-
-  /** Ends the hand-off with no sheet in the leaving sheets' place, so each closes as without one. */
-  function endUntaken(
-    { leaving }: Extract<HandOffState, { kind: 'pending' | 'taken' }>,
-    _event: Extract<HandOffEvent, { kind: 'finished' | 'failed' }>,
-    { emitState, emitSideEffect }: Transition<HandOffMachine>,
-  ): void {
-    emitState({ kind: 'idle' });
-    for (const settle of leaving) {
-      emitSideEffect(() => settle(false));
-    }
+/** Ends the hand-off and tells each closing sheet whether a sheet took its place. A failed activation leaves it untaken. */
+function endHandOff(
+  { kind, leaving }: Extract<HandOffState, { kind: 'pending' | 'taken' }>,
+  event: Extract<HandOffEvent, { kind: 'finished' | 'failed' }>,
+  { emitState, emitSideEffect }: Transition<HandOffMachine>,
+): void {
+  emitState({ kind: 'idle' });
+  const taken = kind === 'taken' && event.kind === 'finished';
+  for (const settle of leaving) {
+    emitSideEffect({ kind: 'settle', settle, taken });
   }
 }
 
