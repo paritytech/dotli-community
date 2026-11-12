@@ -128,6 +128,25 @@ describe('createTopbarMorph', () => {
     // Then
     expect(running).toBe(false);
   });
+
+  it("As a user whose bar was replaced, I see the first bar release late mid-morph and the new bar's morph still runs and settles", () => {
+    // Given a second bar bound in place of the first, its morph running, on an engine that cannot say
+    const morph = createTopbarMorph();
+    const onSettled = vi.fn();
+    const first = createBar();
+    const second = createBar();
+    const releaseFirst = morph.setBar(first, vi.fn());
+    morph.setBar(second, onSettled);
+    runMorph(second);
+
+    // When the first bar releases, and then the morph ends
+    releaseFirst();
+    const running = morph.running();
+    endMorph(second);
+
+    // Then
+    expect({ running, settled: onSettled.mock.calls.length }).toEqual({ running: true, settled: 1 });
+  });
 });
 
 /** Builds a bar that only dispatches its own transitions, as the morph listens for them. */

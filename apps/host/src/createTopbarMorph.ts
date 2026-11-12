@@ -7,19 +7,13 @@ import { createMorphCount } from './createMorphCount.js';
 
 export type TopbarMorph = ReturnType<typeof createTopbarMorph>;
 
+/** The bound bar and the count of its own running morphs, which goes with it, so another bar's release leaves it be. */
+type Binding = { bar: HTMLElement; morphs: ReturnType<typeof createMorphCount> };
+
 /** Builds the bar's morph with no bar bound, so it never runs until one is. Building it reads no browser global. */
 export function createTopbarMorph() {
   const ends = new Set<() => void>();
-  let morphBar: HTMLElement | null = null;
-  const morphs = createMorphCount({ areTransitionsRunning: areBarTransitionsRunning });
-
-  function areBarTransitionsRunning(): boolean | undefined {
-    const bar = morphBar;
-    if (bar === null || typeof bar.getAnimations !== 'function') {
-      return undefined;
-    }
-    return bar.getAnimations().some(animation => 'transitionProperty' in animation);
-  }
+  let bound: Binding | null = null;
 
   function onEnd(listener: () => void): () => void {
     ends.add(listener);
@@ -30,15 +24,19 @@ export function createTopbarMorph() {
   }
 
   function setBar(bar: HTMLElement, onSettled: () => void): () => void {
-    morphBar = bar;
-    // Children's transitions bubble up here and are not the bar's box.
+    const binding: Binding = {
+      bar,
+      morphs: createMorphCount({ areTransitionsRunning: () => areBarTransitionsRunning(bar) }),
+    };
+    bound = binding;
+    // Children's transitions bubble up here and are not the bar's box. A bar replaced by another no longer morphs.
     function onMorphRun(event: Event): void {
-      if (event.target === bar) {
-        morphs.start();
+      if (event.target === bar && bound === binding) {
+        binding.morphs.start();
       }
     }
     function onMorphEnd(event: Event): void {
-      if (event.target !== bar || !morphs.end()) {
+      if (event.target !== bar || bound !== binding || !binding.morphs.end()) {
         return;
       }
       onSettled();
@@ -50,9 +48,8 @@ export function createTopbarMorph() {
       bar.removeEventListener('transitionrun', onMorphRun);
       bar.removeEventListener('transitionend', onMorphEnd);
       bar.removeEventListener('transitioncancel', onMorphEnd);
-      morphs.reset();
-      if (morphBar === bar) {
-        morphBar = null;
+      if (bound === binding) {
+        bound = null;
       }
     }
     bar.addEventListener('transitionrun', onMorphRun);
@@ -63,19 +60,26 @@ export function createTopbarMorph() {
 
   return {
     /** Returns whether a fold or reveal still resizes the bound bar. Never throws. */
-    running: (): boolean => morphs.isRunning(),
+    running: (): boolean => bound?.morphs.isRunning() ?? false,
     /**
      * Calls `listener` each time the last running morph ends, after the bound bar's `onSettled`. Returns its removal.
      * Never throws.
      */
     onEnd,
     /**
-     * Binds `bar`, whose own transitions are the morph, in place of any bar bound before. `onSettled` runs as the last
-     * running morph ends, before the `onEnd` listeners. Returns the release, which clears the count and unbinds `bar`
-     * while it is still the bound one. Never throws.
+     * Binds `bar`, whose own transitions are the morph, in place of any bar bound before, with a count of its own.
+     * `onSettled` runs as the last running morph ends, before the `onEnd` listeners. Returns the release, which unbinds
+     * `bar` and its count while it is still the bound one. Never throws.
      */
     setBar,
   };
+}
+
+function areBarTransitionsRunning(bar: HTMLElement): boolean | undefined {
+  if (typeof bar.getAnimations !== 'function') {
+    return undefined;
+  }
+  return bar.getAnimations().some(animation => 'transitionProperty' in animation);
 }
 
 /** The page's bar morph. */
