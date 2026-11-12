@@ -4,8 +4,8 @@
 // Runs first in a product page of a checker build. It reports each use of an API a product should reach only through
 // the host, and lets the call run. The product's HTML inlines it bundled with what it imports.
 
-import { createStateMachine, nest, type MachineTypes } from '@dotli/shared';
 import type { ReportViolation } from './createParentReporter.js';
+import { trapWallets } from './trapWallets.js';
 
 /** The product page, as much of it as the checker wraps. */
 export type CheckedPage = Window & typeof globalThis;
@@ -33,10 +33,6 @@ type WrapStorageParams = {
   /** Called with each use of the storage, before it runs. */
   report: ReportViolation;
 };
-
-type WalletName = 'injectedWeb3' | 'polkadot' | 'ethereum';
-
-const WALLET_GLOBALS: readonly WalletName[] = ['injectedWeb3', 'polkadot', 'ethereum'];
 
 /** Wraps every API the checker watches on `page`, each reporting to `report` and then running. Never throws. */
 export function installSandboxChecker(page: CheckedPage, report: ReportViolation): void {
@@ -309,97 +305,4 @@ function wrapCookie(page: CheckedPage, report: ReportViolation): void {
       set.call(document, value);
     },
   });
-}
-
-/** A wallet global, unregistered until its first write. */
-type Wallet = { kind: 'unregistered' } | { kind: 'registered'; value: unknown };
-
-type Wallets = ReadonlyMap<WalletName, Wallet>;
-
-/** Reads of a wallet global count only once the extensions have settled. */
-type TrapState = { kind: 'settling'; wallets: Wallets } | { kind: 'ready'; wallets: Wallets };
-
-type TrapEvent =
-  { kind: 'settled' } | { kind: 'read'; name: WalletName } | { kind: 'written'; name: WalletName; value: unknown };
-
-/** A use of a wallet global the checker reports. */
-type TrapEffect = { kind: 'accessed'; name: WalletName; action: 'read' | 'write' };
-
-type TrapMachine = MachineTypes<TrapState, TrapEvent, TrapEffect>;
-
-type WalletMachine = MachineTypes<Wallet, TrapEvent, TrapEffect>;
-
-/** Extensions write a wallet global once to register, so only later writes, and reads once they settle, count. */
-function trapWallets(page: CheckedPage, report: ReportViolation): void {
-  const globals = getGlobals(page);
-  const initial = new Map<WalletName, Wallet>();
-  for (const name of WALLET_GLOBALS) {
-    const value = globals[name];
-    // An extension that set the global before the checker ran has already registered, so the next write, the
-    // product's included, is reported.
-    initial.set(name, value === undefined ? { kind: 'unregistered' } : { kind: 'registered', value });
-  }
-  const writeWallet = nest<TrapMachine, 'settling' | 'ready', WalletMachine, 'written'>({
-    find: ({ wallets }, { name }) => wallets.get(name) ?? null,
-    store: (state, { name }, next) => ({ ...state, wallets: new Map(state.wallets).set(name, next) }),
-    handlers: {
-      unregistered: {
-        written(_wallet, { value }, { emitState }) {
-          emitState({ kind: 'registered', value });
-        },
-      },
-      registered: {
-        written(_wallet, { name, value }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'registered', value });
-          emitSideEffect({ kind: 'accessed', name, action: 'write' });
-        },
-      },
-    },
-  });
-  const machine = createStateMachine<TrapMachine>({
-    initial: { kind: 'settling', wallets: initial },
-    handlers: {
-      settling: {
-        settled({ wallets }, _event, { emitState }) {
-          emitState({ kind: 'ready', wallets });
-        },
-        written: writeWallet,
-      },
-      ready: {
-        read({ wallets }, { name }, { emitSideEffect }) {
-          const wallet = wallets.get(name);
-          if (wallet?.kind !== 'registered' || wallet.value === undefined) {
-            return;
-          }
-          emitSideEffect({ kind: 'accessed', name, action: 'read' });
-        },
-        written: writeWallet,
-      },
-    },
-    onEffect: ({ name, action }) => {
-      report(`Direct wallet access (${name})`, { details: { action } });
-    },
-    onError: error => {
-      // eslint-disable-next-line no-console -- the checker runs in the product's page, which has no logger
-      console.error('Failed to trap a wallet global:', error);
-    },
-  });
-  // Wallet extensions write their globals while they bootstrap, so reads count only after this long.
-  page.setTimeout(() => {
-    machine.update({ kind: 'settled' });
-  }, 3000);
-  for (const name of WALLET_GLOBALS) {
-    Object.defineProperty(page, name, {
-      configurable: true,
-      enumerable: true,
-      get: () => {
-        machine.update({ kind: 'read', name });
-        const wallet = machine.state.get().wallets.get(name);
-        return wallet?.kind === 'registered' ? wallet.value : undefined;
-      },
-      set: (next: unknown) => {
-        machine.update({ kind: 'written', name, value: next });
-      },
-    });
-  }
 }

@@ -3,6 +3,8 @@
 
 // The sandbox rebuilds these by name across postMessage, so callers branch on `error.name`, not `instanceof`.
 
+import { setErrorName } from '@dotli/shared';
+
 export const BITSWAP_ERRORS = {
   /** The caller has no connection for the Bulletin chain. */
   UNAVAILABLE: 'BitswapUnavailableError',
@@ -17,6 +19,15 @@ export const BITSWAP_ERRORS = {
 export function withCode<E extends Error>(err: E, code: number): E {
   (err as { code?: number }).code = code;
   return err;
+}
+
+/** The error a fetch of `cid` stops with when its caller aborts. */
+export function createAbortError(cid: string, cause?: unknown): Error {
+  return setErrorName(
+    new Error(`bitswap_v1_get(${cid}): aborted`, cause === undefined ? undefined : { cause }),
+    // Marks a local abort by name, since any numeric code outside the JSON-RPC reserved range could be the chain's.
+    'AbortError',
+  );
 }
 
 /** The JSON-RPC error code an error carries, or null. */

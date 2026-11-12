@@ -8,11 +8,12 @@ import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { CONTENT_ERRORS } from '@dotli/content';
 import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
-import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 
 import type { HostMessages } from './createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
-import { runSandbox, type RunSandboxDeps, type SandboxPage, type SandboxStep } from './runSandbox.js';
+import type { SandboxPage } from './readSandboxContract.js';
+import type { SandboxStep } from './describeSandboxFailure.js';
+import { runSandbox, type RunSandboxDeps } from './runSandbox.js';
 
 type Failure = {
   step: SandboxStep;
@@ -37,6 +38,8 @@ type Harness = {
   retry: () => Promise<void>;
   /** The host accepts the recover ask, which settles the run's wait for it. */
   accept: () => void;
+  /** The wait for the host's acceptance passes its deadline with `reason`. */
+  giveUp: (reason: Error) => void;
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
@@ -56,15 +59,12 @@ function createSandboxUrl({
 }
 
 /**
- * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `timers` are the timers its
- * wait for the host runs on, and `askRerender` replaces its ask to the host when given.
+ * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `askRerender` replaces its ask to
+ * the host when given.
  */
 function createHarness(
   outcomes: LoadOutcome[],
-  {
-    timers = createManualTimers(),
-    askRerender,
-  }: { timers?: ManualTimers; askRerender?: HostMessages['askRerender'] } = {},
+  { askRerender }: { askRerender?: HostMessages['askRerender'] } = {},
 ): Harness {
   const loads: LoadInput[] = [];
   const failures: Failure[] = [];
@@ -105,18 +105,12 @@ function createHarness(
         events.push('retrying');
       },
     },
-    waitForRecoverAccepted(signal) {
+    waitForRecoverAccepted() {
       events.push('wait');
-      signal.addEventListener('abort', () => {
-        events.push('wait aborted');
-        acceptance.reject(signal.reason);
-      });
       return acceptance.promise;
     },
     getGatewayHost: () => 'ipfs.example',
     baseDomain: 'dot.li',
-    recoverTimeoutMs: 6_000,
-    timers,
   };
   return {
     deps,
@@ -136,6 +130,9 @@ function createHarness(
     retry: retryLatest,
     accept: () => {
       acceptance.resolve(undefined);
+    },
+    giveUp: reason => {
+      acceptance.reject(reason);
     },
   };
 
@@ -249,33 +246,31 @@ describe('runSandbox contract', () => {
 
   it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see the load fail if it never accepts my ask', async () => {
     // Given a reload that stripped the params
-    const timers = createManualTimers();
-    const sandbox = createHarness([{ outcome: 'loaded' }], { timers });
+    const sandbox = createHarness([{ outcome: 'loaded' }]);
     sandbox.start(toFramedPage('https://myapp.app.localhost/'));
     const failuresBeforeTheWait = sandbox.failures.length;
+    const deadline = new Error('The host did not accept the recover ask in time');
 
-    // When the host does not answer
-    await timers.advance(6_000);
+    // When the host does not answer before the wait's deadline
+    sandbox.giveUp(deadline);
     await sandbox.run.await();
 
     // Then
-    expect(sandbox.events).toEqual(['ask rerender', 'wait', 'wait aborted', 'failed contract_rerender']);
+    expect(sandbox.events).toEqual(['ask rerender', 'wait', 'failed contract_rerender']);
     expect(failuresBeforeTheWait).toBe(0);
     expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
     expect(captured).toMatchObject([
-      { error: { cause: { name: 'SandboxContractError', recoverable: true } }, context: { step: 'contract_rerender' } },
+      { error: { name: 'SandboxContractError', cause: deadline }, context: { step: 'contract_rerender' } },
     ]);
   });
 
-  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see no failure once it accepted, however long the rebuild takes', async () => {
-    // Given a reload that stripped the params, and the host's acceptance of the recover ask
-    const timers = createManualTimers();
-    const sandbox = createHarness([{ outcome: 'loaded' }], { timers });
+  it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see no failure once it accepted', async () => {
+    // Given a reload that stripped the params
+    const sandbox = createHarness([{ outcome: 'loaded' }]);
     sandbox.start(toFramedPage('https://myapp.app.localhost/'));
-    sandbox.accept();
 
-    // When the rebuild takes far longer than the deadline
-    await timers.advance(60_000);
+    // When the host accepts the recover ask
+    sandbox.accept();
     await sandbox.run.await();
 
     // Then the wait ended with the acceptance and nothing failed
@@ -530,7 +525,7 @@ describe('runSandbox broken dependencies', () => {
     ]);
   });
 
-  it('As an operator, I watch the gateway host lookup throw while naming an unreachable gateway and see it counted as a defect of the run', async () => {
+  it('As a visitor whose gateway host lookup throws, I still end the host loading screen, and the operator sees the throw', async () => {
     // Given a load that fails on an unreachable gateway, and a gateway host lookup that throws
     const sandbox = createHarness([
       {
@@ -543,16 +538,15 @@ describe('runSandbox broken dependencies', () => {
     sandbox.deps.getGatewayHost = () => {
       throw broken;
     };
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
 
     // When
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
-    // Then the load's failure is reported and the throw is a defect of the run
+    // Then the host hears the failure, the load's failure is reported, and the throw is a defect of showing it
+    expect(sandbox.events).toContain('failed content_fetch');
     expect(captured).toMatchObject([
       { context: { step: 'content_fetch' } },
-      { error: broken, context: { step: 'run_transition' } },
+      { error: broken, context: { step: 'failure_show' } },
     ]);
-    expect(sentry.counted('sandbox.run_transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 });

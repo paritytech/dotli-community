@@ -137,8 +137,10 @@ runSandbox(
             document,
             pathname: window.location.pathname,
           }),
-        registerWorker: options => registerAppServiceWorker(appWorker, options),
-        isControlled: () => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null,
+        registerWorker: async options => {
+          await registerAppServiceWorker(appWorker, options);
+          return 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null;
+        },
         fetchArchive,
         blockSource,
         decrypt: decryptIfNeeded,
@@ -150,9 +152,9 @@ runSandbox(
       }),
     hostMessages,
     ui,
-    waitForRecoverAccepted: signal => waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, signal }),
+    waitForRecoverAccepted: () =>
+      waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, ms: SANDBOX_TIMEOUTS.RECOVER }),
     getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
-    recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },
 );

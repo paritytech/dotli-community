@@ -32,7 +32,14 @@ class FakeXhr {
 }
 
 /** A product page on https://app.example with the APIs the checker wraps, and the violations it reported. */
-function createProductPage({ globals = {} }: { globals?: Record<string, unknown> } = {}) {
+function createProductPage({
+  globals = {},
+  lockedGlobals = {},
+}: {
+  globals?: Record<string, unknown>;
+  /** Globals an extension defined as non-configurable before the checker ran. */
+  lockedGlobals?: Record<string, unknown>;
+} = {}) {
   const fetched: unknown[] = [];
   const timers: (() => void)[] = [];
   const page = {
@@ -55,6 +62,9 @@ function createProductPage({ globals = {} }: { globals?: Record<string, unknown>
     },
     ...globals,
   };
+  for (const [name, value] of Object.entries(lockedGlobals)) {
+    Object.defineProperty(page, name, { value, writable: true, configurable: false });
+  }
   const violations: Violation[] = [];
   // The checker wraps a whole page, and the fake carries only the globals it reaches.
   installSandboxChecker(page as unknown as CheckedPage, (api, { details } = {}) => {
@@ -136,6 +146,21 @@ describe('the sandbox checker', () => {
     pageGlobals['ethereum'] = {};
 
     // Then only the write is reported
+    expect(violations).toEqual([{ api: 'Direct wallet access (ethereum)', details: { action: 'write' } }]);
+  });
+
+  it('As a product developer, I open a page where an extension locked one wallet global and the other wallet globals are still trapped', () => {
+    // Given a page whose injectedWeb3 an extension defined as non-configurable before the checker installed
+    const { page, violations, elapse } = createProductPage({ lockedGlobals: { injectedWeb3: { extension: true } } });
+    // The wallet globals are no members of the page's type, so the product reaches them by name.
+    const pageGlobals = page as unknown as Record<string, unknown>;
+    pageGlobals['ethereum'] = { extension: true };
+
+    // When the page settles and the product writes ethereum
+    elapse();
+    pageGlobals['ethereum'] = {};
+
+    // Then the write is reported
     expect(violations).toEqual([{ api: 'Direct wallet access (ethereum)', details: { action: 'write' } }]);
   });
 });

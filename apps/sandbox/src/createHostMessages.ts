@@ -6,7 +6,7 @@
 import { postToHost } from '@dotli/sandbox-wire';
 import { realTimers, type Timers } from '@dotli/shared';
 
-import type { SandboxStep } from './runSandbox.js';
+import type { SandboxStep } from './describeSandboxFailure.js';
 
 type Params = {
   /** The host page that framed this sandbox. */

@@ -6,7 +6,8 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
-import { createSandboxBlockRelay, type BlockOrigin, type ContentProgress } from './createSandboxBlockRelay.js';
+import { createSandboxBlockRelay, type ContentProgress } from './createSandboxBlockRelay.js';
+import type { BlockOrigin } from './serveBlock.js';
 
 const SANDBOX_ORIGIN = 'https://a.app.dot.li';
 const BLOCK = new Uint8Array([0xab, 0xcd]);

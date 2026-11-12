@@ -4,7 +4,6 @@
 // One load of the product the host named: fetch and verify its content, hand an archive to the service worker, and
 // write its page into this window. It never throws, and its outcome names the step that failed.
 
-import { hasLightClient } from '@dotli/config';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
@@ -13,7 +12,6 @@ import {
   getErrorName,
   noop,
   type HandlerOf,
-  type HandlersOf,
   type MachineTypes,
   type Transition,
 } from '@dotli/shared';
@@ -59,10 +57,8 @@ export type LoadProductDeps = {
   hostMessages: Pick<HostMessages, 'showStatus' | 'reportDebug' | 'notifyLoadingDone'>;
   /** Wipes what earlier products left in this origin. */
   purge: () => Promise<void>;
-  /** Settles once a service worker controls the page, or the page goes on without one. */
-  registerWorker: (options: { waitForFreshController: boolean }) => Promise<void>;
-  /** Whether a service worker controls the page now. A throw fails the load at the registration. */
-  isControlled: () => boolean;
+  /** Resolves once a service worker controls the page, or the page goes on without one, with whether one does. */
+  registerWorker: (options: { waitForFreshController: boolean }) => Promise<boolean>;
   /** Fetches and verifies the content a CID names. Rejects when it cannot, or when the bytes do not match the CID. */
   fetchArchive: typeof fetchArchive;
   /** The block source the host relays, or null on the IPFS gateway. */
@@ -120,11 +116,11 @@ type LoadEffect =
   | { kind: 'purging' }
   | { kind: 'registering' }
   | { kind: 'workerSettled'; worker: WorkerOutcome }
-  | { kind: 'fetching'; via: 'gateway' | 'bitswap' }
+  | { kind: 'fetching' }
   | { kind: 'contentSettled'; content: ContentOutcome }
   | { kind: 'decrypted'; files: ArchiveFiles }
   | { kind: 'archiveStored'; files: ArchiveFiles }
-  | { kind: 'writing'; bytes: number }
+  | { kind: 'writing'; result: FetchResult }
   | { kind: 'rendered' };
 
 type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
@@ -134,152 +130,116 @@ type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
  * the frame goes away mid-load, or `failed` with the step that failed and its error.
  */
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
-  const { cid, resolutionId } = params;
+  const { cid } = params;
   // A retry runs on the state the first attempt left, so only the first wipes it.
   const freshStart = params.fullReset && attempt === 1;
-
-  const idle: HandlersOf<LoadMachine, 'idle'> = {
-    started(_state, _event, transition) {
-      transition.emitSideEffect({ kind: 'started' });
-      if (!freshStart) {
-        startPreparing(transition);
-        return;
-      }
-      // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
-      transition.emitState({ kind: 'purging' });
-      transition.emitSideEffect({ kind: 'purging' });
-      transition.update(
-        startStep(deps.purge).then(
-          () => ({ kind: 'purged' }),
-          (error: unknown) => ({ kind: 'stepFailed', step: 'init', error }),
-        ),
-      );
-    },
-  };
-
-  const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'rendering', 'stepFailed'> = (
-    _state,
-    { step, error },
-    { emitState },
-  ) => {
-    emitState(toFailure(step, error));
-  };
-
-  const purging: HandlersOf<LoadMachine, 'purging'> = {
-    stepFailed: failStep,
-    purged(_state, _event, transition) {
-      startPreparing(transition);
-    },
-  };
-
-  const preparing: HandlersOf<LoadMachine, 'preparing'> = {
-    workerSettled(_state, { worker }, { emitState, emitSideEffect }) {
-      emitSideEffect({ kind: 'workerSettled', worker });
-      emitState({ kind: 'awaitingContent', worker });
-    },
-    contentSettled(_state, { content }, { emitState, emitSideEffect }) {
-      emitSideEffect({ kind: 'contentSettled', content });
-      emitState({ kind: 'awaitingWorker', content });
-    },
-  };
-
-  const awaitingContent: HandlersOf<LoadMachine, 'awaitingContent'> = {
-    contentSettled({ worker }, { content }, transition) {
-      transition.emitSideEffect({ kind: 'contentSettled', content });
-      goOnPrepared(worker, content, transition);
-    },
-  };
-
-  const awaitingWorker: HandlersOf<LoadMachine, 'awaitingWorker'> = {
-    workerSettled({ content }, { worker }, transition) {
-      transition.emitSideEffect({ kind: 'workerSettled', worker });
-      goOnPrepared(worker, content, transition);
-    },
-  };
-
-  const decrypting: HandlersOf<LoadMachine, 'decrypting'> = {
-    stepFailed: failStep,
-    decrypted({ content }, { files }, transition) {
-      if (files === null) {
-        startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
-        return;
-      }
-      transition.emitSideEffect({ kind: 'decrypted', files });
-      startStoring(files, transition);
-    },
-  };
-
-  const storing: HandlersOf<LoadMachine, 'storing'> = {
-    stepFailed: failStep,
-    archiveStored({ files }, _event, transition) {
-      transition.emitSideEffect({ kind: 'archiveStored', files });
-      const index = files['index.html'];
-      if (index === undefined) {
-        transition.emitState(
-          toFailure(
-            'archive_index',
-            new Error('Archive missing index.html. Cannot render a sandbox without a root document.'),
-          ),
-        );
-        return;
-      }
-      startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
-    },
-  };
-
-  const rendering: HandlersOf<LoadMachine, 'rendering'> = {
-    stepFailed: failStep,
-    htmlPrepared({ result }, { html }, { emitState, emitSideEffect, update }) {
-      emitState({ kind: 'writing', html });
-      const bytes = countResultBytes(result);
-      try {
-        deps.hostMessages.reportDebug({
-          event: 'document_written',
-          flowId: resolutionId ?? cid,
-          payload: { cid, totalMs: deps.measureSinceStart(), bytes, fileCount: countResultFiles(result) },
-        });
-        deps.hostMessages.notifyLoadingDone({ outcome: 'loaded' });
-      } catch (error) {
-        emitState(toFailure('render', error));
-        return;
-      }
-      emitSideEffect({ kind: 'writing', bytes });
-      // Queued behind the effects, so the load's timer and mark end before the page is replaced.
-      update({ kind: 'write' });
-    },
-  };
-
-  const writing: HandlersOf<LoadMachine, 'writing'> = {
-    write({ html }, _event, { emitState, emitSideEffect }) {
-      emitState({ kind: 'loaded' });
-      // Written into this window, so the host's container bridge reaches the dApp through this iframe.
-      try {
-        deps.write(html);
-      } catch (error) {
-        emitState(toFailure('render', error));
-        return;
-      }
-      emitSideEffect({ kind: 'rendered' });
-    },
-  };
 
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
     handlers: {
-      idle,
-      purging,
-      preparing,
-      awaitingContent,
-      awaitingWorker,
-      decrypting,
-      storing,
-      rendering,
-      writing,
+      idle: {
+        started(_state, _event, transition) {
+          transition.emitSideEffect({ kind: 'started' });
+          if (!freshStart) {
+            startPreparing({ waitForFreshController: false }, transition);
+            return;
+          }
+          // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
+          transition.emitState({ kind: 'purging' });
+          transition.emitSideEffect({ kind: 'purging' });
+          transition.update(
+            startStep(deps.purge).then(
+              () => ({ kind: 'purged' }),
+              (error: unknown) => ({ kind: 'stepFailed', step: 'init', error }),
+            ),
+          );
+        },
+      },
+      purging: {
+        purged(_state, _event, transition) {
+          startPreparing({ waitForFreshController: true }, transition);
+        },
+        stepFailed: failStep,
+      },
+      preparing: {
+        workerSettled(_state, { worker }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'awaitingContent', worker });
+          emitSideEffect({ kind: 'workerSettled', worker });
+        },
+        contentSettled(_state, { content }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'awaitingWorker', content });
+          emitSideEffect({ kind: 'contentSettled', content });
+        },
+      },
+      awaitingContent: {
+        contentSettled({ worker }, { content }, transition) {
+          transition.emitSideEffect({ kind: 'contentSettled', content });
+          goOnPrepared(worker, content, transition);
+        },
+      },
+      awaitingWorker: {
+        workerSettled({ content }, { worker }, transition) {
+          transition.emitSideEffect({ kind: 'workerSettled', worker });
+          goOnPrepared(worker, content, transition);
+        },
+      },
+      decrypting: {
+        decrypted({ content }, { files }, transition) {
+          if (files === null) {
+            startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
+            return;
+          }
+          transition.emitSideEffect({ kind: 'decrypted', files });
+          startStoring(files, transition);
+        },
+        stepFailed: failStep,
+      },
+      storing: {
+        archiveStored({ files }, _event, transition) {
+          transition.emitSideEffect({ kind: 'archiveStored', files });
+          const index = files['index.html'];
+          if (index === undefined) {
+            const error = new Error('Archive missing index.html. Cannot render a sandbox without a root document.');
+            transition.emitState(toFailure('archive_index', error));
+            return;
+          }
+          startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
+        },
+        stepFailed: failStep,
+      },
+      rendering: {
+        htmlPrepared({ result }, { html }, { emitState, emitSideEffect, update }) {
+          emitState({ kind: 'writing', html });
+          try {
+            deps.hostMessages.notifyLoadingDone({ outcome: 'loaded' });
+          } catch (error) {
+            emitState(toFailure('render', error));
+            return;
+          }
+          emitSideEffect({ kind: 'writing', result });
+          // Queued behind the effects, so the load's timer and mark end before the page is replaced.
+          update({ kind: 'write' });
+        },
+        stepFailed: failStep,
+      },
+      writing: {
+        write({ html }, _event, { emitState, emitSideEffect }) {
+          emitState({ kind: 'loaded' });
+          // Written into this window, so the host's container bridge reaches the dApp through this iframe.
+          try {
+            deps.write(html);
+          } catch (error) {
+            emitState(toFailure('render', error));
+            return;
+          }
+          emitSideEffect({ kind: 'rendered' });
+        },
+      },
       loaded: null,
       failed: null,
       tornDown: null,
     },
-    onEffect: createLoadReports({ params, attempt, measureSinceStart: deps.measureSinceStart }),
+    onEffect: createLoadReports({ params, attempt }, deps),
     onError: error => {
       report.defect(error, {
         step: 'load_transition',
@@ -292,33 +252,34 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   await machine.await();
   return toOutcome(machine.state.get());
 
-  /** Starts the registration and the fetch side by side. */
-  function startPreparing({ emitState, emitSideEffect, update }: Transition<LoadMachine>): void {
+  /** Starts the registration and the fetch side by side. A load that purged waits for a fresh worker. */
+  function startPreparing(
+    registration: Parameters<LoadProductDeps['registerWorker']>[0],
+    { emitState, emitSideEffect, update }: Transition<LoadMachine>,
+  ): void {
     emitState({ kind: 'preparing' });
     emitSideEffect({ kind: 'registering' });
     update(
-      startStep(() => deps.registerWorker({ waitForFreshController: freshStart }))
-        // Read within the registration, so a check that throws fails the load there, as the registration itself would.
-        .then(() => deps.isControlled())
-        .then(
-          controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
-          (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
-        ),
+      startStep(() => deps.registerWorker(registration)).then(
+        controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
+        (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
+      ),
     );
     // The fetch needs no worker, so it runs while the worker registers. A single page waits for the worker too, so a
     // failed registration is still reported and the worker never claims a document that was already replaced.
-    const { blockSource } = deps;
-    emitSideEffect({ kind: 'fetching', via: blockSource === null ? 'gateway' : 'bitswap' });
+    emitSideEffect({ kind: 'fetching' });
     update(
-      startStep(() => fetchContent(blockSource)).then(
+      startStep(fetchContent).then(
         result => ({ kind: 'contentSettled', content: { kind: 'fetched', result } }),
         (error: unknown) => ({ kind: 'contentSettled', content: { kind: 'failed', error } }),
       ),
     );
   }
 
-  function fetchContent(blockSource: LoadProductDeps['blockSource']): Promise<FetchResult> {
-    const { showStatus } = deps.hostMessages;
+  /** Says on the host how the content is fetched, as the fetch's own status does, then fetches it. */
+  function fetchContent(): Promise<FetchResult> {
+    const { blockSource, hostMessages } = deps;
+    const { showStatus } = hostMessages;
     if (blockSource === null) {
       showStatus('Fetching via IPFS gateway...');
       return deps.fetchArchive(cid, { onStatus: showStatus, useGateway: true });
@@ -379,12 +340,16 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
 }
 
 /** Turns what happens to one load into its log lines, timers and marks. */
-function createLoadReports({
-  params,
-  attempt,
-  measureSinceStart,
-}: LoadInput & Pick<LoadProductDeps, 'measureSinceStart'>): (effect: LoadEffect) => void {
-  const { cid, backend } = params;
+function createLoadReports(
+  { params, attempt }: LoadInput,
+  {
+    hostMessages,
+    measureSinceStart,
+    blockSource,
+  }: Pick<LoadProductDeps, 'hostMessages' | 'measureSinceStart' | 'blockSource'>,
+): (effect: LoadEffect) => void {
+  const { cid, backend, resolutionId } = params;
+  const via = blockSource === null ? 'gateway' : 'bitswap';
   const stopApp = m.timer('app.total');
   // Set once the registration starts, so the timer leaves out a full reset's purge.
   let stopWorkerTimer: () => void = noop;
@@ -412,7 +377,7 @@ function createLoadReports({
         return;
       }
       case 'fetching':
-        switch (effect.via) {
+        switch (via) {
           case 'gateway':
             report.log.event(`Fetching ${cid} via IPFS gateway`, { ms: measureSinceStart() });
             break;
@@ -427,7 +392,7 @@ function createLoadReports({
           return;
         }
         const { result } = content;
-        report.log.event(`Content fetched via ${hasLightClient(backend) ? 'bitswap' : 'gateway'}`, {
+        report.log.event(`Content fetched via ${via}`, {
           type: result.type,
           bytes: countResultBytes(result),
           files: countResultFiles(result),
@@ -450,17 +415,34 @@ function createLoadReports({
           ms: measureSinceStart(),
         });
         return;
-      case 'writing':
-        report.log.event('Writing content into the window', { bytes: effect.bytes, ms: measureSinceStart() });
+      case 'writing': {
+        const bytes = countResultBytes(effect.result);
+        const totalMs = measureSinceStart();
+        report.log.event('Writing content into the window', { bytes, ms: totalMs });
         performance.mark('dotli:app:end');
         stopApp();
+        hostMessages.reportDebug({
+          event: 'document_written',
+          flowId: resolutionId ?? cid,
+          payload: { cid, totalMs, bytes, fileCount: countResultFiles(effect.result) },
+        });
         return;
+      }
       case 'rendered':
         report.log.event('Content rendered', { ms: measureSinceStart() });
         return;
     }
   }
 }
+
+/** Ends the load at the step that failed. */
+const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'rendering', 'stepFailed'> = (
+  _state,
+  { step, error },
+  { emitState },
+) => {
+  emitState(toFailure(step, error));
+};
 
 /** `work`'s promise, with a throw before it returns one turned into its rejection. */
 function startStep<T>(work: () => Promise<T>): Promise<T> {

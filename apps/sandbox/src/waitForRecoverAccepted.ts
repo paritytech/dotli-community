@@ -4,6 +4,7 @@
 // Hears the host accept the recover ask a reloaded sandbox posted.
 
 import { parseRecoverAcceptedMessage } from '@dotli/sandbox-wire';
+import { realTimers, startActiveTimeout, type Timers } from '@dotli/shared';
 
 type Params = {
   /** The sandbox's own window, where the host's acceptance arrives. */
@@ -12,23 +13,33 @@ type Params = {
   parent: unknown;
   /** Whether a message from `origin` may come from the host. Never throws. */
   isHostOrigin: (origin: string) => boolean;
-  /** Gives up the wait. */
-  signal: AbortSignal;
+  /** How long the host has to accept. */
+  ms: number;
+  /** The timers the deadline runs on. The page's own unless given. */
+  timers?: Timers;
 };
 
 /**
  * Waits for the host to accept this sandbox's recover ask. Resolves once `parent`, at an origin `isHostOrigin`
- * accepts, posts the acceptance, rejects with `signal.reason` once `signal` aborts, and removes its listener either
- * way. A signal aborted before the call rejects at once and adds no listener.
+ * accepts, posts the acceptance, rejects once `ms` pass first, and removes its listener either way.
  */
-export function waitForRecoverAccepted({ window: sandboxWindow, parent, isHostOrigin, signal }: Params): Promise<void> {
-  if (signal.aborted) {
-    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- an abort rejects with the caller's own reason, whatever it is
-    return Promise.reject(signal.reason);
-  }
+export function waitForRecoverAccepted({
+  window: sandboxWindow,
+  parent,
+  isHostOrigin,
+  ms,
+  timers = realTimers,
+}: Params): Promise<void> {
   return new Promise((resolve, reject) => {
+    const stopTimeout = startActiveTimeout({
+      ms,
+      timers,
+      onElapsed: () => {
+        sandboxWindow.removeEventListener('message', onMessage);
+        reject(new Error(`The host did not accept the recover ask within ${String(ms)}ms`));
+      },
+    });
     sandboxWindow.addEventListener('message', onMessage);
-    signal.addEventListener('abort', onAbort, { once: true });
 
     function onMessage(event: MessageEvent<unknown>): void {
       if (event.source !== parent || !isHostOrigin(event.origin)) {
@@ -37,19 +48,9 @@ export function waitForRecoverAccepted({ window: sandboxWindow, parent, isHostOr
       if (parseRecoverAcceptedMessage(event.data) === null) {
         return;
       }
-      stopListening();
-      resolve();
-    }
-
-    function onAbort(): void {
-      stopListening();
-      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- an abort rejects with the caller's own reason, whatever it is
-      reject(signal.reason);
-    }
-
-    function stopListening(): void {
       sandboxWindow.removeEventListener('message', onMessage);
-      signal.removeEventListener('abort', onAbort);
+      stopTimeout();
+      resolve();
     }
   });
 }
