@@ -17,7 +17,6 @@ import {
   log,
   noop,
   realTimers,
-  type AsyncTaskPool,
   type MachineTypes,
   type Timers,
   type Transition,
@@ -114,8 +113,11 @@ type Params = {
   subscribeStoredSession: (listener: () => void) => () => void;
   /** Where each core's prompts queue, one scope per core. */
   coordinator: BlockingModalCoordinator;
-  /** Boots replacement cores, with the retries a redial gets. */
-  redials?: AsyncTaskPool;
+  /**
+   * The wait before each retry of a redial, in order, so a redial gets as many retries as there are waits. Default
+   * {@link REDIAL_RETRY_DELAYS_MS}.
+   */
+  redialRetryDelays?: readonly number[];
   /** Makes the tracker of each dialed core, which its connections' frames feed. Default: {@link createPhoneRequestTracker}. */
   createPhoneRequests?: () => PhoneRequestTracker;
   /**
@@ -125,7 +127,7 @@ type Params = {
   onCoresGone?: () => void;
   /** How long a core outlives its last lease. Default {@link CORE_DESTROY_DELAY_MS}. 0 or less disposes at once. */
   destroyDelay?: number;
-  /** The timers the destroy delay runs on. The page's own by default. */
+  /** The timers the destroy delay and the redial retry waits run on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
@@ -205,7 +207,6 @@ type PageCoreEffect =
   | { kind: 'retired'; retired: AbortController }
   | { kind: 'disposed'; core: Core }
   | { kind: 'lingerCancelled'; timer: unknown }
-  | { kind: 'orphaned'; runtime: WorkerPairingHostRuntime }
   /** A local wallet core has no phone. */
   | { kind: 'phoneDropped'; phoneRequests: PhoneRequestTracker }
   | { kind: 'sessionStoreChanged'; runtime: WorkerPairingHostRuntime }
@@ -222,25 +223,28 @@ export const LANDING_PRODUCT: PageProduct = {
 
 /** How long a core in service outlives its last lease, so a lease taken soon after keeps the same core. */
 const CORE_DESTROY_DELAY_MS = 5_000;
-const REDIAL_RETRIES = 2;
-const REDIAL_FIRST_DELAY_MS = 1_000;
+/** The wait before each retry of a redial, doubling. */
+const REDIAL_RETRY_DELAYS_MS = [1_000, 2_000];
 
 /** Returns the page's one refcounted core, which dials on its first request. */
 export function createPageCore({
   bootRuntime,
   subscribeStoredSession,
   coordinator,
-  redials = createAsyncTaskPool({
-    // A redial dropped while it boots runs on, so a later redial never waits on it.
-    poolSize: Number.POSITIVE_INFINITY,
-    retryCount: REDIAL_RETRIES,
-    retryDelay: retry => REDIAL_FIRST_DELAY_MS * 2 ** retry,
-  }),
+  redialRetryDelays = REDIAL_RETRY_DELAYS_MS,
   createPhoneRequests = createPhoneRequestTracker,
   onCoresGone,
   destroyDelay = CORE_DESTROY_DELAY_MS,
   timers = realTimers,
 }: Params) {
+  // Boots replacement cores one at a time. A redial whose core left gives up its slot and its retries at once, so a
+  // later redial never waits on it.
+  const redials = createAsyncTaskPool({
+    poolSize: 1,
+    retryCount: redialRetryDelays.length,
+    retryDelay: retry => redialRetryDelays[retry] ?? 0,
+    timers,
+  });
   const machine = createStateMachine<PageCoreMachine>({
     initial: { kind: 'serving', product: LANDING_PRODUCT, current: null, cores: new Map() },
     handlers: {
@@ -287,9 +291,8 @@ export function createPageCore({
         booted(state, { coreId, booted }, transition) {
           const { emitState, emitSideEffect, update } = transition;
           const core = state.cores.get(coreId);
-          // A core dropped while it booted holds no runtime, so the runtime this event carries goes.
+          // A core dropped while it booted took the runtime this event carries with it.
           if (core?.kind !== 'booting') {
-            emitSideEffect({ kind: 'orphaned', runtime: booted.runtime });
             return;
           }
           if (core.redial !== undefined) {
@@ -431,9 +434,6 @@ export function createPageCore({
         case 'lingerCancelled':
           timers.clearTimeout(effect.timer);
           return;
-        case 'orphaned':
-          effect.runtime.dispose();
-          return;
         case 'phoneDropped':
           effect.phoneRequests.dispose();
           return;
@@ -456,13 +456,7 @@ export function createPageCore({
           return;
       }
     },
-    onError: error => {
-      report.defect(error, {
-        step: 'transition',
-        metric: pageCoreTransitionMetric,
-        message: '[dot.li page-core] A page core transition threw',
-      });
-    },
+    onError: reportTransitionError,
   });
 
   return {
@@ -561,8 +555,9 @@ export function createPageCore({
       waiting,
       pairingCancelled: false,
     };
-    // A first dial boots at once, and a redial with the retries the pool gives it.
-    const booted = redial === undefined ? bootCore(booting) : redials.call(() => bootCore(booting));
+    // A first dial boots at once, and a redial with the retries the pool gives it until its core leaves.
+    const booted =
+      redial === undefined ? bootCore(booting) : redials.call(() => bootCore(booting), { signal: booting.left.signal });
     transition.update(
       booted.catch((error: unknown): PageCoreEvent => ({ kind: 'bootFailed', coreId: booting.id, error })),
     );
@@ -571,22 +566,25 @@ export function createPageCore({
   }
 
   /**
-   * Resolves with the event that ends one boot attempt of `core`. Rejects when the attempt fails while the core is
-   * still the page's. An attempt that succeeds after the core left ends in its event too, which hands its runtime to
-   * the machine.
+   * Resolves with the event of `core` booted by one attempt, whose runtime goes as the core leaves. Rejects when the
+   * attempt fails, and with the abort reason when the core left first, having disposed the runtime it booted.
    */
   async function bootCore(core: BootingCore): Promise<PageCoreEvent> {
+    const booted = await bootRuntime(createCoreContext(core));
+    // The core's leave owns the runtime from here, since the pool drops the event of a redial whose core left.
     const { signal } = core.left;
-    try {
+    if (signal.aborted) {
+      disposeRuntime(booted.runtime);
       signal.throwIfAborted();
-      return { kind: 'booted', coreId: core.id, booted: await bootRuntime(createCoreContext(core)) };
-    } catch (error) {
-      // A core that left boots nothing more, so its redial waits out no retry.
-      if (signal.aborted) {
-        return { kind: 'bootFailed', coreId: core.id, error };
-      }
-      throw error;
     }
+    signal.addEventListener(
+      'abort',
+      () => {
+        disposeRuntime(booted.runtime);
+      },
+      { once: true },
+    );
+    return { kind: 'booted', coreId: core.id, booted };
   }
 
   /**
@@ -696,14 +694,34 @@ function getParts({ id, product, blockingModalScope, phoneRequests, left, retire
   return { id, product, blockingModalScope, phoneRequests, left, retired };
 }
 
+/** Reports a throw of a page core handler or effect. */
+function reportTransitionError(error: unknown): void {
+  report.defect(error, {
+    step: 'transition',
+    metric: pageCoreTransitionMetric,
+    message: '[dot.li page-core] A page core transition threw',
+  });
+}
+
+/**
+ * Disposes the runtime of a core that left, as part of the effect that dropped it. It runs where a throw would reach
+ * no caller, such as an abort listener, so a throw is reported as the effect's.
+ */
+function disposeRuntime(runtime: WorkerPairingHostRuntime): void {
+  try {
+    runtime.dispose();
+  } catch (error) {
+    reportTransitionError(error);
+  }
+}
+
 /** Drops the runtime, prompts, phone claims and store following of a core that left the page. */
 function disposeCore(core: Core): void {
   report.log.event('wallet core disposed', { faulted: core.kind === 'down' });
   core.retired.abort();
+  // Takes the core's runtime with it, booted or still booting.
   core.left.abort();
-  // A booting core's runtime, if an attempt is running, goes with that attempt's event.
   if (core.kind !== 'booting') {
-    core.booted.runtime.dispose();
     core.stopFollowing();
   }
   core.blockingModalScope.dispose();

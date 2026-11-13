@@ -4,7 +4,7 @@
 import { vi } from 'vitest';
 import { asProductId, type ProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { createAsyncTaskPool, createDeferred, noop } from '@dotli/shared';
+import { createDeferred, noop } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { createPageCore, type CoreContext } from './createPageCore.js';
@@ -76,7 +76,7 @@ export function createFakePageCore({ parseProductId = asProductId, linger = fals
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials: createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY }),
+    redialRetryDelays: [],
     // A core that lingers does so for good, as the test never lets the destroy delay end.
     destroyDelay: linger ? 1 : 0,
     timers: { setTimeout: () => undefined, clearTimeout: noop },

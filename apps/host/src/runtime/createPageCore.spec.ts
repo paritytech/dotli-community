@@ -5,7 +5,7 @@ import { asProductId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { createAsyncTaskPool, createDeferred, type AsyncTaskPool, type Timers } from '@dotli/shared';
+import { createDeferred, type Timers } from '@dotli/shared';
 import { createManualTimers, nth, recordLog } from '@dotli/shared/testing';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
@@ -33,10 +33,10 @@ type CreateHarnessParams = {
   onCoresGone?: () => void;
   /** How long a core outlives its last lease. Default 0, which disposes at once. */
   destroyDelay?: number;
-  /** The timers the destroy delay runs on. The real ones by default. */
+  /** The timers the destroy delay and redial retry waits run on. The real ones by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-  /** The pool redials boot on. One that retries twice at once by default. */
-  redials?: AsyncTaskPool;
+  /** The wait before each retry of a redial. Two retries at once by default. */
+  redialRetryDelays?: readonly number[];
 };
 
 type CreateRecordingTrackerParams = {
@@ -168,7 +168,7 @@ function createHarness({
   onCoresGone,
   destroyDelay = 0,
   timers,
-  redials = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY, retryCount: 2 }),
+  redialRetryDelays = [0, 0],
 }: CreateHarnessParams = {}) {
   const runtimes: FakeRuntime[] = [];
   const contexts: CoreContext[] = [];
@@ -221,7 +221,7 @@ function createHarness({
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials,
+    redialRetryDelays,
     destroyDelay,
     ...(timers === undefined ? {} : { timers }),
     ...(createPhoneRequests === undefined ? {} : { createPhoneRequests }),
@@ -1008,6 +1008,31 @@ describe('page core', () => {
     expect(contexts[1]?.isLive()).toBe(false);
   });
 
+  it("As a dApp user whose core goes down while another product's redial still boots for a request, I see my redial boot once that one is up", async () => {
+    // Given a held redial that a request waits on, and the other product's core in use
+    const { core, runtimes, contexts, nextBoots, changes } = createHarness();
+    const lease = await core.acquire();
+    await lease.connect();
+    const first = createHeldBoot({ changes });
+    nextBoots.push(first.boot);
+    nth(runtimes, 0).providers[0]?.goDown();
+    const waiting = core.acquire();
+    core.setProduct({ label: 'other' });
+    const otherLease = await core.acquire();
+    await otherLease.connect();
+
+    // When the other product's core goes down, and the first redial is let through
+    nth(runtimes, 1).providers[0]?.goDown();
+    const bootingAtDown = contexts.length;
+    first.resolve();
+    await waiting;
+    await changes.until(() => contexts.length === 4);
+
+    // Then the second redial began to boot only once the first was up
+    expect(bootingAtDown).toBe(3);
+    expect(contexts.map(context => context.product.label)).toEqual(['dotli', 'dotli', 'other', 'other']);
+  });
+
   it('As a dApp user, I see my page name the same product again and the redial goes on', async () => {
     // Given a held redial
     const { core, runtimes, contexts, nextBoots, changes } = createHarness();
@@ -1286,16 +1311,9 @@ describe('page core redial reports', () => {
   });
 
   it('As a user signed out elsewhere, I reset the session while a dropped redial fails and the reset waits out no retry delay', async () => {
-    // Given a redial on a pool that waits before each retry, dropped by a product change while its attempt runs
+    // Given a redial that waits before each retry, dropped by a product change while its attempt runs
     const timers = createManualTimers();
-    const { core, runtimes, nextBoots, contexts } = createHarness({
-      redials: createAsyncTaskPool({
-        poolSize: Number.POSITIVE_INFINITY,
-        retryCount: 2,
-        retryDelay: 1_000,
-        timers,
-      }),
-    });
+    const { core, runtimes, nextBoots, contexts } = createHarness({ redialRetryDelays: [1_000, 1_000], timers });
     const lease = await core.acquire();
     await lease.connect();
     const redial = createDeferred<BootedCoreRuntime>();
@@ -1311,6 +1329,30 @@ describe('page core redial reports', () => {
     // Then the reset settled with no retry waiting and nothing more booted for the dropped redial
     expect(timers.countPending()).toBe(0);
     expect(contexts).toHaveLength(3);
+  });
+});
+
+describe('page core redials dropped while they wait to retry', () => {
+  it('As a user signed out elsewhere, I see a product change drop a redial waiting to retry and the reset waits out no retry delay', async () => {
+    // Given a redial whose first attempt failed, waiting out its retry delay with nobody holding the core
+    const timers = createManualTimers();
+    const { core, runtimes, nextBoots, contexts } = createHarness({ redialRetryDelays: [1_000, 1_000], timers });
+    const lease = await core.acquire();
+    await lease.connect();
+    nextBoots.push(createFailingBoot());
+    nth(runtimes, 0).providers[0]?.goDown();
+    lease.release();
+    await timers.advance(0);
+    const retriesWaiting = timers.countPending();
+
+    // When the page names another product, and the session is reset
+    core.setProduct({ label: 'other' });
+    await core.resetSession();
+
+    // Then the dropped redial's retry is no longer waiting and nothing more booted for it
+    expect(retriesWaiting).toBe(1);
+    expect(timers.countPending()).toBe(0);
+    expect(contexts).toHaveLength(2);
   });
 });
 
@@ -1448,6 +1490,24 @@ describe('page core after a failed wallet read', () => {
     expect(counted('page_core.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(next.runtime).toBe(lease.runtime);
     expect(contexts).toHaveLength(1);
+  });
+
+  it('As an operator, I see a core whose runtime throws as it is disposed counted, and the page lets go of the core', async () => {
+    // Given a core whose runtime throws as it is disposed
+    const onCoresGone = vi.fn();
+    const { core, runtimes, counted } = createReportingHarness({ onCoresGone });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    const lease = await core.acquire();
+    nth(runtimes, 0).dispose.mockImplementation(() => {
+      throw new Error('worker already gone');
+    });
+
+    // When the last lease is released
+    lease.release();
+
+    // Then the throw is counted once and the page heard its last core go
+    expect(counted('page_core.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(onCoresGone).toHaveBeenCalledTimes(1);
   });
 });
 
