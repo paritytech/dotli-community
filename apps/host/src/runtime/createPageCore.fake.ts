@@ -71,7 +71,7 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials: createAsyncTaskPool({ poolSize: 1 }),
+    redials: createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY }),
     destroyDelay: 0,
   });
 

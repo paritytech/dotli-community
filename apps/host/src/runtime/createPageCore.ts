@@ -598,6 +598,9 @@ export function createPageCore({
   function leave(state: PageCoreState, core: Core, { emitSideEffect }: Transition<PageCoreMachine>): PageCoreState {
     const cores = new Map(state.cores);
     cores.delete(core.id);
+    if (core.kind === 'lingering') {
+      emitSideEffect({ kind: 'lingerCancelled', timer: core.timer });
+    }
     emitSideEffect({ kind: 'disposed', core });
     if (cores.size === 0) {
       emitSideEffect({ kind: 'coresGone' });
@@ -612,9 +615,6 @@ export function createPageCore({
       // Its runtime, if an attempt is running, goes with that attempt's event.
       core.dropped.abort(new Error('The page core was disposed'));
     } else {
-      if (core.kind === 'lingering') {
-        timers.clearTimeout(core.timer);
-      }
       core.booted.runtime.dispose();
       core.stopFollowing();
     }

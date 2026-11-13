@@ -218,7 +218,7 @@ function createHarness({
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials: createAsyncTaskPool({ poolSize: 1, retryCount: 2 }),
+    redials: createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY, retryCount: 2 }),
     destroyDelay,
     ...(timers === undefined ? {} : { timers }),
     ...(createPhoneRequests === undefined ? {} : { createPhoneRequests }),
@@ -964,6 +964,27 @@ describe('page core', () => {
     expect(contexts[2]?.product.label).toBe('other');
     expect(next.runtime).toBe(nth(runtimes, 1).runtime);
     expect(contexts).toHaveLength(3);
+  });
+
+  it("As a dApp user whose core goes down while another product's dropped redial still boots, I get my replacement without waiting on it", async () => {
+    // Given a held redial dropped by a product change, and the other product's core in use
+    const { core, runtimes, contexts, nextBoots, changes } = createHarness();
+    const lease = await core.acquire();
+    await lease.connect();
+    const dropped = createHeldBoot({ changes });
+    nextBoots.push(dropped.boot);
+    nth(runtimes, 0).providers[0]?.goDown();
+    core.setProduct({ label: 'other' });
+    const otherLease = await core.acquire();
+    await otherLease.connect();
+
+    // When the other product's core goes down
+    nth(runtimes, 1).providers[0]?.goDown();
+    await changes.until(() => contexts.length === 4);
+
+    // Then its redial boots while the dropped one is still held
+    expect(contexts.map(context => context.product.label)).toEqual(['dotli', 'dotli', 'other', 'other']);
+    expect(contexts[1]?.isLive()).toBe(false);
   });
 
   it('As a dApp user, I see my page name the same product again and the redial goes on', async () => {
