@@ -273,12 +273,8 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   function fetchContent(): Promise<FetchResult> {
     const { blockSource, hostMessages } = deps;
     const { showStatus } = hostMessages;
-    if (blockSource === null) {
-      showStatus('Fetching via IPFS gateway...');
-      return deps.fetchArchive(cid, { onStatus: showStatus, useGateway: true });
-    }
-    // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
-    showStatus('Fetching via bitswap...');
+    // Bitswap goes through the host-relayed protocol bridge, so the sandbox runs no libp2p.
+    showStatus(blockSource === null ? 'Fetching via IPFS gateway...' : 'Fetching via bitswap...');
     return deps.fetchArchive(cid, { onStatus: showStatus, bitswapBlockSource: blockSource });
   }
 

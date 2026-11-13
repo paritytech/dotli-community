@@ -69,7 +69,7 @@ describe('fetchArchive', () => {
 
     // When a product load fetches it over the gateway
     const result = await fetchArchive(root.toString(), {
-      useGateway: true,
+      bitswapBlockSource: null,
       gatewayFetch: createGatewayFetch(car),
     });
 

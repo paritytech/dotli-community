@@ -10,7 +10,7 @@ import { createRootVerifyingBlockSource } from './verify.js';
 
 const report = createReporter({ flow: 'content' });
 
-/** Whichever fetch method wins. */
+/** One content fetch, by the method it is tagged with. */
 const CONTENT_FETCH = 'content.fetch';
 
 /**
@@ -29,15 +29,11 @@ const CONTENT_SIZE = 'content.size';
 type Params = {
   /** Receives progress text while the fetch runs. */
   onStatus?: StatusCallback;
-  /** Fetch from the IPFS gateway when no block source is given. */
-  useGateway?: boolean | undefined;
   /** The gateway path's network. The page's own `fetch` when not given. */
   gatewayFetch?: typeof fetch;
-  /** Fetch over bitswap through this source, in place of the gateway. */
-  bitswapBlockSource?: BitswapBlockSource | undefined;
+  /** Fetch over bitswap through this source, or from the IPFS gateway when null. */
+  bitswapBlockSource: BitswapBlockSource | null;
 };
-
-type FetchMethod = 'bitswap-rpc' | 'gateway';
 
 type BitswapRpcParams = {
   /** The root CID to fetch, as a string. */
@@ -49,34 +45,26 @@ type BitswapRpcParams = {
 };
 
 /**
- * Fetch over bitswap when a block source is given, else the gateway. No fallback between the two. Rejects when neither
- * is given, or with the failure of the fetch.
+ * Fetch over bitswap when a block source is given, else the gateway. No fallback between the two. Rejects with the
+ * failure of the fetch.
  */
 export async function fetchArchive(
   cid: string,
-  { onStatus, useGateway, gatewayFetch, bitswapBlockSource }: Params = {},
+  { onStatus, gatewayFetch, bitswapBlockSource }: Params,
 ): Promise<FetchResult> {
+  const method = bitswapBlockSource === null ? 'gateway' : 'bitswap-rpc';
   performance.mark('dotli:fetch:start');
   const stopFetch = m.timer(CONTENT_FETCH);
-  const method = getFetchMethod({ bitswapBlockSource, useGateway });
-  if (method === null) {
-    stopFetch();
-    throw new Error('fetchArchive requires either `bitswapBlockSource` or `useGateway: true`');
-  }
   m.tag('content_method', method);
 
   try {
     const result =
-      bitswapBlockSource !== undefined
-        ? await fetchViaBitswapRpc({ cid, blockSource: bitswapBlockSource, onStatus })
-        : await fetchViaGateway({ cid, fetch: gatewayFetch ?? fetch, onStatus });
-    performance.mark('dotli:fetch:end');
+      bitswapBlockSource === null
+        ? await fetchViaGateway({ cid, fetch: gatewayFetch ?? fetch, onStatus })
+        : await fetchViaBitswapRpc({ cid, blockSource: bitswapBlockSource, onStatus });
     measureContentSize(result);
-    stopFetch();
     return result;
   } catch (error) {
-    performance.mark('dotli:fetch:end');
-    stopFetch();
     if (isAbort(error)) {
       // The sandbox ends this load as torn down, so it is a breadcrumb rather than an error.
       report.log.event(`Fetch of ${cid} stopped as its frame went away`, { method });
@@ -84,20 +72,10 @@ export async function fetchArchive(
       report.log.error(`[dot.li fetch] ${method} failed for ${cid}:`, error);
     }
     throw error;
+  } finally {
+    performance.mark('dotli:fetch:end');
+    stopFetch();
   }
-}
-
-function getFetchMethod({
-  bitswapBlockSource,
-  useGateway,
-}: Pick<Params, 'bitswapBlockSource' | 'useGateway'>): FetchMethod | null {
-  if (bitswapBlockSource !== undefined) {
-    return 'bitswap-rpc';
-  }
-  if (useGateway === true) {
-    return 'gateway';
-  }
-  return null;
 }
 
 async function fetchViaBitswapRpc({ cid: cidString, blockSource, onStatus }: BitswapRpcParams): Promise<FetchResult> {
@@ -148,12 +126,11 @@ async function fetchViaGateway(params: ReadViaGatewayParams): Promise<FetchResul
 }
 
 function measureContentSize(result: FetchResult): void {
-  if (result.type === 'single') {
-    m.distribution(CONTENT_SIZE, result.content.length, { unit: 'byte' });
-  } else {
-    const totalSize = Object.values(result.files).reduce((sum, file) => sum + file.length, 0);
-    m.distribution(CONTENT_SIZE, totalSize, { unit: 'byte' });
-  }
+  const bytes =
+    result.type === 'single'
+      ? result.content.length
+      : Object.values(result.files).reduce((sum, file) => sum + file.length, 0);
+  m.distribution(CONTENT_SIZE, bytes, { unit: 'byte' });
 }
 
 /** A frame's teardown rejects its fetches by the platform's abort name, which is not a failure. */

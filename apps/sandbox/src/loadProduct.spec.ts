@@ -80,7 +80,7 @@ function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}):
       return Promise.resolve(true);
     },
     fetchArchive(_cid, params) {
-      const { onStatus: _onStatus, ...options } = params ?? {};
+      const { onStatus: _onStatus, ...options } = params;
       fetches.push(options);
       return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
     },
@@ -112,7 +112,7 @@ describe('loadProduct', () => {
 
     // Then the page is written after the host hears it loaded, and the write is reported
     expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(page.fetches).toEqual([{ useGateway: true }]);
+    expect(page.fetches).toEqual([{ bitswapBlockSource: null }]);
     expect(page.written).toEqual(['<h1>hi</h1>']);
     expect(page.events.slice(-2)).toEqual(['loaded', 'write']);
     expect(page.reports).toEqual([
