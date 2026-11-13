@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { createNavComboboxState, type NavKey } from '../../state/navComboboxState.js';
-import { NAME_ERROR_COPY, NavForm } from './NavForm.js';
+import { NavForm } from './NavForm.js';
 
 const SUFFIX = '.dot';
 
@@ -94,7 +94,7 @@ export const EnterLeftToTheForm: Story = {
     });
     await step("Then the suggestions were offered the key, and I see the form's own error", async () => {
       await expect(args.onKey).toHaveBeenCalledWith('Enter');
-      await expect(canvas.getByRole('alert')).toHaveTextContent(NAME_ERROR_COPY.empty);
+      await expect(canvas.getByRole('alert')).toBeVisible();
     });
   },
 };

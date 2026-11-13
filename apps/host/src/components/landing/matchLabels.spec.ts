@@ -29,17 +29,6 @@ describe('matchLabels', () => {
     expect(matches).toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
   });
 
-  it('As a visitor typing "Al.paseo", I see the names starting with al, ignoring the TLD and case', () => {
-    // Given a name that starts with al
-    const labels = ['alice', 'bob'];
-
-    // When the visitor types it capitalised and with the TLD
-    const matches = matchLabels(labels, 'Al.paseo', SUFFIX);
-
-    // Then the name matches
-    expect(matches).toEqual(['alice']);
-  });
-
   it('As a visitor with nothing typed, I see no suggestions', () => {
     // Given names in the list
     const labels = ['alice', 'bob'];

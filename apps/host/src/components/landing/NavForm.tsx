@@ -12,7 +12,7 @@ import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
 import { getSuggestionId, SUGGESTIONS_ID } from './suggestionIds.js';
 import s from './NavForm.module.css';
 
-export const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
+const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
   empty: 'Enter a name to browse',
   'too-long': 'Names can be at most 63 characters',
   'too-short': 'Names must be at least 2 characters',

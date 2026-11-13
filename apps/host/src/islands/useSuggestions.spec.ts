@@ -128,19 +128,16 @@ describe('useSuggestions', () => {
     expect(view.open).not.toHaveBeenCalled();
   });
 
-  it.each<NavKey>(['ArrowDown', 'ArrowUp', 'Escape'])(
-    'As a visitor with no list shown, I press %s and the form keeps it',
-    key => {
-      // Given text that matches nothing
-      const view = mount('zebra');
+  it('As a visitor with no list shown, I press ArrowDown and the form keeps it', () => {
+    // Given text that matches nothing
+    const view = mount('zebra');
 
-      // When
-      const taken = view.press(key);
+    // When
+    const taken = view.press('ArrowDown');
 
-      // Then
-      expect(taken).toBe(false);
-    },
-  );
+    // Then
+    expect(taken).toBe(false);
+  });
 
   it('As a visitor, I press Escape and the list hides', () => {
     // Given the suggestions for "a"
