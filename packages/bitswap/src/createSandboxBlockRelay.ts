@@ -32,8 +32,8 @@ type Params = BlockSources & {
 
 export type SandboxBlockRelay = ReturnType<typeof createSandboxBlockRelay>;
 
-/** A frame's id with its origin, or the window of a sandbox that sends no id. */
-type FrameKey = MessageEventSource | string;
+/** A frame's id with its origin. */
+type FrameKey = string;
 
 /** A block a frame asked for, with the controller its frame's abort stops. */
 type BlockRequest = {
@@ -51,8 +51,8 @@ type Load = { root: string; totalBytes: number | null; bytesFetched: number; sta
 /**
  * The live requests, so a sandbox can abort its own on `pagehide`. One request per frame and id, since ids restart at 1
  * in each frame. A frame is the id it sends together with its origin, since its abort arrives after it is gone and
- * without a source, and another product's sandbox may send the same id. A sandbox that sends no id is known by its
- * window. `load` is `null` until the first block is served.
+ * without a source, and another product's sandbox may send the same id. `load` is `null` until the first block is
+ * served.
  */
 type RelayState = { kind: 'serving'; requests: readonly BlockRequest[]; load: Load | null };
 
@@ -162,20 +162,15 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
     },
   });
 
-  const stopAborts = channel.on('dotli:bitswap-abort', ({ frame, ids }, { origin, source }) => {
-    // A sandbox that sends no frame id is known by its window, so an abort from no window names no frame.
-    const key = getFrameKey(frame, origin, source);
-    if (key === null) {
-      return;
-    }
-    relay.update({ kind: 'abortAsked', key, ids });
+  const stopAborts = channel.on('dotli:bitswap-abort', ({ frame, ids }, { origin }) => {
+    relay.update({ kind: 'abortAsked', key: getFrameKey(frame, origin), ids });
   });
 
   const stopGets = channel.on('dotli:bitswap-get', ({ frame, id, cid }, { origin, source }) => {
     if (source === null) {
       return;
     }
-    const key = getFrameKey(frame, origin, source);
+    const key = getFrameKey(frame, origin);
     relay.update({ kind: 'blockAsked', request: { key, id, cid, origin, source, aborter: new AbortController() } });
   });
 
@@ -192,13 +187,9 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
   };
 }
 
-/** The frame a message came from: the id the sandbox sent with its origin, or its window when it sent none. */
-function getFrameKey<Source extends MessageEventSource | null>(
-  frame: string | undefined,
-  origin: string,
-  source: Source,
-): Source | string {
-  return frame === undefined ? source : `${origin} ${frame}`;
+/** The frame a message came from: the id the sandbox sent, with its origin. */
+function getFrameKey(frame: string, origin: string): FrameKey {
+  return `${origin} ${frame}`;
 }
 
 /** `load` with the block `cid`, served at `at`, added. */

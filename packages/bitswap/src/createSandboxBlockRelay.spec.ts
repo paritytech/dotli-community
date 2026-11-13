@@ -168,11 +168,11 @@ function createDeferredRead(): { cache: NonNullable<RelayParams['cache']>; relea
 }
 
 function createGetRequest(id: string, cid = 'bafyBlock'): SandboxMessageOf<'dotli:bitswap-get'> {
-  return { type: 'dotli:bitswap-get', id, cid };
+  return { type: 'dotli:bitswap-get', id, cid, frame: 'frame-a' };
 }
 
 function createAbortRequest(...ids: string[]): SandboxMessageOf<'dotli:bitswap-abort'> {
-  return { type: 'dotli:bitswap-abort', ids };
+  return { type: 'dotli:bitswap-abort', ids, frame: 'frame-a' };
 }
 
 const pushed = new WeakMap<unknown[], Set<() => void>>();
@@ -309,23 +309,6 @@ describe('createSandboxBlockRelay', () => {
     expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([true]);
   });
 
-  it("As a user, I close one product and another product's fetches carry on", async () => {
-    // Given two frames at sandbox origins, and a fetch belonging to the first
-    const network = createFakeNetwork(() => 'hold');
-    const { channel, send } = createFakeChannel();
-    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
-    const victim = createFakeFrame();
-    const attacker = createFakeFrame();
-    send(victim, createGetRequest('req-1'));
-    await waitForLength(network.fetches);
-
-    // When the other frame guesses the id
-    send(attacker, createAbortRequest('req-1'));
-
-    // Then
-    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false]);
-  });
-
   it('As a user, I navigate a product frame mid-download and its fetches stop, though the host reads the abort after the frame is gone', async () => {
     // Given a fetch the frame tagged with its own id
     const network = createFakeNetwork(() => 'hold');
@@ -351,9 +334,8 @@ describe('createSandboxBlockRelay', () => {
     send(frame, { ...createGetRequest('req-1'), frame: 'frame-a' });
     await waitForLength(network.fetches);
 
-    // When another frame aborts the same id under its own frame id, and a frame with no id aborts it too
-    send(null, { ...createAbortRequest('req-1'), frame: 'frame-b' });
-    send(createFakeFrame(), createAbortRequest('req-1'));
+    // When another frame aborts the same id under its own frame id
+    send(createFakeFrame(), { ...createAbortRequest('req-1'), frame: 'frame-b' });
 
     // Then my product's fetch carries on
     expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false]);
@@ -382,12 +364,12 @@ describe('createSandboxBlockRelay', () => {
     const first = createFakeFrame();
     const second = createFakeFrame();
     send(first, createGetRequest('req-1', 'bafyFast'));
-    send(second, createGetRequest('req-1', 'bafySlow'));
+    send(second, { ...createGetRequest('req-1', 'bafySlow'), frame: 'frame-b' });
     await waitForLength(network.fetches, 2);
     await waitForLength(first.replies);
 
     // When the second frame cancels, after the first has settled
-    send(second, createAbortRequest('req-1'));
+    send(second, { ...createAbortRequest('req-1'), frame: 'frame-b' });
 
     // Then its fetch stopped, rather than being orphaned by the first fetch's cleanup
     expect(network.fetches).toHaveLength(2);

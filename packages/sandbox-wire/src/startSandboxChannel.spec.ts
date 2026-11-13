@@ -55,10 +55,12 @@ describe('sandbox channel', () => {
     });
 
     // When
-    post({ type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }, SANDBOX, sandboxFrame);
+    post({ type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX', frame: 'f-1' }, SANDBOX, sandboxFrame);
 
     // Then
-    expect(heard).toEqual([[{ type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }, SANDBOX, sandboxFrame]]);
+    expect(heard).toEqual([
+      [{ type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX', frame: 'f-1' }, SANDBOX, sandboxFrame],
+    ]);
   });
 
   it('As the host, I hand a sandbox message to every handler of its type and report the one that throws with that type', () => {

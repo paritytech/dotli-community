@@ -57,8 +57,8 @@ export type BitswapGetMessage = {
   type: 'dotli:bitswap-get';
   id: string;
   cid: string;
-  /** The sandbox document's own id, which its abort repeats. Missing from a sandbox released before it. */
-  frame?: string;
+  /** The sandbox document's own id, which its abort repeats. */
+  frame: string;
 };
 
 /** The sandbox frame is going away, so the host stops these fetches. */
@@ -66,7 +66,7 @@ export type BitswapAbortMessage = {
   type: 'dotli:bitswap-abort';
   ids: string[];
   /** As on the gets. The host reads an abort sent on `pagehide` once its frame is gone, so it has no source. */
-  frame?: string;
+  frame: string;
 };
 
 export type BitswapResultMessage =
@@ -154,14 +154,14 @@ export function parseSandboxToHostMessage(data: unknown): SandboxToHostMessage |
       return { type: 'dotli:sandbox-recover' };
     case 'dotli:bitswap-get': {
       const { id, cid, frame } = record;
-      return isNonEmptyString(id) && isNonEmptyString(cid)
-        ? { type: 'dotli:bitswap-get', id, cid, ...(isNonEmptyString(frame) ? { frame } : {}) }
+      return isNonEmptyString(id) && isNonEmptyString(cid) && isNonEmptyString(frame)
+        ? { type: 'dotli:bitswap-get', id, cid, frame }
         : null;
     }
     case 'dotli:bitswap-abort': {
       const { ids, frame } = record;
-      return Array.isArray(ids) && ids.every(id => typeof id === 'string')
-        ? { type: 'dotli:bitswap-abort', ids, ...(isNonEmptyString(frame) ? { frame } : {}) }
+      return Array.isArray(ids) && ids.every(id => typeof id === 'string') && isNonEmptyString(frame)
+        ? { type: 'dotli:bitswap-abort', ids, frame }
         : null;
     }
     default:

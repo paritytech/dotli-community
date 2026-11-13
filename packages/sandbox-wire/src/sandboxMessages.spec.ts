@@ -25,10 +25,8 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
     },
   ],
   ['a recover request', { type: 'dotli:sandbox-recover' }],
-  ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX' }],
-  ['a teardown abort', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'] }],
-  ['a block request from a named frame', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
-  ['a teardown abort from a named frame', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'], frame: 'f-1' }],
+  ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
+  ['a teardown abort', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'], frame: 'f-1' }],
 ];
 
 describe('sandbox messages', () => {
@@ -43,8 +41,10 @@ describe('sandbox messages', () => {
   it.each([
     ['a non-object', 'dotli:loading-status'],
     ['an unknown type', { type: 'dotli:unknown' }],
-    ['a block request without a CID', { type: 'dotli:bitswap-get', id: 'r-1', cid: '' }],
-    ['an abort with a non-string id', { type: 'dotli:bitswap-abort', ids: [1] }],
+    ['a block request without a CID', { type: 'dotli:bitswap-get', id: 'r-1', cid: '', frame: 'f-1' }],
+    ['a block request without a frame id', { type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }],
+    ['an abort with a non-string id', { type: 'dotli:bitswap-abort', ids: [1], frame: 'f-1' }],
+    ['an abort without a frame id', { type: 'dotli:bitswap-abort', ids: ['r-1'] }],
     ['a debug event from another layer', { type: 'dotli:debug-event', event: { layer: 'main' } }],
   ])('As the host, I drop %s', (_name, data) => {
     // When
