@@ -44,8 +44,8 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 - **Passed-in connection:** the resolver reads through the Asset Hub follow its owner already keeps.
 - **Direct storage reads:** contracts are read from Revive storage slots, with no runtime call. A multi-slot read pins
   one block, so bytes are never torn.
-- **Batched reads:** a read of many slots sends up to 256 keys in one storage call. A key the server discards goes out
-  again.
+- **Batched reads:** a read of many slots sends a bounded number of keys in each storage call. A key the server discards
+  goes out again.
 - **Halts:** a read on a halted chain is retried a few times. The resolver spots a halt by the shared marker, so it
   never imports the chain pool.
 - **Sync wait** has a timeout, since a chain with no peers never syncs.

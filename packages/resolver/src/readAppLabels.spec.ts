@@ -25,15 +25,16 @@ describe('readAppLabels', () => {
     expect(appLabels).toEqual(new Set(['alpha']));
   });
 
-  it('As the name list, I read a label whose contenthash is stored as long bytes and count it as an app', async () => {
+  it('As the name list, I read a label whose contenthash is stored as long bytes and count it as an app without reading its data slots', async () => {
     // Given app.alpha with a contenthash longer than one word
-    const { api } = createFakeApi({ [contenthashSlot('alpha')]: longBytesWord(40) });
+    const { api, batches } = createFakeApi({ [contenthashSlot('alpha')]: longBytesWord(40) });
 
     // When the label is read
     const appLabels = await readAppLabels({ api, dotns, labels: ['alpha'] });
 
-    // Then alpha has an app
+    // Then alpha has an app, and only its base slot was read
     expect(appLabels).toEqual(new Set(['alpha']));
+    expect(batches).toEqual([{ contractAddress: dotns.DOTNS_CONTENT_RESOLVER, slotKeys: [contenthashSlot('alpha')] }]);
   });
 
   it("As the name list, I read three labels and read every label's slot in one batch", async () => {

@@ -71,9 +71,10 @@ export type Api = {
   ): Promise<Uint8Array | null>;
   /**
    * Resolves each contract's `trie_id` at `atHash`, a block a `withBestBlock` read holds, keyed by the address as given.
-   * `null` for an address that is not a contract. Settles only once every call it made ended. Rejects with `ApiStoppedError` once the follow stopped, with papi's
-   * `DisjointError` when it stops while a call is in flight, and otherwise with the storage error, such as
-   * `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
+   * `null` for an address that is not a contract. Settles only once every call it made ended. Rejects with
+   * `ApiStoppedError` once the follow stopped, with papi's `DisjointError` when it stops while a call is in flight, and
+   * otherwise with the storage error, such as `OperationInaccessibleError` or `OperationLimitError` once the retry
+   * window ends.
    */
   resolveTrieIds(contractAddresses: readonly string[], atHash: string): Promise<ReadonlyMap<string, Uint8Array | null>>;
   /**

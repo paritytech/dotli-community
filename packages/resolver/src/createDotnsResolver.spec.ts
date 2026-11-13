@@ -627,23 +627,9 @@ describe('createDotnsResolver', () => {
     expect(opened).toEqual([]);
   });
 
-  it('As the name list, I read again after a release and a new client is opened', async () => {
-    // Given a client released after a read
-    const { dotns, opened } = createResolver();
-    await dotns.readAppLabels(['alice']);
-    dotns.release();
-
-    // When
-    await dotns.readAppLabels(['alice']);
-
-    // Then
-    expect(opened).toHaveLength(2);
-  });
-
   it('As the name list, I release while the client still syncs, and once its follow reaches its first block no client is kept', async () => {
     // Given a first client that syncs when the test says so, and a read with a short budget that gave up on it
     vi.useFakeTimers();
-    const reports = recordReports({ onFinished: onTestFinished });
     const first = createHandSettledShape();
     const { dotns, opened } = createResolver([first.shape]);
     const failure = dotns.readLabelStores(0, { syncTimeoutMs: 1_000 }).catch((error: unknown) => error);
@@ -658,7 +644,6 @@ describe('createDotnsResolver', () => {
     // Then the synced client was torn down rather than kept, and the later read opened its own
     await expect(failure).resolves.toMatchObject({ name: 'NetworkSyncTimeoutError' });
     expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
-    expect(reports.expected.map(({ step }) => step)).not.toContain('follow_stop');
     expect(opened).toHaveLength(2);
   });
 

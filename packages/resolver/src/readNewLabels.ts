@@ -32,8 +32,8 @@ type StoreNames = { cursor: LabelStoreCursor; names: string[] };
 const MAX_ENTRIES_PER_READ = 256;
 
 /**
- * Each store's cursor moved past at most 256 of its new entries, and the second-level labels under `dotns.TLD` among
- * those entries, deduped in first-seen order. A cursor stops short of its store's entry count while more entries wait,
+ * Each store's cursor moved past a slice of its new entries, and the second-level labels under `dotns.TLD` among those
+ * entries, deduped in first-seen order. A cursor stops short of its store's entry count while more entries wait,
  * so a caller reads again until no cursor moves. All stores are read in one block. Rejects with
  * `PartialStorageReadError` when a long name's data slot is missing, and otherwise with a slot read's error.
  */
@@ -129,9 +129,10 @@ async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): 
       names.push(decoder.decode(bytes.data));
       continue;
     }
+    const words = dataWords.slice(nextDataWord, nextDataWord + dataSlots.length);
+    nextDataWord += dataSlots.length;
     const data = new Uint8Array(dataSlots.length * 32);
-    for (let slotIndex = 0; slotIndex < dataSlots.length; slotIndex++) {
-      const word = dataWords[nextDataWord + slotIndex] ?? null;
+    for (const [slotIndex, word] of words.entries()) {
       if (word === null) {
         throw new PartialStorageReadError({
           contractAddress: store.address,
@@ -142,7 +143,6 @@ async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): 
       }
       data.set(word, slotIndex * 32);
     }
-    nextDataWord += dataSlots.length;
     names.push(decoder.decode(data.subarray(0, bytes.length)));
   }
   return { cursor: { address: store.address, read: store.read + labelhashWords.length }, names };
