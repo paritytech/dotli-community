@@ -55,4 +55,20 @@ describe('host messages', () => {
       { message: { type: 'dotli:sandbox-recover' }, targetOrigin: '*' },
     ]);
   });
+
+  it('As a visitor on an error page, I pick its actions and the sandbox asks the host to open the landing or reload', () => {
+    // Given
+    const parent = createRecordingParent();
+    const hostMessages = createHostMessages({ parent, timers: createManualTimers() });
+
+    // When
+    hostMessages.askNavigate('landing');
+    hostMessages.askNavigate('reload');
+
+    // Then
+    expect(parent.posted).toEqual([
+      { message: { type: 'dotli:sandbox-navigate', to: 'landing' }, targetOrigin: '*' },
+      { message: { type: 'dotli:sandbox-navigate', to: 'reload' }, targetOrigin: '*' },
+    ]);
+  });
 });
