@@ -52,16 +52,10 @@ export function hasArchivePayload(
 
 /**
  * Answers a page's message on the port it sent, so a late answer cannot settle a later request and no global listener
- * is needed. A page from the previous release sends no port and hears the answer as a message to its page. Throws what
- * posting throws.
+ * is needed. A message without a port gets no answer. Throws what posting throws.
  */
 export function replyToPage(event: ExtendableMessageEvent, message: WorkerReply): void {
-  const [port] = event.ports;
-  if (port !== undefined) {
-    port.postMessage(message);
-    return;
-  }
-  getSender(event)?.postMessage(message);
+  event.ports[0]?.postMessage(message);
 }
 
 /** The page that sent a message, or `null` when no client did. */

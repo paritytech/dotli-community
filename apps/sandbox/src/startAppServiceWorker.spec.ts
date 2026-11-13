@@ -31,7 +31,7 @@ type PostFromPageParams = {
   /** The message's data. */
   data: unknown;
   /** The ports the message carries. */
-  ports?: MessagePort[];
+  ports: MessagePort[];
   /** Receives each message the worker posts to the sending page. Throws what posting to that page throws. */
   postToPage?: (message: unknown) => void;
   /** The id of the sending page's client. */
@@ -109,18 +109,19 @@ function startWorker(
 
 /**
  * Hands over an archive as the sandbox page does, and waits for every write the worker keeps alive. `directory` is
- * the directory of the path the page writes the product at. Resolves with what reached the page-wide channel.
+ * the directory of the path the page writes the product at. Resolves with the port's answer and what reached the
+ * page-wide channel.
  */
 function setArchive(
   scope: WorkerScope,
   files: Record<string, string>,
   { directory = '/', clientId = 'page-1' }: SetArchiveParams = {},
-): Promise<unknown[]> {
+): Promise<{ portReply: Promise<unknown>; pageReplies: unknown[] }> {
   const encoder = new TextEncoder();
   const { packed, index } = packArchive(
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, encoder.encode(text)])),
   );
-  return postFromPage(scope, { data: { type: 'SET_ARCHIVE', packed, index, directory }, clientId });
+  return setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index, directory }, { clientId });
 }
 
 /**
@@ -130,7 +131,7 @@ function setArchive(
 async function setArchiveOnPort(
   scope: WorkerScope,
   data: Record<string, unknown>,
-  page: Pick<PostFromPageParams, 'postToPage' | 'source'> = {},
+  page: Pick<PostFromPageParams, 'postToPage' | 'source' | 'clientId'> = {},
 ): Promise<{ portReply: Promise<unknown>; pageReplies: unknown[] }> {
   const channel = new MessageChannel();
   onTestFinished(() => {
@@ -150,7 +151,7 @@ async function setArchiveOnPort(
  */
 async function postFromPage(
   scope: WorkerScope,
-  { data, ports = [], postToPage, clientId = 'page-1', source }: PostFromPageParams,
+  { data, ports, postToPage, clientId = 'page-1', source }: PostFromPageParams,
 ): Promise<unknown[]> {
   const pageReplies: unknown[] = [];
   const kept: Promise<unknown>[] = [];
@@ -257,7 +258,7 @@ describe('app service worker', () => {
     const response = await request(restarted, '/_nuxt/late.js');
 
     // Then
-    expect(handedOver).toEqual([{ type: 'ARCHIVE_READY' }]);
+    expect(await handedOver.portReply).toEqual({ type: 'ARCHIVE_READY' });
     expect(response?.status).toBe(200);
     expect(response?.headers.get('Content-Type')).toBe('application/javascript');
     expect(await response?.text()).toBe('export default 1;');
@@ -341,11 +342,11 @@ describe('app service worker', () => {
     const scope = startWorker({ ...origin, indexedDB: createBrokenIndexedDb() });
 
     // When the page hands over its archive
-    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
+    const handoff = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
 
     // Then the page can still serve now, and hears why a restart would not
-    expect(replies).toEqual([
-      { type: 'ARCHIVE_READY' },
+    expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_READY' });
+    expect(handoff.pageReplies).toEqual([
       {
         type: 'ARCHIVE_FAILURE',
         stage: 'persist',
