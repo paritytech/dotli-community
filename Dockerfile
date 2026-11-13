@@ -5,13 +5,13 @@
 # iframe would be looked for on the wrong port.
 
 # The manifests alone, so the install layer below is reused until a dependency changes.
-FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS manifests
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS manifests
 WORKDIR /src
 COPY . .
 RUN find . -type f ! -name package.json ! -name package-lock.json -delete \
  && find . -type d -empty -delete
 
-FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS build
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS build
 WORKDIR /src
 COPY --from=manifests /src ./
 RUN npm install -g "$(node -p 'require("./package.json").packageManager')" \
@@ -31,7 +31,7 @@ RUN if [ -n "${RELEASE_VERSION:-}" ]; then node scripts/setVersion.ts "$RELEASE_
  && if [ -n "${RELEASE_COMMIT:-}" ]; then export VITE_COMMIT_SHA="$RELEASE_COMMIT"; fi \
  && npm run build:prod
 
-FROM nginx:alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417
+FROM nginx:alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11
 ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173
 
 # jq: the entrypoint validates the runtime network config before nginx starts.
