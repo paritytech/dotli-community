@@ -9,10 +9,8 @@ import { startPage } from './startPage.js';
 import { reportBootFailure } from './reportBootFailure.js';
 // Its first imports load the host's startup modules and then mark the page's start, before the rest loads.
 import { startShell, type Shell } from './startShell.js';
-import { PAGE_START } from './pageStart.js';
 import { openProduct } from './openProduct.js';
 import { openTarget } from './openTarget.js';
-import { bootTracker, type BootStep } from './createBootTracker.js';
 import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
 import { loadingState } from './state/loadingState.js';
 import { networkPause } from './runtime/createNetworkPause.js';
@@ -20,48 +18,36 @@ import { urlPillState } from './state/urlPillState.js';
 import { cidCache } from '@dotli/storage';
 import { createStateMachine, type HandlerOf, type HandlersOf, type MachineTypes } from '@dotli/shared';
 import { DEBUG, getNetwork, isLocalhost, LOCAL_ROOT } from '@dotli/config';
-import { debugBus } from '@dotli/truapi-debug';
-import { createReporter } from '@dotli/metrics';
 import type { EarlyCidRead } from './createPageCidCache.js';
-import { leaveForLanding, readLocalhostUrl, readShellRoute, type LocalTarget, type ShellRoute } from './shellRoute.js';
+import { leaveForLanding, readLocalhostUrl, readShellRoute, type ShellRoute } from './shellRoute.js';
 import { getShellPageRole, type PageRole } from './runtime/pageRole.js';
 import { bindTopbar } from './bindTopbar.js';
 import { bindUrlPill } from './bindUrlPill.js';
 
-const bootReport = createReporter({ flow: 'boot' });
-
-/** A route the page opens rather than leaves to its parent. */
-type OpenedRoute = Exclude<ShellRoute, { kind: 'nested' }>;
+/** A route the boot takes: every route but a nested one. */
+type BootRoute = Exclude<ShellRoute, { kind: 'nested' }>;
 
 /**
  * Where the page's boot is. It starts the shell, then opens what the route names: a local target by its URL, or a
- * product by its name. It ends opened, or failed once its failure screen shows.
+ * product by its name, or leaves for the landing page. It ends opened, left for the landing page, or failed once its
+ * failure screen shows.
  */
 type BootState =
   | { kind: 'idle' }
-  | { kind: 'startingShell'; route: OpenedRoute; cidRead: EarlyCidRead | null }
-  | { kind: 'openingTarget'; target: LocalTarget; flowId: string }
-  | { kind: 'openingProduct' }
+  | { kind: 'startingShell'; route: BootRoute; cidRead: EarlyCidRead | null }
+  | { kind: 'opening' }
   | { kind: 'opened' }
+  | { kind: 'leftForLanding' }
   | { kind: 'failed' };
 
 type BootEvent =
-  | { kind: 'started'; route: OpenedRoute; role: PageRole }
+  | { kind: 'started'; route: BootRoute; role: PageRole }
   | { kind: 'shellStarted'; shell: Shell }
   | { kind: 'opened' }
   | { kind: 'failed'; error: unknown };
 
-/**
- * What the boot reports and does: its step for a failure's tag, the route it took, a local target on screen, the move
- * to the landing page, a failure. A throw goes to the failure report.
- */
-type BootEffect =
-  | { kind: 'stepEntered'; step: BootStep }
-  | { kind: 'routeAnnounced'; route: OpenedRoute; flowId: string }
-  | { kind: 'targetRouted'; target: LocalTarget }
-  | { kind: 'targetOpened'; target: LocalTarget; flowId: string }
-  | { kind: 'leftForLanding' }
-  | { kind: 'failed'; error: unknown };
+/** What the boot does: the move to the landing page, and the report of a failure. */
+type BootEffect = { kind: 'leftForLanding' } | { kind: 'failed'; error: unknown };
 
 type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 
@@ -92,12 +78,12 @@ function main(): void {
       handlers: {
         idle,
         startingShell,
-        openingTarget,
-        openingProduct,
+        opening,
         opened: null,
+        leftForLanding: null,
         failed: null,
       },
-      onEffect: reportBoot,
+      onEffect: runBootEffect,
       onError: reportBootFailure,
     });
     boot.update({ kind: 'started', route, role: getShellPageRole(route, framed) });
@@ -124,7 +110,7 @@ const idle: HandlersOf<BootMachine, 'idle'> = {
 };
 
 /** Ends a boot that failed before the page had anything to show. */
-const failBoot: HandlerOf<BootMachine, 'startingShell' | 'openingTarget' | 'openingProduct', 'failed'> = (
+const failBoot: HandlerOf<BootMachine, 'startingShell' | 'opening', 'failed'> = (
   _state,
   { error },
   { emitState, emitSideEffect },
@@ -136,98 +122,32 @@ const failBoot: HandlerOf<BootMachine, 'startingShell' | 'openingTarget' | 'open
 const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
   failed: failBoot,
   shellStarted({ route, cidRead }, { shell }, { emitState, emitSideEffect, update }) {
-    switch (route.kind) {
-      case 'preview':
-      case 'localhost': {
-        const proxied = isLocalhostProxy(route);
-        emitState({ kind: 'openingTarget', target: route, flowId: shell.flowId });
-        if (proxied) {
-          emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        }
-        emitSideEffect({ kind: 'stepEntered', step: proxied ? 'localhost_render' : 'preview_render' });
-        emitSideEffect({ kind: 'targetRouted', target: route });
-        update(
-          openTarget(route, shell).then(
-            () => ({ kind: 'opened' }),
-            (error: unknown) => ({ kind: 'failed', error }),
-          ),
-        );
-        return;
-      }
-      case 'product':
-        emitState({ kind: 'openingProduct' });
-        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        emitSideEffect({ kind: 'stepEntered', step: 'resolve_setup' });
-        update(
-          openProduct({ route, shell, cidRead }).then(
-            () => ({ kind: 'opened' }),
-            (error: unknown) => ({ kind: 'failed', error }),
-          ),
-        );
-        return;
-      case 'landing':
-        emitState({ kind: 'opened' });
-        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        emitSideEffect({ kind: 'leftForLanding' });
-        return;
+    if (route.kind === 'landing') {
+      emitState({ kind: 'leftForLanding' });
+      emitSideEffect({ kind: 'leftForLanding' });
+      return;
     }
+    emitState({ kind: 'opening' });
+    const opening = route.kind === 'product' ? openProduct({ route, shell, cidRead }) : openTarget(route, shell);
+    update(
+      opening.then(
+        () => ({ kind: 'opened' }),
+        (error: unknown) => ({ kind: 'failed', error }),
+      ),
+    );
   },
 };
 
-const openingTarget: HandlersOf<BootMachine, 'openingTarget'> = {
-  failed: failBoot,
-  opened({ target, flowId }, _event, { emitState, emitSideEffect }) {
-    emitState({ kind: 'opened' });
-    emitSideEffect({ kind: 'targetOpened', target, flowId });
-  },
-};
-
-const openingProduct: HandlersOf<BootMachine, 'openingProduct'> = {
+const opening: HandlersOf<BootMachine, 'opening'> = {
   failed: failBoot,
   opened(_state, _event, { emitState }) {
     emitState({ kind: 'opened' });
   },
 };
 
-/** Runs the boot's effects: a failure's step, the debug panel's events, the landing move and the failure screen. */
-function reportBoot(effect: BootEffect): void {
+/** Runs the boot's effects: the landing move and the failure screen. */
+function runBootEffect(effect: BootEffect): void {
   switch (effect.kind) {
-    case 'stepEntered':
-      bootTracker.setStep(effect.step);
-      return;
-    case 'routeAnnounced': {
-      const { route } = effect;
-      // With the path as the settings left it.
-      debugBus.emit({
-        layer: 'boot',
-        event: 'url_parsed',
-        flowId: effect.flowId,
-        timestamp: Date.now(),
-        payload: {
-          label: route.kind === 'product' ? route.label : null,
-          localhostHost: route.kind === 'localhost' ? route.host : null,
-          deepPath: window.location.pathname + window.location.search,
-        },
-      });
-      return;
-    }
-    case 'targetRouted':
-      bootReport.log.event(isLocalhostProxy(effect.target) ? 'Route: localhost proxy' : 'Route: preview', {
-        host: effect.target.host,
-      });
-      return;
-    case 'targetOpened':
-      performance.mark('dotli:main:end');
-      if (isLocalhostProxy(effect.target)) {
-        debugBus.emit({
-          layer: 'boot',
-          event: 'ready',
-          flowId: effect.flowId,
-          timestamp: Date.now(),
-          payload: { label: null, totalMs: performance.now() - PAGE_START, path: 'localhost' },
-        });
-      }
-      return;
     case 'leftForLanding':
       leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
       return;
@@ -235,12 +155,6 @@ function reportBoot(effect: BootEffect): void {
       reportBootFailure(effect.error);
       return;
   }
-}
-
-/** Whether `target` is a local dev server behind the proxy. */
-function isLocalhostProxy(target: LocalTarget): boolean {
-  // Only debug builds read a localhost route, so the compile-time flag drops its branches from release bundles.
-  return DEBUG && target.kind === 'localhost';
 }
 
 // The shell's chrome is static markup that only this page renders, so its bindings run from this one script. They

@@ -27,17 +27,16 @@ type Params = {
   timers?: Pick<Timers, 'setTimeout'> | undefined;
 };
 
-type ExpectHeardWithinParams = {
+/** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
+type Ask = {
   /** Hears the sandbox's silence once the deadline passes with nothing heard. */
   onSilent: (error: SandboxSilentError) => void;
 };
 
-/** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
-type Ask = ExpectHeardWithinParams;
-
 /**
- * Each listening state holds the channel's unsubscribe. A deadline that ends leaves the sandbox `unheard` again. A
- * deadline's timer is never cleared: once its ask left the state, it ends nothing.
+ * Each listening state holds the channel's unsubscribe. `idle` stays when the channel could not be listened to. A
+ * deadline that ends leaves the sandbox `unheard` again. A deadline's timer is never cleared: once its ask left the
+ * state, it ends nothing.
  */
 type SandboxLoadState =
   | { kind: 'idle' }
@@ -50,8 +49,8 @@ type SandboxLoadState =
 type SandboxLoadEvent =
   | { kind: 'started' }
   | { kind: 'spoke' }
-  /** `report` is the outcome the `done` carried, if any. */
-  | { kind: 'doneHeard'; report: SandboxLoadReport | null }
+  | { kind: 'doneHeard' }
+  | { kind: 'outcomeHeard'; report: SandboxLoadReport }
   | { kind: 'deadlineAsked'; ask: Ask }
   | { kind: 'deadlinePassed'; ask: Ask }
   | { kind: 'deadlineStopped'; ask: Ask }
@@ -87,16 +86,14 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
   ) => {
     emitState({ kind: 'heard', stopListening });
   };
-  /** Clears the screen at the sandbox's first `done`, and ends the load in `cleared` when the `done` carries an outcome. */
+  /** Clears the screen at the sandbox's first `done`. */
   const clearScreen: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting' | 'heard', 'doneHeard'> = (
     { stopListening },
-    event,
-    { emitState, emitSideEffect, update },
+    _event,
+    { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'cleared', stopListening, latest: null });
     emitSideEffect({ kind: 'cleared' });
-    // After the clear's listeners, so one that follows the outcomes from there hears this one once.
-    update(event);
   };
   /** Starts the ask's deadline in place of any earlier one. */
   const startDeadline: HandlerOf<SandboxLoadMachine, 'unheard' | 'waiting', 'deadlineAsked'> = (
@@ -123,13 +120,19 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     handlers: {
       idle: {
         started(_state, _event, { emitState, update }) {
-          const stopListening = channel.on('dotli:loading-status', status => {
-            update(status.done === true ? { kind: 'doneHeard', report: toReport(status) } : { kind: 'spoke' });
+          const stopListening = channel.on('dotli:loading-status', ({ done, outcome, failedStep }) => {
+            if (done !== true) {
+              update({ kind: 'spoke' });
+              return;
+            }
+            // The clear's listeners hear it first, so one that follows the outcomes from there hears this outcome once.
+            // A `done` without an outcome only clears the screen for a prompt the sandbox shows before its content.
+            update({ kind: 'doneHeard' });
+            if (outcome !== undefined) {
+              update({ kind: 'outcomeHeard', report: toReport(outcome, failedStep) });
+            }
           });
           emitState({ kind: 'unheard', stopListening });
-        },
-        disposed(_state, _event, { emitState }) {
-          emitState({ kind: 'disposed' });
         },
       },
       unheard: { spoke: hearSpeech, doneHeard: clearScreen, deadlineAsked: startDeadline, disposed: stop },
@@ -154,11 +157,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
       },
       heard: { doneHeard: clearScreen, disposed: stop },
       cleared: {
-        doneHeard(state, { report }, { emitState, emitSideEffect }) {
-          // A `done` without an outcome only clears the screen for a prompt the sandbox shows before its content loads.
-          if (report === null) {
-            return;
-          }
+        outcomeHeard(state, { report }, { emitState, emitSideEffect }) {
           emitState({ ...state, latest: report });
           emitSideEffect({ kind: 'outcome', report });
         },
@@ -175,7 +174,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
           outcomes.emit(effect.report);
           return;
         case 'silent':
-          effect.ask.onSilent(new SandboxSilentError(SANDBOX_SILENCE_MS));
+          effect.ask.onSilent(new SandboxSilentError());
           return;
       }
     },
@@ -233,9 +232,8 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     return clears.subscribe(listener);
   }
 
-  function expectHeardWithin({ onSilent }: ExpectHeardWithinParams): () => void {
-    // A new object, so an ask with the same `onSilent` as an earlier one is still told from it.
-    const ask = { onSilent };
+  function expectHeardWithin(onSilent: Ask['onSilent']): () => void {
+    const ask: Ask = { onSilent };
     load.update({ kind: 'deadlineAsked', ask });
     return () => {
       load.update({ kind: 'deadlineStopped', ask });
@@ -249,23 +247,14 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
 
 /** The sandbox frame said nothing within its deadline. */
 export class SandboxSilentError extends Error {
-  constructor(silenceMs: number) {
-    super(`The app frame sent nothing within ${String(silenceMs / 1000)}s`);
+  constructor() {
+    super(`The app frame sent nothing within ${String(SANDBOX_SILENCE_MS / 1000)}s`);
     this.name = 'SandboxSilentError';
   }
 }
 
-/** The outcome a `done` carries, its failed step cleaned for a tag, or `null` when it carries none. */
-function toReport({
-  outcome,
-  failedStep,
-}: {
-  outcome?: SandboxLoadOutcome;
-  failedStep?: string;
-}): SandboxLoadReport | null {
-  if (outcome === undefined) {
-    return null;
-  }
+/** The outcome a `done` carries, its failed step cleaned for a tag. */
+function toReport(outcome: SandboxLoadOutcome, failedStep: string | undefined): SandboxLoadReport {
   if (isLoadedOutcome(outcome) || failedStep === undefined || !FAILED_STEP_RE.test(failedStep)) {
     return { outcome, failedStep: undefined };
   }

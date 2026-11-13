@@ -186,6 +186,37 @@ describe('startLoadProgress', () => {
     expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
   });
 
+  it('As a visitor in direct mode, I was told a chain has no peers, it reports a stall, and its line stays', async () => {
+    // Given the relay's line shown for a chain with no peers
+    const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(5_000);
+    const shown = loadingState.get().warning;
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'stalled' });
+
+    // Then
+    expect(loadingState.get().warning).toBe(shown);
+  });
+
+  it('As a visitor in direct mode, I was told a chain has no peers, it stalls and then recovers, and its line gives way', async () => {
+    // Given the relay's line shown for a chain with no peers, and the relay stalling
+    const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(5_000);
+    const shown = loadingState.get().warning;
+    chainSync.send({ chain: 'relay', kind: 'stalled' });
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'recovered' });
+
+    // Then
+    expect(loadingState.get().warning).not.toBe(shown);
+  });
+
   it('As a visitor in direct mode, I wait on two chains that stall before the load is old enough to be slow and am told of the later stall at that mark', async () => {
     // Given the relay and Asset Hub find no peers, and the relay starts connecting
     const { chainSync, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
@@ -403,7 +434,7 @@ describe('startLoadProgress', () => {
     expect(trace.recordBytes.mock.calls).toEqual([[100]]);
   });
 
-  it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while dispose returns', () => {
+  it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while the sources after it are still unsubscribed', () => {
     // Given a chain detail source whose unsubscribe throws
     const { counted } = bindReports();
     const events: Partial<LoadEvents> = {
@@ -411,13 +442,14 @@ describe('startLoadProgress', () => {
         throw new Error('the protocol frame is gone');
       },
     };
-    const { progress } = setupLoad({ backend: 'smoldot-direct', events });
+    const { progress, netBytes } = setupLoad({ backend: 'smoldot-direct', events });
 
     // When
     progress.dispose();
 
     // Then
     expect(counted('load_progress.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect(netBytes.isHeard()).toBe(false);
   });
 
   it('As a visitor whose download parks after the load progress was disposed, I wait and see no slow-load warning', async () => {

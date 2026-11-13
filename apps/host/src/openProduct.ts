@@ -13,6 +13,7 @@ import { blockCache as pageBlockCache } from '@dotli/storage';
 import { debugBus } from '@dotli/truapi-debug';
 import { runWhenIdle } from '@dotli/ui';
 import { createBlockVerifier } from './createBlockVerifier.js';
+import { bootTracker } from './createBootTracker.js';
 import { recentLabels } from './createLazyRecentLabels.js';
 import { createLoadTelemetry } from './createLoadTelemetry.js';
 import { pageLoading } from './createLoadingController.js';
@@ -48,6 +49,7 @@ type Params = {
 
 /** Opens the product `route` names. Rejects as its load does. */
 export async function openProduct({ route, shell, cidRead }: Params): Promise<void> {
+  bootTracker.setStep('resolve_setup');
   const { label, base } = route;
   const { settings, bridge } = shell.startup;
   const protocol = getProtocolClient();
