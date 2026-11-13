@@ -62,7 +62,6 @@ type CommandsEvent =
   | { kind: 'roundFailed'; id: symbol; error: unknown };
 
 type CommandsEffect =
-  | { kind: 'queueLogin'; id: symbol; reason: LoginParams['reason']; signal: AbortSignal }
   | { kind: 'abortLogin'; controller: AbortController }
   | { kind: 'cancelPairing' }
   | { kind: 'cancelRunningPairing' }
@@ -88,7 +87,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
     initial: { kind: 'open', current: null, rounds: new Map() },
     handlers: {
       open: {
-        loginAsked(state, { reason, waiter }, { emitState, emitSideEffect }) {
+        loginAsked(state, { reason, waiter }, { emitState, update }) {
           const joined = getCurrentRound(state);
           if (joined !== undefined) {
             // A click while a round runs shares its login, so it starts no second pairing.
@@ -98,7 +97,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
           }
           const round: LoginRound = { id: Symbol('login round'), controller: new AbortController(), waiters: [waiter] };
           emitState({ ...state, current: round.id, rounds: new Map(state.rounds).set(round.id, round) });
-          emitSideEffect({ kind: 'queueLogin', id: round.id, reason, signal: round.controller.signal });
+          update(queueLogin(round, reason));
         },
         // Ends the round a click would join, so a login still waiting for its core hears the abort and sends nothing.
         roundEnded(state, { by }, { emitState, emitSideEffect }) {
@@ -141,28 +140,6 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'queueLogin': {
-          const { id, reason, signal } = effect;
-          machine.update(
-            queue
-              .call(async (): Promise<LoginOutcome> => {
-                // A round a cancel or logout ended while it queued sends nothing to the core.
-                if (signal.aborted) {
-                  return CANCELLED;
-                }
-                const account = authViews.getSignedInSession(auth.get());
-                if (account !== null) {
-                  return { kind: 'paired', account };
-                }
-                return login({ reason, signal });
-              })
-              .then(
-                outcome => ({ kind: 'roundAnswered', id, outcome }),
-                (error: unknown) => ({ kind: 'roundFailed', id, error }),
-              ),
-          );
-          return;
-        }
         case 'abortLogin':
           effect.controller.abort(new DOMException('The sign-in was cancelled', 'AbortError'));
           return;
@@ -223,6 +200,29 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
       machine.update({ kind: 'roundEnded', by: 'cancel' });
     },
   };
+
+  /** Runs the round's login once the queue reaches it, and answers how it ended. */
+  function queueLogin(
+    { id, controller: { signal } }: LoginRound,
+    reason: LoginParams['reason'],
+  ): Promise<CommandsEvent> {
+    return queue
+      .call(async (): Promise<LoginOutcome> => {
+        // A round a cancel or logout ended while it queued sends nothing to the core.
+        if (signal.aborted) {
+          return CANCELLED;
+        }
+        const account = authViews.getSignedInSession(auth.get());
+        if (account !== null) {
+          return { kind: 'paired', account };
+        }
+        return login({ reason, signal });
+      })
+      .then(
+        outcome => ({ kind: 'roundAnswered', id, outcome }),
+        (error: unknown) => ({ kind: 'roundFailed', id, error }),
+      );
+  }
 }
 
 /** The round a click joins, if one is open. */
