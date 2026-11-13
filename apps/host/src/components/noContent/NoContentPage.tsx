@@ -5,11 +5,17 @@
 
 import type { JSX } from '@solidjs/web';
 import { GlobeIcon } from '@dotli/ui/icons';
-import { ErrorDetail, ErrorFrame } from '@dotli/ui';
+import { ErrorActions, ErrorDetail, ErrorFrame } from '@dotli/ui';
+import { SEARCH_AGAIN_BTN_LABEL } from '../../errorCopy.js';
 import s from './NoContentPage.module.css';
 
 /** The domain sits on its own chip so the visitor can scan it for a typo. */
-export function NoContentPage(props: { label: string; tld: string; standalone: boolean }): JSX.Element {
+export function NoContentPage(props: {
+  label: string;
+  tld: string;
+  standalone: boolean;
+  onSearchAgain: () => void;
+}): JSX.Element {
   return (
     <ErrorFrame standalone={props.standalone} class={s['unreached']} icon={GlobeIcon} title="This app can't be reached">
       {/* The chip stays inside the sentence, so a screen reader hears it as one. */}
@@ -20,6 +26,7 @@ export function NoContentPage(props: { label: string; tld: string; standalone: b
           <span class={s['domainTld']}>{props.tld}</span>
         </span>
       </ErrorDetail>
+      <ErrorActions actions={[{ label: SEARCH_AGAIN_BTN_LABEL, onClick: props.onSearchAgain }]} />
     </ErrorFrame>
   );
 }
