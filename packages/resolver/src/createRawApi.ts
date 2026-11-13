@@ -101,6 +101,7 @@ type FollowEvent =
   | { kind: 'finalized'; finalized: readonly string[]; pruned: readonly string[] }
   | { kind: 'blockHeld'; hash: string }
   | { kind: 'blockReleased'; hash: string }
+  // No state handles it: an unpin that went through changes nothing, and only ends the work `await()` counts.
   | { kind: 'unpinned' }
   | { kind: 'unpinFailed'; error: unknown }
   | { kind: 'followEnded'; cause: unknown }
