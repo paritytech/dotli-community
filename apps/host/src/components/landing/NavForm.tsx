@@ -82,6 +82,10 @@ export function NavForm(props: NavFormProps): JSX.Element {
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
+    // A key during an IME composition belongs to the IME.
+    if (e.isComposing) {
+      return;
+    }
     switch (e.key) {
       case 'ArrowDown':
       case 'ArrowUp':

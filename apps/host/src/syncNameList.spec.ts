@@ -132,6 +132,67 @@ describe('syncNameList', () => {
     expect(reads.readAppLabels).not.toHaveBeenCalled();
   });
 
+  it('As a returning visitor, I see a pending label listed again in a new store stay pending and not become an app', async () => {
+    // Given: a pending label, checked within the day, that a new store lists again and that has an app by now
+    const stored = createRecord({
+      stores: [{ address: 'store-a', read: 1 }],
+      pending: [{ label: 'bob', checkedAt: NOW - 1000 }],
+    });
+    const reads = createFakeReads({
+      stores: ['store-a', 'store-b'],
+      entries: { 'store-a': ['bob'], 'store-b': ['bob'] },
+      apps: ['bob'],
+    });
+
+    // When
+    const synced = await syncNameList({
+      stored,
+      network: 'paseo-next-v2',
+      reads,
+      save: createFakeSave(),
+      now: () => NOW,
+    });
+
+    // Then
+    expect(synced).toMatchObject({ apps: [], pending: [{ label: 'bob', checkedAt: NOW - 1000 }] });
+  });
+
+  it('As a first-time visitor, I see a label listed in two chunks of stores kept once', async () => {
+    // Given: 17 stores, the first and the last of which list the same label, which has no app
+    const stores = Array.from({ length: 17 }, (_, index) => `store-${String(index)}`);
+    const reads = createFakeReads({
+      stores,
+      entries: { 'store-0': ['dup'], 'store-16': ['dup'] },
+    });
+
+    // When
+    const synced = await syncNameList({
+      stored: null,
+      network: 'paseo-next-v2',
+      reads,
+      save: createFakeSave(),
+      now: () => NOW,
+    });
+
+    // Then
+    expect(synced).toMatchObject({ apps: [], pending: [{ label: 'dup', checkedAt: NOW }] });
+  });
+
+  it('As a returning visitor with 300 stale pending labels, I check them in chunks of 256 and save after each', async () => {
+    // Given: 300 labels last checked over a day ago
+    const labels = Array.from({ length: 300 }, (_, index) => `name${String(index)}`);
+    const stored = createRecord({ pending: labels.map(label => ({ label, checkedAt: NOW - DAY_MS - 1 })) });
+    const reads = createFakeReads({});
+    const save = createFakeSave();
+
+    // When
+    await syncNameList({ stored, network: 'paseo-next-v2', reads, save, now: () => NOW });
+
+    // Then
+    expect(reads.readAppLabels.mock.calls.map(([chunk]) => chunk.length)).toEqual([256, 44]);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it('As a visitor whose read fails on the second chunk, I keep the first chunk saved and the sync rejects with that error', async () => {
     // Given: 20 stores with an app label each, and the 17th store's read failing
     const labels = Array.from({ length: 20 }, (_, index) => `name${String(index)}`);

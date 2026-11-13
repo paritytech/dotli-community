@@ -69,7 +69,17 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
     });
   }
 
+  // A throw outside the sync's own steps, such as a `labels` listener that throws, is a defect and never an unhandled
+  // rejection.
   async function sync(current: SettingsState): Promise<void> {
+    try {
+      await runSync(current);
+    } catch (error) {
+      report.defect(error, { step: 'sync', metric: nameListSyncMetric, message: '[dot.li name-list] sync failed:' });
+    }
+  }
+
+  async function runSync(current: SettingsState): Promise<void> {
     const { network } = current;
     const stored = await store.get(network);
     labels.set(stored?.apps ?? []);

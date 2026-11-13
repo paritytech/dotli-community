@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { createNavComboboxState, type NavKey } from '../state/navComboboxState.js';
 import { getSuggestionId, SUGGESTIONS_ID } from '../components/landing/suggestionIds.js';
@@ -18,11 +18,11 @@ function mount(text: string) {
     suggestions: useSuggestions({ input, labels: () => LABELS, suffix: () => '.dot', combobox, open }),
     dispose: d,
   }));
+  onTestFinished(dispose);
   flush();
   return {
     suggestions,
     open,
-    dispose,
     listbox: () => combobox.listbox.get(),
     type(next: string): void {
       setInput({ ...input(), text: next });
@@ -50,7 +50,6 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.suggestions.shown()).toEqual(['ant', 'apple', 'avocado']);
-    view.dispose();
   });
 
   it('As a visitor, I leave the input and the suggestions hide', () => {
@@ -63,7 +62,6 @@ describe('useSuggestions', () => {
     // Then
     expect(view.suggestions.shown()).toEqual([]);
     expect(view.listbox()).toBeNull();
-    view.dispose();
   });
 
   it('As a visitor, I press ArrowDown twice and ArrowUp once and the first label is active, with the input pointing at its option', () => {
@@ -78,7 +76,6 @@ describe('useSuggestions', () => {
     // Then
     expect(view.suggestions.active()).toBe('ant');
     expect(view.listbox()).toEqual({ id: SUGGESTIONS_ID, activeId: getSuggestionId('ant') });
-    view.dispose();
   });
 
   it('As a visitor, I press ArrowUp on the first label and the active option wraps to the last', () => {
@@ -91,7 +88,18 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.suggestions.active()).toBe('avocado');
-    view.dispose();
+  });
+
+  it('As a visitor, I press ArrowDown on the last label and the active option wraps to the first', () => {
+    // Given the last label active
+    const view = mount('a');
+    view.press('ArrowUp');
+
+    // When
+    view.press('ArrowDown');
+
+    // Then
+    expect(view.suggestions.active()).toBe('ant');
   });
 
   it('As a visitor, I press Enter on an active label and that name opens', () => {
@@ -106,7 +114,6 @@ describe('useSuggestions', () => {
     // Then
     expect(taken).toBe(true);
     expect(view.open).toHaveBeenCalledWith('apple');
-    view.dispose();
   });
 
   it('As a visitor, I press Enter with no active label and the key is left to the form', () => {
@@ -119,7 +126,6 @@ describe('useSuggestions', () => {
     // Then
     expect(taken).toBe(false);
     expect(view.open).not.toHaveBeenCalled();
-    view.dispose();
   });
 
   it.each<NavKey>(['ArrowDown', 'ArrowUp', 'Escape'])(
@@ -133,11 +139,10 @@ describe('useSuggestions', () => {
 
       // Then
       expect(taken).toBe(false);
-      view.dispose();
     },
   );
 
-  it('As a visitor, I press Escape and the list hides until the text changes', () => {
+  it('As a visitor, I press Escape and the list hides', () => {
     // Given the suggestions for "a"
     const view = mount('a');
 
@@ -147,19 +152,31 @@ describe('useSuggestions', () => {
     // Then
     expect(view.suggestions.shown()).toEqual([]);
     expect(view.listbox()).toBeNull();
+  });
 
-    // When a character is typed
+  it('As a visitor, I press Escape and type a character and the list shows again', () => {
+    // Given the list hidden by Escape at "a"
+    const view = mount('a');
+    view.press('Escape');
+
+    // When
     view.type('ap');
 
     // Then
     expect(view.suggestions.shown()).toEqual(['apple']);
+  });
 
-    // When it is deleted again
+  it('As a visitor, I press Escape, type a character and delete it, and the list hides again', () => {
+    // Given the list hidden by Escape at "a", then shown at "ap"
+    const view = mount('a');
+    view.press('Escape');
+    view.type('ap');
+
+    // When
     view.type('a');
 
     // Then
     expect(view.suggestions.shown()).toEqual([]);
-    view.dispose();
   });
 
   it('As a visitor, I type past the active label and it is dropped', () => {
@@ -173,6 +190,5 @@ describe('useSuggestions', () => {
     // Then
     expect(view.suggestions.active()).toBeNull();
     expect(view.listbox()).toEqual({ id: SUGGESTIONS_ID, activeId: null });
-    view.dispose();
   });
 });

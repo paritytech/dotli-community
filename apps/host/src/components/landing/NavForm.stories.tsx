@@ -69,19 +69,20 @@ export const InvalidNameInline: Story = {
   },
 };
 
+/** The suggestions as the form drives them, with a key handler that answers `taken`. */
+function createCombobox(taken: boolean): NavCombobox {
+  return {
+    listbox: () => null,
+    onText: fn(),
+    onFocus: fn(),
+    onKey: fn(() => taken),
+  };
+}
+
 /** As a visitor pressing Enter on an empty name while the suggestions leave the key to the form, I see the form's own error. */
 export const EnterLeftToTheForm: Story = {
-  render: () => (
-    <Hydrated
-      combobox={{
-        listbox: () => null,
-        onText: fn(),
-        onFocus: fn(),
-        onKey: fn(() => false),
-      }}
-    />
-  ),
-  play: async ({ canvas, userEvent, step }) => {
+  args: { combobox: createCombobox(false) },
+  play: async ({ args, canvas, userEvent, step }) => {
     const field = canvas.getByRole('combobox');
     await step('When I focus the name input', async () => {
       await waitFor(() => expect(field).toBeEnabled());
@@ -93,8 +94,40 @@ export const EnterLeftToTheForm: Story = {
     await step('When I press Enter on the empty name', async () => {
       await userEvent.keyboard('{Enter}');
     });
-    await step("Then I see the form's own error", async () => {
+    await step("Then the suggestions were offered the key, and I see the form's own error", async () => {
+      await expect(args.combobox?.onKey).toHaveBeenCalledWith('Enter');
       await expect(canvas.getByRole('alert')).toHaveTextContent(NAME_ERROR_COPY.empty);
+    });
+  },
+};
+
+/** As a visitor pressing Enter on a name while the suggestions take the key, the form does not submit it as well. */
+export const EnterTakenBySuggestions: Story = {
+  args: { combobox: createCombobox(true) },
+  play: async ({ args, canvas, userEvent, step }) => {
+    const field = canvas.getByRole('combobox');
+    await step('When I press Enter on a name the form would reject', async () => {
+      await waitFor(() => expect(field).toBeEnabled());
+      await userEvent.type(field, 'Bad Name{Enter}');
+    });
+    await step('Then the suggestions took the key, and the form did not submit, so it shows no error', async () => {
+      await expect(args.combobox?.onKey).toHaveBeenCalledWith('Enter');
+      await expect(canvas.queryByRole('alert')).toBeNull();
+    });
+  },
+};
+
+/** As a visitor composing text with an IME, my keys go to the IME and the suggestions never see them. */
+export const KeysDuringCompositionLeftToTheIme: Story = {
+  args: { combobox: createCombobox(true) },
+  play: async ({ args, canvas, step }) => {
+    const field = canvas.getByRole('combobox');
+    await step('When I press Enter while composing', async () => {
+      await waitFor(() => expect(field).toBeEnabled());
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
+    });
+    await step('Then the suggestions were not offered the key', async () => {
+      await expect(args.combobox?.onKey).not.toHaveBeenCalled();
     });
   },
 };

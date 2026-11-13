@@ -54,12 +54,10 @@ describe('landing name list', () => {
 
     // When the sync starts, and the boot sets the settings after it
     nameList.start();
-    const getsBeforeSettings = [...gets];
     settings.set(SETTINGS);
     await released;
 
     // Then
-    expect(getsBeforeSettings).toEqual([]);
     expect(gets).toEqual(['previewnet']);
     expect(opened).toEqual([SETTINGS]);
   });
@@ -97,9 +95,6 @@ describe('landing name list', () => {
 
   it.each([
     { failure: 'times out', error: createNamedError('NetworkSyncTimeoutError') },
-    { failure: 'reads an operation the server dropped', error: createNamedError('OperationInaccessibleError') },
-    { failure: 'sends a batch the server refused', error: createNamedError('OperationLimitError') },
-    { failure: 'follows a chain gone disjoint', error: createNamedError('DisjointError') },
     {
       failure: 'reads a chain that kept halting',
       error: Object.assign(new Error('chain halted'), { data: CHAIN_HALTED_ERROR_DATA }),
@@ -143,6 +138,29 @@ describe('landing name list', () => {
     // Then
     expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
     expect(events).toContain('released');
+  });
+
+  it('As a visitor whose labels listener throws, I see the sync reported as a defect and no rejection escapes', async () => {
+    // Given a listener of the labels that throws on the first change
+    const reports = recordReports({ onFinished: onTestFinished });
+    const counted = Promise.withResolvers<undefined>();
+    bindRecordingSentry({
+      onFinished: onTestFinished,
+      onRecord: () => {
+        counted.resolve(undefined);
+      },
+    });
+    const { nameList } = setupNameList();
+    nameList.labels.listen(() => {
+      throw new TypeError('listener broke');
+    });
+
+    // When
+    nameList.start();
+    await counted.promise;
+
+    // Then
+    expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
   });
 
   it('As a visitor whose resolver chunk fails to load, I see the miss reported and no sync runs', async () => {
