@@ -188,6 +188,31 @@ describe('createBrowserBlockCheck', () => {
     expect(reports.expected).toMatchObject([{ step: 'browser_block_check' }]);
   });
 
+  it('As a dotli user restricting one of two blocked permissions, I see the next dialog only once the denial is saved', async () => {
+    // Given two blocked permissions, and a store whose write is still pending
+    let saved = (): void => undefined;
+    record.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          saved = resolve;
+        }),
+    );
+    startCheck(createFakeStatuses({ app: { Camera: 'granted', Microphone: 'granted' } }));
+    load('app');
+    await page.waitForPrompt();
+
+    // When the user restricts the first, and the write has started
+    page.answerBrowserBlock('restrict');
+    await vi.waitFor(() => expect(record).toHaveBeenCalledOnce());
+    const shownWhilePending = page.listPending();
+    saved();
+    const next = await page.waitForPrompt({ matches: prompt => isBlockOf(prompt, 'app', 'Microphone') });
+
+    // Then
+    expect(shownWhilePending).toEqual([]);
+    expect(next).toEqual(blockOf('app', 'Microphone'));
+  });
+
   it('As a dotli integrator, I dispose the launch scope while its dialog is up and nothing is reported', async () => {
     // Given the blocked dialog on screen
     const reports = recordReports({ onFinished: onTestFinished });
