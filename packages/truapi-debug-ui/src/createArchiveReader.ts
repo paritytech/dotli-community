@@ -26,31 +26,40 @@ type ArchiveEvent =
   | { kind: 'readFailed'; reading: ReadingState; reason: string }
   | { kind: 'fileSelected'; path: string };
 
-type ArchiveEffect = { kind: 'load'; reading: ReadingState };
-
-type ArchiveMachine = MachineTypes<ArchiveState, ArchiveEvent, ArchiveEffect>;
+type ArchiveMachine = MachineTypes<ArchiveState, ArchiveEvent>;
 
 /** The Archive tab's read of the shown product's files, and the file selected in them. */
 export function createArchiveReader({ load }: { load: ArchiveLoader }) {
-  /** Reads `cid`, unless the tab already reads or has read it. A failed read is read again. */
   const startReading: HandlerOf<ArchiveMachine, ArchiveState['kind'], 'shown'> = (
-    state,
+    _state,
     { cid },
-    { emitState, emitSideEffect },
+    { emitState, update },
   ) => {
-    if ((state.kind === 'reading' || state.kind === 'read') && state.cid === cid) {
-      return;
-    }
     const reading: ReadingState = { kind: 'reading', cid };
     emitState(reading);
-    emitSideEffect({ kind: 'load', reading });
+    update(
+      // A load that throws rejects this promise, so it ends as a failed read too.
+      new Promise<ArchiveFiles>(resolve => {
+        resolve(load(cid));
+      }).then(
+        (files): ArchiveEvent => ({ kind: 'archiveRead', reading, archive: toLoadedArchive(files) }),
+        (error: unknown): ArchiveEvent => ({ kind: 'readFailed', reading, reason: getErrorMessage(error) }),
+      ),
+    );
   };
-  const machine = createStateMachine<ArchiveMachine>({
+  /** A tab that reads or has read `cid` keeps that read. */
+  const readNewCid: HandlerOf<ArchiveMachine, 'reading' | 'read', 'shown'> = (state, event, transition) => {
+    if (state.cid === event.cid) {
+      return;
+    }
+    startReading(state, event, transition);
+  };
+  return createStateMachine<ArchiveMachine>({
     initial: { kind: 'unread' },
     handlers: {
       unread: { shown: startReading },
       reading: {
-        shown: startReading,
+        shown: readNewCid,
         archiveRead(state, { reading, archive }, { emitState }) {
           if (state !== reading) {
             return;
@@ -65,23 +74,12 @@ export function createArchiveReader({ load }: { load: ArchiveLoader }) {
         },
       },
       read: {
-        shown: startReading,
+        shown: readNewCid,
         fileSelected(state, { path }, { emitState }) {
           emitState({ ...state, selectedPath: path });
         },
       },
       failed: { shown: startReading },
-    },
-    onEffect: ({ reading }) => {
-      machine.update(
-        // A load that throws rejects this promise, so it ends as a failed read too.
-        new Promise<ArchiveFiles>(resolve => {
-          resolve(load(reading.cid));
-        }).then(
-          (files): ArchiveEvent => ({ kind: 'archiveRead', reading, archive: toLoadedArchive(files) }),
-          (error: unknown): ArchiveEvent => ({ kind: 'readFailed', reading, reason: getErrorMessage(error) }),
-        ),
-      );
     },
     onError: error => {
       report.defect(error, {
@@ -91,5 +89,4 @@ export function createArchiveReader({ load }: { load: ArchiveLoader }) {
       });
     },
   });
-  return machine;
 }
