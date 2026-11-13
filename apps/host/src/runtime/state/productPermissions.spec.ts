@@ -10,15 +10,13 @@ import { createPermissionAuthorizations, type PermissionAuthorizations } from '.
 import { ALL_PERMISSIONS } from '../permissionPolicy.js';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import { productState } from './productState.js';
+import { createProductPermissions, type PermissionsChange, type ProductPermissions } from './productPermissions.js';
 import {
-  createProductPermissions,
   getRead,
   isUnreadable,
-  type PermissionsChange,
   type PermissionsRead,
-  type ProductPermissions,
   type ProductPermissionsState,
-} from './productPermissions.js';
+} from './productPermissionsState.js';
 
 type FakeCore = {
   stored: Map<string, PermissionAuthorizationStatus>;

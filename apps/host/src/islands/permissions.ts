@@ -4,14 +4,14 @@
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { PermissionTargets } from '../runtime/permissionPolicy.js';
+import type { ProductPermissions } from '../runtime/state/productPermissions.js';
 import {
   getRead,
   hasGrant,
   isUnreadable,
   type PermissionsRead,
   type ProductPermissionsState,
-  type ProductPermissions,
-} from '../runtime/state/productPermissions.js';
+} from '../runtime/state/productPermissionsState.js';
 import type { PermissionsNotice } from '../components/permissions/permissions.js';
 import type { PermissionsContentProps } from '../components/permissions/PermissionsContent.js';
 import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';

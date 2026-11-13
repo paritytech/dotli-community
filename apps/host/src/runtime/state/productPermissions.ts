@@ -29,6 +29,7 @@ import {
   type PermissionTargets,
 } from '../permissionPolicy.js';
 import { toBlockingModalAbortError } from '../throwIfModalAborted.js';
+import { isSamePermissionsState, type ProductPermissionsState } from './productPermissionsState.js';
 import type { ProductState } from './productState.js';
 
 const uiReport = createReporter({ flow: 'ui' });
@@ -48,16 +49,6 @@ const permissionsChangeMetric = defineCount<'error' | 'ok'>('permissions.change'
 
 /** A transition of the store that threw. */
 const permissionsTransitionMetric = defineCount<'error'>('permissions.transition');
-
-/** `statuses` follow the menu order of `ALL_PERMISSIONS`. */
-export type ProductPermissionsState =
-  | { status: 'none' }
-  | { status: 'reading'; label: string }
-  | { status: 'read'; label: string; statuses: readonly PermissionStatus[] }
-  | { status: 'failed'; label: string };
-
-/** The statuses read, in the menu order of `ALL_PERMISSIONS`, and the product they belong to. */
-export type PermissionsRead = { label: string; statuses: readonly PermissionStatus[] };
 
 /** The panel change not yet settled, whose targets the panel shows over the statuses read. */
 export type PendingPermissions = { label: string; targets: PermissionTargets } | null;
@@ -425,7 +416,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
   });
 
   const state = computed(machine.state, current => current.shown);
-  state.eq = isSameState;
+  state.eq = isSamePermissionsState;
   const pending = computed(machine.state, (current): PendingPermissions => {
     const jobs = current.kind === 'idle' ? [] : [current.job, ...current.queue];
     // A queued change is newer than the running one.
@@ -434,7 +425,12 @@ export function createProductPermissions({ registry, product, timers = realTimer
   });
   pending.eq = isShallowEqual;
 
-  const run = createSharedRun({ begin: beginFollowing });
+  const following = createSharedRun({
+    begin: () =>
+      product.subscribe(() => {
+        machine.update({ kind: 'productShown', label: getLabelOnShow() });
+      }),
+  });
 
   return {
     /** The permissions of the product on show, as last read or written. */
@@ -467,7 +463,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
      * Reads on every load, a reload of the same product included. Each call returns its own stop, a call while
      * following joins the follow, and the follow ends with the last stop. Never throws.
      */
-    start,
+    start: following.join,
   };
 
   function refresh(): Promise<void> {
@@ -488,16 +484,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
         kind: 'decisionAsked',
         job: { kind: 'decision', label, name, decision, prompt: signal, resolve, reject },
       });
-    });
-  }
-
-  function start(): () => void {
-    return run.join();
-  }
-
-  function beginFollowing(): () => void {
-    return product.subscribe(() => {
-      machine.update({ kind: 'productShown', label: getLabelOnShow() });
     });
   }
 
@@ -708,52 +694,6 @@ function getLandedChange(
     }),
     fromPrompt: job.kind === 'decision',
   };
-}
-
-/** The statuses read and the product they belong to, or undefined while none are read. Never throws. */
-export function getRead(state: ProductPermissionsState): PermissionsRead | undefined {
-  switch (state.status) {
-    case 'read':
-      return state;
-    case 'none':
-    case 'reading':
-    case 'failed':
-      return undefined;
-  }
-}
-
-/** Whether the last read of the product `label`'s permissions failed. Never throws. */
-export function isUnreadable(state: ProductPermissionsState, label: string): boolean {
-  switch (state.status) {
-    case 'failed':
-      return state.label === label;
-    case 'none':
-    case 'reading':
-    case 'read':
-      return false;
-  }
-}
-
-/** Whether a permission read is granted. Never throws. */
-export function hasGrant(state: ProductPermissionsState): boolean {
-  return getRead(state)?.statuses.includes('granted') === true;
-}
-
-/** `current` is undefined on a computed store's first run. */
-function isSameState(current: ProductPermissionsState | undefined, next: ProductPermissionsState): boolean {
-  if (
-    current?.status !== next.status ||
-    (current.status !== 'none' && next.status !== 'none' && current.label !== next.label)
-  ) {
-    return false;
-  }
-  if (current.status === 'read' && next.status === 'read') {
-    return (
-      current.statuses.length === next.statuses.length &&
-      current.statuses.every((status, i) => status === next.statuses[i])
-    );
-  }
-  return true;
 }
 
 function getPermissionStatus(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
