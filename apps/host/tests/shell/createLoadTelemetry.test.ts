@@ -71,7 +71,6 @@ describe('createLoadTelemetry', () => {
     telemetry.report({ kind: 'cacheChecked', cid: null });
 
     // When the name resolves to no content, and the name is opened again
-    telemetry.report({ kind: 'nameResolved', cid: null });
     telemetry.report({ kind: 'noContent' });
     const nextAttempt = beginAttempt('doom');
 

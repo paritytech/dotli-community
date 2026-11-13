@@ -48,7 +48,7 @@ export type LoadEffect =
   | { kind: 'setUp' }
   | { kind: 'cacheChecked'; cid: string | null }
   | { kind: 'namePhase'; phase: ResolvePhase }
-  | { kind: 'nameResolved'; cid: string | null }
+  | { kind: 'nameResolved'; cid: string }
   | { kind: 'manifestsRead'; manifests: ProductManifests }
   | { kind: 'rendering' }
   | { kind: 'handedOff' }
@@ -311,32 +311,17 @@ export function createLoadTelemetry({
             payload: { label, phase },
           });
         },
-        nameResolved({ traced, path, resolveFlowId }, { cid }, { emitState }) {
-          const { label, trace, progress } = traced;
-          // A name with no content stays here until the loader's noContent, which it sends from the same transition.
-          if (cid !== null) {
-            enterStep({ kind: 'manifest_read', traced, path }, emitState);
-          }
-          const durationMs = readClock() - path.coldStart;
-          debugBus.emit({
-            layer: 'resolve',
-            event: 'completed',
-            flowId: resolveFlowId,
-            timestamp: timers.now(),
-            payload: { label, source: resolveSource, cid, durationMs },
-          });
-          progress.markNameResolved();
-          performance.mark('dotli:resolve:end');
-          resolveReport.log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
-            ms: Math.round(durationMs),
-            ...(cid !== null ? { cid } : {}),
-          });
-          trace.recordNameResolved(cid);
+        nameResolved(state, { cid }, { emitState }) {
+          enterStep({ kind: 'manifest_read', traced: state.traced, path: state.path }, emitState);
+          const ms = reportResolve(state, cid);
+          resolveReport.log.event('Name resolved', { ms, cid });
         },
-        noContent({ traced }, _event, { emitState }) {
+        noContent(state, _event, { emitState }) {
           emitState({ kind: 'ended' });
+          const ms = reportResolve(state, null);
+          resolveReport.log.event('Name has no contenthash', { ms });
           endJourney();
-          traced.trace.finish('no_content');
+          state.traced.trace.finish('no_content');
           performance.mark('dotli:main:end');
         },
         failed: failResolve,
@@ -424,6 +409,29 @@ export function createLoadTelemetry({
       machine.update(effect);
     },
   };
+
+  /**
+   * Reports the end of the name's resolve to `cid`, or to no content for `null`, and returns how long it took in
+   * whole milliseconds.
+   */
+  function reportResolve(
+    { traced, path, resolveFlowId }: Extract<TelemetryState, { kind: 'name_resolve' }>,
+    cid: string | null,
+  ): number {
+    const { label, trace, progress } = traced;
+    const durationMs = readClock() - path.coldStart;
+    debugBus.emit({
+      layer: 'resolve',
+      event: 'completed',
+      flowId: resolveFlowId,
+      timestamp: timers.now(),
+      payload: { label, source: resolveSource, cid, durationMs },
+    });
+    progress.markNameResolved();
+    performance.mark('dotli:resolve:end');
+    trace.recordNameResolved(cid);
+    return Math.round(durationMs);
+  }
 }
 
 /** Moves a traced load to the step `next` names, and records that step on its trace. */

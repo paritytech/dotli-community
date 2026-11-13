@@ -57,7 +57,8 @@ type LoadPath = 'fast' | 'slow';
 /**
  * Where the page's load is. It starts idle and ends once. Between them it steps from the CID cache or the name to the
  * product's core and then the render, then holds the product in its frame, which is on screen once the handoff's side
- * work is done. A failure shows its screen before the load ends.
+ * work is done. A failure before that shows its screen before the load ends, since the first load rejects with what
+ * the screen threw. A failure once on screen ends the load and shows its screen after.
  */
 type LoadState =
   | { kind: 'idle' }
@@ -79,7 +80,6 @@ type LoadState =
     }
   | { kind: 'onScreen'; run: LoadRun; stopListening: () => void }
   | { kind: 'failing'; label: string; error: unknown; description: ErrorDescription }
-  | { kind: 'failingOnScreen'; label: string; error: unknown; description: ErrorDescription; failure: string }
   | {
       kind: 'ended';
       /** What the first load rejects with: the setup's error, or what the failure screen threw. */
@@ -97,12 +97,7 @@ type LoadEvent =
   | { kind: 'rendered' }
   | { kind: 'stepFailed'; error: unknown }
   | { kind: 'handOff' }
-  | {
-      kind: 'productFailed';
-      error: unknown;
-      /** What failed, for the failure screen's own report. */
-      failure: string;
-    }
+  | { kind: 'productFailed'; error: unknown; failure: string }
   | { kind: 'contentOutcome'; report: SandboxLoadReport }
   | { kind: 'showFailure' };
 
@@ -115,7 +110,15 @@ type LoaderEffect =
   | { kind: 'cidStored'; copy: CachedCopy }
   | { kind: 'cidRevalidated'; copy: ServedCopy }
   | { kind: 'productShown'; label: string; manifests: ProductManifests }
-  | { kind: 'noContentShown'; label: string };
+  | { kind: 'noContentShown'; label: string }
+  | {
+      kind: 'failureShown';
+      label: string;
+      error: unknown;
+      description: ErrorDescription;
+      /** What failed, for the failure screen's own report. */
+      failure: string;
+    };
 
 type LoadMachine = MachineTypes<LoadState, LoadEvent, LoaderEffect>;
 
@@ -241,16 +244,16 @@ export function createProductLoader(params: Params) {
           emitSideEffect({ kind: 'namePhase', phase });
         },
         nameResolved({ run, manifestsRead }, { cid }, { emitState, emitSideEffect, update }) {
-          emitSideEffect({ kind: 'nameResolved', cid });
           // Nothing to launch whatever the manifests say, so it does not wait on them.
           if (cid === null) {
             emitState({ kind: 'ended', error: null });
-            emitSideEffect({ kind: 'coreReleased', run });
             emitSideEffect({ kind: 'noContent' });
+            emitSideEffect({ kind: 'coreReleased', run });
             emitSideEffect({ kind: 'noContentShown', label: run.label });
             return;
           }
           emitState({ kind: 'readingManifests', run, cid });
+          emitSideEffect({ kind: 'nameResolved', cid });
           update(
             runStep(
               () => manifestsRead,
@@ -347,13 +350,14 @@ export function createProductLoader(params: Params) {
         },
       },
       onScreen: {
-        productFailed({ run, stopListening }, { error, failure }, { emitState, emitSideEffect, update }) {
+        productFailed({ run, stopListening }, { error, failure }, { emitState, emitSideEffect }) {
           const description = describeError(error, { readBackend: () => params.backend });
-          emitState({ kind: 'failingOnScreen', label: run.label, error, description, failure });
+          // Nothing waits on a load whose product reached the screen, so it ends here and its screen is an effect.
+          emitState({ kind: 'ended', error: null });
           emitSideEffect({ kind: 'failed', error, description });
           // Only a reload brings back a product that was on screen, so the frame stops showing it.
           emitSideEffect({ kind: 'frameHalted' });
-          update({ kind: 'showFailure' });
+          emitSideEffect({ kind: 'failureShown', label: run.label, error, description, failure });
           // Last, so a stop that throws cannot drop the failure's report, the halt or the screen.
           stopListening();
         },
@@ -369,17 +373,6 @@ export function createProductLoader(params: Params) {
           } catch (screenError) {
             // The first load rejects with it.
             emitState({ kind: 'ended', error: toError(screenError) });
-          }
-        },
-      },
-      failingOnScreen: {
-        showFailure({ label, error, description, failure }, _event, { emitState, emitSideEffect }) {
-          // Nothing waits on a load whose product reached the screen, so the screen's failure is reported here.
-          emitState({ kind: 'ended', error: null });
-          try {
-            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
-          } catch (screenError) {
-            emitSideEffect({ kind: 'screenFailed', error: screenError, failure });
           }
         },
       },
@@ -427,6 +420,15 @@ export function createProductLoader(params: Params) {
           // Its recent pill stays: the name may still resolve on another network.
           showNoContentError(effect.label);
           return;
+        case 'failureShown': {
+          const { label, error, description, failure } = effect;
+          try {
+            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+          } catch (screenError) {
+            params.report({ kind: 'screenFailed', error: screenError, failure });
+          }
+          return;
+        }
         case 'contentSettled':
           // The topbar may fold once the product's content shows.
           pageTopbarAutoHide.setContentShown(isLoadedOutcome(effect.report.outcome));
