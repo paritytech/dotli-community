@@ -763,9 +763,10 @@ describe('auth controller: login requests', () => {
 });
 
 describe('auth controller: blocking-modal lease', () => {
-  it('As a user with a blocking prompt on screen, I ask for the sign-in modal and it opens only once the prompt is answered', async () => {
-    // Given a blocking prompt on screen
-    const { controller, coordinator } = startController();
+  it('As a user with a blocking prompt on screen, I click Sign in and the modal opens only once the prompt is answered', async () => {
+    // Given a signed-out page with a blocking prompt on screen
+    const { controller, coordinator, auth } = startController();
+    auth.set({ tag: 'Disconnected' });
     const scope = coordinator.createScope();
     const held = createDeferred<undefined>();
     const prompt = scope.enqueue(() => held.promise);
@@ -774,8 +775,8 @@ describe('auth controller: blocking-modal lease', () => {
       scope.dispose();
     });
 
-    // When the modal is asked for, and then the prompt is answered
-    controller.openAuthModal();
+    // When Sign in is clicked, and then the prompt is answered
+    controller.startLogin();
     const openWhilePrompted = getAuthModalState().open;
     held.resolve(undefined);
     await prompt;
@@ -784,13 +785,14 @@ describe('auth controller: blocking-modal lease', () => {
     expect([openWhilePrompted, getAuthModalState().open]).toEqual([false, true]);
   });
 
-  it('As a user, I ask for the modal twice over a close and only the newest request holds the lease', async () => {
-    // Given two overlapping requests for the modal
+  it('As a user, I click Sign in twice over a close and only the newest click holds the lease', async () => {
+    // Given two overlapping clicks on Sign in
     const { coordinator, tasks } = createManualCoordinator();
-    const { controller } = startController({ coordinator });
-    controller.openAuthModal();
+    const { controller, auth } = startController({ coordinator });
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
     controller.closeAuthModal({ skipTruapiCancel: true });
-    controller.openAuthModal();
+    controller.startLogin();
     const queued = { count: tasks.length, staleDisposed: nth(tasks, 0).disposed() };
     const stale = nth(tasks, 0);
     const current = nth(tasks, 1);
@@ -808,12 +810,13 @@ describe('auth controller: blocking-modal lease', () => {
     expect([openAfterStale, openAfterCurrent, getAuthModalState().open]).toEqual([false, true, false]);
   });
 
-  it('As a user, I ask for the modal again while its lease is pending and the one lease serves both', async () => {
-    // Given two requests for the modal before its lease is granted
+  it('As a user, I click Sign in again while the modal waits for its lease and the one lease serves both', async () => {
+    // Given two clicks on Sign in before the modal's lease is granted
     const { coordinator, tasks } = createManualCoordinator();
-    const { controller } = startController({ coordinator });
-    controller.openAuthModal();
-    controller.openAuthModal({ reason: 'again' });
+    const { controller, auth } = startController({ coordinator });
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin({ reason: 'first' });
+    controller.startLogin({ reason: 'again' });
 
     // When: the one pending lease is granted, then the modal is closed once
     const running = nth(tasks, 0).run();
@@ -821,16 +824,17 @@ describe('auth controller: blocking-modal lease', () => {
     controller.closeAuthModal({ skipTruapiCancel: true });
     await running;
 
-    // Then: the modal opened with the second call's reason over one lease, which the close released
-    expect(shown).toMatchObject({ open: true, reason: 'again' });
+    // Then: the modal opened for the first click over one lease, which the close released
+    expect(shown).toMatchObject({ open: true, reason: 'first' });
     expect(tasks).toHaveLength(1);
     expect(getAuthModalState().open).toBe(false);
   });
 
   it('As a user, I close the modal and its lease is released while the login in flight is cancelled once', async () => {
     // Given an open modal and another prompt waiting for its lease
-    const { controller, coordinator, calls, changes } = startController();
-    controller.openAuthModal({ reason: 'why', label: 'localhost:3000' });
+    const { controller, coordinator, calls, auth, changes } = startController();
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin({ reason: 'why', label: 'localhost:3000' });
     const openBefore = getAuthModalState().open;
     const next = coordinator.createScope();
     onTestFinished(() => {
@@ -857,11 +861,11 @@ describe('auth controller: blocking-modal lease', () => {
     });
   });
 
-  it('As a dotli integrator, I disable the modal while a login holds its lease and that login is cancelled once, while later opens and retries cancel instead of presenting', async () => {
+  it('As a dotli integrator, I disable the modal while a login holds its lease and that login is cancelled once, while a later Sign in cancels instead of presenting', async () => {
     // Given an open modal for a login and another prompt waiting for its lease
     const { controller, coordinator, calls, auth, changes } = startController();
     auth.set({ tag: 'Disconnected' });
-    controller.openAuthModal({ reason: 'why', label: 'localhost:3000' });
+    controller.startLogin({ reason: 'why', label: 'localhost:3000' });
     const openBefore = getAuthModalState().open;
     const next = coordinator.createScope();
     onTestFinished(() => {
@@ -872,20 +876,18 @@ describe('auth controller: blocking-modal lease', () => {
       nextRan = true;
     });
 
-    // When the modal is disabled, and later a login opens it and Sign in is clicked
+    // When the modal is disabled, and later Sign in is clicked
     controller.disableAuthModal();
     await queued;
     await changes.until(() => calls.cancels === 1);
     const afterDisable = { nextRan, open: getAuthModalState().open };
-    const presented = controller.openAuthModal();
-    controller.startLogin();
-    await changes.until(() => calls.cancels === 3);
+    controller.startLogin({ reason: 'later' });
+    await changes.until(() => calls.cancels === 2);
 
-    // Then the lease went to the waiting prompt, and the later open and Sign in each cancelled instead
+    // Then the lease went to the waiting prompt, and the later Sign in cancelled instead of logging in
     expect(openBefore).toBe(true);
     expect(afterDisable).toEqual({ nextRan: true, open: false });
-    expect(presented).toBe(false);
-    expect(calls.logins).toEqual([]);
+    expect(calls.logins).not.toContain('later');
     expect(getAuthModalState().open).toBe(false);
   });
 
@@ -909,10 +911,11 @@ describe('auth controller: blocking-modal lease', () => {
     const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
     const failure = new TypeError('the prompt queue broke');
     const { coordinator, leases } = createRejectingCoordinator(failure);
-    const { controller } = startController({ coordinator });
+    const { controller, auth } = startController({ coordinator });
+    auth.set({ tag: 'Disconnected' });
 
-    // When the modal is asked for and its lease fails
-    controller.openAuthModal();
+    // When Sign in is clicked and the modal's lease fails
+    controller.startLogin();
     await nth(leases, 0).catch(() => undefined);
 
     // Then the failure is captured, logged as an error and counted
@@ -928,10 +931,11 @@ describe('auth controller: blocking-modal lease', () => {
     const { coordinator, leases } = createRejectingCoordinator(
       new DOMException('Authentication modal closed', 'AbortError'),
     );
-    const { controller } = startController({ coordinator });
+    const { controller, auth } = startController({ coordinator });
+    auth.set({ tag: 'Disconnected' });
 
-    // When the modal is asked for and its lease aborts
-    controller.openAuthModal();
+    // When Sign in is clicked and the modal's lease aborts
+    controller.startLogin();
     await nth(leases, 0).catch(() => undefined);
 
     // Then nothing is captured or counted
@@ -980,7 +984,6 @@ describe('auth controller: blocking-modal lease', () => {
 
     // When every member is called, dispose again included
     controller.dispose();
-    const opened = controller.openAuthModal();
     controller.startLogin();
     controller.importPhrase();
     controller.retryLogin();
@@ -993,7 +996,6 @@ describe('auth controller: blocking-modal lease', () => {
     await untilPromisesSettled();
 
     // Then nothing reached the core or the modal, and the import was refused as the page's fault
-    expect(opened).toBe(false);
     expect(valid).toBe(false);
     expect(imported).toEqual(new Error('The sign-in controller was disposed'));
     expect(calls).toEqual({ logins: [], logouts: 0, cancels: 0 });
@@ -1029,15 +1031,16 @@ describe('auth controller: blocking-modal lease', () => {
   });
 
   it('As a user whose page dropped its sign-in controller while the modal waited for a prompt, I answer the prompt and no modal opens', async () => {
-    // Given a blocking prompt on screen, the modal asked for behind it, and the controller then disposed
-    const { controller, coordinator } = startController();
+    // Given a blocking prompt on screen, Sign in clicked behind it, and the controller then disposed
+    const { controller, coordinator, auth } = startController();
+    auth.set({ tag: 'Disconnected' });
     const scope = coordinator.createScope();
     const held = createDeferred<undefined>();
     const prompt = scope.enqueue(() => held.promise);
     onTestFinished(() => {
       scope.dispose();
     });
-    controller.openAuthModal();
+    controller.startLogin();
     controller.dispose();
 
     // When the prompt is answered and another prompt asks for the screen
@@ -2027,16 +2030,17 @@ describe('auth controller on the page stores', () => {
       const changes = createChanges();
       const { commands, calls } = recordCommands({ changes });
 
-      // When boot starts the controller and a login asks for the modal
-      const opened = slot.init(buildInitParams(commands)).openAuthModal();
+      // When boot starts the controller and Sign in is clicked
+      authState.set({ tag: 'Disconnected' });
+      slot.init(buildInitParams(commands)).startLogin();
       await changes.until(() => calls.cancels === 1);
 
       // Then the modal stays shut and the login is cancelled instead
-      expect(opened).toBe(false);
+      expect(getAuthModalState().open).toBe(false);
       expect(calls.cancels).toBe(1);
     });
 
-    it('As a dotli integrator, I reset the page stores and the slot empties while the next controller boot shows the modal again', () => {
+    it('As a dotli integrator, I reset the page stores and the slot empties while the next controller boot shows the modal again', async () => {
       // Given a filled slot whose modal an island disabled
       const slot = createAuthControlSlot();
       slot.disableModal();
@@ -2048,11 +2052,13 @@ describe('auth controller on the page stores', () => {
       const error = catchError(() => {
         slot.startLogin();
       });
-      const opened = slot.init(buildInitParams(commands)).openAuthModal();
+      authState.set({ tag: 'Disconnected' });
+      slot.init(buildInitParams(commands)).startLogin();
+      await untilPromisesSettled();
 
       // Then the emptied slot threw, and the new controller presents the modal
       expect(error).toEqual(new Error('Auth control used before init'));
-      expect(opened).toBe(true);
+      expect(getAuthModalState().open).toBe(true);
     });
 
     it('As a dotli integrator, I start the controller again while a login runs and its later failure leaves the new modal closed and the prompts free', async () => {

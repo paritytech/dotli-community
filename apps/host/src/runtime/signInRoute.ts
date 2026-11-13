@@ -82,7 +82,6 @@ export type LiveModal = Extract<AuthModalState, { kind: 'live' }>;
 
 /** The round events carry the round they are for, so a late one finds a round that moved on and changes nothing. */
 export type AuthModalEvent =
-  | { kind: 'opened'; params: OpenAuthModalParams }
   | { kind: 'loginAsked'; params: StartLoginParams }
   | { kind: 'phraseAsked' }
   | { kind: 'retryAsked' }

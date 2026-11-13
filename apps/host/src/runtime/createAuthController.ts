@@ -165,9 +165,6 @@ export function createAuthController({
     },
     handlers: {
       live: {
-        opened(state, { params }, transition) {
-          modalSteps.open(state, params, transition);
-        },
         loginAsked: askLogin,
         phraseAsked: askPhrase,
         retryAsked(state, _event, transition) {
@@ -503,15 +500,6 @@ export function createAuthController({
     /** Brings the sign-in window of the open round to the front. Never throws. */
     focusSignInWindow(): void {
       machine.update({ kind: 'focusAsked' });
-    },
-    /**
-     * Opens the modal and returns true, or returns false when the modal is disabled, having cancelled the login, and
-     * returns false after dispose, cancelling nothing.
-     */
-    openAuthModal(params: OpenAuthModalParams = {}): boolean {
-      machine.update({ kind: 'opened', params });
-      const state = machine.state.get();
-      return state.kind === 'live' && isLeaseHeld(state.lease);
     },
     /** Closes the modal, cancelling the login it showed unless `params` says not to. Never throws. */
     closeAuthModal(params: CloseAuthModalParams = {}): void {
