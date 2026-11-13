@@ -40,6 +40,10 @@ export type Shell = {
  */
 export async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${formatElapsed(PAGE_START)})`);
+  // From the URL alone, before any await, so the URL bar paints with the page.
+  if (route.kind === 'preview' || route.kind === 'localhost') {
+    urlPillState.showLocalhost(route.host);
+  }
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
   const debugMode = resolveDebugMode(window, DEBUG);

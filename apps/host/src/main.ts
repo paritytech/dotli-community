@@ -14,7 +14,6 @@ import { openTarget } from './openTarget.js';
 import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
 import { loadingState } from './state/loadingState.js';
 import { networkPause } from './runtime/createNetworkPause.js';
-import { urlPillState } from './state/urlPillState.js';
 import { cidCache } from '@dotli/storage';
 import { createStateMachine, type HandlerOf, type HandlersOf, type MachineTypes } from '@dotli/shared';
 import { DEBUG, getNetwork, isLocalhost, LOCAL_ROOT } from '@dotli/config';
@@ -72,10 +71,6 @@ function main(): void {
     performance.mark('dotli:main:start');
     // The load ends the hold itself once the loading screen is gone, so the stop goes unused.
     holdNetworkWhileLoading({ pause: networkPause, loading: loadingState.store });
-    // From the URL alone, before any await, so the URL bar paints with the page.
-    if (route.kind === 'preview' || route.kind === 'localhost') {
-      urlPillState.showLocalhost(route.host);
-    }
     const boot = createStateMachine<BootMachine>({
       initial: { kind: 'idle' },
       handlers: {
@@ -100,10 +95,8 @@ const idle: HandlersOf<BootMachine, 'idle'> = {
     const shellStart = startShell(route, role);
     // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
     // even when the shell fails to start.
-    emitState({
-      kind: 'startingShell',
-      route: route.kind === 'product' ? { ...route, cidRead: cidCache.get(route.label, getNetwork()) } : route,
-    });
+    const toOpen = route.kind === 'product' ? { ...route, cidRead: cidCache.get(route.label, getNetwork()) } : route;
+    emitState({ kind: 'startingShell', route: toOpen });
     update(
       shellStart.then(
         shell => ({ kind: 'shellStarted', shell }),

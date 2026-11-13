@@ -52,6 +52,8 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
   const protocol = getProtocolClient();
 
   pageNotifications().init();
+  // The screen clears at the sandbox's first done. The page never stops hearing it, so the stop goes unused.
+  shell.sandboxLoad.subscribeCleared(pageLoading.dismissLoading);
   const relay = startProductContent(shell, settings.cache.skipArchiveCache);
   const names = createNameSource({
     backend: settings.backend,
@@ -101,8 +103,6 @@ function runWhenPageIdle(callback: () => void): void {
 
 /** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
 function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBlockRelay {
-  // The screen clears at the sandbox's first done. The page never stops hearing it, so the stop goes unused.
-  shell.sandboxLoad.subscribeCleared(pageLoading.dismissLoading);
   const blockCache = skipArchiveCache
     ? null
     : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
