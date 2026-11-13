@@ -29,7 +29,7 @@ type RenderState =
   | { kind: 'starting' }
   | { kind: 'rendering'; attempt: Attempt; stop: () => void }
   | { kind: 'failing'; failed: ChatConnection }
-  | { kind: 'waiting'; stopListening: () => void }
+  | { kind: 'waiting'; stop: () => void }
   | { kind: 'completed' }
   | { kind: 'disposed' };
 
@@ -68,24 +68,14 @@ const renderTransitionMetric = defineCount<'error'>('chat.render_transition');
  * returned function disposes it. Never throws.
  */
 export function startCustomRender({ connections, productId, request, sink }: StartCustomRenderParams): () => void {
-  /** Ends the render and releases what its state held. */
-  const disposeRender: HandlerOf<RenderMachine, 'starting' | 'rendering' | 'failing' | 'waiting', 'disposed'> = (
-    state,
+  /** Ends the render and stops the render or the listener its state held. */
+  const disposeRender: HandlerOf<RenderMachine, 'rendering' | 'waiting', 'disposed'> = (
+    { stop },
     _event,
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'disposed' });
-    switch (state.kind) {
-      case 'rendering':
-        emitSideEffect({ kind: 'released', stop: state.stop });
-        return;
-      case 'waiting':
-        emitSideEffect({ kind: 'released', stop: state.stopListening });
-        return;
-      case 'starting':
-      case 'failing':
-        return;
-    }
+    emitSideEffect({ kind: 'released', stop });
   };
   const render = createStateMachine<RenderMachine>({
     initial: { kind: 'starting' },
@@ -100,7 +90,6 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
           wait(transition);
           transition.emitSideEffect({ kind: 'errored', error: new Error(NOT_CONNECTED) });
         },
-        disposed: disposeRender,
       },
       rendering: {
         treeUpdated(state, { attempt, node }, { emitSideEffect }) {
@@ -136,7 +125,9 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
           }
           renderOn(newest, transition);
         },
-        disposed: disposeRender,
+        disposed(_state, _event, { emitState }) {
+          emitState({ kind: 'disposed' });
+        },
       },
       waiting: {
         registered(state, { productId: registered }, transition) {
@@ -148,7 +139,7 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           renderOn(connection, transition);
-          transition.emitSideEffect({ kind: 'released', stop: state.stopListening });
+          transition.emitSideEffect({ kind: 'released', stop: state.stop });
         },
         disposed: disposeRender,
       },
@@ -205,9 +196,9 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
   }
 
   function wait({ emitState, update }: Transition<RenderMachine>): void {
-    const stopListening = connections.onRegister(registered => {
+    const stop = connections.onRegister(registered => {
       update({ kind: 'registered', productId: registered });
     });
-    emitState({ kind: 'waiting', stopListening });
+    emitState({ kind: 'waiting', stop });
   }
 }
