@@ -417,6 +417,24 @@ describe('startLoadProgress', () => {
     );
   });
 
+  it('As a visitor whose protocol frame restarts mid-download, I see the rate it last measured, never a negative one', async () => {
+    // Given 2 MB arrive every second
+    const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+    for (let tick = 1; tick <= 6; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_000_000 });
+    }
+
+    // When the new frame's byte meter starts again from zero
+    await timers.advance(500);
+    netBytes.send({ received: 1_000 });
+
+    // Then
+    expect(networkMonitorState.getTransfer().bytesPerSecond).toBe(2_000_000);
+  });
+
   it('As a developer with the debug panel, I see the product on screen and byte totals stop, the last total included', async () => {
     // Given
     const { netBytes, debug, timers } = setupLoad({ backend: 'smoldot-direct' });

@@ -645,6 +645,10 @@ function isByteTotalDue(
  * spans no time.
  */
 function measureThroughput({ samples, bytesPerSecond }: Throughput, received: number, now: number): Throughput {
+  // A new protocol frame counts its bytes from zero again, so a lower total opens a new window.
+  if (received < (samples.at(-1)?.total ?? 0)) {
+    return { samples: [{ at: now, total: received }], bytesPerSecond };
+  }
   const kept = [...samples, { at: now, total: received }];
   while (kept.length > 1 && now - (kept[0]?.at ?? now) > SPEED_WINDOW_MS) {
     kept.shift();
