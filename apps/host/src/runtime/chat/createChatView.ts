@@ -100,72 +100,52 @@ type ViewState =
 /** A read to run: the product's room list, or the messages of one of its rooms. */
 type ReadRequest = { read: 'contacts'; productId: string } | { read: 'messages'; productId: string; roomId: string };
 
+/** What a read shows, while the panel still shows what it read. */
+type ReadShown = Partial<Pick<ChatView, 'contacts' | 'contactsFailed' | 'messages' | 'messagesFailed'>>;
+
+type FailedReadStep = 'chat_contacts_read' | 'chat_messages_read';
+
 type ViewEvent =
   | { kind: 'followed'; next: ChatFollow | null }
   | { kind: 'changed'; change: ChatChange }
-  | { kind: 'contactsRead'; productId: string; contacts: ChatContacts }
-  | { kind: 'contactsFailed'; productId: string; error: unknown }
-  | { kind: 'messagesRead'; productId: string; roomId: string; messages: ChatMessageRecord[] }
-  | { kind: 'messagesFailed'; productId: string; roomId: string; error: unknown };
+  | { kind: 'readLanded'; request: ReadRequest; shown: ReadShown }
+  | { kind: 'readFailed'; request: ReadRequest; shown: ReadShown; step: FailedReadStep; error: unknown };
 
-type ViewEffect =
-  | { kind: 'readStarted'; request: ReadRequest }
-  | { kind: 'readFailed'; step: 'chat_contacts_read' | 'chat_messages_read'; error: unknown };
+type ViewEffect = { kind: 'readFailed'; step: FailedReadStep; error: unknown };
 
 type ViewMachine = MachineTypes<ViewState, ViewEvent, ViewEffect>;
 
 /** Builds the chat panel's view over `repo`. Building one reads nothing and never throws. */
 export function createChatView({ repo }: Params) {
-  // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.
-  const handleContactsRead: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'contactsRead'> = (
+  /**
+   * Ends the read of the kind `request` names, and starts the one due after it for what the panel follows now. Shows
+   * `shown` while the panel still shows what `request` read.
+   */
+  const landRead: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'readLanded'> = (
     state,
-    { productId, contacts },
-    transition,
+    { request, shown },
+    { emitState, update },
   ) => {
-    const reads = endRead(state, 'contacts', transition);
-    if (state.kind === 'following' && state.follow.productId === productId) {
-      transition.emitState({ ...state, reads, view: { ...state.view, contacts, contactsFailed: false } });
-      return;
+    const current = getReadRequest(state.kind === 'following' ? state.follow : null, request.read);
+    const due = state.reads[request.read] === 'rereading' ? current : null;
+    const reads: Reads = { ...state.reads, [request.read]: due === null ? 'idle' : 'reading' };
+    if (state.kind === 'following' && current !== null && isShallowEqual(current, request)) {
+      emitState({ ...state, reads, view: { ...state.view, ...shown } });
+    } else {
+      emitState({ ...state, reads });
     }
-    transition.emitState({ ...state, reads });
+    if (due !== null) {
+      update(runRead(due));
+    }
   };
-  const handleContactsFailed: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'contactsFailed'> = (
+  // A read for a product or room the panel has since left never reaches the view, but its failure is still reported.
+  const failRead: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'readFailed'> = (
     state,
-    { productId, error },
+    { request, shown, step, error },
     transition,
   ) => {
-    transition.emitSideEffect({ kind: 'readFailed', step: 'chat_contacts_read', error });
-    const reads = endRead(state, 'contacts', transition);
-    if (state.kind === 'following' && state.follow.productId === productId) {
-      transition.emitState({ ...state, reads, view: { ...state.view, contactsFailed: true } });
-      return;
-    }
-    transition.emitState({ ...state, reads });
-  };
-  const handleMessagesRead: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'messagesRead'> = (
-    state,
-    { productId, roomId, messages },
-    transition,
-  ) => {
-    const reads = endRead(state, 'messages', transition);
-    if (state.kind === 'following' && state.follow.productId === productId && state.follow.roomId === roomId) {
-      transition.emitState({ ...state, reads, view: { ...state.view, messages, messagesFailed: false } });
-      return;
-    }
-    transition.emitState({ ...state, reads });
-  };
-  const handleMessagesFailed: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'messagesFailed'> = (
-    state,
-    { productId, roomId, error },
-    transition,
-  ) => {
-    transition.emitSideEffect({ kind: 'readFailed', step: 'chat_messages_read', error });
-    const reads = endRead(state, 'messages', transition);
-    if (state.kind === 'following' && state.follow.productId === productId && state.follow.roomId === roomId) {
-      transition.emitState({ ...state, reads, view: { ...state.view, messagesFailed: true } });
-      return;
-    }
-    transition.emitState({ ...state, reads });
+    landRead(state, { kind: 'readLanded', request, shown }, transition);
+    transition.emitSideEffect({ kind: 'readFailed', step, error });
   };
   const machine = createStateMachine<ViewMachine>({
     initial: { kind: 'unfollowed', reads: { contacts: 'idle', messages: 'idle' } },
@@ -184,10 +164,8 @@ export function createChatView({ repo }: Params) {
             reads: askRead(withContacts, getReadRequest(next, 'messages'), transition),
           });
         },
-        contactsRead: handleContactsRead,
-        contactsFailed: handleContactsFailed,
-        messagesRead: handleMessagesRead,
-        messagesFailed: handleMessagesFailed,
+        readLanded: landRead,
+        readFailed: failRead,
       },
       following: {
         followed(state, { next }, transition) {
@@ -243,21 +221,12 @@ export function createChatView({ repo }: Params) {
                 : state.reads,
           });
         },
-        contactsRead: handleContactsRead,
-        contactsFailed: handleContactsFailed,
-        messagesRead: handleMessagesRead,
-        messagesFailed: handleMessagesFailed,
+        readLanded: landRead,
+        readFailed: failRead,
       },
     },
     onEffect: effect => {
-      switch (effect.kind) {
-        case 'readStarted':
-          machine.update(runRead(effect.request));
-          return;
-        case 'readFailed':
-          reportFailedChatRead(effect.error, effect.step);
-          return;
-      }
+      reportFailedChatRead(effect.error, effect.step);
     },
     onError: error => {
       report.defect(error, {
@@ -296,57 +265,58 @@ export function createChatView({ repo }: Params) {
     machine.update({ kind: 'changed', change });
   }
 
-  /** Reads what `request` names, ending in the event that carries the result or the failure. */
+  /** The reads with `request` asked for: started when none of its kind runs, and due after the one that does. */
+  function askRead(reads: Reads, request: ReadRequest | null, { update }: Transition<ViewMachine>): Reads {
+    if (request === null) {
+      return reads;
+    }
+    switch (reads[request.read]) {
+      case 'idle':
+        update(runRead(request));
+        return { ...reads, [request.read]: 'reading' };
+      case 'reading':
+      case 'rereading':
+        return { ...reads, [request.read]: 'rereading' };
+    }
+  }
+
+  /** Reads what `request` names, ending in the event that carries what it shows. */
   function runRead(request: ReadRequest): Promise<ViewEvent> {
-    const { productId } = request;
     switch (request.read) {
-      case 'contacts':
+      case 'contacts': {
+        const { productId } = request;
         return Promise.all([
           repo.listRooms(productId),
           repo.listBots(productId),
           repo.readLatestMessageTimestamps(productId),
         ]).then(
           ([rooms, bots, lastMessageTimes]) => ({
-            kind: 'contactsRead',
-            productId,
-            contacts: { rooms, bots, lastMessageTimes },
+            kind: 'readLanded',
+            request,
+            shown: { contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false },
           }),
-          (error: unknown) => ({ kind: 'contactsFailed', productId, error }),
-        );
-      case 'messages': {
-        const { roomId } = request;
-        return repo.listMessages(productId, roomId).then(
-          messages => ({ kind: 'messagesRead', productId, roomId, messages }),
-          (error: unknown) => ({ kind: 'messagesFailed', productId, roomId, error }),
+          (error: unknown) => ({
+            kind: 'readFailed',
+            request,
+            shown: { contactsFailed: true },
+            step: 'chat_contacts_read',
+            error,
+          }),
         );
       }
+      case 'messages':
+        return repo.listMessages(request.productId, request.roomId).then(
+          messages => ({ kind: 'readLanded', request, shown: { messages, messagesFailed: false } }),
+          (error: unknown) => ({
+            kind: 'readFailed',
+            request,
+            shown: { messagesFailed: true },
+            step: 'chat_messages_read',
+            error,
+          }),
+        );
     }
   }
-}
-
-/** The reads with `request` asked for: started when none of its kind runs, and due after the one that does. */
-function askRead(reads: Reads, request: ReadRequest | null, { emitSideEffect }: Transition<ViewMachine>): Reads {
-  if (request === null) {
-    return reads;
-  }
-  switch (reads[request.read]) {
-    case 'idle':
-      emitSideEffect({ kind: 'readStarted', request });
-      return { ...reads, [request.read]: 'reading' };
-    case 'reading':
-    case 'rereading':
-      return { ...reads, [request.read]: 'rereading' };
-  }
-}
-
-/** The reads with the one of kind `read` ended, and the read due after it started for what `state` follows now. */
-function endRead(state: ViewState, read: keyof Reads, { emitSideEffect }: Transition<ViewMachine>): Reads {
-  const request = getReadRequest(state.kind === 'following' ? state.follow : null, read);
-  if (state.reads[read] === 'rereading' && request !== null) {
-    emitSideEffect({ kind: 'readStarted', request });
-    return { ...state.reads, [read]: 'reading' };
-  }
-  return { ...state.reads, [read]: 'idle' };
 }
 
 /** The read of kind `read` that `follow` shows, or null when it shows none. */
