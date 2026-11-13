@@ -9,7 +9,7 @@ import { getSandboxLabel } from '@dotli/resolver';
 import { removeContractParams, SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
 import { ERRORS } from './errors.js';
 import { pendingResets } from './createPendingResets.js';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId, toProductId } from './createTruapiRuntimeConfig.js';
 import type { FrameProduct, ProductFramePage } from './createProductFrame.js';
 
 type PageLocation = ReturnType<ProductFramePage['location']>;
@@ -34,7 +34,7 @@ export function buildFrameUrl(product: FrameProduct, location: PageLocation): UR
 export function getFrameProductId(product: FrameProduct): string {
   switch (product.mode) {
     case 'iframe':
-      return product.productId ?? toProductId(product.label);
+      return getAskedProductId(product);
     case 'subdomain':
       return toProductId(product.label);
   }

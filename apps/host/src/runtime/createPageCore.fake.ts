@@ -8,7 +8,7 @@ import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { createPageCore, type CoreContext } from './createPageCore.js';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId } from './createTruapiRuntimeConfig.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -87,7 +87,7 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
     return Promise.resolve({
       // The fake has the members the page core calls, not the full runtime interface.
       runtime: runtime as unknown as WorkerPairingHostRuntime,
-      productId: parseProductId(product.productId ?? toProductId(product.label)),
+      productId: parseProductId(getAskedProductId(product)),
       local,
       isStale: () => Promise.resolve(!local && walletFound),
     });

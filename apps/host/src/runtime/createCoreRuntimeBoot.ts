@@ -14,7 +14,7 @@ import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { CoreContext, PageProduct } from './createPageCore.js';
-import { createTruapiRuntimeConfig, toProductId } from './createTruapiRuntimeConfig.js';
+import { createTruapiRuntimeConfig, getAskedProductId } from './createTruapiRuntimeConfig.js';
 import { ERRORS } from './errors.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 
@@ -106,7 +106,7 @@ export function createCoreRuntimeBoot({
  */
 async function parseProductId(runtime: WorkerPairingHostRuntime, product: PageProduct): Promise<ProductId> {
   try {
-    return await runtime.parseProductId(product.productId ?? toProductId(product.label));
+    return await runtime.parseProductId(getAskedProductId(product));
   } catch (error) {
     runtime.dispose();
     throw new Error('The core refused the product id', { cause: error });

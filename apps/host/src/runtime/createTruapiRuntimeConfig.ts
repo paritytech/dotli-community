@@ -54,6 +54,11 @@ export function toProductId(label: string): string {
   return label.startsWith('localhost:') ? label : withActiveTld(label);
 }
 
+/** The product id a product asks for: the one it names, else the one its label derives. Never throws. */
+export function getAskedProductId({ label, productId }: { label: string; productId?: string | undefined }): string {
+  return productId ?? toProductId(label);
+}
+
 function getPlatformType({ userAgent = navigator.userAgent }: GetPlatformTypeParams = {}): string {
   if (userAgent.includes('Win')) {
     return 'Windows';

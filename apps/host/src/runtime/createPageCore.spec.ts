@@ -5,7 +5,7 @@ import { asProductId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { createAsyncTaskPool, createDeferred, type Timers } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, type AsyncTaskPool, type Timers } from '@dotli/shared';
 import { createManualTimers, nth, recordLog } from '@dotli/shared/testing';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
@@ -35,6 +35,8 @@ type CreateHarnessParams = {
   destroyDelay?: number;
   /** The timers the destroy delay runs on. The real ones by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
+  /** The pool redials boot on. One that retries twice at once by default. */
+  redials?: AsyncTaskPool;
 };
 
 type CreateRecordingTrackerParams = {
@@ -166,6 +168,7 @@ function createHarness({
   onCoresGone,
   destroyDelay = 0,
   timers,
+  redials = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY, retryCount: 2 }),
 }: CreateHarnessParams = {}) {
   const runtimes: FakeRuntime[] = [];
   const contexts: CoreContext[] = [];
@@ -218,7 +221,7 @@ function createHarness({
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials: createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY, retryCount: 2 }),
+    redials,
     destroyDelay,
     ...(timers === undefined ? {} : { timers }),
     ...(createPhoneRequests === undefined ? {} : { createPhoneRequests }),
@@ -1262,6 +1265,34 @@ describe('page core redial reports', () => {
 
     // Then the redial is counted as aborted
     expect(counted('wallet.core_redial')).toEqual([{ outcome: 'aborted', reason: 'closed' }]);
+  });
+
+  it('As a user signed out elsewhere, I reset the session while a dropped redial fails and the reset waits out no retry delay', async () => {
+    // Given a redial on a pool that waits before each retry, dropped by a product change while its attempt runs
+    const timers = createManualTimers();
+    const { core, runtimes, nextBoots, contexts } = createHarness({
+      redials: createAsyncTaskPool({
+        poolSize: Number.POSITIVE_INFINITY,
+        retryCount: 2,
+        retryDelay: 1_000,
+        timers,
+      }),
+    });
+    const lease = await core.acquire();
+    await lease.connect();
+    const redial = createDeferred<BootedCoreRuntime>();
+    nextBoots.push(() => redial.promise);
+    nth(runtimes, 0).providers[0]?.goDown();
+    core.setProduct({ label: 'other' });
+    await core.acquire();
+
+    // When the dropped redial's attempt fails and the session is reset
+    redial.reject(new Error('worker failed to start'));
+    await core.resetSession();
+
+    // Then the reset settled with no retry waiting and nothing more booted for the dropped redial
+    expect(timers.countPending()).toBe(0);
+    expect(contexts).toHaveLength(3);
   });
 });
 
