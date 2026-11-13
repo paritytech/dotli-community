@@ -3,11 +3,10 @@
 
 // The landing page's app labels: the stored list at once, then each step of one sync on the page's Asset Hub lease.
 
-import { getActiveServicesConfig, hasLightClient } from '@dotli/config';
+import { hasLightClient, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { isApiStoppedError, loadResolve, type DotnsResolver, type ResolverErrorName } from '@dotli/resolver';
-import { getErrorName, isChainHaltedRpcError } from '@dotli/shared';
-import { nameList } from '@dotli/storage';
+import { isExpectedReadError, loadResolve, type DotnsResolver } from '@dotli/resolver';
+import { nameList, type NameList } from '@dotli/storage';
 import { atom, type ReadableAtom } from 'nanostores';
 import { loadHostBridge } from './lazy.js';
 import { reportLazyMiss } from './reportLazyMiss.js';
@@ -15,7 +14,7 @@ import { settingsState, type SettingsState } from './state/settingsState.js';
 import { syncNameList, type NameListReads } from './syncNameList.js';
 
 type Params = {
-  store: Pick<typeof nameList, 'get' | 'set'>;
+  store: NameList;
   /** Builds the reads on the page's Asset Hub lease for the settled settings. Rejects when a chunk fails to load. */
   openReads: (settings: SettingsState) => Promise<NameListReads & Pick<DotnsResolver, 'release'>>;
   /** The page's settings, null until the boot sets them. */
@@ -27,14 +26,6 @@ const report = createReporter({ flow: 'name_list' });
 
 /** One sync of the landing page's name list. Tagged `outcome` (ok, error) and `reason` (the error's name). */
 const nameListSyncMetric = defineCount<'ok' | 'error'>('name_list.sync');
-
-// What the environment causes: a sync timeout, an operation the server refused or dropped, and a follow gone disjoint.
-const EXPECTED_FAILURE_NAMES: ReadonlySet<string> = new Set([
-  'NetworkSyncTimeoutError' satisfies ResolverErrorName,
-  'OperationInaccessibleError',
-  'OperationLimitError',
-  'DisjointError',
-]);
 
 /** Builds the landing page's app labels, which one sync on the Asset Hub lease brings up to date. */
 export function createLandingNameList({ store, openReads, settings, now = Date.now }: Params) {
@@ -69,13 +60,15 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
     });
   }
 
-  // A throw outside the sync's own steps, such as a `labels` listener that throws, is a defect and never an unhandled
-  // rejection.
   async function sync(current: SettingsState): Promise<void> {
     try {
       await runSync(current);
     } catch (error) {
-      report.defect(error, { step: 'sync', metric: nameListSyncMetric, message: '[dot.li name-list] sync failed:' });
+      if (isExpectedReadError(error)) {
+        report.expected(error, { step: 'sync', metric: nameListSyncMetric });
+      } else {
+        report.defect(error, { step: 'sync', metric: nameListSyncMetric, message: '[dot.li name-list] sync failed:' });
+      }
     }
   }
 
@@ -102,16 +95,10 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
           labels.set(record.apps);
         },
       });
-      nameListSyncMetric.count({ outcome: 'ok' });
-    } catch (error) {
-      if (isEnvironmentFailure(error)) {
-        report.expected(error, { step: 'sync', metric: nameListSyncMetric });
-      } else {
-        report.defect(error, { step: 'sync', metric: nameListSyncMetric, message: '[dot.li name-list] sync failed:' });
-      }
     } finally {
       reads.release();
     }
+    nameListSyncMetric.count({ outcome: 'ok' });
   }
 }
 
@@ -127,14 +114,7 @@ async function openPageReads(settings: SettingsState): Promise<DotnsResolver> {
   const [resolveModule, bridge] = await Promise.all([loadResolve(), loadHostBridge()]);
   return resolveModule.createDotnsResolver({
     assetHub: bridge.getHostAssetHubProvider,
-    dotns: getActiveServicesConfig().dotns,
+    dotns: NETWORK_NAME_TO_SERVICES_CONFIG[settings.network].dotns,
     source: hasLightClient(settings.backend) ? 'light-client' : 'rpc-gateway',
   });
-}
-
-function isEnvironmentFailure(error: unknown): boolean {
-  const name = getErrorName(error);
-  return (
-    isApiStoppedError(error) || isChainHaltedRpcError(error) || (name !== undefined && EXPECTED_FAILURE_NAMES.has(name))
-  );
 }

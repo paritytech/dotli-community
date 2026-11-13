@@ -93,39 +93,32 @@ describe('landing name list', () => {
     ]);
   });
 
-  it.each([
-    { failure: 'times out', error: createNamedError('NetworkSyncTimeoutError') },
-    {
-      failure: 'reads a chain that kept halting',
-      error: Object.assign(new Error('chain halted'), { data: CHAIN_HALTED_ERROR_DATA }),
-    },
-    { failure: 'reads after its follow stopped', error: createNamedError('ApiStoppedError') },
-  ])(
-    'As a visitor whose sync $failure, I see it reported as expected and the lease is still released',
-    async ({ error }) => {
-      // Given a read that fails as the environment makes it
-      const reports = recordReports({ onFinished: onTestFinished });
-      const { nameList, events, released } = setupNameList({
-        reads: {
-          readLabelStores: () => Promise.reject(error),
-        },
-      });
+  it('As a visitor whose sync reads a chain that kept halting, I see it reported as expected and the lease is still released', async () => {
+    // Given a read that fails as the environment makes it
+    const reports = recordReports({ onFinished: onTestFinished });
+    const counted = waitForCount();
+    const { nameList, events } = setupNameList({
+      reads: {
+        readLabelStores: () =>
+          Promise.reject(Object.assign(new Error('chain halted'), { data: CHAIN_HALTED_ERROR_DATA })),
+      },
+    });
 
-      // When
-      nameList.start();
-      await released;
+    // When
+    nameList.start();
+    await counted;
 
-      // Then
-      expect(reports.expected.map(report => report.step)).toEqual(['sync']);
-      expect(reports.exceptions).toEqual([]);
-      expect(events).toContain('released');
-    },
-  );
+    // Then
+    expect(reports.expected.map(report => report.step)).toEqual(['sync']);
+    expect(reports.exceptions).toEqual([]);
+    expect(events).toContain('released');
+  });
 
   it('As a visitor whose sync fails for another reason, I see it reported as a defect and the lease is still released', async () => {
     // Given a read that fails in the code
     const reports = recordReports({ onFinished: onTestFinished });
-    const { nameList, events, released } = setupNameList({
+    const counted = waitForCount();
+    const { nameList, events } = setupNameList({
       reads: {
         readLabelStores: () => Promise.reject(new TypeError('bad slot')),
       },
@@ -133,7 +126,7 @@ describe('landing name list', () => {
 
     // When
     nameList.start();
-    await released;
+    await counted;
 
     // Then
     expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
@@ -143,13 +136,7 @@ describe('landing name list', () => {
   it('As a visitor whose labels listener throws, I see the sync reported as a defect and no rejection escapes', async () => {
     // Given a listener of the labels that throws on the first change
     const reports = recordReports({ onFinished: onTestFinished });
-    const counted = Promise.withResolvers<undefined>();
-    bindRecordingSentry({
-      onFinished: onTestFinished,
-      onRecord: () => {
-        counted.resolve(undefined);
-      },
-    });
+    const counted = waitForCount();
     const { nameList } = setupNameList();
     nameList.labels.listen(() => {
       throw new TypeError('listener broke');
@@ -157,7 +144,7 @@ describe('landing name list', () => {
 
     // When
     nameList.start();
-    await counted.promise;
+    await counted;
 
     // Then
     expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
@@ -260,7 +247,14 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
   };
 }
 
-/** An error as a read rejects with it, known by its name. */
-function createNamedError(name: string): Error {
-  return Object.assign(new Error(`${name} in the read`), { name });
+/** Settles once the first metric of the test is counted. */
+function waitForCount(): Promise<undefined> {
+  const counted = Promise.withResolvers<undefined>();
+  bindRecordingSentry({
+    onFinished: onTestFinished,
+    onRecord: () => {
+      counted.resolve(undefined);
+    },
+  });
+  return counted.promise;
 }

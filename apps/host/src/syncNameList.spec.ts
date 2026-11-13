@@ -83,7 +83,7 @@ describe('syncNameList', () => {
     ]);
   });
 
-  it('As a returning visitor with nothing new, I get my saved list back and nothing is saved', async () => {
+  it('As a returning visitor with nothing new, I save nothing', async () => {
     // Given: a list that has read every entry, with a pending label checked within the day
     const stored = createRecord({
       stores: [{ address: 'store-a', read: 1 }],
@@ -94,10 +94,9 @@ describe('syncNameList', () => {
     const save = createFakeSave();
 
     // When
-    const synced = await syncNameList({ stored, network: 'paseo-next-v2', reads, save, now: () => NOW });
+    await syncNameList({ stored, network: 'paseo-next-v2', reads, save, now: () => NOW });
 
     // Then
-    expect(synced).toBe(stored);
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -125,18 +124,13 @@ describe('syncNameList', () => {
       ],
     });
     const reads = createFakeReads({ apps: ['carol'] });
+    const save = createFakeSave();
 
     // When
-    const synced = await syncNameList({
-      stored,
-      network: 'paseo-next-v2',
-      reads,
-      save: createFakeSave(),
-      now: () => NOW,
-    });
+    await syncNameList({ stored, network: 'paseo-next-v2', reads, save, now: () => NOW });
 
     // Then
-    expect(synced).toMatchObject({ apps: ['carol'], pending: [{ label: 'dave', checkedAt: NOW }] });
+    expect(save.mock.lastCall?.[0]).toMatchObject({ apps: ['carol'], pending: [{ label: 'dave', checkedAt: NOW }] });
   });
 
   it('As a returning visitor, I leave a pending label checked within the day unread', async () => {
@@ -162,18 +156,13 @@ describe('syncNameList', () => {
       entries: { 'store-a': ['bob'], 'store-b': ['bob'] },
       apps: ['bob'],
     });
+    const save = createFakeSave();
 
     // When
-    const synced = await syncNameList({
-      stored,
-      network: 'paseo-next-v2',
-      reads,
-      save: createFakeSave(),
-      now: () => NOW,
-    });
+    await syncNameList({ stored, network: 'paseo-next-v2', reads, save, now: () => NOW });
 
     // Then
-    expect(synced).toMatchObject({ apps: [], pending: [{ label: 'bob', checkedAt: NOW - 1000 }] });
+    expect(save.mock.lastCall?.[0]).toMatchObject({ apps: [], pending: [{ label: 'bob', checkedAt: NOW - 1000 }] });
   });
 
   it('As a first-time visitor, I see a label listed in two chunks of stores kept once', async () => {
@@ -183,18 +172,13 @@ describe('syncNameList', () => {
       stores,
       entries: { 'store-0': ['dup'], 'store-16': ['dup'] },
     });
+    const save = createFakeSave();
 
     // When
-    const synced = await syncNameList({
-      stored: null,
-      network: 'paseo-next-v2',
-      reads,
-      save: createFakeSave(),
-      now: () => NOW,
-    });
+    await syncNameList({ stored: null, network: 'paseo-next-v2', reads, save, now: () => NOW });
 
     // Then
-    expect(synced).toMatchObject({ apps: [], pending: [{ label: 'dup', checkedAt: NOW }] });
+    expect(save.mock.lastCall?.[0]).toMatchObject({ apps: [], pending: [{ label: 'dup', checkedAt: NOW }] });
   });
 
   it('As a returning visitor with 300 stale pending labels, I check them in chunks of 256 and save after each', async () => {

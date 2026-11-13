@@ -26,11 +26,10 @@ const RECHECK_CHUNK = 256;
 const RECHECK_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Brings `stored` up to date and resolves the final record, `stored` itself when nothing changed. It saves after each
- * step that changed the record. A new store with no entries yet is in the resolved record, but is saved only once an
- * entry moves its cursor. It rejects with the read's error after the steps before it were saved.
+ * Brings `stored` up to date, saving after each step that changed the record. A new store with no entries yet is saved
+ * only once an entry moves its cursor. It rejects with the read's error after the steps before it were saved.
  */
-export async function syncNameList({ stored, network, reads, save, now = Date.now }: Params): Promise<NameListRecord> {
+export async function syncNameList({ stored, network, reads, save, now = Date.now }: Params): Promise<void> {
   let record: NameListRecord = stored ?? { network, stores: [], apps: [], pending: [] };
 
   const added = await reads.readLabelStores(record.stores.length);
@@ -82,6 +81,4 @@ export async function syncNameList({ stored, network, reads, save, now = Date.no
     };
     await save(record);
   }
-
-  return record;
 }

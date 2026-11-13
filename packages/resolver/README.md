@@ -27,17 +27,17 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 
 ### `@dotli/resolver`
 
-| Export                                                                                                      | What it does                               |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`, `LabelStoreCursor` | Resolves a name.                           |
-| `toRootManifestResult`, `toExecutableManifestResult`                                                        | Validate manifest text.                    |
-| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                                        | Manifest types.                            |
-| `dotNsUrl`                                                                                                  | Tells a product host from a website.       |
-| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult`                | Name validation.                           |
-| `getSandboxLabel`                                                                                           | A product's sandbox origin label.          |
-| `isExecutableKind`                                                                                          | Whether a kind has an executable manifest. |
-| `ResolverErrorName`, `isApiStoppedError`                                                                    | Resolution errors.                         |
-| `loadResolve`                                                                                               | Lazy loader.                               |
+| Export                                                                                                      | What it does                                                          |
+| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`, `LabelStoreCursor` | Resolves a name.                                                      |
+| `toRootManifestResult`, `toExecutableManifestResult`                                                        | Validate manifest text.                                               |
+| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                                        | Manifest types.                                                       |
+| `dotNsUrl`                                                                                                  | Tells a product host from a website.                                  |
+| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult`                | Name validation.                                                      |
+| `getSandboxLabel`                                                                                           | A product's sandbox origin label.                                     |
+| `isExecutableKind`                                                                                          | Whether a kind has an executable manifest.                            |
+| `ResolverErrorName`, `isApiStoppedError`, `isExpectedReadError`                                             | Resolution errors, and whether the environment caused a read failure. |
+| `loadResolve`                                                                                               | Lazy loader.                                                          |
 
 ## Design
 
