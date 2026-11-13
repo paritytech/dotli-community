@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the permissions store shows of the product on show, and how a reader of it asks what it holds.
+// What the permissions store shows of the product on show, and how the panel asks what it holds.
 
 import type { PermissionStatus } from '../permissionPolicy.js';
 
@@ -42,24 +42,4 @@ export function isUnreadable(state: ProductPermissionsState, label: string): boo
 /** Whether a permission read is granted. Never throws. */
 export function hasGrant(state: ProductPermissionsState): boolean {
   return getRead(state)?.statuses.includes('granted') === true;
-}
-
-/** Whether two states show the same thing. `current` is undefined on a computed store's first run. Never throws. */
-export function isSamePermissionsState(
-  current: ProductPermissionsState | undefined,
-  next: ProductPermissionsState,
-): boolean {
-  if (
-    current?.status !== next.status ||
-    (current.status !== 'none' && next.status !== 'none' && current.label !== next.label)
-  ) {
-    return false;
-  }
-  if (current.status === 'read' && next.status === 'read') {
-    return (
-      current.statuses.length === next.statuses.length &&
-      current.statuses.every((status, i) => status === next.statuses[i])
-    );
-  }
-  return true;
 }
