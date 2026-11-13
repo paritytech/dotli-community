@@ -167,8 +167,9 @@ request in session storage, so a reload answers the same round.
 
 ### Loading and failures
 
-- The bridge, panel bodies, product card, debug panel, local wallet, host runtime, chain client and QR encoder load on
-  demand, each in its own chunk. CI startup size budgets guard what each page loads first.
+- The bridge, chat store, panel bodies, product card, debug panel, local wallet, host runtime, chain client and QR
+  encoder load on demand, each in its own chunk. The chat panel counts unread messages from once the chat store loads.
+  CI startup size budgets guard what each page loads first.
 - A shared lazy module loads once. A failed load is forgotten, so the next caller retries without a page reload.
 - Islands that must stand in for themselves wrap their trees in an error boundary. An island whose code never ran offers
   a reload.

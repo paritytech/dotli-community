@@ -13,10 +13,13 @@ import {
 } from '@dotli/shared';
 import type { ProductId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
-import { chatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
+import { createReporter } from '@dotli/metrics';
+import type { ChatStore } from '../runtime/chat/createChatStore.js';
 import type { ChatChange, ChatView } from '../runtime/chat/createChatView.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
+import { loadChatStore } from '../lazy.js';
+import { reportLazyMiss } from '../reportLazyMiss.js';
 
 export type ChatPanelState = {
   label: string | null;
@@ -37,11 +40,13 @@ export type ChatPanelState = {
 type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
 
 type Params = {
-  /** The chat store whose product messages count as unread, the page's by default. */
-  chat?: Pick<ChatStore, 'subscribe'>;
+  /** Loads the chat store whose product messages count as unread, the page's by default. */
+  chat?: () => Promise<Pick<ChatStore, 'subscribe'>>;
   /** Keeps the dragged panel width across sessions, the page's local storage by default. */
   storage?: WidthStorage;
 };
+
+const report = createReporter({ flow: 'chat' });
 
 const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
 const MIN_PANEL_WIDTH = 280;
@@ -103,8 +108,9 @@ export const chatPanelState = {
   /** Stores the panel's width for later sessions. Never throws. */
   persistWidth,
   /**
-   * Follows the session, the product on show and its chat messages until the returned stop. A call while
-   * the follows run joins them and ignores its params, and they end with the last caller's stop. Never throws.
+   * Follows the session, the product on show and its chat messages until the returned stop. The messages are followed
+   * from once the chat store has loaded. A call while the follows run joins them and ignores its params, and they end
+   * with the last caller's stop. Never throws.
    */
   start,
   /** Returns the panel's element, or undefined when none is handed over. Never throws. */
@@ -199,7 +205,7 @@ function persistWidth(): void {
   widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
 }
 
-function start({ chat = chatStore, storage = pageLocalStorage }: Params = {}): () => void {
+function start({ chat = loadChatStore, storage = pageLocalStorage }: Params = {}): () => void {
   return run.join({ chat, storage });
 }
 
@@ -221,10 +227,24 @@ function beginFollowing({ chat, storage }: Required<Params>): () => void {
   widthStorage = storage;
   followSession();
   followProduct();
+  // The store's chunk stays off the boot path, so unread counting starts once it loads.
+  const following = new AbortController();
+  chat().then(
+    store => {
+      if (!following.signal.aborted) {
+        following.signal.addEventListener('abort', store.subscribe(countUnreadMessage));
+      }
+    },
+    (error: unknown) => {
+      reportLazyMiss({ report, step: 'chat_store_load', error });
+    },
+  );
   const unsubscribes = [
     authState.loggedInStore.listen(followSession),
     productState.store.listen(followProduct),
-    chat.subscribe(countUnreadMessage),
+    () => {
+      following.abort();
+    },
   ];
   function unsubscribe(): void {
     for (const unsubscribeOne of unsubscribes) {

@@ -27,7 +27,7 @@ beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
   local = createMemoryStorage();
-  stopState = chatPanelState.start({ chat, storage: local });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
   productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });

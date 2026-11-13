@@ -12,7 +12,7 @@ import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { recordNotified } from '../testing/recordNotified.js';
 import { chatPanelState } from './chatPanelState.js';
-import { noop } from '@dotli/shared';
+import { createDeferred, noop } from '@dotli/shared';
 import { createMemoryStorage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 let remove: () => void = noop;
@@ -37,7 +37,7 @@ beforeEach(() => {
   local = createMemoryStorage();
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
-  remove = chatPanelState.start({ chat, storage: local });
+  remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
 });
 
 afterEach(() => {
@@ -286,7 +286,7 @@ describe('chat panel state', () => {
 
   it('As a user whose page started the chat panel state twice, I get a product message and see it count once as unread', async () => {
     // Given
-    onTestFinished(chatPanelState.start({ chat, storage: local }));
+    onTestFinished(chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local }));
     showProduct('app');
 
     // When
@@ -302,10 +302,26 @@ describe('chat panel state', () => {
     authState.set({ tag: 'Connected', session: { connected: true } });
 
     // When
-    remove = chatPanelState.start({ chat, storage: local });
+    remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
 
     // Then
     expect(chatPanelState.store.get().loggedIn).toBe(true);
+  });
+
+  it('As a user whose page stopped the chat panel state before its chat store loaded, I get a product message and see nothing unread', async () => {
+    // Given a panel state stopped while its chat store still loads
+    remove();
+    const loading = createDeferred<ChatStore>();
+    chatPanelState.start({ chat: () => loading.promise, storage: local })();
+    remove = noop;
+    showProduct('app');
+
+    // When the store loads and the product posts
+    loading.resolve(chat);
+    await postProductMessage('app', 'a');
+
+    // Then
+    expect(chatPanelState.store.get().unreadByRoom).toEqual({});
   });
 });
 
@@ -316,7 +332,7 @@ describe('chat panel state, rooms seen', () => {
     repo.reads.hold.messages = true;
     remove();
     chat = createChatStore({ repo, connections });
-    remove = chatPanelState.start({ chat, storage: local });
+    remove = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
     return {
       /** Lets the waiting read land, once it has started. */
       async release() {

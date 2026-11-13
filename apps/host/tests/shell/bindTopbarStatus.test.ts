@@ -24,7 +24,7 @@ describe('bindTopbarStatus', () => {
     document.body.innerHTML = '<header id="topbar"></header>';
     const bar = byId('topbar');
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-    const stopChat = chatPanelState.start({ chat, storage: createMemoryStorage() });
+    const stopChat = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: createMemoryStorage() });
     const product = asProductId(toProductId('chatty'));
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });
