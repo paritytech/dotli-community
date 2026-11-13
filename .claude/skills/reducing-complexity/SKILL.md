@@ -207,7 +207,8 @@ structure.
 
 A working capability is anything a caller can call to act on running work, or a cache, that works as named. A pause, a
 stop, a retry and a dispose are such. One that does not work as named is a bug, and its fix makes it work. It never
-removes it.
+removes it. A reset, dispose or clear stays even when nothing calls it, and is never asked about (`AGENTS.md` § Code
+style).
 
 Decide alone, act, and name it in the commit:
 
@@ -230,14 +231,14 @@ Cite a shape the owner accepted in one module as the precedent for the same shap
 
 ## Red flags
 
-| Thought                                                        | Reality                                                          |
-| -------------------------------------------------------------- | ---------------------------------------------------------------- |
-| "Everything with phases should be a state machine"             | Only a phase the unit itself waits out earns one.                |
-| "Every used value is in the state, so the caller queue is too" | Queues and in-flight work use the pool or the shared run.        |
-| "This effect only forwards one call, so inline it"             | Every side effect stays an effect. Bytes never justify the move. |
-| "This changes behaviour, so I list it as a trade-off"          | If it leaks, hangs, misreports, loses or misleads, it is a bug.  |
-| "Keep the old path, just in case"                              | Check when its producer stopped and whether it can meet you.     |
-| "I scored it 9.5"                                              | Only a fresh rater's score counts.                               |
-| "No caller uses this pause or retry, so delete it"             | A working capability goes only with the owner's yes.             |
-| "An arrow reads shorter here"                                  | Form alone is not simplicity. Keep the style.                    |
-| "Should I fix this bug?"                                       | A real bug with a small local fix is fixed, not asked about.     |
+| Thought                                                        | Reality                                                                                      |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| "Everything with phases should be a state machine"             | Only a phase the unit itself waits out earns one.                                            |
+| "Every used value is in the state, so the caller queue is too" | Queues and in-flight work use the pool or the shared run.                                    |
+| "This effect only forwards one call, so inline it"             | Every side effect stays an effect. Bytes never justify the move.                             |
+| "This changes behaviour, so I list it as a trade-off"          | If it leaks, hangs, misreports, loses or misleads, it is a bug.                              |
+| "Keep the old path, just in case"                              | Check when its producer stopped and whether it can meet you.                                 |
+| "I scored it 9.5"                                              | Only a fresh rater's score counts.                                                           |
+| "No caller uses this pause or retry, so delete it"             | A working capability goes only with the owner's yes. A reset, dispose or clear always stays. |
+| "An arrow reads shorter here"                                  | Form alone is not simplicity. Keep the style.                                                |
+| "Should I fix this bug?"                                       | A real bug with a small local fix is fixed, not asked about.                                 |

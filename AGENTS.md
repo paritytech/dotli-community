@@ -93,6 +93,8 @@ General:
   bundler drops the dead branch.
 - A cleanup never deletes a working capability, such as a pause, a retry or a cache, only because nothing calls it yet.
   Ask the owner first. The delete's commit or PR names the capability and why it goes.
+- A reset, dispose or clear stays even when nothing calls it. It ends what the unit holds, so it is never a cleanup's to
+  delete.
 
 Packages:
 
