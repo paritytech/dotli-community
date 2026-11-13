@@ -166,6 +166,9 @@ type Facts = {
   known: SiteGrant | null;
 };
 
+/** The window flow signing in. Each start is its own value, so a flow an earlier Try again started is told apart. */
+type SigningIn = Facts & { kind: 'signingIn' };
+
 /**
  * Where the round is. It judges the site's group while it reads the grant, asks consent, has the window flow sign in,
  * reads the main account, runs the action, keeps the grant and answers the site once. `abandoning` and
@@ -175,11 +178,7 @@ type RoundState<Result> =
   | { kind: 'starting' }
   | { kind: 'lookingUp' }
   | (Facts & { kind: 'consenting'; account: MainAccount | null })
-  | (Facts & {
-      kind: 'signingIn';
-      /** This start of the window flow, so a flow an earlier Try again started is told apart. */
-      flow: object;
-    })
+  | SigningIn
   | (Facts & { kind: 'readingAccount'; reading: AbortController })
   | { kind: 'forgettingStale'; group: SiteGroup | null; main: MainAccount }
   | (Facts & { kind: 'acting'; main: MainAccount; stop: () => void; screen: SiteScreen })
@@ -192,7 +191,6 @@ type RoundState<Result> =
 
 /** The states of a round that has not ended yet, which a cancel ends. */
 type OpenKind =
-  | 'starting'
   | 'lookingUp'
   | 'consenting'
   | 'signingIn'
@@ -207,8 +205,8 @@ type RoundEvent<Result> =
   | { kind: 'lookedUp'; group: GroupLookup; grant: GrantLookup }
   | { kind: 'consented' }
   | { kind: 'declined' }
-  | { kind: 'stored'; flow: object }
-  | { kind: 'flowFailed'; flow: object; error: unknown }
+  | { kind: 'stored'; signingIn: SigningIn }
+  | { kind: 'flowFailed'; signingIn: SigningIn; error: unknown }
   | { kind: 'accountRead'; main: MainAccount }
   | { kind: 'accountFailed'; error: unknown }
   | { kind: 'staleForgotten' }
@@ -294,7 +292,6 @@ export function createSiteRound<Result, Outcome extends string>({
           );
           emitSideEffect({ kind: 'actionPrepared' });
         },
-        cancelled: cancelRound,
       },
       lookingUp: {
         lookedUp(state, { group, grant }, transition) {
@@ -332,21 +329,22 @@ export function createSiteRound<Result, Outcome extends string>({
         cancelled: cancelRound,
       },
       signingIn: {
-        stored({ group, known, flow }, event, transition) {
-          if (event.flow !== flow) {
+        stored(state, { signingIn }, transition) {
+          if (signingIn !== state) {
             return;
           }
-          readAccount({ group, known }, transition);
+          readAccount(state, transition);
         },
-        flowFailed({ group, known, flow }, event, { emitState, emitSideEffect }) {
-          if (event.flow !== flow) {
+        flowFailed(state, { signingIn, error }, { emitState, emitSideEffect }) {
+          if (signingIn !== state) {
             return;
           }
+          const { group, known } = state;
           const failure = new SiteRoundFailure({
             step: 'action',
             retry: true,
             message: 'The site round failed',
-            cause: event.error,
+            cause: error,
           });
           emitState({ kind: 'failed', group, known, failure, retry: 'signIn' });
           emitSideEffect({ kind: 'failed', failure });
@@ -403,9 +401,9 @@ export function createSiteRound<Result, Outcome extends string>({
               transition.update(action.await().then(() => ({ kind: 'actionSettled' })));
               return;
             case 'done': {
-              state.stop();
               const { group, known, main, screen } = state;
               transition.emitState({ kind: 'keepingGrant', group, known, result: moved.result, screen });
+              state.stop();
               transition.update(keepGrant({ grants, origin, group, known, owner: main.owner, at: now(), randomToken }));
               return;
             }
@@ -419,9 +417,9 @@ export function createSiteRound<Result, Outcome extends string>({
               endRound(state, { kind: 'cancelled', by: 'phone' }, transition);
               return;
             case 'failed': {
-              state.stop();
               const { group, known } = state;
               transition.emitState({ kind: 'failed', group, known, failure: moved.failure, retry: 'resume' });
+              state.stop();
               transition.emitSideEffect({ kind: 'failed', failure: moved.failure });
               return;
             }
@@ -485,13 +483,13 @@ export function createSiteRound<Result, Outcome extends string>({
           if (state.kind !== 'answered') {
             return;
           }
-          stop();
           emitState({ kind: 'ended', screen });
+          stop();
           emitSideEffect({ kind: 'closed' });
         },
         cancelled({ stop, screen }, _event, { emitState, emitSideEffect }) {
-          stop();
           emitState({ kind: 'ended', screen });
+          stop();
           emitSideEffect({ kind: 'closed' });
         },
       },
@@ -641,6 +639,8 @@ export function createSiteRound<Result, Outcome extends string>({
     answer: RoundAnswer,
     { emitState, emitSideEffect }: Transition<Machine>,
   ): void {
+    const screen = toScreen(state);
+    emitState(state.kind === 'keepingGrant' ? { kind: 'abandoning', screen } : { kind: 'ended', screen });
     switch (state.kind) {
       case 'readingAccount':
         state.reading.abort();
@@ -648,7 +648,6 @@ export function createSiteRound<Result, Outcome extends string>({
       case 'acting':
         state.stop();
         break;
-      case 'starting':
       case 'lookingUp':
       case 'consenting':
       case 'signingIn':
@@ -657,8 +656,6 @@ export function createSiteRound<Result, Outcome extends string>({
       case 'failed':
         break;
     }
-    const screen = toScreen(state);
-    emitState(state.kind === 'keepingGrant' ? { kind: 'abandoning', screen } : { kind: 'ended', screen });
     emitSideEffect(answer);
     emitSideEffect({ kind: 'actionEnded' });
     // The window closes at once, so it shows the site no view of how the round ended.
@@ -681,17 +678,17 @@ export function createSiteRound<Result, Outcome extends string>({
 
   /** Has the window flow sign in or resume the stored sign-in. */
   function startFlow({ group, known }: Facts, { emitState, update }: Transition<Machine>): void {
-    const flow = {};
-    emitState({ kind: 'signingIn', group, known, flow });
+    const signingIn: SigningIn = { kind: 'signingIn', group, known };
+    emitState(signingIn);
     startWindowFlow(
       () => {
-        update({ kind: 'stored', flow });
+        update({ kind: 'stored', signingIn });
       },
       () => {
         update({ kind: 'cancelled' });
       },
       error => {
-        update({ kind: 'flowFailed', flow, error });
+        update({ kind: 'flowFailed', signingIn, error });
       },
     );
   }
