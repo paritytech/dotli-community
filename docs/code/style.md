@@ -397,9 +397,14 @@ Why: ownership of a resource is visible in the code that took it, and nothing le
 
 ### A lifecycle is one state value
 
-A unit has a lifecycle when it has three or more phases, or when an await, a callback or a timer reads its phase. It
-runs that lifecycle on `createStateMachine` from `@dotli/shared`. A latch that only makes a callback race settle once
-keeps a plain flag, and so does a unit with one or two flags and no async work.
+A unit runs its lifecycle on `createStateMachine` from `@dotli/shared` when the unit itself runs and waits on the work
+that makes a phase outlive a synchronous call. An await, a remote reply or a timer it set is such work. The number of
+phases does not decide it:
+
+- A unit whose transitions are synchronous calls from outside keeps plain closures, even when a phase spans someone
+  else's wait. So does a synchronous router with latches.
+- A unit whose only async phase a pool or a shared run already owns keeps a closure over that pool or run.
+- A latch that only makes a callback race settle once keeps a plain flag.
 
 The state is a discriminated union with one member per phase, and only the machine's transitions write it. What a phase
 owns lives in its member, such as the timer of a wait or the controller of a request in flight, never in a nullable slot
