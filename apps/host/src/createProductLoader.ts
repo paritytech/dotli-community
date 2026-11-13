@@ -33,6 +33,7 @@ import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
 import type { LoadEffect, LoadTelemetry, LoadTelemetryParams } from './createLoadTelemetry.js';
 import type { PageCidCache } from './createPageCidCache.js';
+import type { CachedCopy, ServedCopy } from './revalidateCachedCopy.js';
 import type { loadFailureScreen } from './loadFailureScreen.js';
 import type { HostBridge } from './runtime/bridge.js';
 import type { CoreLease } from './runtime/createPageCore.js';
@@ -93,7 +94,6 @@ type LoadEvent =
   | { kind: 'render' }
   | { kind: 'coreHeld' }
   | { kind: 'rendered' }
-  | { kind: 'renderFailed'; error: unknown }
   | { kind: 'stepFailed'; error: unknown }
   | { kind: 'handOff' }
   | {
@@ -105,7 +105,16 @@ type LoadEvent =
   | { kind: 'contentOutcome'; report: SandboxLoadReport }
   | { kind: 'showFailure' };
 
-type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
+/** The load's reports, and the side work it leaves behind as it moves. */
+type LoaderEffect =
+  | LoadEffect
+  | { kind: 'coreReleased'; run: LoadRun }
+  | { kind: 'frameHalted' }
+  | { kind: 'cidStored'; copy: CachedCopy }
+  | { kind: 'cidRevalidated'; copy: ServedCopy }
+  | { kind: 'productShown'; label: string; manifests: ProductManifests };
+
+type LoadMachine = MachineTypes<LoadState, LoadEvent, LoaderEffect>;
 
 type Params = Pick<LoadTelemetryParams, 'backend' | 'skipCidCache' | 'timers'> & {
   /** Makes the reports of each of the load's effects. */
@@ -146,7 +155,40 @@ export function createProductLoader(params: Params) {
       failingOnScreen: failing,
       ended: null,
     },
-    onEffect: params.report,
+    onEffect: effect => {
+      // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- every report but the content's only goes to the runner of the reports
+      switch (effect.kind) {
+        case 'coreReleased':
+          void effect.run.coreHold.then(lease => lease.release(), noop);
+          return;
+        case 'frameHalted':
+          params.productFrame.halt();
+          return;
+        case 'cidStored':
+          params.cidCache.storeLater(effect.copy);
+          return;
+        case 'cidRevalidated':
+          params.cidCache.revalidateLater(effect.copy);
+          return;
+        case 'productShown':
+          params.failureScreen.forget();
+          void params.recents.record(effect.label);
+          void applyProductBranding({
+            label: effect.label,
+            manifests: effect.manifests,
+            fetchBlock: params.bitswap.get,
+            timers: params.timers,
+          });
+          return;
+        case 'contentSettled':
+          // The topbar may fold once the product's content shows.
+          pageTopbarAutoHide.setContentShown(isLoadedOutcome(effect.report.outcome));
+          params.report(effect);
+          return;
+        default:
+          params.report(effect);
+      }
+    },
     onError: error => {
       resolveReport.defect(error, {
         step: 'load_transition',
@@ -208,12 +250,17 @@ const failLoad: HandlerOf<
   LoadMachine,
   'readingCache' | 'resolvingName' | 'readingManifests' | 'holdingCore' | 'rendering',
   'stepFailed'
-> = ({ run }, { error }, { emitState, emitSideEffect, update }) => {
-  releaseCore(run);
+> = (state, { error }, { emitState, emitSideEffect, update }) => {
+  const { run } = state;
   // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
   const description = describeError(error, { readBackend: () => run.params.backend });
-  emitSideEffect({ kind: 'failed', error, description });
   emitState({ kind: 'failing', run, error, description });
+  emitSideEffect({ kind: 'failed', error, description });
+  emitSideEffect({ kind: 'coreReleased', run });
+  // A render that failed after it mounted the product leaves it holding its core under the failure screen.
+  if (state.kind === 'rendering') {
+    emitSideEffect({ kind: 'frameHalted' });
+  }
   // Queued behind the failure's report, so a screen that throws cannot lose it.
   update({ kind: 'showFailure' });
 };
@@ -248,7 +295,7 @@ const readingCache: HandlersOf<LoadMachine, 'readingCache'> = {
     try {
       assertLaunchable(manifests.root, manifests.app);
     } catch (error) {
-      params.cidCache.revalidateLater({ label, servedCid: cached.cid, onScreen: false });
+      emitSideEffect({ kind: 'cidRevalidated', copy: { label, servedCid: cached.cid, onScreen: false } });
       update({ kind: 'stepFailed', error });
       return;
     }
@@ -274,9 +321,9 @@ const resolvingName: HandlersOf<LoadMachine, 'resolvingName'> = {
         update({ kind: 'stepFailed', error });
         return;
       }
-      releaseCore(run);
-      emitSideEffect({ kind: 'noContent' });
       emitState({ kind: 'ended', error: null });
+      emitSideEffect({ kind: 'coreReleased', run });
+      emitSideEffect({ kind: 'noContent' });
       return;
     }
     emitState({ kind: 'readingManifests', run, cid });
@@ -301,7 +348,7 @@ const readingManifests: HandlersOf<LoadMachine, 'readingManifests'> = {
       return;
     }
     if (!params.skipCidCache) {
-      params.cidCache.storeLater({ label, cid, manifests: toCachedManifest(manifests) });
+      emitSideEffect({ kind: 'cidStored', copy: { label, cid, manifests: toCachedManifest(manifests) } });
     }
     emitState({ kind: 'holdingCore', run, path: 'slow', cid, manifests });
     update({ kind: 'render' });
@@ -342,34 +389,30 @@ const holdingCore: HandlersOf<LoadMachine, 'holdingCore'> = {
         facts: getProductFacts(manifests),
       });
     } catch (error) {
-      update({ kind: 'renderFailed', error });
+      update({ kind: 'stepFailed', error });
       return;
     }
     update(
       rendered.then(
         () => ({ kind: 'rendered' }),
-        (error: unknown) => ({ kind: 'renderFailed', error }),
+        (error: unknown) => ({ kind: 'stepFailed', error }),
       ),
     );
   },
 };
 
 const rendering: HandlersOf<LoadMachine, 'rendering'> = {
-  renderFailed(state, { error }, transition) {
-    failLoad(state, { kind: 'stepFailed', error }, transition);
-    // A render that failed after it mounted the product leaves it holding its core under the failure screen.
-    state.run.params.productFrame.halt();
-  },
-  rendered(state, _event, { emitState, update }) {
+  stepFailed: failLoad,
+  rendered(state, _event, { emitState, emitSideEffect, update }) {
     let stopListening: () => void;
     try {
-      stopListening = listenToProduct({ run: state.run, update });
+      stopListening = listenToProduct(state.run.params, update);
     } catch (error) {
-      update({ kind: 'renderFailed', error });
+      update({ kind: 'stepFailed', error });
       return;
     }
-    releaseCore(state.run);
     emitState({ ...state, kind: 'handingOff', stopListening });
+    emitSideEffect({ kind: 'coreReleased', run: state.run });
     // Queued behind what the listeners heard as they subscribed, so a failure or a content outcome heard then is
     // handled before the side work.
     update({ kind: 'handOff' });
@@ -382,23 +425,20 @@ const failProduct: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'productFai
   { error, failure },
   { emitState, emitSideEffect, update },
 ) => {
-  const { params } = run;
-  const description = describeError(error, { readBackend: () => params.backend });
-  emitSideEffect({ kind: 'failed', error, description });
+  const description = describeError(error, { readBackend: () => run.params.backend });
   emitState({ kind: 'failingOnScreen', run, error, description, failure });
-  update({ kind: 'showFailure' });
   stopListening();
+  emitSideEffect({ kind: 'failed', error, description });
   // Only a reload brings back a product that was on screen, so the frame stops showing it.
-  params.productFrame.halt();
+  emitSideEffect({ kind: 'frameHalted' });
+  update({ kind: 'showFailure' });
 };
 
-/** Lets the topbar fold once the product's content shows. */
 const settleContent: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'contentOutcome'> = (
   _state,
   { report },
   { emitSideEffect },
 ) => {
-  pageTopbarAutoHide.setContentShown(isLoadedOutcome(report.outcome));
   emitSideEffect({ kind: 'contentSettled', report });
 };
 
@@ -411,19 +451,13 @@ const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
   productFailed: failProduct,
   contentOutcome: settleContent,
   handOff({ run, path, cid, manifests, stopListening }, _event, { emitState, emitSideEffect }) {
-    const { label, params } = run;
-    emitSideEffect({ kind: 'handedOff' });
+    const { label } = run;
     emitState({ kind: 'onScreen', run, stopListening });
-    params.failureScreen.forget();
-    void params.recents.record(label);
-    void applyProductBranding({ label, manifests, fetchBlock: params.bitswap.get, timers: params.timers });
-    switch (path) {
-      case 'fast':
-        // Keeps the cache honest without blocking the render.
-        params.cidCache.revalidateLater({ label, servedCid: cid, onScreen: true });
-        break;
-      case 'slow':
-        break;
+    emitSideEffect({ kind: 'handedOff' });
+    emitSideEffect({ kind: 'productShown', label, manifests });
+    if (path === 'fast') {
+      // Keeps the cache honest without blocking the render.
+      emitSideEffect({ kind: 'cidRevalidated', copy: { label, servedCid: cid, onScreen: true } });
     }
   },
 };
@@ -479,13 +513,7 @@ function startLoadRun({ label, params }: { label: string; params: Params }) {
 }
 
 /** Listens for what can still fail the product, and for its content's outcomes. Returns what stops listening. */
-function listenToProduct({
-  run: { params },
-  update,
-}: {
-  run: LoadRun;
-  update: Transition<LoadMachine>['update'];
-}): () => void {
+function listenToProduct(params: Params, update: Transition<LoadMachine>['update']): () => void {
   // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
   // the app would sit there with no chain or store, so the reload screen replaces it.
   const stopHearingMismatch = params.onProtocolVersionMismatch(error => {
@@ -506,9 +534,4 @@ function listenToProduct({
     stopDeadline();
     stopFollowingContent();
   };
-}
-
-/** Lets the core lease go once it is held. Safe to call again. */
-function releaseCore({ coreHold }: LoadRun): void {
-  void coreHold.then(lease => lease.release(), noop);
 }
