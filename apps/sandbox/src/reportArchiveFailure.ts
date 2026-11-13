@@ -7,17 +7,23 @@ import { getErrorMessage, getErrorName } from '@dotli/shared';
 
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 
+/**
+ * What the worker was doing when it failed: keeping an archive or a link, reading them back, answering a fetch, or
+ * moving its own state.
+ */
+export type ArchiveStage = 'persist' | 'restore' | 'serve' | 'transition';
+
 type Params = {
   /** The pages told of the failure. */
   clients: readonly Client[];
-  /** Whether keeping the archive or reading it back failed. */
-  stage: 'persist' | 'restore';
+  /** What the worker was doing when it failed. */
+  stage: ArchiveStage;
   /** The failure, reported by its cause when it wraps one. */
   error: unknown;
 };
 
 /**
- * Tells each of `clients` that the archive could not be kept or read back. The worker has no error reporting, and a
+ * Tells each of `clients` that the worker failed at `stage`. The worker has no error reporting, and a
  * failed write otherwise shows only when a restart has nothing to serve. Never throws: a post that fails is logged, and
  * the other clients still hear.
  */

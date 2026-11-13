@@ -858,4 +858,33 @@ describe('app service worker', () => {
     // Then
     expect(await chunk?.text()).toBe('first()');
   });
+  it('As an operator, I watch the browser refuse an answer the worker gives a fetch and the pages hear it as a failure to serve', async () => {
+    // Given a worker serving a page's archive
+    const scope = startWorker(origin);
+    await setArchive(scope, { 'late.js': 'first()' });
+    const reported = waitForPageMessage();
+    const fetchEvent = Object.assign(new Event('fetch'), {
+      request: { url: `${ORIGIN}/late.js`, mode: 'no-cors', destination: '' },
+      clientId: 'page-1',
+      resultingClientId: '',
+      respondWith: () => {
+        throw new DOMException('The fetch event has already been responded to.', 'InvalidStateError');
+      },
+      waitUntil: () => undefined,
+    });
+
+    // When the page loads a chunk
+    scope.dispatchEvent(fetchEvent);
+    await reported;
+
+    // Then
+    expect(pageInbox).toEqual([
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'serve',
+        name: 'InvalidStateError',
+        message: 'The fetch event has already been responded to.',
+      },
+    ]);
+  });
 });

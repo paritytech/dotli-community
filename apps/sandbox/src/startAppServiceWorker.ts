@@ -26,7 +26,7 @@ import {
 } from './archiveDb.js';
 import { lookupServedFile, type ServedArchive } from './lookupServedFile.js';
 import { getSender, hasArchivePayload, isPageMessage, replyToPage, type SetArchiveRequest } from './pageMessages.js';
-import { reportArchiveFailure } from './reportArchiveFailure.js';
+import { reportArchiveFailure, type ArchiveStage } from './reportArchiveFailure.js';
 import { unpackArchive } from './unpackArchive.js';
 
 /** What the worker needs from its global scope. */
@@ -91,6 +91,15 @@ type WorkerEffect =
   | { kind: 'firstRestoreMissed'; error: unknown };
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
+
+/** The stage a throw of each effect is a failure of. */
+const EFFECT_STAGES = {
+  serve: 'serve',
+  respondAfterRead: 'serve',
+  readEnded: 'restore',
+  restoreMissed: 'restore',
+  firstRestoreMissed: 'restore',
+} satisfies Record<WorkerEffect['kind'], ArchiveStage>;
 
 // The build the worker names when a page asks for its version. A build inlines it as a literal, so the worker's bytes
 // change between releases and the browser never skips the update as byte-identical.
@@ -241,35 +250,15 @@ export function startAppServiceWorker({
       },
     },
     onEffect: effect => {
-      switch (effect.kind) {
-        case 'serve': {
-          // A path the archive does not hold is left to the network.
-          const found = lookupServedFile(effect.archive, effect.pathname, basePath);
-          if (found !== null) {
-            effect.event.respondWith(found);
-          }
-          return;
-        }
-        case 'respondAfterRead':
-          effect.event.respondWith(answerAfterRead(effect));
-          return;
-        case 'readEnded':
-          effect.readBack.resolve(effect.archives);
-          return;
-        case 'restoreMissed':
-          // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-          console.error('Failed to restore the archives after a worker restart:', effect.error);
-          return;
-        case 'firstRestoreMissed':
-          // Not awaited: the fetches this read-back held must not wait on the report too.
-          void reportToPages({ stage: 'restore', error: effect.error });
-          return;
+      try {
+        runEffect(effect);
+      } catch (error) {
+        reportDefect(error, EFFECT_STAGES[effect.kind]);
       }
     },
+    // Each effect reports its own throw, so only a handler's lands here.
     onError: error => {
-      // eslint-disable-next-line no-console -- the worker has no logger, and it reports the defect to its pages
-      console.error('The archive worker failed a transition:', error);
-      void reportToPages({ stage: 'restore', error });
+      reportDefect(error, 'transition');
     },
   });
 
@@ -284,6 +273,40 @@ export function startAppServiceWorker({
   scope.addEventListener('message', handleMessage);
 
   scope.addEventListener('fetch', handleFetch);
+
+  function runEffect(effect: WorkerEffect): void {
+    switch (effect.kind) {
+      case 'serve': {
+        // A path the archive does not hold is left to the network.
+        const found = lookupServedFile(effect.archive, effect.pathname, basePath);
+        if (found !== null) {
+          effect.event.respondWith(found);
+        }
+        return;
+      }
+      case 'respondAfterRead':
+        effect.event.respondWith(answerAfterRead(effect));
+        return;
+      case 'readEnded':
+        effect.readBack.resolve(effect.archives);
+        return;
+      case 'restoreMissed':
+        // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+        console.error('Failed to restore the archives after a worker restart:', effect.error);
+        return;
+      case 'firstRestoreMissed':
+        // Not awaited: the fetches this read-back held must not wait on the report too.
+        void reportToPages({ stage: 'restore', error: effect.error });
+        return;
+    }
+  }
+
+  /** Logs a defect of the worker at `stage` and tells the pages. */
+  function reportDefect(error: unknown, stage: ArchiveStage): void {
+    // eslint-disable-next-line no-console -- the worker has no logger, and it reports the defect to its pages
+    console.error(`The archive worker failed at ${stage}:`, error);
+    void reportToPages({ stage, error });
+  }
 
   /** Acts on a page's message by its type, and ignores a message of any other type. */
   function handleMessage(event: ExtendableMessageEvent): void {
