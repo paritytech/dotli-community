@@ -1371,11 +1371,11 @@ describe('page core after a failed wallet read', () => {
     for (const listener of [...storeListeners]) {
       listener();
     }
-    await changes.until(() => counted('page_core.stale_read').length === 1);
+    await changes.until(() => counted('page_core.transition').length === 1);
     const next = await core.acquire();
 
     // Then the failure is counted once and the core stays
-    expect(counted('page_core.stale_read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(counted('page_core.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(next.runtime).toBe(lease.runtime);
     expect(contexts).toHaveLength(1);
   });

@@ -17,7 +17,6 @@ import {
   noop,
   realTimers,
   type AsyncTaskPool,
-  type HandlerOf,
   type MachineTypes,
   type Timers,
   type Transition,
@@ -44,12 +43,6 @@ const walletCoreRedialMetric = defineCount<'aborted' | 'error' | 'ok'>('wallet.c
  * Tagged `outcome` (error) and `reason` (the error's name).
  */
 const pageCoreSessionFollowMetric = defineCount<'error'>('page_core.session_follow');
-
-/**
- * Count. A pairing core's check for the local wallet rejected, so the core stays in service though the wallet may be
- * back. Tagged `outcome` (error) and `reason` (the error's name).
- */
-const pageCoreStaleReadMetric = defineCount<'error'>('page_core.stale_read');
 
 /** Count. A page core handler or effect threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const pageCoreTransitionMetric = defineCount<'error'>('page_core.transition');
@@ -153,6 +146,8 @@ type CoreParts = {
   phoneRequests: PhoneRequestTracker;
 };
 
+type BootedParts = CoreParts & { booted: BootedCoreRuntime; stopFollowing: () => void };
+
 /**
  * `lingering` is a core in service that outlives its last lease. `down` is one out of service that leases still hold.
  * A core is in the page's table from its dial until it leaves.
@@ -166,15 +161,9 @@ type Core =
       /** Whether the page cancelled pairing while the core booted, so a pairing core cancels it once booted. */
       pairingCancelled: boolean;
     })
-  | (CoreParts & { kind: 'live'; booted: BootedCoreRuntime; stopFollowing: () => void; leases: ReadonlySet<symbol> })
-  | (CoreParts & { kind: 'lingering'; booted: BootedCoreRuntime; stopFollowing: () => void; timer: unknown })
-  | (CoreParts & {
-      kind: 'down';
-      booted: BootedCoreRuntime;
-      stopFollowing: () => void;
-      reason: CoreDownReason;
-      leases: ReadonlySet<symbol>;
-    });
+  | (BootedParts & { kind: 'live'; leases: ReadonlySet<symbol> })
+  | (BootedParts & { kind: 'lingering'; timer: unknown })
+  | (BootedParts & { kind: 'down'; reason: CoreDownReason; leases: ReadonlySet<symbol> });
 
 type LiveCore = Extract<Core, { kind: 'live' }>;
 
@@ -196,7 +185,6 @@ type PageCoreEvent =
   | { kind: 'wentDown'; coreId: symbol; reason: CoreDownReason }
   | { kind: 'storeChanged'; coreId: symbol }
   | { kind: 'staleRead'; coreId: symbol; stale: boolean }
-  | { kind: 'staleReadFailed'; error: unknown }
   | { kind: 'pairingCancelled' };
 
 type PageCoreEffect =
@@ -211,7 +199,6 @@ type PageCoreEffect =
   /** A local wallet core has no phone. */
   | { kind: 'phoneDropped'; phoneRequests: PhoneRequestTracker }
   | { kind: 'sessionStoreChanged'; runtime: WorkerPairingHostRuntime }
-  | { kind: 'staleReadFailed'; error: unknown }
   | { kind: 'pairingCancelled'; runtime: WorkerPairingHostRuntime }
   | { kind: 'coresGone' };
 
@@ -243,35 +230,6 @@ export function createPageCore({
   destroyDelay = CORE_DESTROY_DELAY_MS,
   timers = realTimers,
 }: Params) {
-  /**
-   * Moves a live or lingering core out of service. A held core that is the page's has its replacement dialed in the
-   * same state, so a lease that hears the core go finds the replacement current. One nobody holds leaves.
-   */
-  const takeOutOfService: HandlerOf<PageCoreMachine, 'serving', 'wentDown'> = (
-    state,
-    { coreId, reason },
-    transition,
-  ) => {
-    const core = state.cores.get(coreId);
-    if (core?.kind === 'lingering') {
-      transition.emitState(leave(state, core, transition));
-      return;
-    }
-    if (core?.kind !== 'live') {
-      return;
-    }
-    const down: Core = { ...core, kind: 'down', reason };
-    const next = withCore(state, down);
-    if (down.leases.size === 0) {
-      transition.emitState(leave(next, down, transition));
-    } else if (state.current === coreId) {
-      // A holder waits on the replacement, for the page's product, which a product change may have moved on from.
-      transition.emitState(dial(next, { redial: reason, waiting: new Map() }, transition));
-    } else {
-      transition.emitState(next);
-    }
-  };
-
   const machine = createStateMachine<PageCoreMachine>({
     initial: { kind: 'serving', product: LANDING_PRODUCT, current: null, cores: new Map() },
     handlers: {
@@ -394,7 +352,9 @@ export function createPageCore({
           }
           transition.emitState(leave(state, core, transition));
         },
-        wentDown: takeOutOfService,
+        wentDown(state, { coreId, reason }, transition) {
+          transition.emitState(takeOutOfService(state, { coreId, reason }, transition));
+        },
         storeChanged(state, { coreId }, { emitSideEffect, update }) {
           const core = state.cores.get(coreId);
           if (core === undefined || core.kind === 'booting') {
@@ -402,23 +362,12 @@ export function createPageCore({
           }
           emitSideEffect({ kind: 'sessionStoreChanged', runtime: core.booted.runtime });
           // The store coming back can answer a wallet read that failed when this core booted.
-          update(
-            new Promise<boolean>(resolve => {
-              resolve(core.booted.isStale());
-            }).then(
-              (stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale }),
-              (error: unknown): PageCoreEvent => ({ kind: 'staleReadFailed', error }),
-            ),
-          );
+          update(core.booted.isStale().then((stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale })));
         },
         staleRead(state, { coreId, stale }, transition) {
-          if (!stale) {
-            return;
+          if (stale) {
+            transition.emitState(takeOutOfService(state, { coreId, reason: 'stale' }, transition));
           }
-          takeOutOfService(state, { kind: 'wentDown', coreId, reason: 'stale' }, transition);
-        },
-        staleReadFailed(_state, { error }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'staleReadFailed', error });
         },
         pairingCancelled(state, _event, { emitState, emitSideEffect }) {
           const cores = new Map(state.cores);
@@ -489,13 +438,6 @@ export function createPageCore({
             });
           }
           return;
-        case 'staleReadFailed':
-          report.defect(effect.error, {
-            step: 'stale_read',
-            metric: pageCoreStaleReadMetric,
-            message: '[dot.li page-core] reading whether the core turned stale failed:',
-          });
-          return;
         case 'pairingCancelled':
           effect.runtime.cancelPairing();
           return;
@@ -551,6 +493,31 @@ export function createPageCore({
       );
     },
   };
+
+  /**
+   * Returns `state` with a live or lingering core out of service. A held core that is the page's has its replacement
+   * dialed in the same state, so a lease that hears the core go finds the replacement current. One nobody holds leaves.
+   */
+  function takeOutOfService(
+    state: PageCoreState,
+    { coreId, reason }: { coreId: symbol; reason: CoreDownReason },
+    transition: Transition<PageCoreMachine>,
+  ): PageCoreState {
+    const core = state.cores.get(coreId);
+    if (core?.kind === 'lingering') {
+      return leave(state, core, transition);
+    }
+    if (core?.kind !== 'live') {
+      return state;
+    }
+    const down: Core = { ...core, kind: 'down', reason };
+    const next = withCore(state, down);
+    if (down.leases.size === 0) {
+      return leave(next, down, transition);
+    }
+    // A holder waits on the replacement, for the page's product, which a product change may have moved on from.
+    return state.current === coreId ? dial(next, { redial: reason, waiting: new Map() }, transition) : next;
+  }
 
   /**
    * Returns `state` with a core booting for the page's product, as the page's current core. A previous current core
@@ -762,9 +729,7 @@ function getParts({ id, product, redial, blockingModalScope, phoneRequests }: Co
 }
 
 /** The parts every booted phase of `core` keeps. */
-function getBootedParts(
-  core: Exclude<Core, { kind: 'booting' }>,
-): CoreParts & Pick<LiveCore, 'booted' | 'stopFollowing'> {
+function getBootedParts(core: Exclude<Core, { kind: 'booting' }>): BootedParts {
   return { ...getParts(core), booted: core.booted, stopFollowing: core.stopFollowing };
 }
 
