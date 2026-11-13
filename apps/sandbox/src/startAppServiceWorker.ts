@@ -417,7 +417,7 @@ export function startAppServiceWorker({
     if (!hasArchivePayload(data)) {
       replyToPage(event, {
         type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR,
-        reason: 'SET_ARCHIVE missing packed/index payload',
+        reason: 'SET_ARCHIVE missing packed/index/directory payload',
       });
       return;
     }
@@ -427,10 +427,7 @@ export function startAppServiceWorker({
       replyToPage(event, { type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR, reason: 'SET_ARCHIVE from no page' });
       return;
     }
-    const { packed, index, directory: sent } = data;
-
-    // A page from the previous release names no directory, and its page needs no remap.
-    const directory = typeof sent === 'string' ? sent : basePath;
+    const { packed, index, directory } = data;
     worker.update({
       kind: 'archiveHanded',
       clientId: sender.id,

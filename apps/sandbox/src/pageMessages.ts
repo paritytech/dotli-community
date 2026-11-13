@@ -43,11 +43,11 @@ export function isPageMessage(data: unknown): data is PageMessage {
   return isRecord(data) && PAGE_MESSAGE_TYPES.some(type => type === data['type']);
 }
 
-/** Whether a `SET_ARCHIVE` message carries the packed archive and its index. */
+/** Whether a `SET_ARCHIVE` message carries the packed archive, its index and the page's directory. */
 export function hasArchivePayload(
   data: SetArchiveRequest,
-): data is SetArchiveRequest & Pick<SetArchiveMessage, 'packed' | 'index'> {
-  return data.packed instanceof ArrayBuffer && Array.isArray(data.index);
+): data is SetArchiveRequest & Pick<SetArchiveMessage, 'packed' | 'index' | 'directory'> {
+  return data.packed instanceof ArrayBuffer && Array.isArray(data.index) && typeof data.directory === 'string';
 }
 
 /**

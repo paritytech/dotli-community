@@ -303,7 +303,7 @@ describe('app service worker', () => {
     const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
 
     // When
-    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index });
+    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index, directory: '/' });
 
     // Then
     expect(handoff.pageReplies).toEqual([]);
@@ -321,8 +321,25 @@ describe('app service worker', () => {
     expect(handoff.pageReplies).toEqual([]);
     expect(await handoff.portReply).toEqual({
       type: 'ARCHIVE_ERROR',
-      reason: 'SET_ARCHIVE missing packed/index payload',
+      reason: 'SET_ARCHIVE missing packed/index/directory payload',
     });
+  });
+
+  it('As a sandbox user, I hand over an archive that names no directory and its port hears the refusal', async () => {
+    // Given
+    const scope = startWorker(origin);
+    const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
+
+    // When
+    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index });
+    const served = await request(scope, '/index.html');
+
+    // Then nothing is kept for the page, so its request goes to the network
+    expect(await handoff.portReply).toEqual({
+      type: 'ARCHIVE_ERROR',
+      reason: 'SET_ARCHIVE missing packed/index/directory payload',
+    });
+    expect(await served?.text()).toBe('<!doctype html>shell');
   });
 
   it('As a user, I open the sandbox page before any archive arrives and it still loads its own assets', async () => {
@@ -367,7 +384,11 @@ describe('app service worker', () => {
     }
 
     // When the page hands over its archive on its own port, and the report has run and failed
-    const handoff = setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index }, { postToPage: throwOnReport });
+    const handoff = setArchiveOnPort(
+      scope,
+      { type: 'SET_ARCHIVE', packed, index, directory: '/' },
+      { postToPage: throwOnReport },
+    );
     await reportRan.promise;
 
     // Then the kept write settled, and the port still heard the acknowledgement
@@ -739,7 +760,11 @@ describe('app service worker', () => {
     const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
 
     // When the archive is handed over on a port from no page
-    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index }, { source: null });
+    const handoff = await setArchiveOnPort(
+      scope,
+      { type: 'SET_ARCHIVE', packed, index, directory: '/' },
+      { source: null },
+    );
 
     // Then the port hears the refusal
     expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE from no page' });
