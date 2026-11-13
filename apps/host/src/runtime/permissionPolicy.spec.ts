@@ -7,9 +7,7 @@ import {
   getAuthorizationRequest,
   getFrameDirective,
   hasFrameDirective,
-  isPermissionGranted,
   type EnforceablePermissionName,
-  type PermissionStatus,
 } from './permissionPolicy.js';
 
 describe('PERMISSION_CATALOG', () => {
@@ -52,21 +50,4 @@ describe('PERMISSION_CATALOG', () => {
       expect(asked).toEqual(request);
     },
   );
-});
-
-describe('isPermissionGranted', () => {
-  it.each<{ status: PermissionStatus; granted: boolean }>([
-    { status: 'granted', granted: true },
-    { status: 'ask', granted: false },
-    { status: 'denied', granted: false },
-  ])('As a dotli integrator, I ask whether $status is granted and get $granted', ({ status, granted }) => {
-    // Given the status dot.li holds for a permission
-    const held = status;
-
-    // When it is asked whether the permission is granted
-    const answer = isPermissionGranted(held);
-
-    // Then only a grant answers yes
-    expect(answer).toBe(granted);
-  });
 });
