@@ -38,8 +38,8 @@ type SyncedClientEvent =
   | { kind: 'stopped' };
 
 type SyncedClientEffect =
-  | { kind: 'synced'; syncMs: number; totalMs: number }
-  | { kind: 'syncFailed'; error: unknown; totalMs: number }
+  | { kind: 'built'; syncMs: number; totalMs: number }
+  | { kind: 'buildFailed'; error: unknown; totalMs: number }
   | { kind: 'stopped' }
   | { kind: 'destroy'; client: ChainClient };
 
@@ -85,7 +85,8 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
     { asker },
     { emitState, update },
   ) => {
-    // The open runs in the next transition, so `connecting` is told before the open's own calls log.
+    // Sent before `connecting` is emitted, so a listener that throws on `connecting` cannot stop the open, and
+    // `connecting` is heard before the open's own logs.
     update({ kind: 'connect' });
     emitState({ kind: 'connecting', asker, startedAt: performance.now() });
   };
@@ -102,7 +103,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
           try {
             client = openClient();
           } catch (error) {
-            emitSideEffect({ kind: 'syncFailed', error, totalMs: performance.now() - startedAt });
+            emitSideEffect({ kind: 'buildFailed', error, totalMs: performance.now() - startedAt });
             emitState({ kind: 'failed', asker, error });
             return;
           }
@@ -117,12 +118,12 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
             update({ kind: 'stopped' });
           });
           const now = performance.now();
-          emitSideEffect({ kind: 'synced', syncMs: now - syncStartedAt, totalMs: now - startedAt });
+          emitSideEffect({ kind: 'built', syncMs: now - syncStartedAt, totalMs: now - startedAt });
           emitState({ kind: 'ready', client });
         },
         syncFailed({ asker, client, startedAt }, { error }, { emitState, emitSideEffect }) {
           emitSideEffect({ kind: 'destroy', client });
-          emitSideEffect({ kind: 'syncFailed', error, totalMs: performance.now() - startedAt });
+          emitSideEffect({ kind: 'buildFailed', error, totalMs: performance.now() - startedAt });
           emitState({ kind: 'failed', asker, error });
         },
       },
@@ -202,7 +203,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
 
   function runEffect(effect: SyncedClientEffect): void {
     switch (effect.kind) {
-      case 'synced': {
+      case 'built': {
         const { syncMs, totalMs } = effect;
         if (timed) {
           m.measure(SMOLDOT_FINALIZED_BLOCK, syncMs);
@@ -213,7 +214,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
         report.log.event('Chain client ready', { chain, sync_ms: Math.round(syncMs), total_ms: Math.round(totalMs) });
         return;
       }
-      case 'syncFailed':
+      case 'buildFailed':
         if (timed) {
           const outcome = effect.error instanceof NetworkSyncTimeoutError ? 'timeout' : 'error';
           m.distribution(spans.SMOLDOT_PRESYNC, effect.totalMs, { unit: 'millisecond', attributes: { outcome } });

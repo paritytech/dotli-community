@@ -52,15 +52,16 @@ export type Api = {
    */
   resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
   /**
-   * Pass `atHash` and `trieId` to pin a multi-slot read to one block. Resolves `null` when unset. Rejects with
-   * `ApiStoppedError` once the follow stopped, and otherwise with the storage error, such as
-   * `OperationInaccessibleError` when no peer serves the read within its retry window. A read the server refuses for its
-   * operation limit is retried within the same window, then rejects with `OperationLimitError`.
+   * Reads a slot at `atHash`, a block a `withBestBlock` read holds, in the contract's `trieId`, resolved at that block
+   * when not given. Resolves `null` when unset. Rejects with `ApiStoppedError` once the follow stopped, and otherwise
+   * with the storage error, such as `OperationInaccessibleError` when no peer serves the read within its retry window.
+   * A read the server refuses for its operation limit is retried within the same window, then rejects with
+   * `OperationLimitError`.
    */
   readSlot(
     contractAddress: string,
     slotKey: `0x${string}`,
-    options?: { atHash?: string; trieId?: Uint8Array },
+    at: { atHash: string; trieId?: Uint8Array | undefined },
   ): Promise<Uint8Array | null>;
   /** Calls `callback` once the follow stops, at once if it already has. Fires at most once. Returns the unsubscribe. */
   onStop(callback: () => void): () => void;
@@ -70,8 +71,6 @@ export type Api = {
    */
   destroy(): void;
 };
-
-type ReadStorageParams = { hash: string; key: string; childTrie: string | null };
 
 type Params = {
   client: SubstrateClient;
@@ -101,6 +100,7 @@ type FollowEvent =
   | { kind: 'finalized'; finalized: readonly string[]; pruned: readonly string[] }
   | { kind: 'blockHeld'; hash: string }
   | { kind: 'blockReleased'; hash: string }
+  // No state handles it: an unpin that went through changes nothing, but its work still has to end in an event.
   | { kind: 'unpinned' }
   | { kind: 'unpinFailed'; error: unknown }
   | { kind: 'followEnded'; cause: unknown }
@@ -312,7 +312,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
 
   // Each attempt queues on its own, so a retry wait holds no operation slot. A papi read in flight when the follow
   // stops rejects with its own `DisjointError`.
-  function readStorage({ hash, key, childTrie }: ReadStorageParams): Promise<string | null> {
+  function readStorage(hash: string, key: string, childTrie: string | null): Promise<string | null> {
     return readWithRetry(
       () =>
         operations.call(() => {
@@ -326,11 +326,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
   }
 
   async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
-    const accountInfoHex = await readStorage({
-      hash: atHash,
-      key: getAccountInfoKey(contractAddress),
-      childTrie: null,
-    });
+    const accountInfoHex = await readStorage(atHash, getAccountInfoKey(contractAddress), null);
     return accountInfoHex === null ? null : decodeTrieId(accountInfoHex);
   }
 
@@ -349,35 +345,17 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     }
   }
 
-  async function readSlotAt({
-    contractAddress,
-    slotKey,
-    hash,
-    trieId,
-  }: {
-    contractAddress: string;
-    slotKey: `0x${string}`;
-    hash: string;
-    trieId: Uint8Array | undefined;
-  }): Promise<Uint8Array | null> {
-    const trie = trieId ?? (await resolveTrieId(contractAddress, hash));
-    if (trie === null) {
-      return null;
-    }
-    const valueHex = await readStorage({ hash, key: getChildSlotKey(slotKey), childTrie: toHex(trie) });
-    return valueHex === null ? null : fromHex(valueHex);
-  }
-
   return {
     whenReady,
     withBestBlock,
     resolveTrieId,
-    async readSlot(contractAddress, slotKey, { atHash, trieId } = {}) {
-      if (atHash === undefined) {
-        return withBestBlock(hash => readSlotAt({ contractAddress, slotKey, hash, trieId }));
+    async readSlot(contractAddress, slotKey, { atHash, trieId }) {
+      const trie = trieId ?? (await resolveTrieId(contractAddress, atHash));
+      if (trie === null) {
+        return null;
       }
-      await whenReady();
-      return readSlotAt({ contractAddress, slotKey, hash: atHash, trieId });
+      const valueHex = await readStorage(atHash, getChildSlotKey(slotKey), toHex(trie));
+      return valueHex === null ? null : fromHex(valueHex);
     },
     onStop(callback) {
       if (machine.state.get().kind === 'stopped') {

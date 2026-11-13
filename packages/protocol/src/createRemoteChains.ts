@@ -10,11 +10,12 @@ import {
   createStateMachine,
   log,
   nest,
+  noop,
   serializeError,
   setErrorName,
+  toError,
   type HandlerOf,
   type MachineTypes,
-  type Transition,
 } from '@dotli/shared';
 import { createChainHaltedError, createJsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { FrameRpc } from './createFrameRpc.js';
@@ -59,7 +60,7 @@ type Params = {
 type Consumer = {
   onMessage: (message: JsonRpcMessage) => void;
   /** Told once when the chain behind this connection halts. */
-  onHalt: ((reason: RemoteChainHalt) => void) | null;
+  onHalt: (reason: RemoteChainHalt) => void;
 };
 
 /** What a request that never got its own answer is answered with. */
@@ -81,8 +82,8 @@ type ChainsEvent =
   | { kind: 'chainConnected'; connectionId: string }
   | { kind: 'chainMessage'; connectionId: string; message: string }
   | { kind: 'chainEnded'; connectionId: string; error: Error | null }
-  | { kind: 'connectFailed'; connectionId: string; error: unknown }
   | { kind: 'consumerSent'; connectionId: string; request: JsonRpcRequest; consumer: Consumer }
+  // No state handles it: a send the frame took changes nothing, but its work still has to end in an event.
   | { kind: 'sendAnswered'; connectionId: string }
   | { kind: 'sendFailed'; connectionId: string; request: JsonRpcRequest; error: unknown }
   | { kind: 'disconnected'; connectionId: string };
@@ -123,20 +124,31 @@ export function createRemoteChains({ rpc }: Params) {
     emitSideEffect({ kind: 'deliver', consumer, message: parsed });
   };
 
-  // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that went
-  // down, and halts like a dead frame so a caching consumer drops it.
+  // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget or never found the frame
+  // up, or a frame that went down, and halts like a dead frame so a caching consumer drops it. The connection closes
+  // first, so a send made during the halt is answered at once, not queued and lost.
   const endChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'chainEnded'> = (
     connection,
     { error },
-    transition,
+    { emitState, emitSideEffect },
   ) => {
-    if (error !== null && connection.kind === 'connecting') {
-      transition.emitSideEffect({ kind: 'connectErrored', error });
+    emitState({ kind: 'closed' });
+    const { consumer } = connection;
+    const reason: RemoteChainHalt = error === null ? 'chain' : 'frame';
+    if (connection.kind === 'connecting') {
+      if (error !== null) {
+        emitSideEffect({ kind: 'connectErrored', error });
+      }
+      // A chain halt is retryable, unlike the dead frame's plain close.
+      const answer = reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed';
+      for (const request of connection.pending) {
+        emitSideEffect({ kind: 'answer', consumer, request, error: answer });
+      }
     }
-    haltConnection(connection, error === null ? 'chain' : 'frame', transition);
+    emitSideEffect({ kind: 'halt', consumer, reason });
   };
 
-  // A consumer that leaves before `connected` ends the connect as a disconnect, so its trail still ends. A connect
+  // Leaving aborts the connect, or the subscription once it is up, as a disconnect, so its trail still ends. A connect
   // still queued is never sent, one the frame has is closed there, and one the frame is not up for never goes out.
   const leaveChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'disconnected'> = (
     { leave },
@@ -151,7 +163,7 @@ export function createRemoteChains({ rpc }: Params) {
     ChainsMachine,
     'open',
     ConnectionMachine,
-    'chainConnected' | 'chainMessage' | 'chainEnded' | 'connectFailed' | 'consumerSent' | 'sendFailed' | 'disconnected'
+    'chainConnected' | 'chainMessage' | 'chainEnded' | 'consumerSent' | 'sendFailed' | 'disconnected'
   >({
     find: ({ connections }, { connectionId }) => connections.get(connectionId) ?? null,
     store(state, { connectionId }, next) {
@@ -177,11 +189,6 @@ export function createRemoteChains({ rpc }: Params) {
         },
         chainMessage: deliverMessage,
         chainEnded: endChain,
-        // The connect never subscribed, since the frame did not come up, and halts like a dead frame.
-        connectFailed(connection, { error }, transition) {
-          transition.emitSideEffect({ kind: 'connectErrored', error });
-          haltConnection(connection, 'frame', transition);
-        },
         consumerSent(connection, { request }, { emitState }) {
           emitState({ ...connection, pending: [...connection.pending, request] });
         },
@@ -217,7 +224,6 @@ export function createRemoteChains({ rpc }: Params) {
         chainConnected: handleConnection,
         chainMessage: handleConnection,
         chainEnded: handleConnection,
-        connectFailed: handleConnection,
         consumerSent(state, event, transition) {
           if (!state.connections.has(event.connectionId)) {
             const { consumer, request } = event;
@@ -247,7 +253,7 @@ export function createRemoteChains({ rpc }: Params) {
 
     return (onMessage, onHalt) => {
       const connectionId = createRandomId();
-      const consumer: Consumer = { onMessage, onHalt: onHalt ?? null };
+      const consumer: Consumer = { onMessage, onHalt: onHalt ?? noop };
       chains.update({ kind: 'opened', connectionId, genesisHash, consumer });
 
       return {
@@ -285,7 +291,7 @@ export function createRemoteChains({ rpc }: Params) {
         return;
       }
       case 'leave':
-        effect.leave.abort(setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError'));
+        effect.leave.abort(setErrorName(new Error('Chain disconnected'), 'ChainDisconnectedError'));
         return;
       case 'deliver': {
         const { consumer, message } = effect;
@@ -309,7 +315,7 @@ export function createRemoteChains({ rpc }: Params) {
       case 'halt': {
         const { consumer, reason } = effect;
         guardConsumer('halt', () => {
-          consumer.onHalt?.(reason);
+          consumer.onHalt(reason);
         });
         return;
       }
@@ -337,12 +343,13 @@ export function createRemoteChains({ rpc }: Params) {
     chains.update(
       rpc.call(chain.connect, subscribeChain, { signal }).then(
         (): ChainsEvent => ({ kind: 'chainConnected', connectionId }),
-        (error: unknown): ChainsEvent => ({ kind: 'connectFailed', connectionId, error }),
+        (error: unknown): ChainsEvent => ({ kind: 'chainEnded', connectionId, error: toError(error) }),
       ),
     );
 
     // Resolves once the frame accepts the connection. A second resolve or reject does nothing, so no listener reads the
-    // connection's phase.
+    // connection's phase. An end before the connect is told by the `end` listener first, and the connect it rejects
+    // then finds the connection closed.
     function subscribeChain(transport: ProtocolTransport, budget: AbortSignal): Promise<void> {
       return new Promise((resolve, reject) => {
         subscribe({
@@ -376,25 +383,4 @@ function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   } catch (error: unknown) {
     report.listener(`remote_chain.${label}`)(error);
   }
-}
-
-/**
- * Closes the connection, answers every unsent request as `reason` says, then tells the consumer of the halt. Closed
- * first, so a send made during the halt is answered at once, not queued and lost.
- */
-function haltConnection(
-  connection: Exclude<Connection, { kind: 'closed' }>,
-  reason: RemoteChainHalt,
-  { emitState, emitSideEffect }: Transition<ConnectionMachine>,
-): void {
-  emitState({ kind: 'closed' });
-  const { consumer } = connection;
-  if (connection.kind === 'connecting') {
-    // A chain halt is retryable, unlike the dead frame's plain close.
-    const error = reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed';
-    for (const request of connection.pending) {
-      emitSideEffect({ kind: 'answer', consumer, request, error });
-    }
-  }
-  emitSideEffect({ kind: 'halt', consumer, reason });
 }
