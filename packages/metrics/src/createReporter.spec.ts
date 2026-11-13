@@ -81,6 +81,82 @@ describe('createReporter', () => {
     expect(reports.counted('test.ui_cache')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
   });
 
+  it('As a feature, I report a defect with my own reason, outcome, tags and attributes and each reaches its place', () => {
+    // Given a recorder, a reporter and a metric with its own outcomes
+    const reports = recordReporterOutput();
+    const report = createReporter({ flow: 'wallet' });
+    const reviewMetric = defineCount<'unmatchable'>('test.phone_review');
+    const failure = new Error('no matching request');
+
+    // When the defect is reported with its own reason, outcome, tags and attributes
+    report.defect(failure, {
+      step: 'phone_review',
+      tags: { method: 'sign' },
+      metric: reviewMetric,
+      message: '[test] review unmatched:',
+      reason: 'mismatch',
+      outcome: 'unmatchable',
+      attributes: { method: 'sign' },
+    });
+
+    // Then the tags reach the issue, and the reason, outcome and attributes reach the count
+    expect(reports.issues).toEqual([[failure, { flow: 'wallet', step: 'phone_review', tags: { method: 'sign' } }]]);
+    expect(reports.counted('test.phone_review')).toEqual([
+      { outcome: 'unmatchable', reason: 'mismatch', method: 'sign' },
+    ]);
+  });
+
+  it('As a feature, I report a thrown non-error and it is counted as an error with an unknown reason', () => {
+    // Given a recorder and a reporter
+    const reports = recordReporterOutput();
+    const report = createReporter({ flow: 'resolve' });
+
+    // When a thrown string is reported as a defect
+    report.defect('unpin refused', {
+      step: 'unpin',
+      metric: defineCount<'error'>('test.unpin'),
+      message: '[test] unpin failed:',
+    });
+
+    // Then the count names no class
+    expect(reports.counted('test.unpin')).toEqual([{ outcome: 'error', reason: 'unknown' }]);
+  });
+
+  it("As a feature, I pass attributes named outcome and reason and the report's own win", () => {
+    // Given a recorder and a reporter
+    const reports = recordReporterOutput();
+    const report = createReporter({ flow: 'ui' });
+
+    // When a failure is reported with attributes that name an outcome and a reason
+    report.expected(new TypeError('refused'), {
+      step: 'icon',
+      metric: defineCount<'error'>('test.icon'),
+      attributes: { outcome: 'ok', reason: 'x' },
+    });
+
+    // Then the count keeps the default outcome and the class name
+    expect(reports.counted('test.icon')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+  });
+
+  it('As a feature, I report an expected failure without a message and it is counted while nothing is logged', () => {
+    // Given a recorder and a reporter
+    const reports = recordReporterOutput();
+    const report = createReporter({ flow: 'ui' });
+    const timeout = new Error('timed out');
+
+    // When
+    report.expected(timeout, {
+      step: 'diagnostics_block',
+      metric: defineCount<'timeout'>('test.finalized_block'),
+      outcome: 'timeout',
+      reason: 'timeout',
+    });
+
+    // Then
+    expect(reports.lines).toEqual([]);
+    expect(reports.counted('test.finalized_block')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
+  });
+
   it('As a feature, I capture a failure and it becomes one issue under my flow with no line and no count', () => {
     // Given a recorder and a reporter for one flow
     const reports = recordReporterOutput();
