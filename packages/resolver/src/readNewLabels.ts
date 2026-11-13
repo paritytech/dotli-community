@@ -4,7 +4,7 @@
 import type { DotnsContracts } from '@dotli/config';
 import { toHex } from '@dotli/shared';
 import type { Api } from './createRawApi.js';
-import { isValidDotLabel } from './dotLabel.js';
+import { isValidDotLabel, MAX_LABEL_LENGTH } from './dotLabel.js';
 import { PartialStorageReadError } from './partialStorageReadError.js';
 import {
   addToSlot,
@@ -32,9 +32,6 @@ type ReadStoreParams = {
 };
 
 type StoreNames = { cursor: LabelStoreCursor; names: string[] };
-
-/** The longest DNS label. */
-const MAX_LABEL_LENGTH = 63;
 
 /**
  * Each store's new entry count, and the second-level labels under `dotns.TLD` among the entries from each store's
