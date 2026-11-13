@@ -100,7 +100,7 @@ type WarningLine = { message: string; chain: CriticalChain | null };
  * its text updates, since a blinking row reads as worse trouble.
  */
 type Warning =
-  { kind: 'early'; parked: WarningLine | null } | { kind: 'hidden' } | { kind: 'shown'; chain: CriticalChain | null };
+  { kind: 'early'; parked: WarningLine | null } | { kind: 'hidden' } | { kind: 'shown'; line: WarningLine };
 
 /** What a critical chain's stall message reads, kept across its watches. */
 type WatchFacts = Pick<StallFacts, 'peers' | 'reason'>;
@@ -294,7 +294,7 @@ export function startLoadProgress({
           // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
           if (sync.kind === 'peers') {
             if (sync.peers !== undefined) {
-              transition.emitState(withWatch(state, chain, { ...watch, peers: sync.peers }));
+              rewordOnPeers(withWatch(state, chain, { ...watch, peers: sync.peers }), chain, transition);
             }
             return;
           }
@@ -318,8 +318,7 @@ export function startLoadProgress({
           }
           // The general line takes its place, shown or parked alike, since another chain may still stall and hiding a
           // shown row would flash it.
-          const message = describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING;
-          raiseWarning(watched, { message, chain: null }, transition);
+          raiseWarning(watched, getGeneralLine(watched), transition);
         },
         chainDetailed: recordDetail,
         netBytes(state, { received, at }, { emitState, emitSideEffect }) {
@@ -533,23 +532,55 @@ function raiseWarning(state: LightClientState, line: WarningLine, transition: Tr
 /** Shows `line` as the slow-load warning at once. */
 function revealWarning(
   state: LightClientState,
-  { message, chain }: WarningLine,
+  line: WarningLine,
   { emitState, emitSideEffect }: Transition<ProgressMachine>,
 ): void {
-  emitState({ ...state, warning: { kind: 'shown', chain } });
-  emitSideEffect({ kind: 'warningShown', message });
+  emitState({ ...state, warning: { kind: 'shown', line } });
+  emitSideEffect({ kind: 'warningShown', message: line.message });
+}
+
+/**
+ * Moves to `state`, whose watch of `chain` holds a new peer count. A line that names `chain` is worded again from it,
+ * since a count that changed makes it read stale, and gives way to the general line once the chain's facts explain no
+ * stall. A line that reads the same is left alone, as a sample arrives every second.
+ */
+function rewordOnPeers(state: LightClientState, chain: CriticalChain, transition: Transition<ProgressMachine>): void {
+  const line = getWarningLine(state.warning);
+  const watch = state.watches.get(chain) ?? UNWATCHED;
+  if (line?.chain !== chain) {
+    transition.emitState(state);
+    return;
+  }
+  const { peers, reason } = watch;
+  const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
+  const next = message === null ? getGeneralLine(state) : { message, chain };
+  if (next.message === line.message && next.chain === line.chain) {
+    transition.emitState(state);
+    return;
+  }
+  raiseWarning(state, next, transition);
+}
+
+/** The general slow-load line, worded from the load's current rate. */
+function getGeneralLine(state: LightClientState): WarningLine {
+  return { message: describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, chain: null };
+}
+
+/** The line the warning shows or has parked, or `null` for none. */
+function getWarningLine(warning: Warning): WarningLine | null {
+  switch (warning.kind) {
+    case 'early':
+      return warning.parked;
+    case 'hidden':
+      return null;
+    case 'shown':
+      return warning.line;
+  }
 }
 
 /** The critical chain whose stall the warning's line describes, or `null` for the general line or none. */
 function getWarnedChain(warning: Warning): CriticalChain | null {
-  switch (warning.kind) {
-    case 'early':
-      return warning.parked?.chain ?? null;
-    case 'hidden':
-      return null;
-    case 'shown':
-      return warning.chain;
-  }
+  return getWarningLine(warning)?.chain ?? null;
 }
 
 /**

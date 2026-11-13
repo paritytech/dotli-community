@@ -187,6 +187,20 @@ describe('startLoadProgress', () => {
     expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
   });
 
+  it('As a visitor in direct mode, I was told a chain has no peers, it then finds peers while it still connects, and its line says so', async () => {
+    // Given the relay's line shown for a chain with no peers
+    const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(5_000);
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 3 });
+
+    // Then
+    expect(loadingState.get().warning).toBe('Connected to 3 computers for Polkadot, but no data is arriving yet.');
+  });
+
   it('As a visitor in direct mode, I was told a chain has no peers, it reports a stall, and its line stays', async () => {
     // Given the relay's line shown for a chain with no peers
     const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
