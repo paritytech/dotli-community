@@ -375,6 +375,28 @@ describe('createRawApi', () => {
     expect(captured).toMatchObject([{ step: 'unpin' }]);
   });
 
+  it('As an operator, I see an unfollow that throws as the raw API is destroyed reported and counted, and the stop is still told', () => {
+    // Given a ready follow whose unfollow throws, and a stop listener
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { client, follow } = createFakeSubstrateClient();
+    follow.unfollow.mockImplementation(() => {
+      throw new TypeError('client is gone');
+    });
+    const api = createRawApi({ client });
+    follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+    const onStop = vi.fn();
+    api.onStop(onStop);
+
+    // When
+    api.destroy();
+
+    // Then
+    expect(captured).toMatchObject([{ step: 'unfollow' }]);
+    expect(metrics.counted('resolve.unfollow')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
   it('As an operator, I see an unpin the light client refuses while the follow runs reported and counted', async () => {
     // Given
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;

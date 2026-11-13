@@ -28,6 +28,12 @@ const report = createReporter({ flow: 'resolve' });
 const resolveUnpinMetric = defineCount<'error'>('resolve.unpin');
 
 /**
+ * Count. An unfollow that threw, a bug, since papi ends a follow that already stopped without a throw. The follow may
+ * stay open on the server. Tag `outcome` and `reason`.
+ */
+const resolveUnfollowMetric = defineCount<'error'>('resolve.unfollow');
+
+/**
  * Count. A transition of the chainHead follow threw, a bug. Tagged `outcome` (error) and `reason` (the error's name).
  */
 const rawApiTransitionMetric = defineCount<'error'>('resolve.raw_api_transition');
@@ -293,9 +299,12 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       case 'unfollow':
         try {
           follow.unfollow();
-          // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the follow may already be stopped.
-        } catch {
-          /* already stopped */
+        } catch (error: unknown) {
+          report.defect(error, {
+            step: 'unfollow',
+            metric: resolveUnfollowMetric,
+            message: '[dot.li resolver] A chainHead unfollow threw:',
+          });
         }
         return;
       case 'stopped':

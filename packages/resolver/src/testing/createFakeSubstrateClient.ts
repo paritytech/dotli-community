@@ -18,6 +18,8 @@ export type FakeFollow = {
   storage: Mock<StorageFn>;
   /** Answers every unpin. Resolves unless the test sets an answer. */
   unpin: Mock<(hashes: string[]) => Promise<void>>;
+  /** Ends the follow. Returns unless the test makes it throw. */
+  unfollow: Mock<() => void>;
 };
 
 /** A `SubstrateClient` whose one chainHead follow the test drives. */
@@ -27,6 +29,7 @@ export function createFakeSubstrateClient(): { client: SubstrateClient; follow: 
     stop: () => undefined,
     storage: vi.fn<StorageFn>(() => Promise.resolve(null)),
     unpin: vi.fn<(hashes: string[]) => Promise<void>>(() => Promise.resolve()),
+    unfollow: vi.fn<() => void>(),
   };
   // The resolver calls only `chainHead`, so the rest of the client stays out of the fake.
   const client = {
@@ -42,7 +45,7 @@ export function createFakeSubstrateClient(): { client: SubstrateClient; follow: 
       return {
         storage: follow.storage,
         unpin: follow.unpin,
-        unfollow: () => undefined,
+        unfollow: follow.unfollow,
       };
     },
   } as unknown as SubstrateClient;
