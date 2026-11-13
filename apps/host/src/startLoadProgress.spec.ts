@@ -236,6 +236,25 @@ describe('startLoadProgress', () => {
     expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
   });
 
+  it('As a visitor in direct mode, I was told of the later of two stalled chains, that chain recovers while the other still stalls, and its line gives way to the general one', async () => {
+    // Given the relay and Asset Hub stall before the mark, and Asset Hub's line is shown at it
+    const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(1_000);
+    chainSync.send({ chain: 'assethub', kind: 'connecting' });
+    await timers.advance(4_000);
+
+    // When Asset Hub finds peers and completes its boot
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 3 });
+    chainSync.send({ chain: 'assethub', kind: 'bootstrapComplete' });
+    await timers.advance(20_000);
+
+    // Then
+    expect(loadingState.get().warning).toBe('Still working. This is taking longer than usual.');
+  });
+
   it('As an operator, I see a report source that throws as the load progress subscribes reported as a defect, while the progress returns and leaves no other source listened to', () => {
     // Given a byte counter that cannot be listened to
     const { counted } = bindReports();

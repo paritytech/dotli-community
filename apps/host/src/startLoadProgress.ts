@@ -97,17 +97,19 @@ type Params = {
   debugBus?: DebugBus;
 };
 
-/**
- * The slow-load warning. Once shown, it stays and only its text updates, since a blinking row reads as worse trouble.
- * An early condition is parked until the load is old enough to be slow. A parked warning's timer shows it only while
- * that warning is still parked.
- */
-type Warning = { kind: 'hidden' } | { kind: 'pending'; message: string; timer: unknown } | { kind: 'shown' };
+/** A slow-load line, and the critical chain whose stall it describes, or `null` for the general line. */
+type WarningLine = { message: string; chain: CriticalChain | null };
 
 /**
- * What a critical chain's stall message reads, kept across its watches, and whether the shown line is this chain's.
+ * The slow-load warning. Early warnings read as failure on loads that would succeed, so until the load is old enough to
+ * be slow the latest line is parked, and shown at that mark if it still stands. Once shown, the warning stays and only
+ * its text updates, since a blinking row reads as worse trouble.
  */
-type WatchFacts = Pick<StallFacts, 'peers' | 'reason'> & { warned: boolean };
+type Warning =
+  { kind: 'early'; parked: WarningLine | null } | { kind: 'hidden' } | { kind: 'shown'; chain: CriticalChain | null };
+
+/** What a critical chain's stall message reads, kept across its watches. */
+type WatchFacts = Pick<StallFacts, 'peers' | 'reason'>;
 
 /**
  * One critical chain's stall watch. Every lifecycle event re-arms it, so a chain warns only when it sits in one state
@@ -122,7 +124,7 @@ type ByteSample = { at: number; total: number };
  * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
  * pushes the load's own events out of the panel's ring buffer.
  */
-type ByteTotals = { open: boolean; received: number; sampled: ByteSample | null; samples: number };
+type ByteTotals = { kind: 'open'; received: number; sampled: ByteSample | null; samples: number } | { kind: 'closed' };
 
 /** The whole load's throughput over a trailing window. */
 type Throughput = { samples: readonly ByteSample[]; bytesPerSecond: number | null };
@@ -137,8 +139,6 @@ type ProgressState =
   | {
       kind: 'lightClient';
       stops: readonly (() => void)[];
-      /** When the load started, on the monotonic clock, which a warning waits on. */
-      startedAt: number;
       warning: Warning;
       // Per chain, since one figure would blank to zero at every handover.
       watches: ReadonlyMap<CriticalChain, StallWatch>;
@@ -161,13 +161,10 @@ type ProgressEvent =
   | { kind: 'nameResolved' }
   | { kind: 'contentFetchEntered' }
   | { kind: 'stallDue'; chain: CriticalChain; timer: unknown }
-  | { kind: 'warningDue'; timer: unknown }
+  | { kind: 'slowMarkReached' }
   | { kind: 'disposed' };
 
-/**
- * What the load tells its outputs. A `Recorded` effect goes to the resolution trace, and a `Shown` one to the network
- * monitor, the debug panel and the bar.
- */
+/** What the load tells its outputs. */
 type ProgressEffect =
   | { kind: 'barOpened' }
   | { kind: 'chainSyncRecorded'; sync: ChainSyncEvent }
@@ -194,13 +191,10 @@ const SPEED_WINDOW_MS = 3_000;
 /** How long a chain may sit in one lifecycle state before it owes an explanation. */
 const STALL_WARNING_MS = 3_000;
 
-/**
- * Early warnings read as failure on loads that would succeed. A condition that fires earlier is shown at this mark if
- * it still stands.
- */
+/** How old a load must be before it reads as slow. */
 const WARNING_MIN_LOAD_MS = 5_000;
 
-const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined, warned: false };
+const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined };
 
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
@@ -294,13 +288,15 @@ export function startLoadProgress({
           emitState({
             kind: 'lightClient',
             stops,
-            startedAt: readClock(),
-            warning: { kind: 'hidden' },
+            warning: { kind: 'early', parked: null },
             watches: new Map(),
-            byteTotals: { open: true, received: 0, sampled: null, samples: 0 },
+            byteTotals: { kind: 'open', received: 0, sampled: null, samples: 0 },
             // Seeded with page start, so the first report already has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
+          timers.setTimeout(() => {
+            update({ kind: 'slowMarkReached' });
+          }, WARNING_MIN_LOAD_MS);
         },
       },
       gateway: {
@@ -328,11 +324,20 @@ export function startLoadProgress({
         chainDetailed: recordDetail,
         netBytes(state, { received, at }, { emitState, emitSideEffect }) {
           const throughput = measureThroughput(state.throughput, received, at);
-          const byteTotals = takeByteTotal(state.byteTotals, received, at);
-          emitState({ ...state, throughput, byteTotals });
+          const totals = state.byteTotals;
           emitSideEffect({ kind: 'bytesRecorded', received });
-          if (byteTotals.sampled !== state.byteTotals.sampled) {
+          if (totals.kind === 'closed') {
+            emitState({ ...state, throughput });
+          } else if (isByteTotalDue(totals, received, at)) {
+            const sampled = { at, total: received };
+            emitState({
+              ...state,
+              throughput,
+              byteTotals: { ...totals, received, sampled, samples: totals.samples + 1 },
+            });
             emitSideEffect({ kind: 'byteTotalSampled', received });
+          } else {
+            emitState({ ...state, throughput, byteTotals: { ...totals, received } });
           }
           if (throughput.bytesPerSecond !== null) {
             emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
@@ -344,19 +349,19 @@ export function startLoadProgress({
           emitSideEffect({ ...facts, kind: 'contentShown' });
         },
         barStalled(state, _event, transition) {
-          // A chain whose stall warned names the cause, so a parked bar does not replace its line.
+          // A line that names a stalled chain names the cause, so a parked bar does not replace it.
           const message = describeProgressStall(state.throughput.bytesPerSecond);
-          if (message === null || hasWarnedWatch(state.watches)) {
+          if (message === null || getWarnedChain(state.warning) !== null) {
             return;
           }
-          showWarning(state, message, transition);
+          showWarning(state, { message, chain: null }, transition);
         },
         productLoaded(state, _event, { emitState, emitSideEffect }) {
           const { byteTotals } = state;
-          if (!byteTotals.open) {
+          if (byteTotals.kind === 'closed') {
             return;
           }
-          emitState({ ...state, byteTotals: { ...byteTotals, open: false } });
+          emitState({ ...state, byteTotals: { kind: 'closed' } });
           if (byteTotals.received !== byteTotals.sampled?.total) {
             emitSideEffect({ kind: 'byteTotalSampled', received: byteTotals.received });
           }
@@ -372,20 +377,25 @@ export function startLoadProgress({
           if (watch?.kind !== 'watching' || watch.timer !== timer) {
             return;
           }
-          const { peers, reason, warned } = watch;
+          const { peers, reason } = watch;
+          const quieted = withWatch(state, chain, { kind: 'quiet', peers, reason });
           const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
           if (message === null) {
-            transition.emitState(withWatch(state, chain, { kind: 'quiet', peers, reason, warned }));
+            transition.emitState(quieted);
             return;
           }
-          showWarning(withWatch(state, chain, { kind: 'quiet', peers, reason, warned: true }), message, transition);
+          showWarning(quieted, { message, chain }, transition);
         },
-        warningDue(state, { timer }, transition) {
-          // A timer of a warning since shown or dropped shows nothing.
-          if (state.warning.kind !== 'pending' || state.warning.timer !== timer) {
+        slowMarkReached(state, _event, transition) {
+          // Only the early warning waits on the mark, and the mark is reached once.
+          if (state.warning.kind !== 'early') {
             return;
           }
-          revealWarning(state, state.warning.message, transition);
+          if (state.warning.parked === null) {
+            transition.emitState({ ...state, warning: { kind: 'hidden' } });
+            return;
+          }
+          revealWarning(state, state.warning.parked, transition);
         },
         disposed: stop,
       },
@@ -491,8 +501,8 @@ export function startLoadProgress({
   }
 
   /**
-   * Re-arms a critical chain's stall watch on its lifecycle milestone, or keeps a peer sample for the wording. A chain
-   * that recovers from the last warning falls back to the general slow-load line.
+   * Re-arms a critical chain's stall watch on its lifecycle milestone, or keeps a peer sample for the wording. When the
+   * chain the line names recovers, its line gives way to the general one, even while another chain still stalls.
    */
   function watchChain(state: LightClientState, sync: ChainSyncEvent, transition: Transition<ProgressMachine>): void {
     const { chain } = sync;
@@ -507,33 +517,29 @@ export function startLoadProgress({
       }
       return;
     }
-    const facts: WatchFacts = {
-      peers: watch.peers,
-      reason: sync.kind === 'stalled' ? sync.reason : undefined,
-      // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
-      warned: watch.warned && (sync.kind === 'stalled' || sync.kind === 'connecting'),
-    };
+    const { peers } = watch;
+    const reason = sync.kind === 'stalled' ? sync.reason : undefined;
     // A chain whose boot completed has nothing left to stall on.
     const watched = withWatch(
       state,
       chain,
       sync.kind === 'bootstrapComplete'
-        ? { kind: 'quiet', ...facts }
-        : { kind: 'watching', timer: startStallTimer(chain, transition), ...facts },
+        ? { kind: 'quiet', peers, reason }
+        : { kind: 'watching', timer: startStallTimer(chain, transition), peers, reason },
     );
-    const recovered = watch.warned && !facts.warned && !hasWarnedWatch(watched.watches);
-    if (!recovered) {
+    // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
+    if (sync.kind === 'stalled' || sync.kind === 'connecting' || getWarnedChain(state.warning) !== chain) {
       transition.emitState(watched);
       return;
     }
     // A parked line was never seen, so it goes.
-    if (state.warning.kind === 'pending') {
-      transition.emitState({ ...watched, warning: { kind: 'hidden' } });
+    if (state.warning.kind === 'early') {
+      transition.emitState({ ...watched, warning: { kind: 'early', parked: null } });
       return;
     }
-    // Hiding the shown row would flash it, so fall back to the general slow-load line. It is past the minimum load age
-    // already.
-    revealWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
+    // Hiding the shown row would flash it, so fall back to the general slow-load line.
+    const message = describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING;
+    revealWarning(watched, { message, chain: null }, transition);
   }
 
   /** Starts `chain`'s stall timer and returns it as the token its watch keeps. */
@@ -544,33 +550,36 @@ export function startLoadProgress({
     }, STALL_WARNING_MS);
     return timer;
   }
+}
 
-  /** Shows `message` as the slow-load warning, or parks it until the load is old enough to be slow. */
-  function showWarning(state: LightClientState, message: string, transition: Transition<ProgressMachine>): void {
-    const waitLeft = WARNING_MIN_LOAD_MS - (readClock() - state.startedAt);
-    if (waitLeft <= 0) {
-      revealWarning(state, message, transition);
-      return;
-    }
-    // A later message replaces the parked one, and the parked one's timer shows it.
-    if (state.warning.kind === 'pending') {
-      transition.emitState({ ...state, warning: { ...state.warning, message } });
-      return;
-    }
-    const timer = timers.setTimeout(() => {
-      transition.update({ kind: 'warningDue', timer });
-    }, waitLeft);
-    transition.emitState({ ...state, warning: { kind: 'pending', message, timer } });
+/** Shows `line` as the slow-load warning, or parks it in place of any parked line until the load is old enough to be slow. */
+function showWarning(state: LightClientState, line: WarningLine, transition: Transition<ProgressMachine>): void {
+  if (state.warning.kind === 'early') {
+    transition.emitState({ ...state, warning: { kind: 'early', parked: line } });
+    return;
   }
+  revealWarning(state, line, transition);
+}
 
-  /** Shows `message` as the slow-load warning at once, in place of a parked one. */
-  function revealWarning(
-    state: LightClientState,
-    message: string,
-    { emitState, emitSideEffect }: Transition<ProgressMachine>,
-  ): void {
-    emitState({ ...state, warning: { kind: 'shown' } });
-    emitSideEffect({ kind: 'warningShown', message });
+/** Shows `line` as the slow-load warning at once. */
+function revealWarning(
+  state: LightClientState,
+  { message, chain }: WarningLine,
+  { emitState, emitSideEffect }: Transition<ProgressMachine>,
+): void {
+  emitState({ ...state, warning: { kind: 'shown', chain } });
+  emitSideEffect({ kind: 'warningShown', message });
+}
+
+/** The critical chain whose stall the warning's line describes, or `null` for the general line or none. */
+function getWarnedChain(warning: Warning): CriticalChain | null {
+  switch (warning.kind) {
+    case 'early':
+      return warning.parked?.chain ?? null;
+    case 'hidden':
+      return null;
+    case 'shown':
+      return warning.chain;
   }
 }
 
@@ -612,27 +621,19 @@ function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWa
   return { ...state, watches: new Map(state.watches).set(chain, watch) };
 }
 
-/** Returns whether a critical chain's stall gave the warning. */
-function hasWarnedWatch(watches: LightClientState['watches']): boolean {
-  return [...watches.values()].some(watch => watch.warned);
-}
-
 /**
- * Takes `received`, the load's byte total, at `at` into the sampled report. While the report is open, a new total is
- * sampled a second after the last one, up to the cap.
+ * Returns whether the open report samples `received`, the load's byte total, at `at`: a new total a second after the
+ * last one, up to the cap.
  */
-function takeByteTotal(totals: ByteTotals, received: number, at: number): ByteTotals {
-  if (!totals.open) {
-    return totals;
-  }
-  const { sampled, samples } = totals;
-  const due =
+function isByteTotalDue(
+  { sampled, samples }: Extract<ByteTotals, { kind: 'open' }>,
+  received: number,
+  at: number,
+): boolean {
+  return (
     samples < CHAIN_BYTES_DEBUG_MAX &&
-    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS));
-  if (!due) {
-    return { ...totals, received };
-  }
-  return { open: true, received, sampled: { at, total: received }, samples: samples + 1 };
+    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS))
+  );
 }
 
 /**
