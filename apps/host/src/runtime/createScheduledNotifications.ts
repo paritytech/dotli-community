@@ -32,11 +32,6 @@ const notificationsTransitionMetric = defineCount<'error'>('notifications.transi
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
 
-type InitParams = {
-  /** Only tags log lines. */
-  label: string;
-};
-
 type ScheduleRequest = {
   productId: ProductId;
   title: string;
@@ -115,7 +110,7 @@ type RoundState = Extract<SchedulerState, { kind: 'rehydrating' | 'ticking' }>;
 type AwakeState = Extract<SchedulerState, { kind: 'idle' | 'polling' | 'rehydrating' | 'ticking' }>;
 
 type SchedulerEvent =
-  | { kind: 'initialized'; label: string }
+  | { kind: 'initialized' }
   | { kind: 'ticked' }
   | { kind: 'woken' }
   | { kind: 'scheduled' }
@@ -131,7 +126,7 @@ type SchedulerEvent =
   | { kind: 'claimFailed'; round: ClaimingRound; error: unknown };
 
 type SchedulerEffect =
-  | { kind: 'initialized'; label: string }
+  | { kind: 'initialized' }
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
   | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
@@ -248,14 +243,15 @@ export function createScheduledNotifications({
       emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
     }
   };
-  /** Claims the next due record when the claim is this round's, then shows the claimed one. */
+  /** Shows the claimed record, then claims the next due one when the claim is this round's. */
   const settleClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimed'> = (state, event, transition) => {
-    if (event.round === state.round) {
-      const [, ...rest] = event.round.due;
-      transition.emitSideEffect({ kind: 'stepSucceeded', step: 'claim' });
-      claimNext(state, rest, transition);
-    }
     fireClaimed(state, event, transition);
+    if (event.round !== state.round) {
+      return;
+    }
+    const [, ...rest] = event.round.due;
+    transition.emitSideEffect({ kind: 'stepSucceeded', step: 'claim' });
+    claimNext(state, rest, transition);
   };
   /** Claims the next due record, leaving the one whose claim failed for a later round. */
   const skipFailedClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimFailed'> = (
@@ -307,10 +303,10 @@ export function createScheduledNotifications({
     initial: { kind: 'uninitialized' },
     handlers: {
       uninitialized: {
-        initialized(_state, { label }, transition) {
+        initialized(_state, _event, transition) {
           const page = { stopListening: listenForPage(transition.update), lifetime: new AbortController() };
           const channel = openWakeChannel(transition.update);
-          transition.emitSideEffect({ kind: 'initialized', label });
+          transition.emitSideEffect({ kind: 'initialized' });
           runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
         },
         disposed(_state, _event, { emitState }) {
@@ -382,7 +378,7 @@ export function createScheduledNotifications({
     onEffect(effect) {
       switch (effect.kind) {
         case 'initialized':
-          log.debug(`[${effect.label}] scheduled notifications: init`);
+          log.debug('Scheduled notifications: init');
           return;
         case 'stepSucceeded':
           pollReport.succeeded(effect.step);
@@ -451,8 +447,8 @@ export function createScheduledNotifications({
     dispose,
   };
 
-  function init({ label }: InitParams): void {
-    machine.update({ kind: 'initialized', label });
+  function init(): void {
+    machine.update({ kind: 'initialized' });
   }
 
   async function schedule(request: ScheduleRequest): Promise<ScheduleNotificationResult> {

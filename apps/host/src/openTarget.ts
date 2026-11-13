@@ -14,7 +14,7 @@ import type { Shell } from './startShell.js';
  */
 export async function openTarget(target: LocalTarget, shell: Shell): Promise<void> {
   shell.startup.bridge.setPageProduct({ label: target.host, productId: target.productId });
-  pageNotifications().init({ label: target.host });
+  pageNotifications().init();
   try {
     // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
     // unconditionally for product testing.

@@ -88,7 +88,7 @@ function createPollerHarness() {
 
   function start(params: StartParams) {
     const built = build(params);
-    built.notifications.init({ label: 'acme' });
+    built.notifications.init();
     return built;
   }
 
@@ -323,7 +323,7 @@ describe('scheduled notifications poller', () => {
     expect(timers.countPending()).toBe(0);
 
     // When the scheduler starts and the notification falls due
-    notifications.init({ label: 'acme' });
+    notifications.init();
     await advanceTicks(3);
 
     // Then it shows once
@@ -570,7 +570,7 @@ describe('scheduled notifications disposed', () => {
     notifications.dispose();
 
     // When it is started
-    notifications.init({ label: 'acme' });
+    notifications.init();
     await advanceTicks(2);
 
     // Then no channel opens, nothing is read or shown, and nothing listens or waits on the clock

@@ -52,7 +52,7 @@ export async function openProduct({ route, shell, cidRead }: Params): Promise<vo
   const { settings, bridge } = shell.startup;
   const protocol = getProtocolClient();
 
-  pageNotifications().init({ label });
+  pageNotifications().init();
   const relay = startProductContent(shell, settings.cache.skipArchiveCache);
   const names = createNameSource({
     backend: settings.backend,
