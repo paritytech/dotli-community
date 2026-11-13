@@ -102,7 +102,10 @@ type Typing =
 
 type TypingState = Extract<Typing, { kind: 'typing' }>;
 
-/** A stall, rotation, fade or frame is cleared as its state is left, so none fires for a state that moved on. */
+/**
+ * A crawl tick, stall, rotation, fade or frame is cleared as its state is left, so none fires for a state that moved
+ * on.
+ */
 type ScreenState =
   | {
       kind: 'active';
@@ -265,7 +268,7 @@ export function createLoadingController({
           emitState({ ...state, domain });
         },
         warningSet: showWarning,
-        stageSet(state, { stage }, transition) {
+        stageSet(state, { stage }, { emitState, emitSideEffect, update }) {
           const stageIndex = LOADING_STAGES.indexOf(stage);
           // Only forward, so a late event cannot walk the story backwards or restart a running stage.
           if (stageIndex <= state.stageIndex) {
@@ -275,16 +278,16 @@ export function createLoadingController({
           // The opening step line has been up since first paint, so its first explanation is due from then.
           const firstDelay =
             state.stageIndex === -1 ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
-          transition.emitState({
+          emitState({
             ...state,
             stageIndex,
-            rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, transition) },
+            rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, update) },
             typing: { kind: 'still' },
             explanation: '',
           });
           stopRotation(state.rotation);
           stopTyping(state.typing);
-          transition.emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
+          emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
         },
         phaseEntered(state, { index }, transition) {
           const { phases, band } = state;
@@ -397,17 +400,37 @@ export function createLoadingController({
           emitState({ ...state, stall: { kind: 'idle' } });
           emitSideEffect({ kind: 'stalled', percent: stall.percent });
         },
-        explanationDue(state, _event, transition) {
-          const { rotation } = state;
+        explanationDue(state, _event, { emitState, emitSideEffect, update }) {
+          const { rotation, typing, explanation: previous } = state;
           if (rotation.kind !== 'rotating') {
             return;
           }
           const line = (rotation.line + 1) % rotation.explanations.length;
+          const explanation = rotation.explanations[line] ?? '';
           const turned: ActiveState = {
             ...state,
-            rotation: { ...rotation, line, timer: startRotationTimer(MESSAGE_ROTATE_MS, transition) },
+            rotation: { ...rotation, line, timer: startRotationTimer(MESSAGE_ROTATE_MS, update) },
           };
-          showLine(turned, rotation.explanations[line] ?? '', transition);
+          stopTyping(typing);
+          // Screen readers get the whole sentence once, from an element the typing never touches.
+          if (explanation === previous || prefersReducedMotion()) {
+            emitState({ ...turned, typing: { kind: 'still' }, explanation });
+            emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanation, explanationOpacity: 1 } });
+            return;
+          }
+          emitState({
+            ...turned,
+            typing: {
+              kind: 'typing',
+              frame: requestTypingFrame(update),
+              from: previous,
+              to: explanation,
+              startedAt: frames.now(),
+              eraseMs: previous === '' ? 0 : ERASE_MS,
+            },
+          });
+          // An interrupted fade would otherwise leave the line stranded dim.
+          emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanationOpacity: 1 } });
         },
         frameDrawn(state, { now }, { emitState, emitSideEffect, update }) {
           const { typing } = state;
@@ -537,7 +560,15 @@ export function createLoadingController({
         shownAt: shown === state.bar.shown ? state.bar.shownAt : timers.now(),
         realShown: moved ? shown : state.bar.realShown,
       },
-      stall: moved ? armStallWatch(percent, update) : state.stall,
+      stall: moved
+        ? {
+            kind: 'armed',
+            percent,
+            timer: timers.setTimeout(() => {
+              update({ kind: 'stallDue' });
+            }, PROGRESS_STALL_MS),
+          }
+        : state.stall,
     };
     emitState(next);
     if (moved) {
@@ -546,49 +577,7 @@ export function createLoadingController({
     emitSideEffect({ kind: 'drawn', view: { progress: percent } });
   }
 
-  /** Returns a watch on `percent`, or none for a full bar. The caller stops the watch it replaces. */
-  function armStallWatch(percent: number, update: Transition<ScreenMachine>['update']): StallWatch {
-    if (percent >= 100) {
-      return { kind: 'idle' };
-    }
-    const timer = timers.setTimeout(() => {
-      update({ kind: 'stallDue' });
-    }, PROGRESS_STALL_MS);
-    return { kind: 'armed', percent, timer };
-  }
-
-  /** Turns the explanation over to `explanation`, typed unless it is up already or the visitor wants less motion. */
-  function showLine(
-    state: ActiveState,
-    explanation: string,
-    { emitState, emitSideEffect, update }: Transition<ScreenMachine>,
-  ): void {
-    const previous = state.explanation;
-    // Screen readers get the whole sentence once, from an element the typing never touches.
-    if (explanation === previous || prefersReducedMotion()) {
-      emitState({ ...state, typing: { kind: 'still' }, explanation });
-      stopTyping(state.typing);
-      emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanation, explanationOpacity: 1 } });
-      return;
-    }
-    const startedAt = frames.now();
-    emitState({
-      ...state,
-      typing: {
-        kind: 'typing',
-        frame: requestTypingFrame(update),
-        from: previous,
-        to: explanation,
-        startedAt,
-        eraseMs: previous === '' ? 0 : ERASE_MS,
-      },
-    });
-    stopTyping(state.typing);
-    // An interrupted fade would otherwise leave the line stranded dim.
-    emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanationOpacity: 1 } });
-  }
-
-  function startRotationTimer(delayMs: number, { update }: Transition<ScreenMachine>): unknown {
+  function startRotationTimer(delayMs: number, update: Transition<ScreenMachine>['update']): unknown {
     return timers.setTimeout(() => {
       update({ kind: 'explanationDue' });
     }, delayMs);
