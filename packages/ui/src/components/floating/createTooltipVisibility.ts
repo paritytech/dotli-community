@@ -16,7 +16,7 @@ type Params = {
   /** Told each time the tooltip opens or closes. A throw is reported and the tooltip still moves. */
   onChange: (open: boolean) => void;
   /** The page's own by default. The show delay and the hide grace run on them. */
-  timers?: Timers | undefined;
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'> | undefined;
 };
 
 /** `timer` is the handle of the pending show's delay or the pending hide's grace. */
@@ -51,7 +51,12 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     initial: { kind: 'hidden' },
     handlers: {
       hidden: {
-        rested: armShow,
+        rested(_state, _event, { emitState, update }) {
+          const timer = timers.setTimeout(() => {
+            update({ kind: 'delayEnded' });
+          }, TOOLTIP_SHOW_MS);
+          emitState({ kind: 'showing', timer });
+        },
         showAsked: showNow,
         disposed: dispose,
       },
@@ -151,18 +156,6 @@ export function createTooltipVisibility({ onChange, timers = realTimers }: Param
     if (isOpenIn(state)) {
       emitSideEffect({ kind: 'changed', open: false });
     }
-  }
-
-  /** Starts the show delay. */
-  function armShow(
-    _state: TooltipState,
-    _event: TooltipEvent,
-    { emitState, update }: Transition<TooltipMachine>,
-  ): void {
-    const timer = timers.setTimeout(() => {
-      update({ kind: 'delayEnded' });
-    }, TOOLTIP_SHOW_MS);
-    emitState({ kind: 'showing', timer });
   }
 
   /** Starts the hide grace, restarting one already running. */
