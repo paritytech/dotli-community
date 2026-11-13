@@ -148,7 +148,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     if (status !== 'booting' && status !== 'listening') {
       return;
     }
-    askTransport('hold' in state ? state.hold : null, transition);
+    askTransport(state.kind === 'holding' || state.kind === 'reasking' ? state.hold : null, transition);
   };
 
   // A failure that a later ask overtook finds another token and is dropped.
