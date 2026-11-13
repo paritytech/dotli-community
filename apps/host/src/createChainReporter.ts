@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Reports each chain's phase and peers to the network monitor and the debug panel. A debug event only when the phase
-// changes, since Bulletin's two taps would otherwise emit every block twice. Warp progress stays in `syncing`, so it
-// passes on a slow tick.
+// Reports each chain's phase, peers and database cache to the network monitor and the debug panel. A phase's debug
+// event only when the phase changes, since Bulletin's two taps would otherwise emit every block twice. Warp progress
+// stays in `syncing`, so it passes on a slow tick.
 
 import type { ChainRole } from '@dotli/config';
-import type { ChainSyncEvent } from '@dotli/chains';
+import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { createReporter } from '@dotli/metrics';
 import type { Timers } from '@dotli/shared';
 import type { DebugBus } from '@dotli/truapi-debug';
@@ -46,6 +46,19 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
       if (phase !== undefined) {
         recordPhase(event, phase);
       }
+    },
+    /** Reports the chain's database cache, when `detail` names it. Never throws. */
+    recordDetail(detail: ChainDetail): void {
+      if (detail.dbCache === undefined) {
+        return;
+      }
+      debugBus.emit({
+        layer: 'chain',
+        event: 'dbcache',
+        flowId,
+        timestamp: timers.now(),
+        payload: { chain: detail.chain, dbCache: detail.dbCache },
+      });
     },
   };
 

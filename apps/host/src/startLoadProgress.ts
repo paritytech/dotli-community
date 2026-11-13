@@ -204,15 +204,7 @@ export function startLoadProgress({
   const chainReporter = createChainReporter({ flowId, timers, debugBus });
   const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (_state, { detail }) => {
     trace.recordChainDetail(detail);
-    if (detail.dbCache !== undefined) {
-      debugBus.emit({
-        layer: 'chain',
-        event: 'dbcache',
-        flowId,
-        timestamp: timers.now(),
-        payload: { chain: detail.chain, dbCache: detail.dbCache },
-      });
-    }
+    chainReporter.recordDetail(detail);
   };
   const holdBar: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'nameResolved'> = () => {
     loading.stopStatusTick();
@@ -330,38 +322,29 @@ export function startLoadProgress({
         },
         chainDetailed: recordDetail,
         netBytes(state, { received }, { emitState }) {
-          trace.recordBytes(received);
           const throughput = measureThroughput(state.throughput, received, readClock());
+          const totals = state.byteTotals;
+          const now = timers.now();
+          // A new total is sampled a second after the last, up to the cap.
+          const sampled =
+            totals.kind === 'open' &&
+            totals.samples < CHAIN_BYTES_DEBUG_MAX &&
+            received !== totals.lastTotal &&
+            now - totals.lastAt >= CHAIN_BYTES_DEBUG_MS;
+          let byteTotals = totals;
+          if (totals.kind === 'open') {
+            byteTotals = sampled
+              ? { kind: 'open', latest: received, lastAt: now, lastTotal: received, samples: totals.samples + 1 }
+              : { ...totals, latest: received };
+          }
+          emitState({ ...state, throughput, byteTotals });
+          trace.recordBytes(received);
           if (throughput.bytesPerSecond !== null) {
             networkMonitorState.recordTransfer({ bytesPerSecond: throughput.bytesPerSecond });
           }
-          const totals = state.byteTotals;
-          const now = timers.now();
-          if (
-            totals.kind === 'closed' ||
-            totals.samples >= CHAIN_BYTES_DEBUG_MAX ||
-            received === totals.lastTotal ||
-            now - totals.lastAt < CHAIN_BYTES_DEBUG_MS
-          ) {
-            emitState({
-              ...state,
-              throughput,
-              byteTotals: totals.kind === 'open' ? { ...totals, latest: received } : totals,
-            });
-            return;
+          if (sampled) {
+            emitByteTotal(received, now);
           }
-          emitState({
-            ...state,
-            throughput,
-            byteTotals: {
-              kind: 'open',
-              latest: received,
-              lastAt: now,
-              lastTotal: received,
-              samples: totals.samples + 1,
-            },
-          });
-          emitByteTotal(received, now);
         },
         contentProgressed(_state, { bytesFetched, totalBytes }) {
           // Records before it moves the bar, so the record sees the bar unmoved.
@@ -514,7 +497,8 @@ export function startLoadProgress({
         transition.emitState({ ...watched, warning: { kind: 'hidden' } });
         return;
       case 'shown':
-        showWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
+        // A shown warning is past the minimum load age already.
+        revealWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
         return;
     }
   }
