@@ -8,12 +8,10 @@ import { SANDBOX_ERRORS } from './errors.js';
 
 type Params = {
   /**
-   * The page's service worker container, `null` in a browser without service workers. Its controller takes the handoff,
-   * and its page-wide channel hears a worker from the previous release.
+   * The page's service worker container, `null` in a browser without service workers. Its controller takes the
+   * handoff.
    */
-  container:
-    | (Pick<ServiceWorkerContainer, 'addEventListener' | 'removeEventListener'> & { controller: ArchiveWorker | null })
-    | null;
+  container: { controller: ArchiveWorker | null } | null;
   /** The archive's files, by path. */
   files: ArchiveFiles;
   /** The path the page is written at. */
@@ -32,6 +30,5 @@ export async function storeArchiveInServiceWorker({ container, files, pagePath }
     throw new Error(SANDBOX_ERRORS.SW_NOT_CONTROLLING);
   }
 
-  // The page-wide channel too, for one release, since a worker from the previous deploy ignores the port.
-  await handOverArchive({ worker, archive: packArchive(files), pagePath, legacyReplies: container });
+  await handOverArchive({ worker, archive: packArchive(files), pagePath });
 }

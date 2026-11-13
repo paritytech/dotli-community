@@ -9,7 +9,6 @@ import { createManualTimers } from '@dotli/shared/testing';
 
 import { handOverArchive } from './handOverArchive.js';
 import { SANDBOX_ERRORS } from './errors.js';
-import { createCountingEventTarget } from './testing/createCountingEventTarget.js';
 
 /** Stands in for the controlling worker, keeping each handoff's message and reply port. */
 function createFakeWorker(): {
@@ -50,8 +49,8 @@ describe('archive handoff to the service worker', () => {
 
     // When the page is written at /docs/intro, then at the root
     handoffs.push(
-      handOverArchive({ worker, archive: packTestArchive(), pagePath: '/docs/intro', legacyReplies: null }),
-      handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null }),
+      handOverArchive({ worker, archive: packTestArchive(), pagePath: '/docs/intro' }),
+      handOverArchive({ worker, archive: packTestArchive(), pagePath: '/' }),
     );
 
     // Then each handoff names the directory of its page
@@ -64,7 +63,7 @@ describe('archive handoff to the service worker', () => {
   it('As a sandbox user, I hand my archive to the worker and the load continues once it acknowledges this handoff', async () => {
     // Given
     const worker = createFakeWorker();
-    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null });
+    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/' });
 
     // When
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_READY' });
@@ -76,7 +75,7 @@ describe('archive handoff to the service worker', () => {
   it('As a sandbox user, I hand over an archive the worker refuses and the load fails with its reason', async () => {
     // Given
     const worker = createFakeWorker();
-    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null });
+    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/' });
 
     // When
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE missing packed/index payload' });
@@ -89,10 +88,10 @@ describe('archive handoff to the service worker', () => {
     // Given an earlier handoff the page gave up on
     const timers = createManualTimers();
     const worker = createFakeWorker();
-    const first = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null, timers });
+    const first = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', timers });
     const firstGaveUp = expect(first).rejects.toThrow(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED);
     await timers.advance(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK);
-    const retry = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: null, timers });
+    const retry = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', timers });
 
     // When the worker answers the old handoff late, then refuses the retry
     worker.ports[0]?.postMessage({ type: 'ARCHIVE_READY' });
@@ -103,21 +102,8 @@ describe('archive handoff to the service worker', () => {
     await expect(retry).rejects.toThrow('Service worker rejected archive: second');
   });
 
-  it('As a sandbox user on the first load after a deploy, I hand my archive to a worker from the previous release and it still acknowledges it', async () => {
-    // Given a worker that ignores the port and answers on the page-wide channel
-    const worker = createFakeWorker();
-    const pageChannel = new EventTarget();
-    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', legacyReplies: pageChannel });
-
-    // When
-    pageChannel.dispatchEvent(new MessageEvent('message', { data: { type: 'ARCHIVE_READY' } }));
-
-    // Then
-    await expect(handoff).resolves.toBeUndefined();
-  });
-
   it('As a sandbox user, I hand my archive to a worker that throws on post and the load fails at once with that cause and nothing left waiting', async () => {
-    // Given a worker whose post throws, and the page-wide channel an older worker answers on
+    // Given a worker whose post throws
     const timers = createManualTimers();
     const failure = new DOMException('could not clone', 'DataCloneError');
     const worker = {
@@ -125,20 +111,12 @@ describe('archive handoff to the service worker', () => {
         throw failure;
       },
     };
-    const pageChannel = createCountingEventTarget({ type: 'message' });
 
     // When
-    const handoff = handOverArchive({
-      worker,
-      archive: packTestArchive(),
-      pagePath: '/',
-      legacyReplies: pageChannel,
-      timers,
-    });
+    const handoff = handOverArchive({ worker, archive: packTestArchive(), pagePath: '/', timers });
 
     // Then
     await expect(handoff).rejects.toMatchObject({ cause: failure });
     expect(timers.countPending()).toBe(0);
-    expect(pageChannel.countListening()).toBe(0);
   });
 });
