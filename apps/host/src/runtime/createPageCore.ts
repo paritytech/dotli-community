@@ -516,14 +516,15 @@ export function createPageCore({
     transition: Transition<PageCoreMachine>,
   ): void {
     const core = state.cores.get(coreId);
-    if (core?.kind === 'lingering') {
-      transition.emitState(leave(state, core, transition));
+    if (core?.kind !== 'live' && core?.kind !== 'lingering') {
       return;
     }
-    if (core?.kind !== 'live') {
-      return;
+    // A lingering core is a down one no lease holds, so it leaves as faulted.
+    if (core.kind === 'lingering') {
+      transition.emitSideEffect({ kind: 'lingerCancelled', timer: core.timer });
     }
-    const down: Core = { ...core, kind: 'down', reason };
+    const leases = core.kind === 'live' ? core.leases : new Set<symbol>();
+    const down: Core = { ...getBootedParts(core), kind: 'down', reason, leases };
     const next = withCore(state, down);
     if (down.leases.size === 0) {
       transition.emitState(leave(next, down, transition));

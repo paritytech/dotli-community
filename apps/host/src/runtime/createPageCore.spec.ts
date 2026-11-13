@@ -421,6 +421,24 @@ describe('page core', () => {
     expect(timers.countPending()).toBe(0);
   });
 
+  it('As an operator, I see a lingering core whose connection closes logged as disposed faulted', async () => {
+    // Given a lingering core that has a connection
+    const timers = createManualTimers();
+    const lines = recordLog({ onFinished: onTestFinished });
+    const { core, runtimes } = createHarness({ destroyDelay: 5000, timers });
+    const lease = await core.acquire();
+    await lease.connect();
+    lease.release();
+
+    // When its connection closes
+    nth(nth(runtimes, 0).providers, 0).goDown();
+
+    // Then its dispose is logged as faulted
+    expect(lines.filter(line => line.message.includes('wallet core disposed'))).toMatchObject([
+      { attrs: { faulted: true } },
+    ]);
+  });
+
   it('As a user, I change product and see a lingering core go at once', async () => {
     // Given a lingering core
     const timers = createManualTimers();
