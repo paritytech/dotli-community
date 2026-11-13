@@ -26,8 +26,14 @@ function mount() {
     refresh: vi.fn(() => Promise.resolve()),
     change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),
   };
+  const browser = { request: vi.fn(() => null) };
   const { panel, dispose } = createRoot(d => ({
-    panel: usePermissionsPanel({ permissions: PERMISSIONS, product, store: { state, pending, ...intents } }),
+    panel: usePermissionsPanel({
+      permissions: PERMISSIONS,
+      product,
+      store: { state, pending, ...intents },
+      browser,
+    }),
     dispose: d,
   }));
   flush();
@@ -36,7 +42,7 @@ function mount() {
     state.set(read);
     flush();
   };
-  return { panel, dispose, intents, given, pending };
+  return { panel, dispose, intents, given, pending, browser };
 }
 
 function read(statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState {
@@ -114,6 +120,37 @@ describe('usePermissionsPanel', () => {
     // Then
     expect(intents.change).toHaveBeenCalledExactlyOnceWith('app', { Camera: 'granted' });
     expect(failed).toEqual(['Camera']);
+    dispose();
+  });
+
+  it('As a user, I grant Notifications in the menu and the browser is asked inside my click', () => {
+    // Given
+    const { panel, dispose, given, browser } = mount();
+    given(LOADED, read(['ask', 'ask']));
+
+    // When
+    void panel.onChange({ Notifications: 'granted' });
+
+    // Then
+    expect(browser.request).toHaveBeenCalledExactlyOnceWith('Notifications');
+    dispose();
+  });
+
+  it.each<[string, boolean, PermissionTargets]>([
+    ['deny a permission', true, { Notifications: 'denied' }],
+    ['grant one while no permissions are read', false, { Notifications: 'granted' }],
+  ])('As a user, I %s and the browser is not asked', (_case, isRead, targets) => {
+    // Given
+    const { panel, dispose, given, browser } = mount();
+    if (isRead) {
+      given(LOADED, read(['ask', 'ask']));
+    }
+
+    // When
+    void panel.onChange(targets);
+
+    // Then
+    expect(browser.request).not.toHaveBeenCalled();
     dispose();
   });
 
