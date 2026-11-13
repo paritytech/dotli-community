@@ -16,8 +16,8 @@ type Params = {
 
 /**
  * Removes `record` from the store, under its lock where the browser has Web Locks. The atomic delete is what claims it,
- * while the lock only spares a sibling tab redundant work. Resolves whether this tab removed it. Rejects with `signal`'s
- * reason once it aborted, and when the store cannot remove it.
+ * while the lock only spares a sibling tab redundant work. Resolves whether this tab removed it. Rejects with
+ * `signal`'s reason once it aborted, and when the store cannot remove it.
  */
 export function claimScheduledNotification({ store, locks, record, signal }: Params): Promise<boolean> {
   if (locks === undefined) {
