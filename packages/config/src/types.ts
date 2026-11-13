@@ -11,11 +11,19 @@ export type DotnsStorageSlots = {
   readonly PROTOCOL_REGISTRY_ADDRESSES: number;
   /** Registrar mapping base slot of the ERC-721 token holders, keyed by the node as a uint256. */
   readonly REGISTRAR_OWNERS: `0x${string}`;
+  /** StoreFactory array slot of every label store, in creation order. */
+  readonly STORE_FACTORY_LABEL_STORES: number;
+  /** LabelStore mapping slot of each entry's name, keyed by its labelhash. */
+  readonly LABEL_STORE_LABELS: number;
+  /** LabelStore array slot of its labelhashes, in the order they were stored. */
+  readonly LABEL_STORE_LABEL_LIST: number;
 };
 
 export type DotnsContracts = {
   readonly DOTNS_REGISTRY: `0x${string}`;
   readonly DOTNS_CONTENT_RESOLVER: `0x${string}`;
+  /** The StoreFactory, which lists every user's label store. */
+  readonly STORE_FACTORY: `0x${string}`;
   readonly STORAGE_SLOTS: DotnsStorageSlots;
   /** Bare TLD label this network registers names under, e.g. `dot` or `paseo`. */
   readonly TLD: string;
