@@ -139,6 +139,37 @@ describe('host error classification', () => {
 
   it.each([
     [
+      'a non-IPFS contenthash',
+      new Error('Resolved a non-IPFS contenthash for example'),
+      'contenthash-unsupported',
+      HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+    ],
+    [
+      'a contenthash that fails to decode',
+      new Error('Failed to decode contenthash for example: bad codec'),
+      'contenthash-unsupported',
+      HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+    ],
+    [
+      'an archive without an index page',
+      new Error('Archive for example is missing index.html'),
+      'archive-missing-index',
+      HOST_ERRORS.ARCHIVE_NO_INDEX,
+    ],
+  ])('As a dotli user, I open an app with %s and am offered the landing', (_case, failure, kind, message) => {
+    // When
+    const described = describeError(failure);
+
+    // Then
+    expect({ kind: described.kind, message: described.message, recovery: described.recovery }).toEqual({
+      kind,
+      message,
+      recovery: 'landing',
+    });
+  });
+
+  it.each([
+    [
       'the named unreachable gateway',
       setErrorName(new Error('IPFS gateway gw.example unreachable for bafy'), CONTENT_ERRORS.GATEWAY_UNREACHABLE),
       'failed-to-fetch',
