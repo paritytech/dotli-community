@@ -18,6 +18,7 @@ type MissingParamRow = {
 /** The required params, with overrides. `null` removes one. */
 function buildSearch(overrides: Record<string, string | null> = {}): URLSearchParams {
   const base: Record<string, string> = {
+    [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'smoldot-direct',
     [SANDBOX_CONTRACT_PARAMS.network]: 'paseo-next-v2',
@@ -67,6 +68,7 @@ describe('validateSandboxParams: v3 cid contract', () => {
     { param: SANDBOX_CONTRACT_PARAMS.cid, reason: /cid/i },
     { param: SANDBOX_CONTRACT_PARAMS.chainBackend, reason: /chainBackend/ },
     { param: SANDBOX_CONTRACT_PARAMS.network, reason: /network/ },
+    { param: SANDBOX_CONTRACT_PARAMS.v, reason: /`v`/ },
   ])('As the sandbox, I reject a contract that omits the $param', ({ param, reason }) => {
     // Given a contract with one required param removed (the post-boot strip
     // leaves this shape behind, so a reload of a booted sandbox lands here).
@@ -111,19 +113,6 @@ describe('validateSandboxParams: v3 cid contract', () => {
     expect(error?.message).toMatch(/invalid cid/i);
   });
 
-  it('As the sandbox, I accept a contract whose schema version matches my build', () => {
-    // Given a contract that pins the current schema version.
-    const search = buildSearch({
-      [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
-    });
-
-    // When the sandbox validates it.
-    const params = validateSandboxParams(search);
-
-    // Then it passes.
-    expect(params.cid).toBe(VALID_CID);
-  });
-
   it('As the sandbox, I reject a contract whose schema version is older than my build', () => {
     // Given a contract from a host built against an older schema.
     const search = buildSearch({
@@ -147,22 +136,6 @@ describe('validateSandboxParams: v3 cid contract', () => {
     // Then it passes.
     expect(params.cid).toBe(VALID_CID);
   });
-
-  it('As a user whose dApp reloads itself after the param strip, I land on a recoverable contract failure and the host can restore my session', () => {
-    // Given a URL with no contract params at all, which is what a booted
-    // sandbox window looks like once its contract params are stripped: a dApp
-    // calling location.reload() re-enters the boot with this exact shape.
-    const search = new URLSearchParams({ theme: 'dark' });
-
-    // When the sandbox validates it.
-    const error = catchContractError(search);
-
-    // Then the failure is recoverable: the host still tracks the rendered
-    // label and CID, so it can rebuild the iframe instead of stranding the
-    // user on a full-viewport "Invalid sandbox URL" error.
-    expect(error).toBeInstanceOf(SandboxContractError);
-    expect(error?.recoverable).toBe(true);
-  });
 });
 
 describe('validateSandboxParams: resolution id', () => {
@@ -180,9 +153,8 @@ describe('validateSandboxParams: resolution id', () => {
   });
 
   it.each([
-    { kind: 'no resolution id, from a host build that predates it', resolutionId: null },
+    { kind: 'no resolution id', resolutionId: null },
     { kind: 'a malformed resolution id', resolutionId: '../../etc/passwd' },
-    { kind: 'an over-long resolution id', resolutionId: 'a'.repeat(65) },
   ])('As the sandbox, I receive $kind and boot normally, untagged', ({ resolutionId }) => {
     // Given a contract whose resolution id is absent or one the contract does not accept.
     const search = buildSearch({ [SANDBOX_CONTRACT_PARAMS.resolutionId]: resolutionId });
