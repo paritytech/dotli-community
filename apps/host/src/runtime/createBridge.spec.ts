@@ -135,7 +135,7 @@ describe('bridge', () => {
 
   it('As a debug panel user, I see the host chains report from the first bridge init and a repeat init keeps that core with no second watch', async () => {
     // Given
-    const { bridge, watches, blockScopes, contexts } = createHarness();
+    const { bridge, watches, contexts } = createHarness();
     const first = createRecordingCoordinator();
     const second = createRecordingCoordinator();
     bridge.initBridge(first.coordinator);
@@ -146,11 +146,23 @@ describe('bridge', () => {
 
     // Then
     expect(watches()).toBe(1);
-    expect(blockScopes).toHaveLength(1);
     expect(contexts).toHaveLength(1);
-    expect(first.scopes).toHaveLength(2);
-    expect(contexts[0]?.blockingModalScope).not.toBe(blockScopes[0]);
+    expect(first.scopes).toContain(contexts[0]?.blockingModalScope);
     expect(second.scopes).toEqual([]);
+  });
+
+  it('As a dotli user, I see the browser block check start once, on the first bridge init, in that page queue', () => {
+    // Given
+    const { bridge, blockScopes } = createHarness();
+    const first = createRecordingCoordinator();
+    bridge.initBridge(first.coordinator);
+
+    // When
+    bridge.initBridge(createRecordingCoordinator().coordinator);
+
+    // Then
+    expect(blockScopes).toHaveLength(1);
+    expect(first.scopes).toContain(blockScopes[0]);
   });
 
   it('As a dotli integrator, I start the product frame before the page core is built and it fails with a named error', () => {

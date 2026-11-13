@@ -141,7 +141,6 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
     throwIfModalAborted(signal);
     // A permission the browser has no say over, a remote one included, is never blocked.
     if (isGranted(answer)) {
-      const record = permissions.product.recordPromptDecision;
       const resolution = await resolveBrowserBlock({
         label,
         permission: name,
@@ -149,7 +148,7 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
         signal,
         prompts,
         browser,
-        record,
+        record: permissions.product.recordPromptDecision,
       });
       if (isRestricted(resolution)) {
         // Allowed once or for good, a restriction has stored a lasting denial.
