@@ -5,9 +5,10 @@
 // target in debug builds, or no product at all, read from the URL alone. Also the path the URL bar keeps for a local
 // target, and the move to the landing page when the URL names no product.
 
-import { BASE_DOMAIN, DEBUG } from '@dotli/config';
+import { DEBUG } from '@dotli/config';
 import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { createReporter } from '@dotli/metrics';
+import { getLandingUrl } from './getLandingUrl.js';
 import { parseDotLabel } from './parseDotLabel.js';
 
 const report = createReporter({ flow: 'boot' });
@@ -177,12 +178,11 @@ export function getLocalTargetPath(target: LocalTarget): string {
  * since that would loop.
  */
 export function leaveForLanding({ location, localRoot }: LeaveForLandingParams): void {
-  const { protocol, port, pathname, search } = location;
-  const host = localRoot === null ? BASE_DOMAIN : `${localRoot}${port === '' ? '' : `:${port}`}`;
-  const origin = `${protocol}//${host}`;
-  if (origin === location.origin && pathname === '/') {
-    throw new Error(`leaveForLanding: ${origin}/ answered with the shell, not the landing page`);
+  const { pathname, search } = location;
+  const landingUrl = getLandingUrl({ location, localRoot });
+  if (landingUrl === `${location.origin}/` && pathname === '/') {
+    throw new Error(`leaveForLanding: ${landingUrl} answered with the shell, not the landing page`);
   }
   report.log.event('Route: landing page elsewhere');
-  location.replace(`${origin}/${search}`);
+  location.replace(`${landingUrl}${search}`);
 }
