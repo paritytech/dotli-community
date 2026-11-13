@@ -162,6 +162,21 @@ describe('createDotnsResolver', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("As an operator, I see Asset Hub's follow that stopped under a ready client reported and counted as an expected failure", async () => {
+    // Given a ready Asset Hub client
+    const reports = recordReports({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dotns, opened } = createResolver();
+    await dotns.resolveOwner('alice');
+
+    // When its follow stops
+    must(opened[0], 'first client').stop();
+
+    // Then the stop was reported and counted under its own step
+    expect(reports.expected).toMatchObject([{ step: 'follow_stop' }]);
+    expect(metrics.counted('resolve.follow_stop')).toEqual([{ outcome: 'error', reason: 'ApiStoppedError' }]);
+  });
+
   it("As a dotli user on a light client, I resolve a name on a rebuilt client when Asset Hub's follow stops just as it syncs", async () => {
     // Given a first client whose follow stops as it reaches its first block
     const { dotns, opened } = createResolver([{ stopsAsReady: true }]);

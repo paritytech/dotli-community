@@ -5,7 +5,7 @@
 // the follow stops, and built again on the next ask.
 
 import { createReporter, defineCount, m, spans } from '@dotli/metrics';
-import { createStateMachine, log, withTimeout, type HandlerOf, type MachineTypes } from '@dotli/shared';
+import { createStateMachine, withTimeout, type HandlerOf, type MachineTypes } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
 import type { Api } from './createRawApi.js';
@@ -71,6 +71,12 @@ const SMOLDOT_FINALIZED_BLOCK = 'smoldot.finalized_block';
  * name).
  */
 const syncedClientTransitionMetric = defineCount<'error'>('resolve.synced_client_transition');
+
+/**
+ * Count. A ready client's follow stopped, so the client was dropped. Tagged `outcome` (error) and `reason` (the error's
+ * name).
+ */
+const followStopMetric = defineCount<'error'>('resolve.follow_stop');
 
 /**
  * Keeps one synced client on the connection `openClient` opens.
@@ -221,7 +227,12 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
         }
         return;
       case 'stopped':
-        log.warn('[dot.li resolve] chainHead follow stopped, dropping its client', { chain });
+        // A halted chain or a dropped connection ends the follow, which the next ask builds again.
+        report.expected(new ApiStoppedError(), {
+          step: 'follow_stop',
+          metric: followStopMetric,
+          message: `[dot.li resolve] ${chain} chainHead follow stopped, dropping its client`,
+        });
         return;
       case 'destroy':
         effect.client.destroy();
