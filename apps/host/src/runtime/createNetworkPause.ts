@@ -118,8 +118,8 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
       },
       visible: {
         hid({ page, stopTick }, _event, transition) {
-          stopTick();
           hidePage(page, transition);
+          stopTick();
         },
         ticked(state, { at }, { emitState, emitSideEffect }) {
           emitState({ ...state, lastTickAt: at });
@@ -154,7 +154,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
           }
           // A frozen page fires its timer late, and may be visible by then with its event still to come.
           if (state.page.source.visibilityState === 'visible') {
-            transition.update({ kind: 'shown' });
+            returnToPage(state, { kind: 'shown' }, transition);
             return;
           }
           transition.emitState({ kind: 'paused', page: state.page });
