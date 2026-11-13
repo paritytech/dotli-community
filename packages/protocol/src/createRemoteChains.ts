@@ -8,7 +8,6 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createRandomId,
   createStateMachine,
-  log,
   nest,
   noop,
   serializeError,
@@ -35,6 +34,15 @@ const protocolChainMessageMetric = defineCount<'error'>('protocol.chain_message'
  * A remote chains transition that threw. Tagged `outcome` (error) and `reason` (the error's name).
  */
 const remoteChainsTransitionMetric = defineCount<'error'>('protocol.remote_chains_transition');
+
+/**
+ * A chain connect that failed: the frame refused it, its budget ran out, or the frame went down. Tagged `outcome`
+ * (error) and `reason` (the error's name).
+ */
+const remoteChainConnectMetric = defineCount<'error'>('protocol.remote_chain_connect');
+
+/** A request the frame refused to send on a live chain connection. Tagged `outcome` (error) and `reason` (the error's name). */
+const remoteChainSendMetric = defineCount<'error'>('protocol.remote_chain_send');
 
 /**
  * A remote chain provider whose connections may hear `onHalt` once:
@@ -327,10 +335,18 @@ export function createRemoteChains({ rpc }: Params) {
         });
         return;
       case 'connectErrored':
-        log.error('[dot.li protocol] Failed to connect remote chain:', effect.error);
+        report.expected(effect.error, {
+          step: 'remote_chain_connect',
+          metric: remoteChainConnectMetric,
+          message: '[dot.li protocol] Failed to connect remote chain:',
+        });
         return;
       case 'sendErrored':
-        log.error('[dot.li protocol] Remote chain send failed:', effect.error);
+        report.expected(effect.error, {
+          step: 'remote_chain_send',
+          metric: remoteChainSendMetric,
+          message: '[dot.li protocol] Remote chain send failed:',
+        });
         return;
     }
   }

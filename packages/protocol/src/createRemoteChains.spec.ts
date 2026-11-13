@@ -241,9 +241,10 @@ describe('createRemoteChains', () => {
     expect(metrics.counted('protocol.chain_message')).toEqual([{ outcome: 'error', reason: 'SyntaxError' }]);
   });
 
-  it('As a dotli integrator, I open a connection the frame refuses and the failed connect is logged once', async () => {
+  it('As a dotli integrator, I open a connection the frame refuses and the failed connect is reported and counted once', async () => {
     // Given a connection the frame has not answered yet
-    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const expected = recordReports({ onFinished: onTestFinished }).expected;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     people(() => undefined);
     await settle();
 
@@ -252,15 +253,14 @@ describe('createRemoteChains', () => {
     await settle();
 
     // Then
-    expect(logError.map(line => line.message)).toEqual([
-      // An asymmetric matcher is typed any.
-      expect.stringMatching(/Failed to connect remote chain/) as string,
-    ]);
+    expect(expected).toMatchObject([{ step: 'remote_chain_connect' }]);
+    expect(metrics.counted('protocol.remote_chain_connect')).toHaveLength(1);
   });
 
-  it('As a product, I send a request the frame refuses and I hear it answered as an error while the failure is logged', async () => {
+  it('As a product, I send a request the frame refuses and I hear it answered as an error while the failure is reported and counted', async () => {
     // Given a live connection
-    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const expected = recordReports({ onFinished: onTestFinished }).expected;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const received: JsonRpcMessage[] = [];
     const connection = people(message => received.push(message));
     await settle();
@@ -275,9 +275,9 @@ describe('createRemoteChains', () => {
 
     // Then
     expect(received).toMatchObject([{ jsonrpc: '2.0', id: 5, error: {} }]);
-    expect(logError.map(line => line.message)).toEqual([
-      // An asymmetric matcher is typed any.
-      expect.stringMatching(/Remote chain send failed/) as string,
+    expect(expected).toMatchObject([{ step: 'remote_chain_send' }]);
+    expect(metrics.counted('protocol.remote_chain_send')).toEqual([
+      { outcome: 'error', reason: 'ProtocolResponseError' },
     ]);
   });
 
@@ -328,7 +328,7 @@ describe('createRemoteChains', () => {
 
   it('As a product, I see a chain the frame accepts after my connect budget disconnected', async () => {
     // Given a frame too busy to accept a connect within its budget
-    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const expected = recordReports({ onFinished: onTestFinished }).expected;
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const received: JsonRpcMessage[] = [];
     const connection = people(message => received.push(message), onHalt);
@@ -346,10 +346,7 @@ describe('createRemoteChains', () => {
     expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(received).toEqual([createClosedAnswer(1)]);
     expect(getServer().sends).toEqual([]);
-    expect(logError.map(line => line.message)).toEqual([
-      // An asymmetric matcher is typed any.
-      expect.stringMatching(/Failed to connect remote chain/) as string,
-    ]);
+    expect(expected).toMatchObject([{ step: 'remote_chain_connect' }]);
   });
 
   it('As a dotli integrator, I send from my halt listener and the send is answered at once as closed', async () => {
