@@ -136,13 +136,12 @@ type WatchChain = {
 /** The watchers' own follow on a held chain. */
 type Watch =
   | { kind: 'off'; chain: WatchChain }
-  | { kind: 'starting'; chain: WatchChain; follow: WatchFollow }
   | { kind: 'open'; chain: WatchChain; follow: WatchFollow; following: boolean }
   | {
       kind: 'refused';
       chain: WatchChain;
-      /** Aborted to stop the wait to try the follow again. */
-      retry: AbortController;
+      /** The timer of the wait to try the follow again. */
+      retry: unknown;
     };
 
 /** Why a chain closed: its halt, or `null` for a close on release or unload. */
@@ -165,8 +164,8 @@ type Entry = {
   | { kind: 'unheld' }
   | {
       kind: 'expiring';
-      /** Aborted to stop the countdown to the chain's close. */
-      countdown: AbortController;
+      /** The timer of the countdown to the chain's close. */
+      countdown: unknown;
     }
   | { kind: 'closed'; halt: Halt }
 );
@@ -206,10 +205,9 @@ type PoolEffect =
   | { kind: 'leased' | 'released'; key: string; holder: string }
   | { kind: 'closed'; key: string; halt: Halt }
   | { kind: 'bestBlock'; key: string; blockNumber: number }
-  | { kind: 'modeSet'; mode: PoolKind }
+  | { kind: 'modeSet'; mode: PoolKind; chains: number }
   | { kind: 'buildFailed' | 'followFailed'; key: string; error: unknown }
-  | { kind: 'startTimer'; timer: AbortController; ms: number; event: PoolEvent }
-  | { kind: 'stopTimer'; timer: AbortController }
+  | { kind: 'stopTimer'; timer: unknown }
   | { kind: 'endWatch'; watch: Watch }
   | { kind: 'disconnectLanes'; lanes: ChainLanes };
 
@@ -318,31 +316,11 @@ export function createChainPool({
           if (watchers.size === 0) {
             return;
           }
-          transition.emitSideEffect({ kind: 'followed', key });
           if (chain.followGate.waitMs() > 0) {
             waitToRetry(chain, key, transition);
             return;
           }
           openFollow(chain, key, transition);
-        },
-      },
-      starting: {
-        syncDue(watch, event, transition) {
-          // The last watcher may have left while the follow opened, such as one that a status change it opened told.
-          if (watchers.size === 0) {
-            stopWatch(watch, event.key, transition);
-            return;
-          }
-          // Started here, since a start that throws leaves the watch off.
-          try {
-            watch.follow.start();
-          } catch (error) {
-            transition.emitState({ kind: 'off', chain: watch.chain });
-            transition.emitSideEffect({ kind: 'endWatch', watch });
-            transition.update({ kind: 'followFailed', key: event.key, lanes: watch.chain.lanes, error });
-            return;
-          }
-          transition.emitState({ kind: 'open', chain: watch.chain, follow: watch.follow, following: false });
         },
       },
       open: {
@@ -372,7 +350,6 @@ export function createChainPool({
             waitToRetry(chain, key, transition);
             return;
           }
-          transition.emitSideEffect({ kind: 'followed', key });
           openFollow(chain, key, transition);
         },
       },
@@ -516,7 +493,7 @@ export function createChainPool({
         return;
       }
       emitState({ ...state, kind: mode });
-      emitSideEffect({ kind: 'modeSet', mode });
+      emitSideEffect({ kind: 'modeSet', mode, chains: [...state.entries.values()].filter(isLive).length });
     },
     watchersChanged({ entries }, _event, { update }) {
       for (const key of entries.keys()) {
@@ -591,13 +568,13 @@ export function createChainPool({
       return onMessage => {
         const connection = createHealingLease({
           key,
-          attach: (onLeaseMessage, onHalt) => {
+          attach: onHalt => {
             const sessionId = `local:${sessionCounter.toString(36)}`;
             sessionCounter += 1;
             return takeLease(key, holder, {
               sessionId,
               // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
-              onMessage: onLeaseMessage as (message: unknown) => void,
+              onMessage: onMessage as (message: unknown) => void,
               wireMode: 'object',
               onHalt,
             });
@@ -747,7 +724,7 @@ export function createChainPool({
         return;
       case 'modeSet':
         protocolReport.log.event(`${POOL_TAG} ${effect.mode === 'paused' ? 'paused' : 'resumed'}`, {
-          chains: [...machine.state.get().entries.values()].filter(isLive).length,
+          chains: effect.chains,
         });
         return;
       case 'buildFailed':
@@ -764,17 +741,8 @@ export function createChainPool({
           message: `${POOL_TAG} ${getShortKey(effect.key)} the network panel's follow could not open:`,
         });
         return;
-      case 'startTimer': {
-        const handle = timers.setTimeout(() => {
-          machine.update(effect.event);
-        }, effect.ms);
-        effect.timer.signal.addEventListener('abort', () => {
-          timers.clearTimeout(handle);
-        });
-        return;
-      }
       case 'stopTimer':
-        effect.timer.abort();
+        timers.clearTimeout(effect.timer);
         return;
       case 'endWatch':
         endWatch(effect.watch);
@@ -846,14 +814,10 @@ export function createChainPool({
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
-    const countdown = new AbortController();
+    const countdown = timers.setTimeout(() => {
+      transition.update({ kind: 'closeDue', key });
+    }, destroyDelay);
     transition.emitState({ ...entry, kind: 'expiring', countdown });
-    transition.emitSideEffect({
-      kind: 'startTimer',
-      timer: countdown,
-      ms: destroyDelay,
-      event: { kind: 'closeDue', key },
-    });
   }
 
   /** Stops the watchers' follow, or its wait to follow again. */
@@ -861,12 +825,11 @@ export function createChainPool({
     switch (watch.kind) {
       case 'off':
         return;
-      case 'starting':
       case 'open':
         watch.follow.disconnect();
         return;
       case 'refused':
-        watch.retry.abort();
+        timers.clearTimeout(watch.retry);
         return;
     }
   }
@@ -879,23 +842,23 @@ export function createChainPool({
   }
 
   /** Holds the watchers' follow as refused until its gate's wait ends. */
-  function waitToRetry(chain: WatchChain, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
-    const retry = new AbortController();
+  function waitToRetry(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
+    const retry = timers.setTimeout(() => {
+      update({ kind: 'retryDue', key });
+    }, chain.followGate.waitMs());
     emitState({ kind: 'refused', chain, retry });
-    emitSideEffect({
-      kind: 'startTimer',
-      timer: retry,
-      ms: chain.followGate.waitMs(),
-      event: { kind: 'retryDue', key },
-    });
   }
 
   /**
-   * Opens the watchers' follow and stores it as `starting`, and its sync starts it once this transition ends, so a
-   * watcher that leaves meanwhile stops it first. A follow that cannot open leaves the watch off, and the next sync tries
-   * again.
+   * Opens and starts the watchers' follow. A follow that cannot open or start leaves the watch off, and the next sync
+   * tries again.
    */
-  function openFollow(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
+  function openFollow(
+    chain: WatchChain,
+    key: string,
+    { emitState, emitSideEffect, update }: Transition<WatchMachine>,
+  ): void {
+    emitSideEffect({ kind: 'followed', key });
     // Names the chain, so the follow's debug log says which one refused it.
     const sessionId = `watch:${getShortKey(key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
@@ -921,8 +884,15 @@ export function createChainPool({
       update({ kind: 'followFailed', key, lanes: chain.lanes, error });
       return;
     }
-    emitState({ kind: 'starting', chain, follow });
-    update({ kind: 'syncDue', key });
+    const open: Watch = { kind: 'open', chain, follow, following: false };
+    emitState(open);
+    try {
+      follow.start();
+    } catch (error) {
+      emitState({ kind: 'off', chain });
+      emitSideEffect({ kind: 'endWatch', watch: open });
+      update({ kind: 'followFailed', key, lanes: chain.lanes, error });
+    }
   }
 
   /**
