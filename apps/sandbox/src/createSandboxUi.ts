@@ -152,8 +152,8 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
 
   return {
     /**
-     * Resolves with the UI once its overlays are mounted, or without mounting them once disposed. One load at a time, and a failed load is not kept, so the
-     * next call loads again. Rejects when the chunk cannot load.
+     * Resolves with the UI once its overlays are mounted, or without mounting them once disposed. One load at a time,
+     * and a failed load is not kept, so the next call loads again. Rejects when the chunk cannot load.
      */
     loadUi,
     /**

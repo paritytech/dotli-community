@@ -72,8 +72,9 @@ type WorkerEvent =
   | { kind: 'restoreMissed'; error: unknown };
 
 /**
- * A fetch answered from `archive` when it holds the path, a fetch answered once `read` ends, a read-back that ended with the archives its fetches
- * are answered from, a read-back that failed, for the worker's log, and its first failure, for the pages.
+ * A fetch answered from `archive` when it holds the path, a fetch answered once `read` ends, a read-back that ended
+ * with the archives its fetches are answered from, a read-back that failed, for the worker's log, and its first
+ * failure, for the pages.
  */
 type WorkerEffect =
   | { kind: 'serve'; event: FetchEvent; archive: ServedArchive; pathname: string }
