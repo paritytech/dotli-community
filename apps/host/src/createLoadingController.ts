@@ -89,21 +89,18 @@ type Band =
       crawl: { kind: 'still' } | { kind: 'crawling'; stopTick: () => void };
     };
 
-/** The stall watch on the shown number. Its timer warns only while it is still the watch. */
+/** The stall watch on the shown number. */
 type StallWatch = { kind: 'idle' } | { kind: 'armed'; percent: number; timer: unknown };
 
-/**
- * The stage's explanations, turned over on a timer. `line` is the one shown last, -1 before the first. Its timer turns
- * the line only while it is still the rotation's.
- */
+/** The stage's explanations, turned over on a timer. `line` is the one shown last, -1 before the first. */
 type Rotation = { kind: 'still' } | { kind: 'rotating'; explanations: readonly string[]; line: number; timer: unknown };
 
 /** The explanation being typed, one animation frame at a time. */
 type Typing =
   { kind: 'still' } | { kind: 'typing'; frame: number; from: string; to: string; startedAt: number; eraseMs: number };
 
+/** A stall, rotation, fade or frame is cleared as its state is left, so none of them fires for a state that moved on. */
 type ScreenState =
-  | { kind: 'idle' }
   | {
       kind: 'active';
       stopFollowing: () => void;
@@ -115,10 +112,8 @@ type ScreenState =
       /** Heard a release, possibly before the counting step began. Cleared with the phases. */
       released: boolean;
       stall: StallWatch;
-      /** The running stage's place in the story, -1 before the first. */
+      /** The running stage's place in the story, -1 before the first, which the markup already painted. */
       stageIndex: number;
-      /** True until the first stage turn, which the markup already painted. */
-      opening: boolean;
       rotation: Rotation;
       typing: Typing;
       /** The explanation on screen, part-typed while it turns over. */
@@ -131,11 +126,11 @@ type ScreenState =
 type ActiveState = Extract<ScreenState, { kind: 'active' }>;
 
 type ScreenEvent =
-  | { kind: 'started' }
-  | { kind: 'pageContentChanged'; content: PageContent }
+  | { kind: 'followed' }
   | { kind: 'phasesSet'; phases: readonly LoadingPhase[] }
   | { kind: 'domainSet'; domain: string }
   | { kind: 'stageSet'; stage: LoadingStage }
+  | { kind: 'warningSet'; message: string | null }
   | { kind: 'phaseEntered'; index: number }
   | { kind: 'progressNudged'; fraction: number; stage: LoadingStage }
   | { kind: 'progressReleased' }
@@ -146,10 +141,9 @@ type ScreenEvent =
   | { kind: 'dismissed' }
   | { kind: 'disposed' }
   | { kind: 'crawled' }
-  | { kind: 'stallDue'; timer: unknown }
-  | { kind: 'explanationDue'; timer: unknown }
-  | { kind: 'frameDrawn'; now: number }
-  | { kind: 'fadeEnded'; timer: unknown };
+  | { kind: 'stallDue' }
+  | { kind: 'explanationDue' }
+  | { kind: 'frameDrawn'; now: number };
 
 /** `drawn` writes what the screen draws, and `stalled` tells the stall listener. */
 type ScreenEffect = { kind: 'drawn'; view: Partial<LoadingState> } | { kind: 'stalled'; percent: number };
@@ -243,15 +237,12 @@ export function createLoadingController({
     // An interrupted fade would otherwise leave the line stranded dim.
     emitSideEffect({ kind: 'drawn', view: { phase: 'gone', explanationOpacity: 1 } });
   };
-  const hideBehindScreen: HandlerOf<ScreenMachine, 'active' | 'dismissing', 'pageContentChanged'> = (
-    state,
-    { content },
-    transition,
+  const showWarning: HandlerOf<ScreenMachine, 'active' | 'dismissing' | 'gone', 'warningSet'> = (
+    _state,
+    { message },
+    { emitSideEffect },
   ) => {
-    if (content !== 'screen') {
-      return;
-    }
-    hide(state, { kind: 'hidden' }, transition);
+    emitSideEffect({ kind: 'drawn', view: { warning: message } });
   };
   /** Stops following the page and everything the phase runs, leaving the screen as it is. */
   const stop: HandlerOf<ScreenMachine, 'active' | 'dismissing' | 'gone', 'disposed'> = (
@@ -264,43 +255,32 @@ export function createLoadingController({
     state.stopFollowing();
   };
   const screen = createStateMachine<ScreenMachine>({
-    initial: { kind: 'idle' },
+    // Follows the page from the next transition, since following needs that transition's `update`.
+    initial: {
+      kind: 'active',
+      stopFollowing: noop,
+      domain: '',
+      phases: [],
+      bar: { percent: 0, shown: -1, shownAt: 0, realShown: -1 },
+      band: { kind: 'unbanded' },
+      released: false,
+      stall: { kind: 'idle' },
+      stageIndex: -1,
+      rotation: { kind: 'still' },
+      typing: { kind: 'still' },
+      explanation: '',
+    },
     handlers: {
-      idle: {
-        started(_state, _event, { emitState, update }) {
-          const following = (stopFollowing: () => void): ActiveState => ({
-            kind: 'active',
-            stopFollowing,
-            domain: '',
-            phases: [],
-            bar: { percent: 0, shown: -1, shownAt: 0, realShown: -1 },
-            band: { kind: 'unbanded' },
-            released: false,
-            stall: { kind: 'idle' },
-            stageIndex: -1,
-            opening: true,
-            rotation: { kind: 'still' },
-            typing: { kind: 'still' },
-            explanation: '',
-          });
-          let stopFollowing: () => void;
-          try {
-            stopFollowing = pageContent.listen(content => {
-              update({ kind: 'pageContentChanged', content });
-            });
-          } catch (error) {
-            // A page that cannot be followed still gets its screen, which then misses only the page replacing it.
-            emitState(following(noop));
-            throw error;
-          }
-          emitState(following(stopFollowing));
-        },
-        disposed(_state, _event, { emitState }) {
-          emitState({ kind: 'disposed' });
-        },
-      },
       active: {
-        pageContentChanged: hideBehindScreen,
+        followed(state, _event, { emitState, update }) {
+          // A page that cannot be followed keeps its screen, which then misses only the page replacing it.
+          const stopFollowing = pageContent.listen(content => {
+            if (content === 'screen') {
+              update({ kind: 'hidden' });
+            }
+          });
+          emitState({ ...state, stopFollowing });
+        },
         phasesSet(state, { phases }, transition) {
           const next: ActiveState = {
             ...state,
@@ -309,7 +289,6 @@ export function createLoadingController({
             band: { kind: 'unbanded' },
             released: false,
             stageIndex: -1,
-            opening: true,
           };
           transition.emitState(next);
           stopCrawl(state.band);
@@ -320,6 +299,7 @@ export function createLoadingController({
         domainSet(state, { domain }, { emitState }) {
           emitState({ ...state, domain });
         },
+        warningSet: showWarning,
         stageSet(state, { stage }, transition) {
           enterStage(state, stage, transition);
         },
@@ -425,17 +405,17 @@ export function createLoadingController({
             moveBar(state, { percent: next, cosmetic: true }, transition);
           }
         },
-        stallDue(state, { timer }, { emitState, emitSideEffect }) {
+        stallDue(state, _event, { emitState, emitSideEffect }) {
           const { stall } = state;
-          if (stall.kind !== 'armed' || stall.timer !== timer) {
+          if (stall.kind !== 'armed') {
             return;
           }
           emitState({ ...state, stall: { kind: 'idle' } });
           emitSideEffect({ kind: 'stalled', percent: stall.percent });
         },
-        explanationDue(state, { timer }, transition) {
+        explanationDue(state, _event, transition) {
           const { rotation } = state;
-          if (rotation.kind !== 'rotating' || rotation.timer !== timer) {
+          if (rotation.kind !== 'rotating') {
             return;
           }
           const line = (rotation.line + 1) % rotation.explanations.length;
@@ -477,7 +457,7 @@ export function createLoadingController({
         dismissed(state, _event, { emitState, emitSideEffect, update }) {
           // The screen is removed only once its fade has finished.
           const fadeTimer = timers.setTimeout(() => {
-            update({ kind: 'fadeEnded', timer: fadeTimer });
+            update({ kind: 'hidden' });
           }, FADE_MS);
           emitState({ kind: 'dismissing', stopFollowing: state.stopFollowing, fadeTimer });
           stopPhase(state);
@@ -485,18 +465,8 @@ export function createLoadingController({
         },
         disposed: stop,
       },
-      dismissing: {
-        pageContentChanged: hideBehindScreen,
-        fadeEnded(state, { timer }, transition) {
-          if (timer !== state.fadeTimer) {
-            return;
-          }
-          hide(state, { kind: 'hidden' }, transition);
-        },
-        hidden: hide,
-        disposed: stop,
-      },
-      gone: { disposed: stop },
+      dismissing: { hidden: hide, warningSet: showWarning, disposed: stop },
+      gone: { warningSet: showWarning, disposed: stop },
       disposed: null,
     },
     onEffect: effect => {
@@ -517,7 +487,7 @@ export function createLoadingController({
       });
     },
   });
-  screen.update({ kind: 'started' });
+  screen.update({ kind: 'followed' });
 
   return {
     /**
@@ -616,7 +586,7 @@ export function createLoadingController({
   }
 
   function setLoadingWarning(message: string | null): void {
-    loadingState.update({ warning: message });
+    screen.update({ kind: 'warningSet', message });
   }
 
   function dismissLoading(): void {
@@ -659,7 +629,7 @@ export function createLoadingController({
       return { kind: 'idle' };
     }
     const timer = timers.setTimeout(() => {
-      update({ kind: 'stallDue', timer });
+      update({ kind: 'stallDue' });
     }, PROGRESS_STALL_MS);
     return { kind: 'armed', percent, timer };
   }
@@ -672,11 +642,10 @@ export function createLoadingController({
     }
     const [opening, ...explanations] = STAGE_MESSAGES[stage];
     // The opening step line has been up since first paint, so its first explanation is due from then.
-    const firstDelay = state.opening ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
+    const firstDelay = state.stageIndex === -1 ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
     transition.emitState({
       ...state,
       stageIndex,
-      opening: false,
       rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, transition) },
       typing: { kind: 'still' },
       explanation: '',
@@ -723,7 +692,7 @@ export function createLoadingController({
 
   function startRotationTimer(delayMs: number, { update }: Transition<ScreenMachine>): unknown {
     const timer = timers.setTimeout(() => {
-      update({ kind: 'explanationDue', timer });
+      update({ kind: 'explanationDue' });
     }, delayMs);
     return timer;
   }
@@ -735,7 +704,7 @@ export function createLoadingController({
   }
 
   /** Stops every tick, timer and frame the phase `state` holds. */
-  function stopPhase(state: Extract<ScreenState, { kind: 'active' | 'dismissing' | 'gone' }>): void {
+  function stopPhase(state: Exclude<ScreenState, { kind: 'disposed' }>): void {
     switch (state.kind) {
       case 'active':
         stopCrawl(state.band);
@@ -786,19 +755,6 @@ function getStepParts(message: string, domain: string): StepPart[] {
   return [message.slice(0, at), name, message.slice(at + DOMAIN_TOKEN.length)].filter(part => part !== '');
 }
 
-/** The page's loading screen. It lasts the page's life, so it is never disposed. */
-export const pageLoading = createLoadingController({
-  prefersReducedMotion,
-  frames: {
-    request: step => requestAnimationFrame(step),
-    cancel(handle) {
-      cancelAnimationFrame(handle);
-    },
-    now: readPageClock,
-  },
-  pageContent: pageScreen.store,
-});
-
 /**
  * An overrunning band creeps into the next one, unless that one reports a real percentage, which the creep would
  * overshoot.
@@ -822,3 +778,16 @@ function toStepSentence(parts: readonly StepPart[]): string {
 function applyEaseInOut(progress: number): number {
   return progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
 }
+
+/** The page's loading screen. It lasts the page's life, so it is never disposed. */
+export const pageLoading = createLoadingController({
+  prefersReducedMotion,
+  frames: {
+    request: step => requestAnimationFrame(step),
+    cancel(handle) {
+      cancelAnimationFrame(handle);
+    },
+    now: readPageClock,
+  },
+  pageContent: pageScreen.store,
+});
