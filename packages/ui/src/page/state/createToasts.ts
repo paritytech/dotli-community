@@ -9,11 +9,13 @@ import {
   createSharedRun,
   createStateMachine,
   isShallowEqual,
+  listen,
   realTimers,
   registerStoreStateReset,
   type MachineTypes,
   type Timers,
   type Transition,
+  type VisibilitySource,
 } from '@dotli/shared';
 import { computed, type ReadableAtom } from 'nanostores';
 import type { StatusTone } from '../statusTone.js';
@@ -59,14 +61,9 @@ export type ToastsState = {
   expanded: boolean;
 };
 
-/** The page whose visibility pauses the countdowns. */
-export type ToastPage = {
-  readonly visibilityState: DocumentVisibilityState;
-} & EventTarget;
-
 type Params = {
   /** The page whose visibility pauses the countdowns. The document without one, read on the first `push`. */
-  page?: ToastPage | undefined;
+  page?: VisibilitySource | undefined;
   /** The clock and timers the countdowns run on. */
   timers?: Timers | undefined;
 };
@@ -92,13 +89,13 @@ type Toast =
 
 /**
  * The stack binds to its page on the first push. A bound stack runs its countdowns while a view shows it collapsed on
- * a visible page. `listening` stops its page listener.
+ * a visible page.
  */
 type ToastsMachineState =
-  | { kind: 'unbound'; viewing: boolean; expanded: boolean }
+  | { kind: 'unbound'; viewing: boolean }
   | {
       kind: 'bound';
-      listening: AbortController;
+      stopListening: () => void;
       visible: boolean;
       viewing: boolean;
       expanded: boolean;
@@ -124,7 +121,7 @@ type ToastsEffect = { kind: 'dismissed'; onDismiss: () => void };
 
 type ToastsMachine = MachineTypes<ToastsMachineState, ToastsEvent, ToastsEffect>;
 
-/** The view of an unbound stack that is not expanded, for a read before the store has a value. */
+/** The view of an unbound stack, for a read before the store has a value. */
 export const EMPTY_TOASTS: ToastsState = { items: [], expanded: false };
 
 /**
@@ -135,39 +132,33 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
   // Ids are handed out beside the machine, since `push` answers at once and its event waits when an `onDismiss` sends it.
   let nextId = 0;
   const machine = createStateMachine<ToastsMachine>({
-    initial: { kind: 'unbound', viewing: false, expanded: false },
+    initial: { kind: 'unbound', viewing: false },
     handlers: {
       unbound: {
         pushed(state, { id, input }, transition) {
           const target = page ?? document;
-          const listening = new AbortController();
-          target.addEventListener(
-            'visibilitychange',
-            () => {
+          const stopListening = listen({
+            target,
+            type: 'visibilitychange',
+            handler: () => {
               transition.update({ kind: 'visibilityChanged', visible: target.visibilityState === 'visible' });
             },
-            { signal: listening.signal },
-          );
+          });
           emitStack(
             {
               kind: 'bound',
-              listening,
+              stopListening,
               visible: target.visibilityState === 'visible',
               viewing: state.viewing,
-              expanded: state.expanded,
+              expanded: false,
               toasts: new Map([[id, buildToast(id, input)]]),
             },
             transition,
           );
         },
-        expandedSet(state, { expanded }, { emitState }) {
-          emitState({ ...state, expanded });
-        },
         viewsChanged(state, { viewing }, { emitState }) {
           emitState({ ...state, viewing });
         },
-        cleared: collapseUnbound,
-        disposed: collapseUnbound,
       },
       bound: {
         pushed(state, { id, input }, transition) {
@@ -216,11 +207,11 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
           }
         },
         disposed(state, _event, { emitState }) {
-          emitState({ kind: 'unbound', viewing: state.viewing, expanded: false });
+          emitState({ kind: 'unbound', viewing: state.viewing });
           for (const toast of state.toasts.values()) {
             stopTimer(toast);
           }
-          state.listening.abort();
+          state.stopListening();
         },
       },
     },
@@ -283,7 +274,10 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     remove,
     /** Marks every toast leaving, then calls each `onDismiss` once in order, reporting a throw from it. */
     dismissAll,
-    /** Expands or collapses the stack. Every countdown pauses while it is expanded. */
+    /**
+     * Expands or collapses the stack. Every countdown pauses while it is expanded. A stack that has held no toast since
+     * it was built or disposed ignores it.
+     */
     setExpanded,
     /** Drops every toast without calling its `onDismiss`, for when overlays cannot render. */
     clear,
@@ -407,14 +401,6 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
 /** The page's toast stack, over the document and the page's own timers. */
 export const toasts = createToasts();
 
-function collapseUnbound(
-  state: Extract<ToastsMachineState, { kind: 'unbound' }>,
-  _event: ToastsEvent,
-  { emitState }: Transition<ToastsMachine>,
-): void {
-  emitState({ ...state, expanded: false });
-}
-
 /** A live toast that waits out `dismissMs` once its stack runs, or is kept until closed for 0. */
 function holdToast({ entry, onDismiss }: { entry: ToastEntry; onDismiss: Dismiss }, dismissMs: number): Toast {
   if (dismissMs === 0) {
@@ -425,29 +411,14 @@ function holdToast({ entry, onDismiss }: { entry: ToastEntry; onDismiss: Dismiss
 
 /** A toast, new on the stack, from what a caller pushed. */
 function buildToast(id: number, input: ToastInput): Toast {
-  const entry: ToastEntry = {
-    id,
-    text: input.text,
-    label: input.label,
-    tone: input.tone ?? 'info',
-    leaving: false,
-  };
-  if (input.deeplink !== undefined) {
-    entry.deeplink = input.deeplink;
-  }
-  if (input.icon !== undefined) {
-    entry.icon = input.icon;
-  }
-  if (input.action !== undefined) {
-    entry.action = input.action;
-  }
-  return holdToast({ entry, onDismiss: input.onDismiss }, input.dismissMs);
+  const { dismissMs, onDismiss, tone = 'info', ...shown } = input;
+  return holdToast({ entry: { ...shown, id, tone, leaving: false }, onDismiss }, dismissMs);
 }
 
 function toView(state: ToastsMachineState): ToastsState {
   switch (state.kind) {
     case 'unbound':
-      return { ...EMPTY_TOASTS, expanded: state.expanded };
+      return EMPTY_TOASTS;
     case 'bound':
       return { items: Array.from(state.toasts.values(), toast => toast.entry), expanded: state.expanded };
   }

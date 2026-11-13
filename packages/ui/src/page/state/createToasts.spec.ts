@@ -406,12 +406,10 @@ describe('toast views', () => {
 describe('a toast stack that is disposed', () => {
   it('As a page that ends, I dispose the toasts and no countdown or page listener outlives them', async () => {
     // Given a stack with an open countdown and a bound page listener
-    const listened = vi.spyOn(page.document, 'addEventListener');
+    const removed = vi.spyOn(page.document, 'removeEventListener');
     toasts.show();
     const onDismiss = vi.fn();
     toasts.push(buildInput({ dismissMs: 1000, onDismiss }));
-    const options = listened.mock.calls.find(([type]) => type === 'visibilitychange')?.[2] as
-      AddEventListenerOptions | undefined;
 
     // When
     toasts.dispose();
@@ -419,7 +417,7 @@ describe('a toast stack that is disposed', () => {
     await timers.advance(5000);
 
     // Then
-    expect(options?.signal?.aborted).toBe(true);
+    expect(removed.mock.calls.map(([type]) => type)).toEqual(['visibilitychange']);
     expect(toasts.store.get().items).toEqual([]);
     expect(onDismiss).not.toHaveBeenCalled();
   });
