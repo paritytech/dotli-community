@@ -144,7 +144,7 @@ export function createPhoneRequestTracker({
           }
         },
         claimed(state, { request, settle }, { emitState, emitSideEffect }) {
-          // A claim made inside a transition is handled after it, and its request may have ended or been claimed by then.
+          // A claim made inside a transition is handled after it, when its request may have ended or been claimed.
           if (!state.requests.includes(request)) {
             emitSideEffect({ kind: 'settled', settle, outcome: { kind: 'gone' } });
             return;
@@ -200,8 +200,8 @@ export function createPhoneRequestTracker({
     connect,
     /**
      * The oldest unclaimed in-flight request that `matches`, now claimed, or undefined. A claim made inside a tracker
-     * transition takes hold once that transition ends, and ends `gone` when its request ended or was claimed first. Throws only when
-     * `matches` does.
+     * transition takes hold once that transition ends, and ends `gone` when its request ended or was claimed first.
+     * Throws only when `matches` does.
      */
     claim,
     /** Ends every claim as `gone`. Idempotent, and never throws. */
