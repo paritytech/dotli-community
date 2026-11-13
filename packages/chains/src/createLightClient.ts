@@ -96,27 +96,27 @@ type Chain = {
   hooks: ChainTransportHooks | null;
 };
 
-/** Unique to one opened connection. */
-type ConnectionKey = symbol;
-
 // The engine's life. A fatal never clears, so a light client that reached it opens no chain again. `idle` holds no
 // connections, since the open that leaves it adds the first. `starting` names the open that started the engine, which
 // hears the start's error and names the fatal. `running` beats until `heartbeat` aborts.
 type ClientState =
   | { kind: 'idle' }
-  | { kind: 'starting'; starter: { key: ConnectionKey; genesis: string }; connections: Connections }
+  | { kind: 'starting'; starter: { key: symbol; genesis: string }; connections: Connections }
   | { kind: 'running'; engine: LightClientEngine; heartbeat: AbortController; connections: Connections }
   | { kind: 'fatal'; message: string; connections: Connections };
 
-type Connections = ReadonlyMap<ConnectionKey, ChainConnection>;
+/** Each key is unique to one opened connection. */
+type Connections = ReadonlyMap<symbol, ChainConnection>;
 
 /**
- * One connection's steps. `restoring` and `connecting` hold the engine they work on, so a connection goes on after
- * another chain turned the light client fatal. `closing` left while its connect was in flight. `stopped` halted while
- * it read, and keeps the engine's connection until the consumer leaves. An `ended` connection leaves the map.
+ * One connection's steps. `waiting` waits on the engine's start, and `refusing` on its refusal by a fatal light client.
+ * `restoring` and `connecting` hold the engine they work on, so a connection goes on after another chain turned the
+ * light client fatal. `closing` left while its connect was in flight. `stopped` halted while it read, and keeps the
+ * engine's connection until the consumer leaves. An `ended` connection leaves the map.
  */
 type ChainConnection =
   | { kind: 'waiting'; chain: Chain; queued: readonly string[] }
+  | { kind: 'refusing'; chain: Chain }
   | { kind: 'restoring'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
   | { kind: 'connecting'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
   | { kind: 'closing'; chain: Chain }
@@ -131,18 +131,18 @@ type ReadingConnection = Extract<ChainConnection, { kind: 'reading' }>;
 type StoredRead = { kind: 'warm' } | { kind: 'cold' } | { kind: 'missed'; error: unknown };
 
 type ClientEvent =
-  | { kind: 'opened'; key: ConnectionKey; chain: Chain }
-  | { kind: 'refused'; key: ConnectionKey; message: string }
+  | { kind: 'opened'; key: symbol; chain: Chain }
+  | { kind: 'refused'; key: symbol; message: string }
   | { kind: 'engineStarted'; engine: LightClientEngine }
   | { kind: 'engineFailed'; error: unknown }
-  | { kind: 'restored'; key: ConnectionKey; genesis: string; read: StoredRead }
-  | { kind: 'chainConnected'; key: ConnectionKey; connection: LightClientConnection }
-  | { kind: 'connectFailed'; key: ConnectionKey; error: unknown }
-  | { kind: 'responseRead'; key: ConnectionKey; message: JsonRpcMessage }
-  | { kind: 'streamEnded'; key: ConnectionKey }
-  | { kind: 'readFailed'; key: ConnectionKey; error: unknown }
-  | { kind: 'sent'; key: ConnectionKey; message: JsonRpcRequest }
-  | { kind: 'left'; key: ConnectionKey };
+  | { kind: 'restored'; key: symbol; genesis: string; read: StoredRead }
+  | { kind: 'chainConnected'; key: symbol; connection: LightClientConnection }
+  | { kind: 'connectFailed'; key: symbol; error: unknown }
+  | { kind: 'responseRead'; key: symbol; message: JsonRpcMessage }
+  | { kind: 'streamEnded'; key: symbol }
+  | { kind: 'readFailed'; key: symbol; error: unknown }
+  | { kind: 'sent'; key: symbol; message: JsonRpcRequest }
+  | { kind: 'left'; key: symbol };
 
 type ClientEffect =
   | { kind: 'ready'; heartbeat: AbortController }
@@ -153,7 +153,7 @@ type ClientEffect =
   | { kind: 'chainRestored'; genesis: string; read: StoredRead }
   | { kind: 'send'; connection: LightClientConnection; raw: string }
   | { kind: 'close'; connection: LightClientConnection }
-  | { kind: 'leaveSync'; key: ConnectionKey; genesis: string }
+  | { kind: 'leaveSync'; key: symbol; genesis: string }
   | { kind: 'capRefused'; error: LightClientCapError; genesis: string }
   | { kind: 'readBroke'; error: unknown; genesis: string }
   | { kind: 'halted'; hooks: ChainTransportHooks | null; error: unknown };
@@ -203,7 +203,7 @@ export function createLightClient({
     emitState({ ...state, queued: [...state.queued, JSON.stringify(message)] });
   };
   // A connection that leaves before its connect starts never connects.
-  const dropConnection: HandlerOf<ConnectionMachine, 'waiting' | 'restoring', 'left'> = (
+  const dropConnection: HandlerOf<ConnectionMachine, 'waiting' | 'refusing' | 'restoring', 'left'> = (
     _state,
     _event,
     { emitState },
@@ -250,15 +250,26 @@ export function createLightClient({
     store: (state, { key }, next) => ({ ...state, connections: withConnection(state.connections, key, next) }),
     handlers: {
       waiting: {
+        sent: queueMessage,
+        left: dropConnection,
+      },
+      refusing: {
         refused({ chain }, { message }, { emitState, emitSideEffect }) {
           emitState({ kind: 'ended' });
           emitSideEffect({ kind: 'halted', hooks: chain.hooks, error: new Error(message) });
         },
-        sent: queueMessage,
         left: dropConnection,
       },
       restoring: {
-        restored: connectChain,
+        restored({ chain, engine, queued }, { key }, { emitState, update }) {
+          emitState({ kind: 'connecting', chain, engine, queued });
+          update(
+            engine.connect(chain.genesis).then(
+              (connection): ClientEvent => ({ kind: 'chainConnected', key, connection }),
+              (error: unknown): ClientEvent => ({ kind: 'connectFailed', key, error }),
+            ),
+          );
+        },
         sent: queueMessage,
         left: dropConnection,
       },
@@ -345,7 +356,7 @@ export function createLightClient({
           emitState({
             kind: 'starting',
             starter: { key, genesis: chain.genesis },
-            connections: new Map<ConnectionKey, ChainConnection>([[key, { kind: 'waiting', chain, queued: [] }]]),
+            connections: new Map<symbol, ChainConnection>([[key, { kind: 'waiting', chain, queued: [] }]]),
           });
           emitSideEffect({ kind: 'prefetch', genesis: chain.genesis });
           update(
@@ -368,7 +379,7 @@ export function createLightClient({
           emitSideEffect({ kind: 'prefetch', genesis: chain.genesis });
         },
         engineStarted({ connections }, { engine }, { emitState, emitSideEffect, update }) {
-          const restoring = new Map<ConnectionKey, RestoringConnection>();
+          const restoring = new Map<symbol, RestoringConnection>();
           for (const [key, connection] of connections) {
             // Narrows the type: every connection of a starting light client waits on the start.
             if (connection.kind === 'waiting') {
@@ -436,7 +447,7 @@ export function createLightClient({
         opened(state, { key, chain }, { emitState, update }) {
           emitState({
             ...state,
-            connections: withConnection(state.connections, key, { kind: 'waiting', chain, queued: [] }),
+            connections: withConnection(state.connections, key, { kind: 'refusing', chain }),
           });
           // The halt reaches the hooks after the open returns, never inside the call that builds a lane.
           update(
@@ -548,25 +559,10 @@ export function createLightClient({
     subscribe: listeners.subscribe,
   };
 
-  /** Moves a restored connection to `connecting` and starts its connect. */
-  function connectChain(
-    { chain, engine, queued }: RestoringConnection,
-    { key }: { key: ConnectionKey },
-    { emitState, update }: Transition<ConnectionMachine>,
-  ): void {
-    emitState({ kind: 'connecting', chain, engine, queued });
-    update(
-      engine.connect(chain.genesis).then(
-        (connection): ClientEvent => ({ kind: 'chainConnected', key, connection }),
-        (error: unknown): ClientEvent => ({ kind: 'connectFailed', key, error }),
-      ),
-    );
-  }
-
   /** Halts a reading chain and hands its sync tap on. The engine's connection stays until the consumer leaves. */
   function haltReading(
     { chain, connection }: ReadingConnection,
-    { key, error }: { key: ConnectionKey; error: unknown },
+    { key, error }: { key: symbol; error: unknown },
     { emitState, emitSideEffect }: Transition<ConnectionMachine>,
   ): void {
     emitState({ kind: 'stopped', connection });
@@ -586,7 +582,7 @@ export function createLightClient({
     }
 
     function provider(onMessage: (message: JsonRpcMessage) => void): JsonRpcConnection {
-      const key: ConnectionKey = Symbol(genesis);
+      const key = Symbol(genesis);
       hooks?.onStatus('connecting');
       machine.update({ kind: 'opened', key, chain: { genesis, onMessage, hooks: hooks ?? null } });
       return {
@@ -603,7 +599,7 @@ export function createLightClient({
 }
 
 /** Hands the chain its stored database before its first add, since only a chain's first add consumes a blob. */
-function restore(engine: LightClientEngine, key: ConnectionKey, genesis: string): Promise<ClientEvent> {
+function restore(engine: LightClientEngine, key: symbol, genesis: string): Promise<ClientEvent> {
   // A load that throws before it returns a promise rejects this one, so the chain starts cold as on a rejection.
   return new Promise<boolean>(resolve => {
     resolve(engine.loadDatabase(genesis));
@@ -614,7 +610,7 @@ function restore(engine: LightClientEngine, key: ConnectionKey, genesis: string)
 }
 
 /** `connections` with the connection of `key` set to `next`, or without it when `next` ended. */
-function withConnection(connections: Connections, key: ConnectionKey, next: ChainConnection): Connections {
+function withConnection(connections: Connections, key: symbol, next: ChainConnection): Connections {
   const updated = new Map(connections);
   if (next.kind === 'ended') {
     updated.delete(key);
@@ -625,7 +621,7 @@ function withConnection(connections: Connections, key: ConnectionKey, next: Chai
 }
 
 /** The connection's next response as its event. A rejection, a parse failure included, is a failed read. */
-function readResponse(key: ConnectionKey, connection: LightClientConnection): Promise<ClientEvent> {
+function readResponse(key: symbol, connection: LightClientConnection): Promise<ClientEvent> {
   return connection
     .nextResponse()
     .then((response): ClientEvent => {
