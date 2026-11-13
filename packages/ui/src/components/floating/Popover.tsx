@@ -3,6 +3,7 @@
 
 import { createContext, createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { createSheetPreload } from './AnchoredContent.js';
 import { createAnchored, type Anchored } from './createAnchored.js';
 import { createContentPreload } from './createContentPreload.js';
 import { createTriggerWiring } from './createTriggerWiring.js';
@@ -59,6 +60,7 @@ export function Popover(props: PopoverProps): JSX.Element {
   });
   createTriggerWiring({ state, trigger: () => props.trigger, haspopup: 'dialog' });
   createContentPreload({ content: () => props.preload });
+  createSheetPreload();
 
   createEffect(
     () => props.open,

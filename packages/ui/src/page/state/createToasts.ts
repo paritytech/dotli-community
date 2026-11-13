@@ -107,8 +107,8 @@ type BoundState = Extract<ToastsMachineState, { kind: 'bound' }>;
 type ToastsEvent =
   | { kind: 'pushed'; id: number; input: ToastInput }
   | { kind: 'dismissMsSet'; id: number; dismissMs: number }
+  /** A close, or the end of the toast's countdown. */
   | { kind: 'dismissed'; id: number }
-  | { kind: 'countdownEnded'; id: number }
   | { kind: 'removed'; id: number }
   | { kind: 'allDismissed' }
   | { kind: 'expandedSet'; expanded: boolean }
@@ -172,8 +172,14 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
           stopTimer(toast);
           emitStack({ ...state, toasts: new Map(state.toasts).set(id, holdToast(toast, dismissMs)) }, transition);
         },
-        dismissed: leaveToast,
-        countdownEnded: leaveToast,
+        /** Marks the toast leaving. A toast unknown or already leaving is ignored. */
+        dismissed(state, { id }, { emitState, emitSideEffect }) {
+          const toast = state.toasts.get(id);
+          if (toast === undefined) {
+            return;
+          }
+          emitState({ ...state, toasts: new Map(state.toasts).set(id, endToast(toast, emitSideEffect)) });
+        },
         removed(state, { id }, transition) {
           const toast = state.toasts.get(id);
           if (toast === undefined) {
@@ -346,7 +352,7 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
       return toast;
     }
     const timer = timers.setTimeout(() => {
-      update({ kind: 'countdownEnded', id: toast.entry.id });
+      update({ kind: 'dismissed', id: toast.entry.id });
     }, toast.remaining);
     return { ...toast, kind: 'counting', startedAt: timers.now(), timer };
   }
@@ -363,19 +369,6 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
       onDismiss: toast.onDismiss,
       remaining: Math.max(0, toast.remaining - (timers.now() - toast.startedAt)),
     };
-  }
-
-  /** Marks the toast leaving, as a close or its countdown's end asks. A toast unknown or already leaving is ignored. */
-  function leaveToast(
-    state: BoundState,
-    { id }: Extract<ToastsEvent, { kind: 'dismissed' | 'countdownEnded' }>,
-    { emitState, emitSideEffect }: Transition<ToastsMachine>,
-  ): void {
-    const toast = state.toasts.get(id);
-    if (toast === undefined || toast.kind === 'leaving') {
-      return;
-    }
-    emitState({ ...state, toasts: new Map(state.toasts).set(id, endToast(toast, emitSideEffect)) });
   }
 
   /** The toast leaving, its countdown stopped and its `onDismiss` queued. A toast already leaving stays as it is. */

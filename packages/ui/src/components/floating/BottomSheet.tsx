@@ -5,11 +5,10 @@ import { useStore } from '@dotli/stores-solid';
 import { createMemo, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ModalLayer } from './ModalLayer.js';
+import { sheetHandOff } from './createSheetHandOff.js';
 import { createSheetLayer, isLayerOpen } from './createSheetLayer.js';
+import { SheetChoice } from './sheetChoice.js';
 import { SheetFrame, type SheetFrameProps } from './SheetFrame.js';
-
-/** Matches `--dur-morph`. */
-export const SHEET_EXIT_MS = 460;
 
 export type BottomSheetProps = {
   open: boolean;
@@ -23,7 +22,10 @@ export type BottomSheetProps = {
   children: JSX.Element;
 };
 
-/** A modal bottom sheet. Popover and DropdownMenu render one in place of their anchored surface on a phone. */
+/**
+ * A modal bottom sheet. Popover and DropdownMenu render one in place of their anchored surface on a phone. A choice
+ * made in it runs as a hand-off, so a sheet the choice opens takes its place in the same frame.
+ */
 export function BottomSheet(props: BottomSheetProps): JSX.Element {
   const sheetLayer = createSheetLayer();
   const layerState = useStore(sheetLayer.state);
@@ -60,7 +62,13 @@ export function BottomSheet(props: BottomSheetProps): JSX.Element {
         handedOff={layer().handedOff}
         body={props.body}
       >
-        {props.children}
+        <SheetChoice
+          value={select => {
+            sheetHandOff.run(select);
+          }}
+        >
+          {props.children}
+        </SheetChoice>
       </SheetFrame>
     </ModalLayer>
   );

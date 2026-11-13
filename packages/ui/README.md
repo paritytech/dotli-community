@@ -87,7 +87,8 @@ The tokens and global styles. The apps import it once.
   `data-overlays`, so a full-page screen keeps it.
 - **One layer stack:** floating layers share one stack. It makes the page inert under the top modal layer.
 - **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
-  Heavy content is the app's to load with `lazy()`.
+  The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
+  with `lazy()`.
 - **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
   `ActionsContext`.
 - **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot

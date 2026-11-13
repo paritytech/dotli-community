@@ -1,12 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { AnchoredContent } from './AnchoredContent.js';
 import type { MenuState } from './DropdownMenu.js';
 import type { Placement } from './FloatingLayer.js';
-import { sheetHandOff } from './createSheetHandOff.js';
 import s from './DropdownMenu.module.css';
 
 type MoveFocusParams = {
@@ -17,11 +15,6 @@ type MoveFocusParams = {
   /** Whether Tab stays on the focused item. */
   holdTab: boolean;
 };
-
-/** How a choice made in the sheet runs. The surface provides the hand-off. */
-export const SheetChoice = createContext<(select: () => void) => void>(select => {
-  select();
-});
 
 const ITEM = '[role="menuitem"]';
 
@@ -40,44 +33,38 @@ export function DropdownMenuSurface(props: {
   }
 
   return (
-    <SheetChoice
-      value={select => {
-        sheetHandOff.run(select);
+    <AnchoredContent
+      state={props.state}
+      role="menu"
+      placement={props.placement}
+      class={[s['menu'], props.class].filter(Boolean).join(' ')}
+      onOpened={surface => {
+        takeOpeningFocus(surface, surface).focus();
       }}
+      onKeyDown={(event, surface) => {
+        moveFocus({ event, root: surface, holdTab: true });
+      }}
+      sheetTestId="menu"
+      sheetBody={{
+        role: 'menu',
+        label: props.state.title,
+        testId: 'menu-sheet-body',
+        onKeyDown: event => {
+          moveFocus({ event, root: event.currentTarget, holdTab: false });
+        },
+      }}
+      sheetClass={[s['rows'], props.class].filter(Boolean).join(' ')}
+      onSheetPointerMove={focusHovered}
+      sheetFocus={rows => {
+        const menu = rows.closest<HTMLElement>('[role="menu"]');
+        return menu === null ? undefined : takeOpeningFocus(menu, rows);
+      }}
+      sheetChildren={() => props.children}
     >
-      <AnchoredContent
-        state={props.state}
-        role="menu"
-        placement={props.placement}
-        class={[s['menu'], props.class].filter(Boolean).join(' ')}
-        onOpened={surface => {
-          takeOpeningFocus(surface, surface).focus();
-        }}
-        onKeyDown={(event, surface) => {
-          moveFocus({ event, root: surface, holdTab: true });
-        }}
-        sheetTestId="menu"
-        sheetBody={{
-          role: 'menu',
-          label: props.state.title,
-          testId: 'menu-sheet-body',
-          onKeyDown: event => {
-            moveFocus({ event, root: event.currentTarget, holdTab: false });
-          },
-        }}
-        sheetClass={[s['rows'], props.class].filter(Boolean).join(' ')}
-        onSheetPointerMove={focusHovered}
-        sheetFocus={rows => {
-          const menu = rows.closest<HTMLElement>('[role="menu"]');
-          return menu === null ? undefined : takeOpeningFocus(menu, rows);
-        }}
-        sheetChildren={() => props.children}
-      >
-        <div class={s['rows']} onPointerMove={focusHovered}>
-          {props.children}
-        </div>
-      </AnchoredContent>
-    </SheetChoice>
+      <div class={s['rows']} onPointerMove={focusHovered}>
+        {props.children}
+      </div>
+    </AnchoredContent>
   );
 }
 

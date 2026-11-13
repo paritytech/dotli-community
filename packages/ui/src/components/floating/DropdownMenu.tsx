@@ -3,11 +3,13 @@
 
 import { createContext, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { createSheetPreload } from './AnchoredContent.js';
 import { createAnchored, type Anchored } from './createAnchored.js';
 import { createTriggerWiring } from './createTriggerWiring.js';
 import { SurfaceSlot } from './SurfaceSlot.js';
 import type { CloseReason } from './closeReason.js';
-import { DropdownMenuSurface, SheetChoice } from './DropdownMenuSurface.js';
+import { DropdownMenuSurface } from './DropdownMenuSurface.js';
+import { SheetChoice } from './sheetChoice.js';
 import type { Placement } from './FloatingLayer.js';
 import s from './DropdownMenu.module.css';
 
@@ -59,6 +61,7 @@ function DropdownMenuRoot(props: {
       }
     },
   });
+  createSheetPreload();
   return (
     <MenuContext value={state}>
       <SurfaceSlot state={state}>
