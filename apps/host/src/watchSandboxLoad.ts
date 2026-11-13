@@ -27,17 +27,16 @@ type Params = {
   timers?: Pick<Timers, 'setTimeout'> | undefined;
 };
 
-type ExpectHeardWithinParams = {
+/** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
+type Ask = {
   /** Hears the sandbox's silence once the deadline passes with nothing heard. */
   onSilent: (error: SandboxSilentError) => void;
 };
 
-/** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
-type Ask = ExpectHeardWithinParams;
-
 /**
- * Each listening state holds the channel's unsubscribe. A deadline that ends leaves the sandbox `unheard` again. A
- * deadline's timer is never cleared: once its ask left the state, it ends nothing.
+ * Each listening state holds the channel's unsubscribe. `idle` stays when the channel could not be listened to. A
+ * deadline that ends leaves the sandbox `unheard` again. A deadline's timer is never cleared: once its ask left the
+ * state, it ends nothing.
  */
 type SandboxLoadState =
   | { kind: 'idle' }
@@ -127,9 +126,6 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
             update(status.done === true ? { kind: 'doneHeard', report: toReport(status) } : { kind: 'spoke' });
           });
           emitState({ kind: 'unheard', stopListening });
-        },
-        disposed(_state, _event, { emitState }) {
-          emitState({ kind: 'disposed' });
         },
       },
       unheard: { spoke: hearSpeech, doneHeard: clearScreen, deadlineAsked: startDeadline, disposed: stop },
@@ -233,7 +229,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
     return clears.subscribe(listener);
   }
 
-  function expectHeardWithin({ onSilent }: ExpectHeardWithinParams): () => void {
+  function expectHeardWithin({ onSilent }: Ask): () => void {
     // A new object, so an ask with the same `onSilent` as an earlier one is still told from it.
     const ask = { onSilent };
     load.update({ kind: 'deadlineAsked', ask });
