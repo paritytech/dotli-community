@@ -47,6 +47,7 @@ type CoordinatorState =
 
 type CoordinatorEvent =
   | { kind: 'enqueued'; prompt: Prompt }
+  | { kind: 'taskDue' }
   | { kind: 'answered'; prompt: Prompt; answer: () => void }
   | { kind: 'taskFailed'; prompt: Prompt; error: unknown }
   | { kind: 'held'; prompt: Prompt; promise: Promise<unknown> }
@@ -54,7 +55,6 @@ type CoordinatorEvent =
   | { kind: 'scopeAborted'; signal: AbortSignal };
 
 type CoordinatorEffect =
-  | { kind: 'runTask'; prompt: Prompt }
   | { kind: 'answer'; answer: () => void }
   | { kind: 'reject'; reject: (error: unknown) => void; error: unknown }
   | { kind: 'countsChanged'; counts: BlockingModalCounts };
@@ -77,6 +77,22 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
       },
       shown: {
         enqueued: queuePrompt,
+        taskDue({ prompt }, _event, { update }) {
+          // The counts report just before may have disposed the scope. Its `scopeAborted` is next.
+          if (prompt.signal.aborted) {
+            return;
+          }
+          update(
+            prompt
+              .run(prompt.signal, promise => {
+                update({ kind: 'held', prompt, promise });
+              })
+              .then(
+                answer => ({ kind: 'answered', prompt, answer }),
+                (error: unknown) => ({ kind: 'taskFailed', prompt, error }),
+              ),
+          );
+        },
         answered(state, { prompt, answer }, transition) {
           if (prompt !== state.prompt) {
             return;
@@ -122,24 +138,6 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'runTask': {
-          const { prompt } = effect;
-          // A report of the counts runs just before, and may have disposed the scope. Its `scopeAborted` is next.
-          if (prompt.signal.aborted) {
-            return;
-          }
-          machine.update(
-            prompt
-              .run(prompt.signal, promise => {
-                machine.update({ kind: 'held', prompt, promise });
-              })
-              .then(
-                answer => ({ kind: 'answered', prompt, answer }),
-                (error: unknown) => ({ kind: 'taskFailed', prompt, error }),
-              ),
-          );
-          return;
-        }
         case 'answer':
           effect.answer();
           return;
@@ -261,7 +259,7 @@ const abortScope: HandlerOf<CoordinatorMachine, 'shown' | 'holding', 'scopeAbort
   emitCounted(state, { ...state, queue }, transition);
 };
 
-/** Shows the first of `queue` and runs its task once the counts it changes are reported, or goes idle on none. */
+/** Shows the first of `queue`, whose task is due once the counts it changes are reported, or goes idle on none. */
 function showNext(state: CoordinatorState, queue: readonly Prompt[], transition: Transition<CoordinatorMachine>): void {
   const [prompt, ...rest] = queue;
   if (prompt === undefined) {
@@ -269,7 +267,7 @@ function showNext(state: CoordinatorState, queue: readonly Prompt[], transition:
     return;
   }
   emitCounted(state, { kind: 'shown', prompt, holds: 0, queue: rest }, transition);
-  transition.emitSideEffect({ kind: 'runTask', prompt });
+  transition.update({ kind: 'taskDue' });
 }
 
 /** Moves to `next`, and tells the bar when the counts change. */
