@@ -78,7 +78,6 @@ type FrameState<E> =
   // Each ask made before the first config comes with the stop of the wait that fails it when no config comes.
   | { kind: 'unconfigured'; waits: readonly (Ask & { stopTimer: () => void })[] }
   | { kind: 'idle'; config: ProtocolFrameConfig; incident: Incident }
-  | { kind: 'resetting'; config: ProtocolFrameConfig; incident: Incident }
   | {
       kind: 'loading';
       config: ProtocolFrameConfig;
@@ -118,8 +117,9 @@ type FrameState<E> =
   | { kind: 'mismatched'; error: ProtocolVersionMismatchError };
 
 /**
- * What moves the frame. A timer's event carries nothing, or only the wait it ends, since every move to another kind stops it. A listener's or a
- * promise's event carries the iframe or the transport it belongs to, and acts only while the state holds that one.
+ * What moves the frame. A timer's event carries nothing, or only the wait it ends, since every move to another kind
+ * stops it. A listener's or a promise's event carries the iframe or the transport it belongs to, and acts only while
+ * the state holds that one.
  */
 type FrameEvent<E> =
   | Ask
@@ -146,8 +146,9 @@ type FrameEffect<E> =
   | { kind: 'mount'; iframe: E }
   | { kind: 'connect'; iframe: E; transport: ProtocolTransport }
   | { kind: 'askAlive'; transport: ProtocolTransport }
+  /** Asks for the rebuild once the transition's reports ran, so an ask or a config a listener sent on them goes first. */
   | { kind: 'rebuild' }
-  /** Lets `frame` go once the transition's reports ran, its calls in flight rejecting with `reason`. */
+  /** Lets `frame` go once its loss is published, its calls in flight rejecting with `reason`. */
   | { kind: 'drop'; frame: Mounted<E> | null; reason: Error }
   | ({ kind: 'bootFailed'; phase: BootPhase } & FrameFailure)
   | { kind: 'frameLost'; error: Error; capture: boolean }
@@ -352,7 +353,7 @@ export function createProtocolFrame<E extends FrameElement>({
     transition: Transition<FrameMachine<E>>,
   ) => void;
 
-  const bootOnAsk: AskHandler<'idle' | 'resetting'> = ({ config, incident }, ask, transition) => {
+  const bootOnAsk: AskHandler<'idle'> = ({ config, incident }, ask, transition) => {
     boot({ config, ...getAskWaits(ask), held: null, incident }, transition);
   };
 
@@ -395,17 +396,6 @@ export function createProtocolFrame<E extends FrameElement>({
     emitSideEffect({ kind: 'reject', waits: [wait], error });
   };
 
-  const changeIdleConfig: HandlerOf<FrameMachine<E>, 'idle' | 'resetting', 'configured'> = (
-    state,
-    { config },
-    transition,
-  ) => {
-    if (isSameFrameConfig(state.config, config)) {
-      return;
-    }
-    enter({ ...state, config }, transition);
-  };
-
   // A listener that heard `idle` may have asked for the frame or configured again, so the rebuild is asked for after
   // `idle` is published, and the frame is built once, with the latest config. The rebuild starts its waits over.
   const reconfigure: HandlerOf<FrameMachine<E>, HoldingKind, 'configured'> = (state, { config }, transition) => {
@@ -416,7 +406,7 @@ export function createProtocolFrame<E extends FrameElement>({
     // Told apart from a fatal in the trail, since both drop the frame.
     emitSideEffect({ kind: 'reconfigured', config });
     const { waits, frame, held, incident } = leave(state, transition);
-    enter({ kind: 'resetting', config, incident: { ...incident, failures: 0 } }, transition);
+    enter({ kind: 'idle', config, incident: { ...incident, failures: 0 } }, transition);
     const reason = new Error(PROTOCOL_ERRORS.FRAME_RESET);
     emitSideEffect({ kind: 'reject', waits, error: reason });
     emitSideEffect({ kind: 'drop', frame, reason });
@@ -536,12 +526,13 @@ export function createProtocolFrame<E extends FrameElement>({
       idle: {
         readyAsked: bootOnAsk,
         transportAsked: bootOnAsk,
-        configured: changeIdleConfig,
-      },
-      resetting: {
-        readyAsked: bootOnAsk,
-        transportAsked: bootOnAsk,
-        configured: changeIdleConfig,
+        configured(state, { config }, transition) {
+          if (isSameFrameConfig(state.config, config)) {
+            return;
+          }
+          enter({ ...state, config }, transition);
+        },
+        // Only a config change asks, once it dropped the frame. An ask heard first has booted already.
         rebuildAsked({ config, incident }, _event, transition) {
           boot({ config, loads: [], readies: [], held: null, incident }, transition);
         },
@@ -629,14 +620,14 @@ export function createProtocolFrame<E extends FrameElement>({
         readyTimedOut(state, _event, transition) {
           loseFrame(state, new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT), transition);
         },
-        frameReadied({ config, frame, stopTimer, listenedAt, readies, incident }, { iframe }, transition) {
+        frameReadied(state, { iframe }, transition) {
+          const { config, frame } = state;
           if (iframe !== frame.iframe) {
             return;
           }
+          const { waits, incident } = leave(state, transition);
           enter({ kind: 'ready', config, frame, readyAt: timers.now(), incident }, transition);
-          transition.emitSideEffect({ kind: 'resolve', waits: readies, transport: frame.transport });
-          transition.emitSideEffect({ kind: 'readyWaited', ms: timers.now() - listenedAt });
-          transition.emitSideEffect({ kind: 'stopTimer', stopTimer });
+          transition.emitSideEffect({ kind: 'resolve', waits, transport: frame.transport });
         },
         frameFailed: failFrame,
         aliveAsked: checkFrame,
@@ -913,7 +904,6 @@ function getPublished(state: FrameState<unknown>): { status: ProtocolStatus; hel
   switch (state.kind) {
     case 'unconfigured':
     case 'idle':
-    case 'resetting':
       return { status: 'idle', held: false };
     case 'loading':
     case 'connecting':

@@ -96,8 +96,6 @@ type FeedEffect =
 
 type FeedMachine<T> = MachineTypes<FeedState<T>, FeedEvent<T>, FeedEffect>;
 
-type ReopenMachine<T> = MachineTypes<Reopen, FeedEvent<T>, FeedEffect>;
-
 /** Holds `feed` on the frame there is now once asked to `follow`. Subscribes to the frame's status at once. */
 export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Params<T>) {
   /** Opens the feed of a hold. A refused open is an end, which waits to reopen. */
@@ -193,7 +191,12 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     emitSideEffect({ kind: 'release', stop: hold.reopen.stop });
   };
 
-  const handleReopen = nest<FeedMachine<T>, 'holding' | 'reasking', ReopenMachine<T>, 'feedEnded' | 'reopenDue'>({
+  const handleReopen = nest<
+    FeedMachine<T>,
+    'holding' | 'reasking',
+    MachineTypes<Reopen, FeedEvent<T>, FeedEffect>,
+    'feedEnded' | 'reopenDue'
+  >({
     find: ({ hold }, { holdId }) => (holdId === hold.id ? hold.reopen : null),
     store: (state, _event, reopen) => ({ ...state, hold: { ...state.hold, reopen } }),
     handlers: {

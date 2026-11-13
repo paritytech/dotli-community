@@ -133,8 +133,8 @@ export function createRemoteChains({ rpc }: Params) {
   };
 
   // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget or never found the frame
-  // up, or a frame that went down, and halts like a dead frame so a caching consumer drops it. The connection closes
-  // first, so a send made during the halt is answered at once, not queued and lost.
+  // up, or a frame that went down, and halts like a dead frame so a caching consumer drops it. The halt drops
+  // the connection, so a send made from the halt listener is answered as closed.
   const endChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'chainEnded'> = (
     connection,
     { error },
@@ -392,7 +392,7 @@ export function createRemoteChains({ rpc }: Params) {
   }
 }
 
-/** A consumer callback that throws is reported, not propagated, so the other consumers still hear the halt. */
+/** A consumer callback that throws is reported as its listener's fault, not as an effect of the machine that failed. */
 function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   try {
     call();
