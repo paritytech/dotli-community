@@ -315,11 +315,7 @@ export function createLoadingController({
               crawl: { kind: 'crawling', stopTick },
             },
           };
-          if (base > state.bar.percent) {
-            moveBar(next, { percent: base }, transition);
-          } else {
-            transition.emitState(next);
-          }
+          moveBar(next, { percent: base }, transition);
           stopCrawl(band);
           // Enters the step's stage as setLoadingStage does, right after this transition.
           transition.update({ kind: 'stageSet', stage: phase.stage });
@@ -340,12 +336,7 @@ export function createLoadingController({
             phase.reportsProgress === true
               ? { ...state, band: { ...band, owner: clamped < 1 ? 'count' : 'clock' } }
               : state;
-          const want = base + (target - base) * clamped;
-          if (want > next.bar.percent) {
-            moveBar(next, { percent: want }, transition);
-            return;
-          }
-          transition.emitState(next);
+          moveBar(next, { percent: base + (target - base) * clamped }, transition);
         },
         progressReleased(state, _event, { emitState }) {
           const { band } = state;
@@ -387,10 +378,7 @@ export function createLoadingController({
             return;
           }
           const ceiling = Math.min(band.owner === 'count' ? band.phase.target : band.creepCeiling, CREEP_CEILING);
-          const next = Math.min(Math.floor(bar.percent) + 1, ceiling);
-          if (next > bar.percent) {
-            moveBar(state, { percent: next, cosmetic: true }, transition);
-          }
+          moveBar(state, { percent: Math.min(Math.floor(bar.percent) + 1, ceiling), cosmetic: true }, transition);
         },
         stallDue(state, _event, { emitState, emitSideEffect }) {
           const { stall } = state;
@@ -411,10 +399,10 @@ export function createLoadingController({
             ...state,
             rotation: { ...rotation, line, timer: startRotationTimer(MESSAGE_ROTATE_MS, update) },
           };
-          stopTyping(typing);
           // Screen readers get the whole sentence once, from an element the typing never touches.
           if (explanation === previous || prefersReducedMotion()) {
             emitState({ ...turned, typing: { kind: 'still' }, explanation });
+            stopTyping(typing);
             emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanation, explanationOpacity: 1 } });
             return;
           }
@@ -429,6 +417,7 @@ export function createLoadingController({
               eraseMs: previous === '' ? 0 : ERASE_MS,
             },
           });
+          stopTyping(typing);
           // An interrupted fade would otherwise leave the line stranded dim.
           emitSideEffect({ kind: 'drawn', view: { srText: explanation, explanationOpacity: 1 } });
         },
@@ -544,12 +533,19 @@ export function createLoadingController({
     },
   };
 
-  /** Moves the bar to `percent`, and arms the stall watch afresh when real progress moved the shown number. */
+  /**
+   * Moves to `state` with the bar at `percent`, and arms the stall watch afresh when real progress moved the shown
+   * number. The bar only moves forward, so a `percent` at or behind it moves to `state` with the bar where it was.
+   */
   function moveBar(
     state: ActiveState,
     { percent, cosmetic = false }: MoveBarParams,
     { emitState, emitSideEffect, update }: Transition<ScreenMachine>,
   ): void {
+    if (percent <= state.bar.percent) {
+      emitState(state);
+      return;
+    }
     const shown = Math.round(percent);
     const moved = !cosmetic && shown !== state.bar.realShown;
     const next: ActiveState = {
