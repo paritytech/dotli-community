@@ -7,6 +7,7 @@ import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { LandingAuth } from '../islands/LandingAuth.jsx';
 import { LandingNav } from '../islands/LandingNav.jsx';
+import { LandingSuggest } from '../islands/LandingSuggest.jsx';
 import { LandingRecents } from '../islands/LandingRecents.jsx';
 import s from './Landing.module.css';
 ---
@@ -24,7 +25,10 @@ import s from './Landing.module.css';
         <span class={s['beta']}>β</span>
       </h1>
       <p class={s['subtitle']}>The decentralized web, in your browser.</p>
-      <LandingNav client:load />
+      <div class={s['nav']}>
+        <LandingNav client:load />
+        <LandingSuggest client:idle />
+      </div>
       <LandingRecents client:load />
     </div>
   </div>

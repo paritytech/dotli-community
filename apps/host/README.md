@@ -25,6 +25,8 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
 - **TrUAPI host side:** the page core and the host callbacks.
 - **Session:** sign-in and sign-out with Polkadot App or a local wallet. It also owns the signed-in flag and the wallet
   mode.
+- **Name suggestions:** the landing page keeps a dotNS name list and suggests the names that publish an app under its
+  input.
 - **Stores:**
   - auth
   - product
