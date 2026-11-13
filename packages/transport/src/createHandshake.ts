@@ -14,6 +14,7 @@ import { createWholeDecoder } from './createWholeDecoder.js';
 import type { Schema, Sections } from './defineSchema.js';
 import { encodeFrame } from './frame.js';
 import type { HandshakeOffer, HandshakeResponse, TransportVersions } from './handshakeCodecs.js';
+import { getFailureReason } from './getFailureReason.js';
 import { err, ok } from './result.js';
 import { TransportHandshakeTimeoutError } from './transportHandshakeTimeoutError.js';
 import { TransportUnsupportedProtocolVersionError } from './transportUnsupportedProtocolVersionError.js';
@@ -64,8 +65,6 @@ export function createHandshake<Hello>({
     timers,
   });
   let started = false;
-  // The accepter's answer to the first attempt, which every later attempt hears again.
-  let first: HandshakeResponse | undefined;
 
   /** Starts the opener's handshake once, unless the transport closed. Does nothing on the accepter. Never throws. */
   function start(): void {
@@ -94,56 +93,59 @@ export function createHandshake<Hello>({
   /** Hears the accepter's answer on the opener. Only the first answer counts, and the rest answer later attempts. */
   function hearResponse(response: HandshakeResponse): void {
     if (!started) {
-      issues.refuse('invalid', new Error('A handshake answer came before this side opened the handshake'));
+      issues.refuse('invalid', new Error('A handshake answer came to a side that has not opened a handshake'));
       return;
     }
     if (!response.success) {
       fail(new TransportUnsupportedProtocolVersionError(ours, response.value));
       return;
     }
-    // A hello may decode to undefined, so a failed decode is caught here rather than told by its value.
-    let peerHello: Hello;
-    try {
-      peerHello = wholeHello(response.value);
-    } catch (error) {
-      issues.refuse('malformed', toError(error));
-      return;
-    }
-    connection.connect(peerHello);
-  }
-
-  /** Hears the opener's attempt `id` on the accepter, and answers it with the outcome of the first. */
-  function hearOffer(id: number, offer: HandshakeOffer): void {
-    if (!isSameVersions(offer.versions)) {
-      if (answerOffer(id, err(ours))) {
-        fail(new TransportUnsupportedProtocolVersionError(ours, offer.versions));
-      }
-      return;
-    }
-    // A hello is decoded only at the same versions, since another release's may not decode. It may decode to
-    // undefined, so a failed decode is caught here rather than told by its value.
-    let peerHello: Hello;
-    try {
-      peerHello = wholeHello(offer.hello);
-    } catch (error) {
-      issues.refuse('malformed', toError(error));
-      return;
-    }
-    if (answerOffer(id, ok(ourHello))) {
-      connection.connect(peerHello);
+    const peer = readHello(response.value);
+    if (peer !== null) {
+      connection.connect(peer.hello);
     }
   }
 
   /**
-   * Posts the answer to attempt `id`: the first attempt's, or `answer` when this is the first. Returns whether this
-   * answer decides the handshake. A post the provider throws on closes this side, so an answer that decides is always
-   * one the opener can hear.
+   * Hears the opener's attempt `id` on the accepter, and answers it. A failed answer and a failed post each close this
+   * side, so a later attempt is answered only once the first connected.
    */
-  function answerOffer(id: number, answer: HandshakeResponse): boolean {
-    const deciding = first === undefined;
-    first ??= answer;
-    const posted = connection.post({ data: encodeFrame({ id, body: { tag: 'handshakeResponse', value: first } }) });
-    return posted && deciding;
+  function hearOffer(id: number, offer: HandshakeOffer): void {
+    if (opens) {
+      issues.refuse('invalid', new Error('A handshake offer reached the side that opens the handshake'));
+      return;
+    }
+    const phase = connection.getPhase();
+    switch (phase.name) {
+      case 'closed':
+        issues.refuse(
+          'invalid',
+          new Error(`A handshake offer came after the transport closed, ${getFailureReason(phase.error)}`),
+        );
+        return;
+      case 'connected':
+        // A later attempt of the opener's, posted before it heard the first answer.
+        answerOffer(id, ok(ourHello));
+        return;
+      case 'connecting':
+        break;
+    }
+    if (!isSameVersions(offer.versions)) {
+      answerOffer(id, err(ours));
+      fail(new TransportUnsupportedProtocolVersionError(ours, offer.versions));
+      return;
+    }
+    // A hello is decoded only at the same versions, since another release's may not decode.
+    const peer = readHello(offer.hello);
+    if (peer !== null) {
+      // A post the provider throws on closes this side, so the connect after it does nothing.
+      answerOffer(id, ok(ourHello));
+      connection.connect(peer.hello);
+    }
+  }
+
+  function answerOffer(id: number, answer: HandshakeResponse): void {
+    connection.post({ data: encodeFrame({ id, body: { tag: 'handshakeResponse', value: answer } }) });
   }
 
   // An attempt is no call, so it takes no call id, and the accepter's answer echoes it. The frame is built anew each
@@ -153,13 +155,21 @@ export function createHandshake<Hello>({
     if (connection.post({ data: encodeFrame({ id: 0, body: { tag: 'handshakeOffer', value: offer } }) })) {
       throw new HandshakeUnansweredError('The handshake is not answered yet');
     }
-    throw readClosingError();
+    // A post that fails closes the transport with why, so this error only ends the attempts.
+    throw new Error('The handshake offer was not posted');
   }
 
-  /** The error the transport closed with, or a plain one when an offer was not posted on a transport still open. */
-  function readClosingError(): Error {
-    const phase = connection.getPhase();
-    return phase.name === 'closed' ? phase.error : new Error('The handshake offer was not posted');
+  /**
+   * The peer's hello, or null when it does not decode, which is refused. Wrapped, since a hello may decode to
+   * undefined.
+   */
+  function readHello(bytes: Uint8Array): { hello: Hello } | null {
+    try {
+      return { hello: wholeHello(bytes) };
+    } catch (error) {
+      issues.refuse('malformed', toError(error));
+      return null;
+    }
   }
 
   /** Ends a handshake that is still going with `error`, which closes the transport. A settled one ignores it. */

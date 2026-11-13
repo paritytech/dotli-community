@@ -46,11 +46,6 @@ export type TransportParams<Hello, T extends Sections> = {
   onIssue?: ((issue: TransportIssue) => void) | undefined;
 };
 
-type RouteParams = {
-  id: number;
-  call: Call<MessageBytes>;
-};
-
 type WaitParams = {
   /** Gives up on this wait only: it rejects with an `AbortError`, and the handshake goes on for other callers. */
   signal?: AbortSignal | undefined;
@@ -102,7 +97,7 @@ export function createTransport<Hello, T extends Sections>({
      * Starts the handshake on the opener, for a side that starts it before its first call. Does nothing on the
      * accepter, which waits for the opener.
      */
-    connect,
+    connect: handshake.start,
     /**
      * Resolves once the handshake succeeds, and rejects with the closing error once the transport closes. Starts the
      * handshake on the opener, as `connect` does. Rejects with an `AbortError` once `signal` aborts, which ends this
@@ -151,10 +146,6 @@ export function createTransport<Hello, T extends Sections>({
   registerUpstream(transport, { addressOf: schema.addressOf, open: outgoing.open });
   return transport;
 
-  function connect(): void {
-    handshake.start();
-  }
-
   async function whenConnected({ signal }: WaitParams = {}): Promise<void> {
     // A closed transport is never a wait outcome, so its error wins over an aborted signal.
     throwIfClosed();
@@ -174,6 +165,7 @@ export function createTransport<Hello, T extends Sections>({
   function waitForHandshake(signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       function abort(): void {
+        connection.stopSignal.removeEventListener('abort', settle);
         reject(toAbortError(signal.reason, 'The wait for the handshake was aborted'));
       }
 
@@ -181,11 +173,18 @@ export function createTransport<Hello, T extends Sections>({
         abort();
         return;
       }
-      signal.addEventListener('abort', abort, { once: true });
-      void connection.whenOver.then(() => {
+      // Heard through the connection's stop signal, whose listener goes with an abort, so a wait given up holds
+      // nothing until the handshake settles.
+      function settle(): void {
         signal.removeEventListener('abort', abort);
         resolve();
-      });
+      }
+      if (connection.stopSignal.aborted) {
+        resolve();
+        return;
+      }
+      signal.addEventListener('abort', abort, { once: true });
+      connection.stopSignal.addEventListener('abort', settle, { once: true });
     });
   }
 
@@ -227,26 +226,12 @@ export function createTransport<Hello, T extends Sections>({
       return;
     }
     const { id, body } = frame;
-    const phase = connection.getPhase();
     switch (body.tag) {
       case 'handshakeOffer':
-        if (opens) {
-          issues.refuse('invalid', new Error('A handshake offer reached the side that opens the handshake'));
-        } else if (phase.name === 'closed') {
-          issues.refuse(
-            'invalid',
-            new Error(`A handshake offer came after the transport closed, ${getFailureReason(phase.error)}`),
-          );
-        } else {
-          handshake.hearOffer(id, body.value);
-        }
+        handshake.hearOffer(id, body.value);
         return;
       case 'handshakeResponse':
-        if (opens) {
-          handshake.hearResponse(body.value);
-        } else {
-          issues.refuse('invalid', new Error('A handshake answer reached the side that accepts the handshake'));
-        }
+        handshake.hearResponse(body.value);
         return;
       case 'failed':
         outgoing.fail(id, body.value);
@@ -256,12 +241,12 @@ export function createTransport<Hello, T extends Sections>({
           outgoing.hear(id, body.value);
           return;
         }
-        routeCall({ id, call: body.value });
+        routeCall(id, body.value);
     }
   }
 
   /** Hands a call of the peer's to the calls this side serves, by the phase the transport is in. */
-  function routeCall({ id, call }: RouteParams): void {
+  function routeCall(id: number, call: Call<MessageBytes>): void {
     const phase = connection.getPhase();
     switch (phase.name) {
       case 'connected':

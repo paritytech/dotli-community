@@ -4,9 +4,9 @@
 // Whether the transport is open, and the one way out to the peer. It is the one owner of the phase: the handshake
 // connects it, and a failed handshake, a failed post or the owner closes it.
 
-import { createDeferred, toError } from '@dotli/shared';
+import { toError } from '@dotli/shared';
 import type { Address } from './defineSchema.js';
-import type { TransportIssue } from './describeIssue.js';
+import type { IssueReport } from './createIssueReport.js';
 import type { FrameBytes } from './frameBytes.js';
 import type { Provider } from './provider.js';
 
@@ -19,7 +19,7 @@ export type Connection<Hello> = ReturnType<typeof createConnection<Hello>>;
 type Params = {
   provider: Provider;
   /** Hands an issue to the owner. Never throws. */
-  report: (issue: TransportIssue) => void;
+  report: IssueReport['report'];
   /** Ends every call once the transport closes, after the phase says closed. */
   onClose: (error: Error) => void;
 };
@@ -40,10 +40,12 @@ type PlaceParams = {
 /** The phase of one transport, the post to its provider, and the close that ends it. */
 export function createConnection<Hello>({ provider, report, onClose }: Params) {
   let phase: Phase<Hello> = { name: 'connecting' };
-  // Aborted once the handshake is settled or the transport closed, which stops the opener's attempts.
   const stopAttempts = new AbortController();
-  // Settles once the handshake succeeds or fails, or the transport closes. The phase says which.
-  const handshakeOver = createDeferred<undefined>();
+  const handshakeOver = new Promise<void>(resolve => {
+    stopAttempts.signal.addEventListener('abort', () => {
+      resolve();
+    });
+  });
 
   function getPhase(): Phase<Hello> {
     return phase;
@@ -66,7 +68,7 @@ export function createConnection<Hello>({ provider, report, onClose }: Params) {
   }
 
   function place({ send, fail }: PlaceParams): void {
-    void handshakeOver.promise.then(() => {
+    void handshakeOver.then(() => {
       if (phase.name === 'closed') {
         fail(phase.error);
       } else {
@@ -81,7 +83,6 @@ export function createConnection<Hello>({ provider, report, onClose }: Params) {
     }
     phase = { name: 'connected', peerHello };
     stopAttempts.abort();
-    handshakeOver.resolve(undefined);
   }
 
   function close(error: Error): void {
@@ -90,7 +91,6 @@ export function createConnection<Hello>({ provider, report, onClose }: Params) {
     }
     phase = { name: 'closed', error };
     stopAttempts.abort(error);
-    handshakeOver.resolve(undefined);
     onClose(error);
   }
 
@@ -120,7 +120,7 @@ export function createConnection<Hello>({ provider, report, onClose }: Params) {
      */
     close,
     /** Settles once the handshake succeeds or fails, or the transport closes. The phase says which. */
-    whenOver: handshakeOver.promise,
+    whenOver: handshakeOver,
     /** Aborts once the handshake is settled or the transport closed, which stops the opener's attempts. */
     stopSignal: stopAttempts.signal,
   };

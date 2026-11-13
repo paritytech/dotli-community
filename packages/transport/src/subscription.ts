@@ -14,7 +14,6 @@ type Params<Start, Value, Interrupt> = {
 
 // A leg's payload is read as nothing, so reading a message's leg reads only its tag and copies no payload.
 const voidSubscriptionLegs = createSubscriptionLegs({ start: _void, receive: _void, interrupt: _void });
-const subscriptionLeg = voidSubscriptionLegs.dec;
 
 /** The stop of any subscription, which carries nothing, so a side that decodes none of its messages can send it. */
 export const SUBSCRIPTION_STOP = toMessageBytes(voidSubscriptionLegs.enc({ tag: 'stop', value: undefined }));
@@ -55,7 +54,7 @@ function createSubscription<Start, Value, Interrupt>(
 ): Subscription<Start, Value, Interrupt> {
   return createMethod(
     createSubscriptionLegs({ start: definition.start, receive: definition.receive, interrupt }),
-    subscriptionLeg,
+    voidSubscriptionLegs.dec,
   );
 }
 

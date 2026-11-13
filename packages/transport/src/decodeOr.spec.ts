@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { str } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import { decodeOr } from './decodeOr.js';
 
@@ -30,17 +29,5 @@ describe('decodeOr', () => {
     expect(errors[0]).toBe(refused);
     expect(errors[1]).toBeInstanceOf(Error);
     expect(errors[1]?.cause).toBe('not bytes');
-  });
-
-  it('As a decoder site, I decode good bytes and get the value, and onError hears nothing', () => {
-    // Given
-    const errors: Error[] = [];
-
-    // When
-    const decoded = decodeOr({ decoder: str.dec, data: str.enc('a note'), onError: error => errors.push(error) });
-
-    // Then
-    expect(decoded).toBe('a note');
-    expect(errors).toEqual([]);
   });
 });

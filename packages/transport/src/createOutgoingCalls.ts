@@ -199,42 +199,68 @@ export function createOutgoingCalls({ schema, ids, connection, issues, startHand
     const address = schema.addressOf(method);
     let state: 'queued' | 'open' | 'ended' = 'queued';
     const id = ids.takeNext();
+    // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
+    let data: FrameBytes;
+    try {
+      data = encodeCall({ method, address, id, message: { tag: 'start', value: start } });
+    } catch (error) {
+      // A codec of the owner's may throw a value that is no error, and the caller hears an error.
+      throw toError(error);
+    }
 
-    /** Ends the subscription once, and tells `heard`, if any. `tellPeer` stops an open one at the peer. */
-    function finish(tellPeer: boolean, heard: (() => void) | null): void {
+    /** Ends the subscription once. Returns the state it left, or null when it had ended already. */
+    function leave(): 'queued' | 'open' | null {
       const was = state;
       if (was === 'ended') {
-        return;
+        return null;
       }
       state = 'ended';
       signal?.removeEventListener('abort', cancel);
       out.delete(id);
-      if (tellPeer && was === 'open') {
-        ended.add(id);
-        // A stop carries nothing, so it always encodes.
-        const data = encodeCall({ method, address, id, message: { tag: 'stop', value: undefined } });
-        connection.post({ data, address });
-      }
-      if (heard !== null) {
-        issues.runListener(heard);
-      }
+      return was;
     }
 
+    /** Tells the peer to stop the subscription, which was open, and keeps what it sends meanwhile quiet. */
+    function stopAtPeer(): void {
+      ended.add(id);
+      // A stop carries nothing, so it always encodes.
+      const stop = encodeCall({ method, address, id, message: { tag: 'stop', value: undefined } });
+      connection.post({ data: stop, address });
+    }
+
+    // Nothing follows an interrupt, so the peer is not told, and what it sends after one is refused.
     function interrupt(reason: Interrupt): void {
-      finish(false, () => {
-        listeners.interrupt(reason);
-      });
+      if (leave() !== null) {
+        issues.runListener(() => {
+          listeners.interrupt(reason);
+        });
+      }
     }
 
     function fail(failure: Failure, tellPeer: boolean): void {
-      finish(tellPeer, () => {
+      const was = leave();
+      if (was === null) {
+        return;
+      }
+      if (tellPeer && was === 'open') {
+        stopAtPeer();
+      }
+      issues.runListener(() => {
         listeners.fail(failure);
       });
     }
 
-    // A closed transport posts nothing, so the peer is not told.
+    // A closed transport posts nothing, so the peer is not told, and what it sent on an open one before it heard of
+    // the close is a race.
     function close(error: Error): void {
-      finish(false, () => {
+      const was = leave();
+      if (was === null) {
+        return;
+      }
+      if (was === 'open') {
+        ended.add(id);
+      }
+      issues.runListener(() => {
         listeners.close(error);
       });
     }
@@ -244,7 +270,9 @@ export function createOutgoingCalls({ schema, ids, connection, issues, startHand
     }
 
     function unsubscribe(): void {
-      finish(true, null);
+      if (leave() === 'open') {
+        stopAtPeer();
+      }
     }
 
     // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the peer
@@ -254,16 +282,6 @@ export function createOutgoingCalls({ schema, ids, connection, issues, startHand
       issues.refuse('malformed', error);
       const leg = decodeOr({ decoder: method.leg, data: bytes, onError: () => undefined });
       fail(malformedFrame(error), leg?.tag !== 'interrupt');
-    }
-
-    /** The start's frame. Throws an error when the wire cannot carry the start. */
-    function encodeStart(): FrameBytes {
-      try {
-        return encodeCall({ method, address, id, message: { tag: 'start', value: start } });
-      } catch (error) {
-        // A codec of the owner's may throw a value that is no error, and the caller hears an error.
-        throw toError(error);
-      }
     }
 
     /** Posts the start once the handshake is over, unless the subscription ended meanwhile. */
@@ -317,10 +335,9 @@ export function createOutgoingCalls({ schema, ids, connection, issues, startHand
       close,
     };
 
-    // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
-    const data = encodeStart();
     startHandshake();
-    if (signal?.aborted === true) {
+    // A closed transport is never a call outcome, so its error, which `place` hands on, wins over an aborted signal.
+    if (signal?.aborted === true && connection.getPhase().name !== 'closed') {
       // Heard on a microtask, so no listener runs before the caller holds its `unsubscribe`.
       queueMicrotask(cancel);
       return unsubscribe;
@@ -416,7 +433,10 @@ export function createOutgoingCalls({ schema, ids, connection, issues, startHand
     outCall.fail(failure);
   }
 
-  /** Ends every call that went out or waits to, with the error the transport closed with. */
+  /**
+   * Ends every call that went out with the error the transport closed with. A call still waiting for the handshake ends
+   * through `place`.
+   */
   function closeAll(error: Error): void {
     for (const outCall of [...out.values()]) {
       outCall.close(error);

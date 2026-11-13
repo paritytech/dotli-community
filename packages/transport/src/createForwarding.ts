@@ -61,7 +61,7 @@ type AnswerEndParams = {
 export function createForwarding({ schema, served, connection, issues }: Params) {
   function forward(methods: readonly AnyMethod[], upstream: Transport<unknown>): () => void {
     const reached = getUpstream(upstream);
-    if (reached === undefined) {
+    if (reached === null) {
       throw new Error('The upstream transport was not built by this library');
     }
     const placed = methods.map(method => {

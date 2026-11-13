@@ -1291,6 +1291,25 @@ describe('calls', () => {
     expect(peer.getNames()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
+
+  it('As a caller whose open subscription closed on a failed post, I hear the peer send on it in the race and nothing is refused', async () => {
+    // Given an open subscription, then a request whose post fails and closes the transport
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts } = createBreakablePosts(broken);
+    const { transport, timers, peer, issues } = await connectRawRig({ wrap });
+    transport.subscribe({ method: notes.watch, start: 'from the top', listeners: createWatcher() });
+    await timers.advance(0);
+    breakPosts();
+    void transport.request(notes.read, 'title').catch(() => undefined);
+    await timers.advance(0);
+
+    // When the peer sends a value it posted before it heard anything
+    peer.call({ method: notes.watch, id: 1, message: { tag: 'receive', value: 'a line' } });
+    await timers.advance(0);
+
+    // Then only the failed post was reported
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'read' } }]);
+  });
 });
 
 describe('serving', () => {
@@ -1326,6 +1345,50 @@ describe('serving', () => {
     // Then
     expect(second).toEqual(matchFields<Error>({ message: 'notes.read already has a handler' }));
     expect(secondSubscription).toEqual(matchFields<Error>({ message: 'notes.watch already has a handler' }));
+  });
+
+  it('As a caller, I subscribe with an aborted signal on a closed transport and hear the close, as a request does', async () => {
+    // Given
+    const { transport, timers } = await connectRawRig();
+    const reason = new Error('the page is closing');
+    transport.dispose(reason);
+    const heard = createWatcher();
+
+    // When
+    transport.subscribe({ method: notes.watch, start: 'late', listeners: heard, signal: AbortSignal.abort() });
+    await timers.advance(0);
+
+    // Then
+    expect(heard.closes).toEqual([reason]);
+    expect(heard.fails).toEqual([]);
+  });
+
+  it('As a serving side with no handler, I answer Unsupported while my provider cannot post and the failed post names the call', async () => {
+    // Given
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts } = createBreakablePosts(broken);
+    const { timers, peer, issues } = await acceptRawRig({ wrap });
+    breakPosts();
+
+    // When
+    peer.call({ method: notes.read, id: 3, message: { tag: 'request', value: 'note' } });
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'read' } }]);
+  });
+
+  it('As a serving side with no handler, I hear an answer leg on a call the peer never opened and refuse it, posting nothing', async () => {
+    // Given
+    const { timers, peer, issues } = await acceptRawRig();
+
+    // When
+    peer.call({ method: notes.read, id: 7, message: { tag: 'response', value: ok('stray') } });
+    await timers.advance(0);
+
+    // Then
+    expect(peer.getNames()).toEqual(['handshakeResponse']);
+    expect(issues).toEqual([matchRefusedIssue('invalid')]);
   });
 
   it('As a serving side, I unregister a handler and a call then answers Unsupported', async () => {
@@ -1615,29 +1678,36 @@ describe('serving', () => {
   it.each([
     {
       reuse: 'a request',
-      refusal: 'A request reuses call 3, which is still in flight',
+      refusal: 'A request names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: notes.read, id: 3, message: { tag: 'request', value: 'second' } });
       },
     },
     {
       reuse: 'an unreadable subscription message',
-      refusal: 'A message reuses call 3, which is still in flight',
+      refusal: 'A message names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.send(3, createUnreadableLeg(notes.watch));
       },
     },
     {
       reuse: 'a start',
-      refusal: 'A start reuses call 3, which is still in flight',
+      refusal: 'A start names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: notes.watch, id: 3, message: { tag: 'start', value: 'from the top' } });
       },
     },
     {
+      reuse: 'a response',
+      refusal: 'A response names call 3, which is still in flight',
+      send: (peer: RawPeer) => {
+        peer.call({ method: notes.read, id: 3, message: { tag: 'response', value: ok('early') } });
+      },
+    },
+    {
       // Refused rather than answered Unsupported, so the id carries one answer.
       reuse: 'a request for a method I do not serve',
-      refusal: 'A request reuses call 3, which is still in flight',
+      refusal: 'A request names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: echo.say, id: 3, message: { tag: 'request', value: 'hello' } });
       },
@@ -2210,7 +2280,7 @@ describe('the handshake', () => {
     expect(await opened).toEqual({ value: undefined });
   });
 
-  it('As an opener with no timeout set, I connect and my handshake waits 10 seconds for an answer, as host-api and truapi wait', async () => {
+  it('As an opener with no timeout set, I connect and my handshake waits 10 seconds for an answer, as truapi waits', async () => {
     // Given
     const { left } = createProviderPair();
     const timers = createManualTimers();
@@ -2364,7 +2434,7 @@ describe('the handshake', () => {
     expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
-  it('As an opener, I make my first request, subscription or wait and it starts the handshake, as host-api starts it, and an accepter starts nothing', async () => {
+  it('As an opener, I make my first request, subscription or wait and it starts the handshake, so no call needs a connect first, and an accepter starts nothing', async () => {
     // Given three openers and an accepter, none of which connects
     const requesting = createRawRig({ handshake: 'offer' });
     const subscribing = createRawRig({ handshake: 'offer' });

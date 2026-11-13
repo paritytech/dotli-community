@@ -21,7 +21,7 @@ export type Frame<Message> = CodecType<ReturnType<typeof createFrameCodec<Messag
 /** A message on a call, with the ids of its method. */
 export type Call<Message> = Extract<Frame<Message>['body'], { tag: 'call' }>['value'];
 
-type EncodeCallParams<Message> = {
+export type EncodeCallParams<Message> = {
   method: { readonly frame: Codec<Frame<Message>> };
   address: Address;
   id: number;
