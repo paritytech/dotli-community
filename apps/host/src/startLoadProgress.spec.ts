@@ -255,6 +255,26 @@ describe('startLoadProgress', () => {
     expect(loadingState.get().warning).toBe('Still working. This is taking longer than usual.');
   });
 
+  it('As a visitor in direct mode, I wait on two stalled chains, the later one recovers before the load is old enough to be slow, and at that mark I am told of the general slowness', async () => {
+    // Given the relay and Asset Hub stall before the mark, Asset Hub's line parked last
+    const { chainSync, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(1_000);
+    chainSync.send({ chain: 'assethub', kind: 'connecting' });
+    await timers.advance(3_500);
+
+    // When Asset Hub completes its boot just before the mark, while the relay still stalls
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 3 });
+    chainSync.send({ chain: 'assethub', kind: 'bootstrapComplete' });
+    await timers.advance(500);
+
+    // Then
+    expect(loadingState.get().warning).toBe('Still working. This is taking longer than usual.');
+    expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
+  });
+
   it('As an operator, I see a report source that throws as the load progress subscribes reported as a defect, while the progress returns and leaves no other source listened to', () => {
     // Given a byte counter that cannot be listened to
     const { counted } = bindReports();

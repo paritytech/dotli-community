@@ -195,8 +195,8 @@ const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined };
 
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
- * resolved. Never throws: a throw of the loading screen or of a subscription in `telemetry` or `blockRelay` is reported. A load whose
- * subscription threw opens its bar and moves it no further.
+ * resolved. Never throws: a throw of the loading screen or of a subscription in `telemetry` or `blockRelay` is
+ * reported. A load whose subscription threw opens its bar and moves it no further.
  */
 export function startLoadProgress({
   label,
@@ -317,16 +317,47 @@ export function startLoadProgress({
           // Records before it moves the bar, so the record sees the bar unmoved.
           transition.emitSideEffect({ kind: 'chainSyncRecorded', sync });
           transition.emitSideEffect({ kind: 'chainSyncShown', sync });
-          watchChain(state, sync, transition);
+          const { chain } = sync;
+          if (!isCriticalChain(chain)) {
+            return;
+          }
+          const watch = state.watches.get(chain) ?? UNWATCHED;
+          // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
+          if (sync.kind === 'peers') {
+            if (sync.peers !== undefined) {
+              transition.emitState(withWatch(state, chain, { ...watch, peers: sync.peers }));
+            }
+            return;
+          }
+          // A chain whose boot completed has nothing left to stall on.
+          const { peers } = watch;
+          const reason = sync.kind === 'stalled' ? sync.reason : undefined;
+          const watched = withWatch(
+            state,
+            chain,
+            sync.kind === 'bootstrapComplete'
+              ? { kind: 'quiet', peers, reason }
+              : { kind: 'watching', timer: startStallTimer(chain, transition), peers, reason },
+          );
+          // Only the named chain moving on takes its line down. One that stalls or reconnects again keeps its line
+          // until its watch words it afresh.
+          const recovered =
+            sync.kind !== 'stalled' && sync.kind !== 'connecting' && getWarnedChain(state.warning) === chain;
+          if (!recovered) {
+            transition.emitState(watched);
+            return;
+          }
+          // The general line takes its place, shown or parked alike, since another chain may still stall and hiding a
+          // shown row would flash it.
+          const message = describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING;
+          raiseWarning(watched, { message, chain: null }, transition);
         },
         chainDetailed: recordDetail,
         netBytes(state, { received, at }, { emitState, emitSideEffect }) {
+          emitSideEffect({ kind: 'bytesRecorded', received });
           const throughput = measureThroughput(state.throughput, received, at);
           const totals = state.byteTotals;
-          emitSideEffect({ kind: 'bytesRecorded', received });
-          if (totals.kind === 'closed') {
-            emitState({ ...state, throughput });
-          } else if (isByteTotalDue(totals, received, at)) {
+          if (totals.kind === 'open' && isByteTotalDue(totals, received, at)) {
             const sampled = { at, total: received };
             emitState({
               ...state,
@@ -335,7 +366,7 @@ export function startLoadProgress({
             });
             emitSideEffect({ kind: 'byteTotalSampled', received });
           } else {
-            emitState({ ...state, throughput, byteTotals: { ...totals, received } });
+            emitState({ ...state, throughput, byteTotals: totals.kind === 'open' ? { ...totals, received } : totals });
           }
           if (throughput.bytesPerSecond !== null) {
             emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
@@ -422,13 +453,7 @@ export function startLoadProgress({
           trace.recordBytes(effect.received);
           return;
         case 'byteTotalSampled':
-          debugBus.emit({
-            layer: 'chain',
-            event: 'bytes',
-            flowId,
-            timestamp: timers.now(),
-            payload: { received: effect.received },
-          });
+          chainReporter.recordBytes(effect.received);
           return;
         case 'rateMeasured':
           networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
@@ -497,50 +522,6 @@ export function startLoadProgress({
 
   function dispose(): void {
     progress.update({ kind: 'disposed' });
-  }
-
-  /**
-   * Re-arms a critical chain's stall watch on its lifecycle milestone, or keeps a peer sample for the wording. When the
-   * chain the line names recovers, its line gives way to the general one, even while another chain still stalls.
-   */
-  function watchChain(state: LightClientState, sync: ChainSyncEvent, transition: Transition<ProgressMachine>): void {
-    const { chain } = sync;
-    if (!isCriticalChain(chain)) {
-      return;
-    }
-    const watch = state.watches.get(chain) ?? UNWATCHED;
-    // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
-    if (sync.kind === 'peers') {
-      if (sync.peers !== undefined) {
-        transition.emitState(withWatch(state, chain, { ...watch, peers: sync.peers }));
-      }
-      return;
-    }
-    const { peers } = watch;
-    const reason = sync.kind === 'stalled' ? sync.reason : undefined;
-    // A chain whose boot completed has nothing left to stall on.
-    const watched = withWatch(
-      state,
-      chain,
-      sync.kind === 'bootstrapComplete'
-        ? { kind: 'quiet', peers, reason }
-        : { kind: 'watching', timer: startStallTimer(chain, transition), peers, reason },
-    );
-    // Only the named chain moving on takes its line down. One that stalls or reconnects again keeps its line until its
-    // watch words it afresh.
-    const recovered = sync.kind !== 'stalled' && sync.kind !== 'connecting' && getWarnedChain(state.warning) === chain;
-    if (!recovered) {
-      transition.emitState(watched);
-      return;
-    }
-    // A parked line was never seen, so it goes.
-    if (state.warning.kind === 'early') {
-      transition.emitState({ ...watched, warning: { kind: 'early', parked: null } });
-      return;
-    }
-    // Hiding the shown row would flash it, so fall back to the general slow-load line.
-    const message = describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING;
-    revealWarning(watched, { message, chain: null }, transition);
   }
 
   /** Starts `chain`'s stall timer and returns it as the token its watch keeps. */
