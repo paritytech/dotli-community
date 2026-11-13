@@ -72,11 +72,12 @@ type WorkerEvent =
   | { kind: 'restoreMissed'; error: unknown };
 
 /**
- * A fetch answered, a read-back that ended with the archives its fetches are answered from, a read-back that failed,
- * for the worker's log, and its first failure, for the pages.
+ * A fetch answered from memory, a fetch answered once `read` ends, a read-back that ended with the archives its fetches
+ * are answered from, a read-back that failed, for the worker's log, and its first failure, for the pages.
  */
 type WorkerEffect =
-  | { kind: 'respond'; event: FetchEvent; response: Response | Promise<Response> }
+  | { kind: 'respond'; event: FetchEvent; response: Response }
+  | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string; read: ReadBack }
   | { kind: 'readEnded'; read: ReadBack; archives: Archives }
   | { kind: 'restoreMissed'; error: unknown }
   | { kind: 'firstRestoreMissed'; error: unknown };
@@ -155,7 +156,7 @@ export function startAppServiceWorker({
           // `text/html`.
           const read: ReadBack = createDeferred();
           emitState({ kind: 'reading', archives: state.archives, read, missedBefore: state.missedBefore });
-          emitSideEffect({ kind: 'respond', event, response: answerAfterRead(read, event, pathname) });
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname, read });
           update(
             loadPersistedArchives(indexedDB)
               .then(unpackRestored)
@@ -176,7 +177,7 @@ export function startAppServiceWorker({
             serveFromMemory({ event, archive: own, pathname }, emitSideEffect);
             return;
           }
-          emitSideEffect({ kind: 'respond', event, response: answerAfterRead(read, event, pathname) });
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname, read });
         },
         archivesRestored({ archives, read }, { restored }, { emitState, emitSideEffect }) {
           // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
@@ -216,6 +217,9 @@ export function startAppServiceWorker({
       switch (effect.kind) {
         case 'respond':
           effect.event.respondWith(effect.response);
+          return;
+        case 'respondAfterRead':
+          effect.event.respondWith(answerAfterRead(effect));
           return;
         case 'readEnded':
           effect.read.resolve(effect.archives);
@@ -297,7 +301,11 @@ export function startAppServiceWorker({
    * Answers a fetch once `read` ends, from its client's archive or the newest, and else from the network. Rejects as
    * the network's fetch does, or with what the lookup throws.
    */
-  function answerAfterRead(read: ReadBack, { request, clientId }: FetchEvent, pathname: string): Promise<Response> {
+  function answerAfterRead({
+    read,
+    event: { request, clientId },
+    pathname,
+  }: Extract<WorkerEffect, { kind: 'respondAfterRead' }>): Promise<Response> {
     return read.promise.then(archives => {
       const archive = getClientArchive(archives, clientId) ?? archives.newest;
       return (archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request);
