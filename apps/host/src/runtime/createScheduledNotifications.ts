@@ -228,8 +228,11 @@ export function createScheduledNotifications({
     transition.emitSideEffect({ kind: 'stepFailed', step: 'list_pending', error });
     endRound(state, transition);
   };
-  /** Shows a record this tab removed, whatever round claimed it, since the delete is what claims it. */
-  const fireClaimed: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden', 'claimed'> = (
+  /**
+   * Shows a record this tab removed, whatever round claimed it and also once the scheduler is disposed, since the
+   * delete is what claims it and the store no longer holds it for anyone else.
+   */
+  const fireClaimed: HandlerOf<SchedulerMachine, AwakeState['kind'] | 'hidden' | 'disposed', 'claimed'> = (
     state,
     { record, removed, source },
     { emitSideEffect },
@@ -238,8 +241,8 @@ export function createScheduledNotifications({
       return;
     }
     emitSideEffect({ kind: 'fired', record, source });
-    // A hidden page's channel closed as it hid.
-    if (state.kind !== 'hidden') {
+    // A hidden or disposed page's channel closed as it hid or was disposed.
+    if (state.kind !== 'hidden' && state.kind !== 'disposed') {
       emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
     }
   };
@@ -373,7 +376,8 @@ export function createScheduledNotifications({
         },
         disposed: shutDown,
       },
-      disposed: null,
+      // A claim whose delete was already running when the scheduler was disposed still shows what it removed.
+      disposed: { claimed: fireClaimed },
     },
     onEffect(effect) {
       switch (effect.kind) {
@@ -439,10 +443,10 @@ export function createScheduledNotifications({
      */
     cancel,
     /**
-     * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more and a
-     * claim whose delete is running shows nothing, an `init` or a restore after it starts nothing, a `schedule` or
-     * `cancel` still settles as the store answers, and it is safe to call twice or after a failed round and never
-     * throws.
+     * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more, while
+     * a claim whose delete is already running still shows the notification it removed. An `init` or a restore after it
+     * starts nothing, a `schedule` or `cancel` still settles as the store answers, and it is safe to call twice or
+     * after a failed round and never throws.
      */
     dispose,
   };

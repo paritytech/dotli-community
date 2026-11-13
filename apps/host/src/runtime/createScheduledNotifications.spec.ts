@@ -515,7 +515,7 @@ describe('scheduled notifications disposed', () => {
     expect(show).not.toHaveBeenCalled();
   });
 
-  it('As a user who left the page, I see a claim whose delete was already running show nothing', async () => {
+  it('As a dApp user, I dispose the scheduler while it deletes a due notification it claimed and the notification still shows, so it is not lost', async () => {
     // Given a page load whose claim of a due notification is held at the delete
     const { start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
@@ -529,8 +529,8 @@ describe('scheduled notifications disposed', () => {
     removed.resolve(true);
     await advanceTicks(1);
 
-    // Then nothing is shown
-    expect(show).not.toHaveBeenCalled();
+    // Then the notification the delete took from the store shows
+    expect(show).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: DUE.title }));
   });
 
   it('As an operator, I see a notification whose show throws reported as a defect, and the next due notification still shows', async () => {
