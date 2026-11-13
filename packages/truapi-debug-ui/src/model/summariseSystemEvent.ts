@@ -34,8 +34,6 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
         : `CID cache miss for ${formatValue(payload['label'])}.`;
     case 'boot:block_cache':
       return `Host block cache: ${formatValue(payload['hits'])} blocks from cache, ${formatValue(payload['misses'])} from the network.`;
-    case 'boot:landing_page_shown':
-      return 'Landing page rendered (no subdomain to resolve).';
     case 'boot:ready':
       return `Boot complete via ${formatValue(payload['path'])} path in ${formatMilliseconds(payload['totalMs'])}.`;
     case 'boot:failed':
@@ -45,8 +43,6 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
       return `Resolving ${withActiveTld(formatValue(payload['label']))} via ${formatValue(payload['source'])}.`;
     case 'resolve:phase':
       return `Phase ${formatValue(payload['phase'])}.`;
-    case 'resolve:storage_read':
-      return `Read dotns contenthash slot (${formatValue(payload['bytes'])} bytes in ${formatMilliseconds(payload['durationMs'])}).`;
     case 'resolve:completed':
       return payload['cid'] === null
         ? `No content set for ${withActiveTld(formatValue(payload['label']))}.`
@@ -97,30 +93,8 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
         ? 'Main-thread monitor stopped (bridge traffic established).'
         : 'Main-thread monitor stopped (max duration reached).';
 
-    case 'sandbox:started':
-      return `Sandbox iframe started (cid=${formatValue(payload['cid'])}, backend=${formatValue(payload['contentBackend'])}).`;
-    case 'sandbox:sw_register_begin':
-      return `Registering service worker${payload['waitForFreshController'] === true ? ' (waiting for fresh controller)' : ''}.`;
-    case 'sandbox:sw_ready':
-      return `Service worker ready in ${formatMilliseconds(payload['durationMs'])}.`;
-    case 'sandbox:fetch_begin':
-      return `Fetching archive via ${formatValue(payload['contentBackend'])}.`;
-    case 'sandbox:helia_ready':
-      return `Helia P2P ready in ${formatMilliseconds(payload['durationMs'])}.`;
-    case 'sandbox:status':
-      return `Sandbox status: ${formatValue(payload['message'])}`;
-    case 'sandbox:fetch_complete':
-      return `Archive fetched (${formatValue(payload['kind'])}) in ${formatMilliseconds(payload['durationMs'])}.`;
-    case 'sandbox:decrypt_started':
-      return 'Prompting for decryption password.';
-    case 'sandbox:decrypt_complete':
-      return 'Archive decrypted.';
-    case 'sandbox:archive_stored':
-      return `Archive staged in SW (${formatValue(payload['fileCount'])} files, ${formatMilliseconds(payload['durationMs'])}).`;
     case 'sandbox:document_written':
       return `Sandbox ready in ${formatMilliseconds(payload['totalMs'])}: dApp HTML written, product transport will start here.`;
-    case 'sandbox:failed':
-      return `Sandbox failed: ${formatValue(payload['reason'])}.`;
 
     default:
       // A sandbox release out of step with the host can send an event outside the union, which still shows its key.

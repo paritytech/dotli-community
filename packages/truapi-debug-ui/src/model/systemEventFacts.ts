@@ -83,14 +83,6 @@ The sandbox cannot keep content itself: its iframe is credentialless, so its sto
     endsFlow: false,
   },
 
-  'boot:landing_page_shown': {
-    explanation: {
-      title: 'Landing page rendered',
-      body: `The host URL had no product subdomain to resolve, so the landing page island rendered the marketing landing page and \`main()\` returned. Boot ends here. No product iframe, no bridge, no TrUAPI traffic.`,
-    },
-    endsFlow: true,
-  },
-
   'boot:ready': {
     explanation: {
       title: 'Host boot complete',
@@ -132,16 +124,6 @@ After this event, the TrUAPI bus starts producing traffic and the product is dri
       body: `A phase the resolver reported while it read the name: \`asset-hub-connecting\`, \`asset-hub-syncing\` and \`asset-hub-ready\` while its Asset Hub client is built, then \`resolving-content\`.
 
 On the smoldot backends these phases drive the loading UI's phase bar. They ship to this panel so you can see exactly where a slow resolution is stuck.`,
-    },
-    endsFlow: false,
-  },
-
-  'resolve:storage_read': {
-    explanation: {
-      title: 'Storage read against dotns',
-      body: `The resolver has read the \`dotns.ContentHash(namehash(label))\` Solidity storage slot on Asset Hub Paseo. The returned bytes are then decoded as an EIP-1577 IPFS contenthash (\`0xe3 01 70 12 20 …\`) to yield the raw CID hex.
-
-\`bytes\` is the raw byte length returned. \`durationMs\` is the wall-clock for the storage read (excludes prior chain sync time).`,
     },
     endsFlow: false,
   },
@@ -287,97 +269,6 @@ These are intentionally chatty on purpose: they're the control signal against wh
     endsFlow: true,
   },
 
-  'sandbox:started': {
-    explanation: {
-      title: 'Sandbox boot started',
-      body: `The sandbox iframe at \`<label>.app.dot.li\` has just started executing its own \`main()\`. It reads the curated URL params (resolved CID, content backend, chain backend, skip flags) from the host contract, and begins the "fetch the archive, then render it" pipeline.
-
-Everything that happens from here until \`sandbox:document_written\` runs in the **sandbox origin**, not the host. During this window the host has already set \`iframe.src\` and is sending \`host_handshake_request\` on the bridge, but the product itself won't exist inside the sandbox iframe until \`document.write\` runs at the end of this flow. That's why you can see a long silent gap in the host's bridge swimlane: there is nothing to respond because the product isn't loaded yet.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:sw_register_begin': {
-    explanation: {
-      title: 'Service worker registration',
-      body: `The sandbox is registering its per-origin service worker. The SW is what intercepts sub-resource requests (CSS, JS, fonts, images) from the dApp after \`document.write\`. Without it, those requests would fall through to the origin server and break the offline-capable "serve from bulletin chain archive" model.
-
-\`waitForFreshController=true\` only happens on the \`fullReset=1\` boot path. After the host's settings popover wipes sandbox state, the existing \`navigator.serviceWorker.controller\` still points at the SW the reset just unregistered, so the sandbox waits for a \`controllerchange\` event before it relies on the new install. When the browser kept the worker that controls the page, with nothing installing or waiting, no \`controllerchange\` can come, so it goes on at once.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:sw_ready': {
-    explanation: {
-      title: 'Service worker ready',
-      body: `The sandbox SW is active and controlling the page. \`durationMs\` is wall-clock from \`sw_register_begin\`. Large values (multiple seconds) usually mean the browser had to install a brand-new worker on a cold cache, or the \`waitForFreshController\` branch was in play.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:fetch_begin': {
-    explanation: {
-      title: 'Archive fetch started',
-      body: `The sandbox pulls the archive. Blocks the host already holds come from its block cache, the rest from the bulletin chain. The chosen \`contentBackend\` picks the transport:
-
-• \`p2p-helia\`: load Helia/libp2p, open bitswap sessions to peers, request the CID, assemble chunks. Bandwidth-limited, peer-discovery-limited, and the single biggest source of "the host is silent for 15 seconds" symptoms. Helia can take many seconds to connect to its first useful peer.
-• \`ipfs-gateway\`: plain HTTPS fetch from the configured IPFS gateway. Much faster but requires a trusted centralised endpoint.
-
-\`fetch_complete\` closes this stage. The delta between these two events is the main fetch cost.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:helia_ready': {
-    explanation: {
-      title: 'Helia P2P client ready',
-      body: `Helia has finished its startup dance: libp2p transports are up, peer discovery has run, bitswap is wired into block storage. \`durationMs\` captures this initialisation cost. Anything significantly above a second here means P2P is slow to bootstrap in this environment, a hint that the actual \`fetchArchive\` call will also be slow.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:status': {
-    explanation: {
-      title: 'Sandbox progress update',
-      body: `Mirrors the human-readable status string the sandbox is showing in its own loading overlay ("Connecting to peers...", "Fetching via IPFS gateway...", etc.). These are the same messages dispatched via \`dotli:loading-status\` to the host's overlay. They're forwarded here so the system swimlane tells the same story the user sees.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:fetch_complete': {
-    explanation: {
-      title: 'Archive fetch complete',
-      body: `The archive is now available in memory. \`kind=archive\` means we got a multi-file bundle. \`kind=single\` means a single file (typically an encrypted single-file archive, or a non-standard upload). \`durationMs\` is the wall-clock cost of the fetch alone. Cache lookup and SW-register time are **not** included.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:decrypt_started': {
-    explanation: {
-      title: 'Encrypted archive: prompting for password',
-      body: `The fetched payload has the encrypted-archive magic header. The sandbox has already told the host to dismiss its loading overlay and is now displaying the password prompt inside the sandbox iframe. This event starts the clock on any user-driven delay. If the user takes two minutes to type their password, that lands here.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:decrypt_complete': {
-    explanation: {
-      title: 'Archive decrypted',
-      body: `The password was correct. The ciphertext was successfully decoded and parsed into archive files. The rest of the pipeline continues as if the original fetch had returned a plain archive.`,
-    },
-    endsFlow: false,
-  },
-
-  'sandbox:archive_stored': {
-    explanation: {
-      title: 'Archive staged in service worker',
-      body: `The sandbox has packed the archive into a single \`Uint8Array\` + an index map, and posted it to the SW via \`postMessage({ type: "SET_ARCHIVE", ... })\`. The SW keeps it in memory and acknowledges with \`ARCHIVE_READY\`. From now on, **all** sub-resource requests the dApp makes (CSS, JS, fonts) are served by this SW out of that in-memory archive instead of hitting the network.
-
-This **must** complete before \`document.write\` for multi-file archives. Otherwise the first CSS/JS request would race the SW install and miss.`,
-    },
-    endsFlow: false,
-  },
-
   'sandbox:document_written': {
     explanation: {
       title: 'Sandbox ready: dApp HTML written',
@@ -431,14 +322,6 @@ A peer change never opens a phase block of its own. The Resolution view shows th
 This counts chain traffic only. The archive download rides the same metered WebSockets in bulletin mode, so adding the sandbox's content bytes on top would double-count them.`,
     },
     endsFlow: false,
-  },
-
-  'sandbox:failed': {
-    explanation: {
-      title: 'Sandbox boot failed',
-      body: `Something in the fetch / decrypt / store pipeline threw. The sandbox has captured the exception to Sentry with the relevant \`dependency\` tag (\`ipfs-gateway\` / \`helia-bulletin\` / \`unknown\`) and rendered its error UI with a retry button. \`reason\` is the error message from whichever stage threw.`,
-    },
-    endsFlow: true,
   },
 } satisfies Record<SystemEventKey, SystemEventFacts>;
 

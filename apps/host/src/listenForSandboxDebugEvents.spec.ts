@@ -15,16 +15,16 @@ type RelayPage = {
   emitted: DotliDebugEvent[];
   /** Starts the relay as the host wires it, through the channel that checks the origin. Returns the stop. */
   startRelay: () => () => void;
-  /** Posts the sandbox's started event to the page from `origin`. */
+  /** Posts the sandbox's document-written event to the page from `origin`. */
   postDebugEvent: (origin: string) => void;
 };
 
-const SANDBOX_STARTED: DotliDebugEvent = {
+const DOCUMENT_WRITTEN: DotliDebugEvent = {
   layer: 'sandbox',
-  event: 'started',
+  event: 'document_written',
   flowId: 'flow-1',
   timestamp: 1,
-  payload: { cid: 'bafkreisandbox', contentBackend: 'rpc-gateway' },
+  payload: { cid: 'bafkreisandbox', totalMs: 120 },
 };
 
 describe('sandbox debug events', () => {
@@ -37,7 +37,7 @@ describe('sandbox debug events', () => {
     postDebugEvent(`https://doom.app.${BASE_DOMAIN}`);
 
     // Then
-    expect(emitted).toEqual([SANDBOX_STARTED]);
+    expect(emitted).toEqual([DOCUMENT_WRITTEN]);
   });
 
   it.each([
@@ -87,7 +87,7 @@ function setupRelayPage(): RelayPage {
     },
     postDebugEvent(origin) {
       page.dispatchEvent(
-        new MessageEvent('message', { data: { type: 'dotli:debug-event', event: SANDBOX_STARTED }, origin }),
+        new MessageEvent('message', { data: { type: 'dotli:debug-event', event: DOCUMENT_WRITTEN }, origin }),
       );
     },
   };
