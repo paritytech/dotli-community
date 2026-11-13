@@ -97,6 +97,18 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
     emitState({ kind: 'idle' });
     waiting.abort();
   };
+  /** Ends the hand-off and tells each closing sheet whether a sheet took its place. A failed activation leaves it untaken. */
+  function endHandOff(
+    { kind, leaving }: Extract<HandOffState, { kind: 'pending' | 'taken' }>,
+    event: Extract<HandOffEvent, { kind: 'finished' | 'failed' }>,
+    { emitState, emitSideEffect }: Transition<HandOffMachine>,
+  ): void {
+    emitState({ kind: 'idle' });
+    const taken = kind === 'taken' && event.kind === 'finished';
+    for (const settle of leaving) {
+      emitSideEffect({ kind: 'settle', settle, taken });
+    }
+  }
   const machine = createStateMachine<HandOffMachine>({
     initial: { kind: 'idle' },
     handlers: {
@@ -108,7 +120,13 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
           // A DOM event and a timer fire from the event loop, outside any transition, so each may flush.
           const endPress = (): void => {
             update({ kind: 'begun' });
-            flush();
+            try {
+              flush();
+            } catch (error) {
+              update({ kind: 'failed' });
+              flush();
+              throw error;
+            }
             update({ kind: 'finished' });
             flush();
           };
@@ -164,14 +182,15 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
   return {
     /**
      * Runs `activate` so a sheet it opens replaces the closing one in the same frame, and returns whether one did.
-     * When `activate` throws, every held sheet closes as without a hand-off and the throw is rethrown.
+     * When `activate` or its flush throws, every held sheet closes as without a hand-off and the throw is rethrown.
      */
     run,
     /**
      * For a press on a bar control outside the top sheet: `dismiss` closes that sheet now, and the press's click is the
      * hand-off's activation. The hand-off waits only while a sheet leaves. When `isTop` answers true once dismissed
      * and no sheet is leaving, it ends at once, so a sheet the press opens slides in. Otherwise it ends when the click
-     * reaches the target, or next task if a listener stopped it. Throws only what `dismiss` throws.
+     * reaches the target, or next task if a listener stopped it, and a throw in that end's flush closes every held sheet
+     * as without a hand-off. Throws only what `dismiss` or its flush throws.
      */
     press,
     /**
@@ -225,19 +244,6 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
     const before = machine.state.get();
     machine.update({ kind: 'held', settle });
     return machine.state.get() !== before;
-  }
-}
-
-/** Ends the hand-off and tells each closing sheet whether a sheet took its place. A failed activation leaves it untaken. */
-function endHandOff(
-  { kind, leaving }: Extract<HandOffState, { kind: 'pending' | 'taken' }>,
-  event: Extract<HandOffEvent, { kind: 'finished' | 'failed' }>,
-  { emitState, emitSideEffect }: Transition<HandOffMachine>,
-): void {
-  emitState({ kind: 'idle' });
-  const taken = kind === 'taken' && event.kind === 'finished';
-  for (const settle of leaving) {
-    emitSideEffect({ kind: 'settle', settle, taken });
   }
 }
 

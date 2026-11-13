@@ -178,6 +178,25 @@ describe('createSheetHandOff', () => {
     expect(flushes.count).toBe(flushesAfterTimer);
   });
 
+  it('As a closing sheet held by a press whose end throws in a flush, I close as without a hand-off and the throw goes on', async () => {
+    // Given a press that closed the top sheet, which is held, and a flush that throws once the press ends
+    const { timers, flushes, handOff } = setup();
+    const settled: boolean[] = [];
+    handOff.press({ dismiss: () => handOff.hold(wasTaken => settled.push(wasTaken)), isTop: () => false });
+    const failure = new Error('memo failed');
+    flushes.hook = () => {
+      flushes.hook = () => {};
+      throw failure;
+    };
+
+    // When the next task ends the press
+    const ended = timers.advance(0);
+
+    // Then the throw goes on, and the closing sheet hears it was not taken
+    await expect(ended).rejects.toBe(failure);
+    expect(settled).toEqual([false]);
+  });
+
   it('As a menu item run while a press waits, I end the press so its click and timer end nothing', () => {
     // Given a press that closed the top sheet, which is held
     const { timers, target, flushes, handOff } = setup();
@@ -210,6 +229,7 @@ describe('createSheetHandOff', () => {
     expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
     expect(heldAfter).toBe(false);
   });
+
   it('As a closing sheet held after one whose settle throws, I wait and am still told whether a sheet took my place', () => {
     // Given two closing sheets held by the activation, the first of which throws on its settle
     const reports = recordReports({ onFinished: onTestFinished });
