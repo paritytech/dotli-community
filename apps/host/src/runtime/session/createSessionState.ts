@@ -91,19 +91,22 @@ type Event =
   | { kind: 'signedOut' }
   | { kind: 'flagRead'; presence: Presence }
   | { kind: 'retryAsked' }
-  | { kind: 'uiCacheWritten' }
   | { kind: 'savedSessionRead'; session: TruapiSessionUiState | null }
   | { kind: 'savedSessionFailed' }
   | { kind: 'readAsked'; source: SavedSessionSource }
   | { kind: 'readLanded'; session: TruapiSessionUiState | null; flag: Presence | null }
   | { kind: 'readRejected'; error: unknown };
 
-/** `shown` goes out with whether a sign-in made elsewhere waits, which is told first. */
+/**
+ * `shown` goes out with whether a sign-in made elsewhere waits, which is told first. `waiting` is whether the flag and
+ * the state on show say one waits, which the page tells only where its role offers to resume it.
+ */
 type Effect =
-  | { kind: 'shown'; shown: DotliAuthState; elsewhere: boolean }
-  | { kind: 'elsewhereTold'; elsewhere: boolean }
+  | { kind: 'shown'; shown: DotliAuthState; waiting: boolean }
+  | { kind: 'elsewhereTold'; waiting: boolean }
   | { kind: 'readFailed'; error: unknown }
-  | { kind: 'stopped'; stops: readonly (() => void)[] };
+  | { kind: 'uiCacheKept'; value: string | null }
+  | { kind: 'unsubscribed'; stop: () => void };
 
 type SessionMachine = MachineTypes<State, Event, Effect>;
 
@@ -188,7 +191,7 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
             return;
           }
           emitState({ ...state, follow: { kind: 'idle' } });
-          emitSideEffect({ kind: 'stopped', stops: [state.follow.stopListening] });
+          emitSideEffect({ kind: 'unsubscribed', stop: state.follow.stopListening });
         },
         storeStatus(state, { status }, transition) {
           // A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it.
@@ -199,9 +202,10 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
         },
         disposed(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed', coreReport: state.coreReport });
-          const { follow } = state;
-          const stops = follow.kind === 'following' ? [state.stopReads, follow.stopListening] : [state.stopReads];
-          emitSideEffect({ kind: 'stopped', stops });
+          emitSideEffect({ kind: 'unsubscribed', stop: state.stopReads });
+          if (state.follow.kind === 'following') {
+            emitSideEffect({ kind: 'unsubscribed', stop: state.follow.stopListening });
+          }
         },
         sessionReadsHeard(state, { failed }, { emitState, update }) {
           emitState({ ...state, storeReadFailed: failed });
@@ -230,10 +234,10 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
           }
           switch (coreReport.tag) {
             case 'Connected':
-              transition.update(writeUiCache(JSON.stringify(coreReport.session)));
+              transition.emitSideEffect({ kind: 'uiCacheKept', value: JSON.stringify(coreReport.session) });
               return;
             case 'Disconnected':
-              transition.update(writeUiCache(null));
+              transition.emitSideEffect({ kind: 'uiCacheKept', value: null });
               return;
             // Only a sign-in or a sign-out changes the cached account.
             case 'Restoring':
@@ -257,7 +261,10 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
             return;
           }
           emitState({ ...state, flag: presence });
-          emitSideEffect({ kind: 'elsewhereTold', elsewhere: isSignInElsewhere(presence, state.shown) });
+          emitSideEffect({
+            kind: 'elsewhereTold',
+            waiting: sessionDisplay.isSignInWaitingElsewhere(presence, state.shown.tag),
+          });
         },
         retryAsked(state, _event, { update }) {
           if (state.shown.tag === 'Unreachable') {
@@ -305,11 +312,11 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
       switch (effect.kind) {
         case 'shown':
           // Told first, so a listener of the auth state reads the answer that goes with it.
-          setElsewhere(effect.elsewhere);
+          setElsewhere(effect.waiting && isResumeOffered());
           auth.set(effect.shown);
           return;
         case 'elsewhereTold':
-          setElsewhere(effect.elsewhere);
+          setElsewhere(effect.waiting && isResumeOffered());
           return;
         case 'readFailed':
           report.defect(effect.error, {
@@ -318,10 +325,12 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
             message: '[dot.li] A saved session read failed',
           });
           return;
-        case 'stopped':
-          for (const stop of effect.stops) {
-            stop();
-          }
+        case 'uiCacheKept':
+          // The write reports its own failure and never rejects.
+          void store.writeUiCache(effect.value);
+          return;
+        case 'unsubscribed':
+          effect.stop();
           return;
       }
     },
@@ -344,11 +353,11 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
     // A read of the flag made before a sign-in says nothing of another sign-in once this one ends.
     const flag: Presence = next.shown.tag === 'Connected' ? 'unknown' : next.flag;
     emitState({ ...next, flag });
-    emitSideEffect({ kind: 'shown', shown: next.shown, elsewhere: isSignInElsewhere(flag, next.shown) });
-  }
-
-  function isSignInElsewhere(flag: Presence, shown: DotliAuthState): boolean {
-    return sessionDisplay.isSignInWaitingElsewhere(flag, shown.tag) && isResumeOffered();
+    emitSideEffect({
+      kind: 'shown',
+      shown: next.shown,
+      waiting: sessionDisplay.isSignInWaitingElsewhere(flag, next.shown.tag),
+    });
   }
 
   function startRead(source: SavedSessionSource, { emitState, update }: Transition<ReadMachine>): void {
@@ -359,11 +368,6 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
         (error: unknown) => ({ kind: 'readRejected', error }),
       ),
     );
-  }
-
-  /** Keeps the account the core reported in the UI-state cache. No state handles its event, which lets `await()` cover the write. */
-  function writeUiCache(value: string | null): Promise<Event> {
-    return store.writeUiCache(value).then(() => ({ kind: 'uiCacheWritten' }));
   }
 
   function endRead(rerun: SavedSessionSource | null, transition: Transition<ReadMachine>): void {
