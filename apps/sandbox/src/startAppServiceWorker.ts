@@ -72,11 +72,11 @@ type WorkerEvent =
   | { kind: 'restoreMissed'; error: unknown };
 
 /**
- * A fetch answered from memory, a fetch answered once `read` ends, a read-back that ended with the archives its fetches
+ * A fetch answered from `archive` when it holds the path, a fetch answered once `read` ends, a read-back that ended with the archives its fetches
  * are answered from, a read-back that failed, for the worker's log, and its first failure, for the pages.
  */
 type WorkerEffect =
-  | { kind: 'respond'; event: FetchEvent; response: Response }
+  | { kind: 'serve'; event: FetchEvent; archive: ServedArchive; pathname: string }
   | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string; read: ReadBack }
   | { kind: 'readEnded'; read: ReadBack; archives: Archives }
   | { kind: 'restoreMissed'; error: unknown }
@@ -149,7 +149,7 @@ export function startAppServiceWorker({
         requested(state, { event, pathname }, { emitState, emitSideEffect, update }) {
           const own = getClientArchive(state.archives, event.clientId);
           if (own !== null) {
-            serveFromMemory({ event, archive: own, pathname }, emitSideEffect);
+            emitSideEffect({ kind: 'serve', event, archive: own, pathname });
             return;
           }
           // A restarted worker reads the archives back first, since nginx answers every path with the shell as
@@ -174,7 +174,7 @@ export function startAppServiceWorker({
         requested({ archives, read }, { event, pathname }, { emitSideEffect }) {
           const own = getClientArchive(archives, event.clientId);
           if (own !== null) {
-            serveFromMemory({ event, archive: own, pathname }, emitSideEffect);
+            emitSideEffect({ kind: 'serve', event, archive: own, pathname });
             return;
           }
           emitSideEffect({ kind: 'respondAfterRead', event, pathname, read });
@@ -205,7 +205,7 @@ export function startAppServiceWorker({
         requested({ archives }, { event, pathname }, { emitSideEffect }) {
           const archive = getClientArchive(archives, event.clientId) ?? archives.newest;
           if (archive !== null) {
-            serveFromMemory({ event, archive, pathname }, emitSideEffect);
+            emitSideEffect({ kind: 'serve', event, archive, pathname });
           }
         },
         archiveHanded: handArchive,
@@ -215,9 +215,14 @@ export function startAppServiceWorker({
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'respond':
-          effect.event.respondWith(effect.response);
+        case 'serve': {
+          // A path the archive does not hold is left to the network.
+          const found = lookupServedFile(effect.archive, effect.pathname, basePath);
+          if (found !== null) {
+            effect.event.respondWith(found);
+          }
           return;
+        }
         case 'respondAfterRead':
           effect.event.respondWith(answerAfterRead(effect));
           return;
@@ -284,17 +289,6 @@ export function startAppServiceWorker({
     }
     linkWorkerPage(event);
     worker.update({ kind: 'requested', event, pathname: url.pathname });
-  }
-
-  /** Answers `event` from `archive` when it holds the path, and else leaves the request to the network. */
-  function serveFromMemory(
-    { event, archive, pathname }: { event: FetchEvent; archive: ServedArchive; pathname: string },
-    emitSideEffect: (effect: WorkerEffect) => void,
-  ): void {
-    const found = lookupServedFile(archive, pathname, basePath);
-    if (found !== null) {
-      emitSideEffect({ kind: 'respond', event, response: found });
-    }
   }
 
   /**
