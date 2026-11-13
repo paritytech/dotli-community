@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CACHE, parseCacheSettings } from './cacheSettings.js';
 
 describe('parseCacheSettings', () => {
-  it('As a visitor from an older build, I bring an object missing a switch and the missing one is the default', () => {
+  it('As a visitor, I bring a stored object with a switch missing and one malformed, and both are the default', () => {
     // Given
     const stored = JSON.stringify({ skipCidCache: true, skipArchiveCache: 'yes' });
 

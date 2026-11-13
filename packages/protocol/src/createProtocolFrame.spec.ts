@@ -954,7 +954,7 @@ describe('createProtocolFrame', () => {
   });
 
   it('As the host, I boot a frame that never answers my handshake and the boot fails and rebuilds with backoff', async () => {
-    // Given a frame of an earlier release, which loads and never answers
+    // Given a frame that loads and never answers
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom({ timers });
     const frame = createProtocolFrame(dom.params);
@@ -1137,7 +1137,7 @@ describe('frame liveness check', () => {
     ]);
   });
 
-  it('As a returning user whose frame is from an earlier release, I keep it although it refuses the check', async () => {
+  it('As a returning user whose frame refuses the check, I keep the frame, since a refusal is an answer', async () => {
     // Given a ready frame whose app does not serve the heartbeat
     const { dom, frame, transport } = await bringFrameUp();
     const kept = dom.getIframe();

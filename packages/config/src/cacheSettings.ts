@@ -22,8 +22,8 @@ export const DEFAULT_CACHE: CacheSettings = {
 };
 
 /**
- * A stored cache value. A field missing from an older build's object, a value that is no object, or malformed JSON
- * falls back to the default.
+ * A stored cache value. A missing or malformed field, a value that is no object, or malformed JSON falls back to the
+ * default.
  */
 export function parseCacheSettings(raw: string | null): CacheSettings {
   const stored = raw === null ? null : parseJson(raw);
@@ -46,7 +46,7 @@ function parseJson(raw: string): unknown {
   try {
     return JSON.parse(raw);
   } catch {
-    // Safe swallow: malformed JSON from an older build is a stored value to ignore, and the defaults are the fallback
+    // Safe swallow: malformed stored JSON is a value to ignore, and the defaults are the fallback
     return null;
   }
 }

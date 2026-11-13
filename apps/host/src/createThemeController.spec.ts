@@ -88,7 +88,7 @@ describe('theme controller', () => {
     expect(store.get()).toEqual({ preference: 'light', resolved: 'light' });
   });
 
-  it('As a user with a stored theme from an older build that does not parse, I see the system theme', () => {
+  it('As a user with a malformed stored theme, I see the system theme', () => {
     // Given
     const { local, root, loadController } = setupThemePage({ scheme: 'light' });
     local.setItem('dotli-theme', 'auto');
