@@ -303,6 +303,20 @@ describe('createProductLoader', () => {
     expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
   });
 
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and a protocol frame refusing the page later reaches no listener", async () => {
+    // Given
+    const { loader, countMismatchListeners } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: new Error('the sandbox outcomes cannot be followed'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(countMismatchListeners()).toBe(0);
+  });
+
   it.each<{ outcome: string; params: Params; steps: string[] }>([
     {
       outcome: 'fails to resolve',

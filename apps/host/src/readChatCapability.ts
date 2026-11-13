@@ -6,6 +6,7 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import { pageLocalStorage, type SafeStorage } from '@dotli/shared';
+import type { NameSource } from './createNameSource.js';
 
 const report = createReporter({ flow: 'chat' });
 
@@ -31,18 +32,19 @@ type CreateStorageCapabilityCacheParams = {
 const CACHE_PREFIX = 'dotli:chat-capable:';
 
 /**
- * Whether `label` declares chat: the cached answer when there is one, so it never waits on the read, else the read's.
- * The read refreshes the cache for the next load either way. An unreadable manifest means no chat for this load and
- * leaves the cached answer as it was. Never rejects.
+ * Whether `label` declares chat: the cached answer when there is one, so it never waits on the read, else what its
+ * worker manifest says. The read refreshes the cache for the next load either way. An unreadable manifest means no chat
+ * for this load and leaves the cached answer as it was. Never rejects.
  */
 export function readChatCapability(
   label: string,
-  read: () => Promise<boolean>,
+  readWorkerManifest: NameSource['readWorkerManifest'],
   { cache = createStorageCapabilityCache({ storage: pageLocalStorage }) }: ReadChatCapabilityParams = {},
 ): Promise<boolean> {
   const cached = cache.get(label);
-  const fresh = read().then(
-    chat => {
+  const fresh = readWorkerManifest(label).then(
+    result => {
+      const chat = result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
       cache.set(label, chat);
       return chat;
     },

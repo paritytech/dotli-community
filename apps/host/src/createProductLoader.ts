@@ -183,8 +183,6 @@ export function createProductLoader(params: Params) {
   ) => {
     const { label, error, description } = state;
     try {
-      // Once for the failed load, however many times the user moves between its error screens.
-      productState.setError();
       params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
     } catch (screenError) {
       switch (state.kind) {
@@ -233,7 +231,8 @@ export function createProductLoader(params: Params) {
       },
       readingCache: {
         stepFailed: failLoad,
-        cacheRead({ run }, { cached }, transition) {
+        cacheRead(state, { cached }, transition) {
+          const { run } = state;
           const { label } = run;
           transition.emitSideEffect({ kind: 'cacheChecked', cid: cached?.cid ?? null });
           if (cached === null) {
@@ -261,7 +260,7 @@ export function createProductLoader(params: Params) {
               kind: 'cidRevalidated',
               copy: { label, servedCid: cached.cid, onScreen: false },
             });
-            transition.update({ kind: 'stepFailed', error });
+            failLoad(state, { kind: 'stepFailed', error }, transition);
             return;
           }
           holdCore({ kind: 'holdingCore', run, path: 'fast', cid: cached.cid, manifests }, transition);
@@ -272,16 +271,17 @@ export function createProductLoader(params: Params) {
         namePhase(_state, { phase }, { emitSideEffect }) {
           emitSideEffect({ kind: 'namePhase', phase });
         },
-        nameResolved({ run, manifestsRead }, { cid }, { emitState, emitSideEffect, update }) {
+        nameResolved(state, { cid }, transition) {
+          const { run, manifestsRead } = state;
+          const { emitState, emitSideEffect, update } = transition;
           emitSideEffect({ kind: 'nameResolved', cid });
           // Nothing to launch whatever the manifests say, so it does not wait on them.
           if (cid === null) {
             try {
               // Its recent pill stays: the name may still resolve on another network.
               showNoContentError(run.label);
-              productState.setError();
             } catch (error) {
-              update({ kind: 'stepFailed', error });
+              failLoad(state, { kind: 'stepFailed', error }, transition);
               return;
             }
             emitState({ kind: 'ended', error: null });
@@ -300,13 +300,14 @@ export function createProductLoader(params: Params) {
       },
       readingManifests: {
         stepFailed: failLoad,
-        manifestsRead({ run, cid }, { manifests }, transition) {
+        manifestsRead(state, { manifests }, transition) {
+          const { run, cid } = state;
           const { label } = run;
           transition.emitSideEffect({ kind: 'manifestsRead', manifests });
           try {
             assertLaunchable(manifests.root, manifests.app);
           } catch (error) {
-            transition.update({ kind: 'stepFailed', error });
+            failLoad(state, { kind: 'stepFailed', error }, transition);
             return;
           }
           if (!params.skipCidCache) {
@@ -341,12 +342,13 @@ export function createProductLoader(params: Params) {
       },
       rendering: {
         stepFailed: failLoad,
-        rendered(state, _event, { emitState, emitSideEffect, update }) {
+        rendered(state, _event, transition) {
+          const { emitState, emitSideEffect, update } = transition;
           let stopListening: () => void;
           try {
             stopListening = listenToProduct(params, update);
           } catch (error) {
-            update({ kind: 'stepFailed', error });
+            failLoad(state, { kind: 'stepFailed', error }, transition);
             return;
           }
           emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
@@ -415,6 +417,12 @@ export function createProductLoader(params: Params) {
             timers: params.timers,
           });
           return;
+        case 'failed':
+        case 'noContent':
+          params.report(effect);
+          // Once for the failed load, however many times the user moves between its error screens.
+          productState.setError();
+          return;
         case 'contentSettled':
           // The topbar may fold once the product's content shows.
           pageTopbarAutoHide.setContentShown(isLoadedOutcome(effect.report.outcome));
@@ -474,10 +482,7 @@ function runStep<Value>(work: () => Value | Promise<Value>, toEvent: (value: Val
 function startLoadRun(label: string, params: Params) {
   params.bridge.setPageProduct({ label });
   // In parallel with the CID.
-  const chat = readChatCapability(label, async () => {
-    const result = await params.names.readWorkerManifest(label);
-    return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
-  });
+  const chat = readChatCapability(label, params.names.readWorkerManifest);
   urlPillState.showProduct(label, getActiveTldSuffix());
   // A page loads one product, so the bar folds for the page's life and the cleanup goes unused.
   const autoHide = startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm });
@@ -490,24 +495,40 @@ function startLoadRun(label: string, params: Params) {
   };
 }
 
-/** Listens for what can still fail the product, and for its content's outcomes. Returns what stops listening. */
+/**
+ * Listens for what can still fail the product, and for its content's outcomes. Returns what stops listening. Throws
+ * what a subscribe throws, once the subscriptions made before it are stopped.
+ */
 function listenToProduct(params: Params, update: Transition<LoadMachine>['update']): () => void {
-  // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
-  // the app would sit there with no chain or store, so the reload screen replaces it.
-  const stopHearingMismatch = params.onProtocolVersionMismatch(error => {
-    update({ kind: 'productFailed', error, failure: 'a protocol version mismatch' });
-  });
-  // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is
-  // down.
-  const stopDeadline = params.sandboxLoad.expectHeardWithin(error => {
-    update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
-  });
-  const stopFollowingContent = params.sandboxLoad.subscribeOutcomes(report => {
-    update({ kind: 'contentOutcome', report });
-  });
-  return () => {
-    stopHearingMismatch();
-    stopDeadline();
-    stopFollowingContent();
+  const stops: (() => void)[] = [];
+  const stopListening = () => {
+    for (const stop of stops) {
+      stop();
+    }
   };
+  try {
+    // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
+    // the app would sit there with no chain or store, so the reload screen replaces it.
+    stops.push(
+      params.onProtocolVersionMismatch(error => {
+        update({ kind: 'productFailed', error, failure: 'a protocol version mismatch' });
+      }),
+    );
+    // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is
+    // down.
+    stops.push(
+      params.sandboxLoad.expectHeardWithin(error => {
+        update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
+      }),
+    );
+    stops.push(
+      params.sandboxLoad.subscribeOutcomes(report => {
+        update({ kind: 'contentOutcome', report });
+      }),
+    );
+  } catch (error) {
+    stopListening();
+    throw error;
+  }
+  return stopListening;
 }

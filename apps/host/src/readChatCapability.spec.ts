@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
 import { createDeferred } from '@dotli/shared';
 import { createMemoryStorage } from '@dotli/shared/testing';
 import { createStorageCapabilityCache, readChatCapability, type CapabilityCache } from './readChatCapability.js';
@@ -19,7 +20,7 @@ describe('chat capability', () => {
     const { stored, cache } = createPage();
 
     // When
-    const chat = await readChatCapability('myapp', () => Promise.resolve(true), { cache });
+    const chat = await readChatCapability('myapp', readDeclaring(true), { cache });
 
     // Then
     expect(chat).toBe(true);
@@ -29,7 +30,7 @@ describe('chat capability', () => {
   it('As a returning visitor, I load my product and it answers from the cache without waiting on the manifest read', async () => {
     // Given
     const { cache } = createPage({ seed: { 'dotli:chat-capable:myapp': '1' } });
-    const read = vi.fn(() => new Promise<boolean>(() => undefined));
+    const read = vi.fn(() => new Promise<ManifestResult<ExecutableManifest>>(() => undefined));
 
     // When
     const chat = await readChatCapability('myapp', read, { cache });
@@ -42,11 +43,11 @@ describe('chat capability', () => {
   it('As a returning visitor whose product dropped chat, I load it and this load keeps the cached answer while the next load gets the new one', async () => {
     // Given
     const { stored, cache } = createPage({ seed: { 'dotli:chat-capable:myapp': '1' } });
-    const read = createDeferred<boolean>();
+    const read = createDeferred<ManifestResult<ExecutableManifest>>();
 
     // When
     const chat = await readChatCapability('myapp', () => read.promise, { cache });
-    read.resolve(false);
+    read.resolve(getWorkerManifest(false));
     await read.promise;
 
     // Then
@@ -87,12 +88,25 @@ describe('chat capability', () => {
     const cache = createStorageCapabilityCache({ storage: createBlockedStorage() });
 
     // When
-    const chat = await readChatCapability('myapp', () => Promise.resolve(true), { cache });
+    const chat = await readChatCapability('myapp', readDeclaring(true), { cache });
 
     // Then
     expect(chat).toBe(true);
   });
 });
+
+/** Returns a worker manifest read that answers with a worker declaring `chat`. */
+function readDeclaring(chat: boolean): () => Promise<ManifestResult<ExecutableManifest>> {
+  return () => Promise.resolve(getWorkerManifest(chat));
+}
+
+function getWorkerManifest(chat: boolean): ManifestResult<ExecutableManifest> {
+  return {
+    kind: 'ok',
+    value: { $v: 1, appVersion: [1, 0, 0], kind: 'worker', entrypoint: 'index.js', includes: { chat } },
+    raw: '',
+  };
+}
 
 /** Returns a page load whose storage holds `seed`, and what it stores. */
 function createPage({ seed = {} }: Params = {}): { stored: Storage; cache: CapabilityCache } {
