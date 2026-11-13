@@ -7,7 +7,8 @@
 
 import { createMessagePortProvider, type ProductId } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import type { SandboxChannel, SandboxRecoverAcceptedMessage } from '@dotli/sandbox-wire';
+import { LOCAL_ROOT } from '@dotli/config';
+import type { SandboxChannel, SandboxRecoverAcceptedMessage, SandboxSender } from '@dotli/sandbox-wire';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createRandomId,
@@ -35,6 +36,7 @@ import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ProductFacts } from '../getProductFacts.js';
+import { getLandingUrl } from '../getLandingUrl.js';
 
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
@@ -131,6 +133,8 @@ export type ProductFramePage = {
   location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
   /** Reloads the host page. Never throws. */
   reload: () => void;
+  /** Opens the landing page. Never throws. */
+  goHome: () => void;
 };
 
 export type ProductFrame = ReturnType<typeof createProductFrame>;
@@ -282,6 +286,9 @@ const BROWSER_PAGE: ProductFramePage = {
   location: () => window.location,
   reload: () => {
     window.location.reload();
+  },
+  goHome: () => {
+    window.location.assign(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }));
   },
 };
 
@@ -721,6 +728,7 @@ export function createProductFrame({
         case 'unsubscribed':
           stopPermissionChanges();
           stopRecoverAsks();
+          stopNavigateAsks();
           return;
         case 'statusShown':
           view.showStatus(effect.status);
@@ -772,26 +780,31 @@ export function createProductFrame({
   });
 
   // The sandbox strips its contract params after boot, so a reloaded sandbox asks the host to rebuild it.
-  const stopRecoverAsks = channel.on('dotli:sandbox-recover', (_message, { origin, source }) => {
-    const state = machine.state.get();
-    if (state.kind === 'idle' || state.kind === 'halted' || state.kind === 'disposed') {
-      return;
-    }
-    const { target, shown } = state;
-    // The exact origin of the product on screen, so one product's sandbox cannot rebuild another, and the frame on
-    // screen itself, so a frame nested inside the product on its own origin cannot either. A reloaded sandbox keeps its
-    // window.
-    if (
-      target.mode !== 'subdomain' ||
-      origin !== getAppOrigin(target.label, page.location()) ||
-      source !== shown?.iframeHost.iframe.contentWindow
-    ) {
+  const stopRecoverAsks = channel.on('dotli:sandbox-recover', (_message, sender) => {
+    const shown = findAskingFrame(sender);
+    if (shown === null) {
       return;
     }
     machine.update({ kind: 'recoverAsked', asking: shown.attempt });
     // Told before the rebuild, which can wait a long time for a core. A post that throws reaches the channel's report.
     const accepted = { type: 'dotli:sandbox-recover-accepted' } satisfies SandboxRecoverAcceptedMessage;
-    shown.iframeHost.iframe.contentWindow?.postMessage(accepted, { targetOrigin: origin });
+    shown.iframeHost.iframe.contentWindow?.postMessage(accepted, { targetOrigin: sender.origin });
+  });
+
+  // An error page in the sandbox offers the visitor a way on, which only the host page can take.
+  const stopNavigateAsks = channel.on('dotli:sandbox-navigate', ({ to }, sender) => {
+    if (findAskingFrame(sender) === null) {
+      return;
+    }
+    uiReport.log.event('The sandbox asked the page to navigate', { to });
+    switch (to) {
+      case 'landing':
+        page.goHome();
+        return;
+      case 'reload':
+        page.reload();
+        return;
+    }
   });
 
   return {
@@ -807,9 +820,9 @@ export function createProductFrame({
      */
     halt,
     /**
-     * Stops hearing permission changes and recover asks, takes down the product on screen with its core and ends every
-     * render and wait in flight, so a render asked from above resolves as superseded and neither it nor a later render
-     * mounts anything. Safe to call twice or after a failed render. Never throws.
+     * Stops hearing permission changes and the sandbox's recover and navigate asks, takes down the product on screen
+     * with its core and ends every render and wait in flight, so a render asked from above resolves as superseded and
+     * neither it nor a later render mounts anything. Safe to call twice or after a failed render. Never throws.
      */
     dispose,
   };
@@ -827,6 +840,26 @@ export function createProductFrame({
 
   function halt(): void {
     machine.update({ kind: 'halted' });
+  }
+
+  /** Returns the product on screen when its own frame is the sender of a sandbox ask, or null. */
+  function findAskingFrame({ origin, source }: SandboxSender): Shown | null {
+    const state = machine.state.get();
+    if (state.kind === 'idle' || state.kind === 'halted' || state.kind === 'disposed') {
+      return null;
+    }
+    const { target, shown } = state;
+    // The exact origin of the product on screen, so one product's sandbox cannot act on another, and the frame on
+    // screen itself, so a frame nested inside the product on its own origin cannot either. A reloaded sandbox keeps its
+    // window.
+    if (
+      target.mode !== 'subdomain' ||
+      origin !== getAppOrigin(target.label, page.location()) ||
+      source !== shown?.iframeHost.iframe.contentWindow
+    ) {
+      return null;
+    }
+    return shown;
   }
 
   function dispose(): void {
