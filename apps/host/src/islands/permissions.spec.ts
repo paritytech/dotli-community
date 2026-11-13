@@ -10,8 +10,8 @@ import {
   createProductPermissions,
   type ChangeOutcome,
   type PendingPermissions,
-  type ProductPermissionsState,
 } from '../runtime/state/productPermissions.js';
+import type { ProductPermissionsState } from '../runtime/state/productPermissionsState.js';
 import type { ProductState } from '../runtime/state/productState.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ShownProduct, usePermissionsPanel } from './permissions.js';

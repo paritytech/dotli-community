@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Any tab on the product origin fires a past-due record. The atomic IDB delete claims it, while the
-// Web Lock only avoids redundant work. A hidden tab lags by an offset so a visible sibling wins the lock.
+// Any tab on the product origin fires a past-due record, and the delete that claims it lets one tab only show it. A
+// hidden tab lags by an offset so a visible sibling claims it first.
 
 import type { ProductId } from '@parity/truapi';
-import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
+import type { scheduledNotifications, ScheduledNotificationRecord } from '@dotli/storage';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createStateMachine,
@@ -21,26 +21,16 @@ import {
 } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import { pagePoll, type Poll } from '../pagePoll.js';
+import { claimScheduledNotification } from './claimScheduledNotification.js';
+import { createNotificationsPollReport, type PollStep } from './createNotificationsPollReport.js';
 
 const report = createReporter({ flow: 'notifications' });
-
-/**
- * Count. A step of the scheduled notifications poll failed, once per failing run of the step. Tagged `outcome`
- * (error), `reason` (the error's name) and `step` (`remove_stale, list_pending, claim`). An IndexedDB failure the
- * browser causes is expected, the rest captured.
- */
-const notificationsPollMetric = defineCount<'error'>('notifications.poll');
 
 /** Count. A transition of the scheduler threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const notificationsTransitionMetric = defineCount<'error'>('notifications.transition');
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
-
-type InitParams = {
-  /** Only tags log lines. */
-  label: string;
-};
 
 type ScheduleRequest = {
   productId: ProductId;
@@ -74,8 +64,6 @@ export type ScheduledNotificationsParams = {
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
 
 type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
-
-type PollStep = 'remove_stale' | 'list_pending' | 'claim';
 
 type FireSource = 'realtime' | 'rehydrate';
 
@@ -122,7 +110,7 @@ type RoundState = Extract<SchedulerState, { kind: 'rehydrating' | 'ticking' }>;
 type AwakeState = Extract<SchedulerState, { kind: 'idle' | 'polling' | 'rehydrating' | 'ticking' }>;
 
 type SchedulerEvent =
-  | { kind: 'initialized'; label: string }
+  | { kind: 'initialized' }
   | { kind: 'ticked' }
   | { kind: 'woken' }
   | { kind: 'scheduled' }
@@ -138,7 +126,7 @@ type SchedulerEvent =
   | { kind: 'claimFailed'; round: ClaimingRound; error: unknown };
 
 type SchedulerEffect =
-  | { kind: 'initialized'; label: string }
+  | { kind: 'initialized' }
   | { kind: 'stepSucceeded'; step: PollStep }
   | { kind: 'stepFailed'; step: PollStep; error: unknown }
   | { kind: 'fired'; record: ScheduledNotificationRecord; source: FireSource }
@@ -255,14 +243,15 @@ export function createScheduledNotifications({
       emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'fired', hostId: record.hostId } });
     }
   };
-  /** Claims the next due record when the claim is this round's, then shows the claimed one. */
+  /** Shows the claimed record, then claims the next due one when the claim is this round's. */
   const settleClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimed'> = (state, event, transition) => {
-    if (event.round === state.round) {
-      const [, ...rest] = event.round.due;
-      transition.emitSideEffect({ kind: 'stepSucceeded', step: 'claim' });
-      claimNext(state, rest, transition);
-    }
     fireClaimed(state, event, transition);
+    if (event.round !== state.round) {
+      return;
+    }
+    const [, ...rest] = event.round.due;
+    transition.emitSideEffect({ kind: 'stepSucceeded', step: 'claim' });
+    claimNext(state, rest, transition);
   };
   /** Claims the next due record, leaving the one whose claim failed for a later round. */
   const skipFailedClaim: HandlerOf<SchedulerMachine, 'rehydrating' | 'ticking', 'claimFailed'> = (
@@ -309,16 +298,15 @@ export function createScheduledNotifications({
       stopWaking(state, transition);
     }
   };
-  // The poller retries every second, so a step's failure is reported when it starts failing, not on every tick.
-  const failingSteps = new Set<PollStep>();
+  const pollReport = createNotificationsPollReport();
   const machine = createStateMachine<SchedulerMachine>({
     initial: { kind: 'uninitialized' },
     handlers: {
       uninitialized: {
-        initialized(_state, { label }, transition) {
+        initialized(_state, _event, transition) {
           const page = { stopListening: listenForPage(transition.update), lifetime: new AbortController() };
           const channel = openWakeChannel(transition.update);
-          transition.emitSideEffect({ kind: 'initialized', label });
+          transition.emitSideEffect({ kind: 'initialized' });
           runStep({ kind: 'rehydrating', round: { kind: 'removingStale' }, page, channel }, transition);
         },
         disposed(_state, _event, { emitState }) {
@@ -390,29 +378,14 @@ export function createScheduledNotifications({
     onEffect(effect) {
       switch (effect.kind) {
         case 'initialized':
-          log.debug(`[${effect.label}] scheduled notifications: init`);
+          log.debug('Scheduled notifications: init');
           return;
         case 'stepSucceeded':
-          failingSteps.delete(effect.step);
+          pollReport.succeeded(effect.step);
           return;
-        case 'stepFailed': {
-          const { step, error } = effect;
-          if (failingSteps.has(step)) {
-            return;
-          }
-          failingSteps.add(step);
-          if (isExpectedDbError(error)) {
-            report.expected(error, { step, metric: notificationsPollMetric, attributes: { step } });
-            return;
-          }
-          report.defect(error, {
-            step,
-            metric: notificationsPollMetric,
-            message: `[scheduled notifications] ${step} failed:`,
-            attributes: { step },
-          });
+        case 'stepFailed':
+          pollReport.failed(effect.step, effect.error);
           return;
-        }
         case 'fired': {
           const { record, source } = effect;
           show({
@@ -474,8 +447,8 @@ export function createScheduledNotifications({
     dispose,
   };
 
-  function init({ label }: InitParams): void {
-    machine.update({ kind: 'initialized', label });
+  function init(): void {
+    machine.update({ kind: 'initialized' });
   }
 
   async function schedule(request: ScheduleRequest): Promise<ScheduleNotificationResult> {
@@ -540,7 +513,7 @@ export function createScheduledNotifications({
         const [record] = round.due;
         const source = state.kind === 'rehydrating' ? 'rehydrate' : 'realtime';
         update(
-          claim(record, state.page.lifetime.signal).then(
+          claimScheduledNotification({ store, locks, record, signal: state.page.lifetime.signal }).then(
             removed => ({ kind: 'claimed', round, record, removed, source }),
             (error: unknown) => ({ kind: 'claimFailed', round, error }),
           ),
@@ -584,29 +557,6 @@ export function createScheduledNotifications({
       update({ kind: 'ticked' });
     }, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS);
     emitState({ kind: 'polling', page, channel, stopPoll });
-  }
-
-  /**
-   * Removes `record` from the store, under its lock where the browser has Web Locks. Resolves whether this tab removed
-   * it. Rejects with `signal`'s reason once it aborted, and when the store cannot remove it.
-   */
-  function claim(record: ScheduledNotificationRecord, signal: AbortSignal): Promise<boolean> {
-    if (locks === undefined) {
-      // The IDB delete still claims the record alone.
-      return removeRecord();
-    }
-    return locks.request(`dotli-notif:${String(record.hostId)}`, { ifAvailable: true }, async lock => {
-      if (lock === null) {
-        return false;
-      }
-      return removeRecord();
-    });
-
-    async function removeRecord(): Promise<boolean> {
-      // A disposed scheduler leaves the record in the store for another tab or the next load to fire.
-      signal.throwIfAborted();
-      return store.removeById(record.hostId);
-    }
   }
 
   /** Opens the channel to the other tabs, whose every message wakes the poller. */
@@ -657,23 +607,6 @@ export function createScheduledNotifications({
       stopShow();
     }
   }
-}
-
-/**
- * Builds the page's scheduler, over the dotli database, the browser's locks and channels, and this document. Never
- * throws.
- */
-export function createPageScheduledNotifications({
-  show,
-}: Pick<ScheduledNotificationsParams, 'show'>): ScheduledNotifications {
-  return createScheduledNotifications({
-    store: scheduledNotifications,
-    show,
-    locks: 'locks' in navigator ? navigator.locks : undefined,
-    openChannel: name => (typeof BroadcastChannel === 'function' ? new BroadcastChannel(name) : null),
-    visibility: document,
-    lifecycle: window,
-  });
 }
 
 /** Stops the poller where one runs, and closes the channel. */

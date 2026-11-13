@@ -125,6 +125,28 @@ describe('chat platform', () => {
     expect(repo.reads.count.rooms).toBe(2);
   });
 
+  it('As a product developer whose room list cannot be read, I follow my rooms and my stream ends on the error with no read after', async () => {
+    // Given a repo whose room reads fail
+    const repo = createMemoryChatRepo();
+    repo.reads.error.rooms = new Error('rooms unreadable');
+    const chat = createChatStore({ repo, connections: createChatConnections() });
+    const platform = createChatPlatform({ chat });
+    const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
+    onTestFinished(async () => {
+      await stream.return?.();
+    });
+
+    // When the first read fails, then a room is created
+    const failed = await stream.next();
+    const end = await stream.next();
+    await platform.createChatRoom(PRODUCT, buildRoom('a'));
+
+    // Then
+    expect(yielded(failed)._unsafeUnwrapErr()).toEqual({ reason: 'rooms unreadable' });
+    expect(end.done).toBe(true);
+    expect(repo.reads.count.rooms).toBe(1);
+  });
+
   it('As a product developer, I register a bot and post a message and both are stored for my product', async () => {
     // Given
     const repo = createMemoryChatRepo();
