@@ -153,9 +153,8 @@ export function createAsyncTaskPool({
       if (task === undefined) {
         break;
       }
-      const started: TaskPhase = { kind: 'running' };
-      setPhase(task, started);
-      void run(task, started);
+      setPhase(task, { kind: 'running' });
+      void run(task);
     }
     const waiters = settleWaiters.get(pool);
     if (waiters !== undefined && isIdle(pool)) {
@@ -166,33 +165,32 @@ export function createAsyncTaskPool({
     }
   }
 
-  // Never rejects: the outcome goes to the caller through the task's own promise.
-  async function run(task: Task, started: TaskPhase): Promise<void> {
+  /**
+   * Runs the task's work and acts on its outcome by the phase the task is in once it settles. A task runs one work at a
+   * time, so a running task is still on this run. Never rejects: the outcome goes to the caller through the task's own
+   * promise.
+   */
+  async function run(task: Task): Promise<void> {
     let result: PromiseSettledResult<unknown>;
     try {
       result = { status: 'fulfilled', value: await task.work() };
     } catch (reason) {
       result = { status: 'rejected', reason };
     }
-    handleWorkSettled(task, started, result);
-  }
-
-  /** Acts on the outcome of a task's work only while the task still holds the phase the work started in. */
-  function handleWorkSettled(task: Task, started: TaskPhase, result: PromiseSettledResult<unknown>): void {
-    if (task.phase === started) {
-      finishRun(task, result);
-      return;
-    }
     switch (task.phase.kind) {
+      case 'running':
+        finishRun(task, result);
+        return;
       case 'abandoned':
         markAbortedDone(task);
         pump(task.pool);
         return;
-      case 'running':
+      case 'done':
+        // An abort ended the task and rejected its call.
+        return;
       case 'delayed':
       case 'queued':
-      case 'done':
-        // An abort ended the task and rejected its call, or a later run owns it.
+        // A task waits again only once its run has settled, so none is waiting while its work runs.
         return;
     }
   }
@@ -230,18 +228,14 @@ export function createAsyncTaskPool({
       return;
     }
     task.retry += 1;
-    queueAfter(task, delay);
-    pump(task.pool);
-  }
-
-  /** Queues the task once `ms` has passed. Until then it is delayed, so `settle` holds and an abort clears it. */
-  function queueAfter(task: Task, ms: number): void {
+    // Delayed until its wait passes, so `settle` holds and an abort clears it.
     setPhase(
       task,
-      startDelay(ms, () => {
+      startDelay(delay, () => {
         enqueue(task);
       }),
     );
+    pump(task.pool);
   }
 
   function startDelay(ms: number, onElapsed: () => void): TaskPhase {

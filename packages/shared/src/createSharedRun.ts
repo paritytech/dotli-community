@@ -70,9 +70,8 @@ export function createSharedRun<StartParams = void>({ begin }: Params<StartParam
     try {
       runEnd = begin(params);
     } catch (error) {
-      if (current === run) {
-        current = null;
-      }
+      // Still this run, since nothing inside `begin` can replace it.
+      current = null;
       throw error;
     }
     settleBegin(run, runEnd);
@@ -100,8 +99,9 @@ export function createSharedRun<StartParams = void>({ begin }: Params<StartParam
       }
       stopped = true;
       run.callers -= 1;
+      // The join that began the run holds a caller until `begin` returns, so a last stop meets a running run.
       if (run.callers === 0) {
-        stopRun(run);
+        endRun(run);
       }
     }
   }
@@ -115,18 +115,6 @@ export function createSharedRun<StartParams = void>({ begin }: Params<StartParam
         return;
       case 'running':
         finish(run.phase.end);
-        return;
-    }
-  }
-
-  function stopRun(run: Run): void {
-    switch (run.phase.kind) {
-      case 'running':
-        finish(run.phase.end);
-        return;
-      // The join that began the run holds a caller until `begin` returns, so a last stop always meets a running run.
-      case 'beginning':
-      case 'ending':
         return;
     }
   }

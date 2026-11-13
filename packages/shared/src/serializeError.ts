@@ -64,7 +64,7 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
     }
     try {
       const json = JSON.stringify(value);
-      if (typeof json === 'string' && json.length > 0 && json !== '{}' && json !== 'null') {
+      if (typeof json === 'string' && json !== '{}' && json !== 'null') {
         return json;
       }
       // eslint-disable-next-line no-restricted-syntax -- JSON.stringify throws on cycles, which folds into the `[object Object]` fallback.

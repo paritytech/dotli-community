@@ -3,9 +3,6 @@
 
 import { bindLogSink, type LogEntry, type LogLevel } from '../log.js';
 
-/** One line the shared log wrote. */
-export type LogLine = LogEntry;
-
 type Params = {
   onFinished: (restore: () => void) => void;
   level?: LogLevel;
@@ -15,8 +12,8 @@ type Params = {
  * Every line the shared log writes, at `level` when one is given, until `onFinished` puts back the sink bound before.
  * A spec passes vitest's `onTestFinished`.
  */
-export function recordLog({ onFinished, level }: Params): LogLine[] {
-  const lines: LogLine[] = [];
+export function recordLog({ onFinished, level }: Params): LogEntry[] {
+  const lines: LogEntry[] = [];
   onFinished(
     bindLogSink({
       emit: entry => {

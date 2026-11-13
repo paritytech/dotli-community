@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { markHandled } from './markHandled.js';
 import { raceAbort, type Settle } from './raceAbort.js';
 import { realTimers, type Timers } from './realTimers.js';
 import { startActiveTimeout } from './startActiveTimeout.js';
@@ -24,21 +25,12 @@ type Params<T> = {
  *   timeoutError: () => new Error('The block fetch took over 10s') }); // work runs on after a timeout
  */
 export function withTimeout<T>({ work, ms, timeoutError, timers = realTimers, signal }: Params<T>): Promise<T> {
-  let settleRace: Settle<T> | undefined;
-  // Taken before the abort check, so a later rejection of `work` is never left unhandled. With no race started, no one
-  // is left to hear it.
-  void work.then(
-    value => {
-      settleRace?.resolve(value);
-    },
-    (error: unknown) => {
-      settleRace?.reject(error);
-    },
-  );
+  // Handled before the abort check, so a later rejection of `work` is never left unhandled when no race starts.
+  void markHandled(work);
   return raceAbort({ signal, start });
 
   function start(settle: Settle<T>): () => void {
-    settleRace = settle;
+    work.then(settle.resolve, settle.reject);
     return startActiveTimeout({
       ms,
       timers,
