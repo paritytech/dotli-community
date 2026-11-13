@@ -187,7 +187,7 @@ async function updateIfOutdated({ app, container, registration }: EnsureFreshSer
   app.offerReload();
 }
 
-/** `null` when the SW does not answer, as an older build does not. */
+/** `null` when the SW does not answer in time. */
 function queryWorkerVersion(worker: ServiceWorker): Promise<string | null> {
   const channel = new MessageChannel();
   let silent: Error | undefined;
@@ -206,7 +206,7 @@ function queryWorkerVersion(worker: ServiceWorker): Promise<string | null> {
     },
   })
     .catch((error: unknown) => {
-      // Silence is an older build's answer, not a failure.
+      // A worker slow to wake from idle can miss the wait. It is left as it is, not reported as a failure.
       if (error === silent) {
         return null;
       }
