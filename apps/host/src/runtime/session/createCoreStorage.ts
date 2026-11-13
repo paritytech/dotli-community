@@ -5,21 +5,13 @@
 // one session. Every other slot lives in this origin's localStorage, with secrets encrypted at rest.
 
 import { SITE_ID } from '@dotli/config';
-import { encodeCoreStorageKey } from '@parity/truapi-host';
-import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
+import type { CoreStorage } from '@parity/truapi-host';
 import { SHARED_CORE_SESSION_KEY, getProtocolClient, type SharedStoreStatus } from '@dotli/protocol';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createAsyncTaskPool,
-  createListenerSet,
-  fromHex,
-  waitForIdbRequest,
-  runIdbTransaction,
-  openIdb,
-  toHex,
-} from '@dotli/shared';
+import { createListenerSet, toHex } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { pageRole } from '../pageRole.js';
+import { createLocalCoreSlots, decodeStoredBytes } from './createLocalCoreSlots.js';
 import { sessionPresence } from './createPagePresence.js';
 import { createPageSignInFlag, type SignInFlag, type StoredSignIn } from './signInFlag.js';
 import { recordPresenceWalletReadFailure, siteWallet } from './siteWallet.js';
@@ -32,19 +24,6 @@ const storageReport = createReporter({ flow: 'storage' });
  * `reason`, because a failed read shows the login screen exactly like a missing session.
  */
 const sharedSessionReadMetric = defineCount<'error' | 'hit' | 'miss'>('shared_session.read');
-
-/**
- * The at-rest key of the core's secret slots. Tagged `outcome` (error) and `reason`: `ephemeral_key` when IndexedDB
- * cannot keep it, so this session's secrets will not decrypt after a reload, or `undecryptable` for a slot dropped
- * because it does not decrypt.
- */
-const coreStorageSecretMetric = defineCount<'error'>('core_storage.secret');
-
-/**
- * A stored core value that could not be decoded, which then reads as absent. Tagged `outcome` (error) and `reason`
- * (`corrupt`).
- */
-const coreStorageReadMetric = defineCount<'error'>('core_storage.read');
 
 /** This site's part of the shared auth store, which every subdomain reaches through the protocol frame. */
 export type SharedSessionStore = {
@@ -93,28 +72,13 @@ type Params = {
   shared: SharedSessionStore;
   /** What every core's session write and clear go through, which moves the signed-in flag as the page's role says. */
   flag: SignInFlag;
-  /** This origin's slots. Reached on every call, as the page's localStorage throws where the browser blocks it. */
-  local?: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-  /** Where the at-rest key is kept. */
-  keyDb?: () => IDBFactory;
 };
-
-const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
 // Beside the opaque session blob, so the account reads without decoding the blob.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 
-// Marks a secret slot's value as ciphertext. A value without it does not decrypt and is dropped.
-const ENCRYPTED_VALUE_PREFIX = 'enc1:';
-
-// A fresh nonce per write, since GCM security collapses if a key and nonce pair is ever reused.
-const CORE_SECRET_NONCE_LENGTH = 12;
-
-const KEY_DB_NAME = 'dotli-core';
-const KEY_DB_STORE = 'keys';
-const CORE_SECRET_KEY_ID = 'allowance-keys';
-
-export function createCoreStorage({ shared, flag, local = () => localStorage, keyDb = () => indexedDB }: Params) {
+export function createCoreStorage({ shared, flag }: Params) {
+  const slots = createLocalCoreSlots();
   // Writes in this tab, which the shared store's subscription does not report.
   const localChangeListeners = createListenerSet<undefined>({
     onListenerError: storageReport.listener('core_storage.local_change'),
@@ -126,20 +90,12 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     onListenerError: storageReport.listener('core_storage.session_write'),
   });
 
-  function emitLocalChange(): void {
-    localChangeListeners.emit(undefined);
-  }
-
-  function emitSessionRead(failed: boolean): void {
-    sessionReadListeners.emit(failed);
-  }
-
   async function dropSessionIf(blob: string): Promise<boolean> {
     if (!(await shared.clearIf(SHARED_CORE_SESSION_KEY, blob))) {
       return false;
     }
     await writeUiCache(null);
-    emitLocalChange();
+    localChangeListeners.emit(undefined);
     return true;
   }
 
@@ -149,7 +105,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     if ((await shared.write(SHARED_CORE_SESSION_KEY, blob)) || uiState !== null) {
       await writeUiCache(uiState);
     }
-    emitLocalChange();
+    localChangeListeners.emit(undefined);
   }
 
   // Hits and misses are counted too, so failures read as a rate. An unreachable shared store is the environment's
@@ -164,105 +120,13 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
         metric: sharedSessionReadMetric,
         message: '[dot.li] shared auth session read failed:',
       });
-      emitSessionRead(true);
+      sessionReadListeners.emit(true);
       return { status: 'failed', error };
     }
     const blob = raw === '' ? null : raw;
     sharedSessionReadMetric.count({ outcome: blob === null ? 'miss' : 'hit' });
-    emitSessionRead(false);
+    sessionReadListeners.emit(false);
     return { status: 'ok', blob };
-  }
-
-  // Null for none and for a read that failed, never a throw, as a read error would make the core clear the stored
-  // session, which would log every subdomain out.
-  async function readSessionBlob(): Promise<string | null> {
-    const read = await readSession();
-    return read.status === 'ok' ? read.blob : null;
-  }
-
-  // One load at a time, and every later call finds the key already loaded.
-  const secretKeyLoads = createAsyncTaskPool({ poolSize: 1 });
-  let secretKey: CryptoKey | null = null;
-
-  /**
-   * A random non-extractable key in IndexedDB, since one derived from bundle data would be computable by anyone.
-   * Without IndexedDB it is session-ephemeral, and its values are dropped after a reload.
-   */
-  function getCoreSecretStorageKey(): Promise<CryptoKey> {
-    return secretKeyLoads.call(async () => {
-      secretKey ??= await loadOrCreateCoreSecretKey(keyDb).catch((error: unknown) => {
-        // A browser that refuses IndexedDB, as a private window may, cannot keep the key. Secrets written now will
-        // not decrypt after a reload, which is the environment's limit, not a fault.
-        storageReport.expected(error, {
-          step: 'core_secret_key',
-          metric: coreStorageSecretMetric,
-          reason: 'ephemeral_key',
-          message: '[dot.li] falling back to a session-ephemeral core-secret storage key:',
-        });
-        return generateCoreSecretKey();
-      });
-      return secretKey;
-    });
-  }
-
-  async function encodeCoreStorageValue(key: CoreStorageKey, value: Uint8Array): Promise<string> {
-    if (!isSecretMaterialSlot(key)) {
-      return toHex(value);
-    }
-    const nonce = crypto.getRandomValues(new Uint8Array(CORE_SECRET_NONCE_LENGTH));
-    const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: nonce },
-        await getCoreSecretStorageKey(),
-        new Uint8Array(value),
-      ),
-    );
-    const stored = new Uint8Array(nonce.length + ciphertext.length);
-    stored.set(nonce);
-    stored.set(ciphertext, nonce.length);
-    return ENCRYPTED_VALUE_PREFIX + toHex(stored);
-  }
-
-  async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise<Uint8Array | undefined> {
-    if (!isSecretMaterialSlot(key)) {
-      return decodeStoredBytes(raw, `core storage ${key.tag}`);
-    }
-    if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
-      return dropUndecryptable(key, new Error(`core storage ${key.tag} is not encrypted`));
-    }
-    const bytes = decodeStoredBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length), `core storage ${key.tag}`);
-    if (bytes === undefined) {
-      return undefined;
-    }
-    try {
-      return new Uint8Array(
-        await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
-          await getCoreSecretStorageKey(),
-          bytes.slice(CORE_SECRET_NONCE_LENGTH),
-        ),
-      );
-    } catch (error) {
-      // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
-      // ciphertext to the core as key material.
-      return dropUndecryptable(key, error);
-    }
-  }
-
-  function dropUndecryptable(key: CoreStorageKey, error: unknown): undefined {
-    storageReport.expected(error, {
-      step: 'core_secret_decrypt',
-      metric: coreStorageSecretMetric,
-      reason: 'undecryptable',
-      message: `[dot.li] dropping undecryptable core storage ${key.tag}:`,
-    });
-    local().removeItem(getCoreLocalStorageKey(key));
-    return undefined;
-  }
-
-  async function readCoreStorageValue(key: CoreStorageKey): Promise<Uint8Array | undefined> {
-    const raw = local().getItem(getCoreLocalStorageKey(key));
-    return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
   }
 
   // An unreachable shared store is the environment's failure, so it is a breadcrumb rather than an issue.
@@ -301,7 +165,10 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     let held: string | null = null;
     return {
       async read(): Promise<Uint8Array | undefined> {
-        held = await readSessionBlob();
+        // Null for none and for a read that failed, never a throw, as a read error would make the core clear the
+        // stored session, which would log every subdomain out.
+        const read = await readSession();
+        held = read.status === 'ok' ? read.blob : null;
         return held === null ? undefined : decodeStoredBytes(held, 'shared auth session');
       },
       async write(value: Uint8Array): Promise<void> {
@@ -311,7 +178,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
             const changed = await shared.write(SHARED_CORE_SESSION_KEY, blob);
             held = blob;
             if (changed) {
-              emitLocalChange();
+              localChangeListeners.emit(undefined);
             }
           });
         } catch (error) {
@@ -331,9 +198,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
   }
 
   function subscribeStoredSession(listener: () => void): () => void {
-    const unsubscribeLocal = localChangeListeners.subscribe(() => {
-      listener();
-    });
+    const unsubscribeLocal = localChangeListeners.subscribe(listener);
     const unsubscribeShared = shared.subscribe(key => {
       if (key === SHARED_CORE_SESSION_KEY) {
         listener();
@@ -368,21 +233,21 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
           if (key.tag === 'AuthSession') {
             return session?.read();
           }
-          return readCoreStorageValue(key);
+          return slots.read(key);
         },
         async writeCoreStorage(key, value) {
           if (key.tag === 'AuthSession') {
             await session?.write(value);
             return;
           }
-          local().setItem(getCoreLocalStorageKey(key), await encodeCoreStorageValue(key, value));
+          await slots.write(key, value);
         },
         async clearCoreStorage(key) {
           if (key.tag === 'AuthSession') {
             await session?.clear();
             return;
           }
-          local().removeItem(getCoreLocalStorageKey(key));
+          slots.clear(key);
         },
       };
     },
@@ -401,11 +266,9 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     /** The saved session, or why the store could not answer it. Never rejects, and reports a failed read itself. */
     readSession,
     /** Hears whether each session read failed, a core's or session state's own. Returns the unsubscribe. */
-    subscribeSessionReads: (listener: (failed: boolean) => void): (() => void) =>
-      sessionReadListeners.subscribe(listener),
+    subscribeSessionReads: sessionReadListeners.subscribe,
     /** Hears each core's write of its session that failed, with the failure. Returns the unsubscribe. */
-    subscribeSessionWriteFailures: (listener: (error: unknown) => void): (() => void) =>
-      sessionWriteFailures.subscribe(listener),
+    subscribeSessionWriteFailures: sessionWriteFailures.subscribe,
     /** The cached account, or null for none and for a read that failed. Never throws, and reports its own failure. */
     readUiCache,
     /** Null clears it. Never throws, and reports its own failure, as a stale cache only costs a stale name. */
@@ -469,142 +332,4 @@ async function readStoredSignIn(): Promise<StoredSignIn> {
     return 'held';
   }
   return session.status === 'failed' || wallet === 'unread' ? 'unread' : 'none';
-}
-
-function decodeStoredBytes(raw: string, description: string): Uint8Array | undefined {
-  try {
-    return fromHex(raw);
-  } catch (error) {
-    storageReport.expected(error, {
-      step: 'core_decode',
-      metric: coreStorageReadMetric,
-      reason: 'corrupt',
-      message: `[dot.li] ignoring corrupt ${description}:`,
-    });
-    return undefined;
-  }
-}
-
-function getCoreLocalStorageKey(key: CoreStorageKey): string {
-  switch (key.tag) {
-    case 'PairingDeviceIdentity':
-      return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
-    case 'PermissionAuthorization':
-      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
-    case 'AllowanceKeys':
-      return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
-    case 'AutoSigningKey':
-      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
-    // One slot for the active pairing, unlike the per-product `AutoSigningKey`.
-    case 'AutoSigningKeys':
-      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
-    // Keyed by root public key so several rings coexist. The snapshot is public, so not secret material.
-    case 'RingVrfRegistry':
-      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
-    case 'StatementRenewalTargets':
-      return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
-    case 'LastProcessedPairingStatement':
-      return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
-    case 'AuthSession':
-      return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
-    // Peers address this device by the public counterpart, so the slot must not move with the session.
-    case 'DeviceEncryptionKey':
-      return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
-    // Keyed by session too, since pairing again re-asks the Account Holder.
-    case 'ProductSubtree':
-      return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
-    // The ledger bounds replays for one wallet and peer pair, so the whole triple keys the slot.
-    case 'SsoResponderRequestLedger':
-      return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${formatHexNoPrefix(encodeCoreStorageKey(key))}`;
-    // Per product, so one product's revoked grant expires without touching the others.
-    case 'ProductManifest':
-      return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productLabel}`;
-  }
-}
-
-function isSecretMaterialSlot(key: CoreStorageKey): boolean {
-  switch (key.tag) {
-    case 'AllowanceKeys':
-    case 'AutoSigningKey':
-    case 'AutoSigningKeys':
-    case 'DeviceEncryptionKey':
-      return true;
-    case 'PairingDeviceIdentity':
-    case 'PermissionAuthorization':
-    case 'RingVrfRegistry':
-    case 'StatementRenewalTargets':
-    case 'LastProcessedPairingStatement':
-    case 'AuthSession':
-    case 'ProductSubtree':
-    case 'SsoResponderRequestLedger':
-    case 'ProductManifest':
-      return false;
-  }
-}
-
-function generateCoreSecretKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-
-async function loadOrCreateCoreSecretKey(keyDb: () => IDBFactory): Promise<CryptoKey> {
-  const database = await openKeyDatabase(keyDb());
-  try {
-    const existing = await readStoredSecretKey(database);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const key = await generateCoreSecretKey();
-    try {
-      await addStoredSecretKey(database, key);
-      return key;
-    } catch (error) {
-      // add() rejects when another tab won the race, so adopt its key rather than split the install.
-      const winner = await readStoredSecretKey(database);
-      if (winner !== undefined) {
-        return winner;
-      }
-      throw error;
-    }
-  } finally {
-    database.close();
-  }
-}
-
-function openKeyDatabase(factory: IDBFactory): Promise<IDBDatabase> {
-  return openIdb({
-    factory,
-    name: KEY_DB_NAME,
-    version: 1,
-    upgrade: database => {
-      database.createObjectStore(KEY_DB_STORE);
-    },
-  });
-}
-
-async function readStoredSecretKey(database: IDBDatabase): Promise<CryptoKey | undefined> {
-  const value: unknown = await waitForIdbRequest(
-    database.transaction(KEY_DB_STORE).objectStore(KEY_DB_STORE).get(CORE_SECRET_KEY_ID),
-  );
-  return isCryptoKey(value) ? value : undefined;
-}
-
-/** Rejects when another tab added the key first, and on a commit-time abort such as a full quota. */
-function addStoredSecretKey(database: IDBDatabase, key: CryptoKey): Promise<void> {
-  return runIdbTransaction({
-    db: database,
-    stores: KEY_DB_STORE,
-    mode: 'readwrite',
-    body: transaction => {
-      transaction.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
-    },
-  });
-}
-
-/** `instanceof CryptoKey` is unreliable across realms and the global is missing under happy-dom. */
-function isCryptoKey(value: unknown): value is CryptoKey {
-  return typeof value === 'object' && value !== null && (value as CryptoKey).type === 'secret';
-}
-
-function formatHexNoPrefix(bytes: Uint8Array): string {
-  return toHex(bytes).slice(2);
 }

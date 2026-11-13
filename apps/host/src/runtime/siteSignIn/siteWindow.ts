@@ -121,10 +121,10 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
   // The window flow's screen, while a flow the site started has not stored its sign-in.
   const flowScreen = atom<SignInScreen | null>(null);
   const stops: (() => void)[] = [];
-  // Aborts on dispose, after which the round starts no flow, as nothing would release it.
-  const lifetime = new AbortController();
+  // Set on dispose, after which the round starts no flow, as nothing would release it.
+  let disposed = false;
   const site = createRound((stored, close, failed) => {
-    if (lifetime.signal.aborted) {
+    if (disposed) {
       return;
     }
     // A round whose stored session is gone starts a flow again on Try again. The flow before it is left until the
@@ -150,9 +150,8 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
       failed(error);
       return;
     }
-    flowScreen.set(flow.screen.get());
-    stopFollowing = flow.screen.listen(() => {
-      flowScreen.set(flow.screen.get());
+    stopFollowing = flow.screen.subscribe(next => {
+      flowScreen.set(next);
     });
     stops.push(stopFollowing, () => {
       flow.dispose();
@@ -175,7 +174,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
   showCurrent();
 
   function dispose(): void {
-    lifetime.abort();
+    disposed = true;
     for (const stop of stops.splice(0)) {
       stop();
     }

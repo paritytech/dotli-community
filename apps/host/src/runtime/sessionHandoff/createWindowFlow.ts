@@ -417,13 +417,13 @@ export function createWindowFlow({
           update(toStoredRead(reads.readStoredForContinue(shown.offered.stored)));
         },
         anotherAsked(state, _event, transition) {
-          logOut(state, signOut.signOut(), transition);
+          logOut(state, () => signOut.signOut(), transition);
         },
       },
       phoneUntold: {
         // Try again on that failure tells the phone once more from what the sign-out left.
         anotherAsked(state, _event, transition) {
-          logOut(state, signOut.tellAgain(state.untold), transition);
+          logOut(state, () => signOut.tellAgain(state.untold), transition);
         },
         goOnAsked(state, _event, transition) {
           transition.emitSideEffect({ kind: 'logged', line: 'sign-in window goes on with the phone not told' });
@@ -811,17 +811,18 @@ export function createWindowFlow({
   }
 
   /**
-   * Waits on a sign-out that tells the phone, or tells it again. A failure is reported by the sign-out itself. The
-   * phone keeps this browser listed until it is told, so the window goes on only once it was, or the user chooses to.
+   * Starts a sign-out that tells the phone, or tells it again, once the step shows it, and waits on it. A failure is
+   * reported by the sign-out itself. The phone keeps this browser listed until it is told, so the window goes on only
+   * once it was, or the user chooses to.
    */
   function logOut(
     { round, shown }: Continued,
-    outcome: Promise<LogoutOutcome>,
+    startSignOut: () => Promise<LogoutOutcome>,
     { emitState, emitSideEffect, update }: Transition<FlowMachine>,
   ): void {
     emitSideEffect({ kind: 'logged', line: 'sign-in window uses another account' });
     emitState({ kind: 'loggingOut', round, shown });
-    update(outcome.then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
+    update(startSignOut().then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
   }
 
   /** Forgets the wallet through the flag keeper, which drops the flag once the store holds no sign-in. */

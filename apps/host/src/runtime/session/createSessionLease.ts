@@ -16,14 +16,15 @@ const report = createReporter({ flow: 'wallet' });
 
 /**
  * One `acquire` the session lease made of the page core. Tagged `outcome` (ok or error) and, on error, `reason`: `boot`
- * for a first boot that failed and `redial` for a replacement that could not boot.
+ * for a first boot that failed, `redial` for a replacement that could not boot, and `read` for a read of the copy that
+ * rejected, so no core was asked.
  */
 const walletSessionLeaseMetric = defineCount<'error' | 'ok'>('wallet.session_lease');
 
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
 type Params = {
-  /** The page's copy, whose paired session the lease follows. */
+  /** The page's copy, whose paired session the lease follows. Its read rejects only on a defect. */
   copy: Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession'>;
   /** Whether the page runs on a local wallet now, as only a page that pairs holds a lease. Never throws. */
   isLocalWallet: () => boolean;
@@ -51,9 +52,20 @@ export function createSessionLease({ copy, isLocalWallet, core }: Params) {
     held = null;
   }
 
+  function queueRun(): void {
+    // A run rejects only when the copy's read does, which is a defect.
+    runs.call(run).catch((error: unknown) => {
+      reportWalletFailure(error, {
+        what: 'session lease read',
+        step: 'session_lease',
+        reason: 'read',
+        metric: walletSessionLeaseMetric,
+      });
+    });
+  }
+
   async function run(): Promise<void> {
     if (isStopped()) {
-      releaseHeld();
       return;
     }
     const read = await copy.readSession();
@@ -88,7 +100,7 @@ export function createSessionLease({ copy, isLocalWallet, core }: Params) {
         return;
       }
       releaseHeld();
-      void runs.call(run);
+      queueRun();
     });
   }
 
@@ -101,10 +113,8 @@ export function createSessionLease({ copy, isLocalWallet, core }: Params) {
       if (stop !== null) {
         return stop;
       }
-      void runs.call(run);
-      const stopChanges = copy.subscribeStoredSession(() => {
-        void runs.call(run);
-      });
+      queueRun();
+      const stopChanges = copy.subscribeStoredSession(queueRun);
 
       function stopLease(): void {
         stopped = true;

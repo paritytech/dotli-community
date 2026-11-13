@@ -1,12 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletReadResult } from '@dotli/protocol';
-import { createMemoryStorage } from '@dotli/shared/testing';
 import { createCoreStorage } from './createCoreStorage.js';
 import { createNonOwnerSignInFlag } from './signInFlag.js';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
@@ -64,8 +62,6 @@ beforeEach(() => {
   const coreStorage = createCoreStorage({
     shared,
     flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') }),
-    local: () => createMemoryStorage(),
-    keyDb: () => new IDBFactory(),
   });
   store = {
     readSession: () => coreStorage.readSession(),

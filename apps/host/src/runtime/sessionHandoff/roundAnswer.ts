@@ -59,16 +59,20 @@ type RefuseRoundParams = {
   route: SessionRoute;
 };
 
-type AnswerSignInParams<Booted> = {
-  responder: Pick<Responder<unknown>, 'state' | 'refuse'>;
+/** The round's request, and the networks the dispatch judges it by. */
+type RoundRequest = {
   request: SessionRequest;
   /** The networks this deployment runs. */
   enabled: readonly Network[];
+};
+
+type AnswerSignInParams<Booted> = RoundRequest & {
+  responder: Pick<Responder<unknown>, 'state' | 'refuse'>;
   /** What the window's boot gives. Rejects when the boot failed. */
   booted: Promise<Booted>;
 };
 
-type AnswerSignOutParams = Omit<AnswerSignInParams<never>, 'responder' | 'booted'> & {
+type AnswerSignOutParams = RoundRequest & {
   responder: Pick<Responder<typeof SIGNED_OUT_RESULT>, 'state' | 'refuse' | 'send'>;
   /**
    * Settles once the window read what it ends. Rejects for a sign-out that failed before it read, such as one whose
@@ -77,11 +81,14 @@ type AnswerSignOutParams = Omit<AnswerSignInParams<never>, 'responder' | 'booted
   read: Promise<unknown>;
 };
 
-type GetSignInRoundParams<Booted> = {
-  round: Round;
-  /** The vetted origin, which a site's round takes. */
+type DispatchVettedParams = RoundRequest & {
+  responder: Pick<Responder<unknown>, 'refuse'>;
+};
+
+/** A round the dispatch answers, with the vetted origin a site's round takes. */
+type Answerable = {
+  round: Exclude<Round, { kind: 'refuse' }>;
   origin: string;
-  booted: Booted;
 };
 
 /** What `/s/signout` sends as its result, since it ends a session and has none to hand over. */
@@ -111,17 +118,24 @@ export async function answerSignIn<Booted>({
   booted,
 }: AnswerSignInParams<Booted>): Promise<SignInRound<Booted> | null> {
   const [bootedValue, vetted] = await Promise.all([booted, waitForFirstVetting(responder)]);
-  // The responder already turned away an opener it refused.
-  if (vetted === null) {
+  const answerable = dispatchVetted({ responder, request, enabled }, vetted);
+  if (answerable === null) {
     return null;
   }
-  const round = dispatchRound({ request, party: vetted.party, enabled });
-  const answer = getSignInRound({ round, origin: vetted.origin, booted: bootedValue });
-  if (typeof answer === 'string') {
-    refuseRound({ responder, party: vetted.party, reason: answer, route: request.route });
-    return null;
+  const { round, origin } = answerable;
+  switch (round.kind) {
+    case 'first':
+      // dot.li's own flow runs only for a sign-in request.
+      if (round.request.route !== 'auth') {
+        refuseRound({ responder, party: 'first', reason: 'bad_request', route: request.route });
+        return null;
+      }
+      return { party: 'first', intent: round.request.intent, booted: bootedValue };
+    case 'third':
+      return { party: 'third', origin, request: round.request, booted: bootedValue };
+    case 'third-sign':
+      return { party: 'third-sign', origin, request: round.request, booted: bootedValue };
   }
-  return answer;
 }
 
 /**
@@ -135,25 +149,17 @@ export function answerSignOut({ responder, request, enabled, read }: AnswerSignO
     () => undefined,
     () => undefined,
   );
-  const round = waitForFirstVetting(responder).then(vetted => {
-    if (vetted === null) {
-      return null;
-    }
-    const dispatched = dispatchRound({ request, party: vetted.party, enabled });
-    if (dispatched.kind === 'refuse') {
-      refuseRound({ responder, party: vetted.party, reason: dispatched.reason, route: request.route });
-      return null;
-    }
-    return dispatched;
-  });
+  const answerable = waitForFirstVetting(responder).then(vetted =>
+    dispatchVetted({ responder, request, enabled }, vetted),
+  );
   return {
     // A refusal that failed to post leaves the round no page's of dot.li.
-    firstParty: round.then(
-      dispatched => dispatched?.kind === 'first',
+    firstParty: answerable.then(
+      answered => answered?.round.kind === 'first',
       () => false,
     ),
-    answered: round.then(async dispatched => {
-      if (dispatched === null) {
+    answered: answerable.then(async answered => {
+      if (answered === null) {
         return;
       }
       await settledRead;
@@ -176,12 +182,8 @@ function getRefusedSiteRoute(route: SessionRoute): SiteRoute {
 
 /** Resolves with the responder's first vetting, or null once it can have none: no opener, or one it refused. */
 async function waitForFirstVetting(responder: Pick<Responder<unknown>, 'state'>): Promise<Vetted | null> {
-  let vetting: Vetted | null | undefined;
-  await waitForStatus(responder.state, state => {
-    vetting = getVetting(state);
-    return vetting !== undefined;
-  });
-  return vetting ?? null;
+  const settled = await waitForStatus(responder.state, state => getVetting(state) !== undefined);
+  return getVetting(settled) ?? null;
 }
 
 /** The vetting `state` shows, null when the window can have none, or undefined while it may still come. */
@@ -199,25 +201,20 @@ function getVetting(state: ResponderState): Vetted | null | undefined {
 }
 
 /**
- * The round the sign-in window runs, or the reason it refuses one it runs no flow for: the dispatch's reason, or a bad
- * request for a first-party request of another route.
+ * The round the first vetting's dispatch makes, or null when there is no vetting, as for an opener the responder
+ * already turned away, or when the dispatch refuses the round, which this refuses.
  */
-function getSignInRound<Booted>({
-  round,
-  origin,
-  booted,
-}: GetSignInRoundParams<Booted>): SignInRound<Booted> | RefusalReason {
-  switch (round.kind) {
-    case 'first':
-      if (round.request.route !== 'auth') {
-        return 'bad_request';
-      }
-      return { party: 'first', intent: round.request.intent, booted };
-    case 'third':
-      return { party: 'third', origin, request: round.request, booted };
-    case 'third-sign':
-      return { party: 'third-sign', origin, request: round.request, booted };
-    case 'refuse':
-      return round.reason;
+function dispatchVetted(
+  { responder, request, enabled }: DispatchVettedParams,
+  vetted: Vetted | null,
+): Answerable | null {
+  if (vetted === null) {
+    return null;
   }
+  const round = dispatchRound({ request, party: vetted.party, enabled });
+  if (round.kind === 'refuse') {
+    refuseRound({ responder, party: vetted.party, reason: round.reason, route: request.route });
+    return null;
+  }
+  return { round, origin: vetted.origin };
 }

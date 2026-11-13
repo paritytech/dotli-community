@@ -90,6 +90,9 @@ type OpenWindow = WindowWait & {
   end(reason: CancelReason): void;
 };
 
+/** What the page makes of the sign-in window's word: its result, or its refusal. */
+type HeardSignIn = Extract<SignInOutcome, { kind: 'result' | 'refused' }>;
+
 /** How a round ended: with what the page made of the window's word, or with the reason it ended without one. */
 type RoundEnd<Word> = { word: Word } | { reason: CancelReason };
 
@@ -233,7 +236,7 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
         return Promise.resolve({ kind: 'cancelled' });
       }
       const outcome = createDeferred<SignInOutcome>();
-      const handle = openRound<SignInOutcome>({
+      const handle = openRound<HeardSignIn>({
         wait: { kind: 'signin' },
         urlFor: round => createSignInWindowUrl({ intent, network: network(), round, origin: windowOrigin }),
         settle(ended) {
@@ -334,7 +337,7 @@ function getPageSessionHandoff(): SessionHandoff {
 }
 
 /** What a sign-in round makes of the window's word, or null for a result that is no sign-in. */
-function hearSignIn(word: WindowWord): SignInOutcome | null {
+function hearSignIn(word: WindowWord): HeardSignIn | null {
   switch (word.kind) {
     case 'refused':
       return { kind: 'refused' };
@@ -346,9 +349,14 @@ function hearSignIn(word: WindowWord): SignInOutcome | null {
   }
 }
 
-function getRoundTags(ended: RoundEnd<SignInOutcome>): RoundTags {
+function getRoundTags(ended: RoundEnd<HeardSignIn>): RoundTags {
   if ('word' in ended) {
-    return { outcome: getWordOutcome(ended.word), reason: 'window' };
+    switch (ended.word.kind) {
+      case 'result':
+        return { outcome: 'signed_in', reason: 'window' };
+      case 'refused':
+        return { outcome: 'refused', reason: 'window' };
+    }
   }
   if (ended.reason === 'signed_in') {
     // A page that hears the window store its sign-in, as one sharing the store does, ends the round before the
@@ -356,15 +364,4 @@ function getRoundTags(ended: RoundEnd<SignInOutcome>): RoundTags {
     return { outcome: 'signed_in', reason: 'store' };
   }
   return { outcome: 'cancelled', reason: ended.reason };
-}
-
-function getWordOutcome(word: SignInOutcome): 'signed_in' | 'refused' {
-  switch (word.kind) {
-    case 'result':
-      return 'signed_in';
-    case 'refused':
-    case 'blocked':
-    case 'cancelled':
-      return 'refused';
-  }
 }

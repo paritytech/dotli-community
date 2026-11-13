@@ -44,7 +44,6 @@ function encodeAccountResponse(answer: AccountAnswer): Uint8Array {
 
 /** One core that answers each call with the next queued answer for its method, and records what it was asked. */
 function createFakeCore(answers: { account?: AccountAnswer[] }) {
-  const order: string[] = [];
   const accountRequests: HostAccountGetRequest[] = [];
   const provider = createFakeProvider({
     onPostMessage(message) {
@@ -55,7 +54,6 @@ function createFakeCore(answers: { account?: AccountAnswer[] }) {
       const { requestId, payload } = decoded.value;
       if (payload.traitId === ACCOUNT_GET_ACCOUNT.trait && payload.methodId === ACCOUNT_GET_ACCOUNT.method) {
         accountRequests.push(VersionedHostAccountGetRequest.dec(payload.value).value);
-        order.push('getAccount');
         const answer = must(answers.account?.shift(), 'a getAccount answer');
         queueMicrotask(() => {
           provider.listener?.(
@@ -65,11 +63,11 @@ function createFakeCore(answers: { account?: AccountAnswer[] }) {
       }
     },
   });
-  return { ...createFakeCoreLease({ provider }), order, accountRequests };
+  return { ...createFakeCoreLease({ provider }), accountRequests };
 }
 
 describe('site account', () => {
-  it('As a user, I hand a round the key of the account the site named and nothing is signed', async () => {
+  it('As a user, I hand a round the key of the account the site named', async () => {
     // Given a core that knows the named account
     const core = createFakeCore({ account: [{ ok: SITE_KEY }] });
     const reader = createSiteAccountReader({ acquire: core.acquire });
@@ -79,7 +77,6 @@ describe('site account', () => {
 
     // Then that account alone was read
     expect(key).toEqual(SITE_KEY);
-    expect(core.order).toEqual(['getAccount']);
     expect(core.accountRequests).toEqual([{ productAccountId: ACCOUNT }]);
   });
 

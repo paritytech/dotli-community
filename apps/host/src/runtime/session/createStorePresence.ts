@@ -1,28 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createReporter, defineCount, type CountMetric } from '@dotli/metrics';
+import { createReporter } from '@dotli/metrics';
 import type { SharedChannel } from '../sharedMode.js';
 import { SESSION_FLAG_NAME } from './createCookiePresence.js';
+import { getFlagWriteReport, type FlagWrite } from './sessionFlagWriteMetric.js';
 import type { SessionPresence } from './types.js';
 
 const report = createReporter({ flow: 'wallet' });
-
-/**
- * Count. A write of the signed-in flag that failed, so other subdomains read the old flag. Tagged `outcome` (`error`)
- * and `reason`, the write (`set`, `clear`, or `renew` for a renew of a flag that is still set).
- */
-const sessionFlagWriteMetric = defineCount<'error'>('session.flag_write');
-
-/** A write of the signed-in flag. */
-export type FlagWrite = 'set' | 'clear' | 'renew';
-
-/** What a failed write of the flag is reported under. */
-type FlagWriteReport = {
-  step: string;
-  reason: FlagWrite;
-  metric: CountMetric<'error'>;
-};
 
 /**
  * The flag in the dev HTTP store under every local root, because Chromium rejects a cookie with `Domain=localhost`.
@@ -44,11 +29,6 @@ export function createStorePresence(channel: SharedChannel): SessionPresence {
     // The dev store keeps the flag until it is deleted, so a flag still set needs nothing.
     renew: () => Promise.resolve(),
   };
-}
-
-/** The step, reason and metric a failed write of the flag is reported under. Never throws. */
-export function getFlagWriteReport(write: FlagWrite): FlagWriteReport {
-  return { step: `presence_${write}`, reason: write, metric: sessionFlagWriteMetric };
 }
 
 function reportUnwritten(error: unknown, write: FlagWrite): void {

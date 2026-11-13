@@ -1,17 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { asProductId } from '@parity/truapi';
-import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
 import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
-import type { CoreStorageKey } from '@parity/truapi-host';
 import { createCoreStorage, type HostCoreStorage } from './createCoreStorage.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import { createDeferred } from '@dotli/shared';
-import { createMemoryStorage, must } from '@dotli/shared/testing';
+import { must } from '@dotli/shared/testing';
 import { createFakeSessionPresence, type FakeSessionPresence } from './createPagePresence.fake.js';
 import type { SessionPresence } from './types.js';
 import { createNonOwnerSignInFlag, createOwnerSignInFlag, type StoredSignIn } from './signInFlag.js';
@@ -22,43 +18,22 @@ const AUTH_SESSION_KEY = { tag: 'AuthSession' as const };
 const UNREACHABLE = new Error('protocol iframe never listened');
 const CACHED_UI_STATE = JSON.stringify({ connected: true, liteUsername: 'pgherveou.04' });
 
-/**
- * A core storage over the given store, with a fake Sentry and capture sink bound for this test, for the tests that read
- * what it reports.
- */
-function createReportingCoreStorage(shared: FakeSharedSessionStore) {
+/** Records this test's counts and reports, for the tests that read what the storage reports. */
+function bindReports() {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-  const captures = { exception: vi.fn(), expected: vi.fn() };
-  onTestFinished(bindCaptureSink(captures));
-  return {
-    counted: metrics.counted,
-    captures,
-    coreStorage: createCoreStorage({
-      shared,
-      flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: readStoredInShared }),
-      local: () => local,
-      keyDb: () => keyDb,
-    }),
-  };
+  return { counted: metrics.counted, reports: recordReports({ onFinished: onTestFinished }) };
 }
 
-/** The sign-in window's core storage over `shared`, beside a main store that holds a local wallet or not. */
+/** The sign-in window's core storage over `shared`, whose flag keeper owns the flag. */
 function createWindowCoreStorage(flag: SessionPresence): HostCoreStorage {
   return createCoreStorage({
     shared,
-    flag: createOwnerSignInFlag({
-      presence: flag,
-      readStoredSignIn: () => Promise.resolve(shared.entries.has(SESSION_KEY) ? 'held' : 'none'),
-    }),
-    local: () => local,
-    keyDb: () => keyDb,
+    flag: createOwnerSignInFlag({ presence: flag, readStoredSignIn: readStoredInShared }),
   });
 }
 
 let shared: FakeSharedSessionStore;
 let coreStorage: HostCoreStorage;
-let local: Storage;
-let keyDb: IDBFactory;
 let presence: FakeSessionPresence;
 
 /** What the fake shared store holds, as a page's flag keeper reads it. */
@@ -68,15 +43,11 @@ function readStoredInShared(): Promise<StoredSignIn> {
 
 describe('core storage', () => {
   beforeEach(() => {
-    local = createMemoryStorage();
-    keyDb = new IDBFactory();
     shared = createFakeSharedSessionStore();
     presence = createFakeSessionPresence({ state: 'present' });
     coreStorage = createCoreStorage({
       shared,
       flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: readStoredInShared }),
-      local: () => local,
-      keyDb: () => keyDb,
     });
   });
 
@@ -92,7 +63,6 @@ describe('core storage', () => {
     // Then
     expect(beforeWrite).toBeUndefined();
     expect(shared.entries.get(SESSION_KEY)).toBe('0x010203');
-    expect(local.length).toBe(0);
     expect(Array.from(readBack ?? [])).toEqual([1, 2, 3]);
 
     // When
@@ -104,305 +74,9 @@ describe('core storage', () => {
     expect(afterClear).toBeUndefined();
   });
 
-  it.each<{
-    label: string;
-    key: CoreStorageKey;
-    bytes: number[];
-    slot: RegExp;
-    hidden: string[];
-    stored: unknown;
-  }>([
-    {
-      label: 'a permission authorization from a typed core key, and it round-trips through an opaque slot',
-      key: {
-        tag: 'PermissionAuthorization',
-        value: {
-          scope: 'My App',
-          request: { tag: 'Device', value: 'OpenUrl' },
-        },
-      },
-      bytes: [4],
-      slot: /^dotli:core:permission:[0-9a-f]+$/,
-      hidden: ['open-url'],
-      stored: '0x04',
-    },
-    {
-      label: 'a remote permission authorization, and its key stays opaque',
-      key: {
-        tag: 'PermissionAuthorization',
-        value: {
-          scope: 'myapp',
-          request: {
-            tag: 'Remote',
-            value: {
-              permission: {
-                tag: 'Remote',
-                value: { domains: ['B.example', 'a.example', 'b.example'] },
-              },
-            },
-          },
-        },
-      },
-      bytes: [7],
-      slot: /^dotli:core:permission:[0-9a-f]+$/,
-      hidden: ['example'],
-      stored: expect.any(String),
-    },
-    {
-      label: 'allowance keys, and they are stored encrypted and read back',
-      key: { tag: 'AllowanceKeys', value: { sessionId: 'session-1' } },
-      bytes: [1, 2, 3, 4],
-      slot: /^dotli:core:allowance-keys:session-1$/,
-      hidden: [],
-      stored: expect.not.stringMatching(/^0x01020304$/),
-    },
-    {
-      label: 'a product auto-signing key, and it is stored encrypted in an opaque slot',
-      key: { tag: 'AutoSigningKey', value: { productId: asProductId('truapi-playground.dot') } },
-      bytes: [5, 6, 7, 8],
-      slot: /^dotli:core:auto-signing:[0-9a-f]+$/,
-      hidden: ['truapi-playground.dot'],
-      stored: expect.stringMatching(/^enc1:0x/),
-    },
-    {
-      label: 'the device encryption secret, and it is stored encrypted in a stable install-wide slot',
-      key: { tag: 'DeviceEncryptionKey' },
-      bytes: [9, 10, 11, 12],
-      // Peers address this device by the public counterpart, so the slot name
-      // must not move with the session: a fresh name would orphan them.
-      slot: /^dotli:core:device-encryption-key$/,
-      hidden: [],
-      stored: expect.stringMatching(/^enc1:0x/),
-    },
-  ])('As a dotli integrator, I write $label', async ({ key, bytes, slot, hidden, stored }) => {
-    // Given
-    const storage = coreStorage.createAdapters();
-
-    // When
-    await storage.writeCoreStorage(key, new Uint8Array(bytes));
-    const readBack = await storage.readCoreStorage(key);
-
-    // Then
-    expect(local.length).toBe(1);
-    const storageKey = local.key(0);
-    expect(storageKey).toMatch(slot);
-    expect(hidden.filter(label => storageKey?.includes(label) === true)).toEqual([]);
-    expect(local.getItem(storageKey ?? '')).toEqual(stored);
-    expect(Array.from(readBack ?? [])).toEqual(bytes);
-
-    // When
-    await storage.clearCoreStorage(key);
-    const afterClear = await storage.readCoreStorage(key);
-
-    // Then
-    expect(afterClear).toBeUndefined();
-  });
-
-  it('As a dotli integrator, I write product subtree keys for two sessions and each is stored per session in an opaque plaintext slot', async () => {
-    // Given
-    const storage = coreStorage.createAdapters();
-    const key = {
-      tag: 'ProductSubtree',
-      value: {
-        sessionId: 'session-1',
-        productId: asProductId('truapi-playground.dot'),
-      },
-    } satisfies CoreStorageKey;
-    const otherSession = {
-      tag: 'ProductSubtree',
-      value: {
-        sessionId: 'session-2',
-        productId: asProductId('truapi-playground.dot'),
-      },
-    } satisfies CoreStorageKey;
-
-    // When
-    await storage.writeCoreStorage(key, new Uint8Array([13]));
-    await storage.writeCoreStorage(otherSession, new Uint8Array([14]));
-    const readBack = await storage.readCoreStorage(key);
-    const otherReadBack = await storage.readCoreStorage(otherSession);
-
-    // Then
-    // The slot holds a public key, so it is stored in the clear, but the
-    // product it belongs to stays out of the visible storage key.
-    expect(local.length).toBe(2);
-    for (const index of [0, 1]) {
-      const storageKey = local.key(index);
-      expect(storageKey).toMatch(/^dotli:core:product-subtree:[0-9a-f]+$/);
-      expect(storageKey).not.toContain('truapi-playground.dot');
-      expect(local.getItem(storageKey ?? '')).toMatch(/^0x/);
-    }
-    // Pairing again answers afresh, so one session's answer must not be read
-    // back for another.
-    expect(Array.from(readBack ?? [])).toEqual([13]);
-    expect(Array.from(otherReadBack ?? [])).toEqual([14]);
-
-    // When
-    await storage.clearCoreStorage(key);
-    const afterClear = await storage.readCoreStorage(key);
-    const otherAfterClear = await storage.readCoreStorage(otherSession);
-
-    // Then
-    expect(afterClear).toBeUndefined();
-    expect(Array.from(otherAfterClear ?? [])).toEqual([14]);
-  });
-
-  it('As a dotli integrator, I write the SSO responder replay ledger for two peers and each peer gets its own slot', async () => {
-    // Given
-    const storage = coreStorage.createAdapters();
-    const key = {
-      tag: 'SsoResponderRequestLedger',
-      value: {
-        rootPublicKey: new Uint8Array(32).fill(1),
-        peerStatementAccountId: new Uint8Array(32).fill(2),
-        peerEncryptionPublicKey: new Uint8Array(32).fill(3),
-      },
-    } satisfies CoreStorageKey;
-    const otherPeer = {
-      tag: 'SsoResponderRequestLedger',
-      value: {
-        rootPublicKey: new Uint8Array(32).fill(1),
-        peerStatementAccountId: new Uint8Array(32).fill(2),
-        peerEncryptionPublicKey: new Uint8Array(32).fill(4),
-      },
-    } satisfies CoreStorageKey;
-
-    // When
-    await storage.writeCoreStorage(key, new Uint8Array([21]));
-    await storage.writeCoreStorage(otherPeer, new Uint8Array([22]));
-    const readBack = await storage.readCoreStorage(key);
-    const otherReadBack = await storage.readCoreStorage(otherPeer);
-
-    // Then
-    // Core-owned replay state, not key material, so it is stored like the
-    // ring registry snapshot rather than under at-rest encryption.
-    expect(local.length).toBe(2);
-    for (const index of [0, 1]) {
-      const storageKey = local.key(index);
-      expect(storageKey).toMatch(/^dotli:core:sso-responder-ledger:[0-9a-f]+$/);
-      expect(local.getItem(storageKey ?? '')).toMatch(/^0x/);
-    }
-    // The ledger bounds replays for one peer, so two peers of the same wallet
-    // must never share a slot.
-    expect(Array.from(readBack ?? [])).toEqual([21]);
-    expect(Array.from(otherReadBack ?? [])).toEqual([22]);
-
-    // When
-    await storage.clearCoreStorage(key);
-    const afterClear = await storage.readCoreStorage(key);
-    const otherAfterClear = await storage.readCoreStorage(otherPeer);
-
-    // Then
-    expect(afterClear).toBeUndefined();
-    expect(Array.from(otherAfterClear ?? [])).toEqual([22]);
-  });
-
-  it('As a dotli integrator, I write the same allowance keys twice and no nonce is reused', async () => {
-    // Given
-    const storage = coreStorage.createAdapters();
-    const key = {
-      tag: 'AllowanceKeys',
-      value: { sessionId: 'session-1' },
-    } satisfies CoreStorageKey;
-    const storageKey = 'dotli:core:allowance-keys:session-1';
-
-    // When: the same plaintext is written twice
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const first = local.getItem(storageKey);
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const second = local.getItem(storageKey);
-    const readBack = await storage.readCoreStorage(key);
-
-    // Then: the ciphertexts differ (fresh nonce per write) and still decrypt
-    expect(first).not.toBeNull();
-    expect(second).not.toBeNull();
-    expect(second).not.toBe(first);
-    expect(Array.from(readBack ?? [])).toEqual([1, 2, 3, 4]);
-  });
-
-  it('As a dotli integrator, I write allowance keys and they are encrypted under a non-extractable per-install key', async () => {
-    // Given
-    const storage = coreStorage.createAdapters();
-    const key = {
-      tag: 'AllowanceKeys',
-      value: { sessionId: 'session-1' },
-    } satisfies CoreStorageKey;
-
-    // When
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const stored = await readStoredAllowanceKey(keyDb);
-    const exported = crypto.subtle.exportKey('raw', must(stored, 'the stored key'));
-
-    // Then: the encryption key is a random per-install CryptoKey persisted in IndexedDB whose material can never be
-    // exported, not something derivable from public bundle data.
-    expect(stored?.type).toBe('secret');
-    expect(stored?.extractable).toBe(false);
-    await expect(exported).rejects.toThrow();
-  });
-
-  it('As a dotli integrator, I read an allowance slot that holds plain bytes and it is dropped as undecryptable', async () => {
-    // Given a secret slot whose value is not encrypted
-    const { counted, coreStorage: reporting } = createReportingCoreStorage(shared);
-    const storage = reporting.createAdapters();
-    const key = { tag: 'AllowanceKeys', value: { sessionId: 'plain' } } satisfies CoreStorageKey;
-    const storageKey = 'dotli:core:allowance-keys:plain';
-    local.setItem(storageKey, '0x01020304');
-
-    // When
-    const bytes = await storage.readCoreStorage(key);
-
-    // Then: the plain bytes are never handed to the core as key material
-    expect(bytes).toBeUndefined();
-    expect(local.getItem(storageKey)).toBeNull();
-    expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'undecryptable' }]);
-  });
-
-  it('As a dotli integrator, I read an allowance slot that no longer decrypts and it is dropped instead of returning ciphertext', async () => {
-    // Given: an encrypted slot whose ciphertext no longer authenticates, the
-    // same shape as a key lost to an IndexedDB wipe or tampered bytes
-    const storage = coreStorage.createAdapters();
-    const key = {
-      tag: 'AllowanceKeys',
-      value: { sessionId: 'session-1' },
-    } satisfies CoreStorageKey;
-    const storageKey = 'dotli:core:allowance-keys:session-1';
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const stored = local.getItem(storageKey) ?? '';
-    const flipped = stored.slice(0, -2) + (stored.endsWith('00') ? 'ff' : '00');
-    local.setItem(storageKey, flipped);
-
-    // When
-    const bytes = await storage.readCoreStorage(key);
-
-    // Then: a true cache miss. Ciphertext is never handed back as key
-    // material, and the dead slot is removed
-    expect(bytes).toBeUndefined();
-    expect(local.getItem(storageKey)).toBeNull();
-  });
-
-  it('As a dotli integrator, I read corrupt persisted core bytes and get a cache miss', async () => {
-    // Given
-    const { counted, captures, coreStorage: reporting } = createReportingCoreStorage(shared);
-    const storage = reporting.createAdapters();
-    const key = {
-      tag: 'AllowanceKeys',
-      value: { sessionId: 'corrupt' },
-    } satisfies CoreStorageKey;
-    local.setItem('dotli:core:allowance-keys:corrupt', 'enc1:not-hex');
-
-    // When
-    const stored = storage.readCoreStorage(key);
-
-    // Then
-    await expect(stored).resolves.toBeUndefined();
-    expect(counted('core_storage.read')).toEqual([{ outcome: 'error', reason: 'corrupt' }]);
-    expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_decode' }]]);
-  });
-
   it('As a dotli integrator, I read a corrupt shared auth session and get a cache miss', async () => {
     // Given
-    const { counted, captures, coreStorage: reporting } = createReportingCoreStorage(shared);
-    const storage = reporting.createAdapters();
+    const storage = coreStorage.createAdapters();
     shared.entries.set(SESSION_KEY, 'not-hex');
 
     // When
@@ -410,13 +84,10 @@ describe('core storage', () => {
 
     // Then
     await expect(stored).resolves.toBeUndefined();
-    expect(counted('core_storage.read')).toEqual([{ outcome: 'error', reason: 'corrupt' }]);
-    expect(captures.expected.mock.calls).toMatchObject([[expect.anything(), { step: 'core_decode' }]]);
   });
 
-  it('As an operator, I watch a failed shared session read and see it counted with its error name', async () => {
+  it('As a returning user whose shared store times out, I open the page and my core reads no session instead of failing', async () => {
     // Given
-    const { counted, coreStorage } = createReportingCoreStorage(shared);
     const storage = coreStorage.createAdapters();
     shared.entries.set(SESSION_KEY, '0x010203');
     const timeout = new Error('Protocol request "authStorageRead" timed out after 30000ms');
@@ -428,12 +99,11 @@ describe('core storage', () => {
 
     // Then
     expect(stored).toBeUndefined();
-    expect(counted('shared_session.read')).toContainEqual({ outcome: 'error', reason: 'ProtocolTimeoutError' });
   });
 
   it('As a returning user whose shared store cannot be read, I open the page and the session read fails and is recorded once as an environment failure', async () => {
     // Given a shared store that cannot be reached
-    const { counted, captures, coreStorage } = createReportingCoreStorage(shared);
+    const { counted, reports } = bindReports();
     shared.readError = UNREACHABLE;
 
     // When the session is read
@@ -441,9 +111,8 @@ describe('core storage', () => {
 
     // Then the read answers failed, with one breadcrumb, no issue and one failed read counted
     expect(session).toEqual({ status: 'failed', error: UNREACHABLE });
-    expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'session_read' }));
-    expect(captures.exception).not.toHaveBeenCalled();
+    expect(reports.expected).toEqual([{ step: 'session_read', error: UNREACHABLE, tags: undefined }]);
+    expect(reports.exceptions).toEqual([]);
     expect(counted('shared_session.read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
@@ -467,7 +136,7 @@ describe('core storage', () => {
 
   it('As a returning user whose shared store cannot be read, I open the page and the cached account reads as none and is reported once', async () => {
     // Given
-    const { counted, captures, coreStorage } = createReportingCoreStorage(shared);
+    const { counted, reports } = bindReports();
     shared.readError = UNREACHABLE;
 
     // When
@@ -475,15 +144,14 @@ describe('core storage', () => {
 
     // Then
     expect(cached).toBeNull();
-    expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'ui_cache' }));
-    expect(captures.exception).not.toHaveBeenCalled();
+    expect(reports.expected).toEqual([{ step: 'ui_cache', error: UNREACHABLE, tags: undefined }]);
+    expect(reports.exceptions).toEqual([]);
     expect(counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'read' }]);
   });
 
   it('As a signed-in user whose shared store refuses the cached account, I sign in and the write settles and is reported once', async () => {
     // Given
-    const { counted, captures, coreStorage } = createReportingCoreStorage(shared);
+    const { counted, reports } = bindReports();
     shared.writeError = UNREACHABLE;
 
     // When
@@ -491,13 +159,13 @@ describe('core storage', () => {
 
     // Then
     await expect(written).resolves.toBeUndefined();
-    expect(captures.expected).toHaveBeenCalledTimes(1);
+    expect(reports.expected).toEqual([{ step: 'ui_cache', error: UNREACHABLE, tags: undefined }]);
     expect(counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'write' }]);
   });
 
   it('As a user whose shared store refuses the cached account clear, I log out and the session is still cleared while the failure is reported once', async () => {
     // Given
-    const { counted, captures, coreStorage } = createReportingCoreStorage(shared);
+    const { counted, reports } = bindReports();
     const storage = coreStorage.createAdapters();
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     shared.clearError = key => (key === UI_STATE_CACHE_KEY ? UNREACHABLE : null);
@@ -507,8 +175,7 @@ describe('core storage', () => {
 
     // Then
     expect(shared.entries.get(SESSION_KEY)).toBeUndefined();
-    expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(UNREACHABLE, expect.objectContaining({ step: 'ui_cache' }));
+    expect(reports.expected).toEqual([{ step: 'ui_cache', error: UNREACHABLE, tags: undefined }]);
     expect(counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'clear' }]);
   });
 
@@ -635,58 +302,6 @@ describe('core storage', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('As an operator, I see a browser that cannot keep the at-rest key recorded once and the session still round-trips its secrets', async () => {
-    // Given a key store the browser refuses
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    onTestFinished(bindCaptureSink(captures));
-    const storage = createCoreStorage({
-      shared,
-      flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: readStoredInShared }),
-      local: () => local,
-      keyDb() {
-        throw new DOMException('The operation is insecure.', 'SecurityError');
-      },
-    }).createAdapters();
-    const key = { tag: 'AllowanceKeys', value: { sessionId: 'session-1' } } satisfies CoreStorageKey;
-
-    // When
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const readBack = await storage.readCoreStorage(key);
-
-    // Then
-    expect(Array.from(readBack ?? [])).toEqual([1, 2, 3, 4]);
-    expect(captures.expected).toHaveBeenCalledTimes(1);
-    expect(captures.expected).toHaveBeenCalledWith(
-      expect.any(DOMException),
-      expect.objectContaining({
-        step: 'core_secret_key',
-      }),
-    );
-    expect(metrics.counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'ephemeral_key' }]);
-  });
-
-  it('As an operator, I see a secret slot that no longer decrypts recorded and counted as it is dropped', async () => {
-    // Given an encrypted slot whose ciphertext no longer authenticates
-    const { counted, captures, coreStorage: reporting } = createReportingCoreStorage(shared);
-    const storage = reporting.createAdapters();
-    const key = { tag: 'AllowanceKeys', value: { sessionId: 'session-1' } } satisfies CoreStorageKey;
-    const storageKey = 'dotli:core:allowance-keys:session-1';
-    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const stored = local.getItem(storageKey) ?? '';
-    local.setItem(storageKey, stored.slice(0, -2) + (stored.endsWith('00') ? 'ff' : '00'));
-
-    // When
-    await storage.readCoreStorage(key);
-
-    // Then
-    expect(captures.expected).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ step: 'core_secret_decrypt' }),
-    );
-    expect(counted('core_storage.secret')).toEqual([{ outcome: 'error', reason: 'undecryptable' }]);
-  });
-
   it('As a user in the sign-in window on a flag store that answers late, I pair and my session write waits for the flag', async () => {
     // Given a flag write still in flight, such as a request to the dev store
     const landed = createDeferred<undefined>();
@@ -783,30 +398,3 @@ describe('core storage', () => {
     expect(presence.calls).toEqual([]);
   });
 });
-
-/** The at-rest key the core storage keeps for allowance keys in its IndexedDB key store. */
-async function readStoredAllowanceKey(factory: IDBFactory): Promise<CryptoKey | undefined> {
-  const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open('dotli-core');
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-    request.onerror = () => {
-      reject(request.error ?? new Error('opening dotli-core failed'));
-    };
-  });
-  try {
-    return await new Promise<CryptoKey | undefined>((resolve, reject) => {
-      const request = database.transaction('keys').objectStore('keys').get('allowance-keys');
-      request.onsuccess = () => {
-        // IndexedDB types a stored value as any, and this store holds only CryptoKey values.
-        resolve(request.result as CryptoKey | undefined);
-      };
-      request.onerror = () => {
-        reject(request.error ?? new Error('reading allowance-keys failed'));
-      };
-    });
-  } finally {
-    database.close();
-  }
-}

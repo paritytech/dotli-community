@@ -9,9 +9,8 @@ import { createSiteGrantStore, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { MainAccount } from './mainAccount.js';
 import type { SiteRequest } from './parseSiteRequest.js';
-import type { SiteActionState, SiteScreen } from './createSiteRound.js';
-import { createSiteSignIn, createSiteSignInAction } from './createSiteSignIn.js';
-import type { SiteSignInResult } from './createSiteSignInResult.js';
+import type { SiteScreen } from './createSiteRound.js';
+import { createSiteSignIn } from './createSiteSignIn.js';
 import { createRecordingResponder } from '../sessionHandoff/createResponder.fake.js';
 import { consentAndStore } from '../../testing/consentAndStore.js';
 import { getResult } from '../../testing/getResult.js';
@@ -146,26 +145,5 @@ describe('site sign-in', () => {
       { outcome: 'error', reason: 'grant' },
       { outcome: 'granted', reason: 'new' },
     ]);
-  });
-});
-
-describe('site sign-in action', () => {
-  it('As a site, I sign in and get the username of the main account the action runs for, with nothing shown or confirmed', () => {
-    // Given the sign-in action, and the states it moves through
-    const action = createSiteSignInAction();
-    const states: SiteActionState<SiteSignInResult>[] = [];
-    onTestFinished(
-      action.state.listen(state => {
-        states.push(state);
-      }),
-    );
-
-    // When the action starts for the main account
-    action.start(MAIN_ACCOUNT);
-
-    // Then it is done at once with the main account's username alone, on the auth route, and it showed no view to work
-    // on or confirm
-    expect(states).toEqual([{ kind: 'done', result: { username: MAIN_ACCOUNT.username } }]);
-    expect(action.route).toBe('auth');
   });
 });

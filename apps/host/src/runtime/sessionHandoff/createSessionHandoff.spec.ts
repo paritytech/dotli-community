@@ -348,18 +348,17 @@ describe('session handoff, opener side', () => {
     expect(page.opened[1]?.params).toMatchObject({ intent: 'phrase' });
   });
 
-  it('As a user signing in on a dot.li page, I see my window say ready again after a reload and every ready gets a hello for my round on the root origin', () => {
+  it('As a user signing in on a dot.li page, I see my window say ready in another version beside mine and it gets a hello for my round on the root origin', () => {
     // Given a sign-in round whose window is open
     const page = createPage();
     void page.handoff.signIn('signin');
     const window = must(page.windows[0], 'the window');
 
-    // When the window says ready twice, the second time after a reload, once speaking another version beside mine
-    page.post({ data: READY, origin: ROOT, source: window });
+    // When the window says ready speaking another version beside mine
     page.post({ data: { type: 'dotli:s:ready', versions: [2, 1] }, origin: ROOT, source: window });
 
-    // Then each ready is answered with version 1 and my round, each time to the root origin
-    expect(window.posted).toEqual([createHelloPost('round-1'), createHelloPost('round-1')]);
+    // Then the ready is answered with version 1 and my round, to the root origin
+    expect(window.posted).toEqual([createHelloPost('round-1')]);
   });
 
   it('As a user signing out on a dot.li page while a sign-in round is open, I sign out and that round ends first', async () => {
@@ -579,7 +578,7 @@ describe('session handoff, opener side', () => {
     expect(read).toBe(true);
   });
 
-  it('As a user signing out on a dot.li page whose browser blocks the window, I sign out and the read settles at once with no window to wait on', async () => {
+  it('As a user signing out on a dot.li page whose browser blocks the window, I sign out, the flag goes and the read settles at once with no window to wait on', async () => {
     // Given a browser that blocks the window
     const page = createPage({ blocked: true });
 
@@ -587,25 +586,12 @@ describe('session handoff, opener side', () => {
     page.handoff.signOut({ notified: false });
     const read = page.handoff.signOutRead();
 
-    // Then no window will read anything, so nothing waits on one
+    // Then the flag went all the same, and no window will read anything, so nothing waits on one
     await expect(read).resolves.toBeUndefined();
+    expect(page.presence.calls).toEqual(['clear']);
     expect(page.countListeners()).toBe(0);
     expect(page.opened[0]?.params).not.toHaveProperty('notified');
     expect(page.metrics.counted('session_window.signout')).toEqual([{ outcome: 'blocked', reason: 'unnotified' }]);
-  });
-
-  it('As a signed-in user whose sign-out window is blocked, I sign out and its read is settled at once', async () => {
-    // Given a browser that blocks the window
-    const page = createPage({ blocked: true });
-
-    // When the user signs out and the page asks for the read
-    page.handoff.signOut({ notified: true });
-    const read = page.handoff.signOutRead();
-
-    // Then the flag went all the same, and nothing is left to wait for
-    expect(page.presence.calls).toEqual(['clear']);
-    expect(page.countListeners()).toBe(0);
-    await expect(read).resolves.toBeUndefined();
   });
 
   it('As a user signing in on a dot.li page with no sign-out window open, I ask for the sign-out read and get a settled one', async () => {

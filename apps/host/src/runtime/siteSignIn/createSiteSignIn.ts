@@ -6,7 +6,6 @@
 
 import { atom } from 'nanostores';
 import { noop } from '@dotli/shared';
-import { createSiteSignInResult, type SiteSignInResult } from './createSiteSignInResult.js';
 import {
   createSiteRound,
   type SiteAction,
@@ -14,7 +13,14 @@ import {
   type SiteRound,
   type SiteRoundParams,
 } from './createSiteRound.js';
+import type { MainAccount } from './mainAccount.js';
 import { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';
+
+/** What a site receives for its sign-in: the main account's username alone. */
+type SiteSignInResult = {
+  /** The main account's username, or null when it has none. */
+  username: MainAccount['username'];
+};
 
 type Params = Omit<SiteRoundParams<SiteSignInResult, 'granted'>, 'action'>;
 
@@ -27,7 +33,7 @@ export function createSiteSignIn(round: Params): SiteRound {
  * The sign-in action, done at once on its start with the main account's username, or `null` when it has none. It has
  * two phases and no async work, so a plain atom holds them.
  */
-export function createSiteSignInAction(): SiteAction<SiteSignInResult, 'granted'> {
+function createSiteSignInAction(): SiteAction<SiteSignInResult, 'granted'> {
   const state = atom<SiteActionState<SiteSignInResult>>({ kind: 'idle' });
   return {
     route: 'auth',
@@ -39,7 +45,7 @@ export function createSiteSignInAction(): SiteAction<SiteSignInResult, 'granted'
       if (state.get().kind !== 'idle') {
         return;
       }
-      state.set({ kind: 'done', result: createSiteSignInResult(main.username) });
+      state.set({ kind: 'done', result: { username: main.username } });
     },
     confirm: noop,
     end: noop,

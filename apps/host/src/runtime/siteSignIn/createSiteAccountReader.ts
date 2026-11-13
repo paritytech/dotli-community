@@ -6,18 +6,11 @@
  */
 
 import { AccountClient, type ProductAccountId } from '@parity/truapi';
-import type { Result, ResultAsync } from 'neverthrow';
 import { fromHex } from '@dotli/shared';
 import { getSiteCallErrorKind, withCoreCalls, type CoreCallsParams, type SiteCallError } from './withCoreCalls.js';
 
 /** Reads the key of the product account a site names. It signs nothing. */
 export type SiteAccountReader = ReturnType<typeof createSiteAccountReader>;
-
-/** What one read of the account runs over: the account the site names and the core's clients. */
-type SiteCalls = {
-  account: ProductAccountId;
-  accounts: AccountClient;
-};
 
 /** Bounds how long the account read may wait on the phone. */
 const PHONE_WAIT_MS = 5 * 60 * 1000;
@@ -35,7 +28,7 @@ export function createSiteAccountReader({ acquire }: CoreCallsParams) {
      */
     account(account: ProductAccountId): Promise<Uint8Array> {
       return withCoreCalls({ acquire, requestTimeoutMs: PHONE_WAIT_MS }, ({ transport }) =>
-        readAccount({ account, accounts: new AccountClient(transport) }),
+        readAccount(account, new AccountClient(transport)),
       );
     },
   };
@@ -59,29 +52,23 @@ export class SiteAccountReadError extends Error {
   }
 }
 
-/** Reads the named account's public key. */
-async function readAccount(calls: SiteCalls): Promise<Uint8Array> {
-  const read = await runSiteCall(() => calls.accounts.getAccount({ productAccountId: calls.account }));
-  return parseAccountKey(read.account.publicKey);
-}
-
 /**
- * Runs one call once. A rejection ends it with {@link SiteAccountRejectedError}, and any other failure with
- * {@link SiteAccountReadError}.
+ * Reads the named account's public key. A rejection ends it with {@link SiteAccountRejectedError}, and any other failure
+ * with {@link SiteAccountReadError}.
  */
-async function runSiteCall<T>(call: () => ResultAsync<T, SiteCallError>): Promise<T> {
-  let result: Result<T, SiteCallError>;
+async function readAccount(account: ProductAccountId, accounts: AccountClient): Promise<Uint8Array> {
+  let result: Awaited<ReturnType<AccountClient['getAccount']>>;
   try {
-    result = await call();
+    result = await accounts.getAccount({ productAccountId: account });
   } catch (error) {
     throw new SiteAccountReadError(error);
   }
-  if (result.isOk()) {
-    return result.value;
+  if (result.isErr()) {
+    throw getSiteCallErrorKind(result.error) === 'rejected'
+      ? new SiteAccountRejectedError(result.error)
+      : new SiteAccountReadError(result.error);
   }
-  throw getSiteCallErrorKind(result.error) === 'rejected'
-    ? new SiteAccountRejectedError(result.error)
-    : new SiteAccountReadError(result.error);
+  return parseAccountKey(result.value.account.publicKey);
 }
 
 /** The named account's public key the core answered, or the account step's failure for one that is not a key. */
