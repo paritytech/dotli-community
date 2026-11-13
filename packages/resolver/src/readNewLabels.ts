@@ -109,39 +109,40 @@ async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): 
     if (bytes === null || (!bytes.inline && bytes.length > maxNameLength)) {
       return [];
     }
-    return [{ labelhash, bytes }];
+    const dataSlots = bytes.inline
+      ? []
+      : Array.from({ length: Math.ceil(bytes.length / 32) }, (_, offset) => addToSlot(bytes.dataSlot, offset));
+    return [{ labelhash, bytes, dataSlots }];
   });
 
-  const dataSlots = stored.flatMap(({ bytes }) =>
-    bytes.inline
-      ? []
-      : Array.from({ length: Math.ceil(bytes.length / 32) }, (_, index) => addToSlot(bytes.dataSlot, index)),
+  const dataWords = await api.readSlots(
+    store.address,
+    stored.flatMap(s => s.dataSlots),
+    at,
   );
-  const dataWords = await api.readSlots(store.address, dataSlots, at);
 
   const decoder = new TextDecoder();
   const names: string[] = [];
   let nextDataWord = 0;
-  for (const { labelhash, bytes } of stored) {
+  for (const { labelhash, bytes, dataSlots } of stored) {
     if (bytes.inline) {
       names.push(decoder.decode(bytes.data));
       continue;
     }
-    const slotsExpected = Math.ceil(bytes.length / 32);
-    const data = new Uint8Array(slotsExpected * 32);
-    for (let slotIndex = 0; slotIndex < slotsExpected; slotIndex++) {
+    const data = new Uint8Array(dataSlots.length * 32);
+    for (let slotIndex = 0; slotIndex < dataSlots.length; slotIndex++) {
       const word = dataWords[nextDataWord + slotIndex] ?? null;
       if (word === null) {
         throw new PartialStorageReadError({
           contractAddress: store.address,
           slotIndex,
-          slotsExpected,
+          slotsExpected: dataSlots.length,
           context: { mappingKind: 'mapping string', innerKey: labelhash },
         });
       }
       data.set(word, slotIndex * 32);
     }
-    nextDataWord += slotsExpected;
+    nextDataWord += dataSlots.length;
     names.push(decoder.decode(data.subarray(0, bytes.length)));
   }
   return { cursor: { address: store.address, read: store.read + labelhashWords.length }, names };

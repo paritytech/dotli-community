@@ -36,6 +36,19 @@ describe('readLabelStores', () => {
     expect(batches).toEqual([[computeArrayElementSlot(STORES_SLOT, 1), computeArrayElementSlot(STORES_SLOT, 2)]]);
   });
 
+  it('As the name list, I read an unset label store element as the zero address and keep its position', async () => {
+    // Given a factory that holds 2 label stores, the first element unset
+    const storage = createFactoryStorage(LABEL_STORES.slice(0, 2));
+    delete storage[dotns.STORE_FACTORY]?.[computeArrayElementSlot(STORES_SLOT, 0)];
+    const { api } = createFakeApi(storage);
+
+    // When the label stores are read from position 0
+    const stores = await readLabelStores({ api, dotns, known: 0 });
+
+    // Then the unset element reads as the zero address, followed by the 2nd store
+    expect(stores).toEqual([`0x${'00'.repeat(20)}`, LABEL_STORES[1]]);
+  });
+
   it('As the name list, I read nothing past the count when no store was added', async () => {
     // Given a factory that holds 3 label stores, all of them already known
     const { api, reads } = createFakeApi(createFactoryStorage(LABEL_STORES));
