@@ -76,8 +76,6 @@ type WorkerEffect =
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
 
-type LiveKind = Exclude<WorkerState, { kind: 'starting' | 'disposed' }>['kind'];
-
 /** The worker global, narrowed to what the worker uses. */
 export type WorkerScope = {
   /** Hears each tab that connects, with its port first. Never throws. */
@@ -172,30 +170,21 @@ export function startProtocolWorker({
     requireEngine,
   });
 
-  /** A pre-sync that fails tells every port and closes the worker, so a retry is a new worker. */
-  const failPresync: HandlerOf<WorkerMachine, 'syncing' | 'failed', 'presyncFailed'> = (
-    { service, engine },
-    { error },
-    { emitState, emitSideEffect },
-  ) => {
-    emitState({ kind: 'failed', service, engine });
-    emitSideEffect({ kind: 'presyncFailed', error });
-  };
   /** A fatal ends every port's status at once, and a port that connects before the close lands still hears the cause. */
-  const failLightClient: HandlerOf<WorkerMachine, LiveKind, 'lightClientDied'> = (
-    state,
+  const failLightClient: HandlerOf<WorkerMachine, 'syncing' | 'serving', 'lightClientDied'> = (
+    { service, engine },
     { message },
     { emitState, emitSideEffect },
   ) => {
-    switch (state.kind) {
-      case 'syncing':
-      case 'serving':
-        emitState({ kind: 'failed', service: state.service, engine: state.engine });
-        break;
-      case 'unserved':
-      case 'failed':
-        break;
-    }
+    emitState({ kind: 'failed', service, engine });
+    emitSideEffect({ kind: 'lightClientDied', message });
+  };
+  /** A worker that already serves nothing still tells every port the fatal. */
+  const reportFatal: HandlerOf<WorkerMachine, 'unserved' | 'failed', 'lightClientDied'> = (
+    _state,
+    { message },
+    { emitSideEffect },
+  ) => {
     emitSideEffect({ kind: 'lightClientDied', message });
   };
   /** The worker pauses only while every tab it serves asks. */
@@ -207,24 +196,16 @@ export function startProtocolWorker({
     emitSideEffect({ kind: 'pauseApplied', service, paused });
   };
   /** The chains go in effects of their own, so a release that throws still lets the engine go. */
-  const disposeWorker: HandlerOf<WorkerMachine, LiveKind, 'disposed'> = (
-    state,
+  const disposeWorker: HandlerOf<WorkerMachine, 'syncing' | 'serving' | 'failed', 'disposed'> = (
+    { service, engine },
     _event,
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'disposed' });
     emitSideEffect({ kind: 'released' });
-    switch (state.kind) {
-      case 'syncing':
-      case 'serving':
-      case 'failed':
-        // The observed chains go before the pool they lease from.
-        emitSideEffect({ kind: 'serviceDisposed', service: state.service });
-        emitSideEffect({ kind: 'engineDisposed', engine: state.engine });
-        break;
-      case 'unserved':
-        break;
-    }
+    // The observed chains go before the pool they lease from.
+    emitSideEffect({ kind: 'serviceDisposed', service });
+    emitSideEffect({ kind: 'engineDisposed', engine });
   };
   const machine = createStateMachine<WorkerMachine>({
     initial: { kind: 'starting' },
@@ -264,15 +245,22 @@ export function startProtocolWorker({
         },
       },
       unserved: {
-        lightClientDied: failLightClient,
-        disposed: disposeWorker,
+        lightClientDied: reportFatal,
+        disposed(_state, _event, { emitState, emitSideEffect }) {
+          emitState({ kind: 'disposed' });
+          emitSideEffect({ kind: 'released' });
+        },
       },
       syncing: {
         assetHubSynced({ startedAt, service, engine }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'serving', service, engine });
           emitSideEffect({ kind: 'presyncComplete', ms: Math.round(performance.now() - startedAt), service });
         },
-        presyncFailed: failPresync,
+        // A pre-sync that fails tells every port and closes the worker, so a retry is a new worker.
+        presyncFailed({ service, engine }, { error }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'failed', service, engine });
+          emitSideEffect({ kind: 'presyncFailed', error });
+        },
         everyTabPausedChanged: applyEveryTabPaused,
         lightClientDied: failLightClient,
         disposed: disposeWorker,
@@ -284,9 +272,11 @@ export function startProtocolWorker({
       },
       // A pre-sync that fails after the light client died still reports, though the fatal is the cause the tabs hear.
       failed: {
-        presyncFailed: failPresync,
+        presyncFailed(_state, { error }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'presyncFailed', error });
+        },
         everyTabPausedChanged: applyEveryTabPaused,
-        lightClientDied: failLightClient,
+        lightClientDied: reportFatal,
         disposed: disposeWorker,
       },
       disposed: null,
