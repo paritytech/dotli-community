@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProductRendererRenderRequest } from '@parity/truapi';
+import type { ProductRendererRenderRequest, RendererNode } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
@@ -35,14 +35,23 @@ type RenderState =
 
 type RenderEvent =
   | { kind: 'started' }
-  | { kind: 'treeUpdated'; attempt: Attempt; node: Parameters<RenderSink['onUpdate']>[0] }
+  | { kind: 'treeUpdated'; attempt: Attempt; node: RendererNode }
   | { kind: 'renderCompleted'; attempt: Attempt }
   | { kind: 'renderFailed'; attempt: Attempt; error: Error }
   | { kind: 'movedOn' }
   | { kind: 'registered'; productId: string }
   | { kind: 'disposed' };
 
-type RenderMachine = MachineTypes<RenderState, RenderEvent>;
+/** What the sink hears, and the stop of a render or a listener the state let go of. */
+type RenderEffect =
+  | { kind: 'treeUpdated'; node: RendererNode }
+  | { kind: 'completed' }
+  | { kind: 'errored'; error: Error }
+  | { kind: 'released'; stop: () => void }
+  // Sent once the sink heard the error, so a sink that disposes the render as it hears it stops it before any next one.
+  | { kind: 'movedOn' };
+
+type RenderMachine = MachineTypes<RenderState, RenderEvent, RenderEffect>;
 
 export const NOT_CONNECTED = 'Chat is not connected for this product';
 
@@ -63,15 +72,15 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
   const disposeRender: HandlerOf<RenderMachine, 'starting' | 'rendering' | 'failing' | 'waiting', 'disposed'> = (
     state,
     _event,
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'disposed' });
     switch (state.kind) {
       case 'rendering':
-        state.stop();
+        emitSideEffect({ kind: 'released', stop: state.stop });
         return;
       case 'waiting':
-        state.stopListening();
+        emitSideEffect({ kind: 'released', stop: state.stopListening });
         return;
       case 'starting':
       case 'failing':
@@ -89,36 +98,32 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           wait(transition);
-          sink.onError?.(new Error(NOT_CONNECTED));
+          transition.emitSideEffect({ kind: 'errored', error: new Error(NOT_CONNECTED) });
         },
         disposed: disposeRender,
       },
       rendering: {
-        treeUpdated(state, { attempt, node }) {
+        treeUpdated(state, { attempt, node }, { emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
-          sink.onUpdate(node);
+          emitSideEffect({ kind: 'treeUpdated', node });
         },
-        renderCompleted(state, { attempt }, { emitState }) {
+        renderCompleted(state, { attempt }, { emitState, emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
           emitState({ kind: 'completed' });
-          sink.onComplete?.();
+          emitSideEffect({ kind: 'completed' });
         },
-        renderFailed(state, { attempt, error }, { emitState, update }) {
+        renderFailed(state, { attempt, error }, { emitState, emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
           emitState({ kind: 'failing', failed: attempt.connection });
-          // The sink hears the error before any tree of the next render, and may dispose the render as it hears it.
-          try {
-            sink.onError?.(error);
-          } finally {
-            update({ kind: 'movedOn' });
-            state.stop();
-          }
+          emitSideEffect({ kind: 'errored', error });
+          emitSideEffect({ kind: 'released', stop: state.stop });
+          emitSideEffect({ kind: 'movedOn' });
         },
         disposed: disposeRender,
       },
@@ -143,12 +148,31 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
             return;
           }
           renderOn(connection, transition);
-          state.stopListening();
+          transition.emitSideEffect({ kind: 'released', stop: state.stopListening });
         },
         disposed: disposeRender,
       },
       completed: null,
       disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'treeUpdated':
+          sink.onUpdate(effect.node);
+          return;
+        case 'completed':
+          sink.onComplete?.();
+          return;
+        case 'errored':
+          sink.onError?.(effect.error);
+          return;
+        case 'released':
+          effect.stop();
+          return;
+        case 'movedOn':
+          render.update({ kind: 'movedOn' });
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {

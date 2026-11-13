@@ -8,7 +8,8 @@ import { IdbOpenBlockedError } from '@dotli/shared';
 import { createManualTimers } from '@dotli/shared/testing';
 import type { RendererNode } from '@parity/truapi';
 import { createChatConnections } from './createChatConnections.js';
-import { createChatStore, type ChatChange } from './createChatStore.js';
+import { createChatStore } from './createChatStore.js';
+import type { ChatChange } from './createChatView.js';
 import { createRecordingConnection, type RecordedRender } from './createChatConnections.fake.js';
 import { createMemoryChatRepo } from './createChatStore.fake.js';
 

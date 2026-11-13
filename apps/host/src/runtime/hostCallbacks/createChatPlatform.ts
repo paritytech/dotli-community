@@ -4,7 +4,7 @@
 // The product side of chat. The core checks the product's access before it forwards a call here.
 
 import type { ChatPlatform } from '@parity/truapi-host';
-import type { HostChatListSubscribeItem } from '@parity/truapi';
+import type { GenericError, HostChatListSubscribeItem } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, getErrorMessage, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import { chatStore, type ChatRoomRecord, type ChatStore } from '../chat/createChatStore.js';
@@ -15,14 +15,11 @@ type Params = {
   chat?: ChatStore;
 };
 
-/** The `push` and `pushError` a room list stream hands its follow. */
-type RoomsStream = Parameters<Parameters<typeof createResultStream<HostChatListSubscribeItem>>[1]>;
-
 type FollowRoomsParams = {
   chat: Pick<ChatStore, 'subscribe' | 'listRooms'>;
   productId: string;
-  push: RoomsStream[0];
-  pushError: RoomsStream[1];
+  push: (item: HostChatListSubscribeItem) => void;
+  pushError: (error: GenericError) => void;
 };
 
 /** `rereading` is a read in flight whose list a change made stale, so another read follows it. */
@@ -40,7 +37,12 @@ type RoomsEvent =
   | { kind: 'readFailed'; error: unknown }
   | { kind: 'stopped' };
 
-type RoomsMachine = MachineTypes<RoomsState, RoomsEvent>;
+type RoomsEffect =
+  | { kind: 'roomsRead'; rooms: ChatRoomRecord[] }
+  | { kind: 'readFailed'; error: unknown }
+  | { kind: 'released'; stopListening: () => void };
+
+type RoomsMachine = MachineTypes<RoomsState, RoomsEvent, RoomsEffect>;
 
 const report = createReporter({ flow: 'chat' });
 
@@ -101,30 +103,22 @@ export function createChatPlatform({ chat = chatStore }: Params = {}): Required<
  * the follow. Returns the stop, after which nothing is read or pushed.
  */
 function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): () => void {
-  const stopFollowing: HandlerOf<RoomsMachine, 'starting' | 'reading' | 'rereading' | 'idle', 'stopped'> = (
-    state,
+  const stopFollowing: HandlerOf<RoomsMachine, 'reading' | 'rereading' | 'idle', 'stopped'> = (
+    { stopListening },
     _event,
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'stopped' });
-    switch (state.kind) {
-      case 'starting':
-        return;
-      case 'reading':
-      case 'rereading':
-      case 'idle':
-        state.stopListening();
-        return;
-    }
+    emitSideEffect({ kind: 'released', stopListening });
   };
   const failRead: HandlerOf<RoomsMachine, 'reading' | 'rereading', 'readFailed'> = (
     { stopListening },
     { error },
-    { emitState },
+    { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'stopped' });
-    stopListening();
-    pushError({ reason: getErrorMessage(error) });
+    emitSideEffect({ kind: 'released', stopListening });
+    emitSideEffect({ kind: 'readFailed', error });
   };
   const follow = createStateMachine<RoomsMachine>({
     initial: { kind: 'starting' },
@@ -138,15 +132,17 @@ function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): (
           });
           startRead(stopListening, transition);
         },
-        stopped: stopFollowing,
+        stopped(_state, _event, { emitState }) {
+          emitState({ kind: 'stopped' });
+        },
       },
       reading: {
         roomsChanged({ stopListening }, _event, { emitState }) {
           emitState({ kind: 'rereading', stopListening });
         },
-        roomsRead({ stopListening }, { rooms }, { emitState }) {
+        roomsRead({ stopListening }, { rooms }, { emitState, emitSideEffect }) {
           emitState({ kind: 'idle', stopListening });
-          pushRooms(rooms);
+          emitSideEffect({ kind: 'roomsRead', rooms });
         },
         readFailed: failRead,
         stopped: stopFollowing,
@@ -154,7 +150,7 @@ function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): (
       rereading: {
         roomsRead({ stopListening }, { rooms }, transition) {
           startRead(stopListening, transition);
-          pushRooms(rooms);
+          transition.emitSideEffect({ kind: 'roomsRead', rooms });
         },
         readFailed: failRead,
         stopped: stopFollowing,
@@ -166,6 +162,19 @@ function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): (
         stopped: stopFollowing,
       },
       stopped: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'roomsRead':
+          push({ rooms: effect.rooms.map(room => ({ roomId: room.roomId, participatingAs: 'RoomHost' as const })) });
+          return;
+        case 'readFailed':
+          pushError({ reason: getErrorMessage(effect.error) });
+          return;
+        case 'released':
+          effect.stopListening();
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -189,9 +198,5 @@ function followRooms({ chat, productId, push, pushError }: FollowRoomsParams): (
         (error: unknown) => ({ kind: 'readFailed', error }),
       ),
     );
-  }
-
-  function pushRooms(rooms: ChatRoomRecord[]): void {
-    push({ rooms: rooms.map(room => ({ roomId: room.roomId, participatingAs: 'RoomHost' as const })) });
   }
 }

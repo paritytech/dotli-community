@@ -13,7 +13,8 @@ import {
 } from '@dotli/shared';
 import type { ProductId } from '@parity/truapi';
 import { atom, type ReadableAtom } from 'nanostores';
-import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
+import { chatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
+import type { ChatChange, ChatView } from '../runtime/chat/createChatView.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { topbarState } from './topbarState.js';
