@@ -17,6 +17,7 @@ export type {
   BitswapResultMessage,
   HostToSandboxMessage,
   SandboxLoadOutcome,
+  SandboxNavigateMessage,
   SandboxRecoverAcceptedMessage,
   SandboxToHostMessage,
 } from './sandboxMessages.js';

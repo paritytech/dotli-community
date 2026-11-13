@@ -23,7 +23,7 @@ the host's listener.
 - **Params:** `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `removeContractParams`, `validateSandboxParams`,
   `SandboxContractError` (has a `recoverable` flag).
 - **Messages:** `parseHostToSandboxMessage`, `postToHost`, `HostToSandboxMessage`, `SandboxToHostMessage`,
-  `BitswapResultMessage`.
+  `BitswapResultMessage`, `SandboxNavigateMessage`.
 - **Violation report:** `parseApiViolationMessage`, `ApiViolationMessage`.
 - **Recover acceptance:** `parseRecoverAcceptedMessage`, `SandboxRecoverAcceptedMessage`.
 - **Load outcome:** `SandboxLoadOutcome`, `isLoadedOutcome`.

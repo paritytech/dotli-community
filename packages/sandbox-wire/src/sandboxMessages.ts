@@ -53,6 +53,12 @@ export type SandboxRecoverAcceptedMessage = {
   type: 'dotli:sandbox-recover-accepted';
 };
 
+/** The sandbox asks the host to move its page: to the landing, or reload it. */
+export type SandboxNavigateMessage = {
+  type: 'dotli:sandbox-navigate';
+  to: 'landing' | 'reload';
+};
+
 export type BitswapGetMessage = {
   type: 'dotli:bitswap-get';
   id: string;
@@ -88,7 +94,12 @@ export type BitswapResultMessage =
     };
 
 export type SandboxToHostMessage =
-  LoadingStatusMessage | SandboxDebugEventMessage | SandboxRecoverMessage | BitswapGetMessage | BitswapAbortMessage;
+  | LoadingStatusMessage
+  | SandboxDebugEventMessage
+  | SandboxRecoverMessage
+  | SandboxNavigateMessage
+  | BitswapGetMessage
+  | BitswapAbortMessage;
 
 export type HostToSandboxMessage = BitswapResultMessage;
 
@@ -152,6 +163,10 @@ export function parseSandboxToHostMessage(data: unknown): SandboxToHostMessage |
       return parseDebugEvent(record);
     case 'dotli:sandbox-recover':
       return { type: 'dotli:sandbox-recover' };
+    case 'dotli:sandbox-navigate': {
+      const { to } = record;
+      return to === 'landing' || to === 'reload' ? { type: 'dotli:sandbox-navigate', to } : null;
+    }
     case 'dotli:bitswap-get': {
       const { id, cid, frame } = record;
       return isNonEmptyString(id) && isNonEmptyString(cid) && isNonEmptyString(frame)
