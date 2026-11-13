@@ -36,7 +36,8 @@ export type Shell = {
 
 /**
  * Starts the debug tools, the sandbox channel, the settings and the bridge. It sets the page's network before its
- * first await, and the shared settings read after that never change it.
+ * first await, and the shared settings read after that never change it. Rejects as the host start does, with what the
+ * settings boot or the bridge load threw.
  */
 export async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${formatElapsed(PAGE_START)})`);
