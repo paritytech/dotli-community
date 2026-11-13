@@ -62,7 +62,7 @@ type FireBrowserNotificationParams = {
 
 /**
  * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the
- * toast waits in the page until closed. It never asks the browser for that permission.
+ * toast waits in the page until closed. The permission is the caller's to ask for.
  */
 export type ShowNotification = ReturnType<typeof createNotifier>;
 
@@ -78,7 +78,7 @@ const SYSTEM_NOTIFICATION_MS = 5000;
 export function createNotifier({ toasts, attended, system, timers = realTimers }: Params) {
   /**
    * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the
-   * toast waits in the page until closed. It never asks the browser for that permission. Drops a notification whose
+   * toast waits in the page until closed. Drops a notification whose
    * text is blank. Throws only what the system notification throws when built under a permission already granted.
    */
   function notify(params: NotificationParams): void {

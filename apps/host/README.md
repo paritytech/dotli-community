@@ -139,9 +139,9 @@ request in session storage, so a reload answers the same round.
 - Every change goes through one retrying write. The frame reloads only when its `allow` attribute changes.
 - Each permission's facts are one table in the runtime.
 - The browser is asked for a permission the host serves itself, notifications, inside the click that grants it, from the
-  dialog or the menu.
-- A grant the browser denies shows a dialog to restrict it or retry, right after the grant and when an app is first on
-  show in a page load.
+  permission dialog or the menu.
+- A grant the browser denies shows a dialog to restrict it or retry, right after a grant in the permission dialog and
+  when an app is first on show in a page load.
 
 ### Phone requests
 

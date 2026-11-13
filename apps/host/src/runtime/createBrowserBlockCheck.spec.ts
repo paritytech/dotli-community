@@ -120,7 +120,7 @@ describe('createBrowserBlockCheck', () => {
     expect(page.listPending()).toEqual([]);
   });
 
-  it('As a dotli user, a permission the app was not granted is never read from the browser', async () => {
+  it('As a dotli user, I open an app granted nothing and the browser is not read', async () => {
     // Given an app granted nothing, and another granted only Camera
     startCheck(createFakeStatuses({ other: { Camera: 'granted' } }));
 
@@ -133,7 +133,7 @@ describe('createBrowserBlockCheck', () => {
     expect(browser.read.mock.calls).toEqual([['Camera']]);
   });
 
-  it('As a dotli user whose app connection drops during the check, the failure is counted and the next show checks again', async () => {
+  it('As a dotli user whose app connection drops during the check, I open the app again and it is checked again, and the failure is counted', async () => {
     // Given the app's statuses fail to read
     const reports = recordReports({ onFinished: onTestFinished });
     const statuses = createFakeStatuses({});
@@ -168,6 +168,23 @@ describe('createBrowserBlockCheck', () => {
     await statuses.calledFor('other');
 
     // Then
+    expect(reports.expected).toMatchObject([{ step: 'browser_block_check' }]);
+  });
+
+  it("As a dotli user whose denial of one permission fails to save, I still see the dialog of the app's next blocked permission", async () => {
+    // Given two blocked permissions, and a store that fails to write
+    const reports = recordReports({ onFinished: onTestFinished });
+    record.mockRejectedValue(new Error('write failed'));
+    startCheck(createFakeStatuses({ app: { Camera: 'granted', Microphone: 'granted' } }));
+    load('app');
+    await page.waitForPrompt();
+
+    // When the user restricts the first
+    page.answerBrowserBlock('restrict');
+    const next = await page.waitForPrompt({ matches: prompt => isBlockOf(prompt, 'app', 'Microphone') });
+
+    // Then
+    expect(next).toEqual(blockOf('app', 'Microphone'));
     expect(reports.expected).toMatchObject([{ step: 'browser_block_check' }]);
   });
 

@@ -58,16 +58,17 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
       const status = read[index];
       return status !== undefined && isBrowserBlocked(status);
     });
-    try {
-      for (const permission of blocked) {
+    for (const permission of blocked) {
+      try {
         await scope.enqueue(signal => settleBlock(label, permission, signal));
+      } catch (error) {
+        // The scope was disposed, which ends its dialogs.
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        // A permission whose denial failed to save does not end the check of the product's other permissions.
+        report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
       }
-    } catch (error) {
-      // The scope was disposed, which ends its dialogs.
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return;
-      }
-      report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
     }
   }
 

@@ -97,7 +97,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         );
       }
 
-      // The host asks the browser when the user allows a permission, and a browser that denies shows a dialog these steps do not answer.
+      // The host asks the browser when the user allows a permission, and a browser that denies shows a dialog these
+      // steps do not answer.
       const ctx = await browser.newContext({ storageState: STATE_FILE, permissions: [...BROWSER_PERMISSIONS] });
       const page = await ctx.newPage();
 

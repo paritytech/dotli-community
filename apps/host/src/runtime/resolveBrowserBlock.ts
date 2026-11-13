@@ -34,7 +34,7 @@ type Params = {
 
 /**
  * Shows the blocked dialog until the user settles it, again after each Retry the browser still blocks. Rejects with the
- * modal's AbortError once `signal` aborts.
+ * modal's AbortError once `signal` aborts, after the browser answers a Retry already asked.
  */
 export async function resolveBrowserBlock({
   label,

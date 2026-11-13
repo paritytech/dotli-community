@@ -136,18 +136,25 @@ describe('usePermissionsPanel', () => {
     dispose();
   });
 
-  it.each<[string, boolean, PermissionTargets]>([
-    ['deny a permission', true, { Notifications: 'denied' }],
-    ['grant one while no permissions are read', false, { Notifications: 'granted' }],
-  ])('As a user, I %s and the browser is not asked', (_case, isRead, targets) => {
+  it('As a user, I deny a permission in the menu and the browser is not asked', () => {
     // Given
     const { panel, dispose, given, browser } = mount();
-    if (isRead) {
-      given(LOADED, read(['ask', 'ask']));
-    }
+    given(LOADED, read(['ask', 'ask']));
 
     // When
-    void panel.onChange(targets);
+    void panel.onChange({ Notifications: 'denied' });
+
+    // Then
+    expect(browser.request).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it('As a user, I grant a permission while no permissions are read and the browser is not asked', () => {
+    // Given
+    const { panel, dispose, browser } = mount();
+
+    // When
+    void panel.onChange({ Notifications: 'granted' });
 
     // Then
     expect(browser.request).not.toHaveBeenCalled();

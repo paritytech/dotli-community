@@ -78,19 +78,28 @@ export function createBrowserPermissions({ notifications, permissions }: Params)
      * user gesture. Never rejects.
      */
     request(name: EnforceablePermissionName): Promise<BrowserPermissionStatus> | null {
-      if (getBrowserCheck(name) !== 'notifications') {
-        return null;
+      switch (getBrowserCheck(name)) {
+        case 'notifications':
+          return requestNotifications();
+        case null:
+        case 'camera':
+        case 'microphone':
+        case 'geolocation':
+          return null;
       }
-      const api = notifications();
-      if (api === null) {
-        return null;
-      }
-      return api.requestPermission().then(getNotificationStatus, (error: unknown): BrowserPermissionStatus => {
-        report.expected(error, { step: 'browser_permission_request', metric: browserRequestMetric });
-        return 'unknown';
-      });
     },
   };
+
+  function requestNotifications(): Promise<BrowserPermissionStatus> | null {
+    const api = notifications();
+    if (api === null) {
+      return null;
+    }
+    return api.requestPermission().then(getNotificationStatus, (error: unknown): BrowserPermissionStatus => {
+      report.expected(error, { step: 'browser_permission_request', metric: browserRequestMetric });
+      return 'unknown';
+    });
+  }
 }
 
 /** The page's browser permissions, over the window's own APIs. */

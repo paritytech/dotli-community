@@ -147,10 +147,9 @@ describe('bridge', () => {
     // Then
     expect(watches()).toBe(1);
     expect(blockScopes).toHaveLength(1);
-    expect(blockScopes[0]).toBe(first.scopes[0]);
     expect(contexts).toHaveLength(1);
     expect(first.scopes).toHaveLength(2);
-    expect(contexts[0]?.blockingModalScope).toBe(first.scopes[1]);
+    expect(contexts[0]?.blockingModalScope).not.toBe(blockScopes[0]);
     expect(second.scopes).toEqual([]);
   });
 

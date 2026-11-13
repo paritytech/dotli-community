@@ -29,7 +29,7 @@ describe('browser block dialog', () => {
     const again = browserBlockDialog({ app: 'myapp.dot', permission: 'Camera', retried: true });
 
     // Then
-    expect(again.notice?.startsWith('Your browser still blocks it.')).toBe(true);
-    expect(first.notice?.startsWith('Your browser still blocks it.')).toBe(false);
+    expect(again.notice).toMatch(/^Your browser still blocks it\. /);
+    expect(first.notice).not.toMatch(/^Your browser still blocks it\./);
   });
 });

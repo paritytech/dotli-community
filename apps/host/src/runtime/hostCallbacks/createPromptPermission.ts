@@ -22,7 +22,7 @@ import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
 import { servedRequests, type ServeRule } from './servedRequests.js';
 import { getLastingStatus, isGranted, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
-import { isRestricted, resolveBrowserBlock } from '../resolveBrowserBlock.js';
+import { isRestricted, resolveBrowserBlock, type BrowserBlockResolution } from '../resolveBrowserBlock.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
@@ -147,7 +147,9 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
     });
     throwIfModalAborted(signal);
     const decision = toPermissionDecision(answer);
-    if (kind === 'Device' && isGranted(answer) && (await isRestrictedForBrowser(name, approval.request, signal))) {
+    const blocked =
+      kind === 'Device' && isGranted(answer) ? await settleBrowserBlock(name, approval.request, signal) : null;
+    if (blocked !== null && isRestricted(blocked)) {
       // Allowed once or for good, a restriction stores a lasting denial.
       await permissions.product.recordPromptDecision({ label, name, decision: 'denied', signal });
       return 'Deny';
@@ -161,20 +163,21 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
   }
 
   /**
-   * Whether the user restricts the app once the browser blocks the device permission they allowed in dot.li, reading
-   * the browser where the click did not ask it. Rejects with the modal's AbortError once `signal` aborts.
+   * Settles the browser's block of the device permission the user allowed in dot.li, reading the browser where the
+   * click did not ask it. Resolves null where the browser does not block it. Rejects with the modal's AbortError once
+   * `signal` aborts.
    */
-  async function isRestrictedForBrowser(
+  async function settleBrowserBlock(
     name: EnforceablePermissionName,
     requested: Promise<BrowserPermissionStatus> | null,
     signal: AbortSignal,
-  ): Promise<boolean> {
+  ): Promise<BrowserBlockResolution | null> {
     const status = await (requested ?? browser.read(name));
     throwIfModalAborted(signal);
     if (!isBrowserBlocked(status)) {
-      return false;
+      return null;
     }
-    return isRestricted(await resolveBrowserBlock({ label, permission: name, signal, prompts, browser }));
+    return resolveBrowserBlock({ label, permission: name, signal, prompts, browser });
   }
 
   return { devicePermission, remotePermission };
