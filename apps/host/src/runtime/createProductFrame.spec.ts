@@ -1207,7 +1207,7 @@ describe('product frame rebuilds', () => {
     other.hostname = 'other.app.localhost';
 
     // When
-    fakes.askToRecover({ origin: other.origin, from: null });
+    fakes.askToRecover({ origin: other.origin });
 
     // Then
     expect(fakes.readLastStatus()).toBe('connected');
@@ -1420,8 +1420,8 @@ describe('product frame navigates the page', () => {
     const other = new URL(nth(fakes.hosts, 0).options.allowedOrigin ?? '');
     other.hostname = 'other.app.localhost';
 
-    // When the other product's sandbox asks the page to open the landing
-    fakes.askToNavigate({ to: 'landing', origin: other.origin, from: null });
+    // When the frame on screen, navigated to the other product's sandbox, asks the page to open the landing
+    fakes.askToNavigate({ to: 'landing', origin: other.origin });
 
     // Then the page neither opens the landing nor reloads
     expect(fakes.page.goHome).not.toHaveBeenCalled();
