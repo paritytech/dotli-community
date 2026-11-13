@@ -198,8 +198,7 @@ export function startLoadProgress({
   debugBus = pageDebugBus,
 }: Params) {
   const gateway = !hasLightClient(backend);
-  // Always the last band.
-  const contentFetchPhase = gateway ? 2 : 3;
+  const phases = getLoadingPhases(backend);
   const loadStartedAt = readClock();
   const chainReporter = createChainReporter({ flowId, timers, debugBus });
   const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (_state, { detail }) => {
@@ -210,7 +209,8 @@ export function startLoadProgress({
     loading.stopStatusTick();
   };
   const enterContentBand: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'contentFetchEntered'> = () => {
-    loading.advancePhase(contentFetchPhase);
+    // The download is always the last band.
+    loading.advancePhase(phases.length - 1);
   };
   const stop: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'disposed'> = (
     { stops },
@@ -227,7 +227,7 @@ export function startLoadProgress({
     handlers: {
       idle: {
         started(_state, _event, { emitState, update }) {
-          loading.initPhases(getLoadingPhases(backend));
+          loading.initPhases(phases);
           loading.setLoadingDomain(label);
           loading.advancePhase(0);
           // On every backend: a gateway trace with no chain events is the point, not a gap.
