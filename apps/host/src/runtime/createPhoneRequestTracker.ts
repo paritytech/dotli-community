@@ -57,6 +57,8 @@ type Request =
   | { kind: 'tracked'; tap: TapId; requestId: string; request: PhoneRequest; release: () => void }
   | { kind: 'claimed'; tap: TapId; requestId: string; request: PhoneRequest; release: () => void; settle: Settle };
 
+type TrackedRequest = Extract<Request, { kind: 'tracked' }>;
+
 /** `requests` runs oldest first, so the oldest is claimed first. */
 type TrackerState = { kind: 'live'; taps: ReadonlySet<TapId>; requests: readonly Request[] } | { kind: 'disposed' };
 
@@ -64,7 +66,7 @@ type TrackerEvent =
   | { kind: 'tapOpened'; tap: TapId }
   | { kind: 'productFrame'; tap: TapId; message: Uint8Array }
   | { kind: 'coreFrame'; tap: TapId; message: Uint8Array }
-  | { kind: 'claimed'; tap: TapId; requestId: string; settle: Settle }
+  | { kind: 'claimed'; request: TrackedRequest; settle: Settle }
   | { kind: 'tapClosed'; tap: TapId }
   | { kind: 'disposed' };
 
@@ -104,16 +106,15 @@ export function createPhoneRequestTracker({
           if (findRequest(state, tap, requestId) !== undefined) {
             return;
           }
+          let request: PhoneRequest;
           try {
-            const request = { method, body: decodePhoneRequestBody(method, readPayload(message)) };
-            const release = holdNetwork();
-            emitState({
-              ...state,
-              requests: [...state.requests, { kind: 'tracked', tap, requestId, request, release }],
-            });
+            request = { method, body: decodePhoneRequestBody(method, readPayload(message)) };
           } catch (error) {
             emitSideEffect({ kind: 'undecodable', method, error, leg: 'request' });
+            return;
           }
+          const release = holdNetwork();
+          emitState({ ...state, requests: [...state.requests, { kind: 'tracked', tap, requestId, request, release }] });
         },
         coreFrame(state, { tap, message }, { emitState, emitSideEffect }) {
           // Most frames answer no tracked request, so a tap that holds none skips the peek.
@@ -142,10 +143,9 @@ export function createPhoneRequestTracker({
             emitSideEffect({ kind: 'undecodable', method, error, leg: 'response' });
           }
         },
-        claimed(state, { tap, requestId, settle }, { emitState, emitSideEffect }) {
-          const request = findRequest(state, tap, requestId);
+        claimed(state, { request, settle }, { emitState, emitSideEffect }) {
           // A claim made inside a transition is handled after it, and its request may have ended or been claimed by then.
-          if (request?.kind !== 'tracked') {
+          if (!state.requests.includes(request)) {
             emitSideEffect({ kind: 'settled', settle, outcome: { kind: 'gone' } });
             return;
           }
@@ -200,7 +200,7 @@ export function createPhoneRequestTracker({
     connect,
     /**
      * The oldest unclaimed in-flight request that `matches`, now claimed, or undefined. A claim made inside a tracker
-     * transition takes hold once that transition ends, and ends `gone` when its request ended first. Throws only when
+     * transition takes hold once that transition ends, and ends `gone` when its request ended or was claimed first. Throws only when
      * `matches` does.
      */
     claim,
@@ -231,15 +231,16 @@ export function createPhoneRequestTracker({
     const state = machine.state.get();
     const oldest =
       state.kind === 'live'
-        ? state.requests.find(request => request.kind === 'tracked' && matches(request.request))
+        ? state.requests.find(
+            (request): request is TrackedRequest => request.kind === 'tracked' && matches(request.request),
+          )
         : undefined;
     if (oldest === undefined) {
       return undefined;
     }
-    const { tap, requestId, request } = oldest;
     const { promise, resolve: settle } = createDeferred<PhoneOutcome>();
-    machine.update({ kind: 'claimed', tap, requestId, settle });
-    return { request, ended: promise };
+    machine.update({ kind: 'claimed', request: oldest, settle });
+    return { request: oldest.request, ended: promise };
   }
 
   function dispose(): void {
