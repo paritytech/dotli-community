@@ -34,6 +34,7 @@ describe('one core asks', () => {
     const asks = createPromptAsks({
       prompts: page.prompts,
       permissions: { registry, product: createProductPermissions({ registry, product: productState.store }) },
+      browser: { read: () => Promise.resolve('unknown'), request: () => null },
     })({
       product: { label: 'localhost:3000' },
       blockingModalScope: scope,

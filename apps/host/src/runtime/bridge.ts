@@ -31,6 +31,7 @@ import { authViews } from './session/authViews.js';
 import { coreStorage, signInFlag, type SessionRead } from './session/createCoreStorage.js';
 import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
 import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
+import { browserPermissions } from './createBrowserPermissions.js';
 import { LANDING_PRODUCT, type CoreLease } from './createPageCore.js';
 import { getWindowAsks } from './hostCallbacks/getWindowAsks.js';
 import { listenForSessionFlagChange, sessionPresence } from './session/createPagePresence.js';
@@ -92,6 +93,7 @@ const bootRuntime = createCoreRuntimeBoot({
           : createPromptAsks({
               prompts: hostPrompts,
               permissions: { registry: pagePermissions, product: productPermissions },
+              browser: browserPermissions,
             }),
     }),
   loadLocalWalletCore,
