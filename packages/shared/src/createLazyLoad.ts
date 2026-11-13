@@ -25,7 +25,6 @@ type LoadEvent<T> =
   { kind: 'asked'; caller: Caller<T> } | { kind: 'valueLoaded'; value: T } | { kind: 'loadFailed'; error: unknown };
 
 type LoadEffect<T> =
-  | { kind: 'load' }
   | { kind: 'resolve'; callers: readonly Caller<T>[]; value: T }
   | { kind: 'reject'; caller: Caller<T>; error: unknown }
   | { kind: 'firstMissed'; error: unknown };
@@ -46,9 +45,9 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
     initial: { kind: 'unloaded', missed: false },
     handlers: {
       unloaded: {
-        asked({ missed }, { caller }, { emitState, emitSideEffect }) {
+        asked({ missed }, { caller }, { emitState, update }) {
           emitState({ kind: 'loading', asker: caller, queued: [], missed });
-          emitSideEffect({ kind: 'load' });
+          update(runLoad());
         },
       },
       loading: {
@@ -59,7 +58,7 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
           emitState({ kind: 'loaded', value });
           emitSideEffect({ kind: 'resolve', callers: [asker, ...queued], value });
         },
-        loadFailed({ asker, queued, missed }, { error }, { emitState, emitSideEffect }) {
+        loadFailed({ asker, queued, missed }, { error }, { emitState, emitSideEffect, update }) {
           emitSideEffect({ kind: 'reject', caller: asker, error });
           if (!missed) {
             emitSideEffect({ kind: 'firstMissed', error });
@@ -70,7 +69,7 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
             return;
           }
           emitState({ kind: 'loading', asker: next, queued: rest, missed: true });
-          emitSideEffect({ kind: 'load' });
+          update(runLoad());
         },
       },
       loaded: {
@@ -81,17 +80,6 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'load':
-          machine.update(
-            // A `load` that throws before it returns a promise rejects this one, so its error reaches the caller too.
-            new Promise<T>(resolve => {
-              resolve(load());
-            }).then(
-              value => ({ kind: 'valueLoaded', value }),
-              (error: unknown) => ({ kind: 'loadFailed', error }),
-            ),
-          );
-          return;
         case 'resolve':
           for (const caller of effect.callers) {
             caller.resolve(effect.value);
@@ -113,4 +101,14 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
     machine.update({ kind: 'asked', caller });
     return caller.promise;
   };
+
+  function runLoad(): Promise<LoadEvent<T>> {
+    // A `load` that throws before it returns a promise rejects this one, so its error reaches the caller too.
+    return new Promise<T>(resolve => {
+      resolve(load());
+    }).then(
+      value => ({ kind: 'valueLoaded', value }),
+      (error: unknown) => ({ kind: 'loadFailed', error }),
+    );
+  }
 }
