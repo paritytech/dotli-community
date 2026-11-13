@@ -135,8 +135,6 @@ type ScreenEvent =
   | { kind: 'phaseEntered'; index: number }
   | { kind: 'progressNudged'; fraction: number; stage: LoadingStage }
   | { kind: 'progressReleased' }
-  | { kind: 'watchStopped' }
-  | { kind: 'progressCompleted' }
   | { kind: 'tickStopped' }
   | { kind: 'hidden' }
   | { kind: 'dismissed' }
@@ -276,13 +274,12 @@ export function createLoadingController({
             return;
           }
           const { base, target, expectedMs, reportsProgress } = phase;
-          const atBase = base > state.bar.percent ? moveBar(state, { percent: base }, transition) : state;
           const stopTick = poll.start(() => {
             transition.update({ kind: 'crawled' });
           }, CRAWL_TICK_MS);
           const creepCeiling = Math.min(getLentCeiling(phases[index + 1]), CREEP_CEILING);
           const next: ActiveState = {
-            ...atBase,
+            ...state,
             band: {
               kind: 'banded',
               index,
@@ -296,9 +293,14 @@ export function createLoadingController({
               crawl: { kind: 'crawling', stopTick },
             },
           };
-          transition.emitState(next);
+          if (base > state.bar.percent) {
+            moveBar(next, { percent: base }, transition);
+          } else {
+            transition.emitState(next);
+          }
           stopCrawl(band);
-          enterStage(next, phase.stage, transition);
+          // A step enters its stage too, from the state this transition leaves.
+          transition.update({ kind: 'stageSet', stage: phase.stage });
         },
         progressNudged(state, { fraction, stage }, transition) {
           const { band } = state;
@@ -318,7 +320,7 @@ export function createLoadingController({
               : state;
           const want = base + (target - base) * clamped;
           if (want > next.bar.percent) {
-            moveBar(next, { percent: Math.min(want, target) }, transition);
+            moveBar(next, { percent: want }, transition);
             return;
           }
           transition.emitState(next);
@@ -327,18 +329,11 @@ export function createLoadingController({
           const { band } = state;
           emitState({ ...state, released: true, band: band.kind === 'banded' ? { ...band, owner: 'clock' } : band });
         },
-        watchStopped(state, _event, { emitState }) {
-          emitState({ ...state, stall: { kind: 'idle' } });
-          stopStall(state.stall);
-        },
-        progressCompleted(state, _event, transition) {
-          moveBar({ ...state, band: toStillCrawl(state.band) }, { percent: 100 }, transition);
-          stopCrawl(state.band);
-        },
         tickStopped(state, _event, { emitState, emitSideEffect }) {
+          const { band } = state;
           emitState({
             ...state,
-            band: toStillCrawl(state.band),
+            band: band.kind === 'banded' ? { ...band, crawl: { kind: 'still' } } : band,
             stall: { kind: 'idle' },
             rotation: { kind: 'still' },
             typing: { kind: 'still' },
@@ -462,14 +457,6 @@ export function createLoadingController({
      * the listener is reported.
      */
     onProgressStall: stalls.subscribe,
-    /** Stops watching the bar for a stall. Never throws. */
-    stopProgressWatch: (): void => {
-      screen.update({ kind: 'watchStopped' });
-    },
-    /** Fills the bar and stops its crawl. Never throws. */
-    completeProgress: (): void => {
-      screen.update({ kind: 'progressCompleted' });
-    },
     /** Starts a load's steps. Call it once before resolution begins. Never throws. */
     initPhases: (phases: LoadingPhase[]): void => {
       screen.update({ kind: 'phasesSet', phases });
@@ -530,7 +517,7 @@ export function createLoadingController({
     state: ActiveState,
     { percent, cosmetic = false }: MoveBarParams,
     { emitState, emitSideEffect, update }: Transition<ScreenMachine>,
-  ): ActiveState {
+  ): void {
     const shown = Math.round(percent);
     const moved = !cosmetic && shown !== state.bar.realShown;
     const next: ActiveState = {
@@ -548,7 +535,6 @@ export function createLoadingController({
       stopStall(state.stall);
     }
     emitSideEffect({ kind: 'drawn', view: { progress: percent } });
-    return next;
   }
 
   /** Returns a watch on `percent`, or none for a full bar. The caller stops the watch it replaces. */
@@ -675,11 +661,6 @@ function getLentCeiling(next: LoadingPhase | undefined): number {
     return CREEP_CEILING;
   }
   return next.reportsProgress === true ? next.base : next.target;
-}
-
-/** `band` with its crawl marked still. */
-function toStillCrawl(band: Band): Band {
-  return band.kind === 'banded' ? { ...band, crawl: { kind: 'still' } } : band;
 }
 
 function applyEaseInOut(progress: number): number {

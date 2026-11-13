@@ -547,25 +547,6 @@ describe('The loading bar reports when it stops moving', () => {
     // Then
     expect(stalls.length).toBe(1);
   });
-
-  it('As a user whose load finished, I wait long after and am never warned about a full bar', () => {
-    // Given
-    const { controller } = setupController();
-    const stalls: number[] = [];
-    controller.initPhases(STALL_PHASES);
-    controller.onProgressStall(percent => {
-      stalls.push(percent);
-    });
-
-    // When
-    controller.advancePhase(1);
-    controller.nudgePhaseProgress(1, 'content');
-    controller.stopProgressWatch();
-    vi.advanceTimersByTime(PROGRESS_STALL_MS * 3);
-
-    // Then
-    expect(stalls).toEqual([]);
-  });
 });
 
 describe('The loading bar never stands still', () => {
