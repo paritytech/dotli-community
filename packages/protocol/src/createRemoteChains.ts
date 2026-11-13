@@ -83,7 +83,7 @@ type ChainsEvent =
   | { kind: 'chainMessage'; connectionId: string; message: string }
   | { kind: 'chainEnded'; connectionId: string; error: Error | null }
   | { kind: 'consumerSent'; connectionId: string; request: JsonRpcRequest; consumer: Consumer }
-  // No state handles it: a send the frame took changes nothing, and only ends the work `await()` counts.
+  // No state handles it: a send the frame took changes nothing, but its work still has to end in an event.
   | { kind: 'sendAnswered'; connectionId: string }
   | { kind: 'sendFailed'; connectionId: string; request: JsonRpcRequest; error: unknown }
   | { kind: 'disconnected'; connectionId: string };
