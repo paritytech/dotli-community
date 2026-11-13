@@ -28,11 +28,11 @@ type Params = {
 
 /**
  * One prompt of the scope `signal` belongs to. `run` runs its task with its answer typed at enqueue: it settles with a
- * call that resolves the caller's promise.
+ * call that resolves the caller's promise. A task that throws rejects it.
  */
 type Prompt = {
   signal: AbortSignal;
-  run: (signal: AbortSignal, hold: HoldSlot) => Promise<() => void>;
+  run: (hold: HoldSlot) => Promise<() => void>;
   reject: (error: unknown) => void;
 };
 
@@ -47,6 +47,7 @@ type CoordinatorState =
 
 type CoordinatorEvent =
   | { kind: 'enqueued'; prompt: Prompt }
+  | { kind: 'taskDue' }
   | { kind: 'answered'; prompt: Prompt; answer: () => void }
   | { kind: 'taskFailed'; prompt: Prompt; error: unknown }
   | { kind: 'held'; prompt: Prompt; promise: Promise<unknown> }
@@ -54,7 +55,6 @@ type CoordinatorEvent =
   | { kind: 'scopeAborted'; signal: AbortSignal };
 
 type CoordinatorEffect =
-  | { kind: 'runTask'; prompt: Prompt }
   | { kind: 'answer'; answer: () => void }
   | { kind: 'reject'; reject: (error: unknown) => void; error: unknown }
   | { kind: 'countsChanged'; counts: BlockingModalCounts };
@@ -77,6 +77,21 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
       },
       shown: {
         enqueued: queuePrompt,
+        taskDue({ prompt }, _event, { update }) {
+          // The counts report just before may have disposed the scope. Its `scopeAborted` is next.
+          if (prompt.signal.aborted) {
+            return;
+          }
+          const hold: HoldSlot = promise => {
+            update({ kind: 'held', prompt, promise });
+          };
+          update(
+            prompt.run(hold).then(
+              answer => ({ kind: 'answered', prompt, answer }),
+              (error: unknown) => ({ kind: 'taskFailed', prompt, error }),
+            ),
+          );
+        },
         answered(state, { prompt, answer }, transition) {
           if (prompt !== state.prompt) {
             return;
@@ -122,24 +137,6 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'runTask': {
-          const { prompt } = effect;
-          // A report of the counts runs just before, and may have disposed the scope. Its `scopeAborted` is next.
-          if (prompt.signal.aborted) {
-            return;
-          }
-          machine.update(
-            prompt
-              .run(prompt.signal, promise => {
-                machine.update({ kind: 'held', prompt, promise });
-              })
-              .then(
-                answer => ({ kind: 'answered', prompt, answer }),
-                (error: unknown) => ({ kind: 'taskFailed', prompt, error }),
-              ),
-          );
-          return;
-        }
         case 'answer':
           effect.answer();
           return;
@@ -175,13 +172,9 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
     createScope() {
       const controller = new AbortController();
       const { signal } = controller;
-      signal.addEventListener(
-        'abort',
-        () => {
-          machine.update({ kind: 'scopeAborted', signal });
-        },
-        { once: true },
-      );
+      signal.addEventListener('abort', () => {
+        machine.update({ kind: 'scopeAborted', signal });
+      });
       return {
         /**
          * Resolves with the task's value as soon as it returns. A promise the task holds keeps the slot, and the
@@ -193,20 +186,18 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
             return Promise.reject(toBlockingModalAbortError(signal.reason));
           }
           return new Promise<T>((resolve, reject) => {
-            const run: Prompt['run'] = (taskSignal, hold) =>
-              new Promise<T>(settle => {
-                settle(task(taskSignal, hold));
-              }).then(value => () => {
+            const run: Prompt['run'] = async hold => {
+              const value = await task(signal, hold);
+              return () => {
                 resolve(value);
-              });
+              };
+            };
             machine.update({ kind: 'enqueued', prompt: { signal, run, reject } });
           });
         },
         /** Ends the scope's prompts with an AbortError that carries `reason`. Idempotent, and never throws. */
         dispose(reason = 'TrUAPI host disposed'): void {
-          if (!signal.aborted) {
-            controller.abort(toBlockingModalAbortError(reason));
-          }
+          controller.abort(toBlockingModalAbortError(reason));
         },
       };
     },
@@ -261,7 +252,7 @@ const abortScope: HandlerOf<CoordinatorMachine, 'shown' | 'holding', 'scopeAbort
   emitCounted(state, { ...state, queue }, transition);
 };
 
-/** Shows the first of `queue` and runs its task once the counts it changes are reported, or goes idle on none. */
+/** Shows the first of `queue`, whose task is due once the counts it changes are reported, or goes idle on none. */
 function showNext(state: CoordinatorState, queue: readonly Prompt[], transition: Transition<CoordinatorMachine>): void {
   const [prompt, ...rest] = queue;
   if (prompt === undefined) {
@@ -269,7 +260,7 @@ function showNext(state: CoordinatorState, queue: readonly Prompt[], transition:
     return;
   }
   emitCounted(state, { kind: 'shown', prompt, holds: 0, queue: rest }, transition);
-  transition.emitSideEffect({ kind: 'runTask', prompt });
+  transition.update({ kind: 'taskDue' });
 }
 
 /** Moves to `next`, and tells the bar when the counts change. */

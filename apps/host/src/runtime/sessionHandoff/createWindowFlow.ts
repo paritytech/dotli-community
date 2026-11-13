@@ -23,7 +23,7 @@ import {
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type { SignInScreen, WindowIntents } from '../../state/sessionWindowState.js';
-import type { AuthCommands } from '../createAuthController.js';
+import type { AuthCommands } from '../runAuthCommand.js';
 import type { LogoutOutcome, PageSignOut, UntoldLogout } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
 import type { DotliAuthState } from '../session/types.js';
@@ -119,7 +119,7 @@ type Continued = { round: Round; shown: Extract<Shown, { view: 'continue' }> };
 /**
  * The round's flow, from the hello it waits for to the end of its round. Each step that waits on work is a kind of its
  * own. `loggingIn`, `loginFailing` and `loggingInThenRetry` run the window's login, which waits on the phone and so
- * answers through its callback: `loginFailing` shows how the pairing failed while the login still runs, and
+ * answers outside `await()`: `loginFailing` shows how the pairing failed while the login still runs, and
  * `loggingInThenRetry` is a Retry pressed then, which decides once the login answered.
  */
 type Flow =
@@ -416,17 +416,17 @@ export function createWindowFlow({
           update(toStoredRead(reads.readStoredForContinue(shown.offered.stored)));
         },
         anotherAsked(state, _event, transition) {
-          logOut(state, null, transition);
+          logOut(state, signOut.signOut(), transition);
         },
       },
       phoneUntold: {
         // Try again on that failure tells the phone once more from what the sign-out left.
-        anotherAsked({ round, shown, untold }, _event, transition) {
-          logOut({ round, shown }, untold, transition);
+        anotherAsked(state, _event, transition) {
+          logOut(state, signOut.tellAgain(state.untold), transition);
         },
-        goOnAsked({ round, shown }, _event, transition) {
+        goOnAsked(state, _event, transition) {
           transition.emitSideEffect({ kind: 'logged', line: 'sign-in window goes on with the phone not told' });
-          leaveForAnother({ round, shown }, transition);
+          leaveForAnother(state, transition);
         },
       },
       readingForContinue: {
@@ -459,12 +459,7 @@ export function createWindowFlow({
           emitState({ kind: 'forgettingWallet', round, shown });
           update(
             signIns
-              .clear({
-                drop: async () => {
-                  await wallet.forget();
-                  return true;
-                },
-              })
+              .clear({ drop: () => wallet.forget().then(() => true) })
               .then(() => ({ kind: 'walletForgotten' }), mapWorkFailure),
           );
         },
@@ -512,15 +507,7 @@ export function createWindowFlow({
           emitState({ kind: 'readingAfterPhrase', round, shown, entropy });
           // A paired session stays, so the user can switch back to it. A session that cannot be read now fails the
           // step on the failed view, since the form saying the save failed would be wrong.
-          update(
-            reads.readSession().then(
-              session => ({ kind: 'sessionRead', session }),
-              (error: unknown) =>
-                mapWorkFailure(
-                  new Error('The paired session could not be read after the wallet saved', { cause: error }),
-                ),
-            ),
-          );
+          update(readSessionAfterSave(reads.readSession()));
         },
         // The form shows the failure from the import's rejection, which is reported before it rejects.
         workFailed({ round, shown, check, asker }, { error: cause }, { emitState, emitSideEffect }) {
@@ -618,10 +605,10 @@ export function createWindowFlow({
               transition.emitSideEffect({ kind: 'closed' });
               return;
             case 'vetted':
-              followFlow(state, { kind: 'openerKnown', origin: event.state.origin }, transition);
+              transition.update({ kind: 'openerKnown', origin: event.state.origin });
               return;
             case 'no-opener':
-              followFlow(state, { kind: 'openerKnown', origin: null }, transition);
+              transition.update({ kind: 'openerKnown', origin: null });
               return;
             case 'connecting':
               return;
@@ -640,6 +627,7 @@ export function createWindowFlow({
         },
         cancelAsked: closeWindow,
         disposed: disposeWindow,
+        openerKnown: followFlow,
         authChanged: followFlow,
         continueAsked: followFlow,
         anotherAsked: followFlow,
@@ -722,19 +710,16 @@ export function createWindowFlow({
     machine.update({ kind: 'authChanged', auth: auth.get() });
   });
 
+  /** Sends `event`, and resolves once the flow's work it started settled. */
+  function ask(event: Event): Promise<void> {
+    machine.update(event);
+    return machine.await();
+  }
+
   const intents: WindowIntents = {
-    continueWithStored() {
-      machine.update({ kind: 'continueAsked' });
-      return machine.await();
-    },
-    useAnotherAccount() {
-      machine.update({ kind: 'anotherAsked' });
-      return machine.await();
-    },
-    goOnWithoutPhone() {
-      machine.update({ kind: 'goOnAsked' });
-      return machine.await();
-    },
+    continueWithStored: () => ask({ kind: 'continueAsked' }),
+    useAnotherAccount: () => ask({ kind: 'anotherAsked' }),
+    goOnWithoutPhone: () => ask({ kind: 'goOnAsked' }),
     isValidPhrase(phrase) {
       // Only the phrase view's steps hold the check, so any other state has left that view or not shown it yet.
       const state = machine.state.get();
@@ -742,21 +727,14 @@ export function createWindowFlow({
     },
     async importPhrase(phrase) {
       const asker = Symbol('asker');
-      machine.update({ kind: 'importAsked', phrase, asker });
-      await machine.await();
+      await ask({ kind: 'importAsked', phrase, asker });
       const settled = machine.state.get();
       if (settled.kind === 'live' && settled.flow.kind === 'phraseRejected' && settled.flow.asker === asker) {
         throw settled.flow.error;
       }
     },
-    closePhrase() {
-      machine.update({ kind: 'closePhraseAsked' });
-      return machine.await();
-    },
-    retry() {
-      machine.update({ kind: 'retryAsked' });
-      return machine.await();
-    },
+    closePhrase: () => ask({ kind: 'closePhraseAsked' }),
+    retry: () => ask({ kind: 'retryAsked' }),
     cancel() {
       machine.update({ kind: 'cancelAsked' });
     },
@@ -831,18 +809,16 @@ export function createWindowFlow({
   }
 
   /**
-   * Signs out, telling the phone, or tells it again from what an `untold` sign-out left. A failure is reported by the
-   * sign-out itself. The phone keeps this browser listed until it is told, so the window goes on only once it was, or
-   * the user chooses to.
+   * Waits on a sign-out that tells the phone, or tells it again. A failure is reported by the sign-out itself. The
+   * phone keeps this browser listed until it is told, so the window goes on only once it was, or the user chooses to.
    */
   function logOut(
     { round, shown }: Continued,
-    untold: UntoldLogout | null,
+    outcome: Promise<LogoutOutcome>,
     { emitState, emitSideEffect, update }: Transition<FlowMachine>,
   ): void {
     emitSideEffect({ kind: 'logged', line: 'sign-in window uses another account' });
     emitState({ kind: 'loggingOut', round, shown });
-    const outcome = untold === null ? signOut.signOut() : signOut.tellAgain(untold);
     update(outcome.then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
   }
 
@@ -867,6 +843,14 @@ function getScreen(state: State): SignInScreen {
 
 function toStoredRead(read: Promise<SessionResult>): Promise<Event> {
   return read.then(stored => ({ kind: 'storedRead', stored }), mapWorkFailure);
+}
+
+function readSessionAfterSave(read: Promise<SessionResult['session']>): Promise<Event> {
+  return read.then(
+    session => ({ kind: 'sessionRead', session }),
+    (error: unknown) =>
+      mapWorkFailure(new Error('The paired session could not be read after the wallet saved', { cause: error })),
+  );
 }
 
 function mapWorkFailure(error: unknown): Extract<Event, { kind: 'workFailed' }> {

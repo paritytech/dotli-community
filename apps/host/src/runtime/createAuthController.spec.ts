@@ -7,7 +7,7 @@ import { withActiveTld } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { LoginOutcome } from './createAuthCommands.js';
-import type { AuthCommands } from './createAuthController.js';
+import type { AuthCommands } from './runAuthCommand.js';
 import { authControl, createAuthControlSlot } from './authControl.js';
 import { createAuthController } from './createAuthController.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './createBlockingModalCoordinator.js';

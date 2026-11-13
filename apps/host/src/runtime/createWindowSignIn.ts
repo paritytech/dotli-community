@@ -80,6 +80,10 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     importPhrase(state, _event, transition) {
       signInThroughWindow(state, { intent: 'phrase' }, transition);
     },
+    resumeAfterReread(state, _round, transition) {
+      // A window opens only in a click's own turn, which has passed, so the page asks for one.
+      showView(state, { kind: 'prompt', resume: elsewhere() }, transition);
+    },
     /**
      * A product asked the core to log in, from a click inside its own frame, which cannot open a window. The prompt's
      * Sign in gives the click. A failure on show is replaced, while a prompt already up, the wait for the window and its
