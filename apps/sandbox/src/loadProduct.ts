@@ -7,14 +7,7 @@
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
-import {
-  createStateMachine,
-  getErrorName,
-  noop,
-  type HandlerOf,
-  type MachineTypes,
-  type Transition,
-} from '@dotli/shared';
+import { createStateMachine, getErrorName, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { BitswapBridge } from './createBitswapBridge.js';
@@ -83,7 +76,7 @@ type ContentOutcome = { kind: 'fetched'; result: FetchResult } | { kind: 'failed
 
 /**
  * Where one load is. From `preparing` the registration and the fetch run side by side, and the load goes on once both
- * have settled. It ends `loaded`, `failed` or `tornDown`.
+ * have settled. It ends with the outcome the caller gets.
  */
 type LoadState =
   | { kind: 'idle' }
@@ -95,9 +88,7 @@ type LoadState =
   | { kind: 'storing'; files: ArchiveFiles }
   | { kind: 'rendering'; result: FetchResult }
   | { kind: 'writing'; html: string }
-  | { kind: 'loaded' }
-  | { kind: 'failed'; step: LoadStep; error: unknown }
-  | { kind: 'tornDown' };
+  | { kind: 'ended'; outcome: LoadOutcome };
 
 type LoadEvent =
   | { kind: 'started' }
@@ -114,7 +105,6 @@ type LoadEvent =
 type LoadEffect =
   | { kind: 'started' }
   | { kind: 'purging' }
-  | { kind: 'registering' }
   | { kind: 'workerSettled'; worker: WorkerOutcome }
   | { kind: 'fetching' }
   | { kind: 'contentSettled'; content: ContentOutcome }
@@ -131,8 +121,6 @@ type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
  */
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
   const { cid } = params;
-  // A retry runs on the state the first attempt left, so only the first wipes it.
-  const freshStart = params.fullReset && attempt === 1;
 
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
@@ -140,19 +128,15 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       idle: {
         started(_state, _event, transition) {
           transition.emitSideEffect({ kind: 'started' });
-          if (!freshStart) {
+          // A retry runs on the state the first attempt left, so only the first wipes it.
+          if (!params.fullReset || attempt > 1) {
             startPreparing({ waitForFreshController: false }, transition);
             return;
           }
           // Before the service worker registers, so the fresh worker installs cleanly instead of adopting stale state.
           transition.emitState({ kind: 'purging' });
           transition.emitSideEffect({ kind: 'purging' });
-          transition.update(
-            startStep(deps.purge).then(
-              () => ({ kind: 'purged' }),
-              (error: unknown) => ({ kind: 'stepFailed', step: 'init', error }),
-            ),
-          );
+          transition.update(runStep('init', deps.purge, () => ({ kind: 'purged' })));
         },
       },
       purging: {
@@ -186,7 +170,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       decrypting: {
         decrypted({ content }, { files }, transition) {
           if (files === null) {
-            startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
+            startRendering({ type: 'single', content }, content, transition);
             return;
           }
           transition.emitSideEffect({ kind: 'decrypted', files });
@@ -203,7 +187,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
             transition.emitState(toFailure('archive_index', error));
             return;
           }
-          startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
+          startRendering({ type: 'archive', files }, index, transition);
         },
         stepFailed: failStep,
       },
@@ -224,7 +208,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       },
       writing: {
         write({ html }, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'loaded' });
+          emitState({ kind: 'ended', outcome: { outcome: 'loaded' } });
           // Written into this window, so the host's container bridge reaches the dApp through this iframe.
           try {
             deps.write(html);
@@ -235,9 +219,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
           emitSideEffect({ kind: 'rendered' });
         },
       },
-      loaded: null,
-      failed: null,
-      tornDown: null,
+      ended: null,
     },
     onEffect: createLoadReports({ params, attempt }, deps),
     onError: error => {
@@ -250,7 +232,11 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   });
   machine.update({ kind: 'started' });
   await machine.await();
-  return toOutcome(machine.state.get());
+  const settled = machine.state.get();
+  // A settled load that has not ended was left there by a transition that threw.
+  return settled.kind === 'ended'
+    ? settled.outcome
+    : { outcome: 'failed', step: 'init', error: new Error(`The sandbox load stopped in ${settled.kind}`) };
 
   /** Starts the registration and the fetch side by side. A load that purged waits for a fresh worker. */
   function startPreparing(
@@ -258,9 +244,8 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     { emitState, emitSideEffect, update }: Transition<LoadMachine>,
   ): void {
     emitState({ kind: 'preparing' });
-    emitSideEffect({ kind: 'registering' });
     update(
-      startStep(() => deps.registerWorker(registration)).then(
+      startStep(() => registerWorker(registration)).then(
         controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
         (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
       ),
@@ -274,6 +259,14 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
         (error: unknown) => ({ kind: 'contentSettled', content: { kind: 'failed', error } }),
       ),
     );
+  }
+
+  /** Registers the worker, timing the registration alone, so a full reset's purge is left out. */
+  async function registerWorker(registration: Parameters<LoadProductDeps['registerWorker']>[0]): Promise<boolean> {
+    const stopTimer = m.timer('app.sw_register');
+    const controlled = await deps.registerWorker(registration);
+    stopTimer();
+    return controlled;
   }
 
   /** Says on the host how the content is fetched, as the fetch's own status does, then fetches it. */
@@ -306,9 +299,10 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       case 'single':
         emitState({ kind: 'decrypting', content: result.content });
         update(
-          startStep(() => deps.decrypt(result.content, cid)).then(
+          runStep(
+            'decrypt',
+            () => deps.decrypt(result.content, cid),
             files => ({ kind: 'decrypted', files }),
-            (error: unknown) => ({ kind: 'stepFailed', step: 'decrypt', error }),
           ),
         );
         return;
@@ -321,19 +315,22 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
   function startStoring(files: ArchiveFiles, { emitState, update }: Transition<LoadMachine>): void {
     emitState({ kind: 'storing', files });
     update(
-      startStep(() => deps.storeArchive(files)).then(
+      runStep(
+        'sw_store',
+        () => deps.storeArchive(files),
         () => ({ kind: 'archiveStored' }),
-        (error: unknown) => ({ kind: 'stepFailed', step: 'sw_store', error }),
       ),
     );
   }
 
-  function startRendering(result: FetchResult, html: string, { emitState, update }: Transition<LoadMachine>): void {
+  /** Renders `result`, whose page is `page`. */
+  function startRendering(result: FetchResult, page: Uint8Array, { emitState, update }: Transition<LoadMachine>): void {
     emitState({ kind: 'rendering', result });
     update(
-      startStep(() => deps.prepareHtml(html)).then(
+      runStep(
+        'render',
+        () => deps.prepareHtml(new TextDecoder().decode(page)),
         prepared => ({ kind: 'htmlPrepared', html: prepared }),
-        (error: unknown) => ({ kind: 'stepFailed', step: 'render', error }),
       ),
     );
   }
@@ -351,8 +348,6 @@ function createLoadReports(
   const { cid, backend, resolutionId } = params;
   const via = blockSource === null ? 'gateway' : 'bitswap';
   const stopApp = m.timer('app.total');
-  // Set once the registration starts, so the timer leaves out a full reset's purge.
-  let stopWorkerTimer: () => void = noop;
   return reportEffect;
 
   function reportEffect(effect: LoadEffect): void {
@@ -364,15 +359,11 @@ function createLoadReports(
       case 'purging':
         report.log.event('Purging sandbox-origin state for a full reset');
         return;
-      case 'registering':
-        stopWorkerTimer = m.timer('app.sw_register');
-        return;
       case 'workerSettled': {
         const { worker } = effect;
         if (worker.kind === 'failed') {
           return;
         }
-        stopWorkerTimer();
         report.log.event('Service worker ready', { controlled: worker.controlled, ms: measureSinceStart() });
         return;
       }
@@ -444,6 +435,11 @@ const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'r
   emitState(toFailure(step, error));
 };
 
+/** The event `work` settles with, as `toEvent` makes it, or the failure of `step` when it throws or rejects. */
+function runStep<T>(step: LoadStep, work: () => Promise<T>, toEvent: (value: T) => LoadEvent): Promise<LoadEvent> {
+  return startStep(work).then(toEvent, (error: unknown) => ({ kind: 'stepFailed', step, error }));
+}
+
 /** `work`'s promise, with a throw before it returns one turned into its rejection. */
 function startStep<T>(work: () => Promise<T>): Promise<T> {
   return new Promise<T>(resolve => {
@@ -456,32 +452,10 @@ function toFailure(step: LoadStep, error: unknown): LoadState {
   // A frame's teardown rejects its fetches by the platform's abort name. Reporting it would file an error every time a
   // user switches product mid-load, burying the real failures.
   if (getErrorName(error) === 'AbortError') {
-    return { kind: 'tornDown' };
+    return { kind: 'ended', outcome: { outcome: 'torn_down' } };
   }
-  return { kind: 'failed', step: getErrorName(error) === CONTENT_ERRORS.VERIFICATION ? 'verify' : step, error };
-}
-
-/** What the settled load resolves. A load that stopped short of its end failed in a transition. */
-function toOutcome(state: LoadState): LoadOutcome {
-  switch (state.kind) {
-    case 'loaded':
-      return { outcome: 'loaded' };
-    case 'failed':
-      return { outcome: 'failed', step: state.step, error: state.error };
-    case 'tornDown':
-      return { outcome: 'torn_down' };
-    // A settled load still in one of these was left there by a transition that threw.
-    case 'idle':
-    case 'purging':
-    case 'preparing':
-    case 'awaitingContent':
-    case 'awaitingWorker':
-    case 'decrypting':
-    case 'storing':
-    case 'rendering':
-    case 'writing':
-      return { outcome: 'failed', step: 'init', error: new Error(`The sandbox load stopped in ${state.kind}`) };
-  }
+  const failedStep = getErrorName(error) === CONTENT_ERRORS.VERIFICATION ? 'verify' : step;
+  return { kind: 'ended', outcome: { outcome: 'failed', step: failedStep, error } };
 }
 
 function countResultBytes(result: FetchResult): number {

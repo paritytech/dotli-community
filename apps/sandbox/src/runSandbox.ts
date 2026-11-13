@@ -113,7 +113,6 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
               transition.emitSideEffect({ kind: 'showFailure', failure: { kind: 'topLevel', host: contract.host } });
               return;
             case 'offOrigin':
-              transition.emitState({ kind: 'ended' });
               failContract({ kind: 'offOrigin' }, undefined, transition);
               return;
             case 'unreadable': {
@@ -122,7 +121,6 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
                 askHostToRecover(error, transition);
                 return;
               }
-              transition.emitState({ kind: 'ended' });
               failContract({ kind: 'unreadable', step: 'contract_params', reason: error.message }, error, transition);
               return;
             }
@@ -140,7 +138,6 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
           emitSideEffect({ kind: 'recoverAccepted' });
         },
         recoverFailed({ error }, { cause }, transition) {
-          transition.emitState({ kind: 'ended' });
           failContract({ kind: 'unreadable', step: 'contract_rerender', reason: error.message }, cause, transition);
         },
       },
@@ -257,8 +254,13 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     });
   }
 
-  /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
-  function failContract(failure: ContractFailure, cause: unknown, { emitSideEffect }: Transition<RunMachine>): void {
+  /** Ends the run on a contract it cannot use. Reported, since that is the host's fault, never the visitor's. */
+  function failContract(
+    failure: ContractFailure,
+    cause: unknown,
+    { emitState, emitSideEffect }: Transition<RunMachine>,
+  ): void {
+    emitState({ kind: 'ended' });
     emitSideEffect({ kind: 'contractFailed', failure, cause });
     emitSideEffect({ kind: 'showFailure', failure });
   }

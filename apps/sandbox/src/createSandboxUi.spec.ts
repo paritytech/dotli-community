@@ -189,6 +189,24 @@ describe('sandbox UI', () => {
     expect(hideFallback).toHaveBeenCalledOnce();
   });
 
+  it('As a visitor shown a failure on the fallback screen, I get a toast whose load brings the UI up and the failure moves into it', async () => {
+    // Given a failure the fallback screen shows, since its load failed
+    const module = createFakeUi();
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValueOnce(module);
+    const { ui, toasts } = createHarness(load);
+    ui.showError('First', 'failure');
+    await ui.loadUi().catch(() => undefined);
+
+    // When a toast loads the UI
+    toasts.set({ items: ['reload offer'] });
+    await ui.loadUi();
+
+    // Then
+    expect(module.showError).toHaveBeenCalledWith('First', { detail: 'failure', action: undefined });
+  });
+
   it('As a visitor, I get a retry screen while the UI cannot load and it still offers Reload', async () => {
     // Given
     const { ui, texts } = createHarness(() => Promise.reject(new Error('chunk missing')));
