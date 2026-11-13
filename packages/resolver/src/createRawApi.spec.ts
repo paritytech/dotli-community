@@ -284,6 +284,44 @@ describe('createRawApi', () => {
       expect(askedKeys(follow).map(keys => keys.length)).toEqual([256, 44]);
     });
 
+    it('As the resolver, I read 300 slots, one call fails while the other runs, and the read rejects only once both ended', async () => {
+      // Given a first call that fails and a second call the light client holds open
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      const failure = new Error('storage call failed');
+      const secondCallAsked = createDeferred<() => void>();
+      follow.storageSubscription
+        .mockImplementationOnce((_hash, _inputs, _childTrie, _onItems, onError) => {
+          onError(failure);
+          return () => undefined;
+        })
+        .mockImplementationOnce((_hash, _inputs, _childTrie, _onItems, _onError, onDone, onDiscardedItems) => {
+          onDiscardedItems(0);
+          secondCallAsked.resolve(onDone);
+          return () => undefined;
+        });
+      let settled = false;
+      const read = readSlotsUpTo(api, 300).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      void read.finally(() => {
+        settled = true;
+      });
+      const endSecondCall = await secondCallAsked.promise;
+      await vi.runAllTimersAsync();
+
+      // When
+      const settledWhileCallRan = settled;
+      endSecondCall();
+      const error = await read;
+
+      // Then
+      expect(settledWhileCallRan).toBe(false);
+      expect(error).toBe(failure);
+    });
+
     it('As the resolver on a server that discards the last two keys of a call, I read three slots and get every value', async () => {
       // Given every slot set, and a server that discards the tail of the first call
       const keys = [0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)));

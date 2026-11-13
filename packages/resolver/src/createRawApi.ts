@@ -71,7 +71,7 @@ export type Api = {
   ): Promise<Uint8Array | null>;
   /**
    * Resolves each contract's `trie_id` at `atHash`, a block a `withBestBlock` read holds, keyed by the address as given.
-   * `null` for an address that is not a contract. Rejects with `ApiStoppedError` once the follow stopped, with papi's
+   * `null` for an address that is not a contract. Settles only once every call it made ended. Rejects with `ApiStoppedError` once the follow stopped, with papi's
    * `DisjointError` when it stops while a call is in flight, and otherwise with the storage error, such as
    * `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
    */
@@ -79,9 +79,9 @@ export type Api = {
   /**
    * Reads many slots of one contract at `atHash`, in the contract's `trieId`, resolved at that block when not given.
    * Resolves the values in the order of `slotKeys`, `null` for an unset slot, and every value `null` when the account
-   * is not a contract. Rejects with `ApiStoppedError` once the follow stopped, with papi's `DisjointError` when it stops
-   * while a call is in flight, and otherwise with the storage error, such as `OperationInaccessibleError` or
-   * `OperationLimitError` once the retry window ends.
+   * is not a contract. Settles only once every call it made ended. Rejects with `ApiStoppedError` once the follow
+   * stopped, with papi's `DisjointError` when it stops while a call is in flight, and otherwise with the storage error,
+   * such as `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
    */
   readSlots(
     contractAddress: string,
@@ -363,6 +363,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
 
   // Resolves the values by key. A key the server did not return is absent, which reads as unset. Each call retries and
   // queues for an operation slot on its own, and the tail a server discarded from a call goes out again once it ends.
+  // papi rejects a call whose every key was discarded, so each round reads at least one key.
   async function readStorageBatch(
     hash: string,
     keys: readonly string[],
@@ -373,7 +374,8 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     for (let start = 0; start < keys.length; start += MAX_BATCH_KEYS) {
       calls.push(keys.slice(start, start + MAX_BATCH_KEYS));
     }
-    await Promise.all(
+    // Every call settles before the batch does, so the block the caller pins outlives each of them.
+    const settled = await Promise.allSettled(
       calls.map(async callKeys => {
         let pending = callKeys;
         while (pending.length > 0) {
@@ -388,6 +390,11 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
         }
       }),
     );
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        throw result.reason;
+      }
+    }
     return values;
   }
 
