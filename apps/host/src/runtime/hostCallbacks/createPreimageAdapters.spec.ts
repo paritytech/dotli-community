@@ -41,33 +41,6 @@ describe('preimage host callbacks', () => {
     expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'fetch' }]);
   });
 
-  it('As an operator, I watch a backend that serves the wrong bytes for a preimage and it is captured and counted', async () => {
-    // Given
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    onTestFinished(bindCaptureSink(captures));
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const key = blake2b(new TextEncoder().encode('expected preimage'), { dkLen: 32 });
-    const fetchBlock = vi.fn<PreimageFetch>(() => Promise.resolve(buildBlock(new TextEncoder().encode('tampered'))));
-    const { lookupPreimage } = createPreimageAdapters('myapp', { fetchBlock });
-    const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
-    onTestFinished(async () => {
-      await iterator.return?.();
-    });
-    await iterator.next();
-
-    // When
-    const answer = iterator.next();
-    await vi.advanceTimersByTimeAsync(1_000);
-    await answer;
-
-    // Then
-    expect(captures.exception).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ step: 'preimage_lookup' }),
-    );
-    expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'mismatch' }]);
-  });
-
   it('As an operator, I watch a verifier chunk fail to load and it is reported once while the next poll verifies the block', async () => {
     // Given
     const captures = { exception: vi.fn(), expected: vi.fn() };
@@ -131,7 +104,7 @@ describe('preimage host callbacks', () => {
     expect(fetchBlock).toHaveBeenCalledTimes(2);
   });
 
-  it('As a product developer, I look up a preimage and it is cached only after hash verification', async () => {
+  it('As a product developer, I look up a verified preimage again and the second lookup is served from the cache', async () => {
     // Given
     const data = new TextEncoder().encode('verified gateway preimage');
     const key = blake2b(data, { dkLen: 32 });
@@ -157,8 +130,11 @@ describe('preimage host callbacks', () => {
     expect(fetchBlock).toHaveBeenCalledTimes(1);
   });
 
-  it('As a product developer, I look up a preimage that comes back corrupt and the host rejects it, stops polling and does not cache it', async () => {
+  it('As a product developer, I look up a preimage that comes back corrupt and the host rejects it, reports it, stops polling and does not cache it', async () => {
     // Given
+    const captures = { exception: vi.fn(), expected: vi.fn() };
+    onTestFinished(bindCaptureSink(captures));
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const expected = new TextEncoder().encode('expected preimage');
     const key = blake2b(expected, { dkLen: 32 });
     const fetchBlock = vi.fn<PreimageFetch>(() =>
@@ -178,6 +154,11 @@ describe('preimage host callbacks', () => {
     expect(yielded(firstError)._unsafeUnwrapErr().reason).toContain('preimage lookup via rpc-gateway failed');
     expect(yielded(firstError)._unsafeUnwrapErr().reason).toContain('Content hash mismatch');
     expect(fetchBlock).toHaveBeenCalledTimes(1);
+    expect(captures.exception).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ step: 'preimage_lookup' }),
+    );
+    expect(metrics.counted('preimage.lookup')).toEqual([{ outcome: 'error', reason: 'mismatch' }]);
 
     // When
     const secondIterator = lookupPreimage(key)[Symbol.asyncIterator]();

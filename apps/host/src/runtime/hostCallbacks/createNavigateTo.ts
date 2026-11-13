@@ -32,15 +32,6 @@ type Params = {
   page?: NavigationPage;
 };
 
-type PageOrigin = Pick<Location, 'protocol' | 'port'>;
-
-type BuildDotTargetUrlParams = {
-  location: PageOrigin;
-  root: string | null;
-  label: string;
-  pathname: string;
-};
-
 const browserPage: NavigationPage = {
   location: () => window.location,
   localRoot: LOCAL_ROOT,
@@ -53,24 +44,25 @@ const browserPage: NavigationPage = {
 export function createNavigateTo({ page = browserPage }: Params = {}): Navigation['navigateTo'] {
   function navigateTo(url: string): Promise<void> {
     const location = page.location();
-    const dotUrl = dotNsUrl.parseDotNsDomain(url);
 
-    if (dotUrl && dotNsUrl.isDotDomain(dotUrl.identifier)) {
-      location.assign(
-        buildDotTargetUrl({
-          location,
-          root: page.localRoot,
-          label: getLabelFromIdentifier(dotUrl.identifier),
-          pathname: dotUrl.pathname,
-        }),
-      );
+    /** A URL on the host, under `subdomain` when given: on the tab's local root when it has one, else deployed. */
+    function buildHostUrl(subdomain: string | null, path: string): string {
+      const authority = page.localRoot === null ? BASE_DOMAIN : `${page.localRoot}:${location.port}`;
+      const host = subdomain === null ? authority : `${subdomain}.${authority}`;
+      return `${location.protocol}//${host}${path ? '/' + path : ''}`;
+    }
+
+    const dotUrl = dotNsUrl.parseDotNsDomain(url);
+    if (dotUrl) {
+      const label = dotUrl.identifier.slice(0, -getActiveTldSuffix().length);
+      location.assign(buildHostUrl(label, dotUrl.pathname));
       return Promise.resolve(undefined);
     }
 
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
-      const suffix = localhostUrl.pathname ? '/' + localhostUrl.pathname : '';
-      location.assign(`${getHostOrigin(location, page.localRoot)}/${localhostUrl.host}${suffix}`);
+      const { host, pathname } = localhostUrl;
+      location.assign(buildHostUrl(null, pathname ? `${host}/${pathname}` : host));
       return Promise.resolve(undefined);
     }
 
@@ -80,24 +72,4 @@ export function createNavigateTo({ page = browserPage }: Params = {}): Navigatio
   }
 
   return navigateTo;
-}
-
-/** Returns the label of `identifier`, which must end in the active TLD suffix. */
-function getLabelFromIdentifier(identifier: string): string {
-  return identifier.slice(0, -getActiveTldSuffix().length);
-}
-
-function buildDotTargetUrl({ location, root, label, pathname }: BuildDotTargetUrlParams): string {
-  const suffix = pathname ? '/' + pathname : '';
-  if (root !== null) {
-    return `${location.protocol}//${label}.${root}:${location.port}${suffix}`;
-  }
-  return `${location.protocol}//${label}.${BASE_DOMAIN}${suffix}`;
-}
-
-function getHostOrigin(location: PageOrigin, root: string | null): string {
-  if (root !== null) {
-    return `${location.protocol}//${root}:${location.port}`;
-  }
-  return `${location.protocol}//${BASE_DOMAIN}`;
 }

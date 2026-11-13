@@ -124,8 +124,8 @@ Steps to make a parachain reachable through the protocol iframe on the Light Cli
 
 Step 3 makes a chain reachable from both the protocol broker and the host
 callback. Skip it and `getProtocolClient().chains.createProvider` returns
-`null`. The host's `chain.connect` callback refuses the chain first, with
-`Unsupported smoldot chain`, and a frame that is asked anyway refuses it with
+`null`. The host's `chain.connect` callback then rejects the chain with
+`Chain provider unavailable`, and a frame that is asked anyway refuses it with
 `Unsupported chain`.
 
 RPC Gateway serves a chain only if it has `rpcs` endpoints and is listed in

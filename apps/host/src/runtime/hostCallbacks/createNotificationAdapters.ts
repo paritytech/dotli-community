@@ -16,9 +16,6 @@ const report = createReporter({ flow: 'notifications' });
 /** Where a product's notifications wait until they are due. */
 export type NotificationScheduler = Pick<ScheduledNotifications, 'schedule' | 'cancel'>;
 
-/** Shows a notification on the page. */
-export type Notify = HostPrompts['notify'];
-
 type Params = {
   /** The product the notifications come from, which titles them. */
   label: string;
@@ -30,7 +27,7 @@ type Params = {
   /** Where a notification waits until it is due. */
   scheduler: NotificationScheduler;
   /** Shows a due notification on the page. */
-  notify: Notify;
+  notify: HostPrompts['notify'];
 };
 
 /**

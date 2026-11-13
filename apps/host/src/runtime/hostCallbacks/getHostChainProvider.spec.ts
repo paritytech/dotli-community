@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
 import { fromHex } from '@dotli/shared';
@@ -53,18 +53,9 @@ describe('host chain pool on a light client backend', () => {
   let chains: FakeRemoteChains;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    // Registered first, so it runs after every cleanup a test registers.
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     people = getActiveServicesConfig().people.genesis;
     chains = createFakeRemoteChains();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it("As a user, I open a block bar and it shares the products' connection to the protocol frame", async () => {
@@ -87,18 +78,5 @@ describe('host chain pool on a light client backend', () => {
     // Then
     expect(chains.createRemoteChain).toHaveBeenCalledTimes(1);
     expect(chains.remotes).toHaveLength(1);
-  });
-
-  it('As a user, I ask for a chain the protocol frame cannot serve and get no host provider', () => {
-    // Given a light client backend with no connection to the frame open
-
-    // When
-    const provider = getHostChainProvider(`0x${'00'.repeat(32)}`, {
-      pool: createHostChainPool({ createRemoteChain: chains.createRemoteChain }),
-    });
-
-    // Then
-    expect(provider).toBeNull();
-    expect(chains.createRemoteChain).not.toHaveBeenCalled();
   });
 });

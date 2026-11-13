@@ -48,10 +48,6 @@ export function createLocalStorageCallbacks({
 }: LocalStorageCallbacksParams = {}) {
   const listeners = createListenerSet<string>({ onListenerError: report.listener('local_storage.change') });
 
-  function notifyChanged(key: string): void {
-    listeners.emit(key);
-  }
-
   function read(key: string): ReturnType<ProductStorage['read']> {
     try {
       const raw = storage().getItem(getStorageKey(key));
@@ -67,7 +63,7 @@ export function createLocalStorageCallbacks({
   function write(key: string, value: Uint8Array): ReturnType<ProductStorage['write']> {
     try {
       storage().setItem(getStorageKey(key), base64.encode(value));
-      notifyChanged(key);
+      listeners.emit(key);
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error(ERRORS.STORAGE_WRITE_FAILED, { cause }));
@@ -77,7 +73,7 @@ export function createLocalStorageCallbacks({
   function clear(key: string): ReturnType<ProductStorage['clear']> {
     try {
       storage().removeItem(getStorageKey(key));
-      notifyChanged(key);
+      listeners.emit(key);
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }));
@@ -85,7 +81,7 @@ export function createLocalStorageCallbacks({
   }
 
   // Every write is forwarded without comparing bytes, so a repeat of the last value streams again.
-  function subscribe(key: string): ReturnType<ProductStorage['subscribeStorage']> {
+  function subscribeStorage(key: string): ReturnType<ProductStorage['subscribeStorage']> {
     return createResultStream<HostLocalStorageChangeItem>([], (push, pushError) => {
       function emit(): void {
         try {
@@ -140,7 +136,7 @@ export function createLocalStorageCallbacks({
      * Streams the value at `key` now and after each write or clear through this instance or in another tab. A read
      * that fails yields one error item with the read failure text, and the stream then ends.
      */
-    subscribe,
+    subscribeStorage,
   };
 }
 

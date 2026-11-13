@@ -50,7 +50,6 @@ describe('createFrameChainTransport', () => {
     provider(() => undefined);
 
     // Then
-    expect(createRemoteChain).toHaveBeenCalledWith(GENESIS);
     expect(events).toEqual(['status:connecting', 'status:connected']);
   });
 

@@ -33,7 +33,7 @@ dotli still supplies platform primitives that are host policy or browser UI:
 | navigation                | `apps/host/src/runtime/hostCallbacks/createNavigateTo.ts`                                               |
 | notifications             | `apps/host/src/runtime/hostCallbacks/createNotificationAdapters.ts`                                     |
 | device/remote permissions | `apps/host/src/runtime/hostCallbacks/createPromptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
-| feature support           | `apps/host/src/runtime/hostCallbacks/createFeatureSupported.ts`                                         |
+| feature support           | `apps/host/src/runtime/hostCallbacks/getFeatureSupport.ts`                                              |
 | product storage           | `apps/host/src/runtime/hostCallbacks/createLocalStorageCallbacks.ts`                                    |
 | session persistence       | `apps/host/src/runtime/session/createCoreStorage.ts`, `createSessionState.ts`                           |
 | pairing presentation      | `apps/host/src/runtime/session/createAuthStateChanged.ts`                                               |

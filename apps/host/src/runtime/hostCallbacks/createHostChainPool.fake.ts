@@ -50,10 +50,6 @@ export function createFakeHostChainSources() {
     },
     /** The backend last set, the shared worker light client at first. */
     backend: (): Backend => backend,
-    /** Serves every chain unless a test says otherwise. */
-    isRemoteChainConnectable: vi.fn<HostChainSources['isRemoteChainConnectable']>(() => true),
-    /** Serves every chain unless a test says otherwise. */
-    isRpcChainSupported: vi.fn<HostChainSources['isRpcChainSupported']>(() => true),
     /** Builds a light client transport. */
     createRemoteChain: vi.fn<HostChainSources['createRemoteChain']>(() => {
       const upstream = createUpstream();

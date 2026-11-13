@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { getActiveServicesConfig, getSettings, setSettings, type Backend } from '@dotli/config';
 import { FakeWebSocket } from '@dotli/chains/testing';
 import { fromHex, isRecord } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
@@ -113,30 +113,33 @@ describe('createChainConnect', () => {
     expect(refusal).toHaveProperty('cause', expect.any(SyntaxError));
   });
 
-  it('As a dotli integrator, I connect to a chain the RPC backend cannot reach and it is refused before any transport is built', () => {
-    // Given
-    sources.setBackend('rpc-gateway');
-    sources.isRpcChainSupported.mockReturnValue(false);
+  it.each<{ backend: Backend; refuse: (fakes: FakeHostChainSources) => void }>([
+    {
+      backend: 'smoldot-shared-worker',
+      refuse: fakes => {
+        fakes.createRemoteChain.mockReturnValue(null);
+      },
+    },
+    {
+      backend: 'rpc-gateway',
+      refuse: fakes => {
+        fakes.createRpcChain.mockReturnValue(null);
+      },
+    },
+  ])(
+    'As a dotli integrator on $backend, I connect to a chain the backend does not serve and the connect rejects',
+    async ({ backend, refuse }) => {
+      // Given
+      sources.setBackend(backend);
+      refuse(sources);
 
-    // When
-    const refusal = catchThrown(() => createProductConnect(sources, { destroyDelay: 0 })(fromHex(people)));
+      // When
+      const connection = createProductConnect(sources, { destroyDelay: 0 })(fromHex(people));
 
-    // Then
-    expect(refusal).toMatchObject({ message: `Unsupported RPC chain: ${people.toLowerCase()}` });
-    expect(sources.createRpcChain).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli integrator, I connect to a chain the protocol frame cannot serve and it is refused before any transport is built', () => {
-    // Given
-    sources.isRemoteChainConnectable.mockReturnValue(false);
-
-    // When
-    const refusal = catchThrown(() => createProductConnect(sources, { destroyDelay: 0 })(fromHex(people)));
-
-    // Then
-    expect(refusal).toMatchObject({ message: `Unsupported smoldot chain: ${people.toLowerCase()}` });
-    expect(sources.createRemoteChain).not.toHaveBeenCalled();
-  });
+      // Then
+      await expect(connection).rejects.toThrow(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
+    },
+  );
 });
 
 // The host page's chain pool end to end (Chain.ts, pool, broker, backend transport), with remote connections faked.
@@ -154,10 +157,6 @@ describe('host chain pool on a light client backend', () => {
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     people = getActiveServicesConfig().people.genesis;
     chains = createFakeRemoteChains();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it.each(['chain', 'frame'] as const)(
@@ -307,7 +306,7 @@ function createProductConnect(
     frame: READY_FRAME,
     ...(destroyDelay === undefined ? {} : { destroyDelay }),
   });
-  return createChainConnect({ pool, sources });
+  return createChainConnect({ pool });
 }
 
 /** Asks the chain for its name over `connection` under the request id `id`. */

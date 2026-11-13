@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { GenericError, HostChatListSubscribeItem } from '@parity/truapi';
+import type { GenericError, HostChatListSubscribeItem, ProductId } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, getErrorMessage, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ChatRoomRecord, ChatStore } from '../chat/createChatStore.js';
 
 type Params = {
   chat: Pick<ChatStore, 'subscribe' | 'listRooms'>;
-  productId: string;
+  productId: ProductId;
   push: (item: HostChatListSubscribeItem) => void;
   pushError: (error: GenericError) => void;
 };

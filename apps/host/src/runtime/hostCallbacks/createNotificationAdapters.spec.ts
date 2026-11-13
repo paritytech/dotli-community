@@ -40,7 +40,6 @@ describe('notification host callbacks', () => {
       deeplink: null,
       scheduledAt: null,
     });
-    // A product cannot pick a tone, so its toasts read as info
     expect(shown).toEqual([{ text: 'hello', deeplink: undefined, label: 'myapp' }]);
   });
 

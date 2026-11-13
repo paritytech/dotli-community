@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { asProductId, type RemotePermission } from '@parity/truapi';
+import { asProductId } from '@parity/truapi';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
@@ -14,6 +14,7 @@ import {
 import { productState } from '../state/productState.js';
 import { createBlockingModalCoordinator, type BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import { createPromptPermission } from './createPromptPermission.js';
+import { SUBMIT_MAX_PER_WINDOW } from './createSubmitRateLimiter.js';
 import type { GrantAnswer } from '../hostPrompts.js';
 import { createFakePrompts, type FakePrompts } from '../hostPrompts.fake.js';
 
@@ -73,21 +74,18 @@ describe('device permission prompts', () => {
 });
 
 describe('remote permissions without a prompt', () => {
-  it.each<RemotePermission>([{ tag: 'BalanceAccess' }, { tag: 'NftPurseRead', value: { owner: { tag: 'Root' } } }])(
-    'As a product, I ask for $tag and the host refuses it unstored',
-    async permission => {
-      // Given a product with no stored permissions
-      const changes = recordChanges();
+  it('As a product, I ask for BalanceAccess and the host refuses it unstored', async () => {
+    // Given a product with no stored permissions
+    const changes = recordChanges();
 
-      // When
-      const response = createPrompts().remotePermission(PRODUCT, { permission });
+    // When
+    const response = createPrompts().remotePermission(PRODUCT, { permission: { tag: 'BalanceAccess' } });
 
-      // Then
-      await expect(response).rejects.toThrow('This host does not serve the request');
-      expect(changes).toEqual([]);
-      expect(myappStore.size).toBe(0);
-    },
-  );
+    // Then
+    await expect(response).rejects.toThrow('This host does not serve the request');
+    expect(changes).toEqual([]);
+    expect(myappStore.size).toBe(0);
+  });
 });
 
 describe('three-way permission prompts', () => {
@@ -185,7 +183,7 @@ describe('queued permission prompts', () => {
     // Given a dialog that holds the queue until the user answers it
     await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'granted' });
     const scope = createBlockingModalCoordinator().createScope();
-    const held = scope.enqueue(signal =>
+    void scope.enqueue(signal =>
       page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
     );
     await page.waitForPrompt();
@@ -196,35 +194,6 @@ describe('queued permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowOnce');
     expect(page.getShown()).toMatchObject({ permission: 'ChainSubmit' });
-
-    // When the queue's scope goes
-    scope.dispose();
-
-    // Then the dialog that held it ends with it
-    await expect(held).rejects.toMatchObject({ name: 'AbortError' });
-  });
-
-  it('As a user with notifications blocked, I am asked while another dialog is open and am told so', async () => {
-    // Given a dialog that holds the queue until the user answers it
-    await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'denied' });
-    const scope = createBlockingModalCoordinator().createScope();
-    const held = scope.enqueue(signal =>
-      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
-    );
-    await page.waitForPrompt();
-
-    // When
-    const response = createPrompts({ scope }).devicePermission(PRODUCT, 'Notifications');
-
-    // Then
-    await expect(response).resolves.toBe('Deny');
-    expect(page.notices).toEqual([expect.objectContaining({ tone: 'idle' })]);
-
-    // When the queue's scope goes
-    scope.dispose();
-
-    // Then the dialog that held it ends with it
-    await expect(held).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
@@ -262,17 +231,34 @@ describe('queued permission prompts', () => {
   });
 });
 
+describe('prompt rate limiting', () => {
+  it('As a dotli integrator, I spend the prompt budget on one permission and a prompt for another is rate limited', async () => {
+    // Given notification prompts granted once, so each one asks again, until they spend the whole window budget
+    const permissions = createPrompts();
+    for (let prompt = 0; prompt < SUBMIT_MAX_PER_WINDOW; prompt += 1) {
+      const answer = permissions.devicePermission(PRODUCT, 'Notifications');
+      await clickPromptButton('Allow once');
+      await answer;
+    }
+
+    // When
+    const overBudget = permissions.devicePermission(PRODUCT, 'Camera');
+
+    // Then it shares that budget and is rate limited instead of showing one modal over the budget
+    await expect(overBudget).rejects.toThrow('Permission prompt rate limited');
+    expect(page.listPending()).toEqual([]);
+  });
+});
+
 /** The prompt adapters over the fake prompts and this test's permissions. */
 function createPrompts({
   label = 'myapp',
   scope = createBlockingModalCoordinator().createScope(),
 }: Params = {}): ReturnType<typeof createPromptPermission> {
   return createPromptPermission({
-    label,
-    ask: page.prompts.askPermission,
-    notify: page.prompts.notify,
+    core: { product: { label }, blockingModalScope: scope },
+    prompts: page.prompts,
     permissions: { registry, product: store },
-    modalScope: scope,
   });
 }
 

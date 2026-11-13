@@ -55,7 +55,7 @@ describe('local-storage host callbacks', () => {
     // Given
     const callbacks = createLocalStorageCallbacks(params);
     await callbacks.write(WATCHED, new Uint8Array([1]));
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });
@@ -78,7 +78,7 @@ describe('local-storage host callbacks', () => {
   it('As a product developer, I subscribe to a key and ignore other keys while following other tabs', async () => {
     // Given
     const callbacks = createLocalStorageCallbacks(params);
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });
@@ -106,7 +106,7 @@ describe('local-storage host callbacks', () => {
       },
       events: () => otherTabs,
     });
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });

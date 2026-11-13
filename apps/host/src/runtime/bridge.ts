@@ -22,7 +22,6 @@ import { createCoreRuntimeBoot } from './createCoreRuntimeBoot.js';
 import { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 import { hostChainPool } from './hostCallbacks/createHostChainPool.js';
 import { hostBitswapClient } from './hostCallbacks/createHostBitswapClient.js';
-import { watchHostChains } from './hostCallbacks/watchHostChains.js';
 import { readOriginalAccount } from './readOriginalAccount.js';
 import { readPeopleUsernames } from './readPeopleUsernames.js';
 import { wireDescriber } from './createWireDescriber.js';
@@ -111,7 +110,7 @@ const bridge = createBridge({
   notify: hostPrompts.notify,
   watchChains: () => {
     // The watch lasts the page's life, so its stop goes unused.
-    watchHostChains({
+    hostChainPool.watch({
       onActivity: networkMonitorState.recordChainActivity,
       onBestBlock: networkMonitorState.recordBestBlock,
     });
