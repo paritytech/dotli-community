@@ -244,7 +244,7 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
   registerStoreStateReset(() => {
     views.end();
     nextId = 0;
-    machine.update({ kind: 'disposed' });
+    dispose();
   });
 
   return {
@@ -335,18 +335,18 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     const running = stack.viewing && stack.visible && !stack.expanded;
     const toasts = new Map<number, Toast>();
     for (const [id, toast] of stack.toasts) {
-      toasts.set(id, running ? startCountdown(id, toast, update) : stopCountdown(toast));
+      toasts.set(id, running ? startCountdown(toast, update) : stopCountdown(toast));
     }
     emitState({ ...stack, toasts });
   }
 
   /** The toast counting down what it has left. Any other toast stays as it is. */
-  function startCountdown(id: number, toast: Toast, update: Transition<ToastsMachine>['update']): Toast {
+  function startCountdown(toast: Toast, update: Transition<ToastsMachine>['update']): Toast {
     if (toast.kind !== 'waiting') {
       return toast;
     }
     const timer = timers.setTimeout(() => {
-      update({ kind: 'countdownEnded', id });
+      update({ kind: 'countdownEnded', id: toast.entry.id });
     }, toast.remaining);
     return { ...toast, kind: 'counting', startedAt: timers.now(), timer };
   }
