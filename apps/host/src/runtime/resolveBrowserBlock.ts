@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Settles a grant the browser blocks: the user restricts the app, closes the dialog, or fixes the browser and retries.
+// Settles a grant the browser may block: the user restricts the app, closes the dialog, or fixes the browser and retries.
 
 import { isBrowserBlocked, type BrowserPermissions, type BrowserPermissionStatus } from './createBrowserPermissions.js';
 import type { HostPrompts } from './hostPrompts.js';
@@ -24,9 +24,11 @@ export function isRestricted(resolution: BrowserBlockResolution): boolean {
 }
 
 type Params = {
-  /** The product whose grant the browser blocks. */
+  /** The product whose grant the browser may block. */
   label: string;
   permission: EnforceablePermissionName;
+  /** The browser's status as already asked for or read, null to read it here. */
+  known: Promise<BrowserPermissionStatus> | null;
   /** Ends the dialog. */
   signal: AbortSignal;
   prompts: Pick<HostPrompts, 'askBrowserBlock'>;
@@ -36,19 +38,26 @@ type Params = {
 };
 
 /**
- * Shows the blocked dialog until the user settles it, again after each Retry the browser still blocks, and stores a
- * lasting denial when the user restricts the product. Rejects with the modal's AbortError once `signal` aborts, after
- * the browser answers a Retry already asked, and with the store's error when the denial fails to save.
+ * Resolves `allowed` once the browser does not block the permission, and until then shows the blocked dialog, again
+ * after each Retry. Stores a lasting denial when the user restricts the product. Rejects with the modal's AbortError
+ * once `signal` aborts, after the browser answers a request already made, and with the store's error when the denial
+ * fails to save.
  */
 export async function resolveBrowserBlock({
   label,
   permission,
+  known,
   signal,
   prompts,
   browser,
   record,
 }: Params): Promise<BrowserBlockResolution> {
-  for (let retried = false; ; retried = true) {
+  for (let retried = false, pending = known; ; retried = true) {
+    const status = await (pending ?? browser.read(permission));
+    throwIfModalAborted(signal);
+    if (!isBrowserBlocked(status)) {
+      return 'allowed';
+    }
     // An object, so TypeScript keeps the type the Retry click widens it to.
     const retry: { request: Promise<BrowserPermissionStatus> | null } = { request: null };
     const answer = await prompts.askBrowserBlock({
@@ -70,10 +79,6 @@ export async function resolveBrowserBlock({
       case 'retry':
         break;
     }
-    const status = await (retry.request ?? browser.read(permission));
-    throwIfModalAborted(signal);
-    if (!isBrowserBlocked(status)) {
-      return 'allowed';
-    }
+    pending = retry.request;
   }
 }

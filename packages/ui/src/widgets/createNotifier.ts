@@ -90,8 +90,9 @@ export function createNotifier({ toasts, attended, system, timers = realTimers }
     const tone = params.tone ?? 'info';
     const wantsSystem = (params.browserNotification ?? true) && !attended();
     const notifications = wantsSystem ? system() : undefined;
+    const systemShows = notifications?.permission === 'granted';
     // One the system cannot show stays in the page until closed, or a window behind others would lose it unseen.
-    const fallback = wantsSystem && notifications?.permission !== 'granted';
+    const fallback = wantsSystem && !systemShows;
 
     toasts.push({
       text,
@@ -104,7 +105,7 @@ export function createNotifier({ toasts, attended, system, timers = realTimers }
       ...(params.action === undefined ? {} : { action: params.action }),
     });
 
-    if (notifications !== undefined) {
+    if (systemShows) {
       fireBrowserNotification({
         notifications,
         text,
@@ -149,25 +150,14 @@ function fireBrowserNotification({
   label,
   timers,
 }: FireBrowserNotificationParams): void {
-  function show(): void {
-    const notification = new SystemNotification(label, { body: text });
-    notification.onclick = () => {
-      window.focus();
-      if (deeplink !== undefined) {
-        window.open(deeplink, '_blank');
-      }
-    };
-    timers.setTimeout(() => {
-      notification.close();
-    }, SYSTEM_NOTIFICATION_MS);
-  }
-
-  switch (SystemNotification.permission) {
-    case 'granted':
-      show();
-      return;
-    case 'denied':
-    case 'default':
-      return;
-  }
+  const notification = new SystemNotification(label, { body: text });
+  notification.onclick = () => {
+    window.focus();
+    if (deeplink !== undefined) {
+      window.open(deeplink, '_blank');
+    }
+  };
+  timers.setTimeout(() => {
+    notification.close();
+  }, SYSTEM_NOTIFICATION_MS);
 }

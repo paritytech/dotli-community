@@ -4,7 +4,7 @@
 import type { ReadableAtom } from 'nanostores';
 import { getKeys } from '@dotli/shared';
 import { useStore } from '@dotli/stores-solid';
-import type { PermissionTargets } from '../runtime/permissionPolicy.js';
+import { isPermissionGranted, type PermissionTargets } from '../runtime/permissionPolicy.js';
 import type { BrowserPermissions } from '../runtime/createBrowserPermissions.js';
 import type { ProductPermissions } from '../runtime/state/productPermissions.js';
 import {
@@ -87,7 +87,8 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
       }
       // The browser accepts a request only inside the user's gesture, so it goes out before the first await.
       for (const name of getKeys(targets)) {
-        if (targets[name] === 'granted') {
+        const status = targets[name];
+        if (status !== undefined && isPermissionGranted(status)) {
           void binding.browser.request(name);
         }
       }

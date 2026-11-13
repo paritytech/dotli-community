@@ -33,6 +33,26 @@ beforeEach(() => {
 });
 
 describe('resolveBrowserBlock', () => {
+  it('As a dotli user whose browser allows a permission, I allow it and no blocked dialog shows', async () => {
+    // Given a browser that allows Camera
+    browserStatus = 'granted';
+
+    // When
+    const resolution = resolveBrowserBlock({
+      label: LABEL,
+      permission: 'Camera',
+      known: null,
+      signal: controller.signal,
+      prompts: page.prompts,
+      browser,
+      record,
+    });
+
+    // Then
+    await expect(resolution).resolves.toBe('allowed');
+    expect(page.listPending()).toEqual([]);
+  });
+
   it('As a dotli user, I restrict a blocked permission and a denial is stored for the app', async () => {
     // Given the blocked dialog on screen
     const { resolution } = await showBlock('Camera');
@@ -159,6 +179,7 @@ async function showBlock(
   const resolution = resolveBrowserBlock({
     label: LABEL,
     permission,
+    known: Promise.resolve<BrowserPermissionStatus>('denied'),
     signal: controller.signal,
     prompts: page.prompts,
     browser,

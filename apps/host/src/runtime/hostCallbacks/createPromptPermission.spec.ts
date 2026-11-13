@@ -326,20 +326,6 @@ describe('the browser asked at approval', () => {
     expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
   });
 
-  it('As a product, I ask for a remote permission and no browser is asked', async () => {
-    // Given
-    const browser = createFakeBrowser();
-    const response = createPrompts({ browser }).remotePermission(PRODUCT, { permission: { tag: 'ChainSubmit' } });
-
-    // When
-    await clickPromptButton('Always allow');
-    await response;
-
-    // Then
-    expect(browser.read).not.toHaveBeenCalled();
-    expect(browser.request).not.toHaveBeenCalled();
-  });
-
   it("As a dotli integrator, I dispose the prompt scope while the browser asks and the product's ask rejects with an AbortError", async () => {
     // Given the browser's notification prompt, which waits for the user after they allowed it
     const asked = createDeferred<BrowserPermissionStatus>();

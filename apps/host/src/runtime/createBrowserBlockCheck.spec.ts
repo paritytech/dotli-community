@@ -153,27 +153,8 @@ describe('createBrowserBlockCheck', () => {
     expect(statuses.labels).toEqual(['app', 'other', 'app', 'third']);
   });
 
-  it('As a dotli user, I restrict at launch and the denial fails to save, and the failure is counted', async () => {
-    // Given the blocked dialog on screen, and a store that fails to write
-    const reports = recordReports({ onFinished: onTestFinished });
-    record.mockRejectedValue(new Error('write failed'));
-    const statuses = createFakeStatuses({ app: { Camera: 'granted' } });
-    startCheck(statuses);
-    load('app');
-    await page.waitForPrompt();
-
-    // When the user restricts, and the check of the next app shows the first one done
-    page.answerBrowserBlock('restrict');
-    load('other');
-    await statuses.calledFor('other');
-
-    // Then
-    expect(reports.expected).toMatchObject([{ step: 'browser_block_check' }]);
-  });
-
   it("As a dotli user whose denial of one permission fails to save, I still see the dialog of the app's next blocked permission", async () => {
     // Given two blocked permissions, and a store that fails to write
-    const reports = recordReports({ onFinished: onTestFinished });
     record.mockRejectedValue(new Error('write failed'));
     startCheck(createFakeStatuses({ app: { Camera: 'granted', Microphone: 'granted' } }));
     load('app');
@@ -185,7 +166,6 @@ describe('createBrowserBlockCheck', () => {
 
     // Then
     expect(next).toEqual(blockOf('app', 'Microphone'));
-    expect(reports.expected).toMatchObject([{ step: 'browser_block_check' }]);
   });
 
   it('As a dotli user restricting one of two blocked permissions, I see the next dialog only once the denial is saved', async () => {

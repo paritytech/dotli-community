@@ -30,7 +30,7 @@ type Params = {
 
 const report = createReporter({ flow: 'permissions' });
 
-/** A launch check that failed to read a product's statuses or to store a restriction. */
+/** A launch check that failed to read a product's statuses. */
 const browserCheckMetric = defineCount<'error'>('permissions.browser_check');
 
 /** Checks each product once per page load, the first time it is on show. */
@@ -49,26 +49,28 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
       report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
       return;
     }
-    const granted = browser.checked.filter((_, index) => {
+    for (const [index, permission] of browser.checked.entries()) {
       const status = found[index];
-      return status !== undefined && isPermissionGranted(status);
-    });
-    const read = await Promise.all(granted.map(name => browser.read(name)));
-    const blocked = granted.filter((_, index) => {
-      const status = read[index];
-      return status !== undefined && isBrowserBlocked(status);
-    });
-    for (const permission of blocked) {
+      if (status === undefined || !isPermissionGranted(status)) {
+        continue;
+      }
+      // Read before the dialog slot is taken, so a permission the browser allows never holds the queue.
+      const known = browser.read(permission);
+      if (!isBrowserBlocked(await known)) {
+        continue;
+      }
       try {
         // The denial is stored within the dialog's turn, so the modal slot stays held until it is written.
-        await scope.enqueue(signal => resolveBrowserBlock({ label, permission, signal, prompts, browser, record }));
+        await scope.enqueue(signal =>
+          resolveBrowserBlock({ label, permission, known, signal, prompts, browser, record }),
+        );
       } catch (error) {
         // The scope was disposed, which ends its dialogs.
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
-        // A permission whose denial failed to save does not end the check of the product's other permissions.
-        report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
+        // Only a denial that failed to save rejects otherwise. The store reported it, and the product's other
+        // permissions are still checked.
       }
     }
   }
