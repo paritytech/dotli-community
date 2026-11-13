@@ -87,7 +87,7 @@ type RecordPromptDecisionParams = {
   label: string;
   name: EnforceablePermissionName;
   decision: PromptDecision;
-  /** The prompt's own signal. Once it aborts, the decision changes nothing. */
+  /** The prompt's own signal. An abort rejects the decision and sends no more attempts. */
   signal: AbortSignal;
 };
 
@@ -100,13 +100,15 @@ type ChangeJob = {
   settle: (outcome: ChangeOutcome) => void;
 };
 
-/** A prompt's answer, never superseded. A prompt that closes rejects it and shows nothing. */
+/** A prompt's answer, never superseded. A prompt that closes rejects it, and what its writes already landed shows. */
 type DecisionJob = {
   kind: 'decision';
   label: string;
   name: EnforceablePermissionName;
   decision: PromptDecision;
   prompt: AbortSignal;
+  /** The prompt closed before the run ended, so the answer rejects whatever its writes did. */
+  closed: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
 };
@@ -139,10 +141,11 @@ type PermissionsState =
   | { kind: 'idle'; shown: ProductPermissionsState }
   | ({ kind: 'reading'; label: string; job: ReadJob } & Store)
   | ({ kind: 'sending' } & Write & Store)
-  /** A newer change superseded the run: the writes already sent finish, and then the run does, with no retry. */
-  | ({ kind: 'stopping'; job: ChangeJob } & Write & Store)
-  /** The prompt closed: the writes already sent finish, and then the decision rejects and nothing changes. */
-  | ({ kind: 'abandoning'; job: RunningDecision } & Store)
+  /**
+   * A newer change superseded the run, or its prompt closed: the writes already sent finish, and then the run does, with
+   * no retry.
+   */
+  | ({ kind: 'stopping' } & Write & Store)
   | ({ kind: 'retrying'; errors: readonly unknown[]; timer: unknown } & Write & Store)
   | ({
       kind: 'rereading';
@@ -178,7 +181,6 @@ type PermissionsEffect =
       failed: readonly EnforceablePermissionName[];
       errors: readonly unknown[];
     }
-  | { kind: 'decisionAborted'; job: DecisionJob }
   | { kind: 'promptUnheard'; stopListening: () => void }
   | { kind: 'retryCancelled'; timer: unknown };
 
@@ -204,11 +206,11 @@ export function createProductPermissions({ registry, product, timers = realTimer
   };
 
   /** Queues a change behind a run it does not supersede, in place of the change queued before it. */
-  const queueChange: HandlerOf<
-    PermissionsMachine,
-    'reading' | 'stopping' | 'abandoning' | 'rereading',
-    'changeAsked'
-  > = (state, { job }, transition) => {
+  const queueChange: HandlerOf<PermissionsMachine, 'reading' | 'stopping' | 'rereading', 'changeAsked'> = (
+    state,
+    { job },
+    transition,
+  ) => {
     transition.emitState({ ...state, queue: replaceQueuedChange(state.queue, job, transition) });
   };
 
@@ -276,15 +278,16 @@ export function createProductPermissions({ registry, product, timers = realTimer
           const queue = replaceQueuedChange(state.queue, job, transition);
           // A newer change supersedes a running one, whose writes already sent still finish.
           transition.emitState(
-            state.job.kind === 'change' ? { ...state, kind: 'stopping', job: state.job, queue } : { ...state, queue },
+            state.job.kind === 'change' ? { ...state, kind: 'stopping', queue } : { ...state, queue },
           );
         },
-        promptClosed({ job, shown, queue }, _event, { emitState }) {
+        promptClosed(state, _event, { emitState }) {
+          const { job } = state;
           // Only a decision hears its prompt.
           if (job.kind !== 'decision') {
             return;
           }
-          emitState({ kind: 'abandoning', job, shown, queue });
+          emitState({ ...state, kind: 'stopping', job: { ...job, closed: true } });
         },
         sent(state, { failing, errors }, transition) {
           // Three attempts in all, the first included.
@@ -307,15 +310,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
           finishWrite({ ...state, failing, errors }, transition);
         },
       },
-      abandoning: {
-        refreshAsked: queueRefresh,
-        changeAsked: queueChange,
-        decisionAsked: queueDecision,
-        productShown: followProduct,
-        sent(state, _event, transition) {
-          abandonDecision(state, transition);
-        },
-      },
       retrying: {
         refreshAsked: queueRefresh,
         decisionAsked: queueDecision,
@@ -335,7 +329,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
           if (state.job.kind !== 'decision') {
             return;
           }
-          abandonDecision({ ...state, job: state.job }, transition);
+          // A closed prompt makes no more attempts.
+          finishWrite({ ...state, job: { ...state.job, closed: true } }, transition);
           transition.emitSideEffect({ kind: 'retryCancelled', timer: state.timer });
         },
         retryDue(state, _event, transition) {
@@ -373,7 +368,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
             metric: permissionsChangeMetric,
             message: '[dot.li] permissions change failed:',
             reason: 'write',
-            tags: { reason: 'write' },
           });
           return;
         case 'announced':
@@ -386,9 +380,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
           return;
         case 'writeSettled':
           settleWrite(effect.job, effect.failed, effect.errors);
-          return;
-        case 'decisionAborted':
-          effect.job.reject(toBlockingModalAbortError(effect.job.prompt.reason));
           return;
         case 'promptUnheard':
           effect.stopListening();
@@ -442,13 +433,14 @@ export function createProductPermissions({ registry, product, timers = realTimer
     /**
      * A change made in the panel. A newer one supersedes it: dropped while queued, no more retries while running. Never
      * rejects, as a failure is reported, the store read again and the failed permissions resolved. A write that lands
-     * while the statuses are unread reads them again.
+     * while the statuses failed to read reads them again.
      */
     change,
     /**
      * A decision from the product's own prompt, never superseded. A write that still fails after the last attempt
-     * rejects, so the product hears it, and an aborted prompt changes nothing once its writes are back. A write that
-     * lands while the statuses are unread reads them again.
+     * rejects, so the product hears it. A prompt that closes sends no more attempts and rejects once its writes are
+     * back, while what they landed shows and announces as any other write. A write that lands while the statuses failed
+     * to read reads them again.
      */
     recordPromptDecision,
     /**
@@ -474,7 +466,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
     return new Promise((resolve, reject) => {
       machine.update({
         kind: 'decisionAsked',
-        job: { kind: 'decision', label, name, decision, prompt: signal, resolve, reject },
+        job: { kind: 'decision', label, name, decision, prompt: signal, closed: false, resolve, reject },
       });
     });
   }
@@ -554,7 +546,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       case 'decision': {
         if (job.prompt.aborted) {
           startNext(store, transition);
-          transition.emitSideEffect({ kind: 'decisionAborted', job });
+          transition.emitSideEffect({ kind: 'writeSettled', job: { ...job, closed: true }, failed: [], errors: [] });
           return;
         }
         const stopListening = listen({
@@ -609,10 +601,11 @@ export function createProductPermissions({ registry, product, timers = realTimer
       emitSideEffect({ kind: 'announced', change });
     }
     emitSideEffect(failing.length > 0 ? { kind: 'changeFailed', errors } : { kind: 'changed' });
-    // A failed write shows what the core kept, not what was asked for, and a write over unread statuses reads them.
-    // Only the product on show is read, and another product on show has its own read queued.
+    // A failed write shows what the core kept, not what was asked for, and a write over statuses that failed to read
+    // reads them. Only the product on show is read. Statuses still reading have their read queued, as has another
+    // product on show.
     const rereads =
-      getShownLabel(shown) === job.label && (failing.length > 0 || (landed.length > 0 && current === null));
+      getShownLabel(shown) === job.label && (failing.length > 0 || (landed.length > 0 && shown.status === 'failed'));
     if (rereads) {
       emitState({ kind: 'rereading', job, label: job.label, failed: failing, errors, shown, queue });
       readStatuses(job.label, update);
@@ -620,16 +613,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
       startNext({ shown, queue }, transition);
       emitSideEffect({ kind: 'writeSettled', job, failed: failing, errors });
     }
-  }
-
-  /** Ends a run whose prompt closed: the decision rejects and nothing changes. */
-  function abandonDecision(
-    { job, shown, queue }: { job: RunningDecision } & Store,
-    transition: Transition<PermissionsMachine>,
-  ): void {
-    transition.emitSideEffect({ kind: 'promptUnheard', stopListening: job.stopListening });
-    startNext({ shown, queue }, transition);
-    transition.emitSideEffect({ kind: 'decisionAborted', job });
   }
 }
 
@@ -709,7 +692,7 @@ function getPermissionStatus(statuses: readonly PermissionStatus[], name: Enforc
   return statuses[NAMES.indexOf(name)] ?? 'ask';
 }
 
-/** Settles a write run's job with what still failed. */
+/** Settles a write run's job with what still failed. A decision whose prompt closed rejects with the prompt's abort. */
 function settleWrite(
   job: ChangeJob | DecisionJob,
   failed: readonly EnforceablePermissionName[],
@@ -720,6 +703,10 @@ function settleWrite(
       job.settle({ failed });
       return;
     case 'decision':
+      if (job.closed) {
+        job.reject(toBlockingModalAbortError(job.prompt.reason));
+        return;
+      }
       if (failed.length > 0) {
         job.reject(combineErrors(errors, 'the prompt answer was not stored'));
         return;

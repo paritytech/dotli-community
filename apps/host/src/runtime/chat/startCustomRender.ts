@@ -105,13 +105,13 @@ export function startCustomRender({ connections, productId, request, sink }: Sta
           emitState({ kind: 'completed' });
           emitSideEffect({ kind: 'completed' });
         },
+        // A render that ended, completed or failed, let its stream go itself, so only a dispose calls its stop.
         renderFailed(state, { attempt, error }, { emitState, emitSideEffect }) {
           if (attempt !== state.attempt) {
             return;
           }
           emitState({ kind: 'failing', failed: attempt.connection });
           emitSideEffect({ kind: 'errored', error });
-          emitSideEffect({ kind: 'released', stop: state.stop });
           emitSideEffect({ kind: 'movedOn' });
         },
         disposed: disposeRender,

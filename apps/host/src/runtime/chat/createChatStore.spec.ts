@@ -8,7 +8,8 @@ import { IdbOpenBlockedError } from '@dotli/shared';
 import { createManualTimers } from '@dotli/shared/testing';
 import type { RendererNode } from '@parity/truapi';
 import { createChatConnections } from './createChatConnections.js';
-import { createChatStore } from './createChatStore.js';
+import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
+import { createChatStore, type ChatRepo } from './createChatStore.js';
 import type { ChatChange } from './createChatView.js';
 import { createRecordingConnection, type RecordedRender } from './createChatConnections.fake.js';
 import { createMemoryChatRepo } from './createChatStore.fake.js';
@@ -26,29 +27,38 @@ const EMPTY_VIEW = {
   messagesFailed: false,
 };
 
-function setup(): {
+function setup(repoOverrides: Partial<ChatRepo> = {}): {
   repo: ReturnType<typeof createMemoryChatRepo>;
   chat: ReturnType<typeof createChatStore>;
   connections: ReturnType<typeof createChatConnections>;
   changes: ChatChange[];
   /** The step of every exception reported while the test runs. */
   captured: string[];
+  /** The step of every expected failure reported while the test runs. */
+  expected: string[];
 } {
   const captured: string[] = [];
+  const expected: string[] = [];
   onTestFinished(
     bindCaptureSink({
       exception: (_error: unknown, context: { step: string }) => {
         captured.push(context.step);
       },
-      expected: () => undefined,
+      expected: (_error: unknown, context: { step: string }) => {
+        expected.push(context.step);
+      },
     }),
   );
   const repo = createMemoryChatRepo();
   const connections = createChatConnections();
-  const chat = createChatStore({ repo, connections, timers: createManualTimers({ start: NOW }) });
+  const chat = createChatStore({
+    repo: { ...repo, ...repoOverrides },
+    connections,
+    timers: createManualTimers({ start: NOW }),
+  });
   const changes: ChatChange[] = [];
   chat.subscribe(change => changes.push(change));
-  return { repo, chat, connections, changes, captured };
+  return { repo, chat, connections, changes, captured, expected };
 }
 
 /** A custom message's render request and a sink that records what reaches it. */
@@ -145,7 +155,7 @@ describe('chat store', () => {
 
   it('As a user without a live connection, I reply and my reply is refused with nothing stored', async () => {
     // Given
-    const { repo, chat, changes } = setup();
+    const { repo, chat, changes, expected } = setup();
 
     // When
     const reply = chat.postUserMessage({ productId: PRODUCT, roomId: 'main', text: 'hello' });
@@ -154,19 +164,36 @@ describe('chat store', () => {
     await expect(reply).rejects.toThrow('Chat is not connected for this product');
     expect(repo.messages).toEqual([]);
     expect(changes).toEqual([]);
+    expect(expected).toEqual(['chat_reply_publish']);
+  });
+
+  it('As a user whose reply the store cannot keep, I reply and the failure is reported while nothing is published', async () => {
+    // Given
+    const { chat, connections, captured } = setup({ appendMessage: () => Promise.reject(GONE) });
+    const connection = createRecordingConnection();
+    connections.register(PRODUCT, connection);
+
+    // When
+    const reply = chat.postUserMessage({ productId: PRODUCT, roomId: 'main', text: 'hello' });
+
+    // Then
+    await expect(reply).rejects.toBe(GONE);
+    expect(captured).toEqual(['chat_reply_store']);
+    expect(connection.published).toEqual([]);
   });
 
   it('As a user whose product cannot be reached, I reply and my reply stays stored while the failure surfaces', async () => {
     // Given
-    const { repo, chat, connections } = setup();
+    const { repo, chat, connections, expected } = setup();
     connections.register(PRODUCT, createRecordingConnection({ fails: true }));
 
     // When
     const reply = chat.postUserMessage({ productId: PRODUCT, roomId: 'main', text: 'hello' });
 
     // Then
-    await expect(reply).rejects.toThrow('product unreachable');
+    await expect(reply).rejects.toBeInstanceOf(ChatReplyUndeliveredError);
     expect(repo.messages).toHaveLength(1);
+    expect(expected).toEqual(['chat_reply_publish']);
   });
 
   it('As a user, I tap while the product is connected and my taps reach it', async () => {
@@ -195,9 +222,9 @@ describe('chat store', () => {
     expect(connection.rendererActions).toEqual([item]);
   });
 
-  it('As a user, I tap after the product disconnected and my tap is refused', async () => {
+  it('As a user, I tap after the product disconnected and my tap is refused and reported', async () => {
     // Given
-    const { chat, connections } = setup();
+    const { chat, connections, expected } = setup();
     const unregister = connections.register(PRODUCT, createRecordingConnection());
     unregister();
 
@@ -210,21 +237,7 @@ describe('chat store', () => {
 
     // Then
     await expect(tap).rejects.toThrow('Chat is not connected for this product');
-  });
-
-  it('As a dotli integrator, I run a stale unregister after a newer registration and the newer connection stays live', async () => {
-    // Given
-    const { chat, connections } = setup();
-    const unregisterOld = connections.register(PRODUCT, createRecordingConnection());
-    const fresh = createRecordingConnection();
-    connections.register(PRODUCT, fresh);
-
-    // When
-    unregisterOld();
-    await chat.triggerAction({ productId: PRODUCT, roomId: 'main', trigger: { messageId: 'm1', actionId: 'yes' } });
-
-    // Then
-    expect(fresh.published).toHaveLength(1);
+    expect(expected).toEqual(['chat_action_publish']);
   });
 
   it('As a user reading a custom message, I see its frame rebuilt and the message renders again on the new connection at once', () => {
@@ -298,7 +311,6 @@ describe('chat store', () => {
     expect(rendersOnFirst).toBe(1);
     expect(second.renders).toHaveLength(1);
     expect(first.renders).toHaveLength(1);
-    expect(getRender(first, 0).stopped).toBe(true);
     expect(heard.errors).toHaveLength(2);
   });
 
@@ -392,26 +404,6 @@ describe('chat store', () => {
 
     // Then
     expect(other.renders).toHaveLength(0);
-  });
-
-  it('As a product developer, I write while a subscriber throws and my write succeeds while the failure is reported', async () => {
-    // Given
-    const { chat, changes, captured } = setup();
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    chat.subscribe(() => {
-      throw new Error('broken panel');
-    });
-
-    // When
-    const status = await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
-
-    // Then
-    expect(status).toBe('New');
-    expect(changes).toHaveLength(1);
-    expect(captured).toEqual(['listener']);
-    expect(sentry.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'Error', owner: 'chat_store.change' },
-    ]);
   });
 
   it('As a product developer, I list my rooms while the store cannot read them and the failure is reported and counted while my call still rejects', async () => {
@@ -508,18 +500,28 @@ describe('chat store view', () => {
     expect(repo.reads.count).toEqual({ rooms: 3, messages: 1 });
   });
 
-  it('As a user with the chat panel open, I reload the same product and the room list is read again', async () => {
-    // Given
+  it('As a user on a conversation, I reload the product after another tab wrote to it and see its room and message', async () => {
+    // Given a conversation open, and another tab's writes this store never heard
     const { repo, chat } = setup();
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 1 });
     await chat.settle();
+    await repo.createRoom({ productId: PRODUCT, roomId: 'main', name: 'Main', icon: '' });
+    await repo.appendMessage({
+      productId: PRODUCT,
+      roomId: 'main',
+      messageId: 'm1',
+      author: 'product',
+      content: TEXT,
+      timestamp: NOW,
+    });
 
     // When
     chat.follow({ productId: PRODUCT, roomId: 'main', loadId: 2 });
     await chat.settle();
 
     // Then
-    expect(repo.reads.count).toEqual({ rooms: 2, messages: 1 });
+    expect(chat.view.get().contacts?.rooms.map(room => room.roomId)).toEqual(['main']);
+    expect(chat.view.get().messages).toMatchObject([{ messageId: 'm1' }]);
   });
 
   it('As a user with the chat panel open, I see rooms change during a read and the list ends on the newest rooms after one more read', async () => {

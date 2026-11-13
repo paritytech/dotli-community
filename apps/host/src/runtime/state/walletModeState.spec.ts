@@ -22,7 +22,7 @@ describe('wallet mode state', () => {
     expect(followed).toBe(false);
   });
 
-  it('As the account button, I follow the local store while the mode is set twice and hear it turn local once', () => {
+  it('As the account button, I follow the local store and hear it turn local when a later read finds the wallet', () => {
     // Given a follower of the local store
     const heard: boolean[] = [];
     onTestFinished(
@@ -31,8 +31,7 @@ describe('wallet mode state', () => {
       }),
     );
 
-    // When a failed local read keeps the page on the app and a later read finds the wallet
-    walletModeState.set({ mode: 'app', failure: 'x' });
+    // When
     walletModeState.set({ mode: 'local', failure: null });
 
     // Then

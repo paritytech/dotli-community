@@ -12,6 +12,7 @@ import { atom, type WritableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import { chatUnreadLabel } from '../../components/chat/unread.js';
 import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
+import { ChatReplyUndeliveredError } from '../../runtime/chat/chatReplyUndeliveredError.js';
 import type { ChatRenderSink } from '../../components/chat/chat.js';
 import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../components/chat/chat.js';
 import type { ChatButtonProps } from '../../components/chat/ChatButton.js';
@@ -90,6 +91,8 @@ export type ChatStage = {
   messagesFail: boolean;
   /** While set, a reply is kept but cannot reach the product, with this error. */
   sendError: Error | null;
+  /** While set, a reply is not kept, and the send rejects with this error. */
+  refuseError: Error | null;
   published: Published[];
   actions: { roomId: string; messageId: string; actionId: string }[];
   rendererActions: HostRendererActionSubscribeItem[];
@@ -232,9 +235,14 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
       update({ composerError: message });
     },
     send: (roomId, text) => {
+      if (stage.refuseError !== null) {
+        return Promise.reject(stage.refuseError);
+      }
       append(roomId, 'user', { tag: 'Text', value: { text } });
       stage.published.push({ roomId, text });
-      return stage.sendError === null ? Promise.resolve() : Promise.reject(stage.sendError);
+      return stage.sendError === null
+        ? Promise.resolve()
+        : Promise.reject(new ChatReplyUndeliveredError(roomId, stage.sendError));
     },
     actions: {
       renderCustomMessage: ({ request, sink }) => {
@@ -276,6 +284,7 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
     contactsFail: false,
     messagesFail: false,
     sendError: null,
+    refuseError: null,
     published: [],
     actions: [],
     rendererActions: [],

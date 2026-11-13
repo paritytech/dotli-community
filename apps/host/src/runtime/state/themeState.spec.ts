@@ -6,7 +6,7 @@ import { createMemoryStorage } from '@dotli/shared/testing';
 import { createThemeState } from './themeState.js';
 
 describe('theme state', () => {
-  it('As a user opening the prerendered page, I read the theme and get system/dark without a matchMedia read', () => {
+  it('As a user opening the prerendered page, I read the theme and get System showing dark, as the prerender does', () => {
     // Given a prerendered page as it opens
     const { store } = createThemeState({ storage: createMemoryStorage() });
 

@@ -8,7 +8,7 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord } from '@dotli/storage';
 import { computed } from 'nanostores';
-import { reportFailedChatRead } from './reportFailedChatRead.js';
+import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 
 const report = createReporter({ flow: 'chat' });
 
@@ -26,7 +26,7 @@ export type ChatViewRepo = {
   listBots(productId: string): Promise<ChatBotRecord[]>;
   /** The time of the latest message in each of the product's rooms that has one, by room id. */
   readLatestMessageTimestamps(productId: string): Promise<Map<string, number>>;
-  /** The room's messages, in insertion order. */
+  /** The room's latest messages, in insertion order. */
   listMessages(productId: string, roomId: string): Promise<ChatMessageRecord[]>;
 };
 
@@ -41,7 +41,10 @@ export type ChatFollow = {
   productId: string;
   /** The open conversation, or null for the room list. */
   roomId: string | null;
-  /** A reload of the same product reads the room list again, as another tab of it may have written meanwhile. */
+  /**
+   * A reload of the same product reads the room list and the open conversation again, as another tab of it may have
+   * written meanwhile.
+   */
   loadId: number;
 };
 
@@ -189,7 +192,7 @@ export function createChatView({ repo }: Params) {
               messagesFailed: sameRoom && state.view.messagesFailed,
             },
             missedMessages: state.missedMessages && !readsContacts,
-            reads: sameRoom ? withContacts : askRead(withContacts, getReadRequest(next, 'messages'), transition),
+            reads: askRead(withContacts, getReadRequest(next, 'messages'), transition),
           });
         },
         // Messages reorder the list, which is re-read for them only while it shows, and once on return if any arrived.
@@ -218,7 +221,7 @@ export function createChatView({ repo }: Params) {
       },
     },
     onEffect: effect => {
-      reportFailedChatRead(effect.failure.error, effect.failure.step);
+      reportFailedChatStorage(effect.failure.error, effect.failure.step);
     },
     onError: error => {
       report.defect(error, {

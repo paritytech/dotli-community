@@ -6,7 +6,7 @@
 // custom-message taps reach the product through its live connection.
 
 import type { ChatMessageContent, HostRendererActionSubscribeItem } from '@parity/truapi';
-import { createReporter } from '@dotli/metrics';
+import { createReporter, defineCount } from '@dotli/metrics';
 import { createListenerSet, createRandomId, realTimers, type Timers } from '@dotli/shared';
 import {
   chat,
@@ -15,12 +15,21 @@ import {
   type ChatRoomFooter,
   type ChatRoomRecord,
 } from '@dotli/storage';
+import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
 import { createChatView, type ChatChange, type ChatViewRepo } from './createChatView.js';
-import { reportFailedChatRead } from './reportFailedChatRead.js';
+import { reportFailedChatStorage } from './reportFailedChatStorage.js';
 import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
 
 const report = createReporter({ flow: 'chat' });
+
+/**
+ * A user's reply, tap or gesture that could not reach the product, for want of a live connection or as its publish
+ * failed. Tagged `outcome` (error) and `reason` (`not_connected`, else the error's name).
+ */
+const chatPublishMetric = defineCount<'error'>('chat.publish');
+
+type PublishStep = 'chat_reply_publish' | 'chat_action_publish' | 'chat_renderer_action_publish';
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
@@ -97,12 +106,25 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     listeners.emit(change);
   }
 
-  function requireConnection(productId: string): ChatConnection {
+  /** The product's live connection. Throws an `Error`, reported, when it has none. */
+  function requireConnection(productId: string, step: PublishStep): ChatConnection {
     const connection = connections.get(productId);
     if (connection === undefined) {
-      throw new Error(NOT_CONNECTED);
+      const error = new Error(NOT_CONNECTED);
+      report.expected(error, { step, metric: chatPublishMetric, reason: 'not_connected' });
+      throw error;
     }
     return connection;
+  }
+
+  /** Waits for `published`. Rejects with its failure, reported as the transport's. */
+  async function publish(step: PublishStep, published: Promise<void>): Promise<void> {
+    try {
+      await published;
+    } catch (error) {
+      report.expected(error, { step, metric: chatPublishMetric });
+      throw error;
+    }
   }
 
   return {
@@ -172,44 +194,61 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     },
 
     /**
-     * Requires a live connection up front, so a message that cannot reach the product is never stored looking
-     * sent. A later publish failure surfaces without losing the stored message. Rejects without a live connection,
-     * when the repo fails, and when the publish fails.
+     * Requires a live connection up front, so a reply that cannot reach the product is never stored looking sent.
+     * Rejects, with nothing stored, without a live connection and when the repo fails. Rejects with
+     * `ChatReplyUndeliveredError` when the stored reply cannot be published. Every failure is reported.
      */
     async postUserMessage({ productId, roomId, text }: PostUserMessageParams): Promise<void> {
-      const connection = requireConnection(productId);
+      const connection = requireConnection(productId, 'chat_reply_publish');
       const content: ChatMessageContent = { tag: 'Text', value: { text } };
-      await repo.appendMessage({
-        productId,
-        roomId,
-        messageId: createRandomId(),
-        author: 'user',
-        content,
-        timestamp: timers.now(),
-      });
+      try {
+        await repo.appendMessage({
+          productId,
+          roomId,
+          messageId: createRandomId(),
+          author: 'user',
+          content,
+          timestamp: timers.now(),
+        });
+      } catch (error) {
+        reportFailedChatStorage(error, 'chat_reply_store');
+        throw error;
+      }
       notify({ kind: 'message', productId, roomId, author: 'user' });
-      await connection.publish({
-        roomId,
-        peer: 'user',
-        payload: { tag: 'MessagePosted', value: content },
-      });
+      try {
+        await publish(
+          'chat_reply_publish',
+          connection.publish({ roomId, peer: 'user', payload: { tag: 'MessagePosted', value: content } }),
+        );
+      } catch (error) {
+        throw new ChatReplyUndeliveredError(roomId, error);
+      }
     },
 
-    /** Hands the user's tap on a message action to the product. Rejects without a live connection or when it fails. */
+    /**
+     * Hands the user's tap on a message action to the product. Rejects without a live connection or when it fails,
+     * reported.
+     */
     async triggerAction({ productId, roomId, trigger }: TriggerActionParams): Promise<void> {
-      await requireConnection(productId).publish({
-        roomId,
-        peer: 'user',
-        payload: { tag: 'ActionTriggered', value: trigger },
-      });
+      await publish(
+        'chat_action_publish',
+        requireConnection(productId, 'chat_action_publish').publish({
+          roomId,
+          peer: 'user',
+          payload: { tag: 'ActionTriggered', value: trigger },
+        }),
+      );
     },
 
     /**
      * Hands a gesture inside a custom message's tree to the product. Rejects without a live connection or when it
-     * fails.
+     * fails, reported.
      */
     async triggerRendererAction(productId: string, item: HostRendererActionSubscribeItem): Promise<void> {
-      await requireConnection(productId).publishRendererAction(item);
+      await publish(
+        'chat_renderer_action_publish',
+        requireConnection(productId, 'chat_renderer_action_publish').publishRendererAction(item),
+      );
     },
 
     /**
@@ -229,7 +268,7 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       try {
         return await repo.listRooms(productId);
       } catch (error) {
-        reportFailedChatRead(error, 'chat_rooms_read');
+        reportFailedChatStorage(error, 'chat_rooms_read');
         throw error;
       }
     },
@@ -246,7 +285,7 @@ export const chatStore = createChatStore({
     listRooms: chat.listRooms,
     listBots: chat.listBots,
     readLatestMessageTimestamps: chat.getLatestMessageTimestamps,
-    listMessages: (productId, roomId) => chat.listMessages(productId, roomId),
+    listMessages: chat.listMessages,
   },
   connections: chatConnections,
 });

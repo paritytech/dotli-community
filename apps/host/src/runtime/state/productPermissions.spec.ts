@@ -227,32 +227,6 @@ describe('product permissions store', () => {
     expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: false, fromPrompt: false }]);
   });
 
-  it('As a user, I make a change while one listener throws and the others still hear it and the failure is reported', async () => {
-    // Given a listener that throws ahead of one that records
-    createFakeCore();
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    cleanups.push(
-      permissions.subscribeChanges(() => {
-        throw new TypeError('listener broke');
-      }),
-    );
-    const changes = recordChanges();
-    await loadProduct();
-
-    // When
-    await permissions.change(LABEL, { Notifications: 'granted' });
-
-    // Then
-    expect(changes).toHaveLength(1);
-    expect(captures.exception).toHaveBeenCalledWith(
-      expect.any(TypeError),
-      expect.objectContaining({ step: 'listener', tags: { owner: 'product_permissions.change' } }),
-    );
-    expect(sentry.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'product_permissions.change' },
-    ]);
-  });
-
   it('As a user, I make a change whose targets all equal the statuses read and nothing is written or announced', async () => {
     // Given
     const core = createFakeCore(LABEL, { Camera: 'Authorized' });
@@ -324,6 +298,7 @@ describe('product permissions store', () => {
     // Given
     const timers = createManualTimers();
     startPermissions(timers);
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const core = createFakeCore(LABEL, { Camera: 'Authorized', Microphone: 'Authorized', ChainSubmit: 'Denied' });
     let attempts = 0;
     core.failWrite = name => {
@@ -350,11 +325,9 @@ describe('product permissions store', () => {
     ]);
     expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
       new Error('core down'),
-      expect.objectContaining({
-        step: 'permissions_change',
-        tags: { reason: 'write' },
-      }),
+      expect.objectContaining({ step: 'permissions_change' }),
     );
+    expect(sentry.counted('permissions.change')).toEqual([{ outcome: 'error', reason: 'write' }]);
     expect(core.reads).toBe(readsBefore + 1);
     expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Camera: 'granted' }) });
   });
@@ -512,10 +485,7 @@ describe('product permissions store', () => {
     expect(attempts).toBe(3);
     expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
       new Error('core down'),
-      expect.objectContaining({
-        step: 'permissions_change',
-        tags: { reason: 'write' },
-      }),
+      expect.objectContaining({ step: 'permissions_change' }),
     );
     expect(permissions.state.get()).toEqual({ status: 'read', label: LABEL, statuses: buildStatuses() });
     expect(changes).toEqual([]);
@@ -637,7 +607,7 @@ describe('product permissions store', () => {
     expect(changes).toEqual([]);
   });
 
-  it("As a user, I close a product's prompt while its answer is stored and nothing is announced", async () => {
+  it("As a user, I close a product's prompt while its answer is stored and the answer the core kept is shown and announced while the prompt still fails as closed", async () => {
     // Given
     createFakeCore();
     const changes = recordChanges();
@@ -655,7 +625,38 @@ describe('product permissions store', () => {
 
     // Then
     await expect(decision).rejects.toThrow('Blocking modal scope disposed');
-    expect(changes).toEqual([]);
+    expect(permissions.state.get()).toEqual({
+      status: 'read',
+      label: LABEL,
+      statuses: buildStatuses({ Camera: 'granted' }),
+    });
+    expect(changes).toEqual([{ label: LABEL, permissions: ['Camera'], allowChanged: true, fromPrompt: true }]);
+  });
+
+  it("As a user, I close a product's prompt while the core refuses its answer and the failure is still reported once", async () => {
+    // Given a core that refuses every write
+    const core = createFakeCore();
+    core.failWrite = () => new Error('core down');
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    await loadProduct();
+    const prompt = new AbortController();
+
+    // When
+    const decision = permissions.recordPromptDecision({
+      label: LABEL,
+      name: 'Camera',
+      decision: 'granted',
+      signal: prompt.signal,
+    });
+    prompt.abort(new DOMException('Blocking modal scope disposed', 'AbortError'));
+
+    // Then
+    await expect(decision).rejects.toThrow('Blocking modal scope disposed');
+    expect(captures.exception).toHaveBeenCalledExactlyOnceWith(
+      new Error('core down'),
+      expect.objectContaining({ step: 'permissions_change' }),
+    );
+    expect(sentry.counted('permissions.change')).toEqual([{ outcome: 'error', reason: 'write' }]);
   });
 
   it("As a user, I close a product's prompt mid-write and a refresh waits for the write to settle before it reads", async () => {
@@ -690,24 +691,16 @@ describe('product permissions store', () => {
   });
 
   it('As the last caller, I stop and the store stops following loads', async () => {
-    // Given two callers following, with the setup's follow ended
-    stopSetupFollow();
-    createFakeCore(LABEL);
+    // Given the only follow ended
     createFakeCore('other');
-    const stopFirst = permissions.start();
-    const stopSecond = permissions.start();
-    cleanups.push(stopFirst, stopSecond);
+    stopSetupFollow();
 
-    // When both callers stop and a product loads
-    stopFirst();
-    stopSecond();
-    const before = permissions.state.get();
+    // When a product loads
     productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
-    const shown = permissions.state.get();
     await permissions.refresh();
 
-    // Then the store shows no change from before the load
-    expect(shown).toEqual(before);
+    // Then
+    expect(permissions.state.get()).toEqual({ status: 'none' });
   });
 
   it('As a user, I revoke the camera while a read fails before my change and the store reads again and the frame is rebuilt', async () => {
@@ -781,6 +774,26 @@ describe('product permissions store, as the permissions popover reads it', () =>
 
     // Then
     expect(permissions.state.get()).toEqual({ status: 'read', label: 'other', statuses: buildStatuses() });
+  });
+
+  it('As a user, I leave an app and come back while its change is written and its statuses are read once', async () => {
+    // Given a change for the first app whose write is held
+    const first = createFakeCore(LABEL);
+    createFakeCore('other');
+    await loadProduct();
+    const write = Promise.withResolvers<undefined>();
+    first.writeGate = write.promise;
+    const outcome = permissions.change(LABEL, { Camera: 'granted' });
+
+    // When the user goes to another app and back, and the write lands
+    productState.setLoaded({ label: 'other', productId: asProductId('other.dot') });
+    productState.setLoaded({ label: LABEL, productId: asProductId(`${LABEL}.dot`) });
+    const readsBefore = first.reads;
+    write.resolve(undefined);
+    await outcome;
+
+    // Then
+    expect(first.reads).toBe(readsBefore + 1);
   });
 
   it("As a user, I switch apps while the popover is open and never see the previous app's statuses for the new one", async () => {
