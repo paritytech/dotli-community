@@ -7,7 +7,7 @@ export { chat } from './chat.js';
 export type { CachedCid, CachedManifests } from './cidCache.js';
 export { cidCache } from './cidCache.js';
 export { isExpectedDbError } from './isExpectedDbError.js';
-export type { LocalWallet, LocalWalletIdentity, LocalWalletStore } from './localWallet.js';
+export type { LocalWalletStore } from './localWallet.js';
 export { createLocalWalletStore, localWallet } from './localWallet.js';
 export { LocalWalletUnreadableError } from './localWalletUnreadableError.js';
 export type { ScheduledNotificationRecord } from './scheduledNotifications.js';

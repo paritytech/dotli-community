@@ -76,6 +76,17 @@ describe('chat rooms', () => {
     expect(rooms[0]?.name).toBe('A');
   });
 
+  it('As a host, I list the rooms of a product whose room id starts with the highest UTF-16 unit and get that room', async () => {
+    // Given
+    await chat.createRoom({ productId: 'a.dot', roomId: '￿room', name: 'A', icon: '' });
+
+    // When
+    const rooms = await chat.listRooms('a.dot');
+
+    // Then
+    expect(rooms.map(room => room.roomId)).toEqual(['￿room']);
+  });
+
   it('As a product, I create a room the browser cannot store and the creation rejects rather than hangs', async () => {
     // Given an icon structured clone refuses, so the put inside the transaction throws and aborts it
     // The field's type allows only a string, which structured clone never refuses.

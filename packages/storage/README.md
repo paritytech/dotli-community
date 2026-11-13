@@ -36,7 +36,7 @@ dotli's persistent browser data in IndexedDB:
 | `blockCache`                                                                     | Bitswap block cache.                     |
 | `cidCache`, `CachedCid`, `CachedManifests`                                       | Label to CID cache.                      |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                        |
-| `LocalWallet`, `LocalWalletIdentity`, `LocalWalletStore`                         | Local wallet types.                      |
+| `LocalWalletStore`                                                               | Local wallet type.                       |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                             |
 | `chat`, `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`, `ChatMessageRecord` | Chat rooms and messages. Also chat bots. |
 | `scheduledNotifications`, `ScheduledNotificationRecord`                          | Scheduled notification queue.            |

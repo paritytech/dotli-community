@@ -118,15 +118,17 @@ describe('local wallet record', () => {
     expect((record?.['key'] as CryptoKey).extractable).toBe(false);
   });
 
-  it('As a user whose record no longer decrypts, I get an unreadable error', async () => {
+  it('As a user whose record no longer decrypts, I get an unreadable error naming that record', async () => {
     // Given
     await store.save(ENTROPY, null);
+    const saved = await store.load();
     await replaceKey();
 
     // When
     const load = store.load();
 
     // Then
+    await expect(load).rejects.toEqual(expect.objectContaining({ version: saved?.version }));
     await expect(load).rejects.toBeInstanceOf(LocalWalletUnreadableError);
   });
 

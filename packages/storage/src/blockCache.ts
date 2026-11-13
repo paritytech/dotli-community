@@ -6,12 +6,10 @@
 
 import { createCacheReporter } from './createCacheReporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
+import { BLOCK_META_BY_LAST_USED as BY_LAST_USED, BLOCK_META_STORE as META, BLOCK_STORE as BLOCKS } from './schema.js';
 import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { createAsyncTaskPool, waitForIdbRequest, runIdbTransaction, realTimers, type Timers } from '@dotli/shared';
 
-const BLOCKS = 'blocks';
-const META = 'block_meta';
-const BY_LAST_USED = 'byLastUsed';
 const BOOKKEEPING = 'bookkeeping';
 
 type BlockEntry = {
@@ -95,8 +93,7 @@ export function createBlockCache({ idb = pageIdb, timers = realTimers }: Params 
       reportFailure('read', error);
       return null;
     }
-    // Corrupt or from a future schema.
-    if (entry === undefined || !(entry.bytes instanceof Uint8Array)) {
+    if (entry === undefined) {
       return null;
     }
     touch(cid);
@@ -106,14 +103,15 @@ export function createBlockCache({ idb = pageIdb, timers = realTimers }: Params 
   async function put(cid: string, bytes: Uint8Array): Promise<void> {
     try {
       const db = await idb.connect();
-      const entry: BlockEntry = { cid, bytes };
       await runIdbTransaction({
         db,
         stores: [BLOCKS, META],
         mode: 'readwrite',
         body: transaction => {
-          transaction.objectStore(BLOCKS).put(entry);
-          transaction.objectStore(META).put(createBlockMeta({ cid, size: bytes.byteLength, lastUsed: timers.now() }));
+          transaction.objectStore(BLOCKS).put({ cid, bytes } satisfies BlockEntry);
+          transaction
+            .objectStore(META)
+            .put({ cid, size: bytes.byteLength, lastUsed: timers.now() } satisfies BlockMeta);
         },
       });
     } catch (error) {
@@ -220,7 +218,3 @@ export type BlockCache = ReturnType<typeof createBlockCache>;
 
 /** The page's block cache. */
 export const blockCache = createBlockCache();
-
-function createBlockMeta({ cid, size, lastUsed }: BlockMeta): BlockMeta {
-  return { cid, size, lastUsed };
-}

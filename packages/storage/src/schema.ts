@@ -6,66 +6,76 @@
 export const DB_NAME = 'dotli';
 export const DB_VERSION = 6;
 
+export const CID_STORE = 'cids';
+export const NOTIFICATION_STORE = 'scheduled_notifications';
+export const NOTIFICATION_BY_PRODUCT_ID = 'byProductId';
+export const NOTIFICATION_BY_SCHEDULED_AT = 'byScheduledAt';
+export const NOTIFICATION_COUNTER_STORE = 'notification_counters';
+export const CHAT_ROOM_STORE = 'chat_rooms';
+export const CHAT_MESSAGE_STORE = 'chat_messages';
+export const CHAT_MESSAGE_BY_ROOM = 'byRoom';
+export const CHAT_BOT_STORE = 'chat_bots';
+export const BLOCK_STORE = 'blocks';
+export const BLOCK_META_STORE = 'block_meta';
+export const BLOCK_META_BY_LAST_USED = 'byLastUsed';
+
 /** Creates the stores and indexes an older version lacks. */
 export function upgradeDotliDb(db: IDBDatabase): void {
-  if (!db.objectStoreNames.contains('cids')) {
-    db.createObjectStore('cids', { keyPath: 'label' });
-  }
-  if (!db.objectStoreNames.contains('chains')) {
-    db.createObjectStore('chains', { keyPath: 'chain' });
+  if (!db.objectStoreNames.contains(CID_STORE)) {
+    db.createObjectStore(CID_STORE, { keyPath: 'label' });
   }
   // v2: scheduled notifications + per-product id counters.
-  if (!db.objectStoreNames.contains('scheduled_notifications')) {
-    const store = db.createObjectStore('scheduled_notifications', {
+  if (!db.objectStoreNames.contains(NOTIFICATION_STORE)) {
+    const store = db.createObjectStore(NOTIFICATION_STORE, {
       keyPath: 'hostId',
       autoIncrement: true,
     });
-    store.createIndex('byProductId', 'productId', { unique: false });
-    store.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
+    store.createIndex(NOTIFICATION_BY_PRODUCT_ID, 'productId', { unique: false });
+    store.createIndex(NOTIFICATION_BY_SCHEDULED_AT, 'scheduledAt', { unique: false });
   }
-  if (!db.objectStoreNames.contains('notification_counters')) {
-    // Value: `{ productId, next }`.
-    db.createObjectStore('notification_counters', { keyPath: 'productId' });
+  if (!db.objectStoreNames.contains(NOTIFICATION_COUNTER_STORE)) {
+    db.createObjectStore(NOTIFICATION_COUNTER_STORE, { keyPath: 'productId' });
   }
   // v3: product chat rooms and messages.
-  if (!db.objectStoreNames.contains('chat_rooms')) {
-    db.createObjectStore('chat_rooms', {
+  if (!db.objectStoreNames.contains(CHAT_ROOM_STORE)) {
+    db.createObjectStore(CHAT_ROOM_STORE, {
       keyPath: ['productId', 'roomId'],
     });
   }
-  if (!db.objectStoreNames.contains('chat_messages')) {
-    const store = db.createObjectStore('chat_messages', {
+  if (!db.objectStoreNames.contains(CHAT_MESSAGE_STORE)) {
+    const store = db.createObjectStore(CHAT_MESSAGE_STORE, {
       keyPath: 'seq',
       autoIncrement: true,
     });
-    store.createIndex('byRoom', ['productId', 'roomId'], {
+    store.createIndex(CHAT_MESSAGE_BY_ROOM, ['productId', 'roomId'], {
       unique: false,
     });
   }
   // v4: product chat bot identities.
-  if (!db.objectStoreNames.contains('chat_bots')) {
-    db.createObjectStore('chat_bots', {
+  if (!db.objectStoreNames.contains(CHAT_BOT_STORE)) {
+    db.createObjectStore(CHAT_BOT_STORE, {
       keyPath: ['productId', 'botId'],
     });
   }
   // v5: relayed content blocks, with sizes and last use apart so pruning never loads the bytes.
-  if (!db.objectStoreNames.contains('blocks')) {
-    db.createObjectStore('blocks', { keyPath: 'cid' });
+  if (!db.objectStoreNames.contains(BLOCK_STORE)) {
+    db.createObjectStore(BLOCK_STORE, { keyPath: 'cid' });
   }
-  if (!db.objectStoreNames.contains('block_meta')) {
-    const store = db.createObjectStore('block_meta', { keyPath: 'cid' });
-    store.createIndex('byLastUsed', 'lastUsed', { unique: false });
+  if (!db.objectStoreNames.contains(BLOCK_META_STORE)) {
+    const store = db.createObjectStore(BLOCK_META_STORE, { keyPath: 'cid' });
+    store.createIndex(BLOCK_META_BY_LAST_USED, 'lastUsed', { unique: false });
   }
 }
 
 /** The frame's own database, so cleanups of the shared origin's other databases never touch the wallet. */
 export const WALLET_DB_NAME = 'dotli-wallet';
 export const WALLET_DB_VERSION = 1;
+export const WALLET_STORE = 'local_wallet';
 
 /** The local wallet, one encrypted record. */
 export function upgradeWalletDb(db: IDBDatabase): void {
-  if (!db.objectStoreNames.contains('local_wallet')) {
-    db.createObjectStore('local_wallet', { keyPath: 'id' });
+  if (!db.objectStoreNames.contains(WALLET_STORE)) {
+    db.createObjectStore(WALLET_STORE, { keyPath: 'id' });
   }
 }
 
