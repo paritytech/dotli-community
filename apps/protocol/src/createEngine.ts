@@ -98,7 +98,7 @@ export function createEngine({
 }: EngineParams) {
   // The pool's session ids are engine-wide, so each scope prefixes its own.
   let scopeCount = 0;
-  const endConnection: HandlerOf<ConnectionMachine, 'connected' | 'answered', 'halted'> = (
+  const haltConnection: HandlerOf<ConnectionMachine, 'connected' | 'answered', 'halted'> = (
     { sink },
     { connectionId },
     { emitState, emitSideEffect },
@@ -119,10 +119,7 @@ export function createEngine({
   };
   const handleConnection = nest<EngineMachine, 'open', ConnectionMachine, 'messaged' | 'halted' | 'disconnected'>({
     find: ({ scopes }, { scopeId, connectionId }) => scopes.get(scopeId)?.get(connectionId) ?? null,
-    store: (state, { scopeId, connectionId }, next) => ({
-      ...state,
-      scopes: withConnection(state.scopes, { scopeId, connectionId }, next),
-    }),
+    store: (state, event, next) => ({ ...state, scopes: withConnection(state.scopes, event, next) }),
     handlers: {
       connected: {
         messaged(held, { connectionId, message }, { emitState, emitSideEffect }) {
@@ -130,14 +127,14 @@ export function createEngine({
           emitSideEffect({ kind: 'sent', sink: held.sink, value: { tag: 'message', value: message } });
           emitSideEffect({ kind: 'firstMessage', connectionId, bytes: message.length });
         },
-        halted: endConnection,
+        halted: haltConnection,
         disconnected: disconnectConnection,
       },
       answered: {
         messaged({ sink }, { message }, { emitSideEffect }) {
           emitSideEffect({ kind: 'sent', sink, value: { tag: 'message', value: message } });
         },
-        halted: endConnection,
+        halted: haltConnection,
         disconnected: disconnectConnection,
       },
       gone: null,
@@ -348,11 +345,7 @@ function countConnections(state: EngineState): number {
 }
 
 /** `scopes` with the connection set to `next`, or dropped when `next` is gone, and a scope left empty dropped too. */
-function withConnection(
-  scopes: Scopes,
-  { scopeId, connectionId }: { scopeId: string; connectionId: string },
-  next: Connection,
-): Scopes {
+function withConnection(scopes: Scopes, { scopeId, connectionId }: ConnectionEvent, next: Connection): Scopes {
   const connections = new Map(scopes.get(scopeId));
   switch (next.kind) {
     case 'connected':

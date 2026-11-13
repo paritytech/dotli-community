@@ -9,7 +9,7 @@ import { getFailure, ProtocolInitFailedError, protocolSchema } from '@dotli/prot
 import {
   createDeferred,
   createStateMachine,
-  getErrorName,
+  listen,
   log,
   nest,
   realTimers,
@@ -47,7 +47,7 @@ const protocolWorkerHeartbeatMetric = defineCount<'error'>('protocol.worker_hear
 type WaitFailure = { readonly outcome: 'timeout' } | { readonly outcome: 'error'; readonly reason: string };
 
 /** Where the link's wait for the worker stands. Only `waiting` moves, so the first to settle the wait wins. */
-type Wait = { kind: 'waiting' } | { kind: 'ready' } | { kind: 'failed'; error: Error };
+type Wait = { kind: 'waiting'; startedAt: number } | { kind: 'ready' } | { kind: 'failed'; error: Error };
 
 /**
  * Whether the tab answers the worker's beats. A beat arrives as a message event, which a page hidden for long still
@@ -55,7 +55,10 @@ type Wait = { kind: 'waiting' } | { kind: 'ready' } | { kind: 'failed'; error: E
  */
 type Beats = { kind: 'answering'; unsubscribe: () => void } | { kind: 'stopped' };
 
-type LinkState = { kind: 'linked'; wait: Wait; beats: Beats } | { kind: 'letGo'; wait: Wait };
+/** `linked` holds the stops of the worker's error listener and of the page's `pagehide`, which letting go runs. */
+type LinkState =
+  | { kind: 'linked'; wait: Wait; beats: Beats; stopWorkerErrors: () => void; stopPageHide: () => void }
+  | { kind: 'letGo'; wait: Wait };
 
 type LinkEvent =
   | { kind: 'workerReady' }
@@ -67,15 +70,13 @@ type LinkEvent =
   | { kind: 'letGo' };
 
 type LinkEffect =
-  | { kind: 'readyWaitEnded'; outcome: WaitFailure | { readonly outcome: 'ok' } }
+  | { kind: 'readyWaitEnded'; startedAt: number; outcome: WaitFailure | { readonly outcome: 'ok' } }
   | { kind: 'workerErrored'; error: Error }
   | { kind: 'workerFailedAfterReady'; error: Error }
   | { kind: 'heartbeatSent' }
   | { kind: 'heartbeatFailed'; error: Error }
   | { kind: 'transportDisposed'; error: Error }
-  | { kind: 'beatsUnsubscribed'; unsubscribe: () => void }
-  | { kind: 'workerListenerRemoved' }
-  | { kind: 'pageHideStopped' };
+  | { kind: 'listenerRemoved'; remove: () => void };
 
 type LinkMachine = MachineTypes<LinkState, LinkEvent, LinkEffect>;
 
@@ -85,7 +86,7 @@ type BeatsMachine = MachineTypes<Beats, LinkEvent, LinkEffect>;
 
 type Params = {
   /** The protocol SharedWorker, whose port the link speaks on. */
-  worker: Pick<SharedWorker, 'port' | 'addEventListener' | 'removeEventListener'>;
+  worker: Pick<SharedWorker, 'port'> & EventTarget;
   /** The iframe's page, whose `pagehide` lets go of the worker. */
   page: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** The page load this tab names in its hello. */
@@ -110,7 +111,6 @@ export function connectSharedWorker({
   timers = realTimers,
   onIssue,
 }: Params) {
-  const startedAt = performance.now();
   // A port delivers every message, so one handshake is enough. The ready wait is its one deadline, so a worker that
   // never answers counts as a ready timeout, and one whose script loads slowly fails no sooner than one that never
   // synced.
@@ -128,7 +128,18 @@ export function connectSharedWorker({
   const answer = createDeferred<LinkEvent>();
 
   // The listeners below send to the machine built after them. None fires while the link is built.
-  worker.addEventListener('error', onWorkerError);
+  // Fires only when the worker script cannot be fetched or evaluated.
+  const stopWorkerErrors = listen({
+    target: worker,
+    type: 'error',
+    handler: event => {
+      const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
+      machine.update({
+        kind: 'workerErrored',
+        error: new ProtocolInitFailedError(`SharedWorker failed to start${detail}`),
+      });
+    },
+  });
   // Bound at once, not once ready, so a frame removed while the worker syncs still closes its port at once. The
   // transport posts nothing as it closes, so the closed port alone says the tab left.
   const stopPageHide = disposeOnPageHide({
@@ -184,29 +195,28 @@ export function connectSharedWorker({
     store: (state, _event, wait) => ({ ...state, wait }),
     handlers: {
       waiting: {
-        workerReady(_wait, _event, { emitState, emitSideEffect }) {
+        workerReady({ startedAt }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'ready' });
-          emitSideEffect({ kind: 'readyWaitEnded', outcome: { outcome: 'ok' } });
+          emitSideEffect({ kind: 'readyWaitEnded', startedAt, outcome: { outcome: 'ok' } });
         },
-        readyFailed(_wait, { failure, error }, { emitState, emitSideEffect }) {
+        readyFailed({ startedAt }, { failure, error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'failed', error });
-          emitSideEffect({ kind: 'readyWaitEnded', outcome: failure });
+          emitSideEffect({ kind: 'readyWaitEnded', startedAt, outcome: failure });
           // A link whose wait failed serves nothing more, so its status subscription, its beats and every listener
           // on them go. Whoever was handed the status hears the same error, with its class kept.
           emitSideEffect({ kind: 'transportDisposed', error });
         },
-        workerErrored(_wait, { error }, { emitState, emitSideEffect }) {
+        workerErrored({ startedAt }, { error }, { emitState, emitSideEffect }) {
           // Fails now with the cause instead of at the ready timeout.
           emitState({ kind: 'failed', error });
           emitSideEffect({ kind: 'workerErrored', error });
-          emitSideEffect({ kind: 'readyWaitEnded', outcome: { outcome: 'error', reason: 'load_failed' } });
+          emitSideEffect({ kind: 'readyWaitEnded', startedAt, outcome: { outcome: 'error', reason: 'load_failed' } });
           emitSideEffect({ kind: 'transportDisposed', error });
         },
       },
       ready: {
         workerErrored(_wait, { error }, { emitSideEffect }) {
           // After ready nothing waits on the worker's start, so the host would never hear of it.
-          emitSideEffect({ kind: 'workerErrored', error });
           emitSideEffect({ kind: 'workerFailedAfterReady', error });
         },
       },
@@ -229,11 +239,11 @@ export function connectSharedWorker({
         heartbeatFailed({ unsubscribe }, { error }, { emitState, emitSideEffect }) {
           emitState({ kind: 'stopped' });
           emitSideEffect({ kind: 'heartbeatFailed', error });
-          emitSideEffect({ kind: 'beatsUnsubscribed', unsubscribe });
+          emitSideEffect({ kind: 'listenerRemoved', remove: unsubscribe });
         },
         beatsEnded({ unsubscribe }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'stopped' });
-          emitSideEffect({ kind: 'beatsUnsubscribed', unsubscribe });
+          emitSideEffect({ kind: 'listenerRemoved', remove: unsubscribe });
         },
       },
       // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
@@ -243,8 +253,10 @@ export function connectSharedWorker({
   const machine = createStateMachine<LinkMachine>({
     initial: {
       kind: 'linked',
-      wait: { kind: 'waiting' },
+      wait: { kind: 'waiting', startedAt: performance.now() },
       beats: { kind: 'answering', unsubscribe: unsubscribeBeats },
+      stopWorkerErrors,
+      stopPageHide,
     },
     handlers: {
       linked: {
@@ -254,13 +266,13 @@ export function connectSharedWorker({
         beatHeard: handleBeats,
         heartbeatFailed: handleBeats,
         beatsEnded: handleBeats,
-        letGo({ wait }, _event, { emitState, emitSideEffect }) {
+        letGo({ wait, stopWorkerErrors, stopPageHide }, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'letGo', wait });
           // One effect per call-out, so a throw skips none of the rest. The transport's close ends the status and the
           // beats, one still waiting on the handshake included, which an unsubscribe would end telling no listener.
           emitSideEffect({ kind: 'transportDisposed', error: new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED) });
-          emitSideEffect({ kind: 'workerListenerRemoved' });
-          emitSideEffect({ kind: 'pageHideStopped' });
+          emitSideEffect({ kind: 'listenerRemoved', remove: stopWorkerErrors });
+          emitSideEffect({ kind: 'listenerRemoved', remove: stopPageHide });
         },
       },
       letGo: {
@@ -271,7 +283,7 @@ export function connectSharedWorker({
     onEffect: effect => {
       switch (effect.kind) {
         case 'readyWaitEnded': {
-          const waitMs = performance.now() - startedAt;
+          const waitMs = performance.now() - effect.startedAt;
           m.distribution(PROTOCOL_SW_READY, waitMs, { unit: 'millisecond', attributes: effect.outcome });
           if (effect.outcome.outcome === 'ok') {
             m.measure(PROTOCOL_SW_READY, waitMs);
@@ -282,8 +294,11 @@ export function connectSharedWorker({
           log.error(`${FRAME_LOG_TAG} SharedWorker error event`, effect.error);
           break;
         case 'workerFailedAfterReady':
-          report.capture(effect.error, { step: 'shared_worker_error' });
-          protocolSharedWorkerErrorMetric.count({ outcome: 'error', reason: getErrorName(effect.error) ?? 'unknown' });
+          report.defect(effect.error, {
+            step: 'shared_worker_error',
+            metric: protocolSharedWorkerErrorMetric,
+            message: `${FRAME_LOG_TAG} SharedWorker error event`,
+          });
           break;
         case 'heartbeatSent':
           // Heard from a callback, not as an update's work, so neither `await()` nor `ready` waits on a heartbeat.
@@ -308,14 +323,8 @@ export function connectSharedWorker({
         case 'transportDisposed':
           transport.dispose(effect.error);
           break;
-        case 'beatsUnsubscribed':
-          effect.unsubscribe();
-          break;
-        case 'workerListenerRemoved':
-          worker.removeEventListener('error', onWorkerError);
-          break;
-        case 'pageHideStopped':
-          stopPageHide();
+        case 'listenerRemoved':
+          effect.remove();
           break;
       }
     },
@@ -368,13 +377,4 @@ export function connectSharedWorker({
       machine.update({ kind: 'letGo' });
     },
   };
-
-  /** Fires only when the worker script cannot be fetched or evaluated. */
-  function onWorkerError(event: Event): void {
-    const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
-    machine.update({
-      kind: 'workerErrored',
-      error: new ProtocolInitFailedError(`SharedWorker failed to start${detail}`),
-    });
-  }
 }

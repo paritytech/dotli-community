@@ -42,7 +42,7 @@ type MeterEvent =
   | { kind: 'tickerStarted'; stopTicker: () => void }
   | { kind: 'ticked'; total: number }
   | { kind: 'readFailed'; error: unknown }
-  | { kind: 'tickerStopped' };
+  | { kind: 'runEnded' };
 
 type MeterEffect =
   | { kind: 'posted'; total: number }
@@ -63,7 +63,7 @@ export function shareNetBytes({
   startTicker = createIntervalTicker(500),
 }: Params): (post: (total: number) => void) => () => void {
   const posts = createListenerSet<number>({ onListenerError: report.listener('protocol.net_bytes') });
-  const stopTicking: HandlerOf<MeterMachine, 'ticking' | 'failing', 'tickerStopped'> = (
+  const stopTicking: HandlerOf<MeterMachine, 'ticking' | 'failing', 'runEnded'> = (
     { stopTicker },
     _event,
     { emitState, emitSideEffect },
@@ -87,7 +87,7 @@ export function shareNetBytes({
           emitState({ kind: 'failing', stopTicker });
           emitSideEffect({ kind: 'readFailed', error });
         },
-        tickerStopped: stopTicking,
+        runEnded: stopTicking,
       },
       // A read that throws again finds no handler. The run's first failure was reported, so a meter that stays broken
       // does not flood the log.
@@ -96,7 +96,7 @@ export function shareNetBytes({
           emitState({ kind: 'ticking', stopTicker });
           emitSideEffect({ kind: 'posted', total });
         },
-        tickerStopped: stopTicking,
+        runEnded: stopTicking,
       },
     },
     onEffect: effect => {
@@ -129,7 +129,7 @@ export function shareNetBytes({
     begin: () => {
       meter.update({ kind: 'tickerStarted', stopTicker: startTicker(tick) });
       return () => {
-        meter.update({ kind: 'tickerStopped' });
+        meter.update({ kind: 'runEnded' });
       };
     },
   });

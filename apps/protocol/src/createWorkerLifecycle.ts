@@ -299,6 +299,7 @@ export function createWorkerLifecycle({
         case 'released':
           if (held.spoke) {
             shutPort(port, held, emitSideEffect);
+            emitSideEffect({ kind: 'releasedPortClosed' });
           } else {
             ports.set(port, held);
           }
@@ -392,16 +393,8 @@ export function createWorkerLifecycle({
           emitState({ kind: 'closed' });
           emitSideEffect({ kind: 'portClosed' });
           update({ kind: 'portsChanged' });
-          emitSideEffect({ kind: 'listeningStopped', stopListening: served.stopListening });
-          emitSideEffect({
-            kind: 'transportDisposed',
-            transport: served.transport,
-            reason: new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED),
-          });
-          if (served.scope !== null) {
-            emitSideEffect({ kind: 'scopeClosed', scope: served.scope });
-          }
-          emitSideEffect({ kind: 'portShut', port });
+          disposeServing(served, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED), emitSideEffect);
+          shutPort(port, served, emitSideEffect);
         },
         statusSinkAdded(served, { sink }, { emitState }) {
           emitState({ ...served, statuses: new Set(served.statuses).add(sink) });
@@ -436,8 +429,9 @@ export function createWorkerLifecycle({
         portClosed(released, { port }, { emitState, emitSideEffect }) {
           emitState({ kind: 'closed' });
           shutPort(port, released, emitSideEffect);
+          emitSideEffect({ kind: 'releasedPortClosed' });
         },
-        // Nothing else will close it.
+        // A scope opened while a release waited in the queue ahead of it. Nothing else will close it.
         scopeOpened(_released, { scope: opened }, { emitSideEffect }) {
           emitSideEffect({ kind: 'scopeClosed', scope: opened });
         },
@@ -594,19 +588,17 @@ export function createWorkerLifecycle({
     onEffect: effect => {
       switch (effect.kind) {
         case 'portConnected':
-          logWorkerEvent('Port connected', { ports: countServed(machine.state.get()), engine: effect.engine });
+          logWorkerEvent('Port connected', { ports: countHeld(machine.state.get(), 'served'), engine: effect.engine });
           break;
         case 'portReleased':
-          logWorkerEvent('Port released', { ports: countServed(machine.state.get()) });
+          logWorkerEvent('Port released', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'portClosed':
-          logWorkerEvent('Port closed', { ports: countServed(machine.state.get()) });
+          logWorkerEvent('Port closed', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'releasedPortClosed':
           logWorkerEvent('Released port closed', {
-            released: [...(readLive(machine.state.get())?.ports.values() ?? [])].filter(
-              held => held.kind === 'released',
-            ).length,
+            released: countHeld(machine.state.get(), 'released'),
           });
           break;
         case 'workerClosing':
@@ -675,7 +667,7 @@ export function createWorkerLifecycle({
 
   return {
     /** How many ports the worker serves. Never throws. */
-    countPorts: (): number => countServed(machine.state.get()),
+    countPorts: (): number => countHeld(machine.state.get(), 'served'),
     /** Whether the worker is marked ready and has not failed, closed or been disposed since. */
     isReady: (): boolean => machine.state.get().kind === 'ready',
     /**
@@ -815,18 +807,29 @@ function letGoOfEveryPort(
   emitSideEffect: EmitSideEffect,
 ): void {
   for (const [port, held] of ports) {
-    if (held.kind === 'served') {
-      endServing(held, reason, emitSideEffect);
+    switch (held.kind) {
+      case 'served':
+        endServing(held, reason, emitSideEffect);
+        shutPort(port, held, emitSideEffect);
+        break;
+      case 'released':
+        shutPort(port, held, emitSideEffect);
+        emitSideEffect({ kind: 'releasedPortClosed' });
+        break;
     }
-    shutPort(port, held, emitSideEffect);
   }
 }
 
-/** Ends the status of a served port with `reason`, then disposes its transport and closes its scope. */
+/** Ends the status of a served port with `reason`, then lets go of what serves it. */
 function endServing(served: ServedPort, reason: Error, emitSideEffect: EmitSideEffect): void {
   for (const sink of served.statuses) {
     emitSideEffect({ kind: 'statusEnded', sink, reason });
   }
+  disposeServing(served, reason, emitSideEffect);
+}
+
+/** Disposes a served port's transport with `reason` and closes its scope. */
+function disposeServing(served: ServedPort, reason: Error, emitSideEffect: EmitSideEffect): void {
   emitSideEffect({ kind: 'transportDisposed', transport: served.transport, reason });
   if (served.scope !== null) {
     emitSideEffect({ kind: 'scopeClosed', scope: served.scope });
@@ -837,7 +840,6 @@ function endServing(served: ServedPort, reason: Error, emitSideEffect: EmitSideE
 function shutPort(port: WorkerPort, held: ServedPort | ReleasedPort, emitSideEffect: EmitSideEffect): void {
   emitSideEffect({ kind: 'listeningStopped', stopListening: held.stopListening });
   emitSideEffect({ kind: 'portShut', port });
-  emitSideEffect({ kind: 'releasedPortClosed' });
 }
 
 function listServed(ports: ReadonlyMap<WorkerPort, ServedPort | ReleasedPort>): ServedPort[] {
@@ -872,6 +874,7 @@ function readLive(state: LifecycleState): Live | null {
   }
 }
 
-function countServed(state: LifecycleState): number {
-  return listServed(readLive(state)?.ports ?? new Map()).length;
+/** How many ports of `kind` the worker holds, none once it closed or was disposed. */
+function countHeld(state: LifecycleState, kind: (ServedPort | ReleasedPort)['kind']): number {
+  return [...(readLive(state)?.ports.values() ?? [])].filter(held => held.kind === kind).length;
 }
