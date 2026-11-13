@@ -28,7 +28,6 @@ type Params = {
 export function useSuggestions({ input, labels, suffix, combobox, open }: Params): {
   shown: Accessor<readonly string[]>;
   active: Accessor<string | null>;
-  pick: (label: string) => void;
 } {
   const matches = createMemo(() => matchLabels(labels(), input().text, suffix()));
   const [escapedAt, setEscapedAt] = createSignal<string | null>(null);
@@ -97,5 +96,5 @@ export function useSuggestions({ input, labels, suffix, combobox, open }: Params
   // Once in the browser, so a key the input gets before then stays with the form.
   onSettled(() => combobox.handleKeys(handleKey));
 
-  return { shown, active, pick: open };
+  return { shown, active };
 }

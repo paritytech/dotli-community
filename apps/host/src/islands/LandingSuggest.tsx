@@ -31,16 +31,9 @@ function BoundSuggestions(): JSX.Element {
   onSettled(() => {
     landingNameList.start();
   });
-  const suggestions = useSuggestions({
-    input,
-    labels,
-    suffix,
-    combobox: navComboboxState,
-    open: label => {
-      window.location.href = dotUrl(label);
-    },
-  });
-  return (
-    <Suggestions labels={suggestions.shown} suffix={suffix} active={suggestions.active} onPick={suggestions.pick} />
-  );
+  const open = (label: string): void => {
+    window.location.href = dotUrl(label);
+  };
+  const suggestions = useSuggestions({ input, labels, suffix, combobox: navComboboxState, open });
+  return <Suggestions labels={suggestions.shown} suffix={suffix} active={suggestions.active} onPick={open} />;
 }
