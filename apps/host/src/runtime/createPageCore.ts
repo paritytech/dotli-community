@@ -246,30 +246,16 @@ export function createPageCore({
         productSet(state, { product }, transition) {
           const next = { ...state, product };
           const core = getCurrentCore(state);
-          if (core === null || servesProduct(core, product)) {
+          if (core === null || servesProduct(core, product) || isHeld(core)) {
             transition.emitState(next);
             return;
           }
           // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it
           // goes now rather than with the next request.
-          switch (core.kind) {
-            case 'booting':
-              if (core.waiting.size > 0) {
-                transition.emitState(next);
-                return;
-              }
-              if (core.redial !== undefined) {
-                transition.emitSideEffect({ kind: 'redialed', outcome: 'aborted', reason: core.redial });
-              }
-              transition.emitState(leave(next, core, transition));
-              return;
-            case 'live':
-              transition.emitState(core.leases.size > 0 ? next : leave(next, core, transition));
-              return;
-            case 'lingering':
-              transition.emitState(leave(next, core, transition));
-              return;
+          if (core.kind === 'booting' && core.redial !== undefined) {
+            transition.emitSideEffect({ kind: 'redialed', outcome: 'aborted', reason: core.redial });
           }
+          transition.emitState(leave(next, core, transition));
         },
         leaseAsked(state, { leaseId, reply }, transition) {
           const core = getCurrentCore(state);
@@ -563,9 +549,8 @@ export function createPageCore({
     transition: Transition<PageCoreMachine>,
   ): PageCoreState {
     const { product } = state;
-    const id = Symbol('core');
     const booting: BootingCore = {
-      id,
+      id: Symbol('core'),
       product,
       blockingModalScope: coordinator.createScope(),
       phoneRequests: createPhoneRequests(),
@@ -576,34 +561,32 @@ export function createPageCore({
       waiting,
       pairingCancelled: false,
     };
-    const context = createCoreContext(booting);
-    const { signal } = booting.left;
-    /**
-     * Resolves with the event that ends one boot attempt. Rejects when the attempt fails while the core is still the
-     * page's. An attempt that succeeds after the core left ends in its event too, which hands its runtime to the
-     * machine.
-     */
-    async function boot(): Promise<PageCoreEvent> {
-      try {
-        signal.throwIfAborted();
-        return { kind: 'booted', coreId: id, booted: await bootRuntime(context) };
-      } catch (error) {
-        // A core that left boots nothing more, so its redial waits out no retry.
-        if (signal.aborted) {
-          return { kind: 'bootFailed', coreId: id, error };
-        }
-        throw error;
-      }
-    }
+    // A first dial boots at once, and a redial with the retries the pool gives it.
+    const booted = redial === undefined ? bootCore(booting) : redials.call(() => bootCore(booting));
     transition.update(
-      (redial === undefined ? boot() : redials.call(boot)).catch((error: unknown): PageCoreEvent => ({
-        kind: 'bootFailed',
-        coreId: id,
-        error,
-      })),
+      booted.catch((error: unknown): PageCoreEvent => ({ kind: 'bootFailed', coreId: booting.id, error })),
     );
     transition.emitSideEffect({ kind: 'dialed', product, redial });
-    return withCore({ ...state, current: id }, booting);
+    return withCore({ ...state, current: booting.id }, booting);
+  }
+
+  /**
+   * Resolves with the event that ends one boot attempt of `core`. Rejects when the attempt fails while the core is
+   * still the page's. An attempt that succeeds after the core left ends in its event too, which hands its runtime to
+   * the machine.
+   */
+  async function bootCore(core: BootingCore): Promise<PageCoreEvent> {
+    const { signal } = core.left;
+    try {
+      signal.throwIfAborted();
+      return { kind: 'booted', coreId: core.id, booted: await bootRuntime(createCoreContext(core)) };
+    } catch (error) {
+      // A core that left boots nothing more, so its redial waits out no retry.
+      if (signal.aborted) {
+        return { kind: 'bootFailed', coreId: core.id, error };
+      }
+      throw error;
+    }
   }
 
   /** Returns `state` without `core`, whose resources go once the state is emitted. */
@@ -618,20 +601,6 @@ export function createPageCore({
       emitSideEffect({ kind: 'coresGone' });
     }
     return { ...state, current: state.current === core.id ? null : state.current, cores };
-  }
-
-  /** Drops the runtime, prompts, phone claims and store following of a core that left the page. */
-  function disposeCore(core: Core): void {
-    report.log.event('wallet core disposed', { faulted: core.kind === 'down' });
-    core.retired.abort();
-    core.left.abort();
-    // A booting core's runtime, if an attempt is running, goes with that attempt's event.
-    if (core.kind !== 'booting') {
-      core.booted.runtime.dispose();
-      core.stopFollowing();
-    }
-    core.blockingModalScope.dispose();
-    core.phoneRequests.dispose();
   }
 
   function createLease(core: LiveCore, leaseId: symbol): CoreLease {
@@ -705,6 +674,25 @@ export function createPageCore({
 /** The parts every phase of `core` keeps, so a core that moves on carries no field of the phase it left. */
 function getParts({ id, product, blockingModalScope, phoneRequests, left, retired }: Core): CoreParts {
   return { id, product, blockingModalScope, phoneRequests, left, retired };
+}
+
+/** Drops the runtime, prompts, phone claims and store following of a core that left the page. */
+function disposeCore(core: Core): void {
+  report.log.event('wallet core disposed', { faulted: core.kind === 'down' });
+  core.retired.abort();
+  core.left.abort();
+  // A booting core's runtime, if an attempt is running, goes with that attempt's event.
+  if (core.kind !== 'booting') {
+    core.booted.runtime.dispose();
+    core.stopFollowing();
+  }
+  core.blockingModalScope.dispose();
+  core.phoneRequests.dispose();
+}
+
+/** Whether a lease holds `core` or waits on it. */
+function isHeld(core: ServingCore): boolean {
+  return core.kind === 'booting' ? core.waiting.size > 0 : core.kind === 'live' && core.leases.size > 0;
 }
 
 /** The context a core boots with, which hears the core leave or retire through the core's own signals. */
