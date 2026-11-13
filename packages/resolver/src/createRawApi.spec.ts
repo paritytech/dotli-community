@@ -295,7 +295,9 @@ describe('createRawApi', () => {
       // When
       follow.emit({ type: 'initialized', finalizedBlockHashes: [] });
       const waited = api.whenReady().catch((error: unknown) => error);
-      const read = api.readSlot(CONTRACT_ADDRESS, '0x01').catch((error: unknown) => error);
+      const read = api
+        .withBestBlock(hash => api.readSlot(CONTRACT_ADDRESS, '0x01', { atHash: hash }))
+        .catch((error: unknown) => error);
 
       // Then
       expect(await waited).toBeInstanceOf(ApiStoppedError);
