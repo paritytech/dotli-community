@@ -68,6 +68,9 @@ type LoaderTelemetry = Pick<
   'subscribeChainSync' | 'subscribeChainDetail' | 'subscribeNetBytes' | 'getSmoldotDbOutcome'
 >;
 
+/** A load from the CID cache. */
+type FastPath = { kind: 'fast' };
+
 /** A load that missed the CID cache, so it goes through the name from `coldStart` on. */
 type SlowPath = { kind: 'slow'; coldStart: number };
 
@@ -82,13 +85,13 @@ type TelemetryState =
   | { kind: 'waiting' }
   | { kind: 'begun'; label: string; attempt: Attempt }
   | { kind: 'cid_cache_read'; traced: Traced }
-  | { kind: 'cached_launch_gate'; traced: Traced }
+  | { kind: 'cached_launch_gate'; traced: Traced; path: FastPath }
   | {
       kind: 'name_resolve';
       traced: Traced;
       path: SlowPath;
       /** The debug panel's flow for the name's resolve. */
-      flowId: string;
+      resolveFlowId: string;
     }
   | { kind: 'manifest_read'; traced: Traced; path: SlowPath }
   | { kind: 'launch_gate'; traced: Traced; path: SlowPath }
@@ -96,9 +99,9 @@ type TelemetryState =
       kind: 'render_handoff';
       traced: Traced;
       /** A load from the CID cache holds the fast path's end-to-end span, open until the handoff or the failure. */
-      path: { kind: 'fast'; span: SpanHandle } | SlowPath;
+      path: (FastPath & { span: SpanHandle }) | SlowPath;
     }
-  | { kind: 'content'; traced: Traced; path: { kind: 'fast' } | SlowPath };
+  | { kind: 'content'; traced: Traced; path: FastPath | SlowPath };
 
 type TelemetryMachine = MachineTypes<TelemetryState, LoadEffect>;
 
@@ -106,6 +109,9 @@ type TelemetryMachine = MachineTypes<TelemetryState, LoadEffect>;
 type TracedKind = Exclude<TelemetryState['kind'], 'waiting' | 'begun'>;
 
 type TracedState = Extract<TelemetryState, { kind: TracedKind }>;
+
+/** The runner of a load's reports, as its factory builds it. */
+export type LoadTelemetry = ReturnType<typeof createLoadTelemetry>;
 
 /** What a load's reports read. */
 export type LoadTelemetryParams = {
@@ -144,7 +150,9 @@ export function createLoadTelemetry({
   telemetry,
   debugBus = pageDebugBus,
 }: LoadTelemetryParams) {
-  const resolveSource = hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
+  const lightClient = hasLightClient(backend);
+  const resolveSource = lightClient ? 'smoldot' : 'rpc-gateway';
+  const dependency = lightClient ? 'smoldot' : 'asset-hub-rpc';
   const cidCacheMiss = skipCidCache ? 'skipped' : 'miss';
   /** Reports the load's failure, ends a fast path's span with it, and finishes the trace. */
   const fail: HandlerOf<TelemetryMachine, TracedKind, 'failed'> = (state, { error, description }) => {
@@ -157,10 +165,9 @@ export function createLoadTelemetry({
     if (state.kind !== 'content') {
       performance.mark('dotli:main:end');
     }
-    const dependency = hasLightClient(backend) ? 'smoldot' : 'asset-hub-rpc';
-    const cidCache = getCidCacheResult(state, cidCacheMiss);
+    const cidCache = state.kind === 'cid_cache_read' ? 'unknown' : state.path.kind === 'fast' ? 'hit' : cidCacheMiss;
     // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
-    const smoldotDbInapplicable = cidCache === 'hit' || !hasLightClient(backend);
+    const smoldotDbInapplicable = cidCache === 'hit' || !lightClient;
     // Captured while the trace is still open, so the error lands in it.
     resolveReport.capture(error, {
       step: state.kind,
@@ -186,14 +193,18 @@ export function createLoadTelemetry({
       payload: { label, reason: getErrorMessage(error), dependency },
     });
   };
-  const reportScreenFailure: HandlerOf<TelemetryMachine, TracedKind, 'screenFailed'> = (_state, { error, failure }) => {
+  // Only a product in its frame has a failure screen of its own to report, and content outcomes to settle.
+  const reportScreenFailure: HandlerOf<TelemetryMachine, 'render_handoff' | 'content', 'screenFailed'> = (
+    _state,
+    { error, failure },
+  ) => {
     resolveReport.defect(error, {
       step: 'failure_screen',
       metric: resolveFailureScreenMetric,
       message: `[dot.li] The failure screen for ${failure} failed:`,
     });
   };
-  const settleContent: HandlerOf<TelemetryMachine, TracedKind, 'contentSettled'> = (
+  const settleContent: HandlerOf<TelemetryMachine, 'render_handoff' | 'content', 'contentSettled'> = (
     { traced: { trace } },
     { report: { outcome, failedStep } },
   ) => {
@@ -206,6 +217,22 @@ export function createLoadTelemetry({
     }
     contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
     trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+  };
+  /** Opens the render's step, and the fast path's end-to-end span on a load from the CID cache. */
+  const render: HandlerOf<TelemetryMachine, 'cached_launch_gate' | 'launch_gate', 'rendering'> = (
+    { traced, path },
+    _event,
+    { emitState },
+  ) => {
+    enterStep(
+      {
+        kind: 'render_handoff',
+        traced,
+        path: path.kind === 'fast' ? { kind: 'fast', span: m.open('e2e.fast_path') } : path,
+      },
+      emitState,
+    );
+    traced.progress.enterContentFetch();
   };
   const machine = createStateMachine<TelemetryMachine>({
     initial: { kind: 'waiting' },
@@ -257,9 +284,6 @@ export function createLoadTelemetry({
       cid_cache_read: {
         cacheChecked({ traced }, { cid }, { emitState }) {
           const { label, trace } = traced;
-          if (cid !== null) {
-            enterStep({ kind: 'cached_launch_gate', traced }, emitState);
-          }
           debugBus.emit({
             layer: 'boot',
             event: 'cid_cache_checked',
@@ -267,13 +291,15 @@ export function createLoadTelemetry({
             timestamp: timers.now(),
             payload: { label, hit: cid !== null, ...(cid !== null ? { cid } : {}) },
           });
-          trace.recordCidCache(cid !== null ? 'hit' : cidCacheMiss);
           if (cid !== null) {
+            enterStep({ kind: 'cached_launch_gate', traced, path: { kind: 'fast' } }, emitState);
+            trace.recordCidCache('hit');
             cacheReadMetric.count({ outcome: 'hit', surface: 'cid_cache' });
             resolveReport.log.event('CID cache hit', { cid });
             trace.recordNameResolved(cid);
             return;
           }
+          trace.recordCidCache(cidCacheMiss);
           if (skipCidCache) {
             resolveReport.log.event('CID cache skipped by settings');
             return;
@@ -285,10 +311,7 @@ export function createLoadTelemetry({
           // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
           const coldStart = readClock();
           const resolveFlowId = createRandomId();
-          enterStep(
-            { kind: 'name_resolve', traced, path: { kind: 'slow', coldStart }, flowId: resolveFlowId },
-            emitState,
-          );
+          enterStep({ kind: 'name_resolve', traced, path: { kind: 'slow', coldStart }, resolveFlowId }, emitState);
           performance.mark('dotli:resolve:start');
           debugBus.emit({
             layer: 'resolve',
@@ -300,21 +323,10 @@ export function createLoadTelemetry({
           resolveReport.log.event('Resolving name', { name: withActiveTld(`app.${traced.label}`), backend });
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
-      cached_launch_gate: {
-        rendering({ traced }, _event, { emitState }) {
-          const span = m.open('e2e.fast_path');
-          enterStep({ kind: 'render_handoff', traced, path: { kind: 'fast', span } }, emitState);
-          traced.progress.enterContentFetch();
-        },
-        failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
-      },
+      cached_launch_gate: { rendering: render, failed: fail },
       name_resolve: {
-        namePhase({ traced: { label, progress }, flowId: resolveFlowId }, { phase }) {
+        namePhase({ traced: { label, progress }, resolveFlowId }, { phase }) {
           progress.resolvePhase(phase);
           debugBus.emit({
             layer: 'resolve',
@@ -324,26 +336,27 @@ export function createLoadTelemetry({
             payload: { label, phase },
           });
         },
-        nameResolved({ traced, path, flowId: resolveFlowId }, { cid }, { emitState }) {
+        nameResolved({ traced, path, resolveFlowId }, { cid }, { emitState }) {
           const { label, trace, progress } = traced;
           const { coldStart } = path;
           if (cid !== null) {
             enterStep({ kind: 'manifest_read', traced, path }, emitState);
           }
+          const now = readClock();
           debugBus.emit({
             layer: 'resolve',
             event: 'completed',
             flowId: resolveFlowId,
             timestamp: timers.now(),
-            payload: { label, source: resolveSource, cid, durationMs: readClock() - coldStart },
+            payload: { label, source: resolveSource, cid, durationMs: now - coldStart },
           });
           progress.markNameResolved();
           performance.mark('dotli:resolve:end');
           log.debug(
-            `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(coldStart, { now: readClock() })} (total ${formatElapsed(startedAt, { now: readClock() })}) -> ${cid ?? 'null'}`,
+            `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(coldStart, { now })} (total ${formatElapsed(startedAt, { now })}) -> ${cid ?? 'null'}`,
           );
           resolveReport.log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
-            ms: Math.round(readClock() - coldStart),
+            ms: Math.round(now - coldStart),
             ...(cid !== null ? { cid } : {}),
           });
           trace.recordNameResolved(cid);
@@ -354,8 +367,6 @@ export function createLoadTelemetry({
           performance.mark('dotli:main:end');
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
       manifest_read: {
         manifestsRead({ traced, path }, { manifests }, { emitState }) {
@@ -363,18 +374,8 @@ export function createLoadTelemetry({
           resolveReport.log.event('Manifests read', { root: manifests.root.kind, app: manifests.app.kind });
         },
         failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
       },
-      launch_gate: {
-        rendering({ traced, path }, _event, { emitState }) {
-          enterStep({ kind: 'render_handoff', traced, path }, emitState);
-          traced.progress.enterContentFetch();
-        },
-        failed: fail,
-        screenFailed: reportScreenFailure,
-        contentSettled: settleContent,
-      },
+      launch_gate: { rendering: render, failed: fail },
       render_handoff: {
         handedOff({ traced, path }, _event, { emitState }) {
           const { label, trace } = traced;
@@ -382,41 +383,29 @@ export function createLoadTelemetry({
             case 'fast':
               enterStep({ kind: 'content', traced, path: { kind: 'fast' } }, emitState);
               path.span.end();
-              performance.mark('dotli:main:end');
-              resolveReport.log.event('Sandbox mounted', {
-                path: 'cache',
-                total_ms: Math.round(readClock() - startedAt),
-              });
-              debugBus.emit({
-                layer: 'boot',
-                event: 'ready',
-                flowId,
-                timestamp: timers.now(),
-                payload: { label, totalMs: readClock() - startedAt, path: 'fast' },
-              });
-              trace.markHandedOff();
-              return;
+              break;
             case 'slow':
               enterStep({ kind: 'content', traced, path }, emitState);
               m.distribution('e2e.slow_path', readClock() - path.coldStart, {
                 unit: 'millisecond',
                 attributes: { outcome: 'ok', chain_backend: backend },
               });
-              performance.mark('dotli:main:end');
-              resolveReport.log.event('Sandbox mounted', {
-                path: 'cold',
-                total_ms: Math.round(readClock() - startedAt),
-              });
-              trace.markHandedOff();
-              debugBus.emit({
-                layer: 'boot',
-                event: 'ready',
-                flowId,
-                timestamp: timers.now(),
-                payload: { label, totalMs: readClock() - startedAt, path: 'slow' },
-              });
-              return;
+              break;
           }
+          const totalMs = readClock() - startedAt;
+          performance.mark('dotli:main:end');
+          resolveReport.log.event('Sandbox mounted', {
+            path: path.kind === 'fast' ? 'cache' : 'cold',
+            total_ms: Math.round(totalMs),
+          });
+          trace.markHandedOff();
+          debugBus.emit({
+            layer: 'boot',
+            event: 'ready',
+            flowId,
+            timestamp: timers.now(),
+            payload: { label, totalMs, path: path.kind },
+          });
         },
         failed: fail,
         screenFailed: reportScreenFailure,
@@ -452,26 +441,4 @@ export function createLoadTelemetry({
 function enterStep(next: TracedState, emitState: Transition<TelemetryMachine>['emitState']): void {
   emitState(next);
   next.traced.trace.recordStep(next.kind);
-}
-
-/** Reads what a load at `state` found in the CID cache, where a miss reads as `miss`. */
-function getCidCacheResult(state: TracedState, miss: 'miss' | 'skipped') {
-  switch (state.kind) {
-    case 'cid_cache_read':
-      return 'unknown';
-    case 'cached_launch_gate':
-      return 'hit';
-    case 'name_resolve':
-    case 'manifest_read':
-    case 'launch_gate':
-      return miss;
-    case 'render_handoff':
-    case 'content':
-      switch (state.path.kind) {
-        case 'fast':
-          return 'hit';
-        case 'slow':
-          return miss;
-      }
-  }
 }

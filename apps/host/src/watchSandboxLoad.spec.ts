@@ -122,6 +122,22 @@ describe('watchSandboxLoad', () => {
     expect(heard).toEqual(['cleared']);
   });
 
+  it('As a visitor, I start following the outcomes when my app frame clears the screen and hear the outcome that cleared it once', () => {
+    // Given a follower of the clear that then follows the outcomes
+    const frame = createSandboxFrame();
+    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
+    const heard: SandboxLoadReport[] = [];
+    load.subscribeCleared(() => {
+      load.subscribeOutcomes(report => heard.push(report));
+    });
+
+    // When
+    frame.postStatus({ done: true, outcome: 'loaded' });
+
+    // Then
+    expect(heard).toEqual([{ outcome: 'loaded', failedStep: undefined }]);
+  });
+
   it('As a visitor whose app frame fails and then loads on my retry, I hear both outcomes in order', () => {
     // Given a follower of the app frame's outcomes
     const frame = createSandboxFrame();
@@ -254,7 +270,7 @@ describe('watchSandboxLoad', () => {
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers });
     const silences: SandboxSilentError[] = [];
-    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    load.expectHeardWithin({ onSilent: error => silences.push(error) });
     load.dispose();
     load.dispose();
 
@@ -271,7 +287,7 @@ describe('watchSandboxLoad', () => {
     const timers = createManualTimers();
     const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
     const silences: SandboxSilentError[] = [];
-    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    load.expectHeardWithin({ onSilent: error => silences.push(error) });
 
     // When
     await timers.advance(30_000);
@@ -286,8 +302,8 @@ describe('watchSandboxLoad', () => {
     const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
     const earlier: SandboxSilentError[] = [];
     const later: SandboxSilentError[] = [];
-    const stopEarlier = load.expectHeardWithin({ onSilent: error => earlier.push(error), silenceMs: 10_000 });
-    load.expectHeardWithin({ onSilent: error => later.push(error), silenceMs: 30_000 });
+    const stopEarlier = load.expectHeardWithin({ onSilent: error => earlier.push(error) });
+    load.expectHeardWithin({ onSilent: error => later.push(error) });
 
     // When the earlier ask is stopped and the later deadline passes
     stopEarlier();
@@ -307,7 +323,6 @@ describe('watchSandboxLoad', () => {
       onSilent() {
         throw new Error('the handler broke');
       },
-      silenceMs: 30_000,
     });
 
     // When the deadline passes
@@ -323,7 +338,7 @@ describe('watchSandboxLoad', () => {
     const frame = createSandboxFrame();
     const load = watchSandboxLoad(frame.channel, { timers });
     const silences: SandboxSilentError[] = [];
-    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    load.expectHeardWithin({ onSilent: error => silences.push(error) });
     await timers.advance(29_999);
 
     // When the frame speaks and the deadline passes
@@ -343,7 +358,7 @@ describe('watchSandboxLoad', () => {
     const silences: SandboxSilentError[] = [];
 
     // When the deadline is asked and its time passes
-    load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    load.expectHeardWithin({ onSilent: error => silences.push(error) });
     await timers.advance(30_000);
 
     // Then
@@ -355,7 +370,7 @@ describe('watchSandboxLoad', () => {
     const timers = createManualTimers();
     const load = watchSandboxLoad(createSandboxFrame().channel, { timers });
     const silences: SandboxSilentError[] = [];
-    const stopDeadline = load.expectHeardWithin({ onSilent: error => silences.push(error), silenceMs: 30_000 });
+    const stopDeadline = load.expectHeardWithin({ onSilent: error => silences.push(error) });
 
     // When
     stopDeadline();

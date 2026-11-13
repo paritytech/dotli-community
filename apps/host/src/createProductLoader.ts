@@ -31,7 +31,7 @@ import { showNoContentError } from './showNoContentError.js';
 import type { SandboxLoad, SandboxLoadReport } from './watchSandboxLoad.js';
 import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
-import { createLoadTelemetry, type LoadEffect, type LoadTelemetryParams } from './createLoadTelemetry.js';
+import type { LoadEffect, LoadTelemetry, LoadTelemetryParams } from './createLoadTelemetry.js';
 import type { PageCidCache } from './createPageCidCache.js';
 import type { loadFailureScreen } from './loadFailureScreen.js';
 import type { HostBridge } from './runtime/bridge.js';
@@ -107,7 +107,9 @@ type LoadEvent =
 
 type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
 
-type Params = LoadTelemetryParams & {
+type Params = Pick<LoadTelemetryParams, 'backend' | 'skipCidCache' | 'timers'> & {
+  /** Makes the reports of each of the load's effects. */
+  report: LoadTelemetry['report'];
   /** Where names and manifests are read. */
   names: NameSource;
   productFrame: Pick<ProductFrame, 'render' | 'halt'>;
@@ -144,7 +146,7 @@ export function createProductLoader(params: Params) {
       failingOnScreen: failing,
       ended: null,
     },
-    onEffect: createLoadTelemetry(params).report,
+    onEffect: params.report,
     onError: error => {
       resolveReport.defect(error, {
         step: 'load_transition',
@@ -353,7 +355,6 @@ const holdingCore: HandlersOf<LoadMachine, 'holdingCore'> = {
 };
 
 const rendering: HandlersOf<LoadMachine, 'rendering'> = {
-  stepFailed: failLoad,
   renderFailed(state, { error }, transition) {
     failLoad(state, { kind: 'stepFailed', error }, transition);
     // A render that failed after it mounted the product leaves it holding its core under the failure screen.
@@ -364,7 +365,7 @@ const rendering: HandlersOf<LoadMachine, 'rendering'> = {
     try {
       stopListening = listenToProduct({ run: state.run, update });
     } catch (error) {
-      update({ kind: 'stepFailed', error });
+      update({ kind: 'renderFailed', error });
       return;
     }
     releaseCore(state.run);
@@ -382,13 +383,13 @@ const failProduct: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'productFai
   { emitState, emitSideEffect, update },
 ) => {
   const { params } = run;
-  stopListening();
-  // Only a reload brings back a product that was on screen, so the frame stops showing it.
-  params.productFrame.halt();
   const description = describeError(error, { readBackend: () => params.backend });
   emitSideEffect({ kind: 'failed', error, description });
   emitState({ kind: 'failingOnScreen', run, error, description, failure });
   update({ kind: 'showFailure' });
+  stopListening();
+  // Only a reload brings back a product that was on screen, so the frame stops showing it.
+  params.productFrame.halt();
 };
 
 /** Lets the topbar fold once the product's content shows. */
@@ -411,6 +412,8 @@ const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
   contentOutcome: settleContent,
   handOff({ run, path, cid, manifests, stopListening }, _event, { emitState, emitSideEffect }) {
     const { label, params } = run;
+    emitSideEffect({ kind: 'handedOff' });
+    emitState({ kind: 'onScreen', run, stopListening });
     params.failureScreen.forget();
     void params.recents.record(label);
     void applyProductBranding({ label, manifests, fetchBlock: params.bitswap.get, timers: params.timers });
@@ -422,8 +425,6 @@ const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
       case 'slow':
         break;
     }
-    emitSideEffect({ kind: 'handedOff' });
-    emitState({ kind: 'onScreen', run, stopListening });
   },
 };
 
