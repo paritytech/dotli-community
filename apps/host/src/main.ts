@@ -120,8 +120,6 @@ type BootState =
 type BootEvent =
   | { kind: 'started'; route: OpenedRoute; role: PageRole }
   | { kind: 'shellStarted'; shell: Shell }
-  | { kind: 'targetRendered' }
-  | { kind: 'targetFailed'; error: unknown }
   | { kind: 'opened' }
   | { kind: 'failed'; error: unknown };
 
@@ -340,7 +338,6 @@ function main(): void {
 
 const idle: HandlersOf<BootMachine, 'idle'> = {
   started(_state, { route, role }, { emitState, update }) {
-    emitState({ kind: 'startingShell', route, cidRead: null });
     const shellStart = startShell(route, role);
     // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
     // even when the shell fails to start.
@@ -381,32 +378,10 @@ const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
         }
         emitSideEffect({ kind: 'stepEntered', step: proxied ? 'localhost_render' : 'preview_render' });
         emitSideEffect({ kind: 'targetRouted', target: route });
-        try {
-          shell.startup.bridge.setPageProduct({ label: route.host, productId: route.productId });
-          pageNotifications().init({ label: route.host });
-        } catch (error) {
-          update({ kind: 'failed', error });
-          return;
-        }
-        let rendered: Promise<void>;
-        try {
-          // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
-          // unconditionally for product testing.
-          rendered = shell.productFrame.render({
-            mode: 'iframe',
-            label: route.host,
-            url: route.url,
-            productId: route.productId,
-            chat: Promise.resolve(true),
-          });
-        } catch (error) {
-          update({ kind: 'targetFailed', error });
-          return;
-        }
         update(
-          rendered.then(
-            () => ({ kind: 'targetRendered' }),
-            (error: unknown) => ({ kind: 'targetFailed', error }),
+          openTarget(route, shell).then(
+            () => ({ kind: 'opened' }),
+            (error: unknown) => ({ kind: 'failed', error }),
           ),
         );
         return;
@@ -437,25 +412,8 @@ const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
 
 const openingTarget: HandlersOf<BootMachine, 'openingTarget'> = {
   failed: failBoot,
-  targetFailed(state, { error }, transition) {
-    failBoot(state, { kind: 'failed', error }, transition);
-    // The boot's failure screen takes over, so the frame must not show the product again on a replacement core.
-    state.shell.productFrame.halt();
-  },
-  targetRendered(state, _event, transition) {
-    const { target, shell } = state;
-    const { emitState, emitSideEffect } = transition;
+  opened({ target, shell }, _event, { emitState, emitSideEffect }) {
     emitState({ kind: 'opened' });
-    try {
-      pageTopbarAutoHide.setContentShown(true);
-      // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's
-      // life, so the cleanup goes unused.
-      startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
-      history.replaceState(null, '', getLocalTargetPath(target));
-    } catch (error) {
-      failBoot(state, { kind: 'failed', error }, transition);
-      return;
-    }
     emitSideEffect({ kind: 'targetOpened', target, flowId: shell.flowId });
   },
 };
@@ -466,6 +424,34 @@ const openingProduct: HandlersOf<BootMachine, 'openingProduct'> = {
     emitState({ kind: 'opened' });
   },
 };
+
+/**
+ * Opens a local target in the product frame. Rejects with what fails, and halts a frame whose render failed, since the
+ * boot's failure screen takes over and the frame must not show the product again on a replacement core.
+ */
+async function openTarget(target: LocalTarget, shell: Shell): Promise<void> {
+  shell.startup.bridge.setPageProduct({ label: target.host, productId: target.productId });
+  pageNotifications().init({ label: target.host });
+  try {
+    // Local products carry no worker manifest to read the chat flag from, so the debug paths enable chat
+    // unconditionally for product testing.
+    await shell.productFrame.render({
+      mode: 'iframe',
+      label: target.host,
+      url: target.url,
+      productId: target.productId,
+      chat: Promise.resolve(true),
+    });
+  } catch (error) {
+    shell.productFrame.halt();
+    throw error;
+  }
+  pageTopbarAutoHide.setContentShown(true);
+  // No dotNS name to verify, so the shield is settled as soon as the product shows. The bar folds for the page's life,
+  // so the cleanup goes unused.
+  startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: pageTopbarAutoHide.arm }).settle();
+  history.replaceState(null, '', getLocalTargetPath(target));
+}
 
 /** Makes the boot's reports: the step a failure is tagged with, the debug panel's events and the failure screen. */
 function reportBoot(effect: BootEffect): void {
