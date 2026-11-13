@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { For, Show } from 'solid-js';
-import { dynamic, type JSX } from '@solidjs/web';
+import type { JSX } from '@solidjs/web';
 import { CloudOffIcon, ShieldAlertIcon } from '../../icons.js';
-import { type ErrorPageContent, type ErrorText } from './arrangeErrorActions.js';
+import type { ErrorPageContent, ErrorText } from './arrangeErrorActions.js';
 import { ErrorActions, ErrorDetail, ErrorFrame } from './ErrorFrame.js';
 import s from './ErrorPage.module.css';
 
