@@ -10,7 +10,7 @@ export const NETWORK_NAMES: readonly Network[] = ['paseo-next-v2', 'previewnet']
 export const NETWORK_KEY = 'dotli:network';
 
 /** The set of network names this build knows, for a membership check on an untyped string. */
-export const VALID_NETWORKS: ReadonlySet<string> = new Set<string>(NETWORK_NAMES);
+const VALID_NETWORKS: ReadonlySet<string> = new Set<string>(NETWORK_NAMES);
 
 /** Whether `value` names a network this build knows. */
 export function isValidNetwork(value: string): value is Network {

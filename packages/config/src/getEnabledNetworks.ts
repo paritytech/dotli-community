@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { VALID_NETWORKS, isValidNetwork, type Network } from './networkNames.js';
+import { NETWORK_NAMES, isValidNetwork, type Network } from './networkNames.js';
 import { readRuntimeNetworkConfig } from './readRuntimeNetworkConfig.js';
 
 /** The raw enabled-network list and the label an error message calls its origin. */
@@ -26,8 +26,8 @@ export function getEnabledNetworks(): Network[] {
     );
   }
 
-  const seen = new Set<Network>();
-  const parsed: Network[] = [];
+  // A set, so a network listed twice is offered once, where it was first listed.
+  const parsed = new Set<Network>();
   for (const entry of source.entries) {
     const trimmed = entry.trim();
     if (trimmed === '') {
@@ -35,20 +35,17 @@ export function getEnabledNetworks(): Network[] {
     }
     if (!isValidNetwork(trimmed)) {
       throw new Error(
-        `${source.label} contains an unknown network "${trimmed}". Valid values: ${[...VALID_NETWORKS].join(', ')}.`,
+        `${source.label} contains an unknown network "${trimmed}". Valid values: ${NETWORK_NAMES.join(', ')}.`,
       );
     }
-    if (!seen.has(trimmed)) {
-      seen.add(trimmed);
-      parsed.push(trimmed);
-    }
+    parsed.add(trimmed);
   }
-  if (parsed.length === 0) {
+  if (parsed.size === 0) {
     throw new Error(
       `${source.label} is empty after parsing, got ${JSON.stringify(source.entries)}. Provide at least one valid network.`,
     );
   }
-  return parsed;
+  return [...parsed];
 }
 
 /** The first enabled network, the default. Throws when the enabled networks are unset, unknown or empty. */
