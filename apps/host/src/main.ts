@@ -9,7 +9,7 @@ import { startPage } from './startPage.js';
 import { reportBootFailure } from './reportBootFailure.js';
 // Its first imports load the host's startup modules and then mark the page's start, before the rest loads.
 import { startShell, type Shell } from './startShell.js';
-import { openProduct } from './openProduct.js';
+import { openProduct, type ProductToOpen } from './openProduct.js';
 import { openTarget } from './openTarget.js';
 import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
 import { loadingState } from './state/loadingState.js';
@@ -18,7 +18,6 @@ import { urlPillState } from './state/urlPillState.js';
 import { cidCache } from '@dotli/storage';
 import { createStateMachine, type HandlerOf, type HandlersOf, type MachineTypes } from '@dotli/shared';
 import { DEBUG, getNetwork, isLocalhost, LOCAL_ROOT } from '@dotli/config';
-import type { EarlyCidRead } from './createPageCidCache.js';
 import { leaveForLanding, readLocalhostUrl, readShellRoute, type ShellRoute } from './shellRoute.js';
 import { getShellPageRole, type PageRole } from './runtime/pageRole.js';
 import { bindTopbar } from './bindTopbar.js';
@@ -27,14 +26,18 @@ import { bindUrlPill } from './bindUrlPill.js';
 /** A route the boot takes: every route but a nested one. */
 type BootRoute = Exclude<ShellRoute, { kind: 'nested' }>;
 
+/** A route the boot opens once the shell is up. A product's carries the CID cache read started for its name. */
+type RouteToOpen = Exclude<BootRoute, { kind: 'product' }> | ProductToOpen;
+
 /**
  * Where the page's boot is. It starts the shell, then opens what the route names: a local target by its URL, or a
- * product by its name, or leaves for the landing page. It ends opened, left for the landing page, or failed once its
+ * product by its name, or leaves for the landing page. It ends opened once the opener resolves, which a product's load
+ * that showed its own failure screen does too. Otherwise it ends left for the landing page, or failed once the boot's
  * failure screen shows.
  */
 type BootState =
   | { kind: 'idle' }
-  | { kind: 'startingShell'; route: BootRoute; cidRead: EarlyCidRead | null }
+  | { kind: 'startingShell'; route: RouteToOpen }
   | { kind: 'opening' }
   | { kind: 'opened' }
   | { kind: 'leftForLanding' }
@@ -97,9 +100,10 @@ const idle: HandlersOf<BootMachine, 'idle'> = {
     const shellStart = startShell(route, role);
     // The network is final once the shell boot has started. `cidCache.get` never rejects, so the read needs no handler
     // even when the shell fails to start.
-    const cidRead: EarlyCidRead | null =
-      route.kind === 'product' ? { label: route.label, read: cidCache.get(route.label, getNetwork()) } : null;
-    emitState({ kind: 'startingShell', route, cidRead });
+    emitState({
+      kind: 'startingShell',
+      route: route.kind === 'product' ? { ...route, cidRead: cidCache.get(route.label, getNetwork()) } : route,
+    });
     update(
       shellStart.then(
         shell => ({ kind: 'shellStarted', shell }),
@@ -121,16 +125,16 @@ const failBoot: HandlerOf<BootMachine, 'startingShell' | 'opening', 'failed'> = 
 
 const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
   failed: failBoot,
-  shellStarted({ route, cidRead }, { shell }, { emitState, emitSideEffect, update }) {
+  shellStarted({ route }, { shell }, { emitState, emitSideEffect, update }) {
     if (route.kind === 'landing') {
       emitState({ kind: 'leftForLanding' });
       emitSideEffect({ kind: 'leftForLanding' });
       return;
     }
     emitState({ kind: 'opening' });
-    const opening = route.kind === 'product' ? openProduct({ route, shell, cidRead }) : openTarget(route, shell);
+    const open = route.kind === 'product' ? openProduct(route, shell) : openTarget(route, shell);
     update(
-      opening.then(
+      open.then(
         () => ({ kind: 'opened' }),
         (error: unknown) => ({ kind: 'failed', error }),
       ),

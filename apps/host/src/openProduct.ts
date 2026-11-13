@@ -9,7 +9,7 @@ import { loadVerify } from '@dotli/content';
 import { createReporter } from '@dotli/metrics';
 import { getProtocolClient } from '@dotli/protocol';
 import { loadResolve } from '@dotli/resolver';
-import { blockCache as pageBlockCache } from '@dotli/storage';
+import { blockCache as pageBlockCache, type CachedCid } from '@dotli/storage';
 import { debugBus } from '@dotli/truapi-debug';
 import { runWhenIdle } from '@dotli/ui';
 import { createBlockVerifier } from './createBlockVerifier.js';
@@ -18,7 +18,7 @@ import { recentLabels } from './createLazyRecentLabels.js';
 import { createLoadTelemetry } from './createLoadTelemetry.js';
 import { pageLoading } from './createLoadingController.js';
 import { createNameSource, type RpcResolver } from './createNameSource.js';
-import { createPageCidCache, type EarlyCidRead } from './createPageCidCache.js';
+import { createPageCidCache } from './createPageCidCache.js';
 import { createProductAuthor } from './createProductAuthor.js';
 import { createProductLoader } from './createProductLoader.js';
 import type { H160Address } from './h160Address.js';
@@ -41,16 +41,13 @@ const IDLE_WORK_TIMEOUT_MS = 2_000;
 /** Content block cache cap. After each load the least recently used blocks are dropped until it fits. */
 const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
-type Params = {
-  route: Extract<ShellRoute, { kind: 'product' }>;
-  shell: Shell;
-  cidRead: EarlyCidRead | null;
-};
+/** A product route to open, with the CID cache read started early for its name, which never rejects. */
+export type ProductToOpen = Extract<ShellRoute, { kind: 'product' }> & { cidRead: Promise<CachedCid | null> };
 
 /** Opens the product `route` names. Rejects as its load does. */
-export async function openProduct({ route, shell, cidRead }: Params): Promise<void> {
+export async function openProduct(route: ProductToOpen, shell: Shell): Promise<void> {
   bootTracker.setStep('resolve_setup');
-  const { label, base } = route;
+  const { label, base, cidRead } = route;
   const { settings, bridge } = shell.startup;
   const protocol = getProtocolClient();
 
@@ -58,18 +55,13 @@ export async function openProduct({ route, shell, cidRead }: Params): Promise<vo
   const relay = startProductContent(shell, settings.cache.skipArchiveCache);
   const names = createNameSource({
     backend: settings.backend,
-    remote: {
-      resolveDotName: protocol.resolve.resolveDotName,
-      resolveOwner: protocol.resolve.resolveOwner,
-      resolveRootManifest: protocol.resolve.resolveRootManifest,
-      resolveExecutableManifest: protocol.resolve.resolveExecutableManifest,
-    },
+    remote: protocol.resolve,
     loadRpc: loadRpcResolver,
   });
   const author = createProductAuthor({
     readOwner: readLoadedOwner,
-    readAccount: address => bridge.readOriginalAccount(address),
-    readUsernames: account => bridge.readPeopleUsernames(account),
+    readAccount: bridge.readOriginalAccount,
+    readUsernames: bridge.readPeopleUsernames,
   });
   productCardState.setAuthorSource(() => author.load());
   const loader = createProductLoader({
@@ -87,9 +79,9 @@ export async function openProduct({ route, shell, cidRead }: Params): Promise<vo
     productFrame: shell.productFrame,
     bridge,
     sandboxLoad: shell.sandboxLoad,
-    cidCache: createPageCidCache({ names, cidRead, runWhenIdle: runWhenPageIdle }),
+    cidCache: createPageCidCache({ names, label, cidRead, runWhenIdle: runWhenPageIdle }),
     bitswap: bridge.hostBitswapClient,
-    recents: { record: recentLabels.record },
+    recents: recentLabels,
     failureScreen: loadFailureScreen,
     onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
