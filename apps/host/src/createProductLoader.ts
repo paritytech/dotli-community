@@ -104,8 +104,8 @@ type LoadEvent =
 /** The load's reports, and the side work it leaves behind as it moves. */
 type LoaderEffect =
   | LoadEffect
-  | { kind: 'shieldSettled'; run: LoadRun }
-  | { kind: 'coreReleased'; run: LoadRun }
+  | { kind: 'shieldSettled'; autoHide: LoadRun['autoHide'] }
+  | { kind: 'coreReleased'; coreHold: LoadRun['coreHold'] }
   | { kind: 'frameHalted' }
   | { kind: 'cidStored'; copy: CachedCopy }
   | { kind: 'cidRevalidated'; copy: ServedCopy }
@@ -161,7 +161,7 @@ export function createProductLoader(params: Params) {
     const description = describe(error);
     emitState({ kind: 'failing', label: run.label, error, description });
     emitSideEffect({ kind: 'failed', error, description });
-    emitSideEffect({ kind: 'coreReleased', run });
+    emitSideEffect({ kind: 'coreReleased', coreHold: run.coreHold });
     // A render that failed after it mounted the product leaves it holding its core under the failure screen.
     if (state.kind === 'rendering') {
       emitSideEffect({ kind: 'frameHalted' });
@@ -247,7 +247,7 @@ export function createProductLoader(params: Params) {
           if (cid === null) {
             emitState({ kind: 'ended', error: null });
             emitSideEffect({ kind: 'noContent' });
-            emitSideEffect({ kind: 'coreReleased', run });
+            emitSideEffect({ kind: 'coreReleased', coreHold: run.coreHold });
             emitSideEffect({ kind: 'noContentShown', label: run.label });
             return;
           }
@@ -314,7 +314,7 @@ export function createProductLoader(params: Params) {
             return;
           }
           emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
-          emitSideEffect({ kind: 'coreReleased', run: state.run });
+          emitSideEffect({ kind: 'coreReleased', coreHold: state.run.coreHold });
           // Queued behind what the listeners heard as they subscribed, so a failure heard then ends the load before
           // the side work, and an outcome heard then waits in the state until the handoff is reported.
           update({ kind: 'handOff' });
@@ -383,12 +383,12 @@ export function createProductLoader(params: Params) {
         case 'shieldSettled':
           // The shield shows how the content was checked, and the topbar may fold from then on.
           urlPillState.setVerificationShield(isVerifiedSession(params.backend) ? 'verified' : 'trusted');
-          effect.run.autoHide.settle();
+          effect.autoHide.settle();
           return;
         case 'coreReleased':
           // A boot's failure is the render step's to report, and a load that ended before the render reports its own
           // outcome only.
-          void effect.run.coreHold.then(lease => lease.release(), noop);
+          void effect.coreHold.then(lease => lease.release(), noop);
           return;
         case 'frameHalted':
           params.productFrame.halt();
@@ -480,7 +480,7 @@ function holdCore(
 ): void {
   emitState(next);
   emitSideEffect({ kind: 'rendering' });
-  emitSideEffect({ kind: 'shieldSettled', run: next.run });
+  emitSideEffect({ kind: 'shieldSettled', autoHide: next.run.autoHide });
   update(
     runStep(
       () => next.run.coreHold,
@@ -497,7 +497,7 @@ function runStep<Value>(work: () => Value | Promise<Value>, toEvent: (value: Val
 }
 
 /** Sets up one load and returns what it holds. Throws what the setup throws. */
-function startLoadRun(label: string, params: Params) {
+function startLoadRun(label: string, params: Pick<Params, 'bridge' | 'names'>) {
   params.bridge.setPageProduct({ label });
   // In parallel with the CID.
   const chat = readChatCapability(label, params.names.readWorkerManifest);
@@ -517,7 +517,10 @@ function startLoadRun(label: string, params: Params) {
  * Listens for what can still fail the product, and for its content's outcomes. Returns what stops listening. Throws
  * what a subscribe throws, once the subscriptions made before it are stopped.
  */
-function listenToProduct(params: Params, update: Transition<LoadMachine>['update']): () => void {
+function listenToProduct(
+  params: Pick<Params, 'onProtocolVersionMismatch' | 'sandboxLoad'>,
+  update: Transition<LoadMachine>['update'],
+): () => void {
   const stops: (() => void)[] = [];
   const stopListening = () => {
     for (const stop of stops) {
