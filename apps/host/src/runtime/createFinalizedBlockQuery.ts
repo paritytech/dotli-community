@@ -5,7 +5,6 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import { isRemoteChainSupported } from '@dotli/protocol';
 import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
 import { loadHostBridge, loadPolkadotApi } from '../lazy.js';
 
@@ -52,6 +51,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
       new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`),
       'TimeoutError',
     );
+    // Kept past a close that throws, so the report still prints the height the chain answered.
     let answered: number | null = null;
     try {
       const provider = await source.provider(genesisHash);
@@ -59,9 +59,8 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
         return null;
       }
       const client = await source.createClient(provider);
-      let block: { number: number };
       try {
-        block = await withTimeout({
+        const block = await withTimeout({
           work: client.getFinalizedBlock(),
           ms: FINALIZED_BLOCK_LIMIT_MS,
           timeoutError: () => timeout,
@@ -73,7 +72,7 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
       }
       // After the close, so a close that throws counts as the one error instead of after an ok.
       diagnosticsFinalizedBlockMetric.count({ outcome: 'ok' });
-      return block.number;
+      return answered;
     } catch (error) {
       if (error === timeout) {
         // A slow chain is the network's state rather than a fault, and the report says n/a for it.
@@ -85,12 +84,11 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
           message: '[dot.li diagnostics] finalized block query timed out:',
         });
       } else {
-        const reason = getErrorName(error) ?? 'unknown';
         report.defect(error, {
           step: 'diagnostics_block',
           metric: diagnosticsFinalizedBlockMetric,
           message: '[dot.li diagnostics] finalized block query failed:',
-          tags: { reason },
+          tags: { reason: getErrorName(error) ?? 'unknown' },
         });
       }
       return answered;
@@ -102,7 +100,6 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
 
 /** The page's query, over the host's chains. The bridge and `polkadot-api` chunks load only once it is called. */
 export const queryFinalizedBlock = createFinalizedBlockQuery({
-  provider: async genesisHash =>
-    isRemoteChainSupported(genesisHash) ? (await loadHostBridge()).getHostChainProvider(genesisHash) : null,
+  provider: async genesisHash => (await loadHostBridge()).getHostChainProvider(genesisHash),
   createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });

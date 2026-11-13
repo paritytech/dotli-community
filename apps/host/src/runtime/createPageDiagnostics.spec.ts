@@ -4,6 +4,7 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
+import { createDeferred } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createPageDiagnostics, type PageDiagnosticsParams } from './createPageDiagnostics.js';
 import { productState } from './state/productState.js';
@@ -163,6 +164,25 @@ describe('createPageDiagnostics', () => {
       [servicesConfig.assethub.genesis],
       [servicesConfig.people.genesis],
     ]);
+  });
+
+  it('As a dotli developer on the light client, I copy the report while the chains answer and switch product, and its permissions stay those of the product I copied', async () => {
+    // Given product `doom` loaded and chains that answer only once released
+    onTestFinished(resetAllStoresForTests);
+    onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
+    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot'), details: { chat: false } });
+    const { params, diagnostics } = createDiagnosticsHarness({ node: null });
+    const blocks = createDeferred<number | null>();
+    params.finalizedBlock.mockReturnValue(blocks.promise);
+
+    // When the report is copied, and the user switches to `quake` before the chains answer
+    const report = diagnostics.report(diagnostics.rows());
+    productState.setLoaded({ label: 'quake', productId: asProductId('quake.dot'), details: { chat: false } });
+    blocks.resolve(1);
+    await report;
+
+    // Then the permissions read were `doom`'s
+    expect(params.permissionStatuses.mock.calls.map(([label]) => label)).toEqual(['doom']);
   });
 
   it('As a dotli developer on trusted providers, I copy the report and it names the node the tab shows and asks no chain', async () => {

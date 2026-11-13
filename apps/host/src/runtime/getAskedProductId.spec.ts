@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { getNetwork, getSettings, setSettings } from '@dotli/config';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { toProductId } from './getAskedProductId.js';
 
 describe('toProductId', () => {
   it.each([

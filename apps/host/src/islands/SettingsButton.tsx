@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { getDotliVersion } from '../runtime/createTruapiRuntimeConfig.js';
+import { getDotliVersion } from '../runtime/getDotliVersion.js';
 import { themeState } from '../runtime/state/themeState.js';
 import { SettingsItem } from '../components/settings/SettingsItem.js';
 import { pageSettingsActions } from '../createSettingsActions.js';

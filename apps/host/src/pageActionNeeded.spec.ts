@@ -7,7 +7,7 @@ import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testi
 import { createChatConnections } from './runtime/chat/createChatConnections.js';
 import { createChatStore } from './runtime/chat/createChatStore.js';
 import { createMemoryChatRepo } from './runtime/chat/createChatStore.fake.js';
-import { toProductId } from './runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from './runtime/getAskedProductId.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { chatPanelState } from './state/chatPanelState.js';

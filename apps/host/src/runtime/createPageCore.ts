@@ -26,7 +26,7 @@ import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot
 import { CoreRedialError } from './coreRedialError.js';
 import { connectCore } from './connectCore.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPhoneRequestTracker.js';
-import { getAskedProductId } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId } from './getAskedProductId.js';
 
 const report = createReporter({ flow: 'wallet' });
 const hearDownFailed = report.listener('page_core.down');

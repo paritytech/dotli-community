@@ -7,7 +7,7 @@ import { createRecordingConnection } from '../runtime/chat/createChatConnections
 import { createMemoryChatRepo } from '../runtime/chat/createChatStore.fake.js';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
 import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
-import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../runtime/getAskedProductId.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { recordNotified } from '../testing/recordNotified.js';

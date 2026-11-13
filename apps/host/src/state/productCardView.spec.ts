@@ -3,7 +3,7 @@
 
 import { asProductId } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
-import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../runtime/getAskedProductId.js';
 import { parsePolkadotAccount } from '../runtime/polkadotAccount.js';
 import type { ProductState } from '../runtime/state/productState.js';
 import { getProductCardView } from './productCardView.js';

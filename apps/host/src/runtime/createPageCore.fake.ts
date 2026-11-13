@@ -8,7 +8,7 @@ import { createDeferred, noop } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { createPageCore, type CoreContext } from './createPageCore.js';
-import { getAskedProductId } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId } from './getAskedProductId.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;

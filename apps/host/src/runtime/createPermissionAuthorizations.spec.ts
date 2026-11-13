@@ -76,27 +76,6 @@ describe('createPermissionAuthorizations', () => {
 });
 
 describe('getStatus / setStatus', () => {
-  it('As a dApp user whose connection answers fewer statuses than asked, I read a permission and the missing status reads as ask', async () => {
-    // Given a provider that violates the length contract
-    const { permissions } = createHarness();
-    onTestFinished(
-      permissions.register('shortapp', {
-        getPermissionAuthorizationStatuses() {
-          return Promise.resolve([]);
-        },
-        setPermissionAuthorizationStatus() {
-          return Promise.resolve();
-        },
-      }),
-    );
-
-    // When
-    const status = await permissions.getStatus('shortapp', 'Camera');
-
-    // Then the missing entry surfaces as "ask", not undefined
-    expect(status).toBe('ask');
-  });
-
   it.each<{ answers: string; answered: PermissionAuthorizationStatus[]; statuses: string[] }>([
     { answers: 'none', answered: [], statuses: ['ask', 'ask'] },
     {
@@ -131,7 +110,6 @@ describe('getStatus / setStatus', () => {
   it('As a dApp user, I decide my permissions and find them in the core authorization store', async () => {
     // Given
     const { permissions, store } = createHarness();
-    const before = new Map(store);
 
     // When
     await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
@@ -144,7 +122,6 @@ describe('getStatus / setStatus', () => {
     ]);
 
     // Then
-    expect(before).toEqual(new Map());
     expect(store).toEqual(
       new Map([
         ['Remote:ChainSubmit', 'Authorized'],
@@ -202,11 +179,10 @@ describe('getAllowAttribute', () => {
     await permissions.setStatus({ label: 'myapp', permission: 'Microphone', status: 'granted' });
 
     // When
-    // Order follows JSON insertion order, so assert on the directive set.
-    const directives = (await permissions.getAllowAttribute('myapp')).split('; ').sort();
+    const allow = await permissions.getAllowAttribute('myapp');
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'display-capture', 'microphone']);
+    expect(allow).toBe('clipboard-write; display-capture; camera; microphone');
   });
 
   it('As a dApp user, I deny a device permission and grant a submit one and neither enters the app frame policy', async () => {

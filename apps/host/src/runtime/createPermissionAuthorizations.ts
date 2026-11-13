@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The Rust core owns and persists permission authorization. This side only maps granted device
-// permissions to the iframe `allow` attribute.
+// The Rust core owns and persists permission authorization. This side routes each product's reads and writes to the
+// newest open connection of that product, and maps its granted device permissions to the iframe `allow` attribute.
 
 import type { PermissionAuthorizationStatus, TrUApiProductProvider } from '@parity/truapi-host';
 import {
@@ -14,7 +14,7 @@ import {
   type PermissionStatus,
 } from './permissionPolicy.js';
 
-export type PermissionAuthorizationProvider = Pick<
+type PermissionAuthorizationProvider = Pick<
   TrUApiProductProvider,
   'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
 >;
@@ -47,8 +47,11 @@ export function createPermissionAuthorizations() {
 
     function unregister(): void {
       const current = providers.get(label);
-      const index = current?.lastIndexOf(provider) ?? -1;
-      if (current === undefined || index < 0) {
+      if (current === undefined) {
+        return;
+      }
+      const index = current.lastIndexOf(provider);
+      if (index < 0) {
         return;
       }
       current.splice(index, 1);
@@ -93,14 +96,8 @@ export function createPermissionAuthorizations() {
 
   async function getAllowAttribute(label: string): Promise<string> {
     // TrUAPI has no screen capture permission, and the browser's picker asks on every capture anyway.
-    const policies = ['clipboard-write', 'display-capture'];
-    for (const name of await getGrantedFramePermissions(label)) {
-      const directive = getFrameDirective(name);
-      if (directive !== null) {
-        policies.push(directive);
-      }
-    }
-    return policies.join('; ');
+    const granted = (await getGrantedFramePermissions(label)).flatMap(name => getFrameDirective(name) ?? []);
+    return ['clipboard-write', 'display-capture', ...granted].join('; ');
   }
 
   return {

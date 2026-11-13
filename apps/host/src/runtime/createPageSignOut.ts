@@ -124,11 +124,6 @@ export function createPageSignOut({
   signOuts,
   runOnCore,
 }: PageSignOutParams) {
-  /** Never rejects, so a read made in the click's turn is answered whenever the sign-out gets to it. */
-  function readWallet(): Promise<WalletRead> {
-    return readWalletOrFailed(() => wallet.read());
-  }
-
   /**
    * Forgets the wallet `held` found while the store still holds that record. Resolves whether it went, and rejects
    * when the wallet could not be read.
@@ -209,7 +204,7 @@ export function createPageSignOut({
     // What there is to end is what the page read, not what a core reports, as a core that follows the store may read
     // signed out once the window cleared it.
     const read = await held;
-    const blob = getReadBlob(read);
+    const blob = read.status === 'ok' ? read.blob : null;
     await letGo(blob);
     await forgetSiteGrants();
     if (read.status === 'failed') {
@@ -248,7 +243,7 @@ export function createPageSignOut({
    * Each sign-out is counted once, under its most specific reason.
    */
   async function signOutLocalInPlace(heldWallet: Promise<WalletRead>): Promise<LogoutOutcome> {
-    const untold = await dropCopyUntold(await copy.readSession());
+    const untold = await dropCopyUntold();
     // Before the switch, which reloads the page.
     await forgetSiteGrants();
     // Either outcome ends the sign-out here: the page reloads, or the switch already reported why it stayed.
@@ -259,10 +254,12 @@ export function createPageSignOut({
   }
 
   /**
-   * Lets the paired copy `read` found go through the flag keeper, without telling the phone. Resolves whether the copy
-   * may have held a session nobody told the phone about, and never rejects, as the local sign-out goes on either way.
+   * Reads the paired copy and lets what it holds go through the flag keeper, without telling the phone. Resolves
+   * whether the copy may have held a session nobody told the phone about, and never rejects, as the local sign-out goes
+   * on either way.
    */
-  async function dropCopyUntold(read: SessionRead): Promise<boolean> {
+  async function dropCopyUntold(): Promise<boolean> {
+    const read = await copy.readSession();
     switch (read.status) {
       case 'failed':
         // Core storage reported the read. The copy may still hold a session nobody told the phone about.
@@ -314,8 +311,9 @@ export function createPageSignOut({
     if (!isLocalWallet()) {
       return signOutPairedCopy();
     }
-    // Before any wait, so it is the wallet the user signed out of.
-    const heldWallet = readWallet();
+    // Before any wait, so it is the wallet the user signed out of. It never rejects, so it is answered whenever the
+    // sign-out gets to it.
+    const heldWallet = readWalletOrFailed(() => wallet.read());
     const handoff = signOutWindow();
     if (handoff === null) {
       return signOuts.call(() => runOnCore(() => signOutLocalInPlace(heldWallet)));
@@ -325,11 +323,8 @@ export function createPageSignOut({
     const windowRead = handoff.signOutRead();
     return signOuts.call(async () => {
       reportSigningOut(true);
-      try {
-        await windowRead;
-      } finally {
-        reportSigningOut(false);
-      }
+      await windowRead;
+      reportSigningOut(false);
       return runOnCore(() => signOutLocal(heldWallet));
     });
   }
@@ -351,7 +346,7 @@ export function createPageSignOut({
     if (isLocalWallet()) {
       // The watch found the wallet gone, so nothing is forgotten here, and a wallet saved since stays. A failed
       // switch was reported there and left the page as it was.
-      if ((await leaveLocalWallet(forgetNothing)) === 'failed') {
+      if ((await leaveLocalWallet(() => Promise.resolve())) === 'failed') {
         throw new Error('The local wallet could not be forgotten');
       }
       return;
@@ -386,20 +381,6 @@ export function createPageSignOut({
      */
     signOutLocally,
   };
-}
-
-/** The session a read found, or null for none or for a read that failed. */
-function getReadBlob(read: SessionRead): string | null {
-  switch (read.status) {
-    case 'ok':
-      return read.blob;
-    case 'failed':
-      return null;
-  }
-}
-
-function forgetNothing(): Promise<void> {
-  return Promise.resolve();
 }
 
 function reportSignOutFailure(error: unknown, reason: SignOutFailureReason): void {

@@ -14,7 +14,8 @@ import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { CoreContext, PageProduct } from './createPageCore.js';
-import { createTruapiRuntimeConfig, getAskedProductId } from './createTruapiRuntimeConfig.js';
+import { createTruapiRuntimeConfig } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId } from './getAskedProductId.js';
 import { ERRORS } from './errors.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 

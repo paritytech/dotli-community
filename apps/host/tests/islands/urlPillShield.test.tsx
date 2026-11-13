@@ -11,7 +11,7 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { UrlPillShield } from '../../src/islands/UrlPillShield.js';
-import { toProductId } from '../../src/runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../../src/runtime/getAskedProductId.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { productCardState } from '../../src/state/productCardState.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';

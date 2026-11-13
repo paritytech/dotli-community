@@ -24,30 +24,21 @@ type Params = {
 export function pipeProviders({ product, core, flowId, label, productId, noteForwarded, timers }: Params): () => void {
   let sawInbound = false;
   let sawOutbound = false;
+  function emitFirst(event: 'first_inbound' | 'first_outbound'): void {
+    debugBus.emit({ layer: 'bridge', event, flowId, timestamp: timers.now(), payload: { label, productId } });
+  }
   const unsubscribes = [
     product.subscribe(message => {
       if (!sawInbound) {
         sawInbound = true;
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'first_inbound',
-          flowId,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        });
+        emitFirst('first_inbound');
       }
       core.postMessage(message);
     }),
     core.subscribe(message => {
       if (!sawOutbound) {
         sawOutbound = true;
-        debugBus.emit({
-          layer: 'bridge',
-          event: 'first_outbound',
-          flowId,
-          timestamp: timers.now(),
-          payload: { label, productId },
-        });
+        emitFirst('first_outbound');
       }
       product.postMessage(message);
       noteForwarded(message);

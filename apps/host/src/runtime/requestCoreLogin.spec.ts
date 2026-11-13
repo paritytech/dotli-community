@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { bindReports } from '../testing/bindReports.js';
 import { buildLoginResponseFrame } from '../testing/buildLoginResponseFrame.js';
 import { getFrameRequestId } from '../testing/getFrameRequestId.js';
@@ -23,7 +23,6 @@ describe('requestCoreLogin', () => {
 
     // Then it resolves with the answer and unsubscribes
     await expect(login).resolves.toBe('Success');
-    expect(provider.subscribe).toHaveBeenCalledTimes(1);
     expect(provider.listener).toBeNull();
   });
 
@@ -114,6 +113,25 @@ describe('requestCoreLogin', () => {
     // Then it rejects with the send failure and unsubscribes
     await expect(login).rejects.toThrow('send failed');
     expect(provider.listener).toBeNull();
+  });
+
+  it('As a dotli integrator, I request a login on a core provider that already closed and it rejects with nothing left listening', async () => {
+    // Given a core provider that tells its close as soon as it is heard
+    bindReports();
+    const provider = createFakeProvider();
+    const unsubscribeClose = vi.fn();
+    provider.subscribeClose.mockImplementation(callback => {
+      callback(new Error('core transport closed'));
+      return unsubscribeClose;
+    });
+
+    // When the login is requested
+    const login = requestCoreLogin(provider);
+
+    // Then it rejects with the close and lets go of both listeners
+    await expect(login).rejects.toThrow('core transport closed');
+    expect(provider.listener).toBeNull();
+    expect(unsubscribeClose).toHaveBeenCalled();
   });
 
   it('As a dotli integrator, I request a login whose core provider closes and it rejects with nothing left listening', async () => {

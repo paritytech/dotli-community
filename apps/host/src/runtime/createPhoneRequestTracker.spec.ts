@@ -11,12 +11,7 @@ import { encodePhoneRequestFrame } from '../testing/encodePhoneRequestFrame.js';
 import { encodePhoneResponseFrame, type PhoneResult } from '../testing/encodePhoneResponseFrame.js';
 import { encodeRequestFrame } from '../testing/encodeRequestFrame.js';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
-import {
-  createPhoneRequestTracker,
-  type PhoneClaim,
-  type PhoneRequest,
-  type PhoneRequestTracker,
-} from './createPhoneRequestTracker.js';
+import { createPhoneRequestTracker, type PhoneRequest } from './createPhoneRequestTracker.js';
 
 const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
 const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
@@ -191,80 +186,6 @@ describe('phone request tracker', () => {
     expect(afterClose).toBeUndefined();
   });
 
-  it('As a dotli integrator, I claim from inside a tracker transition and my claim takes hold once that transition ends', async () => {
-    // Given a network hold that claims while the second request is tracked
-    let reentrant: PhoneClaim | undefined;
-    let holds = 0;
-    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
-      holdNetwork() {
-        holds += 1;
-        if (holds === 2) {
-          reentrant = tracker.claim(isSignRaw);
-        }
-        return () => {};
-      },
-    });
-    const tap = tracker.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-
-    // When
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
-    const claim = tracker.claim(isSignRaw);
-    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED }));
-
-    // Then the claim made inside took the oldest request, and the one after took the next
-    expect(reentrant?.request.body).toEqual(buildSignRawBody('x'));
-    expect(claim?.request.body).toEqual(buildSignRawBody('y'));
-    await expect(reentrant?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
-  });
-
-  it('As a dotli integrator, I claim one request twice from inside a tracker transition and the second claim ends as gone', async () => {
-    // Given a network hold that claims twice while the second request is tracked
-    const reentrant: (PhoneClaim | undefined)[] = [];
-    let holds = 0;
-    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
-      holdNetwork() {
-        holds += 1;
-        if (holds === 2) {
-          reentrant.push(tracker.claim(isSignRaw), tracker.claim(isSignRaw));
-        }
-        return () => {};
-      },
-    });
-    const tap = tracker.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-
-    // When
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
-
-    // Then
-    await expect(reentrant[1]?.ended).resolves.toEqual({ kind: 'gone' });
-  });
-
-  it('As a dotli integrator, I claim from inside a tracker transition as the tracker is disposed and my claim ends as gone', async () => {
-    // Given a network hold that disposes the tracker, then claims, while the second request is tracked
-    let reentrant: PhoneClaim | undefined;
-    let holds = 0;
-    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
-      holdNetwork() {
-        holds += 1;
-        if (holds === 2) {
-          tracker.dispose();
-          reentrant = tracker.claim(isSignRaw);
-        }
-        return () => {};
-      },
-    });
-    const tap = tracker.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-
-    // When
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
-
-    // Then
-    await expect(reentrant?.ended).resolves.toEqual({ kind: 'gone' });
-  });
-
   it('As a dotli integrator, I send a request on a closed tap and find nothing to claim', () => {
     // Given
     const { tracker: requests, reportUndecodable } = createTrackerHarness();
@@ -333,9 +254,8 @@ describe('phone request tracker', () => {
     expect(logged).toHaveLength(1);
   });
 
-  it('As an operator, I see a transition fail because the undecodable report threw, and the tracker still tracks the next request', () => {
+  it('As a dotli integrator, I hear an undecodable report throw to the tap, and the tracker still tracks the next request', () => {
     // Given a tracker whose undecodable report throws
-    const reports = recordReports({ onFinished: onTestFinished });
     const reportUndecodable = vi.fn(() => {
       throw new Error('report failed');
     });
@@ -343,12 +263,17 @@ describe('phone request tracker', () => {
     const tap = requests.connect();
 
     // When an undecodable request is followed by a valid one
-    tap.fromProduct(encodeGarbagePhoneRequestFrame('a', 'signRaw'));
+    let thrown: unknown = null;
+    try {
+      tap.fromProduct(encodeGarbagePhoneRequestFrame('a', 'signRaw'));
+    } catch (error) {
+      thrown = error;
+    }
     tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('x') }));
     const claim = requests.claim(isSignRaw);
 
-    // Then the throw is reported as a defect of the tracker, and the valid request is claimable
-    expect(reports.exceptions).toMatchObject([{ step: 'phone_tracker_transition' }]);
+    // Then the throw reached the tap, and the valid request is claimable
+    expect(thrown).toEqual(new Error('report failed'));
     expect(claim?.request.body).toEqual(buildSignRawBody('x'));
   });
 
@@ -482,5 +407,21 @@ describe('phone request tracker', () => {
 
     // Then
     expect(holds.open).toBe(0);
+  });
+
+  it('As a page whose tracker is disposed, a tap opened after takes no hold and tracks nothing', () => {
+    // Given a disposed tracker
+    const { tracker: requests, holds } = createHoldHarness();
+    requests.dispose();
+
+    // When a tap opened after sends a request
+    requests
+      .connect()
+      .fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+    const claim = requests.claim(isSignRaw);
+
+    // Then
+    expect(holds.open).toBe(0);
+    expect(claim).toBeUndefined();
   });
 });
