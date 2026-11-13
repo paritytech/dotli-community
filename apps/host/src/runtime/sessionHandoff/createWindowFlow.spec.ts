@@ -689,6 +689,34 @@ describe('session window flow', () => {
     expect(flow.screen.get().view).toBe('failed');
   });
 
+  it('As a user whose wallet could be neither forgotten nor read, I press Try again and the window forgets the wallet again before it pairs', async () => {
+    // Given a window that failed to leave an account whose wallet can be neither forgotten nor read
+    const { flow, vet, calls, failures } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.forget = new Error('frame down');
+    failures.walletRead = new Error('frame down');
+    await flow.useAnotherAccount();
+
+    // When the user presses Try again while the wallet still cannot be forgotten
+    await flow.retry();
+
+    // Then the window tried the forget again, starts no pairing and stays failed
+    expect(calls).toEqual(['logout', 'forget', 'forget']);
+    expect(flow.screen.get().view).toBe('failed');
+
+    // When the wallet can be forgotten and the user presses Try again
+    failures.forget = null;
+    await flow.retry();
+
+    // Then the window forgets it and only then pairs
+    expect(calls).toEqual(['logout', 'forget', 'forget', 'forget', 'login']);
+    expect(flow.screen.get().view).toBe('pairing');
+  });
+
   it('As a user in the sign-in window whose Continue failed, I see the failed view with Try again and the failure is reported', async () => {
     // Given a window on Continue over a store that cannot be read
     const { flow, readSent, vet, failures, metrics, errors } = openWindow({ stored: { session: BLOB } });

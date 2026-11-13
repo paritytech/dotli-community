@@ -147,6 +147,7 @@ type Flow =
   | (Step & { kind: 'pairingIdle' })
   | (Step & { kind: 'finishing'; account: TruapiSessionUiState })
   | (Step & { kind: 'cachingAccount'; result: SessionResult })
+  | (Step & { kind: 'forgetFailed'; continued: Continued['shown'] })
   | (Step & { kind: 'failed' });
 
 /** The window: its flow while it runs, then the screen it stopped on. */
@@ -455,13 +456,8 @@ export function createWindowFlow({
         sessionHeld({ round, shown }, _event, { emitState }) {
           emitState({ kind: 'continue', round, shown: { ...shown, failure: 'sign-out' } });
         },
-        sessionGone({ round, shown }, _event, { emitState, update }) {
-          emitState({ kind: 'forgettingWallet', round, shown });
-          update(
-            signIns
-              .clear({ drop: () => wallet.forget().then(() => true) })
-              .then(() => ({ kind: 'walletForgotten' }), mapWorkFailure),
-          );
+        sessionGone(state, _event, transition) {
+          forgetWallet(state, transition);
         },
         workFailed: failAnother,
       },
@@ -478,11 +474,12 @@ export function createWindowFlow({
         },
       },
       readingAfterForget: {
-        storedRead({ round }, { stored }, { emitState }) {
+        storedRead({ round, shown }, { stored }, { emitState }) {
           const offered = getOffered(stored);
-          // A wallet that cannot be read may still be stored, so the window starts no pairing over it.
+          // A wallet that cannot be read may still be stored, so the window starts no pairing over it, and Retry
+          // forgets it again first.
           if (offered === null) {
-            emitState({ kind: 'failed', round, shown: { view: 'failed' } });
+            emitState({ kind: 'forgetFailed', round, shown: { view: 'failed' }, continued: shown });
             return;
           }
           emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: 'sign-out' } });
@@ -575,6 +572,11 @@ export function createWindowFlow({
         },
         workFailed: failStep,
         authChanged: followAuth,
+      },
+      forgetFailed: {
+        retryAsked({ round, continued }, _event, transition) {
+          forgetWallet({ round, shown: continued }, transition);
+        },
       },
       failed: {
         // No login runs here, so whatever pairing is on show was left by one that ended, and gives way to the spinner.
@@ -820,6 +822,16 @@ export function createWindowFlow({
     emitSideEffect({ kind: 'logged', line: 'sign-in window uses another account' });
     emitState({ kind: 'loggingOut', round, shown });
     update(outcome.then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
+  }
+
+  /** Forgets the wallet through the flag keeper, which drops the flag once the store holds no sign-in. */
+  function forgetWallet({ round, shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'forgettingWallet', round, shown });
+    update(
+      signIns
+        .clear({ drop: () => wallet.forget().then(() => true) })
+        .then(() => ({ kind: 'walletForgotten' }), mapWorkFailure),
+    );
   }
 
   /** The rest of Use another account once the paired session ended: forget the wallet and pair. */
