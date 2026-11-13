@@ -88,7 +88,7 @@ type FeedState<T> =
   | { kind: 'reasking'; hold: Hold<T>; ask: symbol };
 
 type FeedEvent<T> =
-  | { kind: 'followed' }
+  | { kind: 'followed'; status: ProtocolStatus }
   | { kind: 'stopped' }
   | { kind: 'statusChanged'; status: ProtocolStatus }
   | { kind: 'transportAnswered'; ask: symbol; transport: T }
@@ -100,8 +100,8 @@ type FeedEvent<T> =
 type FeedEffect =
   | { kind: 'ask'; ask: symbol }
   | { kind: 'release'; reopen: Reopen }
-  | { kind: 'feedEnded'; error: Error; capture: boolean }
-  | { kind: 'askFailed'; error: unknown };
+  | { kind: 'reportEnd'; error: Error; capture: boolean }
+  | { kind: 'reportAskFailure'; error: unknown };
 
 type FeedMachine<T> = MachineTypes<FeedState<T>, FeedEvent<T>, FeedEffect>;
 
@@ -189,7 +189,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
       return;
     }
     emitState(state.kind === 'asking' ? { kind: 'waiting' } : { kind: 'holding', hold: state.hold });
-    emitSideEffect({ kind: 'askFailed', error });
+    emitSideEffect({ kind: 'reportAskFailure', error });
   };
 
   // The feed closed with its transport, so there is nothing to unsubscribe. An ask still out stays out.
@@ -234,7 +234,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
             Math.min(1_000 * 2 ** before, 30_000),
           );
           emitState({ kind: 'backingOff', open, timer, failures: before + 1, captured: true });
-          emitSideEffect({ kind: 'feedEnded', error: ended, capture: !captured });
+          emitSideEffect({ kind: 'reportEnd', error: ended, capture: !captured });
         },
       },
       backingOff: {
@@ -249,8 +249,8 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     initial: { kind: 'stopped' },
     handlers: {
       stopped: {
-        followed(_state, _event, { emitState, emitSideEffect }) {
-          if (!boots && !hasFrame(frame.status.get())) {
+        followed(_state, { status }, { emitState, emitSideEffect }) {
+          if (!boots && !hasFrame(status)) {
             emitState({ kind: 'waiting' });
             return;
           }
@@ -307,7 +307,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
      * following asks nothing.
      */
     follow(): void {
-      keeper.update({ kind: 'followed' });
+      keeper.update({ kind: 'followed', status: frame.status.get() });
     },
     /** Unsubscribes the held feed, and drops a reopen that waits and an ask still out. */
     stop(): void {
@@ -327,33 +327,41 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         );
         return;
       }
-      case 'release':
-        if (effect.reopen.kind === 'open') {
-          effect.reopen.unsubscribe();
-        } else {
-          timers.clearTimeout(effect.reopen.timer);
+      case 'release': {
+        const { reopen } = effect;
+        switch (reopen.kind) {
+          case 'open':
+            reopen.unsubscribe();
+            break;
+          case 'backingOff':
+            timers.clearTimeout(reopen.timer);
+            break;
         }
         return;
-      case 'feedEnded':
-        reportEnd(effect.error, effect.capture);
+      }
+      case 'reportEnd': {
+        const { error, capture } = effect;
+        const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
+        const attributes = { feed };
+        if (capture) {
+          report.defect(error, {
+            step: 'feed_end',
+            tags: { feed },
+            attributes,
+            metric: protocolFeedEndMetric,
+            message,
+          });
+          return;
+        }
+        log.error(message, error);
+        protocolFeedEndMetric.count({ outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
         return;
-      case 'askFailed':
+      }
+      case 'reportAskFailure':
         // The frame reports its own loss and boot failure, and a config change that drops a frame is no failure.
         report.log.event('protocol feed ask failed', { feed, reason: getErrorName(effect.error) ?? 'unknown' });
         return;
     }
-  }
-
-  /** Counts and logs an end, and captures it when `capture` says so. */
-  function reportEnd(error: Error, capture: boolean): void {
-    const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
-    const attributes = { feed };
-    if (capture) {
-      report.defect(error, { step: 'feed_end', tags: { feed }, attributes, metric: protocolFeedEndMetric, message });
-      return;
-    }
-    log.error(message, error);
-    protocolFeedEndMetric.count({ outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
   }
 }
 
