@@ -246,11 +246,30 @@ export function createPageCore({
         productSet(state, { product }, transition) {
           const next = { ...state, product };
           const core = getCurrentCore(state);
+          if (core === null || servesProduct(core, product)) {
+            transition.emitState(next);
+            return;
+          }
           // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it
           // goes now rather than with the next request.
-          transition.emitState(
-            core === null || servesProduct(core, product) ? next : dropIfUnheld(next, core, transition),
-          );
+          switch (core.kind) {
+            case 'booting':
+              if (core.waiting.size > 0) {
+                transition.emitState(next);
+                return;
+              }
+              if (core.redial !== undefined) {
+                transition.emitSideEffect({ kind: 'redialed', outcome: 'aborted', reason: core.redial });
+              }
+              transition.emitState(leave(next, core, transition));
+              return;
+            case 'live':
+              transition.emitState(core.leases.size > 0 ? next : leave(next, core, transition));
+              return;
+            case 'lingering':
+              transition.emitState(leave(next, core, transition));
+              return;
+          }
         },
         leaseAsked(state, { leaseId, reply }, transition) {
           const core = getCurrentCore(state);
@@ -321,8 +340,8 @@ export function createPageCore({
           if (core?.kind !== 'booting') {
             return;
           }
-          transition.emitSideEffect({ kind: 'bootFailureReported', redial: core.redial, error });
           transition.emitState(leave(state, core, transition));
+          transition.emitSideEffect({ kind: 'bootFailureReported', redial: core.redial, error });
           // The page core reports a redial that failed, so a caller that hears of it must not report it again.
           const refusal = core.redial === undefined ? error : new CoreRedialError(error);
           for (const reply of core.waiting.values()) {
@@ -359,28 +378,7 @@ export function createPageCore({
           }
           transition.emitState(leave(state, core, transition));
         },
-        wentDown(state, { coreId, reason }, transition) {
-          const core = state.cores.get(coreId);
-          if (core?.kind === 'lingering') {
-            transition.emitState(leave(state, core, transition));
-            return;
-          }
-          if (core?.kind !== 'live') {
-            return;
-          }
-          const down: Core = { ...core, kind: 'down', reason };
-          const next = withCore(state, down);
-          if (down.leases.size === 0) {
-            transition.emitState(leave(next, down, transition));
-            return;
-          }
-          transition.emitSideEffect({ kind: 'retired', retired: down.retired });
-          // A held core that is the page's has its replacement dialed in the same state, so a lease that hears the core
-          // go finds the replacement current. The replacement is for the page's product, which may have moved on.
-          transition.emitState(
-            state.current === coreId ? dial(next, { redial: reason, waiting: new Map() }, transition) : next,
-          );
-        },
+        wentDown: takeOutOfService,
         storeChanged(state, { coreId }, { emitSideEffect, update }) {
           const core = state.cores.get(coreId);
           if (core === undefined || core.kind === 'booting') {
@@ -390,9 +388,9 @@ export function createPageCore({
           // The store coming back can answer a wallet read that failed when this core booted.
           update(core.booted.isStale().then((stale): PageCoreEvent => ({ kind: 'staleRead', coreId, stale })));
         },
-        staleRead(_state, { coreId, stale }, { update }) {
+        staleRead(state, { coreId, stale }, transition) {
           if (stale) {
-            update({ kind: 'wentDown', coreId, reason: 'stale' });
+            takeOutOfService(state, { kind: 'wentDown', coreId, reason: 'stale' }, transition);
           }
         },
         pairingCancelled(state, _event, { emitState, emitSideEffect }) {
@@ -524,8 +522,40 @@ export function createPageCore({
   };
 
   /**
-   * Returns `state` with a core booting for the page's product, as the page's current core. A previous current core
-   * nobody holds leaves in it.
+   * Takes a live or lingering core out of service. A held core that is the page's has its replacement dialed in the
+   * same state, so a lease that hears the core go finds the replacement current. One nobody holds leaves.
+   */
+  function takeOutOfService(
+    state: PageCoreState,
+    { coreId, reason }: Extract<PageCoreEvent, { kind: 'wentDown' }>,
+    transition: Transition<PageCoreMachine>,
+  ): void {
+    const core = state.cores.get(coreId);
+    if (core?.kind === 'lingering') {
+      transition.emitState(leave(state, core, transition));
+      return;
+    }
+    if (core?.kind !== 'live') {
+      return;
+    }
+    const down: Core = { ...core, kind: 'down', reason };
+    const next = withCore(state, down);
+    if (down.leases.size === 0) {
+      transition.emitState(leave(next, down, transition));
+      return;
+    }
+    transition.emitSideEffect({ kind: 'retired', retired: down.retired });
+    if (state.current !== coreId) {
+      transition.emitState(next);
+      return;
+    }
+    // The replacement is for the page's product, which a product change may have moved on from.
+    transition.emitState(dial(next, { redial: reason, waiting: new Map() }, transition));
+  }
+
+  /**
+   * Returns `state` with a core booting for the page's product, as the page's current core. The core it replaces as
+   * current is held or down, so it stays.
    */
   function dial(
     state: PageCoreState,
@@ -573,31 +603,7 @@ export function createPageCore({
       })),
     );
     transition.emitSideEffect({ kind: 'dialed', product, redial });
-    const previous = getCurrentCore(state);
-    const next = withCore({ ...state, current: id }, booting);
-    return previous === null ? next : dropIfUnheld(next, previous, transition);
-  }
-
-  /** Returns `state` without `core` when nothing holds it. A redial dropped before it booted is counted as aborted. */
-  function dropIfUnheld(
-    state: PageCoreState,
-    core: ServingCore,
-    transition: Transition<PageCoreMachine>,
-  ): PageCoreState {
-    switch (core.kind) {
-      case 'booting':
-        if (core.waiting.size > 0) {
-          return state;
-        }
-        if (core.redial !== undefined) {
-          transition.emitSideEffect({ kind: 'redialed', outcome: 'aborted', reason: core.redial });
-        }
-        return leave(state, core, transition);
-      case 'live':
-        return core.leases.size > 0 ? state : leave(state, core, transition);
-      case 'lingering':
-        return leave(state, core, transition);
-    }
+    return withCore({ ...state, current: id }, booting);
   }
 
   /** Returns `state` without `core`, whose resources go once the state is emitted. */
