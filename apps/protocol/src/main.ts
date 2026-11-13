@@ -14,10 +14,10 @@ import {
   m,
   setResolutionId,
 } from '@dotli/metrics';
-import { byteMeter, loadProvider, type ChainPool } from '@dotli/chains';
+import { byteMeter, loadProvider, SMOLDOT_DB_NAME, type ChainPool } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-import { getErrorMessage, log, serializeError } from '@dotli/shared';
+import { deleteIdb, getErrorMessage, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
   getActiveServicesConfig,
@@ -36,7 +36,7 @@ import {
   ProtocolInitFailedError,
   protocolSchema,
 } from '@dotli/protocol';
-import { createTransport, createWindowProvider } from '@dotli/transport';
+import { createTransport, createWindowProvider, ok } from '@dotli/transport';
 
 import { connectSharedWorker } from './connectSharedWorker.js';
 import { createEngine, type ProtocolEngine } from './createEngine.js';
@@ -48,12 +48,10 @@ import { disposeOnPageHide } from './disposeOnPageHide.js';
 import { FRAME_LOG_TAG } from './frameLogTag.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { toWorkerName } from './parseWorkerNetwork.js';
-import { purgeWorkerCaches } from './purgeWorkerCaches.js';
 import { readResolveBudgetCap } from './readResolveBudgetCap.js';
 import { readSessionTuning } from './readSessionTuning.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
 import { serveEngineScope } from './serveEngineMethods.js';
-import { serveHeartbeat } from './serveHeartbeat.js';
 import { serveLocalWallet } from './serveLocalWallet.js';
 import { servePoolControl } from './servePoolControl.js';
 import { shareNetBytes } from './shareNetBytes.js';
@@ -63,15 +61,10 @@ import { withRefusalReports } from './withRefusalReports.js';
 
 const report = createReporter({ flow: 'protocol' });
 
-/** Mode detection plus engine start. */
+/** The start of the mode, from after the chain database purge. */
 const PROTOCOL_INIT = 'protocol.init';
 
 const protocolModeMetric = defineCount('protocol.mode');
-
-type Params = {
-  /** What made the boot fail, kept as the error's cause. */
-  cause?: unknown;
-};
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot's traffic
 // is invisible to resource timing, so only this meter counts it.
@@ -97,13 +90,9 @@ installGlobalErrorHandlers('protocol');
 const frameSearch = new URLSearchParams(window.location.search);
 
 // At module scope because auth-only and invalid-mode boots return early from init() yet belong to the resolution.
-adoptResolutionId();
-
-function adoptResolutionId(): void {
-  const id = frameSearch.get('resolutionId');
-  if (id !== null && id !== '') {
-    setResolutionId(id);
-  }
+const resolutionId = frameSearch.get('resolutionId');
+if (resolutionId !== null && resolutionId !== '') {
+  setResolutionId(resolutionId);
 }
 
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
@@ -127,8 +116,9 @@ const serving = createTransport({
 });
 serving.handleSubscription(protocolSchema.sections.frame.status, boot.handleStatus);
 serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.handleTelemetry);
-// The frame answers the heartbeat as long as its page, so the stop goes unused.
-serveHeartbeat({ serving });
+// Answered at once, so the host can tell a frame that still answers from one that went silent. The frame answers as
+// long as its page, so the stop goes unused.
+serving.handleRequest(protocolSchema.sections.frame.heartbeat, () => ok());
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = withRefusalReports(serving, createRefusalReporter({ warn: log.warn, count: countMetric }));
@@ -148,9 +138,10 @@ serveLocalWallet({
  * Logs `message` and fails the boot for good, so this frame never serves the chains. The frame keeps serving the shared
  * store and the wallet after its init failed. Never throws.
  */
-function failInit(message: string, { cause }: Params = {}): void {
-  log.error(`${FRAME_LOG_TAG} ${message}`);
-  boot.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
+function failInit(message: string, options?: ErrorOptions): void {
+  const error = new ProtocolInitFailedError(message, options);
+  log.error(`${FRAME_LOG_TAG} Init failed:`, error);
+  boot.fail(error);
 }
 
 async function init(): Promise<void> {
@@ -180,10 +171,11 @@ async function init(): Promise<void> {
   // Before any smoldot init. A failed purge aborts, since a stale DB would silently ignore the user's setting.
   if (skipWorkerCache === true) {
     try {
-      const deleted = await purgeWorkerCaches(indexedDB);
-      report.log.event('Worker caches purged', { databases: deleted.length });
+      // The frame shares its origin with the landing page, so it deletes its own chain database by name and nothing
+      // else.
+      await deleteIdb(indexedDB, SMOLDOT_DB_NAME);
+      report.log.event('Worker caches purged', { database: SMOLDOT_DB_NAME });
     } catch (error: unknown) {
-      log.error(`${FRAME_LOG_TAG} purgeWorkerCaches failed:`, error);
       failInit(`Failed to reset chain DB: ${getErrorMessage(error)}`, { cause: error });
       return;
     }
@@ -331,6 +323,5 @@ async function initRpcMode(): Promise<void> {
 }
 
 void init().catch((error: unknown) => {
-  log.error(`${FRAME_LOG_TAG} Init failed:`, error);
-  boot.fail(new ProtocolInitFailedError(serializeError(error), { cause: error }));
+  failInit(serializeError(error), { cause: error });
 });

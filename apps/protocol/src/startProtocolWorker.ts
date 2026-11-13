@@ -26,7 +26,6 @@ import { createPortServer, type ConnectEvent } from './createPortServer.js';
 import { createTelemetryHandler } from './createTelemetryHandler.js';
 import { createWorkerLifecycle } from './createWorkerLifecycle.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { logWorkerEvent } from './logWorkerEvent.js';
 import type { WorkerNetwork } from './parseWorkerNetwork.js';
 import { shareNetBytes } from './shareNetBytes.js';
 import { startLightClientService, type LightClientService } from './startLightClientService.js';
@@ -232,7 +231,7 @@ export function startProtocolWorker({
             pool: service.pool,
             isChainSupported: lightClient.isChainSupported,
             resolver: service.dotns,
-            log: logWorkerEvent,
+            log: report.log.event,
           });
           // No tab has connected yet, so none has asked for a pause.
           emitState({ kind: 'syncing', startedAt, service, engine });
@@ -287,11 +286,11 @@ export function startProtocolWorker({
           log.error(`${WORKER_LOG_TAG} ${effect.message}`);
           break;
         case 'presyncStarted':
-          logWorkerEvent('Worker started', { network: effect.network });
-          logWorkerEvent('Pre-sync started');
+          report.log.event('Worker started', { network: effect.network });
+          report.log.event('Pre-sync started');
           break;
         case 'presyncComplete':
-          logWorkerEvent('Pre-sync complete', { ms: effect.ms });
+          report.log.event('Pre-sync complete', { ms: effect.ms });
           lifecycle.markReady();
           // Warmed in the background, so a later People read does not wait on a cold warp sync. Ready never waits on it.
           effect.service.warmPeople(WORKER_LOG_TAG);

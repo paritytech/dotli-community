@@ -208,17 +208,17 @@ describe('the shared auth store', () => {
     {
       case: 'compares and clears a key outside the allowed characters',
       request: (host: HostLink['host']) => host.request(authClearIf, { siteId: SITE_ID, key: 'no spaces', value: 'x' }),
-      message: 'Error: Invalid shared auth key: no spaces',
+      message: 'InvalidInputError: Invalid shared auth key: no spaces',
     },
     {
       case: 'writes a key outside the allowed characters',
       request: (host: HostLink['host']) => host.request(authWrite, { siteId: SITE_ID, key: 'no spaces', value: 'x' }),
-      message: 'Error: Invalid shared auth key: no spaces',
+      message: 'InvalidInputError: Invalid shared auth key: no spaces',
     },
     {
       case: 'reads the shared session for a page on another root domain',
       request: (host: HostLink['host']) => host.request(authRead, { siteId: 'evil.li', key: 'session' }),
-      message: 'Error: Invalid siteId: evil.li',
+      message: 'InvalidInputError: Invalid siteId: evil.li',
     },
   ])('As a host page, I make a store call that $case and am refused with why', async row => {
     // Given a served store

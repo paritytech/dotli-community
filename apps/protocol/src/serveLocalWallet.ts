@@ -34,7 +34,9 @@ export function serveLocalWallet({ serving, onChange, store = localWallet }: Par
     serving.handleRequest(wallet.read, payload => answerAdmitted(payload, () => readLocalWallet(store))),
     serving.handleRequest(wallet.save, payload =>
       answerAdmitted(payload, async (): Promise<undefined> => {
-        assertEntropy(payload.entropy);
+        if (!isLocalWalletEntropy(payload.entropy)) {
+          throw new Error('Invalid local wallet entropy');
+        }
         await store.save(payload.entropy, payload.identity);
         onChange(payload.siteId);
       }),
@@ -67,12 +69,6 @@ export function serveLocalWallet({ serving, onChange, store = localWallet }: Par
   };
 }
 
-function assertEntropy(value: Uint8Array): void {
-  if (!isLocalWalletEntropy(value)) {
-    throw new Error('Invalid local wallet entropy');
-  }
-}
-
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
 async function readLocalWallet(store: LocalWalletStore): Promise<LocalWalletRead> {
   try {
@@ -84,7 +80,8 @@ async function readLocalWallet(store: LocalWalletStore): Promise<LocalWalletRead
     if (!(error instanceof LocalWalletUnreadableError)) {
       throw error;
     }
-    await store.forget();
+    // Only the record that failed, so a wallet another tab saved since stays.
+    await store.forgetIf(error.version);
     return { tag: 'unreadable', value: undefined };
   }
 }

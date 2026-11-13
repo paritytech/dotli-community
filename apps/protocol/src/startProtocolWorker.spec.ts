@@ -816,7 +816,7 @@ describe('protocol SharedWorker', () => {
 
     // Then it hears the cause, and the worker does not close, since a fresh one would fail the same way
     await expect(status.ended).resolves.toEqual(
-      err(domain({ tag: 'initFailed', value: 'Unknown protocol network: "nowhere"' })),
+      err(domain({ tag: 'initFailed', value: 'Unknown protocol network in the worker name "dotli-protocol-nowhere"' })),
     );
     expect(worker.close).not.toHaveBeenCalled();
   });

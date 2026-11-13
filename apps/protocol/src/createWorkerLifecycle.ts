@@ -28,7 +28,6 @@ import { err, type PortLike, type Sink } from '@dotli/transport';
 import type { EngineScope } from './createEngine.js';
 import { createIntervalTicker, type Ticker } from './createIntervalTicker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { logWorkerEvent } from './logWorkerEvent.js';
 import type { WorkerScope } from './startProtocolWorker.js';
 import { WORKER_LOG_TAG } from './workerLogTag.js';
 
@@ -431,10 +430,6 @@ export function createWorkerLifecycle({
           shutPort(port, released, emitSideEffect);
           emitSideEffect({ kind: 'releasedPortClosed' });
         },
-        // A scope opened while a release waited in the queue ahead of it. Nothing else will close it.
-        scopeOpened(_released, { scope: opened }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'scopeClosed', scope: opened });
-        },
       },
       closed: null,
     },
@@ -588,21 +583,24 @@ export function createWorkerLifecycle({
     onEffect: effect => {
       switch (effect.kind) {
         case 'portConnected':
-          logWorkerEvent('Port connected', { ports: countHeld(machine.state.get(), 'served'), engine: effect.engine });
+          report.log.event('Port connected', {
+            ports: countHeld(machine.state.get(), 'served'),
+            engine: effect.engine,
+          });
           break;
         case 'portReleased':
-          logWorkerEvent('Port released', { ports: countHeld(machine.state.get(), 'served') });
+          report.log.event('Port released', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'portClosed':
-          logWorkerEvent('Port closed', { ports: countHeld(machine.state.get(), 'served') });
+          report.log.event('Port closed', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'releasedPortClosed':
-          logWorkerEvent('Released port closed', {
+          report.log.event('Released port closed', {
             released: countHeld(machine.state.get(), 'released'),
           });
           break;
         case 'workerClosing':
-          logWorkerEvent('Worker closing', { ports: effect.ports });
+          report.log.event('Worker closing', { ports: effect.ports });
           break;
         case 'flushFailed':
           report.defect(effect.error, {

@@ -6,6 +6,7 @@
 import { TIMEOUTS } from '@dotli/config';
 import {
   getBudget,
+  getCallName,
   type ProtocolContext,
   type ProtocolHandler,
   protocolSchema,
@@ -17,14 +18,13 @@ import { toError } from '@dotli/shared';
 import { err, ok, type AnyMethod, type CallError, type MethodTypes, type ResultPayload } from '@dotli/transport';
 
 import { assertNonEmpty } from './assertNonEmpty.js';
-import { PROTOCOL_APP_ERRORS } from './errors.js';
 
 export type EngineResolver = Pick<
   DotnsResolver,
   'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest'
 >;
 
-type Params = {
+export type NameReadsParams = {
   /** The name reads. Unset, each read is refused at once instead of leaving the caller to hang. */
   resolver?: EngineResolver | undefined;
   /** Caps each read's sync budget, for a tester who needs a timeout to show quickly. */
@@ -36,7 +36,7 @@ type NameSink = Parameters<ProtocolHandler<typeof methods.resolve.dotName>>[2];
 const methods = protocolSchema.sections;
 
 /** The name methods over `resolver`. Never throws. */
-export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
+export function createNameReads({ resolver, syncBudgetCapMs }: NameReadsParams) {
   return {
     /**
      * Sends each phase, then the result, then ends cleanly, or ends with the read's failure. Throws when the mode
@@ -54,9 +54,10 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     resolveRootManifest,
   };
 
-  function requireResolver(unsupported: string): EngineResolver {
+  /** The resolver a read of `method` runs on. Throws when the mode resolves no names. */
+  function requireResolver(method: AnyMethod): EngineResolver {
     if (resolver === undefined) {
-      throw new Error(unsupported);
+      throw new Error(`${getCallName(method)} is not served by this protocol mode`);
     }
     return resolver;
   }
@@ -70,7 +71,7 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     if (budgetMs === null) {
       return {};
     }
-    const budget = Math.max(1, budgetMs - TIMEOUTS.RESPONSE_DELIVERY_GRACE);
+    const budget = budgetMs - TIMEOUTS.RESPONSE_DELIVERY_GRACE;
     return { syncTimeoutMs: syncBudgetCapMs === undefined ? budget : Math.min(budget, syncBudgetCapMs) };
   }
 
@@ -79,7 +80,7 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     _context: ProtocolContext,
     sink: NameSink,
   ): () => void {
-    const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
+    const reader = requireResolver(methods.resolve.dotName);
     assertNonEmpty(label, 'label');
     void reader
       .resolveDotName(label, {
@@ -108,7 +109,7 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     _context: ProtocolContext,
   ): ReturnType<ProtocolHandler<typeof methods.resolve.owner>> {
     return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
+      const reader = requireResolver(methods.resolve.owner);
       assertNonEmpty(label, 'label');
       return reader.resolveOwner(label, toSyncOptions(methods.resolve.owner));
     });
@@ -119,7 +120,7 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     _context: ProtocolContext,
   ): ReturnType<ProtocolHandler<typeof methods.resolve.executableManifest>> {
     return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
+      const reader = requireResolver(methods.resolve.executableManifest);
       assertNonEmpty(label, 'label');
       return reader.resolveExecutableManifest(label, kind, toSyncOptions(methods.resolve.executableManifest));
     });
@@ -130,7 +131,7 @@ export function createNameReads({ resolver, syncBudgetCapMs }: Params) {
     _context: ProtocolContext,
   ): ReturnType<ProtocolHandler<typeof methods.resolve.rootManifest>> {
     return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
+      const reader = requireResolver(methods.resolve.rootManifest);
       assertNonEmpty(label, 'label');
       return reader.resolveRootManifest(label, toSyncOptions(methods.resolve.rootManifest));
     });

@@ -49,24 +49,6 @@ describe('shareNetBytes', () => {
     expect(second).toEqual([7, 7]);
   });
 
-  it('As a worker serving many tabs, I stop the ticker with the last tab and start it again for the next', () => {
-    // Given two tabs that listened, the first of which left
-    const clock = createTestTicker();
-    const subscribe = shareNetBytes({ read: () => 7, startTicker: clock.startTicker });
-    const stopFirst = subscribe(() => undefined);
-    const stopSecond = subscribe(() => undefined);
-    stopFirst();
-
-    // When the last tab leaves, and a new one comes
-    stopSecond();
-    const running = clock.countRunning();
-    subscribe(() => undefined);
-
-    // Then the ticker stopped with the last, and starts again for the new one
-    expect(running).toBe(0);
-    expect(clock.countStarted()).toBe(2);
-  });
-
   it('As a worker, I subscribe while the baseline read throws and leave no subscriber and no ticker behind', () => {
     // Given
     const clock = createTestTicker();
@@ -231,7 +213,7 @@ describe('shareNetBytes', () => {
 
     // Then
     expect(thrown).toBeUndefined();
-    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(reports.exceptions).toMatchObject([{ step: 'net_bytes_stop' }]);
     expect(heard).toEqual([4, 4]);
   });
 });

@@ -20,7 +20,6 @@ import {
 } from '@dotli/transport';
 import { createEngine, MAX_CONNECTIONS, type EngineParams, type ProtocolEngine } from './createEngine.js';
 import type { EngineResolver } from './createNameReads.js';
-import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { serveEngineScope } from './serveEngineMethods.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 import { record, type Recording } from './testing/record.js';
@@ -305,7 +304,7 @@ describe('createEngine chain pool', () => {
 
     // Then
     expect(thrown).toBeUndefined();
-    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(reports.exceptions).toMatchObject([{ step: 'disconnect' }]);
     expect(must(pool.disconnects[1], 'second disconnect')).toHaveBeenCalledTimes(1);
     expect(pool.disconnectAll).toHaveBeenCalledTimes(1);
   });
@@ -355,8 +354,8 @@ describe('createEngine name reads', () => {
     const owner = tab.host.request(resolve.owner, { label: 'doom' });
 
     // Then
-    expect(await read.ended).toEqual(toThrownAnswer(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED));
-    await expect(owner).resolves.toEqual(toThrownAnswer(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED));
+    expect(await read.ended).toEqual(toThrownAnswer('resolveDotName is not served by this protocol mode'));
+    await expect(owner).resolves.toEqual(toThrownAnswer('resolveOwner is not served by this protocol mode'));
   });
 
   it.each([
@@ -638,7 +637,7 @@ describe('createEngine scopes', () => {
 
     // Then
     expect(thrown).toBeUndefined();
-    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(reports.exceptions).toMatchObject([{ step: 'disconnect' }]);
     expect(await first.ended).toEqual(ok());
     expect(await second.ended).toEqual(ok());
   });

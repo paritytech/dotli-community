@@ -565,8 +565,9 @@ describe('connectSharedWorker', () => {
     expect(captured.map(capture => capture.step)).toEqual([]);
   });
 
-  it('As a tab that let go of its link before the worker was ready, I hear the ready wait fail', async () => {
+  it('As a dotli operator, I watch a tab let go before its worker was ready and see the wait counted as let go, not as a worker report', async () => {
     // Given a tab whose worker still syncs
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = createFakeWorker();
     const linked = link(worker);
     const failed = linked.ready.catch((error: unknown) => error);
@@ -574,10 +575,12 @@ describe('connectSharedWorker', () => {
 
     // When the tab lets go of its link
     linked.dispose();
+    await failed;
 
-    // Then the ready wait failed as the port closed, and the worker hears its port close
-    await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
-    await worker.portClosed;
+    // Then
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      { outcome: 'error', reason: 'let_go' },
+    ]);
   });
 
   it('As a tab whose worker script still loads, I let go of my link and my ready wait fails at once as the port closed', async () => {

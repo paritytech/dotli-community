@@ -11,12 +11,9 @@ const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 
 /** The network a worker's name carries, or why it carries none. A worker's URL cannot carry it. Never throws. */
 export function parseWorkerNetwork(name: string): WorkerNetwork {
-  const requested = name.startsWith(NETWORK_NAME_PREFIX) ? name.slice(NETWORK_NAME_PREFIX.length) : null;
-  if (requested === null) {
-    return err(`Unexpected SharedWorker name "${name}". The iframe did not encode the active network.`);
-  }
-  if (!isValidNetwork(requested)) {
-    return err(`Unknown protocol network: "${requested}"`);
+  const requested = name.slice(NETWORK_NAME_PREFIX.length);
+  if (!name.startsWith(NETWORK_NAME_PREFIX) || !isValidNetwork(requested)) {
+    return err(`Unknown protocol network in the worker name "${name}"`);
   }
   return ok(requested);
 }

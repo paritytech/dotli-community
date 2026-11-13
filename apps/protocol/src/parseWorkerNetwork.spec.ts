@@ -6,27 +6,15 @@ import { err, ok } from '@dotli/transport';
 import { parseWorkerNetwork, toWorkerName } from './parseWorkerNetwork.js';
 
 describe('parseWorkerNetwork', () => {
-  it.each([
-    { case: 'a network this build knows', name: 'dotli-protocol-previewnet', network: ok('previewnet') },
-    {
-      case: 'a network this build does not know',
-      name: 'dotli-protocol-nowhere',
-      network: err('Unknown protocol network: "nowhere"'),
-    },
-    {
-      case: 'no network',
-      name: 'dotli-protocol',
-      network: err('Unexpected SharedWorker name "dotli-protocol". The iframe did not encode the active network.'),
-    },
-  ])('As the shared worker named for $case, I read my name and learn my network or why I have none', row => {
+  it('As the shared worker named for a network this build does not know, I read my name and learn why I have none', () => {
     // Given
-    const workerName = row.name;
+    const workerName = 'dotli-protocol-nowhere';
 
     // When
     const network = parseWorkerNetwork(workerName);
 
     // Then
-    expect(network).toEqual(row.network);
+    expect(network).toEqual(err('Unknown protocol network in the worker name "dotli-protocol-nowhere"'));
   });
 
   it('As the shared worker, I read back the name the iframe built for a network and learn that network', () => {

@@ -185,12 +185,7 @@ export function connectSharedWorker({
     machine.update({ kind: 'beatsEnded' });
   });
 
-  const handleWait = nest<
-    LinkMachine,
-    'linked' | 'letGo',
-    WaitMachine,
-    'workerReady' | 'readyFailed' | 'workerErrored'
-  >({
+  const handleWait = nest<LinkMachine, 'linked', WaitMachine, 'workerReady' | 'readyFailed' | 'workerErrored'>({
     find: ({ wait }) => wait,
     store: (state, _event, wait) => ({ ...state, wait }),
     handlers: {
@@ -207,9 +202,8 @@ export function connectSharedWorker({
           emitSideEffect({ kind: 'transportDisposed', error });
         },
         workerErrored({ startedAt }, { error }, { emitState, emitSideEffect }) {
-          // Fails now with the cause instead of at the ready timeout.
+          // Fails now with the cause instead of at the ready timeout. The caller of `ready` logs it.
           emitState({ kind: 'failed', error });
-          emitSideEffect({ kind: 'workerErrored', error });
           emitSideEffect({ kind: 'readyWaitEnded', startedAt, outcome: { outcome: 'error', reason: 'load_failed' } });
           emitSideEffect({ kind: 'transportDisposed', error });
         },
@@ -267,18 +261,27 @@ export function connectSharedWorker({
         heartbeatFailed: handleBeats,
         beatsEnded: handleBeats,
         letGo({ wait, stopWorkerErrors, stopPageHide }, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'letGo', wait });
+          const error = new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED);
+          // A wait still open fails here, so the worker's end that the close causes is not counted as its report.
+          if (wait.kind === 'waiting') {
+            emitState({ kind: 'letGo', wait: { kind: 'failed', error } });
+            emitSideEffect({
+              kind: 'readyWaitEnded',
+              startedAt: wait.startedAt,
+              outcome: { outcome: 'error', reason: 'let_go' },
+            });
+          } else {
+            emitState({ kind: 'letGo', wait });
+          }
           // One effect per call-out, so a throw skips none of the rest. The transport's close ends the status and the
           // beats, one still waiting on the handshake included, which an unsubscribe would end telling no listener.
-          emitSideEffect({ kind: 'transportDisposed', error: new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED) });
+          emitSideEffect({ kind: 'transportDisposed', error });
           emitSideEffect({ kind: 'listenerRemoved', remove: stopWorkerErrors });
           emitSideEffect({ kind: 'listenerRemoved', remove: stopPageHide });
         },
       },
-      letGo: {
-        workerReady: handleWait,
-        readyFailed: handleWait,
-      },
+      // The wait settled as the tab let go, so a late answer finds nothing to move.
+      letGo: null,
     },
     onEffect: effect => {
       switch (effect.kind) {
@@ -337,7 +340,8 @@ export function connectSharedWorker({
     },
   });
 
-  // The answer's deadline is inside `await()`, since the answer within it settles by itself.
+  // Sent as an update's work, so `await()`, which `ready` waits on, settles once the worker answers, the deadline
+  // passes or the tab lets go.
   machine.update(
     withTimeout({
       work: answer.promise,

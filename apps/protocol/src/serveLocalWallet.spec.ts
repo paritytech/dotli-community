@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { protocolSchema } from '@dotli/protocol';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
+import { must } from '@dotli/shared/testing';
 import { createMemoryWalletIdb } from '@dotli/storage/testing';
 import { err, hostFailure, ok, unsupported, type MethodTypes } from '@dotli/transport';
 import { serveLocalWallet } from './serveLocalWallet.js';
@@ -155,7 +156,7 @@ describe('the local wallet', () => {
     const read = host.request(wallet.read, { siteId: 'evil.li' });
 
     // Then
-    await expect(read).resolves.toEqual(err(hostFailure('Error: Invalid siteId: evil.li')));
+    await expect(read).resolves.toEqual(err(hostFailure('InvalidInputError: Invalid siteId: evil.li')));
   });
 
   it('As a host page, I save bytes that are not BIP-39 entropy and am refused', async () => {
@@ -173,9 +174,11 @@ describe('the local wallet', () => {
   it('As a host page, I read an undecryptable wallet as unreadable and it is gone afterwards', async () => {
     // Given
     await store.save(ENTROPY, null);
+    const read = await store.load();
     const unreadable: LocalWalletStore = {
       ...store,
-      load: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
+      load: () =>
+        Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'), must(read, 'the wallet read').version)),
     };
     const { host } = serveWallet(unreadable);
 
@@ -185,6 +188,27 @@ describe('the local wallet', () => {
     // Then
     expect(result).toEqual(ok({ tag: 'unreadable', value: undefined }));
     expect(await store.load()).toBeNull();
+  });
+
+  it('As a host page, I read an undecryptable wallet while another tab saves a new one and the new one stays', async () => {
+    // Given an undecryptable record that another tab replaces as this page reads it
+    await store.save(ENTROPY, null);
+    const read = await store.load();
+    const replacement = new Uint8Array(ENTROPY).reverse();
+    const unreadable: LocalWalletStore = {
+      ...store,
+      load: async () => {
+        await store.save(replacement, null);
+        throw new LocalWalletUnreadableError(new Error('wrong key'), must(read, 'the wallet read').version);
+      },
+    };
+    const { host } = serveWallet(unreadable);
+
+    // When
+    await host.request(wallet.read, { siteId: SITE_ID });
+
+    // Then
+    expect((await store.load())?.entropy).toEqual(replacement);
   });
 
   it('As a frame that stopped serving the wallet, I answer no more wallet calls', async () => {

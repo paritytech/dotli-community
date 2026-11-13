@@ -5,10 +5,6 @@
 
 export const PROTOCOL_APP_ERRORS = {
   SHARED_WORKER_READY_TIMEOUT: 'SharedWorker did not signal ready within timeout',
-  RESOLVE_DOT_NAME_UNSUPPORTED: 'resolveDotName is not served by this protocol mode',
-  RESOLVE_OWNER_UNSUPPORTED: 'resolveOwner is not served by this protocol mode',
-  RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED: 'resolveExecutableManifest is not served by this protocol mode',
-  RESOLVE_ROOT_MANIFEST_UNSUPPORTED: 'resolveRootManifest is not served by this protocol mode',
   CHAIN_BROKER_FAILED: 'Failed to create chain broker',
   PORT_CLOSED: 'This tab disconnected from the protocol worker',
   PORT_RELEASED: 'The protocol worker let go of this tab after it went silent',
