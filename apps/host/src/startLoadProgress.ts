@@ -103,24 +103,23 @@ type Params = {
  */
 type Warning = { kind: 'hidden' } | { kind: 'pending'; message: string; timer: unknown } | { kind: 'shown' };
 
-/** What a critical chain's stall message reads, kept across its watches. */
-type WatchFacts = Pick<StallFacts, 'peers' | 'reason'>;
+/**
+ * What a critical chain's stall message reads, kept across its watches, and whether the shown line is this chain's.
+ */
+type WatchFacts = Pick<StallFacts, 'peers' | 'reason'> & { warned: boolean };
 
 /**
  * One critical chain's stall watch. Every lifecycle event re-arms it, so a chain warns only when it sits in one state
  * past the threshold. A watch's timer warns only while that watch is still the chain's.
  */
-type StallWatch =
-  | ({ kind: 'quiet' } & WatchFacts)
-  | ({ kind: 'watching'; timer: unknown } & WatchFacts)
-  | ({ kind: 'warned' } & WatchFacts);
+type StallWatch = ({ kind: 'quiet' } & WatchFacts) | ({ kind: 'watching'; timer: unknown } & WatchFacts);
 
 /**
- * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
- * pushes the load's own events out of the panel's ring buffer.
+ * The sampled report of the load's byte totals to the debug panel, on the load's clock. It closes once the product is
+ * on screen, or it pushes the load's own events out of the panel's ring buffer.
  */
 type ByteTotals =
-  | { kind: 'open'; received: number; sampledAt: number; sampledTotal: number | null; samples: number }
+  | { kind: 'open'; received: number; sampled: { at: number; total: number } | null; samples: number }
   | { kind: 'closed' };
 
 /** The whole load's throughput over a trailing window. */
@@ -167,7 +166,7 @@ type ProgressEvent =
 type ProgressEffect =
   | { kind: 'warningShown'; message: string }
   | { kind: 'rateMeasured'; bytesPerSecond: number }
-  | { kind: 'byteTotalSampled'; received: number; at: number };
+  | { kind: 'byteTotalSampled'; received: number };
 
 type ProgressMachine = MachineTypes<ProgressState, ProgressEvent, ProgressEffect>;
 
@@ -282,7 +281,7 @@ export function startLoadProgress({
             startedAt: readClock(),
             warning: { kind: 'hidden' },
             watches: new Map(),
-            byteTotals: { kind: 'open', received: 0, sampledAt: 0, sampledTotal: null, samples: 0 },
+            byteTotals: { kind: 'open', received: 0, sampled: null, samples: 0 },
             // Seeded with page start, so the first report already has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
@@ -312,15 +311,15 @@ export function startLoadProgress({
         },
         chainDetailed: recordDetail,
         netBytes(state, { received }, { emitState, emitSideEffect }) {
-          const throughput = measureThroughput(state.throughput, received, readClock());
+          const at = readClock();
+          const throughput = measureThroughput(state.throughput, received, at);
           const { byteTotals } = state;
-          const at = timers.now();
           if (byteTotals.kind === 'closed') {
             emitState({ ...state, throughput });
           } else if (
             byteTotals.samples >= CHAIN_BYTES_DEBUG_MAX ||
-            received === byteTotals.sampledTotal ||
-            at - byteTotals.sampledAt < CHAIN_BYTES_DEBUG_MS
+            (byteTotals.sampled !== null &&
+              (received === byteTotals.sampled.total || at - byteTotals.sampled.at < CHAIN_BYTES_DEBUG_MS))
           ) {
             emitState({ ...state, throughput, byteTotals: { ...byteTotals, received } });
           } else {
@@ -329,9 +328,9 @@ export function startLoadProgress({
             emitState({
               ...state,
               throughput,
-              byteTotals: { kind: 'open', received, sampledAt: at, sampledTotal: received, samples },
+              byteTotals: { kind: 'open', received, sampled: { at, total: received }, samples },
             });
-            emitSideEffect({ kind: 'byteTotalSampled', received, at });
+            emitSideEffect({ kind: 'byteTotalSampled', received });
           }
           trace.recordBytes(received);
           if (throughput.bytesPerSecond !== null) {
@@ -359,8 +358,8 @@ export function startLoadProgress({
             return;
           }
           emitState({ ...state, byteTotals: { kind: 'closed' } });
-          if (totals.received !== totals.sampledTotal) {
-            emitSideEffect({ kind: 'byteTotalSampled', received: totals.received, at: timers.now() });
+          if (totals.received !== totals.sampled?.total) {
+            emitSideEffect({ kind: 'byteTotalSampled', received: totals.received });
           }
         },
         phaseResolved(_state, { phase }) {
@@ -374,15 +373,13 @@ export function startLoadProgress({
           if (watch?.kind !== 'watching' || watch.timer !== timer) {
             return;
           }
-          const { peers, reason } = watch;
+          const { peers, reason, warned } = watch;
           const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
           if (message === null) {
-            transition.emitState(withWatch(state, chain, { kind: 'quiet', peers, reason }));
+            transition.emitState(withWatch(state, chain, { kind: 'quiet', peers, reason, warned }));
             return;
           }
-          const warned = withWatch(state, chain, { kind: 'warned', peers, reason });
-          transition.emitState(warned);
-          showWarning(warned, message, transition);
+          showWarning(withWatch(state, chain, { kind: 'quiet', peers, reason, warned: true }), message, transition);
         },
         warningDue(state, { timer }, transition) {
           // A timer of a warning since shown or dropped shows nothing.
@@ -409,7 +406,7 @@ export function startLoadProgress({
             layer: 'chain',
             event: 'bytes',
             flowId,
-            timestamp: effect.at,
+            timestamp: timers.now(),
             payload: { received: effect.received },
           });
           return;
@@ -467,7 +464,12 @@ export function startLoadProgress({
     if (!isCriticalChain(chain)) {
       return;
     }
-    const watch: StallWatch = state.watches.get(chain) ?? { kind: 'quiet', peers: null, reason: undefined };
+    const watch: StallWatch = state.watches.get(chain) ?? {
+      kind: 'quiet',
+      peers: null,
+      reason: undefined,
+      warned: false,
+    };
     // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
     if (sync.kind === 'peers') {
       if (sync.peers !== undefined) {
@@ -475,7 +477,12 @@ export function startLoadProgress({
       }
       return;
     }
-    const facts: WatchFacts = { peers: watch.peers, reason: sync.kind === 'stalled' ? sync.reason : undefined };
+    const facts: WatchFacts = {
+      peers: watch.peers,
+      reason: sync.kind === 'stalled' ? sync.reason : undefined,
+      // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
+      warned: watch.warned && (sync.kind === 'stalled' || sync.kind === 'connecting'),
+    };
     let next: StallWatch = { kind: 'quiet', ...facts };
     if (sync.kind !== 'bootstrapComplete') {
       const timer = timers.setTimeout(() => {
@@ -484,17 +491,11 @@ export function startLoadProgress({
       next = { kind: 'watching', timer, ...facts };
     }
     const watched = withWatch(state, chain, next);
-    // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
-    const recovered =
-      watch.kind === 'warned' &&
-      sync.kind !== 'stalled' &&
-      sync.kind !== 'connecting' &&
-      !hasWarnedWatch(watched.watches);
-    if (!recovered) {
+    if (!watch.warned || facts.warned || hasWarnedWatch(watched.watches)) {
       transition.emitState(watched);
       return;
     }
-    // A parked line was never seen, so it goes.
+    // Recovered. A parked line was never seen, so it goes.
     if (state.warning.kind === 'pending') {
       transition.emitState({ ...watched, warning: { kind: 'hidden' } });
       return;
@@ -553,9 +554,9 @@ function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWa
   return { ...state, watches: new Map(state.watches).set(chain, watch) };
 }
 
-/** Returns whether a critical chain's stall gave the warning. Never throws. */
+/** Returns whether a critical chain's stall gave the warning. */
 function hasWarnedWatch(watches: LightClientState['watches']): boolean {
-  return [...watches.values()].some(watch => watch.kind === 'warned');
+  return [...watches.values()].some(watch => watch.warned);
 }
 
 /**
