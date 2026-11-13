@@ -867,8 +867,6 @@ export function createChainPool({
       follow = openWatchFollow({
         sessionId,
         connect: onMessage => chain.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
-        // The pool ends a follow by disconnecting it, so a follow the chain stops always follows again.
-        live: () => true,
         onFollowing: following => {
           update({ kind: 'followChanged', key, follow, following });
         },

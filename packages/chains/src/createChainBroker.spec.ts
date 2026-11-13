@@ -274,6 +274,44 @@ describe('chain pool brokering', () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it('As a session that disconnects while the upstream fails to send my first release, I still have my other subscription released', () => {
+    // Given a session holding two follows, and an upstream that throws on the first unfollow
+    const sendError = new Error('socket gone');
+    const unfollowed: unknown[] = [];
+    let onUpstream: (message: JsonRpcMessage) => void = () => undefined;
+    const broker = createChainBroker({
+      provider: listener => {
+        onUpstream = listener;
+        return {
+          send(message) {
+            if (message.method !== 'chainHead_v1_unfollow') {
+              return;
+            }
+            unfollowed.push(message.params);
+            if (unfollowed.length === 1) {
+              throw sendError;
+            }
+          },
+          disconnect: () => undefined,
+        };
+      },
+    });
+    const connection = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    onUpstream({ jsonrpc: '2.0', id: 'broker:0', result: 'up-a' });
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] });
+    onUpstream({ jsonrpc: '2.0', id: 'broker:1', result: 'up-b' });
+
+    // When
+    const error = catchError(() => {
+      connection.disconnect();
+    });
+
+    // Then
+    expect(error).toBe(sendError);
+    expect(unfollowed).toEqual([['up-a'], ['up-b']]);
+  });
+
   it('As a session watching a transaction, I hear an event that arrived before my subscription answer, once it is answered', () => {
     // Given
     const harness = createProviderHarness();
@@ -986,6 +1024,21 @@ describe('broker warnings', () => {
 
     // Then
     expect(harness.sent.map(message => message.method)).toEqual(['chainHead_v1_follow', 'chainHead_v1_unfollow']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('As a dotli maintainer, I see no warning when a session the halt ended sends again', () => {
+    // Given a session on a broker that halted
+    const broker = createChainBroker({ provider: createProviderHarness().provider });
+    const connection = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    broker.halt(new Error('transport died'));
+
+    // When
+    const warnings = collectWarningsDuring(() => {
+      connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    });
+
+    // Then
     expect(warnings).toEqual([]);
   });
 

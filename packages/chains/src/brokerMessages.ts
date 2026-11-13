@@ -19,7 +19,7 @@ import {
   WATCH_EVENT,
 } from './jsonRpcMethods.js';
 
-export type JsonRpcId = string | number | null;
+type JsonRpcId = string | number | null;
 
 export type JsonRpcRequest = {
   jsonrpc?: string;
@@ -51,10 +51,11 @@ export type SubscriptionMessage = {
  */
 export type RequestOwner =
   /**
-   * A session's own request, answered under the session's id for it. A release it sends as the last owner carries
-   * `upstreamToken`, since the node may still send events it queued for that subscription.
+   * A session's own request, answered to the session under its own id. A session that leaves hands it to an orphan
+   * owner. A release it sends as the last owner carries `upstreamToken`, since the node may still send events it queued
+   * for that subscription.
    */
-  | { kind: 'session'; sessionId: string; clientId: JsonRpcId; method: string; upstreamToken?: string | undefined }
+  | { kind: 'session'; session: Session; clientId: JsonRpcId; method: string; upstreamToken?: string | undefined }
   /**
    * A request whose session left before the answer, or a follow a session sent without an id. A subscription the
    * answer opens is released at once. A release keeps its `upstreamToken` for
@@ -68,7 +69,7 @@ export type RequestOwner =
   | { kind: 'release'; method: string; upstreamToken: string };
 
 export type OwnedToken = {
-  sessionId: string;
+  session: Session;
   localToken: string;
   upstreamToken: string;
   releaseMethod: string;
@@ -80,26 +81,9 @@ export type Session = {
   id: string;
   /** Hears each message for the session, encoded for its wire mode. */
   onMessage: (message: unknown) => void;
-  ownedTokens: Set<string>;
   wireMode: WireMode;
   /** Told once when the chain's transport halts for good. */
   onHalt: ((error?: unknown) => void) | null;
-};
-
-/** A local token a session holds, for adding it to the session's set or dropping it. */
-export type SessionTokenParams = {
-  /** The session that holds the token. A session that has gone is left alone. */
-  sessionId: string;
-  /** The local token, as the session sees it. */
-  token: string;
-};
-
-/** A release the broker sends itself, for something no session holds anymore. */
-export type SendReleaseParams = {
-  /** The release method, such as an unfollow, an unwatch or a stop. */
-  method: string;
-  /** The upstream subscription it releases. */
-  upstreamToken: string;
 };
 
 export type BrokerConnection = {

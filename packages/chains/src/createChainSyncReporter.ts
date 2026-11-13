@@ -6,7 +6,7 @@
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
 import { createReporter, defineCount, m } from '@dotli/metrics';
-import { createListenerSet, getErrorMessage, isRecord, log } from '@dotli/shared';
+import { createListenerSet, isRecord } from '@dotli/shared';
 import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 import { SYSTEM_PEERS } from './jsonRpcMethods.js';
 
@@ -15,6 +15,9 @@ const protocolReport = createReporter({ flow: 'protocol' });
 
 /** Tagged `outcome` (error) and `reason` (`refused` or `ended`). */
 const chainLifecycleWatchMetric = defineCount<'error'>('chain_sync.lifecycle_watch');
+
+/** A peer-list request whose connection was already gone. Tagged `outcome` (error) and `reason` (`closed`). */
+const chainPeersRequestMetric = defineCount<'error'>('chain_sync.peers_request');
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export type ChainSyncKind =
@@ -84,9 +87,6 @@ export type ChainSyncTap = {
 /** The sync milestones and chain facts of one light client, with the replay a late subscriber needs. */
 export type ChainSyncReporter = ReturnType<typeof createChainSyncReporter>;
 
-type DetailCallback = (detail: ChainDetail) => void;
-type SyncCallback = (event: ChainSyncEvent) => void;
-
 type Params = {
   /** Ask a ready chain for its peer list. Off on a build without metrics, which has nowhere to send it. */
   askPeers: boolean;
@@ -130,7 +130,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
   // Latest per chain and kind, so a reconnecting chain replaces its entry instead of growing the replay.
   const detailHistory = new Map<string, ChainDetail>();
 
-  function onChainDetail(callback: DetailCallback): () => void {
+  function onChainDetail(callback: (detail: ChainDetail) => void): () => void {
     const unsubscribe = detailListeners.subscribe(callback);
     for (const detail of detailHistory.values()) {
       detailListeners.deliver(callback, detail);
@@ -163,7 +163,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
   // Latest event per chain and kind, so the replay stays bounded.
   const syncHistory = new Map<string, ChainSyncEvent>();
 
-  function onChainSync(callback: SyncCallback): () => void {
+  function onChainSync(callback: (event: ChainSyncEvent) => void): () => void {
     const unsubscribe = syncListeners.subscribe(callback);
     for (const event of syncHistory.values()) {
       syncListeners.deliver(callback, event);
@@ -248,7 +248,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     }
 
     const sync = getChainSyncState(chain);
-    const lifetime = new AbortController();
+    let stopped = false;
 
     function applyLifecycleState(state: ChainLifecycle): void {
       const { peers, phase, health } = state;
@@ -352,7 +352,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     // The peer list is asked once at ready, when it explains the bootstrap time, and only by a reporter that asks peers.
     // `system_peers` is legacy JSON-RPC, so smoldot warns once per chain, but the new API has no peer list.
     function requestPeers(): void {
-      if (sync.peersRequested || lifetime.signal.aborted || !askPeers) {
+      if (sync.peersRequested || stopped || !askPeers) {
         return;
       }
       sync.peersRequested = true;
@@ -367,7 +367,11 @@ export function createChainSyncReporter({ askPeers }: Params) {
         );
       } catch (error: unknown) {
         // Telemetry only, and it throws only on a connection already gone, which the visitor never notices.
-        log.debug(`[dot.li chain-sync] peer list unavailable for ${chain}: ${getErrorMessage(error)}`);
+        protocolReport.expected(error, {
+          step: 'chain_peers_request',
+          metric: chainPeersRequestMetric,
+          reason: 'closed',
+        });
       }
     }
 
@@ -419,7 +423,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
         // `undefined` once `stop` closes the watch or the chain is gone.
         for (let state; (state = await lifecycle.next()) !== undefined;) {
           // A snapshot already on its way when `stop` ran is read off the watch but not applied.
-          if (lifetime.signal.aborted) {
+          if (stopped) {
             continue;
           }
           applyLifecycleState(state);
@@ -435,10 +439,10 @@ export function createChainSyncReporter({ askPeers }: Params) {
     }
 
     function stop(): void {
-      if (lifetime.signal.aborted) {
+      if (stopped) {
         return;
       }
-      lifetime.abort();
+      stopped = true;
       watch.close();
     }
 
@@ -464,7 +468,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     /**
      * The tap must see every response, in order, before polkadot-api does.
      * Returns `null` for a chain nobody asked to report, so it costs neither a watch nor a per-response check.
-     * Never throws: a refused lifecycle watch returns a tap that does nothing, and a failed peers send is logged.
+     * Never throws: a refused lifecycle watch returns a tap that does nothing, and a failed peers send is counted.
      */
     attachChainSync,
   };

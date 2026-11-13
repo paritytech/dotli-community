@@ -30,8 +30,6 @@ import {
   type JsonRpcResponse,
   type OwnedToken,
   type RequestOwner,
-  type SendReleaseParams,
-  type SessionTokenParams,
   type Session,
   type SubscriptionMessage,
   type WireMode,
@@ -41,7 +39,6 @@ import { createBrokerWarner, logBrokerTraffic, type BrokerWarner } from './creat
 import { createChainHaltedError } from './createChainHaltedError.js';
 import { createEarlySubscriptions } from './createEarlySubscriptions.js';
 import { createJsonRpcError } from './createJsonRpcError.js';
-import { createLocalTokenIds } from './createLocalTokenIds.js';
 import { createOwnedTokens } from './createOwnedTokens.js';
 import { createPendingRequests } from './createPendingRequests.js';
 import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_UNFOLLOW } from './jsonRpcMethods.js';
@@ -106,16 +103,9 @@ const FOLLOW_LIMIT_ERROR_CODE = -32800;
 export function createChainBroker({ provider, warn = createBrokerWarner() }: Params) {
   let state: UpstreamState = { kind: 'closed' };
   const sessions = new Map<string, Session>();
-  const localTokenIds = createLocalTokenIds();
   const pending = createPendingRequests({ sendUpstream });
   const earlySubscriptions = createEarlySubscriptions({ warn, deliver: handleUpstreamSubscription });
-  const ownedTokens = createOwnedTokens({
-    localTokenIds,
-    addSessionToken,
-    deleteSessionToken,
-    sendRelease,
-    log: logBrokerTraffic,
-  });
+  const ownedTokens = createOwnedTokens();
 
   function connect({
     sessionId,
@@ -132,13 +122,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     if (state.kind !== 'open') {
       return createUnservedConnection(sessionId);
     }
-    sessions.set(sessionId, {
-      id: sessionId,
-      onMessage,
-      ownedTokens: new Set<string>(),
-      wireMode,
-      onHalt,
-    });
+    sessions.set(sessionId, { id: sessionId, onMessage, wireMode, onHalt });
 
     return {
       send: message => {
@@ -184,14 +168,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     releaseUpstream(previous);
   }
 
-  function addSessionToken({ sessionId, token }: SessionTokenParams): void {
-    sessions.get(sessionId)?.ownedTokens.add(token);
-  }
-
-  function deleteSessionToken({ sessionId, token }: SessionTokenParams): void {
-    sessions.get(sessionId)?.ownedTokens.delete(token);
-  }
-
   function sendToSession(session: Pick<Session, 'onMessage' | 'wireMode'>, message: unknown): void {
     session.onMessage(encodeForWire(message, session.wireMode));
   }
@@ -211,7 +187,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     const { method } = request;
     if (request.id !== undefined) {
       pending.track({
-        owner: { kind: 'session', sessionId: session.id, clientId: request.id, method, upstreamToken },
+        owner: { kind: 'session', session, clientId: request.id, method, upstreamToken },
         request,
       });
       return;
@@ -228,10 +204,10 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   /** A release the broker sends itself, for something no session holds anymore. */
-  function sendRelease({ method, upstreamToken }: SendReleaseParams): void {
+  function sendRelease({ releaseMethod, upstreamToken }: Pick<OwnedToken, 'releaseMethod' | 'upstreamToken'>): void {
     pending.track({
-      owner: { kind: 'release', method, upstreamToken },
-      request: { jsonrpc: '2.0', method, params: [upstreamToken] },
+      owner: { kind: 'release', method: releaseMethod, upstreamToken },
+      request: { jsonrpc: '2.0', method: releaseMethod, params: [upstreamToken] },
     });
   }
 
@@ -248,12 +224,12 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function answerHaltedSession(session: Session): void {
     for (const owner of pending.listOwners()) {
-      if (owner.kind === 'session' && owner.sessionId === session.id && owner.clientId !== null) {
+      if (owner.kind === 'session' && owner.session === session && owner.clientId !== null) {
         sendToSession(session, createJsonRpcError(owner.clientId, createChainHaltedError()));
       }
     }
-    for (const localToken of session.ownedTokens) {
-      if (ownedTokens.find(localToken)?.releaseMethod === CHAIN_HEAD_UNFOLLOW) {
+    for (const { localToken, releaseMethod } of ownedTokens.listSessionTokens(session)) {
+      if (releaseMethod === CHAIN_HEAD_UNFOLLOW) {
         sendToSession(session, buildFollowEvent(localToken, { event: 'stop' }));
       }
     }
@@ -269,10 +245,10 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     state = opening;
     let connection: JsonRpcConnection;
     // The `open` member this call writes. A message from an upstream the broker closed or abandoned is dropped.
-    const mine: { open?: UpstreamState } = {};
+    let opened: UpstreamState | null = null;
     try {
       connection = provider(message => {
-        if (mine.open !== undefined && state === mine.open) {
+        if (state === opened) {
           handleUpstreamMessage(message);
         }
       });
@@ -287,8 +263,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       closeAbandonedUpstream(connection);
       return;
     }
-    mine.open = { kind: 'open', connection };
-    state = mine.open;
+    opened = { kind: 'open', connection };
+    state = opened;
     logBrokerTraffic(
       `Upstream provider connected (send=${typeof connection.send}, disconnect=${typeof connection.disconnect})`,
     );
@@ -324,6 +300,11 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function sendFromSession(sessionId: string, message: unknown): void {
     const session = sessions.get(sessionId);
+    // A session may answer the halt's stop with a new follow, which goes nowhere but is no anomaly.
+    if (session === undefined && state.kind === 'halted') {
+      logBrokerTraffic(`Dropped a message from ${sessionId}, as the chain halted`);
+      return;
+    }
     if (session === undefined) {
       warnNotConnected(sessionId);
       return;
@@ -373,24 +354,16 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
   function routeOwnedReleaseRequest(session: Session, request: JsonRpcRequest): void {
     const { method } = request;
-    const params = Array.isArray(request.params) ? request.params : [];
-    const localToken = typeof params[0] === 'string' ? params[0] : null;
-    const owned = localToken !== null ? ownedTokens.find(localToken) : undefined;
-    if (localToken === null || owned?.sessionId !== session.id || owned.releaseMethod !== method) {
+    const owned = findOwnedToken(request);
+    if (owned?.session !== session || owned.releaseMethod !== method) {
       sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
       return;
     }
 
-    const upstreamToken = owned.upstreamToken;
-    const released = ownedTokens.release(localToken, false);
-    if (released === null) {
-      sendToSession(session, createJsonRpcError(request.id ?? null, 'Unknown subscription/token'));
-      return;
-    }
-
-    if (!released.lastOwner) {
+    const { upstreamToken } = owned;
+    if (!ownedTokens.release(owned.localToken)) {
       if (request.id !== undefined) {
-        sendToSession(session, buildJsonRpcResult(request.id ?? null, getReleaseResult(method)));
+        sendToSession(session, buildJsonRpcResult(request.id, getReleaseResult(method)));
       }
       return;
     }
@@ -403,25 +376,21 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function rewriteOwnedToken(session: Session, request: JsonRpcRequest): JsonRpcRequest | null {
-    if (!Array.isArray(request.params) || request.params.length === 0) {
+    const owned = findOwnedToken(request);
+    if (owned === undefined) {
       return request;
     }
-
-    const firstParam: unknown = request.params[0];
-    if (typeof firstParam !== 'string') {
-      return request;
-    }
-
-    const owned = ownedTokens.find(firstParam);
-    if (!owned) {
-      return request;
-    }
-
-    if (owned.sessionId !== session.id) {
+    if (owned.session !== session) {
       return null;
     }
 
     return cloneWithRewrittenFirstParam(request, owned.upstreamToken);
+  }
+
+  /** The owned token a request names as its first param, or undefined when it names none. */
+  function findOwnedToken(request: JsonRpcRequest): Readonly<OwnedToken> | undefined {
+    const localToken: unknown = Array.isArray(request.params) ? request.params[0] : undefined;
+    return typeof localToken === 'string' ? ownedTokens.find(localToken) : undefined;
   }
 
   function handleUpstreamMessage(message: unknown): void {
@@ -475,11 +444,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     const event = result['event'];
     const rawSubscription = message.params?.subscription;
     const token = typeof rawSubscription === 'string' ? rawSubscription : '?';
-    const ownedLocals = ownedTokens.listLocalTokens(token);
-    const sessionTag =
-      ownedLocals.length > 0
-        ? ownedLocals.map(localToken => ownedTokens.find(localToken)?.sessionId ?? '?').join(',')
-        : 'unknown';
+    const owners = ownedTokens.listOwners(token);
+    const sessionTag = owners.length > 0 ? owners.map(owned => owned.session.id).join(',') : 'unknown';
     if (event === 'newBlock') {
       logBrokerTraffic(
         `from upstream: raw newBlock [${sessionTag}] hash=${String(result['blockHash']).slice(0, 18)}… parent=${String(result['parentBlockHash']).slice(0, 18)}… token=${token.slice(0, 12)}…`,
@@ -505,7 +471,7 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       return;
     }
     logBrokerTraffic(
-      `Upstream answer for ${owner.kind === 'session' ? owner.sessionId : owner.kind}, method=${owner.method} ${describeResponse(response)}`,
+      `Upstream answer for ${owner.kind === 'session' ? owner.session.id : owner.kind}, method=${owner.method} ${describeResponse(response)}`,
     );
     if (owner.method === CHAIN_HEAD_FOLLOW && 'error' in response) {
       reportRefusedFollow(response.error);
@@ -528,29 +494,18 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function answerSession(owner: Extract<RequestOwner, { kind: 'session' }>, response: JsonRpcResponse): void {
-    const session = sessions.get(owner.sessionId);
-    if (session === undefined) {
-      warn(
-        'response_disconnected_session',
-        `upstream response for disconnected session: sessionId=${JSON.stringify(owner.sessionId)}, method=${owner.method}, responseId=${String(response.id)}`,
-      );
+    const { session } = owner;
+    const answer = { ...response, id: owner.clientId };
+    const releaseMethod = TOKEN_METHODS.get(owner.method);
+    if (releaseMethod === undefined || typeof response.result !== 'string') {
+      sendToSession(session, answer);
       return;
     }
-    const releaseMethod = TOKEN_METHODS.get(owner.method);
-    const upstreamToken = releaseMethod !== undefined && typeof response.result === 'string' ? response.result : null;
-    const rewritten: Record<string, unknown> = { ...response, id: owner.clientId };
-    if (upstreamToken !== null && releaseMethod !== undefined) {
-      rewritten['result'] = ownedTokens.mapToken({
-        sessionId: session.id,
-        upstreamToken,
-        releaseMethod,
-        method: owner.method,
-      });
-    }
-    sendToSession(session, rewritten);
-    if (upstreamToken !== null) {
-      earlySubscriptions.flush(upstreamToken);
-    }
+    const upstreamToken = response.result;
+    const localToken = ownedTokens.mapToken({ session, upstreamToken, releaseMethod });
+    logBrokerTraffic(`Token mapped: ${localToken} to ${upstreamToken} (${owner.method})`);
+    sendToSession(session, { ...answer, result: localToken });
+    earlySubscriptions.flush(upstreamToken);
   }
 
   /**
@@ -565,11 +520,11 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       return;
     }
     const upstreamToken = response.result;
-    if (ownedTokens.listLocalTokens(upstreamToken).length > 0) {
+    if (ownedTokens.listOwners(upstreamToken).length > 0) {
       return;
     }
     earlySubscriptions.drop(upstreamToken);
-    sendRelease({ method: releaseMethod, upstreamToken });
+    sendRelease({ releaseMethod, upstreamToken });
   }
 
   /** Nobody waits on a release, so the node refusing one is all there is to tell. */
@@ -586,8 +541,8 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
       return;
     }
 
-    const localTokens = ownedTokens.listLocalTokens(upstreamToken);
-    if (localTokens.length === 0) {
+    const owners = ownedTokens.listOwners(upstreamToken);
+    if (owners.length === 0) {
       // Queued by the node before it read the release, so expected, and nobody will ever map this token again.
       if (pending.isReleasing(upstreamToken)) {
         logBrokerTraffic(`Dropped an event for released subscription ${upstreamToken}`);
@@ -603,41 +558,25 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
 
     const eventResult = message.params?.result;
     const eventType = getEventType(eventResult);
-    const recipients: { session: Session; owned: Readonly<OwnedToken> }[] = [];
-    for (const localToken of localTokens) {
-      const owned = ownedTokens.find(localToken);
-      if (owned === undefined) {
-        continue;
-      }
-      const session = sessions.get(owned.sessionId);
-      if (session === undefined) {
-        warn(
-          'subscription_disconnected_session',
-          `from upstream: subscription for disconnected session: ${owned.sessionId}`,
-        );
-        continue;
-      }
-      recipients.push({ session, owned });
-    }
 
     // Released before anyone hears the final event, as a stopped follow is, so a release sent from inside that
     // delivery is answered locally instead of going upstream for a subscription the node already ended.
     const ends = isRecord(eventResult) && isSubscriptionEnd(message.method, eventResult['event']);
     if (ends) {
       logBrokerTraffic(`Token ended by upstream: ${upstreamToken}`);
-      for (const localToken of localTokens) {
-        ownedTokens.release(localToken, false);
+      for (const { localToken } of owners) {
+        ownedTokens.release(localToken);
       }
     }
 
-    for (const { session, owned } of recipients) {
+    for (const owned of owners) {
       // An earlier delivery can end this session or release its token. A final event still reaches every token it
       // ended.
-      if (sessions.get(session.id) !== session || (!ends && !ownedTokens.has(owned.localToken))) {
+      if (sessions.get(owned.session.id) !== owned.session || (!ends && !ownedTokens.has(owned.localToken))) {
         continue;
       }
-      logBrokerTraffic(`subscription to [${owned.sessionId}] event=${eventType} method=${String(message.method)}`);
-      sendToSession(session, readdressSubscription(message, owned.localToken));
+      logBrokerTraffic(`subscription to [${owned.session.id}] event=${eventType} method=${String(message.method)}`);
+      sendToSession(owned.session, readdressSubscription(message, owned.localToken));
     }
   }
 
@@ -646,23 +585,30 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     if (!session) {
       return;
     }
+    const owned = ownedTokens.listSessionTokens(session);
     logBrokerTraffic(
-      `disconnectSession(${sessionId}) called, pending=${String(pending.count())}, tokens=${String(session.ownedTokens.size)}`,
+      `disconnectSession(${sessionId}) called, pending=${String(pending.count())}, tokens=${String(owned.length)}`,
     );
     sessions.delete(sessionId);
 
     // An answer still on its way may open a subscription, which nobody would release once its session has gone.
-    pending.orphanSession(sessionId);
+    pending.orphanSession(session);
 
-    for (const localToken of [...session.ownedTokens]) {
-      ownedTokens.release(localToken, true);
-    }
+    // Each token is released even when an earlier release fails upstream, so none stays owned by a gone session.
+    runEvery(
+      owned.map(token => () => {
+        if (ownedTokens.release(token.localToken)) {
+          sendRelease(token);
+        }
+      }),
+      `chain broker: releasing what session ${sessionId} held failed`,
+    );
   }
 
   function disconnectUpstream(): void {
     const previous = state;
-    // Written first, so a close that throws still leaves the upstream closed.
-    state = getClosedState(previous);
+    // Written first, so a close that throws still leaves the upstream closed. A halt stays final.
+    state = previous.kind === 'halted' ? previous : { kind: 'closed' };
     releaseUpstream(previous);
   }
 
@@ -709,18 +655,6 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
     /** Whether a session of this broker holds `localToken`. Never throws. */
     hasToken: ownedTokens.has,
   };
-}
-
-/** The state a close leaves, which keeps a halt final. */
-function getClosedState(previous: UpstreamState): UpstreamState {
-  switch (previous.kind) {
-    case 'halted':
-      return previous;
-    case 'closed':
-    case 'opening':
-    case 'open':
-      return { kind: 'closed' };
-  }
 }
 
 /** Counts a follow the node refused, telling its follow limit apart from any other refusal. */

@@ -6,31 +6,22 @@
 // block is numbered from its header, and a block stays pinned until finalization passes it.
 
 import { isRecord, log } from '@dotli/shared';
+import type { BrokerConnection } from './brokerMessages.js';
 import { decodeHeaderNumber } from './decodeHeaderNumber.js';
 import { CHAIN_HEAD_FOLLOW, CHAIN_HEAD_FOLLOW_EVENT, CHAIN_HEAD_HEADER, CHAIN_HEAD_UNPIN } from './jsonRpcMethods.js';
 import { readStrings } from './readStrings.js';
-
-/** A broker session as the follow uses it. */
-export type FollowSession = {
-  /** Sends one JSON-RPC request. The answer may arrive before it returns. */
-  send: (message: unknown) => void;
-  /** Ends the session. */
-  disconnect: () => void;
-};
 
 type Params = {
   /** Prefix of the follow's request ids. Also names it in debug logs. */
   sessionId: string;
   /** Opens the follow's session. Messages may arrive inside `send`, before it returns. */
-  connect: (onMessage: (message: unknown) => void) => FollowSession;
+  connect: (onMessage: (message: unknown) => void) => BrokerConnection;
   /** The follow was established, or stopped. */
   onFollowing: (following: boolean) => void;
   /** The node refused the follow, which then sends nothing more. */
   onRefused: () => void;
   /** Hears the number of each new best block. */
   onBestBlock: (blockNumber: number) => void;
-  /** Whether a follow the chain stopped is started again. False once the chain closed. */
-  live: () => boolean;
 };
 
 type FollowState =
@@ -49,40 +40,31 @@ type FollowState =
 
 type Following = Extract<FollowState, { kind: 'following' }>;
 
-type SendParams = {
-  method: string;
-  params: unknown[];
-  /** Hears the request's id before the request goes out. */
-  noteId?: (id: string) => void;
-};
-
-/** Opens a session through `connect`, sends the follow on `start`, and follows until `disconnect` ends the session. */
-export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, onBestBlock, live }: Params): {
-  start: () => void;
-  disconnect: () => void;
-} {
+/**
+ * Opens a session through `connect`, sends the follow on `start`, and follows until `disconnect` ends the session. A
+ * follow the chain stops is sent again.
+ */
+export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, onBestBlock }: Params) {
   let requests = 0;
   let state: FollowState = { kind: 'idle' };
 
-  // The broker can answer inside `send`, so callers note the id first.
-  function send({ method, params, noteId }: SendParams): void {
+  // The broker can answer inside `send`, so a caller stores the id before it sends.
+  function takeId(): string {
     const id = `${sessionId}:${requests.toString(36)}`;
     requests += 1;
-    noteId?.(id);
+    return id;
+  }
+  function send(id: string, method: string, params: unknown[]): void {
     session.send({ jsonrpc: '2.0', id, method, params });
   }
   function follow(): void {
-    send({
-      method: CHAIN_HEAD_FOLLOW,
-      params: [true],
-      noteId: id => {
-        state = { kind: 'requesting', id };
-      },
-    });
+    const id = takeId();
+    state = { kind: 'requesting', id };
+    send(id, CHAIN_HEAD_FOLLOW, [true]);
   }
   function unpin(following: Following, hashes: string[]): void {
     if (hashes.length > 0) {
-      send({ method: CHAIN_HEAD_UNPIN, params: [following.token, hashes] });
+      send(takeId(), CHAIN_HEAD_UNPIN, [following.token, hashes]);
     }
   }
   function handleMessage(message: Record<string, unknown>): void {
@@ -139,13 +121,9 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, on
       following.finalized = hashes.at(-1) ?? null;
       unpin(following, hashes.slice(0, -1));
     } else if (result['event'] === 'bestBlockChanged') {
-      send({
-        method: CHAIN_HEAD_HEADER,
-        params: [following.token, result['bestBlockHash']],
-        noteId: id => {
-          following.headerIds.add(id);
-        },
-      });
+      const id = takeId();
+      following.headerIds.add(id);
+      send(id, CHAIN_HEAD_HEADER, [following.token, result['bestBlockHash']]);
     } else if (result['event'] === 'finalized') {
       const hashes = readStrings(result['finalizedBlockHashes']);
       unpin(following, [
@@ -158,8 +136,8 @@ export function openWatchFollow({ sessionId, connect, onFollowing, onRefused, on
       const stopped: FollowState = { kind: 'stopped' };
       state = stopped;
       onFollowing(false);
-      // A halted chain stops it too, and its broker has dropped this session by then.
-      if (state === stopped && live()) {
+      // The owner ends a follow by disconnecting it, which may happen while it hears the stop.
+      if (state === stopped) {
         follow();
       }
     }

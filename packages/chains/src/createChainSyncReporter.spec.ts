@@ -595,6 +595,40 @@ describe('An ended or refused lifecycle watch is counted', () => {
     // Then the refusal is counted as an expected failure
     expect(reports.expected).toMatchObject([{ step: 'chain_lifecycle_watch' }]);
   });
+
+  it('As a maintainer, I see a peer-list request counted when the chain it goes to is already gone', async () => {
+    // Given sync reporting on the relay chain, whose connection is gone by the time it reports ready
+    const reports = recordReports({ onFinished: onTestFinished });
+    reporter.enableSyncReporting(['relay']);
+    let readyApplied: () => void = () => undefined;
+    const applied = new Promise<void>(resolve => {
+      readyApplied = resolve;
+    });
+    let reads = 0;
+
+    // When the chain reports ready
+    reporter.attachChainSync({
+      chain: 'relay',
+      send: () => {
+        throw new Error('connection closed');
+      },
+      watchLifecycle: () => ({
+        next: () => {
+          reads += 1;
+          if (reads === 1) {
+            return Promise.resolve(createLifecycle({ phase: READY, peers: 1 }));
+          }
+          readyApplied();
+          return new Promise(() => undefined);
+        },
+        close: () => undefined,
+      }),
+    });
+    await applied;
+
+    // Then the failed request is counted as an expected failure
+    expect(reports.expected).toMatchObject([{ step: 'chain_peers_request' }]);
+  });
 });
 
 describe('Chain detail reporting works', () => {

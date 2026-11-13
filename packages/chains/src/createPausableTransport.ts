@@ -14,14 +14,13 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from '@polkadot-api/json-rpc-provider';
-import { runEvery } from '@dotli/shared';
+import { isRecord, runEvery } from '@dotli/shared';
 import { createJsonRpcError } from './createJsonRpcError.js';
 import {
   CHAIN_HEAD_FOLLOW,
   CHAIN_HEAD_FOLLOW_EVENT,
   CHAIN_HEAD_UNFOLLOW,
   CHAIN_HEAD_UNPIN,
-  STATEMENT_UNSUBSCRIBE,
   SUBMIT_AND_WATCH,
   TRANSACTION_BROADCAST,
   TRANSACTION_STOP,
@@ -56,8 +55,6 @@ type PauseOutcome = 'done' | 'failed' | 'kept';
 
 /** A request whose id the connection can match to its answer. */
 type IdentifiedRequest = JsonRpcRequest & { id: string | number };
-
-const CHAIN_HEAD_PREFIX = 'chainHead_v1_';
 
 /** A transport wrapped so its connection can close and open again while its consumers stay connected. */
 export type PausableTransport = ReturnType<typeof createPausableTransport>;
@@ -350,10 +347,6 @@ function hasId(message: JsonRpcRequest): message is IdentifiedRequest {
   return typeof message.id === 'string' || typeof message.id === 'number';
 }
 
-function isChainHeadMethod(method: string): boolean {
-  return method.startsWith(CHAIN_HEAD_PREFIX);
-}
-
 /** Whether a string answer to `method` is an id a later release names. */
 function isOpeningMethod(method: string): boolean {
   if (method === CHAIN_HEAD_FOLLOW || method === TRANSACTION_BROADCAST || method === SUBMIT_AND_WATCH) {
@@ -363,12 +356,7 @@ function isOpeningMethod(method: string): boolean {
 }
 
 function isReleaseMethod(method: string): boolean {
-  if (
-    method === CHAIN_HEAD_UNFOLLOW ||
-    method === CHAIN_HEAD_UNPIN ||
-    method === TRANSACTION_STOP ||
-    method === STATEMENT_UNSUBSCRIBE
-  ) {
+  if (method === CHAIN_HEAD_UNFOLLOW || method === CHAIN_HEAD_UNPIN || method === TRANSACTION_STOP) {
     return true;
   }
   return method.includes('unsubscribe') || method.includes('unwatch');
@@ -391,18 +379,12 @@ function getReleasedId(message: JsonRpcRequest): string | null {
 
 /** The follow a transport `stop` event ends, or `null` for any other message. */
 function getStoppedFollow(message: JsonRpcRequest): string | null {
-  if (message.method !== CHAIN_HEAD_FOLLOW_EVENT) {
-    return null;
-  }
   const params: unknown = message.params;
-  if (typeof params !== 'object' || params === null || !('subscription' in params) || !('result' in params)) {
+  if (message.method !== CHAIN_HEAD_FOLLOW_EVENT || !isRecord(params) || !isRecord(params['result'])) {
     return null;
   }
-  const { subscription, result } = params;
-  if (typeof subscription !== 'string' || typeof result !== 'object' || result === null || !('event' in result)) {
-    return null;
-  }
-  return result.event === 'stop' ? subscription : null;
+  const subscription = params['subscription'];
+  return params['result']['event'] === 'stop' && typeof subscription === 'string' ? subscription : null;
 }
 
 function getPauseOutcome(method: string): PauseOutcome {
@@ -410,7 +392,7 @@ function getPauseOutcome(method: string): PauseOutcome {
     // Every id in flight at a pause belongs to the closing connection, which a resume never reopens.
     return 'done';
   }
-  if (isChainHeadMethod(method) && method !== CHAIN_HEAD_FOLLOW) {
+  if (method.startsWith('chainHead_v1_') && method !== CHAIN_HEAD_FOLLOW) {
     return 'failed';
   }
   return 'kept';
