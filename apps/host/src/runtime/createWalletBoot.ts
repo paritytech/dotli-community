@@ -79,7 +79,6 @@ type BootEvent =
   | { kind: 'sitesServed' };
 
 type BootEffect =
-  | { kind: 'runPass' }
   | { kind: 'passBroke'; error: unknown }
   | { kind: 'walletUnavailable'; error: unknown }
   | { kind: 'walletForgotten' }
@@ -95,18 +94,6 @@ type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
 const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
 
-/** A wallet already answered picks the mode again, as the window now boots on a stored local wallet. */
-const serveSites: HandlerOf<BootMachine, 'idle' | 'passing' | 'kept', 'sitesServed'> = (
-  state,
-  _event,
-  { emitState, emitSideEffect },
-) => {
-  emitState({ ...state, bootsOnStored: true });
-  if (state.wallet !== null) {
-    emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(state.wallet, true) });
-  }
-};
-
 /** Builds the restore on load. Building it never throws. */
 export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   const reader: PresenceReader = getLoadReader(role);
@@ -114,9 +101,8 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
     initial: { kind: 'idle', dead: null, wallet: null, bootsOnStored: !isPairingOnly(role) },
     handlers: {
       idle: {
-        asked(state, { caller }, { emitState, emitSideEffect }) {
-          emitState({ ...state, kind: 'passing', asker: caller, queued: [] });
-          emitSideEffect({ kind: 'runPass' });
+        asked(state, { caller }, transition) {
+          runPass({ ...state, kind: 'passing', asker: caller, queued: [] }, transition);
         },
         sitesServed: serveSites,
       },
@@ -190,17 +176,6 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'runPass':
-          machine.update(
-            // Started in the chain, so a rule that throws before it returns a promise breaks the pass like a rejection.
-            Promise.resolve(reader)
-              .then(reconcile)
-              .then(
-                reconciled => ({ kind: 'passed', reconciled }),
-                (error: unknown) => ({ kind: 'passBroke', error }),
-              ),
-          );
-          return;
         case 'passBroke':
           walletReport.defect(effect.error, {
             step: 'restore',
@@ -292,25 +267,50 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       machine.update({ kind: 'sitesServed' });
     },
   };
-}
 
-/** Answers the pass's asker with what it left, short of a kept answer, and hands the pass on. */
-function answerPass(state: PassingState, last: Restored, transition: Transition<BootMachine>): void {
-  transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored: last, local: last.local });
-  passOn(state, transition);
-}
-
-/** Runs the next queued caller's own pass over what the passes found, or goes idle when none waits. */
-function passOn(state: PassingState, { emitState, emitSideEffect }: Transition<BootMachine>): void {
-  const { dead, wallet, bootsOnStored } = state;
-  const [asker, ...queued] = state.queued;
-  if (asker === undefined) {
-    emitState({ kind: 'idle', dead, wallet, bootsOnStored });
-    return;
+  /** Moves to `state` and runs its asker's pass over what the passes so far found. */
+  function runPass(state: PassingState, { emitState, update }: Transition<BootMachine>): void {
+    emitState(state);
+    update(
+      // Started in the chain, so a rule that throws before it returns a promise breaks the pass like a rejection.
+      Promise.resolve(reader)
+        .then(reconcile)
+        .then(
+          reconciled => ({ kind: 'passed', reconciled }),
+          (error: unknown) => ({ kind: 'passBroke', error }),
+        ),
+    );
   }
-  emitState({ ...state, asker, queued });
-  emitSideEffect({ kind: 'runPass' });
+
+  /** Answers the pass's asker with what it left, short of a kept answer, and hands the pass on. */
+  function answerPass(state: PassingState, last: Restored, transition: Transition<BootMachine>): void {
+    transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored: last, local: last.local });
+    passOn(state, transition);
+  }
+
+  /** Runs the next queued caller's own pass over what the passes found, or goes idle when none waits. */
+  function passOn(state: PassingState, transition: Transition<BootMachine>): void {
+    const { dead, wallet, bootsOnStored } = state;
+    const [asker, ...queued] = state.queued;
+    if (asker === undefined) {
+      transition.emitState({ kind: 'idle', dead, wallet, bootsOnStored });
+      return;
+    }
+    runPass({ ...state, asker, queued }, transition);
+  }
 }
+
+/** A wallet already answered picks the mode again, as the window now boots on a stored local wallet. */
+const serveSites: HandlerOf<BootMachine, 'idle' | 'passing' | 'kept', 'sitesServed'> = (
+  state,
+  _event,
+  { emitState, emitSideEffect },
+) => {
+  emitState({ ...state, bootsOnStored: true });
+  if (state.wallet !== null) {
+    emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(state.wallet, true) });
+  }
+};
 
 /** The stored wallet the page boots on, or null when there is none or the page keeps it as data. */
 function getLocalWallet(wallet: WalletRead, bootsOnStored: boolean): LocalWalletBoot | null {
