@@ -118,27 +118,24 @@ describe('host error classification', () => {
       'manifest-invalid',
       HOST_ERRORS.MANIFEST_INVALID,
     ],
-  ])(
-    'As a dotli user, I open an app rejected for %s and am told why with no retry',
-    (_case, rejection, kind, message) => {
-      // When
-      const described = describeError(rejection);
+  ])('As a dotli user, I open an app rejected for %s and am offered the landing', (_case, rejection, kind, message) => {
+    // When
+    const described = describeError(rejection);
 
-      // Then
-      expect({
-        kind: described.kind,
-        title: described.title,
-        message: described.message,
-        recovery: described.recovery,
-      }).toEqual({
-        kind,
-        title: "This app can't be opened",
-        message,
-        recovery: 'none',
-      });
-      expect(described.tips).toEqual(['Contacting the app maintainer.']);
-    },
-  );
+    // Then
+    expect({
+      kind: described.kind,
+      title: described.title,
+      message: described.message,
+      recovery: described.recovery,
+    }).toEqual({
+      kind,
+      title: "This app can't be opened",
+      message,
+      recovery: 'landing',
+    });
+    expect(described.tips).toEqual(['Contacting the app maintainer.']);
+  });
 
   it.each([
     [

@@ -12,6 +12,7 @@ import { describeError, type ErrorDescription, type ErrorKind, type Recovery } f
 import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
+  HOME_BTN_LABEL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
@@ -35,17 +36,21 @@ type PresentParams = {
 };
 
 describe('presentLoadFailure', () => {
-  it('As a visitor whose app cannot be opened, I see why with its tips and no button to press', () => {
-    // When
-    const { getShownPage } = present({
-      error: createDescription('manifest-invalid', 'none'),
+  it('As a visitor whose app cannot be opened, I see why with its tips and press Go to dot.li to reach the landing', () => {
+    // Given
+    const { getShownPage, click, goHome } = present({
+      error: createDescription('manifest-invalid', 'landing'),
       backend: 'smoldot-direct',
     });
+
+    // When
+    click(HOME_BTN_LABEL);
 
     // Then
     expect(getShownPage()).toMatchObject({ title: 'Title manifest-invalid', detail: 'Message manifest-invalid' });
     expect(getShownPage().tips).toEqual(['Waiting a moment.']);
-    expect(listLabels(getShownPage())).toEqual([]);
+    expect(listLabels(getShownPage())).toEqual([HOME_BTN_LABEL]);
+    expect(goHome).toHaveBeenCalledTimes(1);
   });
 
   it('As a visitor on a failure a reload fixes, I press Reload and the page reloads', () => {
@@ -241,6 +246,7 @@ function present({ error, backend, sightings = createMemorySightings() }: Presen
       pages.push(page);
     },
     openSettings: vi.fn(),
+    goHome: vi.fn(),
     reload: vi.fn(),
     switchBackend: vi.fn(),
     resetProtocolOnReload: vi.fn(),
@@ -258,6 +264,7 @@ function present({ error, backend, sightings = createMemorySightings() }: Presen
     /** The debug events the failure sent, in order. */
     debug,
     openSettings: params.openSettings,
+    goHome: params.goHome,
     reload: params.reload,
     switchBackend: params.switchBackend,
     resetProtocolOnReload: params.resetProtocolOnReload,

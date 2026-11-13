@@ -13,6 +13,7 @@ import type { ErrorDescription } from './describeError.js';
 import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
+  HOME_BTN_LABEL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
@@ -46,6 +47,8 @@ type Params = {
   showErrorPage: ShowErrorPage;
   /** Opens the settings, where the visitor picks the backend. */
   openSettings: () => void;
+  /** Opens the landing page. */
+  goHome: () => void;
   /** The visitor's own retry. */
   reload: () => void;
   /** Reloads on the other backend. */
@@ -65,22 +68,34 @@ type Params = {
  * only as `params.showErrorPage` does.
  */
 export function presentLoadFailure(failure: LoadFailure, params: Params): void {
-  const { error, backend } = failure;
+  const { error } = failure;
   const { timers = realTimers } = params;
   report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
-  if (error.recovery === 'none') {
-    params.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
-    return;
+  switch (error.recovery) {
+    case 'landing':
+      params.showErrorPage({
+        title: error.title,
+        detail: error.message,
+        tips: error.tips,
+        actions: [{ label: HOME_BTN_LABEL, onClick: params.goHome }],
+      });
+      return;
+    case 'reload':
+      params.showErrorPage({
+        title: error.title,
+        detail: error.message,
+        tips: error.tips,
+        actions: [{ label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload }],
+      });
+      return;
+    case 'switch-backend':
+      presentFailover(failure, params, timers);
+      return;
   }
-  if (error.recovery === 'reload') {
-    params.showErrorPage({
-      title: error.title,
-      detail: error.message,
-      tips: error.tips,
-      actions: [{ label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload }],
-    });
-    return;
-  }
+}
+
+function presentFailover(failure: LoadFailure, params: Params, timers: Pick<Timers, 'now'>): void {
+  const { error, backend } = failure;
   const nextBackend = BACKEND_FACTS[backend].failover;
   // A failed provider will fail again, while a failed light client is usually a transient peer problem.
   const failoverIsPrimary = !hasLightClient(backend);
