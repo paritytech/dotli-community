@@ -12,6 +12,7 @@ import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageLoading } from '../../src/createLoadingController.js';
 import { createLoadTelemetry } from '../../src/createLoadTelemetry.js';
 import { describeError } from '../../src/describeError.js';
+import { beginAttempt } from '../../src/journey.js';
 import { bindReports } from '../../src/testing/bindReports.js';
 
 describe('createLoadTelemetry', () => {
@@ -62,23 +63,24 @@ describe('createLoadTelemetry', () => {
     expect(debug).toContainEqual(expect.objectContaining({ layer: 'resolve', event: 'failed', flowId: resolveFlowId }));
   });
 
-  it('As a dotli developer, I see a name with no content end its resolve flow once in the debug panel, even when its failure screen fails', () => {
-    // Given a load whose name resolved to no content
+  it('As a dotli developer, I see a name with no content end its resolve flow in the debug panel and end its journey', () => {
+    // Given a load that missed the CID cache and is resolving its name
     const { telemetry, debug } = setupTelemetry();
     telemetry.report({ kind: 'started', label: 'doom' });
     telemetry.report({ kind: 'setUp' });
     telemetry.report({ kind: 'cacheChecked', cid: null });
-    telemetry.report({ kind: 'nameResolved', cid: null });
-    const error = new Error('the no-content screen threw');
 
-    // When
-    telemetry.report({ kind: 'failed', error, description: describeError(error) });
+    // When the name resolves to no content, and the name is opened again
+    telemetry.report({ kind: 'nameResolved', cid: null });
+    telemetry.report({ kind: 'noContent' });
+    const nextAttempt = beginAttempt('doom');
 
     // Then
     expect(debug.filter(event => event.layer === 'resolve').map(event => event.event)).toEqual([
       'started',
       'completed',
     ]);
+    expect(nextAttempt.attemptNumber).toBe(1);
   });
 });
 
