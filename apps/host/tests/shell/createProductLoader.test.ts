@@ -725,12 +725,12 @@ function setupLoader(params: Params = {}) {
         }
         return sandboxOutcomes.subscribe(listener);
       },
-      expectHeardWithin: ({ onSilent }: Parameters<SandboxLoad['expectHeardWithin']>[0]) => {
+      expectHeardWithin: (onSilent: Parameters<SandboxLoad['expectHeardWithin']>[0]) => {
         if (params.silentSandbox !== true) {
           return noop;
         }
         const timer = timers.setTimeout(() => {
-          onSilent(new SandboxSilentError(30_000));
+          onSilent(new SandboxSilentError());
         }, 30_000);
         return () => {
           timers.clearTimeout(timer);

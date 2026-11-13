@@ -521,10 +521,8 @@ function listenToProduct(params: Params, update: Transition<LoadMachine>['update
   });
   // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is
   // down.
-  const stopDeadline = params.sandboxLoad.expectHeardWithin({
-    onSilent: error => {
-      update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
-    },
+  const stopDeadline = params.sandboxLoad.expectHeardWithin(error => {
+    update({ kind: 'productFailed', error, failure: 'a silent sandbox' });
   });
   const stopFollowingContent = params.sandboxLoad.subscribeOutcomes(report => {
     update({ kind: 'contentOutcome', report });
