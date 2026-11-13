@@ -29,7 +29,7 @@ type Params = {
 
 /** Returns the sign-in route of a page with no sign-in window. Never throws. */
 export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute {
-  return {
+  const route: SignInRoute = {
     startLogin(state, { params: { reason, label } }, transition) {
       // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
       // shows none, so its Retry logs in again.
@@ -61,6 +61,17 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
           },
         ),
       );
+    },
+    // The modal is up on its spinner, which a login started through `startLogin` would leave as it is.
+    resumeAfterReread(state, { asked, reason }, transition) {
+      switch (asked) {
+        case 'login':
+          modal.run({ step: 'login', params: { reason } }, transition);
+          return;
+        case 'phrase':
+          route.importPhrase(state, { kind: 'phraseAsked' }, transition);
+          return;
+      }
     },
     pairing(state, pairing, transition) {
       const opened = modal.open(
@@ -108,4 +119,5 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
       phraseFailed: null,
     },
   };
+  return route;
 }

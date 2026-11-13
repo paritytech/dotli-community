@@ -137,6 +137,15 @@ export type SignInRoute = {
   startLogin: HandlerOf<AuthModalMachine, 'live', 'loginAsked'>;
   /** Called only while the saved session is reachable. Never throws. */
   importPhrase: HandlerOf<AuthModalMachine, 'live', 'phraseAsked'>;
+  /**
+   * Goes on with what `round` asked for, once the saved session was read again and the user can sign in. `state` holds
+   * no round. Never throws.
+   */
+  resumeAfterReread(
+    state: LiveModal,
+    round: Extract<SignInRound, { kind: 'rereading' }>,
+    transition: Transition<AuthModalMachine>,
+  ): void;
   /** The core paired, or a product asked to log in. Never throws. */
   pairing(state: LiveModal, pairing: PairingState, transition: Transition<AuthModalMachine>): void;
   /** Opens the sign-out window first, where the route has one. Never throws. */

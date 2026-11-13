@@ -8,13 +8,12 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, log, nest, type HandlerOf, type Transition } from '@dotli/shared';
-import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
 import type { HostBridge } from './bridge.js';
 import { createModalSteps, showView } from './authModalSteps.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn } from './createInPageSignIn.js';
-import { authViews, type LoginStep } from './session/authViews.js';
+import { authViews } from './session/authViews.js';
 import type { DotliAuthState } from './session/types.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import {
@@ -66,7 +65,7 @@ type Params = {
    * chunk fails to load.
    */
   bridge: () => Promise<AuthBridge>;
-  /** The current auth step, read for each intent. */
+  /** The auth step at build. The controller follows later ones through `subscribeAuthSteps`. */
   auth: ReadableAtom<DotliAuthState>;
   /** Hears every auth step, an equal one included, which the controller follows until it is disposed. */
   subscribeAuthSteps: AuthState['subscribeSteps'];
@@ -91,6 +90,9 @@ const UNREACHABLE_VIEW: AuthModalView = {
   title: "Can't reach your saved sign-in",
   subtitle: 'dot.li could not check whether you are signed in. Try again in a moment.',
 };
+
+/** A sign-in that reads the saved session again first: how the modal opens, and the round that reads. */
+type StartRereadParams = { open: OpenAuthModalParams; round: Extract<SignInRound, { kind: 'rereading' }> };
 
 /** The events of the route's round, which the round's own handlers take. */
 type RoundEventKind = 'windowEnded' | 'resultWritten' | 'resultFailed' | 'phraseLoaded' | 'phraseMissed';
@@ -143,10 +145,7 @@ export function createAuthController({
   const askLogin: HandlerOf<AuthModalMachine, 'live', 'loginAsked'> = (state, event, transition) => {
     const { reason, label } = event.params;
     if (authViews.isSessionUnreachable(state.auth)) {
-      const opened = modalSteps.open(state, { reason, label }, transition);
-      if (opened !== null) {
-        startReread(opened, { kind: 'rereading', asked: 'login', reason }, transition);
-      }
+      startReread(state, { open: { reason, label }, round: { kind: 'rereading', asked: 'login', reason } }, transition);
       return;
     }
     if (authViews.getSignedInSession(state.auth) !== null) {
@@ -157,10 +156,7 @@ export function createAuthController({
   /** Asks for a recovery phrase, or while the saved session cannot be reached reads it again first. */
   const askPhrase: HandlerOf<AuthModalMachine, 'live', 'phraseAsked'> = (state, event, transition) => {
     if (authViews.isSessionUnreachable(state.auth)) {
-      const opened = modalSteps.open(state, {}, transition);
-      if (opened !== null) {
-        startReread(opened, { kind: 'rereading', asked: 'phrase', reason: undefined }, transition);
-      }
+      startReread(state, { open: {}, round: { kind: 'rereading', asked: 'phrase', reason: undefined } }, transition);
       return;
     }
     route.importPhrase(state, event, transition);
@@ -194,37 +190,17 @@ export function createAuthController({
           if (round !== state.round || round.kind !== 'rereading') {
             return;
           }
-          const { asked } = round;
-          const next: LiveModal = { ...state, round: { kind: 'idle' } };
-          switch (authViews.getSessionKnowledge(state.auth)) {
-            case 'unreachable':
-              showView({ ...state, round: { kind: 'rereadMissed', asked } }, UNREACHABLE_VIEW, transition);
-              return;
-            case 'reading':
-              // A read is under way, so the click starts nothing.
-              transition.emitState(next);
-              return;
-            case 'known':
-              break;
+          if (authViews.isSessionUnreachable(state.auth)) {
+            showRereadMissed(state, round, transition);
+            return;
           }
+          const next: LiveModal = { ...state, round: { kind: 'idle' } };
           transition.emitState(next);
-          // A sign-in is under way, or the user is signed in, so the click starts nothing.
+          // A read, a sign-in under way or a user signed in leaves the click nothing to start.
           if (!authViews.isSignInIdle(state.auth)) {
             return;
           }
-          // A window opens only in a click's own turn, which has passed, so the page asks for one.
-          if (handoff !== null) {
-            showView(next, { kind: 'prompt', resume: elsewhere() }, transition);
-            return;
-          }
-          switch (asked) {
-            case 'login':
-              modalSteps.run({ step: 'login', params: { reason: round.reason } }, transition);
-              return;
-            case 'phrase':
-              route.importPhrase(next, { kind: 'phraseAsked' }, transition);
-              return;
-          }
+          route.resumeAfterReread(next, round, transition);
         },
         rereadFailed(state, { round, error }, transition) {
           transition.emitSideEffect({ kind: 'rereadLogged', error });
@@ -232,7 +208,7 @@ export function createAuthController({
           if (round !== state.round || round.kind !== 'rereading') {
             return;
           }
-          showView({ ...state, round: { kind: 'rereadMissed', asked: round.asked } }, UNREACHABLE_VIEW, transition);
+          showRereadMissed(state, round, transition);
         },
         closeAsked(state, { params }, transition) {
           close(state, params, transition);
@@ -276,7 +252,8 @@ export function createAuthController({
           const state: LiveModal = { ...previous, auth: authStep };
           transition.emitState(state);
           const step = authViews.getLoginStep(authStep);
-          transition.emitSideEffect({ kind: 'authLogged', tag: authStep.tag, failure: getFailureKind(step) });
+          const failure = step?.step === 'failed' ? step.kind : null;
+          transition.emitSideEffect({ kind: 'authLogged', tag: authStep.tag, failure });
           // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends
           // both.
           if (step !== null && isLeaseHeld(state.lease) && state.view.kind === 'phrase') {
@@ -439,14 +416,21 @@ export function createAuthController({
       });
   }
 
-  /** Reads the saved session again for a sign-in asked while it could not be reached, the modal on its spinner. */
+  /**
+   * Opens the modal on its spinner and reads the saved session again, for a sign-in asked while it could not be
+   * reached. A disabled modal reads nothing.
+   */
   function startReread(
-    opened: LiveModal,
-    round: Extract<SignInRound, { kind: 'rereading' }>,
-    { emitState, update }: Transition<AuthModalMachine>,
+    state: LiveModal,
+    { open, round }: StartRereadParams,
+    transition: Transition<AuthModalMachine>,
   ): void {
-    emitState({ ...opened, round });
-    update(
+    const opened = modalSteps.open(state, open, transition);
+    if (opened === null) {
+      return;
+    }
+    transition.emitState({ ...opened, round });
+    transition.update(
       bridge()
         .then(loaded => loaded.rereadSession())
         .then(
@@ -556,14 +540,11 @@ export function createAuthController({
   };
 }
 
-/** The core's failure kind of a login step, or null when the step is not a failure. */
-function getFailureKind(step: LoginStep | null): LoginFailureKind | null {
-  switch (step?.step) {
-    case 'failed':
-      return step.kind;
-    case 'pairing':
-    case 'authenticating':
-    case undefined:
-      return null;
-  }
+/** Shows that the saved session could not be read again, so Retry asks for what `round` asked for. */
+function showRereadMissed(
+  state: LiveModal,
+  { asked }: Extract<SignInRound, { kind: 'rereading' }>,
+  transition: Transition<AuthModalMachine>,
+): void {
+  showView({ ...state, round: { kind: 'rereadMissed', asked } }, UNREACHABLE_VIEW, transition);
 }
