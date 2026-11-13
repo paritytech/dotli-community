@@ -185,7 +185,7 @@ function createHarness({
       productId: asProductId(product.productId ?? toProductId(product.label)),
       local,
       isStale() {
-        const check = local ? Promise.resolve(false) : Promise.resolve(walletFound?.() ?? false);
+        const check = local ? Promise.resolve(false) : Promise.resolve().then(() => walletFound?.() ?? false);
         staleChecks.push(check);
         return check;
       },
@@ -1352,7 +1352,7 @@ describe('page core after a failed wallet read', () => {
   });
 
   it('As an operator, I see a stale check that fails on a stored session change counted, and the user keeps the core', async () => {
-    // Given a pairing core whose wallet read throws once the store changes
+    // Given a pairing core whose wallet read rejects once the store changes
     let readBroken = false;
     const { core, contexts, storeListeners, staleChecks, counted, changes } = createReportingHarness({
       walletFound: () => {
