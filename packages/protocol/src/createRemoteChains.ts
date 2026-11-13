@@ -134,17 +134,18 @@ export function createRemoteChains({ rpc }: Params) {
   ) => {
     emitState({ kind: 'closed' });
     const { consumer } = connection;
+    const reason: RemoteChainHalt = error === null ? 'chain' : 'frame';
     if (connection.kind === 'connecting') {
       if (error !== null) {
         emitSideEffect({ kind: 'connectErrored', error });
       }
       // A chain halt is retryable, unlike the dead frame's plain close.
-      const answer = error === null ? createChainHaltedError() : 'Chain connection is closed';
+      const answer = reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed';
       for (const request of connection.pending) {
         emitSideEffect({ kind: 'answer', consumer, request, error: answer });
       }
     }
-    emitSideEffect({ kind: 'halt', consumer, reason: error === null ? 'chain' : 'frame' });
+    emitSideEffect({ kind: 'halt', consumer, reason });
   };
 
   // Leaving aborts the connect, or the subscription once it is up, as a disconnect, so its trail still ends. A connect
