@@ -141,8 +141,8 @@ type Watch =
   | {
       kind: 'refused';
       chain: WatchChain;
-      /** Aborted to stop the wait to try the follow again. */
-      retry: AbortController;
+      /** The timer of the wait to try the follow again. */
+      retry: unknown;
     };
 
 /** Why a chain closed: its halt, or `null` for a close on release or unload. */
@@ -165,8 +165,8 @@ type Entry = {
   | { kind: 'unheld' }
   | {
       kind: 'expiring';
-      /** Aborted to stop the countdown to the chain's close. */
-      countdown: AbortController;
+      /** The timer of the countdown to the chain's close. */
+      countdown: unknown;
     }
   | { kind: 'closed'; halt: Halt }
 );
@@ -206,10 +206,9 @@ type PoolEffect =
   | { kind: 'leased' | 'released'; key: string; holder: string }
   | { kind: 'closed'; key: string; halt: Halt }
   | { kind: 'bestBlock'; key: string; blockNumber: number }
-  | { kind: 'modeSet'; mode: PoolKind }
+  | { kind: 'modeSet'; mode: PoolKind; chains: number }
   | { kind: 'buildFailed' | 'followFailed'; key: string; error: unknown }
-  | { kind: 'startTimer'; timer: AbortController; ms: number; event: PoolEvent }
-  | { kind: 'stopTimer'; timer: AbortController }
+  | { kind: 'stopTimer'; timer: unknown }
   | { kind: 'endWatch'; watch: Watch }
   | { kind: 'disconnectLanes'; lanes: ChainLanes };
 
@@ -516,7 +515,7 @@ export function createChainPool({
         return;
       }
       emitState({ ...state, kind: mode });
-      emitSideEffect({ kind: 'modeSet', mode });
+      emitSideEffect({ kind: 'modeSet', mode, chains: [...state.entries.values()].filter(isLive).length });
     },
     watchersChanged({ entries }, _event, { update }) {
       for (const key of entries.keys()) {
@@ -747,7 +746,7 @@ export function createChainPool({
         return;
       case 'modeSet':
         protocolReport.log.event(`${POOL_TAG} ${effect.mode === 'paused' ? 'paused' : 'resumed'}`, {
-          chains: [...machine.state.get().entries.values()].filter(isLive).length,
+          chains: effect.chains,
         });
         return;
       case 'buildFailed':
@@ -764,17 +763,8 @@ export function createChainPool({
           message: `${POOL_TAG} ${getShortKey(effect.key)} the network panel's follow could not open:`,
         });
         return;
-      case 'startTimer': {
-        const handle = timers.setTimeout(() => {
-          machine.update(effect.event);
-        }, effect.ms);
-        effect.timer.signal.addEventListener('abort', () => {
-          timers.clearTimeout(handle);
-        });
-        return;
-      }
       case 'stopTimer':
-        effect.timer.abort();
+        timers.clearTimeout(effect.timer);
         return;
       case 'endWatch':
         endWatch(effect.watch);
@@ -846,14 +836,10 @@ export function createChainPool({
     if (!Number.isFinite(destroyDelay)) {
       return;
     }
-    const countdown = new AbortController();
+    const countdown = timers.setTimeout(() => {
+      transition.update({ kind: 'closeDue', key });
+    }, destroyDelay);
     transition.emitState({ ...entry, kind: 'expiring', countdown });
-    transition.emitSideEffect({
-      kind: 'startTimer',
-      timer: countdown,
-      ms: destroyDelay,
-      event: { kind: 'closeDue', key },
-    });
   }
 
   /** Stops the watchers' follow, or its wait to follow again. */
@@ -866,7 +852,7 @@ export function createChainPool({
         watch.follow.disconnect();
         return;
       case 'refused':
-        watch.retry.abort();
+        timers.clearTimeout(watch.retry);
         return;
     }
   }
@@ -879,15 +865,11 @@ export function createChainPool({
   }
 
   /** Holds the watchers' follow as refused until its gate's wait ends. */
-  function waitToRetry(chain: WatchChain, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
-    const retry = new AbortController();
+  function waitToRetry(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
+    const retry = timers.setTimeout(() => {
+      update({ kind: 'retryDue', key });
+    }, chain.followGate.waitMs());
     emitState({ kind: 'refused', chain, retry });
-    emitSideEffect({
-      kind: 'startTimer',
-      timer: retry,
-      ms: chain.followGate.waitMs(),
-      event: { kind: 'retryDue', key },
-    });
   }
 
   /**
