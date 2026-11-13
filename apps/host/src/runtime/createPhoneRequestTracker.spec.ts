@@ -191,7 +191,7 @@ describe('phone request tracker', () => {
     expect(afterClose).toBeUndefined();
   });
 
-  it('As a dotli integrator, I claim from inside a tracker transition and find nothing, and the request stays claimable', async () => {
+  it('As a dotli integrator, I claim from inside a tracker transition and my claim takes hold once that transition ends', async () => {
     // Given a network hold that claims while the second request is tracked
     let reentrant: PhoneClaim | undefined;
     let holds = 0;
@@ -212,10 +212,33 @@ describe('phone request tracker', () => {
     const claim = tracker.claim(isSignRaw);
     tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED }));
 
+    // Then the claim made inside took the oldest request, and the one after took the next
+    expect(reentrant?.request.body).toEqual(buildSignRawBody('x'));
+    expect(claim?.request.body).toEqual(buildSignRawBody('y'));
+    await expect(reentrant?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
+  });
+
+  it('As a dotli integrator, I claim one request twice from inside a tracker transition and the second claim ends as gone', async () => {
+    // Given a network hold that claims twice while the second request is tracked
+    const reentrant: (PhoneClaim | undefined)[] = [];
+    let holds = 0;
+    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
+      holdNetwork() {
+        holds += 1;
+        if (holds === 2) {
+          reentrant.push(tracker.claim(isSignRaw), tracker.claim(isSignRaw));
+        }
+        return () => {};
+      },
+    });
+    const tap = tracker.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+
+    // When
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
+
     // Then
-    expect(reentrant).toBeUndefined();
-    expect(claim?.request.body).toEqual(buildSignRawBody('x'));
-    await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
+    await expect(reentrant[1]?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
   it('As a dotli integrator, I send a request on a closed tap and find nothing to claim', () => {
