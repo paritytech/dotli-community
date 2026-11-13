@@ -5,6 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import type { Network } from '@dotli/config';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import type { LabelStoreCursor } from '@dotli/resolver';
+import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
 import type { NameListRecord } from '@dotli/storage';
 import { atom } from 'nanostores';
 import { createLandingNameList } from './landingNameList.js';
@@ -94,25 +95,37 @@ describe('landing name list', () => {
     ]);
   });
 
-  it('As a visitor whose sync times out, I see it reported as expected and the lease is still released', async () => {
-    // Given a read that waits out the sync budget
-    const reports = recordReports({ onFinished: onTestFinished });
-    const timeout = Object.assign(new Error('Asset Hub did not sync'), { name: 'NetworkSyncTimeoutError' });
-    const { nameList, events, released } = setupNameList({
-      reads: {
-        readLabelStores: () => Promise.reject(timeout),
-      },
-    });
+  it.each([
+    { failure: 'times out', error: createNamedError('NetworkSyncTimeoutError') },
+    { failure: 'reads an operation the server dropped', error: createNamedError('OperationInaccessibleError') },
+    { failure: 'sends a batch the server refused', error: createNamedError('OperationLimitError') },
+    { failure: 'follows a chain gone disjoint', error: createNamedError('DisjointError') },
+    {
+      failure: 'reads a chain that kept halting',
+      error: Object.assign(new Error('chain halted'), { data: CHAIN_HALTED_ERROR_DATA }),
+    },
+    { failure: 'reads after its follow stopped', error: createNamedError('ApiStoppedError') },
+  ])(
+    'As a visitor whose sync $failure, I see it reported as expected and the lease is still released',
+    async ({ error }) => {
+      // Given a read that fails as the environment makes it
+      const reports = recordReports({ onFinished: onTestFinished });
+      const { nameList, events, released } = setupNameList({
+        reads: {
+          readLabelStores: () => Promise.reject(error),
+        },
+      });
 
-    // When
-    nameList.start();
-    await released;
+      // When
+      nameList.start();
+      await released;
 
-    // Then
-    expect(reports.expected.map(report => report.step)).toEqual(['sync']);
-    expect(reports.exceptions).toEqual([]);
-    expect(events).toContain('released');
-  });
+      // Then
+      expect(reports.expected.map(report => report.step)).toEqual(['sync']);
+      expect(reports.exceptions).toEqual([]);
+      expect(events).toContain('released');
+    },
+  );
 
   it('As a visitor whose sync fails for another reason, I see it reported as a defect and the lease is still released', async () => {
     // Given a read that fails in the code
@@ -227,4 +240,9 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
     opening: opening.promise,
     released: released.promise,
   };
+}
+
+/** An error as a read rejects with it, known by its name. */
+function createNamedError(name: string): Error {
+  return Object.assign(new Error(`${name} in the read`), { name });
 }
