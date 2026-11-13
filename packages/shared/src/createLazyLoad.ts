@@ -1,35 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createDeferred } from './createDeferred.js';
-import { createStateMachine, type MachineTypes } from './createStateMachine.js';
-import { rejectUnhandled } from './rejectUnhandled.js';
+import { createAsyncTaskPool } from './createAsyncTaskPool.js';
 
 type Params<T> = {
   load: () => Promise<T>;
   onFirstMiss?: (error: unknown) => void;
 };
-
-type Caller<T> = ReturnType<typeof createDeferred<T>>;
-
-/**
- * `missed` is true once a load has failed. `asker` is the caller whose ask started the load in flight, so its failure
- * goes to that caller only, and `queued` wait behind it in the order they asked.
- */
-type LoadState<T> =
-  | { kind: 'unloaded'; missed: boolean }
-  | { kind: 'loading'; asker: Caller<T>; queued: readonly Caller<T>[]; missed: boolean }
-  | { kind: 'loaded'; value: T };
-
-type LoadEvent<T> =
-  { kind: 'asked'; caller: Caller<T> } | { kind: 'valueLoaded'; value: T } | { kind: 'loadFailed'; error: unknown };
-
-type LoadEffect<T> =
-  | { kind: 'resolve'; callers: readonly Caller<T>[]; value: T }
-  | { kind: 'reject'; caller: Caller<T>; error: unknown }
-  | { kind: 'firstMissed'; error: unknown };
-
-type LoadMachine<T> = MachineTypes<LoadState<T>, LoadEvent<T>, LoadEffect<T>>;
 
 /**
  * Loads a value on the first call and keeps it for every later one. A failed load rejects the caller that ran it and is
@@ -41,72 +18,27 @@ type LoadMachine<T> = MachineTypes<LoadState<T>, LoadEvent<T>, LoadEffect<T>>;
  * const runtime = await getRuntime(); // later calls get the kept value
  */
 export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promise<T> {
-  const machine = createStateMachine<LoadMachine<T>>({
-    initial: { kind: 'unloaded', missed: false },
-    handlers: {
-      unloaded: {
-        asked({ missed }, { caller }, { emitState, update }) {
-          emitState({ kind: 'loading', asker: caller, queued: [], missed });
-          update(runLoad());
-        },
-      },
-      loading: {
-        asked(state, { caller }, { emitState }) {
-          emitState({ ...state, queued: [...state.queued, caller] });
-        },
-        valueLoaded({ asker, queued }, { value }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'loaded', value });
-          emitSideEffect({ kind: 'resolve', callers: [asker, ...queued], value });
-        },
-        loadFailed({ asker, queued, missed }, { error }, { emitState, emitSideEffect, update }) {
-          emitSideEffect({ kind: 'reject', caller: asker, error });
-          if (!missed) {
-            emitSideEffect({ kind: 'firstMissed', error });
-          }
-          const [next, ...rest] = queued;
-          if (next === undefined) {
-            emitState({ kind: 'unloaded', missed: true });
-            return;
-          }
-          emitState({ kind: 'loading', asker: next, queued: rest, missed: true });
-          update(runLoad());
-        },
-      },
-      loaded: {
-        asked({ value }, { caller }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'resolve', callers: [caller], value });
-        },
-      },
-    },
-    onEffect: effect => {
-      switch (effect.kind) {
-        case 'resolve':
-          for (const caller of effect.callers) {
-            caller.resolve(effect.value);
-          }
-          return;
-        case 'reject':
-          effect.caller.reject(effect.error);
-          return;
-        case 'firstMissed':
-          onFirstMiss?.(effect.error);
-          return;
-      }
-    },
-    onError: rejectUnhandled,
-  });
+  // One load at a time, so callers that overlap a load wait for it and then find it kept, in the order they asked.
+  const loads = createAsyncTaskPool({ poolSize: 1 });
+  // Boxed, so a loaded `null` or `undefined` is kept too.
+  let loaded: { value: T } | undefined;
+  let missed = false;
 
-  return () => {
-    const caller = createDeferred<T>();
-    machine.update({ kind: 'asked', caller });
-    return caller.promise;
-  };
+  return () => loads.call(loadOnce);
 
-  async function runLoad(): Promise<LoadEvent<T>> {
+  async function loadOnce(): Promise<T> {
+    if (loaded !== undefined) {
+      return loaded.value;
+    }
     try {
-      return { kind: 'valueLoaded', value: await load() };
-    } catch (error) {
-      return { kind: 'loadFailed', error };
+      loaded = { value: await load() };
+      return loaded.value;
+    } catch (error: unknown) {
+      if (!missed) {
+        missed = true;
+        onFirstMiss?.(error);
+      }
+      throw error;
     }
   }
 }
