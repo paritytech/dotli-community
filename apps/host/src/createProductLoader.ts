@@ -4,7 +4,7 @@
 // Takes a `.dot` label to a product on screen, or to the screen that says why not. What sits in another frame or
 // origin, and what reloads or writes the page, is passed in. The page's own state is imported.
 
-import { getActiveTldSuffix, isVerifiedSession } from '@dotli/config';
+import { getActiveTldSuffix, isVerifiedSession, type Backend } from '@dotli/config';
 import type { BitswapClient } from '@dotli/bitswap';
 import { createReporter, defineCount } from '@dotli/metrics';
 import type { ProtocolClient } from '@dotli/protocol';
@@ -17,6 +17,7 @@ import {
   toError,
   type HandlerOf,
   type MachineTypes,
+  type Timers,
   type Transition,
 } from '@dotli/shared';
 import type { CachedCid } from '@dotli/storage';
@@ -30,7 +31,7 @@ import { showNoContentError } from './showNoContentError.js';
 import type { SandboxLoad, SandboxLoadReport } from './watchSandboxLoad.js';
 import { applyProductBranding } from './applyProductBranding.js';
 import type { RecentLabels } from './createRecentLabels.js';
-import type { LoadEffect, LoadTelemetry, LoadTelemetryParams } from './createLoadTelemetry.js';
+import type { LoadEffect, LoadTelemetry } from './createLoadTelemetry.js';
 import type { PageCidCache } from './createPageCidCache.js';
 import type { CachedCopy, ServedCopy } from './revalidateCachedCopy.js';
 import type { loadFailureScreen } from './loadFailureScreen.js';
@@ -85,8 +86,6 @@ type LoadState =
       error: Error | null;
     };
 
-type HoldingCoreState = Extract<LoadState, { kind: 'holdingCore' }>;
-
 type LoadEvent =
   | { kind: 'load'; label: string }
   | { kind: 'start' }
@@ -115,11 +114,18 @@ type LoaderEffect =
   | { kind: 'frameHalted' }
   | { kind: 'cidStored'; copy: CachedCopy }
   | { kind: 'cidRevalidated'; copy: ServedCopy }
-  | { kind: 'productShown'; label: string; manifests: ProductManifests };
+  | { kind: 'productShown'; label: string; manifests: ProductManifests }
+  | { kind: 'noContentShown'; label: string };
 
 type LoadMachine = MachineTypes<LoadState, LoadEvent, LoaderEffect>;
 
-type Params = Pick<LoadTelemetryParams, 'backend' | 'skipCidCache' | 'timers'> & {
+type Params = {
+  /** How the page reaches the chains, which the failure screen names and the shield's verdict follows. */
+  backend: Backend;
+  /** True when the settings skip the CID cache, so the load neither reads nor writes it. */
+  skipCidCache: boolean;
+  /** The timers the product's icon budget runs on. The page's own by default. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
   /** Makes the reports of each of the load's effects. */
   report: LoadTelemetry['report'];
   /** Where names and manifests are read. */
@@ -271,22 +277,14 @@ export function createProductLoader(params: Params) {
         namePhase(_state, { phase }, { emitSideEffect }) {
           emitSideEffect({ kind: 'namePhase', phase });
         },
-        nameResolved(state, { cid }, transition) {
-          const { run, manifestsRead } = state;
-          const { emitState, emitSideEffect, update } = transition;
+        nameResolved({ run, manifestsRead }, { cid }, { emitState, emitSideEffect, update }) {
           emitSideEffect({ kind: 'nameResolved', cid });
           // Nothing to launch whatever the manifests say, so it does not wait on them.
           if (cid === null) {
-            try {
-              // Its recent pill stays: the name may still resolve on another network.
-              showNoContentError(run.label);
-            } catch (error) {
-              failLoad(state, { kind: 'stepFailed', error }, transition);
-              return;
-            }
             emitState({ kind: 'ended', error: null });
             emitSideEffect({ kind: 'coreReleased', run });
             emitSideEffect({ kind: 'noContent' });
+            emitSideEffect({ kind: 'noContentShown', label: run.label });
             return;
           }
           emitState({ kind: 'readingManifests', run, cid });
@@ -343,19 +341,18 @@ export function createProductLoader(params: Params) {
       rendering: {
         stepFailed: failLoad,
         rendered(state, _event, transition) {
-          const { emitState, emitSideEffect, update } = transition;
           let stopListening: () => void;
           try {
-            stopListening = listenToProduct(params, update);
+            stopListening = listenToProduct(params, transition.update);
           } catch (error) {
             failLoad(state, { kind: 'stepFailed', error }, transition);
             return;
           }
-          emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
-          emitSideEffect({ kind: 'coreReleased', run: state.run });
+          transition.emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
+          transition.emitSideEffect({ kind: 'coreReleased', run: state.run });
           // Queued behind what the listeners heard as they subscribed, so a failure heard then ends the load before
           // the side work, and an outcome heard then waits in the state until the handoff is reported.
-          update({ kind: 'handOff' });
+          transition.update({ kind: 'handOff' });
         },
       },
       handingOff: {
@@ -396,6 +393,8 @@ export function createProductLoader(params: Params) {
           effect.run.autoHide.settle();
           return;
         case 'coreReleased':
+          // A boot's failure is the render step's to report, and a load that ended before the render reports its own
+          // outcome only.
           void effect.run.coreHold.then(lease => lease.release(), noop);
           return;
         case 'frameHalted':
@@ -422,6 +421,10 @@ export function createProductLoader(params: Params) {
           params.report(effect);
           // Once for the failed load, however many times the user moves between its error screens.
           productState.setError();
+          return;
+        case 'noContentShown':
+          // Its recent pill stays: the name may still resolve on another network.
+          showNoContentError(effect.label);
           return;
         case 'contentSettled':
           // The topbar may fold once the product's content shows.
@@ -459,7 +462,10 @@ export function createProductLoader(params: Params) {
 }
 
 /** Moves to `next`, settles the shield as the render begins, and waits for the product's core. */
-function holdCore(next: HoldingCoreState, { emitState, emitSideEffect, update }: Transition<LoadMachine>): void {
+function holdCore(
+  next: Extract<LoadState, { kind: 'holdingCore' }>,
+  { emitState, emitSideEffect, update }: Transition<LoadMachine>,
+): void {
   emitState(next);
   emitSideEffect({ kind: 'rendering' });
   emitSideEffect({ kind: 'shieldSettled', run: next.run });
