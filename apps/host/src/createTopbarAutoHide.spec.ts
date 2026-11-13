@@ -231,13 +231,17 @@ describe('topbar auto-hide fold', () => {
     // When
     autoHide.arm();
     await advance(HIDE_DELAY_MS * 3);
-    const hiddenWhileHovered = isHidden();
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When the pointer leaves the bar
     setBarHovered(false);
     autoHide.scheduleHide();
     await advance(HIDE_DELAY_MS);
 
     // Then
-    expect([hiddenWhileHovered, isHidden()]).toEqual([false, true]);
+    expect(isHidden()).toBe(true);
   });
 
   it('As a dApp user, I let the bar fold into the capsule and focusing it brings it back', async () => {

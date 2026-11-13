@@ -336,31 +336,27 @@ export function createTopbarAutoHide({
       autoHide.update({ kind: 'revealFocusAsked' });
     },
     /** Registers the bar the auto-hide folds. Returns its release. */
-    registerBar,
+    registerBar: (element: HTMLElement): (() => void) => {
+      bar = element;
+      return () => {
+        if (bar === element) {
+          bar = undefined;
+        }
+      };
+    },
     /** Registers the reveal button, which holds the bar open while it has focus. Returns its release. */
-    registerRevealButton,
+    registerRevealButton: (element: HTMLElement): (() => void) => {
+      revealButton = element;
+      return () => {
+        if (revealButton === element) {
+          revealButton = undefined;
+        }
+      };
+    },
   };
 
   function stop(): void {
     autoHide.update({ kind: 'stopped' });
-  }
-
-  function registerBar(element: HTMLElement): () => void {
-    bar = element;
-    return () => {
-      if (bar === element) {
-        bar = undefined;
-      }
-    };
-  }
-
-  function registerRevealButton(element: HTMLElement): () => void {
-    revealButton = element;
-    return () => {
-      if (revealButton === element) {
-        revealButton = undefined;
-      }
-    };
   }
 
   /** Sends the machine focus, keys, blur, the viewport and a failed product until `signal` aborts. */
