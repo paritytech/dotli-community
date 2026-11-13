@@ -121,14 +121,14 @@ type ChainConnection =
   | { kind: 'connecting'; chain: Chain; engine: LightClientEngine; queued: readonly string[] }
   | { kind: 'closing'; chain: Chain }
   | { kind: 'stopped'; connection: LightClientConnection }
-  | { kind: 'reading'; chain: Chain; connection: LightClientConnection; engine: LightClientEngine }
+  | { kind: 'reading'; chain: Chain; connection: LightClientConnection }
   | { kind: 'ended' };
 
 type RestoringConnection = Extract<ChainConnection, { kind: 'restoring' }>;
+type ReadingConnection = Extract<ChainConnection, { kind: 'reading' }>;
 
 /** What a chain's stored database gave its restore. A store that cannot answer starts the chain cold, as a miss does. */
 type StoredRead = { kind: 'warm' } | { kind: 'cold' } | { kind: 'missed'; error: unknown };
-type ReadingConnection = Extract<ChainConnection, { kind: 'reading' }>;
 
 type ClientEvent =
   | { kind: 'opened'; key: ConnectionKey; chain: Chain }
@@ -264,7 +264,7 @@ export function createLightClient({
       },
       connecting: {
         chainConnected({ chain, engine, queued }, { key, connection }, { emitState, update }) {
-          emitState({ kind: 'reading', chain, connection, engine });
+          emitState({ kind: 'reading', chain, connection });
           update(readResponse(key, connection));
           // A send that fails here halts the chain as a consumer's throw does, so it never reads without `connected`.
           try {
@@ -379,13 +379,14 @@ export function createLightClient({
           emitState({ kind: 'running', engine, heartbeat, connections: restoring });
           // At start, so the first bucket counts a client that is already syncing.
           emitSideEffect({ kind: 'ready', heartbeat });
-          const opened = new Set<string>();
           for (const [key, { chain }] of restoring) {
-            opened.add(chain.genesis);
             update(restore(engine, key, chain.genesis));
           }
           // A connection that left while it waited never restores, so its chain's early read goes here.
-          emitSideEffect({ kind: 'keepPrefetches', genesis: opened });
+          emitSideEffect({
+            kind: 'keepPrefetches',
+            genesis: new Set([...restoring.values()].map(({ chain }) => chain.genesis)),
+          });
         },
         engineFailed({ starter, connections }, { error }, { emitState, emitSideEffect }) {
           const message = `chain ${starter.genesis} connection failed: ${getErrorMessage(error)}`;
