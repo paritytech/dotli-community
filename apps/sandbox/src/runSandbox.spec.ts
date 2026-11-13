@@ -13,6 +13,7 @@ import type { HostMessages } from './createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
 import type { SandboxPage } from './readSandboxContract.js';
 import type { SandboxStep } from './describeSandboxFailure.js';
+import { DecryptionCancelledError } from './errors.js';
 import { runSandbox, type RunSandboxDeps } from './runSandbox.js';
 
 type Failure = {
@@ -389,6 +390,18 @@ describe('runSandbox load failures', () => {
       expect(sandbox.failures).toMatchObject([{ message }]);
     },
   );
+
+  it('As a visitor, I cancel the password prompt and the operator sees it counted as expected, never captured', async () => {
+    // Given a load the visitor ends by cancelling the password prompt
+    const sandbox = createHarness([{ outcome: 'failed', step: 'decrypt', error: new DecryptionCancelledError() }]);
+
+    // When
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
+
+    // Then
+    expect(captured).toEqual([]);
+    expect(expected).toMatchObject([{ step: 'decrypt' }]);
+  });
 
   it('As a visitor leaving mid-load, I tear the frame down and the load shows and reports nothing', async () => {
     // Given

@@ -6,13 +6,7 @@
 
 /// <reference lib="webworker" />
 
-import {
-  createAsyncTaskPool,
-  createDeferred,
-  createStateMachine,
-  type HandlerOf,
-  type MachineTypes,
-} from '@dotli/shared';
+import { createAsyncTaskPool, createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import {
@@ -51,9 +45,6 @@ type Archives = {
   newest: ServedArchive | null;
 };
 
-/** A read-back of the store, which ends with the archives the fetches it held are answered from. */
-type ReadBack = ReturnType<typeof createDeferred<Archives>>;
-
 /**
  * A sweep of the clients that closed. While it lists the open clients, the ids handed over or linked since are `spared`,
  * since the listing may have been taken before they opened.
@@ -61,12 +52,12 @@ type ReadBack = ReturnType<typeof createDeferred<Archives>>;
 type Sweep = { kind: 'idle' } | { kind: 'listing'; spared: ReadonlySet<string> };
 
 /**
- * The archives in memory, and whether the worker has read the store back since it started. `readBack` is the read in
+ * The archives in memory, and whether the worker has read the store back since it started. `reading` has the read in
  * flight, and `missedBefore` says whether a read failed before, since only the first failure is reported to the pages.
  */
 type WorkerState =
   | { kind: 'unread'; archives: Archives; sweep: Sweep; missedBefore: boolean }
-  | { kind: 'reading'; archives: Archives; sweep: Sweep; readBack: ReadBack; missedBefore: boolean }
+  | { kind: 'reading'; archives: Archives; sweep: Sweep; missedBefore: boolean }
   | { kind: 'read'; archives: Archives; sweep: Sweep };
 
 type WorkerEvent =
@@ -81,14 +72,10 @@ type WorkerEvent =
 type WorkerEffect =
   /** A fetch answered from `archive` when it holds the path. */
   | { kind: 'serve'; event: FetchEvent; archive: ServedArchive; pathname: string }
-  /** A fetch answered once `readBack` ends. */
-  | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string; readBack: ReadBack }
-  /** A read-back that ended with the archives its fetches are answered from. */
-  | { kind: 'readEnded'; readBack: ReadBack; archives: Archives }
-  /** A read-back that failed, for the worker's log. */
-  | { kind: 'restoreMissed'; error: unknown }
-  /** The first read-back that failed, for the pages. */
-  | { kind: 'firstRestoreMissed'; error: unknown };
+  /** A fetch answered once the read-back in flight ends. */
+  | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string }
+  /** A read-back that failed, for the worker's log, and for the pages when it is the `first` to fail. */
+  | { kind: 'restoreMissed'; error: unknown; first: boolean };
 
 type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
 
@@ -96,9 +83,7 @@ type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
 const EFFECT_STAGES = {
   serve: 'serve',
   respondAfterRead: 'serve',
-  readEnded: 'restore',
   restoreMissed: 'restore',
-  firstRestoreMissed: 'restore',
 } satisfies Record<WorkerEffect['kind'], ArchiveStage>;
 
 // The build the worker names when a page asks for its version. A build inlines it as a literal, so the worker's bytes
@@ -186,10 +171,8 @@ export function startAppServiceWorker({
           }
           // A restarted worker reads the archives back first, since nginx answers every path with the shell as
           // `text/html`.
-          const readBack: ReadBack = createDeferred();
-          const { archives, sweep, missedBefore } = state;
-          emitState({ kind: 'reading', archives, sweep, readBack, missedBefore });
-          emitSideEffect({ kind: 'respondAfterRead', event, pathname, readBack });
+          emitState({ ...state, kind: 'reading' });
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname });
           update(
             loadPersistedArchives(indexedDB)
               .then(unpackRestored)
@@ -205,15 +188,15 @@ export function startAppServiceWorker({
         clientsClosed: dropClosed,
       },
       reading: {
-        requested({ archives, readBack }, { event, pathname }, { emitSideEffect }) {
+        requested({ archives }, { event, pathname }, { emitSideEffect }) {
           const own = getClientArchive(archives, event.clientId);
           if (own !== null) {
             emitSideEffect({ kind: 'serve', event, archive: own, pathname });
             return;
           }
-          emitSideEffect({ kind: 'respondAfterRead', event, pathname, readBack });
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname });
         },
-        archivesRestored({ archives, sweep, readBack }, { restored }, { emitState, emitSideEffect }) {
+        archivesRestored({ archives, sweep }, { restored }, { emitState }) {
           // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
           const merged: Archives = {
             byClient: new Map([...restored.byClient, ...archives.byClient]),
@@ -221,15 +204,10 @@ export function startAppServiceWorker({
             newest: archives.newest ?? restored.newest,
           };
           emitState({ kind: 'read', archives: merged, sweep });
-          emitSideEffect({ kind: 'readEnded', readBack, archives: merged });
         },
-        restoreMissed({ archives, sweep, readBack, missedBefore }, { error }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'unread', archives, sweep, missedBefore: true });
-          emitSideEffect({ kind: 'restoreMissed', error });
-          if (!missedBefore) {
-            emitSideEffect({ kind: 'firstRestoreMissed', error });
-          }
-          emitSideEffect({ kind: 'readEnded', readBack, archives });
+        restoreMissed(state, { error }, { emitState, emitSideEffect }) {
+          emitState({ ...state, kind: 'unread', missedBefore: true });
+          emitSideEffect({ kind: 'restoreMissed', error, first: !state.missedBefore });
         },
         archiveHanded: handArchive,
         workerLinked: linkWorker,
@@ -287,16 +265,13 @@ export function startAppServiceWorker({
       case 'respondAfterRead':
         effect.event.respondWith(answerAfterRead(effect));
         return;
-      case 'readEnded':
-        effect.readBack.resolve(effect.archives);
-        return;
       case 'restoreMissed':
         // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
         console.error('Failed to restore the archives after a worker restart:', effect.error);
-        return;
-      case 'firstRestoreMissed':
-        // Not awaited: the fetches this read-back held must not wait on the report too.
-        void reportToPages({ stage: 'restore', error: effect.error });
+        if (effect.first) {
+          // Not awaited: the fetches this read-back held must not wait on the report too.
+          void reportToPages({ stage: 'restore', error: effect.error });
+        }
         return;
     }
   }
@@ -342,15 +317,15 @@ export function startAppServiceWorker({
   }
 
   /**
-   * Answers a fetch once `readBack` ends, from its client's archive or the newest, and else from the network. Rejects as
-   * the network's fetch does, or with what the lookup throws.
+   * Answers a fetch once the read-back ends, from its client's archive or the newest, and else from the network. Rejects
+   * as the network's fetch does, or with what the lookup throws.
    */
   function answerAfterRead({
-    readBack,
     event: { request, clientId },
     pathname,
   }: Extract<WorkerEffect, { kind: 'respondAfterRead' }>): Promise<Response> {
-    return readBack.promise.then(archives => {
+    return worker.await().then(() => {
+      const { archives } = worker.state.get();
       const archive = getClientArchive(archives, clientId) ?? archives.newest;
       return (archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request);
     });

@@ -8,13 +8,14 @@ import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { isRecord, realTimers, withTimeout, type Timers } from '@dotli/shared';
-
-import { SANDBOX_ERRORS } from './errors.js';
+import { createDeferred, getErrorName, isRecord, listen, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 const report = createReporter({ flow: 'content' });
 
-/** A failed registration of the sandbox service worker. Tagged `outcome` (error) and `reason` (the error's name). */
+/**
+ * A failed registration of the sandbox service worker. Tagged `outcome` (error) and `reason` (the error's name). A
+ * browser that refuses service workers, and a worker too slow to take control, are counted too.
+ */
 const sandboxSwRegisterMetric = defineCount<'error'>('sandbox.sw_register');
 
 /**
@@ -33,6 +34,12 @@ export type AppServiceWorker = {
   offerReload: () => void;
 };
 
+type RegisterOptions = {
+  waitForFreshController?: boolean;
+  /** The timers the wait for the fresh worker runs on. */
+  timers?: Timers;
+};
+
 type EnsureFreshServiceWorkerParams = {
   /** The build the page expects, and the offer of a reload. */
   app: AppServiceWorker;
@@ -47,21 +54,15 @@ type EnsureFreshServiceWorkerParams = {
 
 /**
  * Registers the worker and settles once it controls the page, or the page goes on without one. Never rejects: a
- * failed registration or wait is logged, captured and counted. `waitForFreshController` is for the full reset path:
- * unregistering does not detach the page's current controller, so it waits for a `controllerchange` rather than
- * proceed against the SW it just wiped. On that path it also settles at once when the browser kept the worker that
- * controls the page, since no `controllerchange` can come.
+ * failed registration or wait is logged and counted, and captured unless the browser refused service workers or the
+ * worker was too slow to take control. `waitForFreshController` is for the full reset path: unregistering does not
+ * detach the page's current controller, so it waits for a `controllerchange` rather than proceed against the SW it just
+ * wiped. On that path it also settles at once when the browser kept the worker that controls the page, since no
+ * `controllerchange` can come.
  */
 export async function registerAppServiceWorker(
   app: AppServiceWorker,
-  {
-    waitForFreshController = false,
-    timers = realTimers,
-  }: {
-    waitForFreshController?: boolean;
-    /** The timers the wait for the fresh worker runs on. */
-    timers?: Timers;
-  } = {},
+  { waitForFreshController = false, timers = realTimers }: RegisterOptions = {},
 ): Promise<void> {
   const { container } = app;
   if (container === null) {
@@ -69,62 +70,80 @@ export async function registerAppServiceWorker(
     return;
   }
 
+  let registration: ServiceWorkerRegistration;
   try {
-    const workerUrl = import.meta.env.DEV
-      ? `/src/${APP_SERVICE_WORKER_NAME}.ts`
-      : `${import.meta.env.BASE_URL}${APP_SERVICE_WORKER_NAME}.js`;
-    const workerScope = import.meta.env.DEV ? '/' : import.meta.env.BASE_URL;
-    const registration = await container.register(workerUrl, {
-      type: 'module',
-      scope: workerScope,
-    });
-
-    if (!waitForFreshController && container.controller) {
-      void ensureFreshServiceWorker({ app, container, registration });
-      return;
-    }
-
-    if (waitForFreshController && isControllerKept(registration, container)) {
-      report.log.event('The reset kept the worker that controls the page');
-      void ensureFreshServiceWorker({ app, container, registration });
-      return;
-    }
-
-    let onControllerChange = (): void => undefined;
-    const controlled = new Promise<void>(resolve => {
-      onControllerChange = () => {
-        resolve();
-      };
-      container.addEventListener('controllerchange', onControllerChange);
-      void container.ready.then(readyRegistration => {
-        // In the reset path only a `controllerchange` counts, so prod the new SW to claim clients sooner.
-        if (!waitForFreshController && container.controller) {
-          resolve();
-        } else if (readyRegistration.active) {
-          readyRegistration.active.postMessage({ type: APP_SERVICE_WORKER_MESSAGES.CLAIM });
-        }
-      });
-    });
-    try {
-      await withTimeout({
-        work: controlled,
-        ms: SANDBOX_TIMEOUTS.SW_READY,
-        timeoutError: () => new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE),
-        timers,
-      });
-    } finally {
-      container.removeEventListener('controllerchange', onControllerChange);
-    }
-
-    void ensureFreshServiceWorker({ app, container, registration });
+    registration = await container.register(
+      import.meta.env.DEV
+        ? `/src/${APP_SERVICE_WORKER_NAME}.ts`
+        : `${import.meta.env.BASE_URL}${APP_SERVICE_WORKER_NAME}.js`,
+      { type: 'module', scope: import.meta.env.DEV ? '/' : import.meta.env.BASE_URL },
+    );
+    await waitForControl({ container, registration, waitForFreshController, timers });
   } catch (error) {
     // The page goes on, since a worker from an earlier visit may still control it and serve the archive.
+    if (error instanceof ServiceWorkerControlTimeoutError || getErrorName(error) === 'SecurityError') {
+      report.expected(error, {
+        step: 'sw_register',
+        metric: sandboxSwRegisterMetric,
+        message: `${APP_LOG_TAG} Service worker unavailable; continuing without one:`,
+      });
+      return;
+    }
     report.defect(error, {
       step: 'sw_register',
       metric: sandboxSwRegisterMetric,
       message: `${APP_LOG_TAG} Service worker registration failed; continuing without one:`,
       tags: { surface: 'sandbox_main' },
     });
+    return;
+  }
+  void ensureFreshServiceWorker({ app, container, registration });
+}
+
+/**
+ * Settles once a worker controls the page. Rejects with a `ServiceWorkerControlTimeoutError` when none takes control in
+ * time, and with what the fresh worker throws when it is prodded to take control.
+ */
+async function waitForControl({
+  container,
+  registration,
+  waitForFreshController,
+  timers,
+}: Pick<EnsureFreshServiceWorkerParams, 'container' | 'registration'> & Required<RegisterOptions>): Promise<void> {
+  if (!waitForFreshController && container.controller) {
+    return;
+  }
+  if (waitForFreshController && isControllerKept(registration, container)) {
+    report.log.event('The reset kept the worker that controls the page');
+    return;
+  }
+  const controlled = createDeferred<undefined>();
+  const stopListening = listen({
+    target: container,
+    type: 'controllerchange',
+    handler: () => {
+      controlled.resolve(undefined);
+    },
+  });
+  container.ready
+    .then(readyRegistration => {
+      // In the reset path only a `controllerchange` counts, so prod the new SW to claim clients sooner.
+      if (!waitForFreshController && container.controller) {
+        controlled.resolve(undefined);
+      } else if (readyRegistration.active) {
+        readyRegistration.active.postMessage({ type: APP_SERVICE_WORKER_MESSAGES.CLAIM });
+      }
+    })
+    .catch(controlled.reject);
+  try {
+    await withTimeout({
+      work: controlled.promise,
+      ms: SANDBOX_TIMEOUTS.SW_READY,
+      timeoutError: () => new ServiceWorkerControlTimeoutError(),
+      timers,
+    });
+  } finally {
+    stopListening();
   }
 }
 
@@ -141,9 +160,36 @@ function isControllerKept(registration: ServiceWorkerRegistration, container: Se
  * check, update or offer is logged, captured and counted, and an update failure the browser expects is counted as
  * expected.
  */
-async function ensureFreshServiceWorker(params: EnsureFreshServiceWorkerParams): Promise<void> {
+async function ensureFreshServiceWorker({
+  app,
+  container,
+  registration,
+}: EnsureFreshServiceWorkerParams): Promise<void> {
+  const expected = app.version;
+  const active = registration.active ?? container.controller;
+  if (expected === undefined || expected === '' || !active) {
+    return;
+  }
   try {
-    await updateIfOutdated(params);
+    const actual = await queryWorkerVersion(active);
+    if (actual === null || actual === expected) {
+      return;
+    }
+    report.log.event('Service worker outdated, updating', { active: actual, expected });
+    registration.update().catch((error: unknown) => {
+      // A failed download rejects with TypeError, a registration a full reset removed with InvalidStateError.
+      const name = getErrorName(error);
+      if (name === 'TypeError' || name === 'InvalidStateError') {
+        report.expected(error, { step: 'sw_update', metric: sandboxSwUpdateMetric });
+        return;
+      }
+      report.defect(error, {
+        step: 'sw_update',
+        metric: sandboxSwUpdateMetric,
+        message: `${APP_LOG_TAG} Service worker update failed:`,
+      });
+    });
+    app.offerReload();
   } catch (error) {
     report.defect(error, {
       step: 'sw_update',
@@ -154,57 +200,17 @@ async function ensureFreshServiceWorker(params: EnsureFreshServiceWorkerParams):
   }
 }
 
-/**
- * Updates a worker whose build is not `app.version` and offers the visitor a reload. A failed update is recorded, not
- * rethrown. Rejects when the version check fails with anything but silence, or when the offer throws.
- */
-async function updateIfOutdated({ app, container, registration }: EnsureFreshServiceWorkerParams): Promise<void> {
-  const expected = app.version;
-  if (expected === undefined || expected === '') {
-    return;
-  }
-  const active = registration.active ?? container.controller;
-  if (!active) {
-    return;
-  }
-  const actual = await queryWorkerVersion(active);
-  if (actual === null || actual === expected) {
-    return;
-  }
-  report.log.event('Service worker outdated, updating', { active: actual, expected });
-  registration.update().catch((error: unknown) => {
-    // A failed download rejects with TypeError, a registration a full reset removed with InvalidStateError.
-    if (error instanceof Error && (error.name === 'TypeError' || error.name === 'InvalidStateError')) {
-      report.expected(error, { step: 'sw_update', metric: sandboxSwUpdateMetric });
-      return;
-    }
-    report.defect(error, {
-      step: 'sw_update',
-      metric: sandboxSwUpdateMetric,
-      message: `${APP_LOG_TAG} Service worker update failed:`,
-    });
-  });
-  app.offerReload();
-}
-
-/** `null` when the SW does not answer in time. */
+/** `null` when the SW does not answer in time. Rejects with what posting the question throws. */
 function queryWorkerVersion(worker: ServiceWorker): Promise<string | null> {
   const channel = new MessageChannel();
-  let silent: Error | undefined;
+  const silent = new Error('the service worker did not answer the version check');
   const answer = new Promise<string | null>(resolve => {
     channel.port1.onmessage = (event: MessageEvent<unknown>) => {
       resolve(isWorkerVersionAnswer(event.data) ? event.data.version : null);
     };
     worker.postMessage({ type: APP_SERVICE_WORKER_MESSAGES.GET_VERSION }, [channel.port2]);
   });
-  return withTimeout({
-    work: answer,
-    ms: SANDBOX_TIMEOUTS.SW_VERSION_ANSWER,
-    timeoutError: () => {
-      silent = new Error('the service worker did not answer the version check');
-      return silent;
-    },
-  })
+  return withTimeout({ work: answer, ms: SANDBOX_TIMEOUTS.SW_VERSION_ANSWER, timeoutError: () => silent })
     .catch((error: unknown) => {
       // A worker slow to wake from idle can miss the wait. It is left as it is, not reported as a failure.
       if (error === silent) {
@@ -222,4 +228,13 @@ function isWorkerVersionAnswer(
   data: unknown,
 ): data is { type: typeof APP_SERVICE_WORKER_MESSAGES.VERSION; version: string } {
   return isRecord(data) && data['type'] === APP_SERVICE_WORKER_MESSAGES.VERSION && typeof data['version'] === 'string';
+}
+
+/** No worker took control of the page in time, such as one slow to install on a busy device. */
+class ServiceWorkerControlTimeoutError extends Error {
+  override name = 'ServiceWorkerControlTimeoutError';
+
+  constructor() {
+    super(`Service Worker not available after ${String(SANDBOX_TIMEOUTS.SW_READY / 1000)}s`);
+  }
 }

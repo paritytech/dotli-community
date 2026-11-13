@@ -139,7 +139,7 @@ runSandbox(
           }),
         registerWorker: async options => {
           await registerAppServiceWorker(appWorker, options);
-          return 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null;
+          return (appWorker.container?.controller ?? null) !== null;
         },
         fetchArchive,
         blockSource,

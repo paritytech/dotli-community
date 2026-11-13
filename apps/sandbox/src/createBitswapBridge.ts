@@ -6,15 +6,7 @@
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
 import { TIMEOUTS, isSiteOrigin } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createPendingReplies,
-  log,
-  createRandomId,
-  realTimers,
-  toError,
-  withTimeout,
-  type Timers,
-} from '@dotli/shared';
+import { createPendingReplies, createRandomId, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 
 const report = createReporter({ flow: 'content' });
 
@@ -117,7 +109,7 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
     try {
       postToHost(parent, { type: 'dotli:bitswap-get', id, cid, frame });
     } catch (error) {
-      log.error(`${BRIDGE_LOG_TAG} bitswap bridge postMessage failed:`, error);
+      // The read rejects with it, and its caller reports it.
       replies.reject(id, toError(error));
     }
     // A reply that never comes is dropped once the relay's budget and a grace have passed, not awaited forever.

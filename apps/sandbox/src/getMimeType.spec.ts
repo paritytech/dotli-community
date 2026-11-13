@@ -11,11 +11,10 @@ describe('getMimeType', () => {
     ['two extensions, the last unknown', 'archive.tar.gz', 'application/octet-stream'],
     ['two extensions, the last known', 'styles.module.css', 'text/css'],
     ['an HTML extension in capitals', 'FILE.HTML', 'text/html'],
-    ['an image extension in capitals', 'image.PNG', 'image/png'],
-    ['a style extension in capitals', 'style.CSS', 'text/css'],
-    ['a relative directory', 'assets/js/app.js', 'application/javascript'],
     ['an absolute directory', '/deep/path/to/image.png', 'image/png'],
     ['a dotfile with no other extension', '.gitignore', 'application/octet-stream'],
+    ['a hash in its name', 'notes#1.pdf', 'application/pdf'],
+    ['an extension named like an object member', 'a.constructor', 'application/octet-stream'],
   ])('As a product developer, I ship a file with %s, %s, and the sandbox serves it as %s', (_shape, path, type) => {
     // Given a product file whose name has that shape
 

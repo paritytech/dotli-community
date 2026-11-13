@@ -21,7 +21,7 @@ export function createPasswordPromptView(options?: { error?: string }): ModalVie
       kind: 'password',
       placeholder: 'Password',
       hint: 'This content is password-protected. Enter the password to decrypt.',
-      ...(options?.error !== undefined && options.error !== '' ? { error: options.error } : {}),
+      ...(options?.error === undefined ? {} : { error: options.error }),
     },
     buttons: [
       { label: 'Cancel', variant: 'cancel', result: 'cancel' },

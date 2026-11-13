@@ -104,15 +104,58 @@ describe('purgeSandboxOriginState', () => {
     await purgeSandboxOriginState(stores);
 
     // Then every other store was wiped, and the blocked one left one breadcrumb
-    expect(wiped).toEqual([
-      'indexedDB:app-db',
-      'caches:assets-v1',
-      'serviceWorker',
-      'sessionStorage',
-      'cookie:theme=',
-      'cookie:theme=',
-    ]);
+    expect(wiped).toEqual(['indexedDB:app-db', 'caches:assets-v1', 'serviceWorker', 'sessionStorage', 'cookie:theme=']);
     expect(expected).toEqual(['origin_purge']);
+  });
+
+  it('As a visitor on a deep link, I ask for a full reset and a cookie the product set without a path is expired on its default path', async () => {
+    // Given a product written at /docs/intro, whose cookie set without a path lives on /docs
+    const { stores } = createOrigin();
+    const written: string[] = [];
+    const deep: SandboxOrigin = {
+      ...stores,
+      getLocalStorage: () => ({ clear: () => undefined }),
+      pathname: '/docs/intro',
+      document: {
+        get cookie() {
+          return 'theme=dark';
+        },
+        set cookie(value: string) {
+          written.push(value);
+        },
+      },
+    };
+
+    // When
+    await purgeSandboxOriginState(deep);
+
+    // Then
+    expect(written.map(value => /path=([^;]*)/.exec(value)?.[1])).toContain('/docs');
+  });
+
+  it('As a visitor on a directory link, I ask for a full reset and a cookie the product set on that directory is expired', async () => {
+    // Given a product written at /docs/, whose cookie was set with path=/docs/
+    const { stores } = createOrigin();
+    const written: string[] = [];
+    const directory: SandboxOrigin = {
+      ...stores,
+      getLocalStorage: () => ({ clear: () => undefined }),
+      pathname: '/docs/',
+      document: {
+        get cookie() {
+          return 'theme=dark';
+        },
+        set cookie(value: string) {
+          written.push(value);
+        },
+      },
+    };
+
+    // When
+    await purgeSandboxOriginState(directory);
+
+    // Then
+    expect(written.map(value => /path=([^;]*)/.exec(value)?.[1])).toContain('/docs/');
   });
 
   it('As a visitor whose database delete is refused, I ask for a full reset and the rest is still wiped while the database part is reported', async () => {
@@ -137,7 +180,7 @@ describe('purgeSandboxOriginState', () => {
     await purgeSandboxOriginState(refusing);
 
     // Then
-    expect(wiped).toEqual(['caches:assets-v1', 'serviceWorker', 'sessionStorage', 'cookie:theme=', 'cookie:theme=']);
+    expect(wiped).toEqual(['caches:assets-v1', 'serviceWorker', 'sessionStorage', 'cookie:theme=']);
     expect(refusals).toEqual(['Failed to delete app-db DB: UnknownError']);
   });
 

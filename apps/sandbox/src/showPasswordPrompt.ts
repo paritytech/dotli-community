@@ -3,17 +3,16 @@
 
 import { modals, type ModalView } from '@dotli/ui';
 
+import { DecryptionCancelledError } from './errors.js';
+
 type Params = {
   /** Opens the dialog and resolves with the visitor's answer. */
   present?: typeof modals.open;
 };
 
-/** What the prompt rejects with when no password was given. */
-export const DECRYPTION_CANCELLED = 'User cancelled decryption';
-
 /**
  * Shows `view`, a password dialog whose `unlock` answer carries the password, and resolves with that password. Rejects
- * with `DECRYPTION_CANCELLED` when the visitor cancels or unlocks with no password.
+ * with a `DecryptionCancelledError` when the visitor cancels or unlocks with no password.
  */
 export async function showPasswordPrompt(
   view: ModalView<'cancel' | 'unlock'>,
@@ -21,7 +20,7 @@ export async function showPasswordPrompt(
 ): Promise<string> {
   const outcome = await present(view);
   if (outcome.result !== 'unlock' || outcome.value === undefined || outcome.value === '') {
-    throw new Error(DECRYPTION_CANCELLED);
+    throw new DecryptionCancelledError();
   }
   return outcome.value;
 }

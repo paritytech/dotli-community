@@ -9,6 +9,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
 import { createCountingEventTarget } from './testing/createCountingEventTarget.js';
+import { SANDBOX_TIMEOUTS } from './timeouts.js';
 
 type CreateControlledContainerParams = {
   /** The worker that controls the page and that the registration holds. */
@@ -75,6 +76,20 @@ function createFreshContainer({
     register: () => Promise.resolve({ active, installing, waiting: null, update: () => Promise.resolve() }),
   } as unknown as ServiceWorkerContainer;
   return { container, events };
+}
+
+/** The errors captured as issues until the spec ends. */
+function recordCaptures(): unknown[] {
+  const captured: unknown[] = [];
+  onTestFinished(
+    bindCaptureSink({
+      exception: error => {
+        captured.push(error);
+      },
+      expected: () => undefined,
+    }),
+  );
+  return captured;
 }
 
 describe('registerAppServiceWorker', () => {
@@ -178,6 +193,65 @@ describe('registerAppServiceWorker', () => {
     expect(sentry.counted('sandbox.sw_register')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
   });
 
+  it('As an operator, I watch a browser that allows no service worker refuse the registration and it is counted as expected, never captured', async () => {
+    // Given a browser that refuses service workers on this origin, as a private window does
+    const captured = recordCaptures();
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const refusal = new DOMException('The operation is insecure.', 'SecurityError');
+    // The registration reads only these two members.
+    const container = {
+      controller: null,
+      register: () => Promise.reject(refusal),
+    } as unknown as ServiceWorkerContainer;
+
+    // When
+    await registerAppServiceWorker({ container, version: undefined, offerReload: () => undefined });
+
+    // Then
+    expect(captured).toEqual([]);
+    expect(sentry.counted('sandbox.sw_register')).toEqual([{ outcome: 'error', reason: 'SecurityError' }]);
+  });
+
+  it('As an operator, I watch a slow worker miss its time to take control and it is counted as expected, never captured', async () => {
+    // Given a page whose fresh worker never takes control
+    const captured = recordCaptures();
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const timers = createManualTimers();
+    const { container, events } = createFreshContainer();
+    const registered = registerAppServiceWorker(
+      { container, version: undefined, offerReload: () => undefined },
+      { waitForFreshController: true, timers },
+    );
+    await events.listened;
+
+    // When its time runs out
+    await timers.advance(SANDBOX_TIMEOUTS.SW_READY);
+    await registered;
+
+    // Then
+    expect(captured).toEqual([]);
+    expect(sentry.counted('sandbox.sw_register')).toEqual([
+      { outcome: 'error', reason: 'ServiceWorkerControlTimeoutError' },
+    ]);
+  });
+
+  it('As an operator, I watch a fresh worker refuse the prod to take control and see it counted while the page goes on', async () => {
+    // Given a page whose fresh worker is already redundant, so it refuses every post
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const redundant = createUnreachableWorker(new DOMException('The worker is redundant', 'InvalidStateError'));
+    const { container } = createFreshContainer();
+    Object.defineProperty(container, 'ready', { value: Promise.resolve({ active: redundant }) });
+
+    // When it registers on the reset path
+    await registerAppServiceWorker(
+      { container, version: undefined, offerReload: () => undefined },
+      { waitForFreshController: true, timers: createManualTimers() },
+    );
+
+    // Then
+    expect(sentry.counted('sandbox.sw_register')).toEqual([{ outcome: 'error', reason: 'InvalidStateError' }]);
+  });
+
   it('As an operator, I watch an outdated worker fail its update for no known reason and see it logged and counted by its error name', async () => {
     // Given a page controlled by a worker from the build before, whose update fails unexpectedly
     const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
@@ -210,15 +284,7 @@ describe('registerAppServiceWorker', () => {
     'As an operator, I watch the browser refuse an update with %s and it is counted as expected under the service worker update metric',
     async (name, refusal) => {
       // Given a page controlled by a worker from the build before, whose update the browser refuses as expected
-      const captured: unknown[] = [];
-      onTestFinished(
-        bindCaptureSink({
-          exception: error => {
-            captured.push(error);
-          },
-          expected: () => undefined,
-        }),
-      );
+      const captured = recordCaptures();
       const counted = createDeferred<undefined>();
       const sentry = bindRecordingSentry({
         onFinished: onTestFinished,

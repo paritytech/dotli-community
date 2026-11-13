@@ -31,14 +31,25 @@ class FakeXhr {
   }
 }
 
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  readonly url: string;
+  constructor(url: string) {
+    this.url = url;
+  }
+}
+
 /** A product page on https://app.example with the APIs the checker wraps, and the violations it reported. */
 function createProductPage({
   globals = {},
   lockedGlobals = {},
+  storageDenied = false,
 }: {
   globals?: Record<string, unknown>;
   /** Globals an extension defined as non-configurable before the checker ran. */
   lockedGlobals?: Record<string, unknown>;
+  /** The browser blocks this origin's storage, so reading either storage throws. */
+  storageDenied?: boolean;
 } = {}) {
   const fetched: unknown[] = [];
   const timers: (() => void)[] = [];
@@ -64,6 +75,15 @@ function createProductPage({
   };
   for (const [name, value] of Object.entries(lockedGlobals)) {
     Object.defineProperty(page, name, { value, writable: true, configurable: false });
+  }
+  if (storageDenied) {
+    for (const name of ['localStorage', 'sessionStorage']) {
+      Object.defineProperty(page, name, {
+        get: () => {
+          throw new DOMException('The operation is insecure.', 'SecurityError');
+        },
+      });
+    }
   }
   const violations: Violation[] = [];
   // The checker wraps a whole page, and the fake carries only the globals it reaches.
@@ -111,6 +131,43 @@ describe('the sandbox checker', () => {
     expect(page.document.created).toEqual(['IFRAME']);
     expect(page.document.cookies).toBe('a=1');
     expect(violations.map(v => v.api)).toEqual(['createElement(iframe)', 'Direct storage access (cookie)']);
+  });
+
+  it('As a product developer, I open a cross-origin request with a method the page cannot post, and it is reported as text', () => {
+    // Given
+    const { page, violations } = createProductPage();
+    const request = new page.XMLHttpRequest();
+
+    // When the method is a function, which a page message cannot carry
+    // The product may pass anything, which the DOM types refuse.
+    Reflect.apply(request.open.bind(request), request, [() => 'GET', 'https://tracker.example/pixel']);
+
+    // Then
+    expect(violations.map(v => typeof v.details?.['method'])).toEqual(['string']);
+  });
+
+  it('As a product developer, I open a socket to another origin and it is reported while it stays a WebSocket', () => {
+    // Given a page with WebSocket
+    const { page, violations } = createProductPage({ globals: { WebSocket: FakeWebSocket } });
+
+    // When
+    const socket = new page.WebSocket('wss://relay.example');
+
+    // Then
+    expect(violations).toEqual([{ api: 'WebSocket', details: { url: 'wss://relay.example' } }]);
+    expect(socket).toBeInstanceOf(page.WebSocket);
+    expect(page.WebSocket.OPEN).toBe(1);
+  });
+
+  it('As a product developer whose browser blocks storage, I write a cookie and it is still reported', () => {
+    // Given a page whose storage the browser blocks
+    const { page, violations } = createProductPage({ storageDenied: true });
+
+    // When
+    page.document.cookie = 'a=1';
+
+    // Then
+    expect(violations.map(v => v.api)).toEqual(['Direct storage access (cookie)']);
   });
 
   it('As a product developer, I use a wallet extension once it registered and only my use is reported, not its registration', () => {

@@ -21,6 +21,7 @@ import {
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
 import { readSandboxContract, type SandboxContract, type SandboxPage } from './readSandboxContract.js';
 import { appRunMetric } from './appRunMetric.js';
+import { DecryptionCancelledError } from './errors.js';
 
 const report = createReporter({ flow: 'content' });
 
@@ -302,6 +303,10 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         appRunMetric.count({ outcome: 'error', reason: 'load_rejected' });
         return;
       case 'loadFailed':
+        if (effect.error instanceof DecryptionCancelledError) {
+          report.expected(effect.error, { step: effect.step, metric: appRunMetric, reason: 'decrypt_cancelled' });
+          return;
+        }
         report.capture(effect.error, {
           step: effect.step,
           tags: { surface: 'sandbox_main', dependency: effect.dependency, attempt: String(effect.attempt) },

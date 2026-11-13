@@ -6,8 +6,8 @@ import { createPasswordPromptView } from './createPasswordPromptView.js';
 
 describe('password prompt dialog', () => {
   it('As a dotli user on a first attempt, I see the prompt and it shows no error', () => {
-    // Given an empty error, as a first attempt has
-    const options = { error: '' };
+    // Given no error, as a first attempt has
+    const options = {};
 
     // When
     const view = createPasswordPromptView(options);
