@@ -137,10 +137,9 @@ describe('validateSandboxParams: v3 cid contract', () => {
     expect(error).toBeInstanceOf(SandboxContractError);
   });
 
-  it('As the sandbox, I accept a contract from an older host that still sends a skipArchiveCache value and leave the flag to the host, which owns the archive cache', () => {
-    // Given a contract from an older host that still sends the flag, with a
-    // value the old validator refused
-    const search = buildSearch({ skipArchiveCache: 'yes' });
+  it('As the sandbox, I accept a contract that carries a param I do not read and ignore it', () => {
+    // Given a contract with a param outside the contract
+    const search = buildSearch({ unknownParam: 'yes' });
 
     // When the sandbox validates it.
     const params = validateSandboxParams(search);
