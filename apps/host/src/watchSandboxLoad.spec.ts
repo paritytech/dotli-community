@@ -61,20 +61,6 @@ describe('watchSandboxLoad', () => {
     expect(heard).toEqual([{ outcome: 'failed', failedStep: 'content_fetch' }]);
   });
 
-  it('As a visitor, my app frame names a step that is not a token and I hear failed with no step', () => {
-    // Given
-    const frame = createSandboxFrame();
-    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
-    const heard: SandboxLoadReport[] = [];
-    load.subscribeOutcomes(report => heard.push(report));
-
-    // When
-    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'Failed: <script>' });
-
-    // Then
-    expect(heard).toEqual([{ outcome: 'failed', failedStep: undefined }]);
-  });
-
   it('As a visitor, my app frame clears the screen for its password prompt and later fails, and I hear the clear first and then failed with its step', () => {
     // Given a watch that records what it hears, in order
     const frame = createSandboxFrame();

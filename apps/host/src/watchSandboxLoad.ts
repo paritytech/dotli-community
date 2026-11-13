@@ -5,7 +5,7 @@
 // how its load ended. The sandbox speaks within seconds of starting. A frame whose origin the browser blocks, or whose
 // page never runs, says nothing, and without a deadline the load would wait for it for good.
 
-import { isLoadedOutcome, type SandboxChannel, type SandboxLoadOutcome } from '@dotli/sandbox-wire';
+import type { SandboxChannel, SandboxLoadOutcome } from '@dotli/sandbox-wire';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createListenerSet,
@@ -17,7 +17,7 @@ import {
   type Timers,
 } from '@dotli/shared';
 
-/** What the sandbox reported about how its load ended, its failed step cleaned for a tag. */
+/** What the sandbox reported about how its load ended. */
 export type SandboxLoadReport = { outcome: SandboxLoadOutcome; failedStep: string | undefined };
 
 export type SandboxLoad = ReturnType<typeof watchSandboxLoad>;
@@ -63,9 +63,6 @@ type SandboxLoadMachine = MachineTypes<SandboxLoadState, SandboxLoadEvent, Sandb
 
 /** How long the sandbox has to speak once it was handed the content. */
 const SANDBOX_SILENCE_MS = 30_000;
-
-// Becomes a Sentry tag from another origin, so anything but a short snake_case token is dropped.
-const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
 
 const report = createReporter({ flow: 'content' });
 const sandboxLoadTransitionMetric = defineCount<'error'>('sandbox_load.transition');
@@ -129,7 +126,7 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
             // A `done` without an outcome only clears the screen for a prompt the sandbox shows before its content.
             update({ kind: 'doneHeard' });
             if (outcome !== undefined) {
-              update({ kind: 'outcomeHeard', report: toReport(outcome, failedStep) });
+              update({ kind: 'outcomeHeard', report: { outcome, failedStep } });
             }
           });
           emitState({ kind: 'unheard', stopListening });
@@ -251,12 +248,4 @@ export class SandboxSilentError extends Error {
     super(`The app frame sent nothing within ${String(SANDBOX_SILENCE_MS / 1000)}s`);
     this.name = 'SandboxSilentError';
   }
-}
-
-/** The outcome a `done` carries, its failed step cleaned for a tag. */
-function toReport(outcome: SandboxLoadOutcome, failedStep: string | undefined): SandboxLoadReport {
-  if (isLoadedOutcome(outcome) || failedStep === undefined || !FAILED_STEP_RE.test(failedStep)) {
-    return { outcome, failedStep: undefined };
-  }
-  return { outcome, failedStep };
 }

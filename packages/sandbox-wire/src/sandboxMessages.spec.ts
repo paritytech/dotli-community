@@ -67,6 +67,18 @@ describe('sandbox messages', () => {
     expect(received).toEqual({ type: 'dotli:loading-status' });
   });
 
+  it.each([
+    ['a step that is not a token', { outcome: 'failed', failedStep: 'Failed: <script>' }],
+    ['a step beside a loaded outcome', { outcome: 'loaded', failedStep: 'content_fetch' }],
+    ['a step without an outcome', { failedStep: 'content_fetch' }],
+  ])('As the host, I drop %s from a loading status', (_name, fields) => {
+    // When
+    const received = parseSandboxToHostMessage({ type: 'dotli:loading-status', done: true, ...fields });
+
+    // Then
+    expect(received).not.toHaveProperty('failedStep');
+  });
+
   it('As the sandbox, I read a block the host fetched with its bytes', () => {
     // Given
     const bytes = new Uint8Array([1, 2]);

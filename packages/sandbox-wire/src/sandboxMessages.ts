@@ -25,6 +25,7 @@ export type LoadingStatusMessage = {
   /** Without an `outcome` it only clears the screen for a prompt the sandbox shows before its content loads. */
   done?: true;
   outcome?: SandboxLoadOutcome;
+  /** The step a failed load stopped at, as a short snake_case token. Read only beside a `failed` outcome. */
   failedStep?: string;
 };
 
@@ -110,6 +111,10 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+// The host tags its Sentry reports with a failed step from another origin, so anything but a short snake_case token is
+// dropped.
+const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
+
 function parseLoadingStatus(data: Record<string, unknown>): LoadingStatusMessage {
   const { message, done, outcome, failedStep } = data;
   return {
@@ -117,7 +122,9 @@ function parseLoadingStatus(data: Record<string, unknown>): LoadingStatusMessage
     ...(typeof message === 'string' ? { message } : {}),
     ...(done === true ? { done } : {}),
     ...(outcome === 'loaded' || outcome === 'failed' ? { outcome } : {}),
-    ...(typeof failedStep === 'string' ? { failedStep } : {}),
+    ...(outcome === 'failed' && typeof failedStep === 'string' && FAILED_STEP_RE.test(failedStep)
+      ? { failedStep }
+      : {}),
   };
 }
 
