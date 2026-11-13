@@ -105,11 +105,7 @@ type CoreLoginEvent =
   | { kind: 'roundEnded' };
 
 type CoreLoginEffect =
-  | { kind: 'acquire'; id: symbol }
-  | { kind: 'connect'; lease: CoreLease }
-  | { kind: 'request'; reason: CoreLogin['reason']; lease: CoreLease; connection: CoreConnection }
   | { kind: 'close'; lease: CoreLease; connection: CoreConnection }
-  | { kind: 'judge'; answered: DotliAuthState }
   | { kind: 'release'; lease: CoreLease }
   | { kind: 'answer'; login: Pick<CoreLogin, 'caller' | 'stopWatching'>; outcome: LoginOutcome }
   | { kind: 'reject'; login: CoreLogin; error: unknown }
@@ -203,7 +199,12 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
             ended: false,
           };
           emitState({ kind: 'acquiring', login });
-          emitSideEffect({ kind: 'acquire', id: login.id });
+          update(
+            core.acquire().then(
+              lease => ({ kind: 'leased', id: login.id, lease }),
+              (error: unknown) => ({ kind: 'bootFailed', id: login.id, error }),
+            ),
+          );
         },
         leased: releaseStaleLease,
         bootFailed: reportStaleBootFailure,
@@ -215,7 +216,12 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
             return;
           }
           transition.emitState({ kind: 'connecting', login: state.login, lease: event.lease });
-          transition.emitSideEffect({ kind: 'connect', lease: event.lease });
+          transition.update(
+            event.lease.connect().then(
+              connection => ({ kind: 'connected', connection }),
+              (error: unknown) => ({ kind: 'connectFailed', error }),
+            ),
+          );
         },
         bootFailed(state, event, transition) {
           if (event.id !== state.login.id) {
@@ -241,7 +247,21 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
             return;
           }
           transition.emitState({ kind: 'requesting', login });
-          transition.emitSideEffect({ kind: 'request', reason: login.reason, lease, connection });
+          const provider = ownCoreConnection(connection);
+          transition.update(
+            // Started in the chain, so a request that throws before it returns a promise still closes its connection.
+            Promise.resolve()
+              .then(() => requestCoreLogin(provider, { reason: login.reason }))
+              // Read as the core answers, so a state reported since is the core's word on this login.
+              .then(() => auth.get())
+              .finally(() => {
+                closeStep(provider, lease);
+              })
+              .then(
+                answered => ({ kind: 'requestAnswered', answered }),
+                (error: unknown) => ({ kind: 'requestFailed', error }),
+              ),
+          );
         },
         connectFailed({ login, lease }, { error }, transition) {
           failLogin(login, error, transition);
@@ -308,53 +328,8 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
     },
     onEffect(effect) {
       switch (effect.kind) {
-        case 'acquire': {
-          const { id } = effect;
-          machine.update(
-            core.acquire().then(
-              lease => ({ kind: 'leased', id, lease }),
-              (error: unknown) => ({ kind: 'bootFailed', id, error }),
-            ),
-          );
-          return;
-        }
-        case 'connect':
-          machine.update(
-            effect.lease.connect().then(
-              connection => ({ kind: 'connected', connection }),
-              (error: unknown) => ({ kind: 'connectFailed', error }),
-            ),
-          );
-          return;
-        case 'request': {
-          const { reason, lease } = effect;
-          const provider = ownCoreConnection(effect.connection);
-          machine.update(
-            // Started in the chain, so a request that throws before it returns a promise still closes its connection.
-            Promise.resolve()
-              .then(() => requestCoreLogin(provider, { reason }))
-              // Read as the core answers, so a state reported since is the core's word on this login.
-              .then(() => auth.get())
-              .finally(() => {
-                closeStep(provider, lease);
-              })
-              .then(
-                answered => ({ kind: 'requestAnswered', answered }),
-                (error: unknown) => ({ kind: 'requestFailed', error }),
-              ),
-          );
-          return;
-        }
         case 'close':
           closeStep(ownCoreConnection(effect.connection), effect.lease);
-          return;
-        case 'judge':
-          machine.update(
-            readSignInOutcome({ state: auth.get(), answered: effect.answered, isLocalWallet, storedSession }).then(
-              outcome => ({ kind: 'judged', outcome }),
-              (error: unknown) => ({ kind: 'judgeFailed', error }),
-            ),
-          );
           return;
         case 'release':
           effect.lease.release();
@@ -404,32 +379,37 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
     core.cancelPairing();
   }
 
-  return createAuthCommands({ auth, login, cancelPairing });
-}
+  /**
+   * Answers how the sign-in ended once it did: the core reported the account signed in and, for a paired core, the
+   * page's copy holds a session. The core may report before its write lands, and the order is its own, so each change
+   * of either judges again. A write of the session that failed, or a failed read of it, rejects, and a round that ended
+   * answers cancelled.
+   */
+  function judge(login: CoreLogin, answered: DotliAuthState, transition: Transition<CoreLoginMachine>): void {
+    if (login.writeFailure !== null) {
+      transition.emitState({ kind: 'idle' });
+      transition.emitSideEffect({
+        kind: 'reject',
+        login,
+        error: new Error('The paired session could not be stored', { cause: login.writeFailure.error }),
+      });
+      return;
+    }
+    if (login.ended) {
+      transition.emitSideEffect({ kind: 'loginCompleted', outcome: 'cancelled' });
+      answerLogin(login, CANCELLED, transition);
+      return;
+    }
+    transition.emitState({ kind: 'judging', login, answered, again: false });
+    transition.update(
+      readSignInOutcome({ state: auth.get(), answered, isLocalWallet, storedSession }).then(
+        outcome => ({ kind: 'judged', outcome }),
+        (error: unknown) => ({ kind: 'judgeFailed', error }),
+      ),
+    );
+  }
 
-/**
- * Answers how the sign-in ended once it did: the core reported the account signed in and, for a paired core, the
- * page's copy holds a session. The core may report before its write lands, and the order is its own, so each change
- * of either judges again. A write of the session that failed, or a failed read of it, rejects, and a round that ended
- * answers cancelled.
- */
-function judge(login: CoreLogin, answered: DotliAuthState, transition: Transition<CoreLoginMachine>): void {
-  if (login.writeFailure !== null) {
-    transition.emitState({ kind: 'idle' });
-    transition.emitSideEffect({
-      kind: 'reject',
-      login,
-      error: new Error('The paired session could not be stored', { cause: login.writeFailure.error }),
-    });
-    return;
-  }
-  if (login.ended) {
-    transition.emitSideEffect({ kind: 'loginCompleted', outcome: 'cancelled' });
-    answerLogin(login, CANCELLED, transition);
-    return;
-  }
-  transition.emitState({ kind: 'judging', login, answered, again: false });
-  transition.emitSideEffect({ kind: 'judge', answered });
+  return createAuthCommands({ auth, login, cancelPairing });
 }
 
 /** Ends the login with `outcome`. */
