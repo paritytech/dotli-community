@@ -284,7 +284,7 @@ describe('createRawApi', () => {
       expect(askedKeys(follow).map(keys => keys.length)).toEqual([256, 44]);
     });
 
-    it('As the resolver on a server that discards the last two keys of a call, I still get every value', async () => {
+    it('As the resolver on a server that discards the last two keys of a call, I read three slots and get every value', async () => {
       // Given every slot set, and a server that discards the tail of the first call
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -308,7 +308,7 @@ describe('createRawApi', () => {
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1]), new Uint8Array([1])]);
     });
 
-    it('As the resolver on a server that answers in two item events, I get the values of both', async () => {
+    it('As the resolver on a server that answers in two item events, I read two slots and get the values of both', async () => {
       // Given a server that sends each item in its own event
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -331,7 +331,7 @@ describe('createRawApi', () => {
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
     });
 
-    it('As the resolver, I resolve the trie ids of two contracts in one main-trie call, null for an account that is not a contract', async () => {
+    it('As the resolver, I resolve the trie ids of two contracts and an account in one main-trie call and get null for the account that is not a contract', async () => {
       // Given two contracts and an account that is not one
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -361,7 +361,7 @@ describe('createRawApi', () => {
       );
     });
 
-    it('As the resolver, a batch the light client cannot serve yet is retried until it is', async () => {
+    it('As the resolver, I read a batch the light client cannot serve yet and it is retried until it answers', async () => {
       // Given a light client that cannot serve the first call
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client, now: () => 0 });
@@ -381,7 +381,7 @@ describe('createRawApi', () => {
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
     });
 
-    it('As the resolver, a batch in flight when the follow stops rejects', async () => {
+    it('As the resolver, I wait on a batch retry and the read fails as stopped when the follow stops', async () => {
       // Given a batch waiting to retry a call the light client cannot serve
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
