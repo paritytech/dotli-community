@@ -72,12 +72,12 @@ function createSandboxUrl({
 }
 
 /**
- * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `askRerender` replaces its ask to
- * the host when given.
+ * A sandbox whose every load ends with the next of `outcomes`, then with the last one. `askRerender` and `askNavigate`
+ * replace its asks to the host when given.
  */
 function createHarness(
   outcomes: LoadOutcome[],
-  { askRerender }: { askRerender?: HostMessages['askRerender'] } = {},
+  { askRerender, askNavigate }: Partial<Pick<HostMessages, 'askRerender' | 'askNavigate'>> = {},
 ): Harness {
   const loads: LoadInput[] = [];
   const failures: Failure[] = [];
@@ -106,9 +106,11 @@ function createHarness(
         (() => {
           events.push('ask rerender');
         }),
-      askNavigate: to => {
-        events.push(`navigate ${to}`);
-      },
+      askNavigate:
+        askNavigate ??
+        (to => {
+          events.push(`navigate ${to}`);
+        }),
     },
     tab: {
       openApp: () => {
@@ -578,12 +580,13 @@ describe('runSandbox failure actions', () => {
 
   it('As a visitor whose failure action throws, I keep the failure on screen, and the operator sees the throw', async () => {
     // Given a failure whose ask to the host throws
-    const sandbox = createHarness([archiveIndexFailed]);
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const broken = new Error('The host window is gone');
-    sandbox.deps.hostMessages.askNavigate = () => {
-      throw broken;
-    };
+    const sandbox = createHarness([archiveIndexFailed], {
+      askNavigate: () => {
+        throw broken;
+      },
+    });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
     // When its action is pressed

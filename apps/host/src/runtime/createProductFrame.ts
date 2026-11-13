@@ -36,6 +36,7 @@ import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ProductFacts } from '../getProductFacts.js';
 import { openLanding } from '../getLandingUrl.js';
+import { markAndReload } from '../createContinuation.js';
 
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
@@ -284,7 +285,7 @@ const CORE_DEATH_BUDGET = 3;
 const BROWSER_PAGE: ProductFramePage = {
   location: () => window.location,
   reload: () => {
-    window.location.reload();
+    markAndReload('reload_button');
   },
   goHome: openLanding,
 };

@@ -121,6 +121,8 @@ function configure(params: SandboxParams): void {
   }
 }
 
+const hostUrls = getHostUrls(window.location, { baseDomain: BASE_DOMAIN });
+
 runSandbox(
   { href: window.location.href, framed: window.self !== window.top },
   {
@@ -154,11 +156,11 @@ runSandbox(
     hostMessages,
     tab: {
       openApp: () => {
-        window.location.assign(getHostUrls(window.location, { baseDomain: BASE_DOMAIN }).app);
+        window.location.assign(hostUrls.app);
       },
       openLanding: () => {
         // A page off its app origin was framed by an unknown embedder, so it opens dot.li apart.
-        window.open(getHostUrls(window.location, { baseDomain: BASE_DOMAIN }).landing, '_blank', 'noopener');
+        window.open(hostUrls.landing, '_blank', 'noopener');
       },
     },
     ui,

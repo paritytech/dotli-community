@@ -50,7 +50,7 @@ export type RunSandboxDeps = {
    * page.
    */
   hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender' | 'askNavigate'>;
-  /** Moves this sandbox's own tab, for a sandbox no dot.li host frames. */
+  /** Takes the visitor to dot.li from a sandbox no dot.li host frames: the app in this tab, or the landing in a new one. */
   tab: { openApp: () => void; openLanding: () => void };
   /** Shows a failure, with the action that recovers from it, and that a retry started. */
   ui: Pick<SandboxUi, 'showError' | 'showRetryScreen'>;
