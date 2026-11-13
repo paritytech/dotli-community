@@ -312,7 +312,7 @@ export function createLoadingController({
           };
           moveBar(next, { percent: base }, transition);
           stopCrawl(band);
-          // Enters the step's stage as setLoadingStage does, right after this transition.
+          // The step's stage begins right after this transition.
           transition.update({ kind: 'stageSet', stage: phase.stage });
         },
         progressNudged(state, { fraction, stage }, transition) {

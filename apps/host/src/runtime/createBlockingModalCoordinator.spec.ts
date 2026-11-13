@@ -128,6 +128,36 @@ describe('blocking modal queue', () => {
     await expect(next).resolves.toBe('shown');
   });
 
+  it('As a dotli integrator, I dispose the shown host and the next one together and the prompt after them runs once', async () => {
+    // Given a shown prompt that, once let through, disposes its own host and the next, with a third host waiting
+    const coordinator = createBlockingModalCoordinator();
+    const gateScope = coordinator.createScope();
+    const firstScope = coordinator.createScope();
+    const secondScope = coordinator.createScope();
+    const thirdScope = coordinator.createScope();
+    onTestFinished(() => {
+      thirdScope.dispose();
+    });
+    const gate = createDeferred<undefined>();
+    const opened = gateScope.enqueue(() => gate.promise);
+    const first = firstScope.enqueue(() => {
+      firstScope.dispose();
+      secondScope.dispose();
+      return new Promise<never>(() => {});
+    });
+    const second = secondScope.enqueue(() => 'second');
+    const third = vi.fn(() => new Promise<never>(() => {}));
+    void thirdScope.enqueue(third).catch(() => undefined);
+
+    // When the gate lets the first prompt through
+    gate.resolve(undefined);
+    await opened;
+    await Promise.allSettled([first, second]);
+
+    // Then the third host's prompt runs once
+    expect(third).toHaveBeenCalledTimes(1);
+  });
+
   it('As a dotli integrator, I dispose a host as its prompt comes up and the prompt never runs', async () => {
     // Given a listener of the counts that leaves the product as soon as a prompt shows
     const bar = createCountsSink({

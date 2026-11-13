@@ -13,8 +13,6 @@ const blockingModalTransitionMetric = defineCount<'error'>('blocking_modal.trans
 /** Keeps the prompt slot taken until `promise` settles. Call it before the task returns. */
 export type HoldSlot = (promise: Promise<unknown>) => void;
 
-type BlockingModalTask<T> = (signal: AbortSignal, hold: HoldSlot) => Promise<T> | T;
-
 /** Prompts queued behind the one on screen, and whether one is up. */
 export type BlockingModalCounts = {
   waiting: number;
@@ -47,7 +45,7 @@ type CoordinatorState =
 
 type CoordinatorEvent =
   | { kind: 'enqueued'; prompt: Prompt }
-  | { kind: 'taskDue' }
+  | { kind: 'taskDue'; prompt: Prompt }
   | { kind: 'answered'; prompt: Prompt; answer: () => void }
   | { kind: 'taskFailed'; prompt: Prompt; error: unknown }
   | { kind: 'held'; prompt: Prompt; promise: Promise<unknown> }
@@ -77,9 +75,10 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
       },
       shown: {
         enqueued: queuePrompt,
-        taskDue({ prompt }, _event, { update }) {
-          // The counts report just before may have disposed the scope. Its `scopeAborted` is next.
-          if (prompt.signal.aborted) {
+        taskDue(state, { prompt }, { update }) {
+          // The prompt may have left the screen before its task was due, and the counts report just before may have
+          // disposed its scope, whose `scopeAborted` is next.
+          if (prompt !== state.prompt || prompt.signal.aborted) {
             return;
           }
           const hold: HoldSlot = promise => {
@@ -181,7 +180,7 @@ export function createBlockingModalCoordinator({ report: reportCounts = () => un
          * counts, taken until it settles or the scope is disposed, so no other prompt covers what it shows. Rejects
          * with an AbortError when the scope is disposed before the task answers, so a caller must handle it.
          */
-        enqueue<T>(task: BlockingModalTask<T>): Promise<T> {
+        enqueue<T>(task: (signal: AbortSignal, hold: HoldSlot) => Promise<T> | T): Promise<T> {
           if (signal.aborted) {
             return Promise.reject(toBlockingModalAbortError(signal.reason));
           }
@@ -260,7 +259,7 @@ function showNext(state: CoordinatorState, queue: readonly Prompt[], transition:
     return;
   }
   emitCounted(state, { kind: 'shown', prompt, holds: 0, queue: rest }, transition);
-  transition.update({ kind: 'taskDue' });
+  transition.update({ kind: 'taskDue', prompt });
 }
 
 /** Moves to `next`, and tells the bar when the counts change. */

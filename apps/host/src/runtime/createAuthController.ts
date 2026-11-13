@@ -27,7 +27,6 @@ import {
   type AuthModalEvent,
   type AuthModalMachine,
   type CloseAuthModalParams,
-  type InPagePhrase,
   type LiveModal,
   type ModalLease,
   type OpenAuthModalParams,
@@ -37,7 +36,7 @@ import {
 } from './signInRoute.js';
 import type { AuthState } from './state/authState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
-import { authModalState, type AuthModalView } from '../state/authModalState.js';
+import { authModalState } from '../state/authModalState.js';
 import type { toEntropy } from './recoveryPhrase.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
 import { runAuthCommand } from './runAuthCommand.js';
@@ -82,21 +81,6 @@ type Params = {
   elsewhere: () => boolean;
 };
 
-const UNREACHABLE_VIEW: AuthModalView = {
-  kind: 'error',
-  message: 'The saved session cannot be read',
-  retry: true,
-  pending: false,
-  title: "Can't reach your saved sign-in",
-  subtitle: 'dot.li could not check whether you are signed in. Try again in a moment.',
-};
-
-/** A sign-in that reads the saved session again first: how the modal opens, and the round that reads. */
-type StartRereadParams = { open: OpenAuthModalParams; round: Extract<SignInRound, { kind: 'rereading' }> };
-
-/** The events of the route's round, which the round's own handlers take. */
-type RoundEventKind = 'windowEnded' | 'resultWritten' | 'resultFailed' | 'phraseLoaded' | 'phraseMissed';
-
 export type AuthController = ReturnType<typeof createAuthController>;
 
 /** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
@@ -115,15 +99,16 @@ export function createAuthController({
     runCommand: command => runAuthCommand(command, async () => (await bridge()).authCommands),
   });
 
-  /** Loads the phrase check and the bridge together. Rejects when either fails to load. */
-  async function loadInPagePhrase(): Promise<InPagePhrase> {
-    const [phraseCheck, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridge()]);
-    return { toEntropy: phraseCheck.toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
-  }
-
   const route =
     handoff === null
-      ? createInPageSignIn({ inPagePhrase: loadInPagePhrase, modal: modalSteps })
+      ? createInPageSignIn({
+          // The phrase check and the bridge load together.
+          inPagePhrase: async () => {
+            const [phraseCheck, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridge()]);
+            return { toEntropy: phraseCheck.toEntropy, useLocalWallet: walletSwitch.useLocalWallet };
+          },
+          modal: modalSteps,
+        })
       : createWindowSignIn({
           handoff,
           applyResult: async result => (await bridge()).applyWindowResult(result),
@@ -132,7 +117,12 @@ export function createAuthController({
           modal: modalSteps,
         });
 
-  const handleRound = nest<AuthModalMachine, 'live', SignInRoundMachine, RoundEventKind>({
+  const handleRound = nest<
+    AuthModalMachine,
+    'live',
+    SignInRoundMachine,
+    'windowEnded' | 'resultWritten' | 'resultFailed' | 'phraseLoaded' | 'phraseMissed'
+  >({
     find: (state, event) => (event.round === state.round ? state.round : null),
     store: (state, _event, round) => ({ ...state, round }),
     handlers: route.rounds,
@@ -140,12 +130,12 @@ export function createAuthController({
 
   /**
    * Starts a sign-in, or while the saved session cannot be reached reads it again first, since a pairing started while
-   * the store is down would lose its session.
+   * the store is down would lose its session. A sign-in already waiting goes on, so its outcome is not lost.
    */
   const askLogin: HandlerOf<AuthModalMachine, 'live', 'loginAsked'> = (state, event, transition) => {
     const { reason, label } = event.params;
-    if (authViews.isSessionUnreachable(state.auth)) {
-      startReread(state, { open: { reason, label }, round: { kind: 'rereading', asked: 'login', reason } }, transition);
+    if (!isWaiting(state.round) && authViews.isSessionUnreachable(state.auth)) {
+      startReread(state, { asked: 'login', open: { reason, label } }, transition);
       return;
     }
     if (authViews.getSignedInSession(state.auth) !== null) {
@@ -153,10 +143,13 @@ export function createAuthController({
     }
     route.startLogin(state, event, transition);
   };
-  /** Asks for a recovery phrase, or while the saved session cannot be reached reads it again first. */
+  /**
+   * Asks for a recovery phrase, or while the saved session cannot be reached reads it again first. A sign-in already
+   * waiting goes on.
+   */
   const askPhrase: HandlerOf<AuthModalMachine, 'live', 'phraseAsked'> = (state, event, transition) => {
-    if (authViews.isSessionUnreachable(state.auth)) {
-      startReread(state, { open: {}, round: { kind: 'rereading', asked: 'phrase', reason: undefined } }, transition);
+    if (!isWaiting(state.round) && authViews.isSessionUnreachable(state.auth)) {
+      startReread(state, { asked: 'phrase', open: {} }, transition);
       return;
     }
     route.importPhrase(state, event, transition);
@@ -187,7 +180,7 @@ export function createAuthController({
         /** The saved session was read again, so the sign-in it held up goes on, or the modal says why it cannot. */
         rereadEnded(state, { round }, transition) {
           // A modal closed or moved on meanwhile stays as it is.
-          if (round !== state.round || round.kind !== 'rereading') {
+          if (round !== state.round) {
             return;
           }
           if (authViews.isSessionUnreachable(state.auth)) {
@@ -205,7 +198,7 @@ export function createAuthController({
         rereadFailed(state, { round, error }, transition) {
           transition.emitSideEffect({ kind: 'rereadLogged', error });
           // A modal closed or moved on meanwhile stays as it is.
-          if (round !== state.round || round.kind !== 'rereading') {
+          if (round !== state.round) {
             return;
           }
           showRereadMissed(state, round, transition);
@@ -422,13 +415,14 @@ export function createAuthController({
    */
   function startReread(
     state: LiveModal,
-    { open, round }: StartRereadParams,
+    { asked, open }: { asked: 'login' | 'phrase'; open: OpenAuthModalParams },
     transition: Transition<AuthModalMachine>,
   ): void {
     const opened = modalSteps.open(state, open, transition);
     if (opened === null) {
       return;
     }
+    const round: Extract<SignInRound, { kind: 'rereading' }> = { kind: 'rereading', asked, reason: open.reason };
     transition.emitState({ ...opened, round });
     transition.update(
       bridge()
@@ -546,5 +540,16 @@ function showRereadMissed(
   { asked }: Extract<SignInRound, { kind: 'rereading' }>,
   transition: Transition<AuthModalMachine>,
 ): void {
-  showView({ ...state, round: { kind: 'rereadMissed', asked } }, UNREACHABLE_VIEW, transition);
+  showView(
+    { ...state, round: { kind: 'rereadMissed', asked } },
+    {
+      kind: 'error',
+      message: 'The saved session cannot be read',
+      retry: true,
+      pending: false,
+      title: "Can't reach your saved sign-in",
+      subtitle: 'dot.li could not check whether you are signed in. Try again in a moment.',
+    },
+    transition,
+  );
 }

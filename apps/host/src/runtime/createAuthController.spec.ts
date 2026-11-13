@@ -1421,6 +1421,27 @@ describe('auth controller: the sign-in window', () => {
     expect(handoff.signIns).toEqual([]);
   });
 
+  it('As a debug panel user on a product, I import while the saved session cannot be reached and the prompt that follows opens the window at its phrase view', async () => {
+    // Given a page with a sign-in window, whose saved session cannot be reached until it is read again
+    const handoff = createFakeHandoff();
+    const { controller, auth, changes } = startController({
+      handoff,
+      rereadSession() {
+        auth.set({ tag: 'Disconnected' });
+        return Promise.resolve();
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When the debug panel imports a phrase, and then the prompt's button is pressed
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'prompt');
+    controller.retryLogin();
+
+    // Then the window opens at its phrase view
+    expect(handoff.signIns).toEqual(['phrase']);
+  });
+
   it('As a debug panel user on a page that pairs in place, I import while the saved session cannot be reached and see the phrase view once it reads signed out', async () => {
     // Given a page that pairs in place, whose saved session cannot be reached until it is read again
     const { phrase } = createFakePhrase();
@@ -1505,6 +1526,28 @@ describe('auth controller: the sign-in window', () => {
     // Then: the waiting view stayed until the write was done, and Sign in meanwhile started no second round
     expect(asked).toBe(RESULT);
     expect(whileWriting).toEqual({ view: { kind: 'window' }, signIns: ['signin'] });
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a user whose saved session stops being reachable while my sign-in window is open, I press Sign in and the window still signs me in', async () => {
+    // Given a window round, whose page then cannot reach its saved session
+    const written: SessionResult[] = [];
+    const { controller, auth, handoff, changes } = startWindowRound({
+      applyResult(result) {
+        written.push(result);
+        return Promise.resolve('applied');
+      },
+    });
+    auth.set({ tag: 'Unreachable' });
+
+    // When Sign in is pressed, and then the window brings its result
+    controller.startLogin();
+    handoff.end({ kind: 'result', result: RESULT });
+    await changes.until(() => !getAuthModalState().open || getAuthModalState().view.kind === 'error');
+
+    // Then the press brought the window forward, its result was written and the modal closed
+    expect(handoff.focuses).toBe(1);
+    expect(written).toEqual([RESULT]);
     expect(getAuthModalState()).toEqual(CLOSED_MODAL);
   });
 

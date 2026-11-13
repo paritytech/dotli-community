@@ -80,9 +80,15 @@ export function createWindowSignIn({ handoff, applyResult, elsewhere, isLocalWal
     importPhrase(state, _event, transition) {
       signInThroughWindow(state, { intent: 'phrase' }, transition);
     },
-    resumeAfterReread(state, _round, transition) {
-      // A window opens only in a click's own turn, which has passed, so the page asks for one.
-      showView(state, { kind: 'prompt', resume: elsewhere() }, transition);
+    resumeAfterReread(state, { asked }, transition) {
+      // A window opens only in a click's own turn, which has passed, so the page asks for one, whose Retry opens the
+      // window for what was asked.
+      const intent: SignInIntent = asked === 'phrase' ? 'phrase' : elsewhere() ? 'resume' : 'signin';
+      showView(
+        { ...state, round: { kind: 'windowClosed', intent } },
+        { kind: 'prompt', resume: elsewhere() },
+        transition,
+      );
     },
     /**
      * A product asked the core to log in, from a click inside its own frame, which cannot open a window. The prompt's

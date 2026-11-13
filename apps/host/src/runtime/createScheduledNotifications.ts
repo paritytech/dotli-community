@@ -95,8 +95,8 @@ type SchedulerState =
       stopPoll: () => void;
       round: Round;
       /**
-       * A notification was scheduled meanwhile, so the round's list may predate it and an empty list does not stop the
-       * poller.
+       * A notification may have been scheduled meanwhile, here or in another tab, so the round's list may predate it and
+       * an empty list does not stop the poller.
        */
       rescan: boolean;
     }
@@ -139,11 +139,6 @@ type SchedulerEffect =
 type SchedulerMachine = MachineTypes<SchedulerState, SchedulerEvent, SchedulerEffect>;
 
 export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
-
-/** Hidden tabs fire only records older than `now - offset`, giving a visible tab first crack at the lock. */
-const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
-
-const BROADCAST_CHANNEL_NAME = 'dotli:scheduled-notifications';
 
 /** Builds the scheduler over `store`, showing each due notification through `show`. Building it never throws. */
 export function createScheduledNotifications({
@@ -206,8 +201,8 @@ export function createScheduledNotifications({
           transition.emitSideEffect({ kind: 'stopped', stop: state.stopPoll });
           return;
         }
-        const offset = visibility.visibilityState === 'visible' ? 0 : SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS;
-        const cutoff = timers.now() - offset;
+        // A hidden tab fires only records 300 ms past due, giving a visible tab first crack at the lock.
+        const cutoff = timers.now() - (visibility.visibilityState === 'visible' ? 0 : 300);
         claimNext(
           state,
           records.filter(r => r.scheduledAt <= cutoff),
@@ -269,7 +264,7 @@ export function createScheduledNotifications({
     transition.emitSideEffect({ kind: 'stepFailed', step: 'claim', error });
     claimNext(state, rest, transition);
   };
-  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating' | 'ticking', 'scheduled'> = (
+  const announceScheduled: HandlerOf<SchedulerMachine, 'polling' | 'rehydrating', 'scheduled'> = (
     { channel },
     _event,
     { emitSideEffect },
@@ -283,7 +278,7 @@ export function createScheduledNotifications({
   ) => {
     emitSideEffect({ kind: 'posted', channel, message: { kind: 'cancelled' } });
   };
-  /** Stops the poller and closes the channel, since IDB starts closing as the page unloads. */
+  /** Stops the poller, since IDB starts closing as the page unloads, and closes the channel, which a restore reopens. */
   const hide: HandlerOf<SchedulerMachine, AwakeState['kind'], 'pageHidden'> = (state, _event, transition) => {
     transition.emitState({ kind: 'hidden', page: state.page });
     stopWaking(state, transition);
@@ -359,6 +354,9 @@ export function createScheduledNotifications({
         listFailed: endFailedList,
         claimed: settleClaim,
         claimFailed: skipFailedClaim,
+        woken(state, _event, { emitState }) {
+          emitState({ ...state, rescan: true });
+        },
         scheduled(state, _event, { emitState, emitSideEffect }) {
           emitState({ ...state, rescan: true });
           emitSideEffect({ kind: 'posted', channel: state.channel, message: { kind: 'scheduled' } });
@@ -565,7 +563,7 @@ export function createScheduledNotifications({
 
   /** Opens the channel to the other tabs, whose every message wakes the poller. */
   function openWakeChannel(update: Transition<SchedulerMachine>['update']): BroadcastChannel | null {
-    const channel = openChannel(BROADCAST_CHANNEL_NAME);
+    const channel = openChannel('dotli:scheduled-notifications');
     if (channel !== null) {
       channel.onmessage = () => {
         update({ kind: 'woken' });

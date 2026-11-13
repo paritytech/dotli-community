@@ -29,7 +29,7 @@ import {
   type PermissionTargets,
 } from '../permissionPolicy.js';
 import { toBlockingModalAbortError } from '../throwIfModalAborted.js';
-import type { ProductPermissionsState } from './productPermissionsState.js';
+import { getRead, type ProductPermissionsState } from './productPermissionsState.js';
 import type { ProductState } from './productState.js';
 
 const uiReport = createReporter({ flow: 'ui' });
@@ -42,7 +42,7 @@ const walletReport = createReporter({ flow: 'wallet' });
 const permissionsReadMetric = defineCount<'error' | 'ok'>('permissions.read');
 
 /**
- * A permission change, from the panel or a prompt, counted once when it settles. Tagged `outcome` and, on error,
+ * A permission change, from the panel or a prompt, counted once when its write run ends. Tagged `outcome` and, on error,
  * `reason` (`write`), as a failed one leaves the permissions it names as they were.
  */
 const permissionsChangeMetric = defineCount<'error' | 'ok'>('permissions.change');
@@ -64,7 +64,7 @@ export type PermissionsChange = {
 };
 
 /** A lasting answer from the product's prompt. A one-time grant is the core's own and never reaches the store. */
-export type PromptDecision = 'granted' | 'denied';
+type PromptDecision = 'granted' | 'denied';
 
 /** How a panel change settled. */
 export type ChangeOutcome = {
@@ -116,9 +116,7 @@ type DecisionJob = {
 type Job = ReadJob | ChangeJob | DecisionJob;
 
 /** A running decision listens to its prompt, so a prompt that closes stops the run. */
-type RunningDecision = DecisionJob & { stopListening: () => void };
-
-type RunningWrite = ChangeJob | RunningDecision;
+type RunningWrite = ChangeJob | (DecisionJob & { stopListening: () => void });
 
 /**
  * The work waiting behind the running job, and what the store shows. `shown` names the product on show, as the last
@@ -214,6 +212,15 @@ export function createProductPermissions({ registry, product, timers = realTimer
     transition.emitState({ ...state, queue: replaceQueuedChange(state.queue, job, transition) });
   };
 
+  /** Starts a write at once, as nothing runs ahead of it. */
+  const startWriteJob = (
+    { shown }: Extract<PermissionsState, { kind: 'idle' }>,
+    { job }: { job: ChangeJob | DecisionJob },
+    transition: Transition<PermissionsMachine>,
+  ): void => {
+    startNext({ shown, queue: [job] }, transition);
+  };
+
   /** Reads on every load, a reload of the same product included. */
   const followProduct: HandlerOf<PermissionsMachine, BusyKind, 'productShown'> = (state, { label }, { emitState }) => {
     emitState({
@@ -249,12 +256,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
         refreshAsked({ shown }, { resolve }, transition) {
           startNext({ shown, queue: [{ kind: 'read', waiters: [resolve] }] }, transition);
         },
-        changeAsked({ shown }, { job }, transition) {
-          startNext({ shown, queue: [job] }, transition);
-        },
-        decisionAsked({ shown }, { job }, transition) {
-          startNext({ shown, queue: [job] }, transition);
-        },
+        changeAsked: startWriteJob,
+        decisionAsked: startWriteJob,
         productShown({ shown }, { label }, transition) {
           startNext(
             { shown: getShownFor(shown, label), queue: label === null ? [] : [{ kind: 'read', waiters: [] }] },
@@ -532,7 +535,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
   function startWrite(store: Store, job: ChangeJob | DecisionJob, transition: Transition<PermissionsMachine>): void {
     const targets = getTargets(job);
     const names = NAMES.filter(name => targets[name] !== undefined);
-    const before = getReadStatuses(store.shown, job.label);
+    const read = getRead(store.shown);
+    const before = read?.label === job.label ? read.statuses : null;
     switch (job.kind) {
       case 'change':
         // With the statuses unread nothing is known to match, so every target is written.
@@ -594,7 +598,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
     }
     const targets = getTargets(job);
     const landed = NAMES.filter(name => targets[name] !== undefined && !failing.includes(name));
-    const current = getReadStatuses(shownBefore, job.label);
+    const read = getRead(shownBefore);
+    const current = read?.label === job.label ? read.statuses : null;
     const shown = current === null ? shownBefore : patchStatuses(job, current, landed);
     const change = getLandedChange(job, landed, before);
     if (change !== null) {
@@ -621,7 +626,7 @@ function getShownLabel(shown: ProductPermissionsState): string | null {
   return shown.status === 'none' ? null : shown.label;
 }
 
-/** A read or write lands only for the product still on show. */
+/** A read lands only for the product still on show. */
 function land(
   shown: ProductPermissionsState,
   next: Exclude<ProductPermissionsState, { status: 'none' }>,
@@ -733,18 +738,11 @@ function getShownFor(shown: ProductPermissionsState, label: string | null): Prod
   return shown.status === 'none' || shown.label !== label ? { status: 'reading', label } : shown;
 }
 
-function getReadStatuses(shown: ProductPermissionsState, label: string): readonly PermissionStatus[] | null {
-  return shown.status === 'read' && shown.label === label ? shown.statuses : null;
-}
-
 /** `queue` with `waiters` joined to the read queued in it, or to a new read when none is. */
 function joinRead(queue: readonly Job[], waiters: readonly (() => void)[]): readonly Job[] {
   const queued = queue.find(job => job.kind === 'read');
   if (queued === undefined) {
     return [...queue, { kind: 'read', waiters }];
-  }
-  if (waiters.length === 0) {
-    return queue;
   }
   return queue.map(job => (job === queued ? { ...queued, waiters: [...queued.waiters, ...waiters] } : job));
 }

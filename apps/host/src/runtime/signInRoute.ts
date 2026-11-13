@@ -46,8 +46,8 @@ export type InPagePhrase = {
 
 /**
  * The round the route shows in the modal. `windowOpen` waits for the sign-in window, and `resultWriting` writes its
- * result while the wait stays on show. `windowClosed` shows why the window could not sign in, and its Retry opens the
- * window again with the round's intent. `phraseShown` is the phrase view with its loaded check, and `phraseFailed` shows
+ * result while the wait stays on show. `windowClosed` shows why the window could not sign in, or asks for the click
+ * that opens it, and its Retry opens the window again with the round's intent. `phraseShown` is the phrase view with its loaded check, and `phraseFailed` shows
  * that the check could not load, so Retry asks for a phrase again. `rereading` reads the saved session again for a
  * sign-in asked while it could not be reached, before the sign-in goes on, and `rereadMissed` shows that the read still
  * could not reach it, so Retry asks for the same again.
@@ -103,8 +103,8 @@ export type AuthModalEvent =
   | { kind: 'phraseMissed'; round: SignInRound; reason: string }
   // A round asks the modal to show a view, as a nested value never moves the state around it.
   | { kind: 'viewAsked'; view: AuthModalView }
-  | { kind: 'rereadEnded'; round: SignInRound }
-  | { kind: 'rereadFailed'; round: SignInRound; error: unknown };
+  | { kind: 'rereadEnded'; round: Extract<SignInRound, { kind: 'rereading' }> }
+  | { kind: 'rereadFailed'; round: Extract<SignInRound, { kind: 'rereading' }>; error: unknown };
 
 /** A sign-in command the controller runs on the core once the bridge chunk loads. */
 export type AuthCommand = { step: 'login'; params: LoginParams } | { step: 'logout' } | { step: 'cancel_login' };

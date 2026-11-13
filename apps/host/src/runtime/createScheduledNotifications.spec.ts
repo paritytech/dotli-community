@@ -239,9 +239,8 @@ describe('scheduled notifications poller', () => {
     expect(counted('notifications.poll')).toEqual([{ outcome: 'error', reason: 'Error', step: 'list_pending' }]);
   });
 
-  it('As a user, I load a page with a due notification the poller also reaches and it shows once', async () => {
-    // Given a due record whose claim at page load is slow to land. The schedule below finds that round running and
-    // starts no poller, so this guards only that it shows once.
+  it('As a user, I load a page with a due notification whose claim is slow to land and it shows once', async () => {
+    // Given a due record whose claim at page load is slow to land, and a schedule that finds that round running
     const { timers, start, advanceTicks } = createPollerHarness();
     const store = createRecordStore({ records: [DUE] });
     const removeRecord = store.removeById.getMockImplementation();
@@ -302,6 +301,33 @@ describe('scheduled notifications poller', () => {
     store.listAll.mockResolvedValue([record]);
     store.removeById.mockResolvedValueOnce(true);
     await notifications.schedule(record);
+    read.resolve([]);
+    await advanceTicks(2);
+
+    // Then the poller still ran, and the notification shows once it falls due
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user with two tabs open, I schedule a notification in one while the other reads the store, and the other keeps polling so the notification still shows', async () => {
+    // Given a polling tab holding a far-off notification, whose store gets one due in 2.5 seconds and whose next read is held
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const channel = new BroadcastChannel('dotli:scheduled-notifications');
+    onTestFinished(() => {
+      channel.close();
+    });
+    const record = { ...DUE, scheduledAt: timers.now() + 2_500 };
+    const store = createRecordStore({ records: [{ ...DUE, hostId: 9, scheduledAt: timers.now() + 3_600_000 }] });
+    const { show } = start({ store, overrides: { openChannel: () => channel } });
+    await advanceTicks(1);
+    const read = createDeferred<ScheduledNotificationRecord[]>();
+    store.listAll.mockReturnValueOnce(read.promise);
+    await advanceTicks(1);
+
+    // When the other tab's message about its new notification lands while that read is held, and the read, taken before
+    // it, comes back empty
+    store.listAll.mockResolvedValue([record]);
+    store.removeById.mockResolvedValueOnce(true);
+    channel.onmessage?.call(channel, new MessageEvent('message', { data: { kind: 'scheduled' } }));
     read.resolve([]);
     await advanceTicks(2);
 
