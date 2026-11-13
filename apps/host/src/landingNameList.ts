@@ -46,7 +46,7 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
   return {
     /** The app labels to suggest from: the stored ones once read, then each saved step's. */
     labels: labelsStore,
-    /** Starts the page's one sync once the settings are set. Again does nothing. Never throws. */
+    /** Starts the page's one sync once the settings are set. Again does nothing. */
     start,
   };
 
