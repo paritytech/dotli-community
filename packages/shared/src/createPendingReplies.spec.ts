@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { createPendingReplies } from './createPendingReplies.js';
-import { catchError } from './testing/catchError.js';
 
 describe('createPendingReplies', () => {
   it('As a request channel, I pass a reply and it settles the wait on its id, while a second reply finds nothing', async () => {
@@ -54,16 +53,16 @@ describe('createPendingReplies', () => {
     expect(replies.listIds()).toEqual([]);
   });
 
-  it('As a channel that reused an id still waiting, I wait on it again and am told at once while the first wait stays', () => {
+  it('As a channel that reused an id still waiting, I wait on it again and am refused while the first wait stays', async () => {
     // Given
     const replies = createPendingReplies<number, string>();
     void replies.wait(1);
 
     // When
-    const error = catchError(() => replies.wait(1));
+    const second = replies.wait(1);
 
     // Then
-    expect(error).toMatchObject({ message: 'A reply to id 1 is already awaited' });
+    await expect(second).rejects.toMatchObject({ message: 'A reply to id 1 is already awaited' });
     expect(replies.listIds()).toEqual([1]);
   });
 });

@@ -37,7 +37,16 @@ export function createPendingReplies<Id, Value>() {
     initial: { kind: 'open', waits: new Map() },
     handlers: {
       open: {
-        waited(state, { id, reply }, { emitState }) {
+        waited(state, { id, reply }, { emitState, emitSideEffect }) {
+          // A second wait would orphan the first, which then never settles.
+          if (state.waits.has(id)) {
+            emitSideEffect({
+              kind: 'reject',
+              reply,
+              error: new Error(`A reply to id ${String(id)} is already awaited`),
+            });
+            return;
+          }
           emitState({ ...state, waits: new Map(state.waits).set(id, reply) });
         },
         replied(state, { id, value }, { emitState, emitSideEffect }) {
@@ -79,14 +88,10 @@ export function createPendingReplies<Id, Value>() {
 
   return {
     /**
-     * Waits for the reply to `id`. Throws when a wait on `id` is already open. Otherwise rejects with the error
-     * `reject` or `rejectAll` gives it.
+     * Waits for the reply to `id`. Rejects at once when a wait on `id` is already open, and leaves that wait open.
+     * Otherwise rejects with the error `reject` or `rejectAll` gives it. Never throws.
      */
     wait(id: Id): Promise<Value> {
-      // A second wait would orphan the first, which then never settles.
-      if (machine.state.get().waits.has(id)) {
-        throw new Error(`A reply to id ${String(id)} is already awaited`);
-      }
       const reply = createDeferred<Value>();
       machine.update({ kind: 'waited', id, reply });
       return reply.promise;
