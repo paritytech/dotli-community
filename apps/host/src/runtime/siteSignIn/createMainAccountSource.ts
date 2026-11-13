@@ -159,7 +159,6 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           answerReads({ ...state, shown: report }, transition);
         },
         down({ shown: stale, reads, lease, stop }, _event, transition) {
-          stop();
           // A replacement reports anew, so the reads still open wait for it on a new lease. The new lease is taken
           // before the old one goes, so the core is never left with no holder.
           if (reads.size > 0) {
@@ -168,11 +167,12 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           } else {
             transition.emitState({ kind: 'unleased', stale });
           }
+          stop();
           transition.emitSideEffect({ kind: 'released', lease });
         },
         disposed({ reads, lease, stop }, _event, { emitState, emitSideEffect }) {
-          stop();
           emitState({ kind: 'disposed' });
+          stop();
           // Every read settles before the release, so a release that throws leaves no read open.
           emitSideEffect({ kind: 'settled', reads, outcome: { kind: 'failed', error: createDisposedReadError() } });
           emitSideEffect({ kind: 'released', lease });
@@ -252,12 +252,16 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     );
   }
 
-  /** Moves to `state`, settling its reads when its report answers them. */
+  /**
+   * Moves to `state`, settling its reads when its report answers them. No report yet, and the dead core's `stale` one,
+   * keep them waiting.
+   */
   function answerReads(
     state: Extract<SourceState, { kind: 'holding' }>,
     { emitState, emitSideEffect }: Transition<SourceMachine>,
   ): void {
-    const verdict = judgeReport(state.shown, state.stale);
+    const { shown, stale } = state;
+    const verdict: ReportVerdict = shown === null || shown === stale ? { kind: 'waiting' } : judgeReport(shown);
     if (verdict.kind === 'waiting') {
       emitState(state);
       return;

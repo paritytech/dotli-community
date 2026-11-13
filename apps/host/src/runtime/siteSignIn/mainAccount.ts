@@ -25,14 +25,8 @@ type MainAccountErrorKind = 'unavailable' | 'signed_out';
 /** A key the core reports as `0x` hex of whole bytes. */
 const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
 
-/**
- * What the core's report `shown` answers a read. No report, the dead core's `stale` one and one on the way to a
- * session keep the read waiting.
- */
-export function judgeReport(shown: DotliAuthState | null, stale: DotliAuthState | null): ReportVerdict {
-  if (shown === null || shown === stale) {
-    return { kind: 'waiting' };
-  }
+/** What the core's report `shown` answers a read. A report on the way to a session keeps the read waiting. */
+export function judgeReport(shown: DotliAuthState): ReportVerdict {
   const session = authViews.getSignedInSession(shown);
   if (session !== null) {
     const account = getMainAccount(session);
