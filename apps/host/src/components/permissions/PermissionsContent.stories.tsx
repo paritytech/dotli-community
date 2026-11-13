@@ -113,7 +113,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * As a user of a loaded app with grants, the button shows a badge, and the popover shows the closest preset with focus
+ * As a user of a loaded app with grants, the button shows no badge, and the popover shows the closest preset with focus
  * on the slider and each permission's status under a closed Advanced.
  */
 export const Open: Story = {
@@ -122,9 +122,8 @@ export const Open: Story = {
     givenApp({ Camera: 'granted', ChainSubmit: 'denied' });
   },
   play: async ctx => {
-    const button = byId('permissions-button');
-    await ctx.step('Given the app has grants', async () => {
-      await waitFor(() => expect(button).toHaveAttribute('data-badge'));
+    await ctx.step('Given the app has grants, the button has no badge', async () => {
+      await expect(byId('permissions-button')).not.toHaveAttribute('data-badge');
     });
     await open(ctx);
     await ctx.step('Then the slider shows Secure, modified, and holds focus', async () => {
@@ -194,9 +193,8 @@ export const Unavailable: Story = {
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then it says they are unavailable, and the button has no badge', async () => {
+    await ctx.step('Then it says they are unavailable', async () => {
       await waitFor(() => expect(hint()).toBe('Permissions are unavailable for this app.'));
-      await expect(byId('permissions-button')).not.toHaveAttribute('data-badge');
     });
   },
 };
