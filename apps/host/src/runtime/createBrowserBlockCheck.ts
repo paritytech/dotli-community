@@ -7,10 +7,10 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { BlockingModalScope } from './createBlockingModalCoordinator.js';
-import type { BrowserPermissions, BrowserPermissionStatus } from './createBrowserPermissions.js';
+import { isBrowserBlocked, type BrowserPermissions } from './createBrowserPermissions.js';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import type { HostPrompts } from './hostPrompts.js';
-import type { EnforceablePermissionName, PermissionStatus } from './permissionPolicy.js';
+import { isPermissionGranted, type EnforceablePermissionName, type PermissionStatus } from './permissionPolicy.js';
 import { resolveBrowserBlock } from './resolveBrowserBlock.js';
 import type { ProductPermissions } from './state/productPermissions.js';
 import type { ProductState } from './state/productState.js';
@@ -49,9 +49,15 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
       report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
       return;
     }
-    const granted = browser.checked.filter((_, index) => isGranted(found[index]));
+    const granted = browser.checked.filter((_, index) => {
+      const status = found[index];
+      return status !== undefined && isPermissionGranted(status);
+    });
     const read = await Promise.all(granted.map(name => browser.read(name)));
-    const blocked = granted.filter((_, index) => isBlocked(read[index]));
+    const blocked = granted.filter((_, index) => {
+      const status = read[index];
+      return status !== undefined && isBrowserBlocked(status);
+    });
     try {
       for (const permission of blocked) {
         await scope.enqueue(signal => settleBlock(label, permission, signal));
@@ -97,27 +103,4 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
       });
     },
   };
-}
-
-function isGranted(status: PermissionStatus | undefined): boolean {
-  switch (status) {
-    case 'granted':
-      return true;
-    case 'ask':
-    case 'denied':
-    case undefined:
-      return false;
-  }
-}
-
-function isBlocked(status: BrowserPermissionStatus | undefined): boolean {
-  switch (status) {
-    case 'denied':
-      return true;
-    case 'granted':
-    case 'prompt':
-    case 'unknown':
-    case undefined:
-      return false;
-  }
 }

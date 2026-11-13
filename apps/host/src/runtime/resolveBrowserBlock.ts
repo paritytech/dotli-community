@@ -3,7 +3,7 @@
 
 // Settles a grant the browser blocks: the user restricts the app, closes the dialog, or fixes the browser and retries.
 
-import type { BrowserPermissions, BrowserPermissionStatus } from './createBrowserPermissions.js';
+import { isBrowserBlocked, type BrowserPermissions, type BrowserPermissionStatus } from './createBrowserPermissions.js';
 import type { HostPrompts } from './hostPrompts.js';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
 import { throwIfModalAborted } from './throwIfModalAborted.js';
@@ -55,13 +55,8 @@ export async function resolveBrowserBlock({
     }
     const status = await (retry.request ?? browser.read(permission));
     throwIfModalAborted(signal);
-    switch (status) {
-      case 'denied':
-        continue;
-      case 'granted':
-      case 'prompt':
-      case 'unknown':
-        return 'allowed';
+    if (!isBrowserBlocked(status)) {
+      return 'allowed';
     }
   }
 }

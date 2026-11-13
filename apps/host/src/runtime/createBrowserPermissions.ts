@@ -11,6 +11,18 @@ export type BrowserPermissionStatus = 'granted' | 'denied' | 'prompt' | 'unknown
 
 export type BrowserPermissions = ReturnType<typeof createBrowserPermissions>;
 
+/** True when the browser blocks the permission, so a grant in dot.li does not reach the app. */
+export function isBrowserBlocked(status: BrowserPermissionStatus): boolean {
+  switch (status) {
+    case 'denied':
+      return true;
+    case 'granted':
+    case 'prompt':
+    case 'unknown':
+      return false;
+  }
+}
+
 type Params = {
   /** The page's Notification API, null where the browser has none. */
   notifications: () => Pick<typeof Notification, 'permission' | 'requestPermission'> | null;

@@ -3,7 +3,11 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { recordReports } from '@dotli/metrics/testing';
-import { createBrowserPermissions } from './createBrowserPermissions.js';
+import {
+  createBrowserPermissions,
+  isBrowserBlocked,
+  type BrowserPermissionStatus,
+} from './createBrowserPermissions.js';
 
 type CreateParams = {
   /** The page's Notification API, or null when the browser has none. */
@@ -145,6 +149,24 @@ describe('createBrowserPermissions', () => {
     // Then
     expect(status).toBe('unknown');
     expect(reports.expected).toMatchObject([{ step: 'browser_permission_request' }]);
+  });
+});
+
+describe('isBrowserBlocked', () => {
+  it.each<{ status: BrowserPermissionStatus; blocked: boolean }>([
+    { status: 'denied', blocked: true },
+    { status: 'granted', blocked: false },
+    { status: 'prompt', blocked: false },
+    { status: 'unknown', blocked: false },
+  ])('As a dotli user whose browser reads $status, I ask whether it blocks and get $blocked', ({ status, blocked }) => {
+    // Given the browser's status of a permission
+    const read = status;
+
+    // When it is asked whether the browser blocks the permission
+    const answer = isBrowserBlocked(read);
+
+    // Then only a denial blocks
+    expect(answer).toBe(blocked);
   });
 });
 

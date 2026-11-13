@@ -20,6 +20,17 @@ export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDeviceP
 
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
+/** True when dot.li grants the permission, so the app may use it without asking. */
+export function isPermissionGranted(status: PermissionStatus): boolean {
+  switch (status) {
+    case 'granted':
+      return true;
+    case 'ask':
+    case 'denied':
+      return false;
+  }
+}
+
 /** Statuses for some of an app's permissions, as one change writes them. */
 export type PermissionTargets = Readonly<Partial<Record<EnforceablePermissionName, PermissionStatus>>>;
 

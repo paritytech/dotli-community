@@ -8,7 +8,11 @@
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
 import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
-import type { BrowserPermissions, BrowserPermissionStatus } from '../createBrowserPermissions.js';
+import {
+  isBrowserBlocked,
+  type BrowserPermissions,
+  type BrowserPermissionStatus,
+} from '../createBrowserPermissions.js';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../permissionPolicy.js';
 import { throwIfModalAborted } from '../throwIfModalAborted.js';
@@ -167,13 +171,8 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
   ): Promise<boolean> {
     const status = await (requested ?? browser.read(name));
     throwIfModalAborted(signal);
-    switch (status) {
-      case 'granted':
-      case 'prompt':
-      case 'unknown':
-        return false;
-      case 'denied':
-        break;
+    if (!isBrowserBlocked(status)) {
+      return false;
     }
     const resolution = await resolveBrowserBlock({ label, permission: name, signal, prompts, browser });
     switch (resolution) {
