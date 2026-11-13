@@ -122,13 +122,11 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
     return read.promise;
   };
 
-  function runOpen(): Promise<DbEvent> {
-    // An `open` that throws before it returns a promise rejects this one, so its error reaches the asker too.
-    return new Promise<IDBDatabase>(resolve => {
-      resolve(open());
-    }).then(
-      db => ({ kind: 'opened', db }),
-      (error: unknown) => ({ kind: 'openFailed', error }),
-    );
+  async function runOpen(): Promise<DbEvent> {
+    try {
+      return { kind: 'opened', db: await open() };
+    } catch (error) {
+      return { kind: 'openFailed', error };
+    }
   }
 }
