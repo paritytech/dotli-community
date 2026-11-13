@@ -33,8 +33,14 @@ type Params = {
 /** A full-page screen to show once the UI is up. A need that wants the UI only, such as a toast, has none (`null`). */
 type Screen = { kind: 'error'; title: string; message: string; retry: (() => void) | undefined } | { kind: 'retry' };
 
-/** The UI is loaded once and mounted once. Until then each need loads it again, and the toasts are listened to. */
-type UiState = { kind: 'waiting'; stopToasts: () => void } | { kind: 'up'; ui: PageUiModule } | { kind: 'disposed' };
+/**
+ * The UI is loaded once and mounted once. Until then each need loads it again, the toasts are listened to, and the last
+ * screen the fallback took (`missed`) waits to move into the UI.
+ */
+type UiState =
+  | { kind: 'waiting'; stopToasts: () => void; missed: Screen | null }
+  | { kind: 'up'; ui: PageUiModule }
+  | { kind: 'disposed' };
 
 type UiEvent =
   | { kind: 'toastsChanged'; queued: boolean }
@@ -68,7 +74,7 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
   });
 
   const machine = createStateMachine<UiMachine>({
-    initial: { kind: 'waiting', stopToasts: toasts.listen(tellToasts) },
+    initial: { kind: 'waiting', stopToasts: toasts.listen(tellToasts), missed: null },
     handlers: {
       waiting: {
         toastsChanged(_state, { queued }, { update }) {
@@ -85,15 +91,19 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
           emitState({ kind: 'up', ui });
           state.stopToasts();
           emitSideEffect({ kind: 'mount', ui });
-          if (screen !== null) {
-            emitSideEffect({ kind: 'show', ui, screen });
+          // A load with no screen of its own, such as a toast's, still moves the fallback's screen into the UI.
+          const shown = screen ?? state.missed;
+          if (shown !== null) {
+            emitSideEffect({ kind: 'show', ui, screen: shown });
           }
         },
-        uiMissed(_state, { screen }, { emitSideEffect }) {
+        uiMissed(state, { screen }, { emitState, emitSideEffect }) {
           // Reported once where it loads.
-          if (screen !== null) {
-            emitSideEffect({ kind: 'showFallback', screen });
+          if (screen === null) {
+            return;
           }
+          emitState({ ...state, missed: screen });
+          emitSideEffect({ kind: 'showFallback', screen });
         },
         disposed(state, _event, { emitState }) {
           emitState({ kind: 'disposed' });
@@ -142,7 +152,7 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
 
   return {
     /**
-     * Resolves with the UI once its overlays are mounted. One load at a time, and a failed load is not kept, so the
+     * Resolves with the UI once its overlays are mounted, or without mounting them once disposed. One load at a time, and a failed load is not kept, so the
      * next call loads again. Rejects when the chunk cannot load.
      */
     loadUi,
