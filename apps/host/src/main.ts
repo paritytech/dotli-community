@@ -51,12 +51,16 @@ type BootEvent =
   | { kind: 'opened' }
   | { kind: 'failed'; error: unknown };
 
-/** What the boot reports: its step for a failure's tag, the route it took, a local target on screen, a failure. */
+/**
+ * What the boot reports and does: its step for a failure's tag, the route it took, a local target on screen, the move
+ * to the landing page, a failure. A throw goes to the failure report.
+ */
 type BootEffect =
   | { kind: 'stepEntered'; step: BootStep }
   | { kind: 'routeAnnounced'; route: OpenedRoute; flowId: string }
   | { kind: 'targetRouted'; target: LocalTarget }
   | { kind: 'targetOpened'; target: LocalTarget; flowId: string }
+  | { kind: 'leftForLanding' }
   | { kind: 'failed'; error: unknown };
 
 type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
@@ -162,14 +166,9 @@ const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
         );
         return;
       case 'landing':
-        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        try {
-          leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
-        } catch (error) {
-          update({ kind: 'failed', error });
-          return;
-        }
         emitState({ kind: 'opened' });
+        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
+        emitSideEffect({ kind: 'leftForLanding' });
         return;
     }
   },
@@ -190,7 +189,7 @@ const openingProduct: HandlersOf<BootMachine, 'openingProduct'> = {
   },
 };
 
-/** Makes the boot's reports: the step a failure is tagged with, the debug panel's events and the failure screen. */
+/** Runs the boot's effects: a failure's step, the debug panel's events, the landing move and the failure screen. */
 function reportBoot(effect: BootEffect): void {
   switch (effect.kind) {
     case 'stepEntered':
@@ -228,6 +227,9 @@ function reportBoot(effect: BootEffect): void {
           payload: { label: null, totalMs: performance.now() - PAGE_START, path: 'localhost' },
         });
       }
+      return;
+    case 'leftForLanding':
+      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
       return;
     case 'failed':
       reportBootFailure(effect.error);
