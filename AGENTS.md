@@ -193,6 +193,8 @@ Tests:
 - Pass fakes through parameters. Don't mock modules, and avoid overriding globals. Shape the code so tests drive it
   through its interface.
 - An optional parameter with a production default that only tests pass is fine.
+- A change that removes behaviour deletes the tests, story steps and comments about it. It adds none that check or say
+  the behaviour is gone.
 
 Git:
 

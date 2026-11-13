@@ -243,6 +243,8 @@ above the linter: semantics, data flow and naming.
   does more than assert.
 - **minor** (AGENTS.md § Code style, Tests:): A spec that asserts a report's flow or matches a whole capture context
   instead of its step.
+- **minor** (AGENTS.md § Code style, Tests:): A test, story step or comment that checks or says removed behaviour is
+  gone.
 
 When you cite a rule, quote `file:line`, state it in one line with its doc and section, and suggest the fix in one or
 two sentences. Group findings by theme and end with the blocking, major and minor counts.
