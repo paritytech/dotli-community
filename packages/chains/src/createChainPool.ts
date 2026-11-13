@@ -136,7 +136,6 @@ type WatchChain = {
 /** The watchers' own follow on a held chain. */
 type Watch =
   | { kind: 'off'; chain: WatchChain }
-  | { kind: 'starting'; chain: WatchChain; follow: WatchFollow }
   | { kind: 'open'; chain: WatchChain; follow: WatchFollow; following: boolean }
   | {
       kind: 'refused';
@@ -317,31 +316,11 @@ export function createChainPool({
           if (watchers.size === 0) {
             return;
           }
-          transition.emitSideEffect({ kind: 'followed', key });
           if (chain.followGate.waitMs() > 0) {
             waitToRetry(chain, key, transition);
             return;
           }
           openFollow(chain, key, transition);
-        },
-      },
-      starting: {
-        syncDue(watch, event, transition) {
-          // The last watcher may have left while the follow opened, such as one that a status change it opened told.
-          if (watchers.size === 0) {
-            stopWatch(watch, event.key, transition);
-            return;
-          }
-          // Started here, since a start that throws leaves the watch off.
-          try {
-            watch.follow.start();
-          } catch (error) {
-            transition.emitState({ kind: 'off', chain: watch.chain });
-            transition.emitSideEffect({ kind: 'endWatch', watch });
-            transition.update({ kind: 'followFailed', key: event.key, lanes: watch.chain.lanes, error });
-            return;
-          }
-          transition.emitState({ kind: 'open', chain: watch.chain, follow: watch.follow, following: false });
         },
       },
       open: {
@@ -371,7 +350,6 @@ export function createChainPool({
             waitToRetry(chain, key, transition);
             return;
           }
-          transition.emitSideEffect({ kind: 'followed', key });
           openFollow(chain, key, transition);
         },
       },
@@ -847,7 +825,6 @@ export function createChainPool({
     switch (watch.kind) {
       case 'off':
         return;
-      case 'starting':
       case 'open':
         watch.follow.disconnect();
         return;
@@ -873,11 +850,15 @@ export function createChainPool({
   }
 
   /**
-   * Opens the watchers' follow and stores it as `starting`, and its sync starts it once this transition ends, so a
-   * watcher that leaves meanwhile stops it first. A follow that cannot open leaves the watch off, and the next sync tries
-   * again.
+   * Opens and starts the watchers' follow. A follow that cannot open or start leaves the watch off, and the next sync
+   * tries again.
    */
-  function openFollow(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
+  function openFollow(
+    chain: WatchChain,
+    key: string,
+    { emitState, emitSideEffect, update }: Transition<WatchMachine>,
+  ): void {
+    emitSideEffect({ kind: 'followed', key });
     // Names the chain, so the follow's debug log says which one refused it.
     const sessionId = `watch:${getShortKey(key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
@@ -903,8 +884,15 @@ export function createChainPool({
       update({ kind: 'followFailed', key, lanes: chain.lanes, error });
       return;
     }
-    emitState({ kind: 'starting', chain, follow });
-    update({ kind: 'syncDue', key });
+    const open: Watch = { kind: 'open', chain, follow, following: false };
+    emitState(open);
+    try {
+      follow.start();
+    } catch (error) {
+      emitState({ kind: 'off', chain });
+      emitSideEffect({ kind: 'endWatch', watch: open });
+      update({ kind: 'followFailed', key, lanes: chain.lanes, error });
+    }
   }
 
   /**
