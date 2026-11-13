@@ -20,6 +20,7 @@ import { createFallbackScreen } from './createFallbackScreen.js';
 import { createSandboxUi } from './createSandboxUi.js';
 import { showPasswordPrompt } from './showPasswordPrompt.js';
 import { createHostMessages } from './createHostMessages.js';
+import { getHostUrls } from './getHostUrls.js';
 import { stripContractParams } from './stripContractParams.js';
 import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './createBitswapBridge.js';
 import { loadProduct, type SandboxParams } from './loadProduct.js';
@@ -151,6 +152,15 @@ runSandbox(
         measureSinceStart,
       }),
     hostMessages,
+    tab: {
+      openApp: () => {
+        window.location.assign(getHostUrls(window.location, { baseDomain: BASE_DOMAIN }).app);
+      },
+      openLanding: () => {
+        // A page off its app origin was framed by an unknown embedder, so it opens dot.li apart.
+        window.open(getHostUrls(window.location, { baseDomain: BASE_DOMAIN }).landing, '_blank', 'noopener');
+      },
+    },
     ui,
     waitForRecoverAccepted: () =>
       waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, ms: SANDBOX_TIMEOUTS.RECOVER }),

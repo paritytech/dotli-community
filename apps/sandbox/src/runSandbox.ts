@@ -18,6 +18,7 @@ import {
   RECOVERY_LABELS,
   type LoadDependency,
   type SandboxFailure,
+  type SandboxRecovery,
 } from './describeSandboxFailure.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
 import { readSandboxContract, type SandboxContract, type SandboxPage } from './readSandboxContract.js';
@@ -34,16 +35,21 @@ const MAX_ATTEMPTS = 5;
 
 /**
  * What the run needs from the page. A throw from `configure`, from the host messages or the UI while a failure is
- * shown, and a throw or rejection from `load`, is reported and the run goes on.
+ * shown, from a failure's action, and a throw or rejection from `load`, is reported and the run goes on.
  */
 export type RunSandboxDeps = {
   /** Applies the contract's settings to the page, once, before the first load. */
   configure: (params: SandboxParams) => void;
   /** One load of the product. A rejection is reported and shown as a failed `init`. */
   load: (input: LoadInput) => Promise<LoadOutcome>;
-  /** Ends the host's loading screen with the failed step, and asks the host to render this frame again. */
-  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender'>;
-  /** Shows a failure, with a retry when one is offered, and that a retry started. */
+  /**
+   * Ends the host's loading screen with the failed step, and asks the host to render this frame again or to move its
+   * page.
+   */
+  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender' | 'askNavigate'>;
+  /** Moves this sandbox's own tab, for a sandbox no dot.li host frames. */
+  tab: { openApp: () => void; openLanding: () => void };
+  /** Shows a failure, with the action that recovers from it, and that a retry started. */
   ui: Pick<SandboxUi, 'showError' | 'showRetryScreen'>;
   /** Resolves once the host accepted the recover ask, and rejects once its deadline passed first. */
   waitForRecoverAccepted: () => Promise<void>;
@@ -324,9 +330,29 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     const step = getFailureStep(failure);
     try {
       deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
-      const { title, message } = describeSandboxFailure(failure, deps);
+      const { title, message, recovery } = describeSandboxFailure(failure, deps);
+      const recover = getRecover(recovery, retry);
       deps.ui.showError(title, message, {
-        action: retry === undefined ? undefined : { label: RECOVERY_LABELS.retry, onClick: retry },
+        action:
+          recover === null
+            ? undefined
+            : {
+                label: RECOVERY_LABELS[recovery],
+                onClick: () => {
+                  try {
+                    recover();
+                  } catch (error) {
+                    // The failure stays on screen, so the visitor can press again.
+                    report.defect(error, {
+                      step: 'failure_action',
+                      metric: appRunMetric,
+                      reason: 'action_threw',
+                      message: `${APP_LOG_TAG} The ${step} failure's action threw`,
+                      tags: { surface: 'sandbox_main', failed_step: step },
+                    });
+                  }
+                },
+              },
       });
     } catch (error) {
       report.defect(error, {
@@ -336,6 +362,23 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         message: `${APP_LOG_TAG} Could not show the ${step} failure`,
         tags: { surface: 'sandbox_main', failed_step: step },
       });
+    }
+  }
+
+  /** What pressing the failure's action does. A retry that was not offered leaves the failure with no action. */
+  function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | null {
+    switch (recovery) {
+      case 'retry':
+        return retry ?? null;
+      case 'landing':
+      case 'reload':
+        return () => {
+          deps.hostMessages.askNavigate(recovery);
+        };
+      case 'open-app':
+        return deps.tab.openApp;
+      case 'open-landing':
+        return deps.tab.openLanding;
     }
   }
 }

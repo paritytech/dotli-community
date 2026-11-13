@@ -26,6 +26,18 @@ type Failure = {
 
 type Run = ReturnType<typeof runSandbox>;
 
+/** A failure, the action it offers, and what pressing that action does. */
+type ActionCase = {
+  cause: string;
+  page: SandboxPage;
+  outcomes: LoadOutcome[];
+  label: string;
+  goal: string;
+  /** The last thing the run did once the action was pressed. */
+  event: string;
+  loads: number;
+};
+
 type Harness = {
   deps: RunSandboxDeps;
   loads: LoadInput[];
@@ -36,8 +48,8 @@ type Harness = {
   start: (page: SandboxPage) => Run;
   /** The run `start` began. Throws before `start`. */
   readonly run: Run;
-  /** Presses the retry of the latest failure. Resolves once the run has settled. */
-  retry: () => Promise<void>;
+  /** Presses the action of the latest failure. Resolves once the run has settled. */
+  press: () => Promise<void>;
   /** The host accepts the recover ask, which settles the run's wait for it. */
   accept: () => void;
   /** The wait for the host's acceptance passes its deadline with `reason`. */
@@ -95,6 +107,17 @@ function createHarness(
         (() => {
           events.push('ask rerender');
         }),
+      askNavigate: to => {
+        events.push(`navigate ${to}`);
+      },
+    },
+    tab: {
+      openApp: () => {
+        events.push('open app');
+      },
+      openLanding: () => {
+        events.push('open landing');
+      },
     },
     ui: {
       showError(title, message, { action } = {}) {
@@ -129,7 +152,7 @@ function createHarness(
       }
       return started;
     },
-    retry: retryLatest,
+    press: pressLatest,
     accept: () => {
       acceptance.resolve(undefined);
     },
@@ -138,10 +161,10 @@ function createHarness(
     },
   };
 
-  function retryLatest(): Promise<void> {
+  function pressLatest(): Promise<void> {
     const action = failures.at(-1)?.action;
     if (action === undefined || started === undefined) {
-      throw new Error('the latest failure offers no retry');
+      throw new Error('the latest failure offers no action');
     }
     action.onClick();
     return started.await();
@@ -426,7 +449,7 @@ describe('runSandbox retries', () => {
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
 
     // When
-    await sandbox.retry();
+    await sandbox.press();
 
     // Then
     expect(sandbox.loads.map(load => load.attempt)).toEqual([1, 2]);
@@ -470,7 +493,7 @@ describe('runSandbox retries', () => {
     if (olderRetry === undefined) {
       throw new Error('no retry offered');
     }
-    await sandbox.retry();
+    await sandbox.press();
 
     // When the first failure's retry is pressed while the second failure is shown
     olderRetry();
@@ -481,25 +504,119 @@ describe('runSandbox retries', () => {
     expect(sandbox.events.filter(event => event === 'retrying')).toHaveLength(1);
   });
 
-  it('As a visitor after five failed loads, I press retry and am asked to reload instead', async () => {
+  it('As a visitor after five failed loads, I press retry, am offered a reload instead, and pressing it asks the host to reload', async () => {
     // Given five failed loads
     const sandbox = createHarness([failed]);
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
     for (let attempt = 2; attempt <= 5; attempt += 1) {
-      await sandbox.retry();
+      await sandbox.press();
     }
 
-    // When
-    await sandbox.retry();
+    // When retry is pressed once more, and then the action that failure offers
+    await sandbox.press();
+    await sandbox.press();
 
     // Then
     expect(sandbox.loads).toHaveLength(5);
-    expect(sandbox.failures.at(-1)).toEqual({
+    expect(sandbox.failures.at(-1)).toMatchObject({
       step: 'retry_limit',
       title: 'Too many retry attempts',
       message: 'Reached 5 failed attempts. Reload the page to start over.',
-      action: undefined,
+      action: { label: 'Reload' },
     });
+    expect(sandbox.events.at(-1)).toBe('navigate reload');
+  });
+});
+
+describe('runSandbox failure actions', () => {
+  const archiveIndexFailed: LoadOutcome = {
+    outcome: 'failed',
+    step: 'archive_index',
+    error: new Error('no index.html in the archive'),
+  };
+
+  it.each<ActionCase>([
+    {
+      cause: 'a load whose archive index failed',
+      page: toFramedPage(createSandboxUrl()),
+      outcomes: [archiveIndexFailed],
+      label: 'Go to dot.li',
+      goal: 'the host opens its landing and nothing loads again',
+      event: 'navigate landing',
+      loads: 1,
+    },
+    {
+      cause: 'a contract this sandbox cannot read',
+      page: toFramedPage(createSandboxUrl({ overrides: { [SANDBOX_CONTRACT_PARAMS.v]: '999' } })),
+      outcomes: [],
+      label: 'Reload',
+      goal: 'the host reloads its page',
+      event: 'navigate reload',
+      loads: 0,
+    },
+    {
+      cause: 'a frame off its app origin',
+      page: toFramedPage(createSandboxUrl({ host: 'app.dot.li' })),
+      outcomes: [],
+      label: 'Go to dot.li',
+      goal: 'dot.li opens apart from the frame',
+      event: 'open landing',
+      loads: 0,
+    },
+    {
+      cause: 'the sandbox URL opened as the page',
+      page: { href: createSandboxUrl(), framed: false },
+      outcomes: [],
+      label: 'Open in dot.li',
+      goal: 'the tab moves to the product on dot.li',
+      event: 'open app',
+      loads: 0,
+    },
+    {
+      cause: 'a load whose content fetch failed',
+      page: toFramedPage(createSandboxUrl()),
+      outcomes: [{ outcome: 'failed', step: 'content_fetch', error: new Error('unreachable') }, { outcome: 'loaded' }],
+      label: 'Retry',
+      goal: 'the product loads again',
+      event: 'load 2',
+      loads: 2,
+    },
+  ])('As a visitor facing $cause, I press $label and $goal', async ({ page, outcomes, label, event, loads }) => {
+    // Given a failure on screen
+    const sandbox = createHarness(outcomes);
+    await sandbox.start(page).await();
+
+    // When its action is pressed
+    await sandbox.press();
+
+    // Then
+    expect({
+      label: sandbox.failures.at(-1)?.action?.label,
+      event: sandbox.events.at(-1),
+      loads: sandbox.loads.length,
+    }).toEqual({ label, event, loads });
+  });
+
+  it('As a visitor whose failure action throws, I keep the failure on screen, and the operator sees the throw', async () => {
+    // Given a failure whose ask to the host throws
+    const sandbox = createHarness([archiveIndexFailed]);
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const broken = new Error('The host window is gone');
+    sandbox.deps.hostMessages.askNavigate = () => {
+      throw broken;
+    };
+    await sandbox.start(toFramedPage(createSandboxUrl())).await();
+
+    // When its action is pressed
+    await sandbox.press();
+
+    // Then the throw is a defect of the action, and the failure is still the latest screen
+    expect(captured).toMatchObject([
+      { context: { step: 'archive_index' } },
+      { error: broken, context: { step: 'failure_action' } },
+    ]);
+    expect(sentry.counted('app.run')).toEqual([{ outcome: 'error', reason: 'action_threw' }]);
+    expect(sandbox.failures.map(failure => failure.step)).toEqual(['archive_index']);
   });
 });
 
