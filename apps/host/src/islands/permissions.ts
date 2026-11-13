@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ReadableAtom } from 'nanostores';
+import { getKeys } from '@dotli/shared';
 import { useStore } from '@dotli/stores-solid';
-import type { EnforceablePermissionName, PermissionTargets } from '../runtime/permissionPolicy.js';
+import type { PermissionTargets } from '../runtime/permissionPolicy.js';
 import type { BrowserPermissions } from '../runtime/createBrowserPermissions.js';
 import type { ProductPermissions } from '../runtime/state/productPermissions.js';
 import {
@@ -85,9 +86,9 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
         return [];
       }
       // The browser accepts a request only inside the user's gesture, so it goes out before the first await.
-      for (const [name, target] of Object.entries(targets)) {
-        if (target === 'granted') {
-          void binding.browser.request(name as EnforceablePermissionName);
+      for (const name of getKeys(targets)) {
+        if (targets[name] === 'granted') {
+          void binding.browser.request(name);
         }
       }
       return (await binding.store.change(read.label, targets)).failed;
