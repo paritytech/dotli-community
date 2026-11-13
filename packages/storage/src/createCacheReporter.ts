@@ -9,7 +9,7 @@ const storageReport = createReporter({ flow: 'storage' });
 
 /**
  * A cache's storage step that failed. Counted only on failure, tagged `outcome` (error), `reason` (the error's name),
- * `surface` (`cid_cache, block_cache`) and `step` (`read, write, touch, delete, evict, prune, clear`).
+ * `surface` (`cid_cache, block_cache, name_list`) and `step` (`read, write, touch, delete, evict, prune, clear`).
  */
 const cacheStorageMetric = defineCount<'error'>('cache.storage');
 

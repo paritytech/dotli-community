@@ -36,7 +36,7 @@ dotli's persistent browser data in IndexedDB:
 | `isExpectedDbError`                                                              | Whether a database error is not a fault. |
 | `blockCache`                                                                     | Bitswap block cache.                     |
 | `cidCache`, `CachedCid`, `CachedManifests`                                       | Label to CID cache.                      |
-| `nameList`, `NameListRecord`                                                     | The landing page's dotNS name list.      |
+| `nameList`, `NameList`, `NameListRecord`                                         | The landing page's dotNS name list.      |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                        |
 | `LocalWalletStore`                                                               | Local wallet type.                       |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                             |

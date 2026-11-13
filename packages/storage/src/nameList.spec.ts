@@ -74,7 +74,6 @@ describe('name list failure reporting', () => {
     expect(sentry.counted('cache.storage')).toEqual([
       expect.objectContaining({ outcome: 'error', surface: 'name_list', step: 'write' }),
     ]);
-    expect(await refusing.get(PASEO)).toBeNull();
   });
 
   it('As the landing page, I read from a database that refuses me and get null and the failure is reported', async () => {
