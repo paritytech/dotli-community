@@ -164,7 +164,7 @@ export function createProductLoader(params: Params) {
     if (state.kind === 'rendering') {
       emitSideEffect({ kind: 'frameHalted' });
     }
-    // Queued behind the failure's report, so a screen that throws cannot lose it.
+    // Its own transition after these effects, so the report, the error state and the halt land before the screen shows.
     update({ kind: 'showFailure' });
   };
   const machine = createStateMachine<LoadMachine>({
