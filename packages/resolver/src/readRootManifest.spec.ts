@@ -86,6 +86,8 @@ function createRecordingApi(): { api: Api; calls: string[] } {
       calls.push('readSlot');
       return Promise.resolve(null);
     },
+    resolveTrieIds: () => Promise.resolve(new Map()),
+    readSlots: (_contract, keys) => Promise.resolve(keys.map(() => null)),
     onStop: () => {
       calls.push('onStop');
       return () => undefined;

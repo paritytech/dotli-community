@@ -156,6 +156,8 @@ function createFakeApi(storage: Storage, failure?: Error): { api: Api; reads: Sl
       }
       return Promise.resolve(storage[contractAddress]?.[slotKey] ?? null);
     },
+    resolveTrieIds: () => Promise.resolve(new Map()),
+    readSlots: (_contract, keys) => Promise.resolve(keys.map(() => null)),
     onStop: () => () => undefined,
     destroy: () => undefined,
   };

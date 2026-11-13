@@ -76,6 +76,8 @@ function createFakeClients(shapes: ApiShape[] = []): {
         }
         return answer;
       },
+      resolveTrieIds: () => Promise.resolve(new Map()),
+      readSlots: (_contract, keys) => Promise.resolve(keys.map(() => null)),
       onStop: (callback: () => void) => {
         if (stopped) {
           callback();
