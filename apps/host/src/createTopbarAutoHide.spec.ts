@@ -56,6 +56,8 @@ type AutoHidePage = {
   pressIntoApp: () => void;
   /** Turns the window into a phone width or back. */
   setPhone: (phone: boolean) => void;
+  /** Rests the pointer on the bar, or takes it off. */
+  setBarHovered: (hovered: boolean) => void;
   /** Moves the page's timers. */
   advance: (ms: number) => Promise<void>;
   /** Runs `dispose` when the case ends, before the stores reset. */
@@ -220,6 +222,24 @@ describe('topbar auto-hide start and stop', () => {
 });
 
 describe('topbar auto-hide fold', () => {
+  it('As a dApp user, I rest the pointer on the bar as it arms and it stays up until I leave it', async () => {
+    // Given
+    const { loadAutoHide, setBarHovered, advance } = setupAutoHidePage();
+    const autoHide = loadAutoHide();
+    setBarHovered(true);
+
+    // When
+    autoHide.arm();
+    await advance(HIDE_DELAY_MS * 3);
+    const hiddenWhileHovered = isHidden();
+    setBarHovered(false);
+    autoHide.scheduleHide();
+    await advance(HIDE_DELAY_MS);
+
+    // Then
+    expect([hiddenWhileHovered, isHidden()]).toEqual([false, true]);
+  });
+
   it('As a dApp user, I let the bar fold into the capsule and focusing it brings it back', async () => {
     // Given
     const { loadAutoHide, focusElement, home, advance } = setupAutoHidePage();
@@ -473,6 +493,7 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
   const elements = new Set<FakeElement>();
   const cleanups: (() => void)[] = [];
   let active: FakeElement | null = null;
+  let barHovered = false;
   onTestFinished(() => {
     for (const dispose of cleanups.splice(0).reverse()) {
       dispose();
@@ -512,6 +533,9 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
       for (const watcher of [...phoneWatchers]) {
         watcher();
       }
+    },
+    setBarHovered(hovered) {
+      barHovered = hovered;
     },
     advance: ms => timers.advance(ms),
     addCleanup(dispose) {
@@ -564,6 +588,7 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
         focusFirst() {
           home.focus();
         },
+        isHovered: element => barHovered && element === toPageElement(bar),
       }),
       timers,
     });
