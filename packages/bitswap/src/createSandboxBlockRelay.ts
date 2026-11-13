@@ -64,7 +64,8 @@ type RelayEvent =
 
 type RelayEffect =
   | { kind: 'abort'; requests: readonly BlockRequest[] }
-  | { kind: 'progress'; load: Load; at: number; from: BlockOrigin }
+  | { kind: 'progress'; progress: ContentProgress }
+  | { kind: 'served'; from: BlockOrigin }
   | { kind: 'reply'; request: BlockRequest; bytes: Uint8Array }
   | { kind: 'replyFailure'; request: BlockRequest; error: unknown };
 
@@ -114,7 +115,8 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
           if (state.requests.includes(request)) {
             const load = countBlock(state.load, { cid: request.cid, bytes: served.bytes, at });
             emitState({ ...state, requests: state.requests.filter(r => r !== request), load });
-            emitSideEffect({ kind: 'progress', load, at, from: served.from });
+            emitSideEffect({ kind: 'progress', progress: getProgress(load, at) });
+            emitSideEffect({ kind: 'served', from: served.from });
           }
           emitSideEffect({ kind: 'reply', request, bytes: served.bytes });
         },
@@ -131,17 +133,12 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
             request.aborter.abort();
           }
           return;
-        case 'progress': {
-          const { bytesFetched, totalBytes, startedAt } = effect.load;
-          const elapsed = effect.at - startedAt;
-          progressListeners.emit({
-            bytesFetched,
-            totalBytes,
-            bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0,
-          });
+        case 'progress':
+          progressListeners.emit(effect.progress);
+          return;
+        case 'served':
           servedListeners.emit(effect.from);
           return;
-        }
         case 'reply': {
           const { request, bytes } = effect;
           const reply: BitswapResultMessage = { type: 'dotli:bitswap-result', id: request.id, ok: true, bytes };
@@ -151,17 +148,7 @@ export function createSandboxBlockRelay({ channel, now = () => performance.now()
         }
         case 'replyFailure': {
           const { request, error } = effect;
-          const name = getErrorName(error);
-          const code = errorCode(error);
-          const reply: BitswapResultMessage = {
-            type: 'dotli:bitswap-result',
-            id: request.id,
-            ok: false,
-            error: serializeError(error),
-            ...(name !== undefined ? { errorName: name } : {}),
-            ...(code !== null ? { code } : {}),
-          };
-          request.source.postMessage(reply, { targetOrigin: request.origin });
+          request.source.postMessage(getFailureReply(request.id, error), { targetOrigin: request.origin });
           return;
         }
       }
@@ -222,4 +209,24 @@ function countBlock(load: Load | null, { cid, bytes, at }: { cid: string; bytes:
       ? { root: cid, totalBytes: readDagTotal(bytes), bytesFetched: 0, startedAt: at }
       : load;
   return { ...counted, bytesFetched: counted.bytesFetched + bytes.length };
+}
+
+/** The progress `load` makes at `at`. */
+function getProgress({ bytesFetched, totalBytes, startedAt }: Load, at: number): ContentProgress {
+  const elapsed = at - startedAt;
+  return { bytesFetched, totalBytes, bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0 };
+}
+
+/** The reply that tells a sandbox its request `id` failed with `error`. */
+function getFailureReply(id: string, error: unknown): BitswapResultMessage {
+  const name = getErrorName(error);
+  const code = errorCode(error);
+  return {
+    type: 'dotli:bitswap-result',
+    id,
+    ok: false,
+    error: serializeError(error),
+    ...(name !== undefined ? { errorName: name } : {}),
+    ...(code !== null ? { code } : {}),
+  };
 }
