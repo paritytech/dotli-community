@@ -158,8 +158,7 @@ export function createProductLoader(params: Params) {
     'stepFailed'
   > = (state, { error }, { emitState, emitSideEffect, update }) => {
     const { run } = state;
-    // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
-    const description = describeError(error, { readBackend: () => params.backend });
+    const description = describe(error);
     emitState({ kind: 'failing', label: run.label, error, description });
     emitSideEffect({ kind: 'failed', error, description });
     emitSideEffect({ kind: 'coreReleased', run });
@@ -232,7 +231,7 @@ export function createProductLoader(params: Params) {
               kind: 'cidRevalidated',
               copy: { label, servedCid: cached.cid, onScreen: false },
             });
-            failLoad(state, { kind: 'stepFailed', error }, transition);
+            transition.update({ kind: 'stepFailed', error });
             return;
           }
           holdCore({ kind: 'holdingCore', run, path: 'fast', cid: cached.cid, manifests }, transition);
@@ -271,7 +270,7 @@ export function createProductLoader(params: Params) {
           try {
             assertLaunchable(manifests.root, manifests.app);
           } catch (error) {
-            failLoad(state, { kind: 'stepFailed', error }, transition);
+            transition.update({ kind: 'stepFailed', error });
             return;
           }
           if (!params.skipCidCache) {
@@ -306,24 +305,24 @@ export function createProductLoader(params: Params) {
       },
       rendering: {
         stepFailed: failLoad,
-        rendered(state, _event, transition) {
+        rendered(state, _event, { emitState, emitSideEffect, update }) {
           let stopListening: () => void;
           try {
-            stopListening = listenToProduct(params, transition.update);
+            stopListening = listenToProduct(params, update);
           } catch (error) {
-            failLoad(state, { kind: 'stepFailed', error }, transition);
+            update({ kind: 'stepFailed', error });
             return;
           }
-          transition.emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
-          transition.emitSideEffect({ kind: 'coreReleased', run: state.run });
+          emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
+          emitSideEffect({ kind: 'coreReleased', run: state.run });
           // Queued behind what the listeners heard as they subscribed, so a failure heard then ends the load before
           // the side work, and an outcome heard then waits in the state until the handoff is reported.
-          transition.update({ kind: 'handOff' });
+          update({ kind: 'handOff' });
         },
       },
       handingOff: {
         productFailed({ run, stopListening }, { error }, { emitState, emitSideEffect, update }) {
-          const description = describeError(error, { readBackend: () => params.backend });
+          const description = describe(error);
           // The first load still waits, so it ends as one that failed before the product reached the screen.
           emitState({ kind: 'failing', label: run.label, error, description });
           emitSideEffect({ kind: 'failed', error, description });
@@ -351,7 +350,7 @@ export function createProductLoader(params: Params) {
       },
       onScreen: {
         productFailed({ run, stopListening }, { error, failure }, { emitState, emitSideEffect }) {
-          const description = describeError(error, { readBackend: () => params.backend });
+          const description = describe(error);
           // Nothing waits on a load whose product reached the screen, so it ends here and its screen is an effect.
           emitState({ kind: 'ended', error: null });
           emitSideEffect({ kind: 'failed', error, description });
@@ -368,7 +367,7 @@ export function createProductLoader(params: Params) {
       failing: {
         showFailure({ label, error, description }, _event, { emitState }) {
           try {
-            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+            showFailureScreen(label, error, description);
             emitState({ kind: 'ended', error: null });
           } catch (screenError) {
             // The first load rejects with it.
@@ -379,7 +378,7 @@ export function createProductLoader(params: Params) {
       ended: null,
     },
     onEffect: effect => {
-      // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- every report but the content's only goes to the runner of the reports
+      // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- the default sends the other reports to telemetry as they are
       switch (effect.kind) {
         case 'shieldSettled':
           // The shield shows how the content was checked, and the topbar may fold from then on.
@@ -423,7 +422,7 @@ export function createProductLoader(params: Params) {
         case 'failureShown': {
           const { label, error, description, failure } = effect;
           try {
-            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+            showFailureScreen(label, error, description);
           } catch (screenError) {
             params.report({ kind: 'screenFailed', error: screenError, failure });
           }
@@ -462,6 +461,16 @@ export function createProductLoader(params: Params) {
       }
     },
   };
+
+  /** One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown. */
+  function describe(error: unknown): ErrorDescription {
+    return describeError(error, { readBackend: () => params.backend });
+  }
+
+  /** Shows the failure screen for `label`. Throws what the screen throws. */
+  function showFailureScreen(label: string, error: unknown, description: ErrorDescription): void {
+    params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+  }
 }
 
 /** Moves to `next`, settles the shield as the render begins, and waits for the product's core. */
