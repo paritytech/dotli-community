@@ -312,7 +312,7 @@ function createFakeAttach(
   const leases: FakeLease[] = [];
   let calls = 0;
 
-  function attach(_onMessage: (message: JsonRpcMessage) => void, onHalt: (error?: unknown) => void): AttachAnswer {
+  function attach(onHalt: (error?: unknown) => void): AttachAnswer {
     calls += 1;
     const step = steps.shift() ?? 'lease';
     switch (step) {

@@ -23,14 +23,14 @@ type Params = {
    * Takes a lease on the chain as the pool holds it now, and answers what it found. A halt heard while it takes the
    * lease comes back as `halted`, and only a later one reaches `onHalt`. Throws what the pool's connect throws.
    */
-  attach: (onMessage: (message: JsonRpcMessage) => void, onHalt: (error?: unknown) => void) => AttachAnswer;
+  attach: (onHalt: (error?: unknown) => void) => AttachAnswer;
   /** The pool's redial. */
   redial: ChainRedial;
   /** The timers each wait to heal runs on. */
   timers: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
   /** Names the lease in debug logs. */
   holder: string;
-  /** Hears every message of every lease the connection takes, and the answers it gives itself. */
+  /** Hears the halted marker the connection answers a request with while it holds no chain. */
   onMessage: (message: JsonRpcMessage) => void;
 };
 
@@ -78,7 +78,11 @@ const LEASE_TAG = '[dot.li chain-lease]';
  */
 const chainPoolHealMetric = defineCount<'error' | 'ok'>('chain_pool.heal');
 
-const HEAL_OUTCOMES = { attached: 'ok', halted: 'halted', unreachable: 'no_transport' } as const;
+const HEAL_COUNTS = {
+  attached: { outcome: 'ok' },
+  halted: { outcome: 'error', reason: 'halted' },
+  unreachable: { outcome: 'error', reason: 'no_transport' },
+} as const;
 
 /**
  * A connection that takes the rebuilt chain after a halt. Throws when the first attach finds no transport, or as
@@ -87,8 +91,8 @@ const HEAL_OUTCOMES = { attached: 'ok', halted: 'halted', unreachable: 'no_trans
 export function createHealingLease({ key, attach, redial, timers, holder, onMessage }: Params): JsonRpcConnection {
   const first: Take = {};
   // A halt only reaches `onHalt` after the attach returned, so the machine exists by then.
-  const answer = attachTake(first, event => {
-    lease.update(event);
+  const answer = attach(error => {
+    lease.update({ kind: 'leaseHalted', take: first, error });
   });
   if (answer.kind === 'unreachable') {
     throw new Error(`No chain transport for ${key}`);
@@ -139,6 +143,7 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
           redial.noteHalt(key, reason);
           retake({ reason, tried: false }, transition);
         },
+        // Only a send queued while a transition ran comes here, since `send` sends on a held chain itself.
         sendAsked({ connection }, { message }, { emitSideEffect }) {
           emitSideEffect({ kind: 'send', connection, message });
         },
@@ -198,9 +203,8 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
             reportHealDefect(found.error, `${LEASE_TAG} ${holder} could not take ${key} again:`);
             return;
           }
-          const outcome = HEAL_OUTCOMES[found.kind];
-          report.log.debug(`${LEASE_TAG} ${key} taken again by ${holder}: ${outcome}`);
-          chainPoolHealMetric.count(outcome === 'ok' ? { outcome: 'ok' } : { outcome: 'error', reason: outcome });
+          report.log.debug(`${LEASE_TAG} ${key} taken again by ${holder}: ${found.kind}`);
+          chainPoolHealMetric.count(HEAL_COUNTS[found.kind]);
           return;
         }
       }
@@ -239,13 +243,6 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     },
   };
 
-  /** Attaches a lease whose later halt `update` hears, naming `take`. Throws as `attach` throws. */
-  function attachTake(take: Take, update: (event: LeaseEvent) => void): AttachAnswer {
-    return attach(onMessage, error => {
-      update({ kind: 'leaseHalted', take, error });
-    });
-  }
-
   /** Takes the chain again when its dial passes now, and otherwise waits in `detached` for the dial to open. */
   function retake(halt: LeaseHalt, transition: Transition<LeaseMachine>): void {
     if (redial.tryDial(key, halt)) {
@@ -279,7 +276,9 @@ export function createHealingLease({ key, attach, redial, timers, holder, onMess
     const take: Take = {};
     let answer: TakeAnswer;
     try {
-      answer = attachTake(take, update);
+      answer = attach(error => {
+        update({ kind: 'leaseHalted', take, error });
+      });
     } catch (error) {
       answer = { kind: 'threw', error };
     }

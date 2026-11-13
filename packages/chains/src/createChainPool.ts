@@ -591,13 +591,13 @@ export function createChainPool({
       return onMessage => {
         const connection = createHealingLease({
           key,
-          attach: (onLeaseMessage, onHalt) => {
+          attach: onHalt => {
             const sessionId = `local:${sessionCounter.toString(36)}`;
             sessionCounter += 1;
             return takeLease(key, holder, {
               sessionId,
               // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
-              onMessage: onLeaseMessage as (message: unknown) => void,
+              onMessage: onMessage as (message: unknown) => void,
               wireMode: 'object',
               onHalt,
             });
