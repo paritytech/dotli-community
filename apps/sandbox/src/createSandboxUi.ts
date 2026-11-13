@@ -19,11 +19,13 @@ const lazyChunkLoadMetric = defineCount<'error'>(S.LAZY_CHUNK_LOAD);
 /** Count. A transition of the sandbox UI threw, a bug. Tagged `outcome` (error) and `reason` (the error's name). */
 const uiTransitionMetric = defineCount<'error'>('sandbox.ui_transition');
 
+type ToastQueue = { readonly items: readonly unknown[] };
+
 type Params = {
   /** Loads the page UI chunk. Rejects when the chunk cannot load. */
   load: () => Promise<PageUiModule>;
   /** Toasts queue here before the UI is up, and show once it mounts. */
-  toasts: ReadableAtom<{ readonly items: readonly unknown[] }>;
+  toasts: ReadableAtom<ToastQueue>;
   /** Says why the page stopped, with a Reload, when the UI itself cannot load, and takes that away once it does. */
   fallback: FallbackScreen;
 };
@@ -65,11 +67,8 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
     },
   });
 
-  const stopToasts = toasts.listen(({ items }) => {
-    machine.update({ kind: 'toastsChanged', queued: items.length > 0 });
-  });
   const machine = createStateMachine<UiMachine>({
-    initial: { kind: 'waiting', stopToasts },
+    initial: { kind: 'waiting', stopToasts: toasts.listen(tellToasts) },
     handlers: {
       waiting: {
         toastsChanged(_state, { queued }, { update }) {
@@ -139,7 +138,7 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
       });
     },
   });
-  machine.update({ kind: 'toastsChanged', queued: toasts.get().items.length > 0 });
+  tellToasts(toasts.get());
 
   return {
     /**
@@ -160,6 +159,10 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
      */
     dispose,
   };
+
+  function tellToasts({ items }: ToastQueue): void {
+    machine.update({ kind: 'toastsChanged', queued: items.length > 0 });
+  }
 
   function loadFor(screen: Screen | null): Promise<UiEvent> {
     return loadChunk().then(
