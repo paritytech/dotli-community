@@ -4,19 +4,16 @@
 // What the suggestion island does beside rendering.
 
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
+import { useStore } from '@dotli/stores-solid';
 import type { NavComboboxState, NavKey } from '../state/navComboboxState.js';
 import { matchLabels } from '../components/landing/matchLabels.js';
 
 type Params = {
-  /** What the visitor typed. */
-  text: Accessor<string>;
-  /** Whether the input has focus. */
-  focused: Accessor<boolean>;
   /** Every label the list may suggest. */
   labels: Accessor<readonly string[]>;
   /** The TLD a typed name may end with. Null suggests nothing. */
   suffix: Accessor<string | null>;
-  combobox: Pick<NavComboboxState, 'showListbox' | 'handleKeys'>;
+  combobox: Pick<NavComboboxState, 'text' | 'focused' | 'showListbox' | 'handleKeys'>;
   /** Opens the name `label`. */
   open: (label: string) => void;
 };
@@ -26,10 +23,12 @@ type Params = {
  * them until the text changes. Once settled, the arrow keys move the active label, wrapping around, Enter opens it,
  * and the input points at the list while it shows.
  */
-export function useSuggestions({ text, focused, labels, suffix, combobox, open }: Params): {
+export function useSuggestions({ labels, suffix, combobox, open }: Params): {
   shown: Accessor<readonly string[]>;
   active: Accessor<string | null>;
 } {
+  const text = useStore(combobox.text);
+  const focused = useStore(combobox.focused);
   const matches = createMemo(() => matchLabels(labels(), text(), suffix()));
   // Escape and a chosen label each last until the text changes, so they read the text only to reset on it.
   const [escaped, setEscaped] = createSignal(() => {

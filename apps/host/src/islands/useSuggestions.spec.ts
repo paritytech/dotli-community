@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { createRoot, createSignal, flush } from 'solid-js';
+import { createRoot, flush } from 'solid-js';
 import { createNavComboboxState, type NavKey } from '../state/navComboboxState.js';
 import { useSuggestions } from './useSuggestions.js';
 
@@ -10,12 +10,12 @@ const LABELS = ['ant', 'apple', 'avocado', 'banana'];
 
 /** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
 function mount(initial: string) {
-  const [text, setText] = createSignal(initial, { ownedWrite: true });
-  const [focused, setFocused] = createSignal(true, { ownedWrite: true });
   const combobox = createNavComboboxState();
+  combobox.setText(initial);
+  combobox.setFocused(true);
   const open = vi.fn();
   const { suggestions, dispose } = createRoot(d => ({
-    suggestions: useSuggestions({ text, focused, labels: () => LABELS, suffix: () => '.dot', combobox, open }),
+    suggestions: useSuggestions({ labels: () => LABELS, suffix: () => '.dot', combobox, open }),
     dispose: d,
   }));
   onTestFinished(dispose);
@@ -25,11 +25,11 @@ function mount(initial: string) {
     open,
     listbox: () => combobox.listbox.get(),
     type(next: string): void {
-      setText(next);
+      combobox.setText(next);
       flush();
     },
     blur(): void {
-      setFocused(false);
+      combobox.setFocused(false);
       flush();
     },
     press(key: NavKey): boolean {
