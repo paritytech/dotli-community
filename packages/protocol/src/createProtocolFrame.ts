@@ -118,7 +118,7 @@ type FrameState<E> =
   | { kind: 'mismatched'; error: ProtocolVersionMismatchError };
 
 /**
- * What moves the frame. A timer's event carries nothing, since every move to another kind stops it. A listener's or a
+ * What moves the frame. A timer's event carries nothing, or only the wait it ends, since every move to another kind stops it. A listener's or a
  * promise's event carries the iframe or the transport it belongs to, and acts only while the state holds that one.
  */
 type FrameEvent<E> =
@@ -265,7 +265,7 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   /**
-   * Ends what `state` runs as it is left: its waits for a timeout, and its ready wait. Returns what it owed and kept. A
+   * Ends what `state` runs as it is left: its timer, and its ready wait's measure. Returns what it owed and kept. A
    * frame that stayed ready for `stableMs` ends the incident, however it left.
    */
   function leave(
