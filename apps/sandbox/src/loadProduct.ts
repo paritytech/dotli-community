@@ -121,8 +121,6 @@ type LoadMachine = MachineTypes<LoadState, LoadEvent, LoadEffect>;
  */
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {
   const { cid } = params;
-  // A retry runs on the state the first attempt left, so only the first wipes it.
-  const freshStart = params.fullReset && attempt === 1;
 
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
@@ -130,7 +128,8 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       idle: {
         started(_state, _event, transition) {
           transition.emitSideEffect({ kind: 'started' });
-          if (!freshStart) {
+          // A retry runs on the state the first attempt left, so only the first wipes it.
+          if (!params.fullReset || attempt > 1) {
             startPreparing({ waitForFreshController: false }, transition);
             return;
           }
@@ -171,7 +170,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       decrypting: {
         decrypted({ content }, { files }, transition) {
           if (files === null) {
-            startRendering({ type: 'single', content }, new TextDecoder().decode(content), transition);
+            startRendering({ type: 'single', content }, content, transition);
             return;
           }
           transition.emitSideEffect({ kind: 'decrypted', files });
@@ -188,7 +187,7 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
             transition.emitState(toFailure('archive_index', error));
             return;
           }
-          startRendering({ type: 'archive', files }, new TextDecoder().decode(index), transition);
+          startRendering({ type: 'archive', files }, index, transition);
         },
         stepFailed: failStep,
       },
@@ -324,12 +323,13 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     );
   }
 
-  function startRendering(result: FetchResult, html: string, { emitState, update }: Transition<LoadMachine>): void {
+  /** Renders `result`, whose page is `page`. */
+  function startRendering(result: FetchResult, page: Uint8Array, { emitState, update }: Transition<LoadMachine>): void {
     emitState({ kind: 'rendering', result });
     update(
       runStep(
         'render',
-        () => deps.prepareHtml(html),
+        () => deps.prepareHtml(new TextDecoder().decode(page)),
         prepared => ({ kind: 'htmlPrepared', html: prepared }),
       ),
     );
