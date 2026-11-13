@@ -339,17 +339,21 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
 
   // Each attempt queues on its own, so a retry wait holds no operation slot. A papi read in flight when the follow
   // stops rejects with its own `DisjointError`.
-  function readStorage(hash: string, key: string, childTrie: string | null): Promise<string | null> {
+  function runOperation<T>(start: () => Promise<T>): Promise<T> {
     return readWithRetry(
       () =>
         operations.call(() => {
           if (machine.state.get().kind === 'stopped') {
             throw new ApiStoppedError();
           }
-          return follow.storage(hash, 'value', key, childTrie);
+          return start();
         }),
       now,
     );
+  }
+
+  function readStorage(hash: string, key: string, childTrie: string | null): Promise<string | null> {
+    return runOperation(() => follow.storage(hash, 'value', key, childTrie));
   }
 
   // Resolves the values by key. A key the server did not return is absent, which reads as unset. Each call retries and
@@ -369,16 +373,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
         let pending = callKeys;
         while (pending.length > 0) {
           const asked = pending;
-          const { items, discarded } = await readWithRetry(
-            () =>
-              operations.call(() => {
-                if (machine.state.get().kind === 'stopped') {
-                  throw new ApiStoppedError();
-                }
-                return subscribeStorage(hash, asked, childTrie);
-              }),
-            now,
-          );
+          const { items, discarded } = await runOperation(() => subscribeStorage(hash, asked, childTrie));
           for (const { key, value } of items) {
             if (value !== undefined) {
               values.set(key, value);
