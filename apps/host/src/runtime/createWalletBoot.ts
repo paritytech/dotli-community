@@ -79,15 +79,14 @@ type BootEvent =
   | { kind: 'sitesServed' };
 
 type BootEffect =
-  | { kind: 'passBroke'; error: unknown }
+  | { kind: 'passBroke'; caller: Caller; error: unknown }
   | { kind: 'walletUnavailable'; error: unknown }
   | { kind: 'walletForgotten' }
   | { kind: 'modeChanged'; mode: WalletModeState }
   | { kind: 'flagUnreadable' }
   | { kind: 'walletKeptAsData' }
   | { kind: 'flagRenewed' }
-  | { kind: 'answer'; callers: readonly Caller[]; restored: Restored; local: LocalWalletBoot | null }
-  | { kind: 'reject'; caller: Caller; error: unknown };
+  | { kind: 'answer'; callers: readonly Caller[]; restored: Restored; local: LocalWalletBoot | null };
 
 type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 
@@ -114,50 +113,46 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
           const { emitState, emitSideEffect } = transition;
           const dead = state.dead ?? reconciled.dead;
           const wallet = state.wallet ?? reconciled.wallet;
-          const last: Restored = { ...reconciled, wallet, dead, local: getLocalWallet(wallet, state.bootsOnStored) };
-          if (wallet.status === 'failed') {
-            emitSideEffect({ kind: 'walletUnavailable', error: wallet.error });
-            emitSideEffect({ kind: 'modeChanged', mode: { mode: 'app', failure: UNAVAILABLE } });
-            answerPass({ ...state, dead }, last, transition);
-            return;
-          }
+          const restored: Restored = {
+            ...reconciled,
+            wallet,
+            dead,
+            local: getLocalWallet(wallet, state.bootsOnStored),
+          };
           if (state.wallet === null) {
+            if (wallet.status === 'failed') {
+              emitSideEffect({ kind: 'walletUnavailable', error: wallet.error });
+            }
             if (wallet.status === 'unreadable') {
               emitSideEffect({ kind: 'walletForgotten' });
             }
-            // It tells the mode even when the session read failed, so cores can boot, and core storage reports that.
+            // It tells the mode even when a read failed, so cores can boot, and core storage reports a failed session.
             emitSideEffect({ kind: 'modeChanged', mode: getWalletMode(wallet, state.bootsOnStored) });
+          }
+          if (wallet.status === 'failed') {
+            answerPass({ ...state, dead }, restored, transition);
+            return;
           }
           const { presence, session } = reconciled;
           if (session.status === 'failed') {
-            answerPass({ ...state, dead, wallet }, last, transition);
+            answerPass({ ...state, dead, wallet }, restored, transition);
             return;
           }
-          emitState({ kind: 'kept', wallet, answer: last, bootsOnStored: state.bootsOnStored });
+          emitState({ kind: 'kept', wallet, answer: restored, bootsOnStored: state.bootsOnStored });
           if (presence === 'unknown' && isFlagShared(role)) {
             emitSideEffect({ kind: 'flagUnreadable' });
           }
-          if (wallet.status === 'ok' && last.local === null) {
+          if (wallet.status === 'ok' && restored.local === null) {
             emitSideEffect({ kind: 'walletKeptAsData' });
           }
           // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
           if (presence === 'present' && (session.blob !== null || wallet.status === 'ok')) {
             emitSideEffect({ kind: 'flagRenewed' });
           }
-          emitSideEffect({
-            kind: 'answer',
-            callers: [state.asker, ...state.queued],
-            restored: last,
-            local: last.local,
-          });
+          emitSideEffect({ kind: 'answer', callers: [state.asker, ...state.queued], restored, local: restored.local });
         },
         passBroke(state, { error }, transition) {
-          transition.emitSideEffect({ kind: 'passBroke', error });
-          transition.emitSideEffect({
-            kind: 'reject',
-            caller: state.asker,
-            error: new Error('The restore rule failed', { cause: error }),
-          });
+          transition.emitSideEffect({ kind: 'passBroke', caller: state.asker, error });
           passOn(state, transition);
         },
         sitesServed: serveSites,
@@ -182,6 +177,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
             metric: walletBootTransitionMetric,
             message: '[dot.li wallet] the restore rule rejected:',
           });
+          effect.caller.reject(new Error('The restore rule failed', { cause: effect.error }));
           return;
         case 'walletUnavailable':
           // The environment's failure, so each pass that met it is a breadcrumb and a count.
@@ -218,9 +214,6 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
                 break;
             }
           }
-          return;
-        case 'reject':
-          effect.caller.reject(effect.error);
           return;
       }
     },
@@ -283,8 +276,8 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   }
 
   /** Answers the pass's asker with what it left, short of a kept answer, and hands the pass on. */
-  function answerPass(state: PassingState, last: Restored, transition: Transition<BootMachine>): void {
-    transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored: last, local: last.local });
+  function answerPass(state: PassingState, restored: Restored, transition: Transition<BootMachine>): void {
+    transition.emitSideEffect({ kind: 'answer', callers: [state.asker], restored, local: restored.local });
     passOn(state, transition);
   }
 
@@ -317,8 +310,11 @@ function getLocalWallet(wallet: WalletRead, bootsOnStored: boolean): LocalWallet
   return wallet.status === 'ok' && bootsOnStored ? wallet : null;
 }
 
-/** The mode `wallet` picks, with why a wallet that no longer decrypts was forgotten. */
-function getWalletMode(wallet: AnsweredWallet, bootsOnStored: boolean): WalletModeState {
+/** The mode `wallet` picks, with why a wallet that could not be read or no longer decrypts is not used. */
+function getWalletMode(wallet: WalletRead, bootsOnStored: boolean): WalletModeState {
+  if (wallet.status === 'failed') {
+    return { mode: 'app', failure: UNAVAILABLE };
+  }
   return {
     mode: getLocalWallet(wallet, bootsOnStored) === null ? 'app' : 'local',
     failure: wallet.status === 'unreadable' ? UNREADABLE : null,
