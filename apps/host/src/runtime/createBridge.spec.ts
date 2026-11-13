@@ -40,6 +40,7 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
   const runtimeCalls: string[] = [];
   const session = { reportCoresGone: vi.fn() };
   let watches = 0;
+  const blockScopes: BlockingModalScope[] = [];
   const bridge: Bridge = createBridge({
     bootRuntime: context => {
       contexts.push(context);
@@ -65,9 +66,12 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
     watchChains: () => {
       watches += 1;
     },
+    watchBrowserBlocks: scope => {
+      blockScopes.push(scope);
+    },
     session,
   });
-  return { bridge, watches: () => watches, contexts, runtimes, runtimeCalls, session };
+  return { bridge, watches: () => watches, blockScopes, contexts, runtimes, runtimeCalls, session };
 
   function createFakeRuntime() {
     return {
@@ -131,7 +135,7 @@ describe('bridge', () => {
 
   it('As a debug panel user, I see the host chains report from the first bridge init and a repeat init keeps that core with no second watch', async () => {
     // Given
-    const { bridge, watches, contexts } = createHarness();
+    const { bridge, watches, blockScopes, contexts } = createHarness();
     const first = createRecordingCoordinator();
     const second = createRecordingCoordinator();
     bridge.initBridge(first.coordinator);
@@ -142,9 +146,11 @@ describe('bridge', () => {
 
     // Then
     expect(watches()).toBe(1);
+    expect(blockScopes).toHaveLength(1);
+    expect(blockScopes[0]).toBe(first.scopes[0]);
     expect(contexts).toHaveLength(1);
-    expect(first.scopes).toHaveLength(1);
-    expect(contexts[0]?.blockingModalScope).toBe(first.scopes[0]);
+    expect(first.scopes).toHaveLength(2);
+    expect(contexts[0]?.blockingModalScope).toBe(first.scopes[1]);
     expect(second.scopes).toEqual([]);
   });
 

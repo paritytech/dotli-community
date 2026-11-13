@@ -14,7 +14,9 @@ import { hostPrompts } from '../createHostPrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
 import { pageNotifications } from '../pageNotifications.js';
 import { getProductFrameContainer, productFrameView } from '../createProductFrameView.js';
+import { productState } from './state/productState.js';
 import { networkMonitorState } from '../state/networkMonitorState.js';
+import { createBrowserBlockCheck } from './createBrowserBlockCheck.js';
 import { createBridge } from './createBridge.js';
 import type { AuthCommands } from './runAuthCommand.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
@@ -117,6 +119,17 @@ const bridge = createBridge({
       onActivity: networkMonitorState.recordChainActivity,
       onBestBlock: networkMonitorState.recordBestBlock,
     });
+  },
+  watchBrowserBlocks: scope => {
+    // The check lasts the page's life, so its stop goes unused.
+    createBrowserBlockCheck({
+      products: productState.store,
+      statuses: pagePermissions.getStatuses,
+      browser: browserPermissions,
+      scope,
+      prompts: hostPrompts,
+      record: productPermissions.recordPromptDecision,
+    }).start();
   },
   session: sessionState,
 });
