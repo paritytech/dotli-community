@@ -26,8 +26,6 @@ type DbEvent =
   | { kind: 'upgradeAsked'; db: IDBDatabase };
 
 type DbEffect =
-  | { kind: 'open' }
-  | { kind: 'listen'; db: IDBDatabase }
   | { kind: 'close'; db: IDBDatabase }
   | { kind: 'resolve'; reads: readonly Read[]; db: IDBDatabase }
   | { kind: 'reject'; read: Read; error: unknown };
@@ -44,21 +42,26 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
     initial: { kind: 'closed' },
     handlers: {
       closed: {
-        asked(_state, { read }, { emitState, emitSideEffect }) {
+        asked(_state, { read }, { emitState, update }) {
           emitState({ kind: 'opening', asker: read, queued: [] });
-          emitSideEffect({ kind: 'open' });
+          update(runOpen());
         },
       },
       opening: {
         asked(state, { read }, { emitState }) {
           emitState({ ...state, queued: [...state.queued, read] });
         },
-        opened({ asker, queued }, { db }, { emitState, emitSideEffect }) {
+        opened({ asker, queued }, { db }, { emitState, emitSideEffect, update }) {
+          db.onclose = () => {
+            update({ kind: 'connectionClosed', db });
+          };
+          db.onversionchange = () => {
+            update({ kind: 'upgradeAsked', db });
+          };
           emitState({ kind: 'open', db });
-          emitSideEffect({ kind: 'listen', db });
           emitSideEffect({ kind: 'resolve', reads: [asker, ...queued], db });
         },
-        openFailed({ asker, queued }, { error }, { emitState, emitSideEffect }) {
+        openFailed({ asker, queued }, { error }, { emitState, emitSideEffect, update }) {
           emitSideEffect({ kind: 'reject', read: asker, error });
           const [next, ...rest] = queued;
           if (next === undefined) {
@@ -66,7 +69,7 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
             return;
           }
           emitState({ kind: 'opening', asker: next, queued: rest });
-          emitSideEffect({ kind: 'open' });
+          update(runOpen());
         },
       },
       open: {
@@ -91,27 +94,6 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'open':
-          machine.update(
-            // An `open` that throws before it returns a promise rejects this one, so its error reaches the asker too.
-            new Promise<IDBDatabase>(resolve => {
-              resolve(open());
-            }).then(
-              db => ({ kind: 'opened', db }),
-              (error: unknown) => ({ kind: 'openFailed', error }),
-            ),
-          );
-          return;
-        case 'listen': {
-          const { db } = effect;
-          db.onclose = () => {
-            machine.update({ kind: 'connectionClosed', db });
-          };
-          db.onversionchange = () => {
-            machine.update({ kind: 'upgradeAsked', db });
-          };
-          return;
-        }
         case 'close':
           effect.db.close();
           return;
@@ -139,4 +121,14 @@ export function createDbConnection({ open }: Params): () => Promise<IDBDatabase>
     machine.update({ kind: 'asked', read });
     return read.promise;
   };
+
+  function runOpen(): Promise<DbEvent> {
+    // An `open` that throws before it returns a promise rejects this one, so its error reaches the asker too.
+    return new Promise<IDBDatabase>(resolve => {
+      resolve(open());
+    }).then(
+      db => ({ kind: 'opened', db }),
+      (error: unknown) => ({ kind: 'openFailed', error }),
+    );
+  }
 }
