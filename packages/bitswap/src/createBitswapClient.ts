@@ -7,6 +7,7 @@ import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-
 import { TIMEOUTS } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
+  createDeferred,
   createStateMachine,
   listen,
   noop,
@@ -87,13 +88,7 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
           let connection: JsonRpcConnection;
           // A dial that fails fails this caller at once, and the next one dials again.
           try {
-            const bulletin = provider();
-            if (bulletin === null) {
-              const error = new Error('Bulletin is not in the supported chain set');
-              emitSideEffect({ kind: 'reject', caller, error: setErrorName(error, BITSWAP_ERRORS.UNAVAILABLE) });
-              return;
-            }
-            connection = bulletin(requests.hearReply);
+            connection = dial();
           } catch (error) {
             emitSideEffect({ kind: 'reject', caller, error: toError(error) });
             return;
@@ -194,26 +189,35 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
       if (signal?.aborted === true) {
         return Promise.reject(createAbortError(cid, signal.reason));
       }
+      const { promise, resolve, reject } = createDeferred<Uint8Array>();
       // Taken at the call, so a caller queued behind another fetch of the CID spends its own budget while it waits.
-      const deadline = timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET;
-      let stopListening = noop;
-      return new Promise<Uint8Array>((resolve, reject) => {
-        const caller: Caller = { deadline, signal, resolve, reject };
-        if (signal !== undefined) {
-          stopListening = listen({
-            target: signal,
-            type: 'abort',
-            handler: () => {
-              client.update({ kind: 'callerAborted', cid, caller });
-            },
-          });
-        }
-        client.update({ kind: 'asked', cid, caller });
-      }).finally(() => {
-        stopListening();
-      });
+      const caller: Caller = { deadline: timers.now() + TIMEOUTS.BITSWAP_TOTAL_BUDGET, signal, resolve, reject };
+      const stopListening =
+        signal === undefined
+          ? noop
+          : listen({
+              target: signal,
+              type: 'abort',
+              handler: () => {
+                client.update({ kind: 'callerAborted', cid, caller });
+              },
+            });
+      client.update({ kind: 'asked', cid, caller });
+      return promise.finally(stopListening);
     },
   };
+
+  /**
+   * Opens a connection to Bulletin. Throws an `UNAVAILABLE` error when the caller has no Bulletin, and what the
+   * provider throws when the dial fails.
+   */
+  function dial(): JsonRpcConnection {
+    const bulletin = provider();
+    if (bulletin === null) {
+      throw setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE);
+    }
+    return bulletin(requests.hearReply);
+  }
 
   /** Hands the fetch of `cid` to its next queued caller, who fetches again on its own budget, or ends it. */
   function passFetchOn(
