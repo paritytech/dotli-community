@@ -353,7 +353,7 @@ export function startLoadProgress({
             return;
           }
           emitState({ ...state, byteTotals: { kind: 'closed' } });
-          // No report at all leaves nothing unsampled.
+          // A load that never got a byte leaves nothing unsampled.
           if (byteTotals.sampled !== null && received !== byteTotals.sampled.total) {
             emitSideEffect({ kind: 'byteTotalSampled', received });
           }
@@ -592,7 +592,8 @@ function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWa
 
 /**
  * The open report with `received`, the load's byte total, sampled at `at`, or `null` when the report is closed or the
- * total is not due. A total is due when it is new a second after the last one, up to the cap.
+ * total is not due. A total is due when it is new a second after the last one, up to the cap. The load starts at zero
+ * bytes, so a zero total before any sample is not new.
  */
 function sampleByteTotal(byteTotals: ByteTotals, received: number, at: number): ByteTotals | null {
   if (byteTotals.kind === 'closed') {
@@ -601,7 +602,8 @@ function sampleByteTotal(byteTotals: ByteTotals, received: number, at: number): 
   const { sampled, samples } = byteTotals;
   const due =
     samples < CHAIN_BYTES_DEBUG_MAX &&
-    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS));
+    received !== (sampled?.total ?? 0) &&
+    (sampled === null || at - sampled.at >= CHAIN_BYTES_DEBUG_MS);
   return due ? { kind: 'open', sampled: { at, total: received }, samples: samples + 1 } : null;
 }
 
