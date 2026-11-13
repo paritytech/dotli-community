@@ -5,7 +5,7 @@
 // hidden tab lags by an offset so a visible sibling claims it first.
 
 import type { ProductId } from '@parity/truapi';
-import { scheduledNotifications, type ScheduledNotificationRecord } from '@dotli/storage';
+import type { scheduledNotifications, ScheduledNotificationRecord } from '@dotli/storage';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
   createStateMachine,
@@ -611,23 +611,6 @@ export function createScheduledNotifications({
       stopShow();
     }
   }
-}
-
-/**
- * Builds the page's scheduler, over the dotli database, the browser's locks and channels, and this document. Never
- * throws.
- */
-export function createPageScheduledNotifications({
-  show,
-}: Pick<ScheduledNotificationsParams, 'show'>): ScheduledNotifications {
-  return createScheduledNotifications({
-    store: scheduledNotifications,
-    show,
-    locks: 'locks' in navigator ? navigator.locks : undefined,
-    openChannel: name => (typeof BroadcastChannel === 'function' ? new BroadcastChannel(name) : null),
-    visibility: document,
-    lifecycle: window,
-  });
 }
 
 /** Stops the poller where one runs, and closes the channel. */
