@@ -93,17 +93,6 @@ describe('getRoute', () => {
     expect(route).toEqual({ site: 'host', bare: true });
   });
 
-  it('As a user on an old shell, I open host.localhost for its frame and get the protocol build for one more release', () => {
-    // Given a server for both local roots
-    const serving = createLocalServing(ROOTS);
-
-    // When host.localhost is routed
-    const route = serving.getRoute('host.localhost', '/');
-
-    // Then the protocol build serves it
-    expect(route).toEqual({ site: 'protocol', bare: false });
-  });
-
   it('As a developer on local.host, I open a product subdomain of it and get the shell', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);

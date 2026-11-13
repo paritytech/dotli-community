@@ -42,11 +42,11 @@ export function isProtocolPath(pathname: string): boolean {
 }
 
 /**
- * Returns `pathname`'s path in the route's build. The protocol build's files sit at its root, its base adds the
- * prefix, and `host.` under a local root asks for them without it. Never throws.
+ * Returns `pathname`'s path in the route's build. A protocol route is reached only under the prefix, which the build's
+ * base adds to files that sit at its root, so its path is taken without it. Never throws.
  */
 export function getPathInBuild(route: Route, pathname: string): string {
-  return route.site === 'protocol' && isProtocolPath(pathname) ? pathname.slice(PROTOCOL_PREFIX.length) : pathname;
+  return route.site === 'protocol' ? pathname.slice(PROTOCOL_PREFIX.length) : pathname;
 }
 
 /**

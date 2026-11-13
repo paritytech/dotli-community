@@ -113,6 +113,4 @@ builds are rsynced separately, so check each origin to cover all of them:
 | `https://x.app.<base>/host_version.json` | app      |
 
 The protocol build is served under `/p/` on `<base>`, from the same folder as before, so the rsync layout is unchanged.
-`host.<base>` serves that folder too for one more release, so a shell that a service worker cached from the previous
-release still finds its frame. After that release remove its server block (and `host` becomes an ordinary product
-label).
+`host.<base>` no longer serves it, so `host` is an ordinary product label.

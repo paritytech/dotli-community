@@ -72,8 +72,7 @@ ssh -L 5173:localhost:5173 user@host
 
 - Routing follows the `Host` header, so the tunnel is transparent.
 - Browsing straight to `http://host:5173` does not work.
-- The protocol iframe is served under `/p/` on the bare host, `localhost:5173`. For one more release,
-  `host.localhost:5173` still serves it too, for a shell cached by the previous release.
+- The protocol iframe is served under `/p/` on the bare host, `localhost:5173`.
 
 ## Docker instead
 
