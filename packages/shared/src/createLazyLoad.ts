@@ -102,13 +102,11 @@ export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promi
     return caller.promise;
   };
 
-  function runLoad(): Promise<LoadEvent<T>> {
-    // A `load` that throws before it returns a promise rejects this one, so its error reaches the caller too.
-    return new Promise<T>(resolve => {
-      resolve(load());
-    }).then(
-      value => ({ kind: 'valueLoaded', value }),
-      (error: unknown) => ({ kind: 'loadFailed', error }),
-    );
+  async function runLoad(): Promise<LoadEvent<T>> {
+    try {
+      return { kind: 'valueLoaded', value: await load() };
+    } catch (error) {
+      return { kind: 'loadFailed', error };
+    }
   }
 }
