@@ -89,13 +89,17 @@ type Params = {
   now?: () => number;
 };
 
-/** A slow-load line, and the critical chain whose stall it describes, or `null` for the general line. */
-type WarningLine = { message: string; chain: CriticalChain | null };
+/**
+ * A slow-load line. One names the critical chain whose stall it describes. The general line, with `chain` `null`, is up
+ * because the bar parked, or because it stands in for a chain that moved on while another may still stall.
+ */
+type WarningLine = { message: string } & ({ chain: CriticalChain } | { chain: null; cause: 'parked' | 'standIn' });
 
 /**
  * The slow-load warning. Early warnings read as failure on loads that would succeed, so until the load is old enough to
  * be slow the latest line is parked, and shown at that mark if it still stands. Once shown, the warning stays and only
- * its text updates, since a blinking row reads as worse trouble.
+ * its text updates, since a blinking row reads as worse trouble. A line up only because the bar parked goes once the
+ * rate turns fast, as a load fast from the start shows none.
  */
 type Warning =
   { kind: 'early'; parked: WarningLine | null } | { kind: 'hidden' } | { kind: 'shown'; line: WarningLine };
@@ -170,7 +174,8 @@ type ProgressEffect =
   | { kind: 'barMovedToPhase'; phase: ResolvePhase }
   | { kind: 'barHeld' }
   | { kind: 'barMovedToDownload' }
-  | { kind: 'warningShown'; message: string };
+  | { kind: 'warningShown'; message: string }
+  | { kind: 'warningHidden' };
 
 type ProgressMachine = MachineTypes<ProgressState, ProgressEvent, ProgressEffect>;
 
@@ -307,14 +312,14 @@ export function startLoadProgress({
           // Only the named chain moving on takes its line down. One that stalls or reconnects again keeps its line
           // until its watch words it afresh.
           const recovered =
-            sync.kind !== 'stalled' && sync.kind !== 'connecting' && getWarnedChain(state.warning) === chain;
+            sync.kind !== 'stalled' && sync.kind !== 'connecting' && getWarningLine(state.warning)?.chain === chain;
           if (!recovered) {
             transition.emitState(watched);
             return;
           }
           // The general line takes its place, shown or parked alike, since another chain may still stall and hiding a
           // shown row would flash it.
-          raiseWarning(watched, getGeneralLine(watched), transition);
+          raiseWarning(watched, getStandInLine(watched), transition);
         },
         chainDetailed: recordDetail,
         netBytes(state, { received, at }, transition) {
@@ -336,12 +341,13 @@ export function startLoadProgress({
           emitSideEffect({ ...facts, kind: 'contentShown' });
         },
         barStalled(state, _event, transition) {
-          // A line that names a stalled chain names the cause, so a parked bar does not replace it.
-          const message = describeProgressStall(state.throughput.bytesPerSecond);
-          if (message === null || getWarnedChain(state.warning) !== null) {
+          // A parked bar never replaces a line already up. A chain's line names the cause, and the general line reads the
+          // same rate but, standing in for a chain, must outlast a fast rate.
+          const line = getParkedLine(state);
+          if (line === null || getWarningLine(state.warning) !== null) {
             return;
           }
-          raiseWarning(state, { message, chain: null }, transition);
+          raiseWarning(state, line, transition);
         },
         productLoaded(state, _event, { emitState, emitSideEffect }) {
           const { byteTotals, received } = state;
@@ -434,6 +440,9 @@ export function startLoadProgress({
         case 'warningShown':
           trace.markWarningShown();
           loading.setLoadingWarning(effect.message);
+          return;
+        case 'warningHidden':
+          loading.setLoadingWarning(null);
           return;
       }
     },
@@ -534,10 +543,21 @@ function revealWarning(
   emitSideEffect({ kind: 'warningShown', message: line.message });
 }
 
+/** Takes the warning's line down, parked or shown. */
+function dropWarning(state: LightClientState, { emitState, emitSideEffect }: Transition<ProgressMachine>): void {
+  if (state.warning.kind === 'early') {
+    emitState({ ...state, warning: { kind: 'early', parked: null } });
+    return;
+  }
+  emitState({ ...state, warning: { kind: 'hidden' } });
+  emitSideEffect({ kind: 'warningHidden' });
+}
+
 /**
  * Moves to `state` with the warning's line worded again from it, since a peer count or a rate that changed makes the
- * line read stale. A chain's line gives way to the general line once the chain's facts explain no stall. A line that
- * reads the same is left alone, as the samples that reword it arrive several times a second.
+ * line read stale. A chain's line gives way to the general line once the chain's facts explain no stall, and a parked
+ * bar's line goes once the rate turns fast. A line that reads the same is left alone, as the samples that reword it
+ * arrive several times a second.
  */
 function rewordWarning(state: LightClientState, transition: Transition<ProgressMachine>): void {
   const line = getWarningLine(state.warning);
@@ -545,12 +565,29 @@ function rewordWarning(state: LightClientState, transition: Transition<ProgressM
     transition.emitState(state);
     return;
   }
-  const next = (line.chain === null ? null : getChainLine(state, line.chain)) ?? getGeneralLine(state);
+  const next = getRewordedLine(state, line);
+  if (next === null) {
+    dropWarning(state, transition);
+    return;
+  }
   if (next.message === line.message && next.chain === line.chain) {
     transition.emitState(state);
     return;
   }
   raiseWarning(state, next, transition);
+}
+
+/** `line` worded again from `state`, or `null` when it no longer stands. */
+function getRewordedLine(state: LightClientState, line: WarningLine): WarningLine | null {
+  if (line.chain !== null) {
+    return getChainLine(state, line.chain) ?? getStandInLine(state);
+  }
+  switch (line.cause) {
+    case 'parked':
+      return getParkedLine(state);
+    case 'standIn':
+      return getStandInLine(state);
+  }
 }
 
 /** `chain`'s stall line, worded from its watch and the load's rate, or `null` when they explain no stall. */
@@ -560,9 +597,19 @@ function getChainLine(state: LightClientState, chain: CriticalChain): WarningLin
   return message === null ? null : { message, chain };
 }
 
-/** The general slow-load line, worded from the load's current rate. */
-function getGeneralLine(state: LightClientState): WarningLine {
-  return { message: describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, chain: null };
+/** The general line for a parked bar, worded from the load's current rate, or `null` while the rate is fast. */
+function getParkedLine(state: LightClientState): WarningLine | null {
+  const message = describeProgressStall(state.throughput.bytesPerSecond);
+  return message === null ? null : { message, chain: null, cause: 'parked' };
+}
+
+/** The general line that stands in for a chain, worded from the load's current rate, which a fast rate keeps up. */
+function getStandInLine(state: LightClientState): WarningLine {
+  return {
+    message: describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING,
+    chain: null,
+    cause: 'standIn',
+  };
 }
 
 /** The line the warning shows or has parked, or `null` for none. */
@@ -575,11 +622,6 @@ function getWarningLine(warning: Warning): WarningLine | null {
     case 'shown':
       return warning.line;
   }
-}
-
-/** The critical chain whose stall the warning's line describes, or `null` for the general line or none. */
-function getWarnedChain(warning: Warning): CriticalChain | null {
-  return getWarningLine(warning)?.chain ?? null;
 }
 
 /**

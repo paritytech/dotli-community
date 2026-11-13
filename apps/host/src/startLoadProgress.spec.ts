@@ -474,6 +474,71 @@ describe('startLoadProgress', () => {
     );
   });
 
+  it('As a visitor on a slow connection, I see the slow line the parked bar raised, the download turns fast, and the line goes', async () => {
+    // Given the slow line shown while 2 kB arrive every second
+    const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
+    for (let tick = 1; tick <= 20; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_024 });
+    }
+    const shown = loadingState.get().warning;
+
+    // When 2 MB arrive every second
+    for (let tick = 1; tick <= 6; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: 20 * 1_024 + tick * 1_000_000 });
+    }
+
+    // Then
+    expect(shown).not.toBeNull();
+    expect(loadingState.get().warning).toBeNull();
+  });
+
+  it('As a visitor whose slow download speeds up before the load is old enough to be slow, I see no warning at that mark', async () => {
+    // Given 1 kB arrives every half second while the bar parks, so the parked bar words a slow line
+    const { progress, netBytes, content, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
+    for (let tick = 1; tick <= 8; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_024 });
+    }
+
+    // When 1 MB arrives every half second, past the slow mark
+    for (let tick = 1; tick <= 12; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: 8 * 1_024 + tick * 1_000_000 });
+    }
+
+    // Then, as on a connection that was fast from the start
+    expect(loadingState.get().warning).toBeNull();
+    expect(trace.markWarningShown).not.toHaveBeenCalled();
+  });
+
+  it('As a visitor in direct mode, I see the general line stand in for a recovered chain while another still has no peers, the download turns fast, and the line stays', async () => {
+    // Given the relay and Asset Hub stall before the mark, and Asset Hub recovers after its line is shown at it
+    const { chainSync, netBytes, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(1_000);
+    chainSync.send({ chain: 'assethub', kind: 'connecting' });
+    await timers.advance(4_000);
+    chainSync.send({ chain: 'assethub', kind: 'peers', peers: 3 });
+    chainSync.send({ chain: 'assethub', kind: 'bootstrapComplete' });
+
+    // When 2 MB arrive every second
+    for (let tick = 1; tick <= 6; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_000_000 });
+    }
+
+    // Then
+    expect(loadingState.get().warning).toBe('Still working. This is taking longer than usual.');
+  });
+
   it('As a visitor whose protocol frame restarts mid-download, I see the rate it last measured, never a negative one', async () => {
     // Given 2 MB arrive every second
     const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
