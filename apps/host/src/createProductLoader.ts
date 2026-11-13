@@ -167,43 +167,6 @@ export function createProductLoader(params: Params) {
     // Queued behind the failure's report, so a screen that throws cannot lose it.
     update({ kind: 'showFailure' });
   };
-  /** Fails a load whose product is in its frame, and queues its failure screen. */
-  const failProduct: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'productFailed'> = (
-    { run, stopListening },
-    { error, failure },
-    { emitState, emitSideEffect, update },
-  ) => {
-    const description = describeError(error, { readBackend: () => params.backend });
-    emitState({ kind: 'failingOnScreen', label: run.label, error, description, failure });
-    stopListening();
-    emitSideEffect({ kind: 'failed', error, description });
-    // Only a reload brings back a product that was on screen, so the frame stops showing it.
-    emitSideEffect({ kind: 'frameHalted' });
-    update({ kind: 'showFailure' });
-  };
-  /** Shows a failed load's screen, then ends the load. */
-  const showFailure: HandlerOf<LoadMachine, 'failing' | 'failingOnScreen', 'showFailure'> = (
-    state,
-    _event,
-    { emitState, emitSideEffect },
-  ) => {
-    const { label, error, description } = state;
-    try {
-      params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
-    } catch (screenError) {
-      switch (state.kind) {
-        case 'failing':
-          emitState({ kind: 'ended', error: toError(screenError) });
-          return;
-        case 'failingOnScreen':
-          // Nothing waits on a load whose product was on screen, so the screen's failure is reported here.
-          emitState({ kind: 'ended', error: null });
-          emitSideEffect({ kind: 'screenFailed', error: screenError, failure: state.failure });
-          return;
-      }
-    }
-    emitState({ kind: 'ended', error: null });
-  };
   const machine = createStateMachine<LoadMachine>({
     initial: { kind: 'idle' },
     handlers: {
@@ -356,7 +319,16 @@ export function createProductLoader(params: Params) {
         },
       },
       handingOff: {
-        productFailed: failProduct,
+        productFailed({ run, stopListening }, { error }, { emitState, emitSideEffect, update }) {
+          const description = describeError(error, { readBackend: () => params.backend });
+          // The first load still waits, so it ends as one that failed before the product reached the screen.
+          emitState({ kind: 'failing', label: run.label, error, description });
+          emitSideEffect({ kind: 'failed', error, description });
+          emitSideEffect({ kind: 'frameHalted' });
+          update({ kind: 'showFailure' });
+          // Last, so a stop that throws cannot drop the failure's report, the halt or the screen.
+          stopListening();
+        },
         contentOutcome(state, { report }, { emitState }) {
           emitState({ ...state, outcome: report });
         },
@@ -375,13 +347,42 @@ export function createProductLoader(params: Params) {
         },
       },
       onScreen: {
-        productFailed: failProduct,
+        productFailed({ run, stopListening }, { error, failure }, { emitState, emitSideEffect, update }) {
+          const description = describeError(error, { readBackend: () => params.backend });
+          emitState({ kind: 'failingOnScreen', label: run.label, error, description, failure });
+          emitSideEffect({ kind: 'failed', error, description });
+          // Only a reload brings back a product that was on screen, so the frame stops showing it.
+          emitSideEffect({ kind: 'frameHalted' });
+          update({ kind: 'showFailure' });
+          // Last, so a stop that throws cannot drop the failure's report, the halt or the screen.
+          stopListening();
+        },
         contentOutcome(_state, { report }, { emitSideEffect }) {
           emitSideEffect({ kind: 'contentSettled', report });
         },
       },
-      failing: { showFailure },
-      failingOnScreen: { showFailure },
+      failing: {
+        showFailure({ label, error, description }, _event, { emitState }) {
+          try {
+            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+            emitState({ kind: 'ended', error: null });
+          } catch (screenError) {
+            // The first load rejects with it.
+            emitState({ kind: 'ended', error: toError(screenError) });
+          }
+        },
+      },
+      failingOnScreen: {
+        showFailure({ label, error, description, failure }, _event, { emitState, emitSideEffect }) {
+          // Nothing waits on a load whose product reached the screen, so the screen's failure is reported here.
+          emitState({ kind: 'ended', error: null });
+          try {
+            params.failureScreen.show({ error: description, cause: error, label, backend: params.backend });
+          } catch (screenError) {
+            emitSideEffect({ kind: 'screenFailed', error: screenError, failure });
+          }
+        },
+      },
       ended: null,
     },
     onEffect: effect => {

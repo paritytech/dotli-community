@@ -547,6 +547,22 @@ describe('createProductLoader', () => {
     },
   );
 
+  it('As a visitor whose protocol frame refused this page and whose failure screen throws, I open a name and the load rejects with that failure', async () => {
+    // Given
+    const screenFailure = new Error('the failure screen threw');
+    const { loader } = setupLoader({
+      published: { doom: 'bafy-base' },
+      latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+      failToShow: screenFailure,
+    });
+
+    // When
+    const loaded = loader.load('doom');
+
+    // Then
+    await expect(loaded).rejects.toBe(screenFailure);
+  });
+
   it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen', async () => {
     // Given
     const { loader, ports, failures, refuseWire, reportContent, readResolution } = setupLoader({
