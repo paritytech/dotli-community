@@ -39,23 +39,29 @@ export async function syncNameList({ stored, network, reads, save, now = Date.no
   }
 
   for (let start = 0; start < record.stores.length; start += STORE_CHUNK) {
-    const chunk = record.stores.slice(start, start + STORE_CHUNK);
-    const { stores, labels } = await reads.readNewLabels(chunk);
-    const known = new Set([...record.apps, ...record.pending.map(p => p.label)]);
-    const fresh = labels.filter(label => !known.has(label));
-    const moved = stores.some((store, index) => store.read !== chunk[index]?.read);
-    if (!moved && fresh.length === 0) {
-      continue;
+    // A read takes a slice of each store's new entries, so the chunk is read again until no cursor moves.
+    for (;;) {
+      const chunk = record.stores.slice(start, start + STORE_CHUNK);
+      const { stores, labels } = await reads.readNewLabels(chunk);
+      // Labels come only from entries past a cursor, so a read that moved none found none.
+      if (stores.every((store, index) => store.read === chunk[index]?.read)) {
+        break;
+      }
+      const known = new Set([...record.apps, ...record.pending.map(p => p.label)]);
+      const fresh = labels.filter(label => !known.has(label));
+      const withApp = await reads.readAppLabels(fresh);
+      const checkedAt = now();
+      record = {
+        ...record,
+        stores: [...record.stores.slice(0, start), ...stores, ...record.stores.slice(start + STORE_CHUNK)],
+        apps: [...record.apps, ...fresh.filter(label => withApp.has(label))],
+        pending: [
+          ...record.pending,
+          ...fresh.filter(label => !withApp.has(label)).map(label => ({ label, checkedAt })),
+        ],
+      };
+      await save(record);
     }
-    const withApp = await reads.readAppLabels(fresh);
-    const checkedAt = now();
-    record = {
-      ...record,
-      stores: [...record.stores.slice(0, start), ...stores, ...record.stores.slice(start + STORE_CHUNK)],
-      apps: [...record.apps, ...fresh.filter(label => withApp.has(label))],
-      pending: [...record.pending, ...fresh.filter(label => !withApp.has(label)).map(label => ({ label, checkedAt }))],
-    };
-    await save(record);
   }
 
   const staleBefore = now() - RECHECK_AFTER_MS;

@@ -27,9 +27,14 @@ type ReadStoreNamesParams = {
 
 type StoreNames = { cursor: LabelStoreCursor; names: string[] };
 
+// A store holds up to a few thousand entries, so one read takes a slice of each, and its caller can save what it read
+// before the next slice.
+const MAX_ENTRIES_PER_READ = 256;
+
 /**
- * Each store's new entry count, and the second-level labels under `dotns.TLD` among the entries from each store's
- * `read` up to that count, deduped in first-seen order. All stores are read in one block. Rejects with
+ * Each store's cursor moved past at most 256 of its new entries, and the second-level labels under `dotns.TLD` among
+ * those entries, deduped in first-seen order. A cursor stops short of its store's entry count while more entries wait,
+ * so a caller reads again until no cursor moves. All stores are read in one block. Rejects with
  * `PartialStorageReadError` when a long name's data slot is missing, and otherwise with a slot read's error.
  */
 export function readNewLabels({
@@ -72,18 +77,16 @@ export function readNewLabels({
   });
 }
 
-/** The names a store added past its cursor, in entry order, with the cursor moved to the store's count. */
+/** The names of a slice of the entries a store added past its cursor, in entry order, with the cursor moved past it. */
 async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): Promise<StoreNames> {
-  const { count, words: labelhashWords } = await readArrayTail({
+  const labelhashWords = await readArrayTail({
     api,
     contractAddress: store.address,
     slot: dotns.STORAGE_SLOTS.LABEL_STORE_LABEL_LIST,
     from: store.read,
+    limit: MAX_ENTRIES_PER_READ,
     at,
   });
-  if (labelhashWords.length === 0) {
-    return { cursor: store, names: [] };
-  }
 
   const entries = labelhashWords.flatMap(word => {
     if (word === null) {
@@ -141,5 +144,5 @@ async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): 
     nextDataWord += slotsExpected;
     names.push(decoder.decode(data.subarray(0, bytes.length)));
   }
-  return { cursor: { address: store.address, read: count }, names };
+  return { cursor: { address: store.address, read: store.read + labelhashWords.length }, names };
 }

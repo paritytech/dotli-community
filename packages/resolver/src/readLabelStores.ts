@@ -24,7 +24,7 @@ export function readLabelStores({ api, dotns, known }: Params): Promise<string[]
     if (trieId === null) {
       return [];
     }
-    const { words } = await readArrayTail({
+    const words = await readArrayTail({
       api,
       contractAddress: dotns.STORE_FACTORY,
       slot: dotns.STORAGE_SLOTS.STORE_FACTORY_LABEL_STORES,

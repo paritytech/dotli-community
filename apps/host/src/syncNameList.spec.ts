@@ -18,6 +18,8 @@ type NetworkParams = {
   apps?: string[];
   /** A store whose read rejects with `error`. */
   broken?: { address: string; error: Error };
+  /** The most entries of a store one read takes. */
+  perRead?: number;
 };
 
 describe('syncNameList', () => {
@@ -43,6 +45,23 @@ describe('syncNameList', () => {
       apps,
       pending: unpublished.map(label => ({ label, checkedAt: NOW })),
     });
+  });
+
+  it('As a first-time visitor, I read a big store a slice at a time and each slice is saved as it is read', async () => {
+    // Given: one store with five labels, of which one read takes two
+    const labels = ['a1', 'a2', 'a3', 'a4', 'a5'];
+    const reads = createFakeReads({ stores: ['store-a'], entries: { 'store-a': labels }, apps: labels, perRead: 2 });
+    const save = createFakeSave();
+
+    // When
+    await syncNameList({ stored: null, network: 'paseo-next-v2', reads, save, now: () => NOW });
+
+    // Then
+    expect(save.mock.calls.map(([record]) => [record.stores[0]?.read, record.apps.length])).toEqual([
+      [2, 2],
+      [4, 4],
+      [5, 5],
+    ]);
   });
 
   it('As a returning visitor, I read only the stores and entries past my saved position', async () => {
@@ -219,7 +238,13 @@ describe('syncNameList', () => {
 });
 
 /** Reads over a fake network, as the resolver answers them. */
-function createFakeReads({ stores = [], entries = {}, apps = [], broken }: NetworkParams) {
+function createFakeReads({
+  stores = [],
+  entries = {},
+  apps = [],
+  broken,
+  perRead = Number.POSITIVE_INFINITY,
+}: NetworkParams) {
   return {
     readLabelStores: vi.fn<NameListReads['readLabelStores']>(known => Promise.resolve(stores.slice(known))),
     readNewLabels: vi.fn<NameListReads['readNewLabels']>((cursors: readonly LabelStoreCursor[]) => {
@@ -228,11 +253,11 @@ function createFakeReads({ stores = [], entries = {}, apps = [], broken }: Netwo
       }
       const labels = new Set<string>();
       const moved = cursors.map(cursor => {
-        const held = entries[cursor.address] ?? [];
-        for (const label of held.slice(cursor.read)) {
+        const taken = (entries[cursor.address] ?? []).slice(cursor.read, cursor.read + perRead);
+        for (const label of taken) {
           labels.add(label);
         }
-        return { address: cursor.address, read: held.length };
+        return { address: cursor.address, read: cursor.read + taken.length };
       });
       return Promise.resolve({ stores: moved, labels: [...labels] });
     }),

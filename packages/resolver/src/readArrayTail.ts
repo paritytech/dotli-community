@@ -11,27 +11,29 @@ type Params = {
   slot: number;
   /** The first element to read. */
   from: number;
+  /** The most elements to read. */
+  limit?: number;
   at: { atHash: string; trieId: Uint8Array };
 };
 
 /**
- * The array's length, and the words of its elements from `from` on, `null` for an unset one. No element is read when
- * the length is at or below `from`. Rejects with a slot read's error.
+ * The words of the array's elements from `from` on, at most `limit` of them, `null` for an unset one. No element is
+ * read when the length is at or below `from`. Rejects with a slot read's error.
  */
 export async function readArrayTail({
   api,
   contractAddress,
   slot,
   from,
+  limit = Number.POSITIVE_INFINITY,
   at,
-}: Params): Promise<{ count: number; words: (Uint8Array | null)[] }> {
+}: Params): Promise<(Uint8Array | null)[]> {
   const countWord = await api.readSlot(contractAddress, encodeSlotKey(slot), at);
   const count = countWord === null ? 0 : Number(readWordAsBigInt(countWord));
-  if (count <= from) {
-    return { count, words: [] };
+  const end = Math.min(count, from + limit);
+  if (end <= from) {
+    return [];
   }
-  const elementSlots = Array.from({ length: count - from }, (_, offset) =>
-    computeArrayElementSlot(slot, from + offset),
-  );
-  return { count, words: await api.readSlots(contractAddress, elementSlots, at) };
+  const elementSlots = Array.from({ length: end - from }, (_, offset) => computeArrayElementSlot(slot, from + offset));
+  return api.readSlots(contractAddress, elementSlots, at);
 }

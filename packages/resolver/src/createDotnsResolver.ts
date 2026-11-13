@@ -261,8 +261,8 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     readLabelStores: (known: number, options: ResolveOptions = {}): Promise<string[]> =>
       read(options, api => readLabelStores({ api, dotns, known })),
     /**
-     * Reads the second-level labels the stores added past their cursors, deduped, with each cursor moved to its store's
-     * entry count. Rejects with `PartialStorageReadError` when a long name's data slot is missing,
+     * Reads the second-level labels of a slice of the entries the stores added past their cursors, deduped, with each
+     * cursor moved past its slice. A caller reads again until no cursor moves. Rejects with `PartialStorageReadError` when a long name's data slot is missing,
      * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it fails
      * for any other reason or the chain keeps halting.
      */
