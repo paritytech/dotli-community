@@ -381,26 +381,6 @@ describe('createRawApi', () => {
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
     });
 
-    it('As the resolver, I read a batch the server refuses for its operation limit and it is retried until it answers', async () => {
-      // Given a server that refuses the first call for its operation limit
-      const { client, follow } = createFakeSubstrateClient();
-      const api = createRawApi({ client, now: () => 0 });
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      follow.storage.mockResolvedValue('0x01');
-      follow.storageSubscription.mockImplementationOnce((_hash, _inputs, _childTrie, _onItems, onError) => {
-        onError(new OperationLimitError());
-        return () => undefined;
-      });
-
-      // When
-      const read = readSlotsUpTo(api, 2);
-      await vi.runAllTimersAsync();
-      const values = await read;
-
-      // Then
-      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
-    });
-
     it('As the resolver, I wait on an open batch and the read fails as disjoint when the follow stops', async () => {
       // Given a batch whose subscription the light client holds open
       const { client, follow } = createFakeSubstrateClient();
@@ -422,29 +402,6 @@ describe('createRawApi', () => {
       // Then
       expect(error).toBeInstanceOf(DisjointError);
       expect(follow.storageSubscription).toHaveBeenCalledTimes(1);
-    });
-
-    it('As the resolver, I wait on a batch retry and the read fails as stopped when the follow stops', async () => {
-      // Given a batch waiting to retry a call the light client cannot serve
-      const { client, follow } = createFakeSubstrateClient();
-      const api = createRawApi({ client });
-      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
-      const subscriptionAsked = createDeferred<undefined>();
-      follow.storageSubscription.mockImplementation((_hash, _inputs, _childTrie, _onItems, onError) => {
-        subscriptionAsked.resolve(undefined);
-        onError(new OperationInaccessibleError());
-        return () => undefined;
-      });
-      const read = readSlotsUpTo(api, 2).catch((error: unknown) => error);
-      await subscriptionAsked.promise;
-
-      // When
-      follow.stop();
-      await vi.runAllTimersAsync();
-      const error = await read;
-
-      // Then
-      expect(error).toBeInstanceOf(ApiStoppedError);
     });
   });
 

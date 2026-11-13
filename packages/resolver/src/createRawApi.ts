@@ -52,17 +52,17 @@ export type Api = {
   withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
   /**
    * Resolves `null` when the account is missing or not a contract. Rejects with `ApiStoppedError` once the follow
-   * stopped, and otherwise with the storage error, such as `OperationInaccessibleError` when no peer serves the read
-   * within its retry window. A read the server refuses for its operation limit is retried within the same window, then
-   * rejects with `OperationLimitError`.
+   * stopped, with papi's `DisjointError` when it stops while the read is in flight, and otherwise with the storage
+   * error, such as `OperationInaccessibleError` when no peer serves the read within its retry window. A read the server
+   * refuses for its operation limit is retried within the same window, then rejects with `OperationLimitError`.
    */
   resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
   /**
    * Reads a slot at `atHash`, a block a `withBestBlock` read holds, in the contract's `trieId`, resolved at that block
-   * when not given. Resolves `null` when unset. Rejects with `ApiStoppedError` once the follow stopped, and otherwise
-   * with the storage error, such as `OperationInaccessibleError` when no peer serves the read within its retry window.
-   * A read the server refuses for its operation limit is retried within the same window, then rejects with
-   * `OperationLimitError`.
+   * when not given. Resolves `null` when unset. Rejects with `ApiStoppedError` once the follow stopped, with papi's
+   * `DisjointError` when it stops while the read is in flight, and otherwise with the storage error, such as
+   * `OperationInaccessibleError` when no peer serves the read within its retry window. A read the server refuses for its
+   * operation limit is retried within the same window, then rejects with `OperationLimitError`.
    */
   readSlot(
     contractAddress: string,
@@ -71,15 +71,17 @@ export type Api = {
   ): Promise<Uint8Array | null>;
   /**
    * Resolves each contract's `trie_id` at `atHash`, a block a `withBestBlock` read holds, keyed by the address as given.
-   * `null` for an address that is not a contract. Rejects with `ApiStoppedError` once the follow stopped, and otherwise
-   * with the storage error, such as `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
+   * `null` for an address that is not a contract. Rejects with `ApiStoppedError` once the follow stopped, with papi's
+   * `DisjointError` when it stops while a call is in flight, and otherwise with the storage error, such as
+   * `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
    */
   resolveTrieIds(contractAddresses: readonly string[], atHash: string): Promise<ReadonlyMap<string, Uint8Array | null>>;
   /**
    * Reads many slots of one contract at `atHash`, in the contract's `trieId`, resolved at that block when not given.
    * Resolves the values in the order of `slotKeys`, `null` for an unset slot, and every value `null` when the account
-   * is not a contract. Rejects with `ApiStoppedError` once the follow stopped, and otherwise with the storage error, such
-   * as `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
+   * is not a contract. Rejects with `ApiStoppedError` once the follow stopped, with papi's `DisjointError` when it stops
+   * while a call is in flight, and otherwise with the storage error, such as `OperationInaccessibleError` or
+   * `OperationLimitError` once the retry window ends.
    */
   readSlots(
     contractAddress: string,
@@ -142,7 +144,8 @@ type FollowMachine = MachineTypes<FollowState, FollowEvent, FollowEffect>;
 // A server refuses operations past its per-follow limit, so each follow stays well under a common one.
 const MAX_STORAGE_OPERATIONS = 8;
 
-// A server discards the tail of a large storage call, so each call stays small enough to be served whole.
+// Bounds the request and reply of each call, and splits a large batch into calls that run side by side in the operation
+// pool.
 const MAX_BATCH_KEYS = 256;
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */

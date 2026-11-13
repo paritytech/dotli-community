@@ -35,7 +35,7 @@ type SyncedClientEvent =
   | { kind: 'connect' }
   | { kind: 'synced'; client: ChainClient }
   | { kind: 'syncFailed'; client: ChainClient; error: unknown }
-  | { kind: 'stopped' }
+  | { kind: 'stopped'; client: ChainClient }
   | { kind: 'released' };
 
 type SyncedClientEffect =
@@ -98,7 +98,8 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
     emitState({ kind: 'connecting', asker, startedAt: performance.now() });
   };
 
-  // Emits no `stopped`, so a release is never counted as a follow stop.
+  // The teardown stops the client's follow, and the `stopped` event that sends names a client no state holds any more,
+  // so a release is never counted as a follow stop.
   const release: HandlerOf<SyncedClientMachine, 'syncing' | 'ready', 'released'> = (
     { client },
     _event,
@@ -136,7 +137,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
           }
           // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
           client.api.onStop(() => {
-            update({ kind: 'stopped' });
+            update({ kind: 'stopped', client });
           });
           const now = performance.now();
           emitSideEffect({ kind: 'built', syncMs: now - syncStartedAt, totalMs: now - startedAt });
@@ -154,7 +155,10 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
         released: release,
       },
       ready: {
-        stopped({ client }, _event, { emitState, emitSideEffect }) {
+        stopped({ client }, event, { emitState, emitSideEffect }) {
+          if (event.client !== client) {
+            return;
+          }
           emitSideEffect({ kind: 'destroy', client });
           emitSideEffect({ kind: 'stopped' });
           emitState({ kind: 'idle' });
