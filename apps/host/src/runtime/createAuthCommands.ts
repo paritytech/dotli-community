@@ -49,22 +49,20 @@ type LoginWaiter = ReturnType<typeof createDeferred<LoginOutcome>>;
 type LoginRound = { id: symbol; controller: AbortController; waiters: readonly [LoginWaiter, ...LoginWaiter[]] };
 
 /**
- * The login rounds whose login has not ended. A round ends when its login ends or when a cancel or logout is asked
- * for, whichever comes first, so a click after either still logs in. `current` is the round a click joins, which a
- * cancel or logout clears, while the round stays until its login ends and answers its calls.
+ * `current` is the round a click joins, which a cancel or logout closes, so a click after either logs in again. A round
+ * stays in `rounds` until its login answers its calls.
  */
 type CommandsState = { kind: 'open'; current: symbol | null; rounds: ReadonlyMap<symbol, LoginRound> };
 
 type CommandsEvent =
   | { kind: 'loginAsked'; reason: LoginParams['reason']; waiter: LoginWaiter }
-  | { kind: 'roundEnded'; by: 'cancel' | 'logout' }
+  | { kind: 'roundClosed'; by: 'cancel' | 'logout' }
   | { kind: 'roundAnswered'; id: symbol; outcome: LoginOutcome }
   | { kind: 'roundFailed'; id: symbol; error: unknown };
 
 type CommandsEffect =
   | { kind: 'abortLogin'; controller: AbortController }
   | { kind: 'cancelPairing' }
-  | { kind: 'cancelRunningPairing' }
   | { kind: 'resolve'; waiters: readonly LoginWaiter[]; outcome: LoginOutcome }
   | { kind: 'reject'; waiters: readonly LoginWaiter[]; error: unknown };
 
@@ -91,23 +89,24 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
           const joined = getCurrentRound(state);
           if (joined !== undefined) {
             // A click while a round runs shares its login, so it starts no second pairing.
-            const round: LoginRound = { ...joined, waiters: [...joined.waiters, waiter] };
-            emitState({ ...state, rounds: new Map(state.rounds).set(round.id, round) });
+            emitState(withRound(state, { ...joined, waiters: [...joined.waiters, waiter] }));
             return;
           }
           const round: LoginRound = { id: Symbol('login round'), controller: new AbortController(), waiters: [waiter] };
-          emitState({ ...state, current: round.id, rounds: new Map(state.rounds).set(round.id, round) });
+          emitState({ ...withRound(state, round), current: round.id });
           update(queueLogin(round, reason));
         },
-        // Ends the round a click would join, so a login still waiting for its core hears the abort and sends nothing.
-        roundEnded(state, { by }, { emitState, emitSideEffect }) {
-          const ended = getCurrentRound(state);
-          if (ended !== undefined) {
+        // Closes the round a click would join, so a login still waiting for its core hears the abort and sends nothing.
+        roundClosed(state, { by }, { emitState, emitSideEffect }) {
+          const closed = getCurrentRound(state);
+          if (closed !== undefined) {
             emitState({ ...state, current: null });
-            emitSideEffect({ kind: 'abortLogin', controller: ended.controller });
+            emitSideEffect({ kind: 'abortLogin', controller: closed.controller });
           }
           // A logout queues behind the open login, which only the cancel ends when the core never answers it.
-          emitSideEffect({ kind: by === 'cancel' ? 'cancelPairing' : 'cancelRunningPairing' });
+          if (by === 'cancel' || authViews.isLoginRunning(auth.get())) {
+            emitSideEffect({ kind: 'cancelPairing' });
+          }
         },
         roundAnswered(state, { id, outcome }, { emitState, emitSideEffect }) {
           const round = state.rounds.get(id);
@@ -133,7 +132,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
             });
             return;
           }
-          // A cancel or logout ended the round before its login failed.
+          // A cancel or logout closed the round before its login failed.
           emitSideEffect({ kind: 'resolve', waiters: queued, outcome: CANCELLED });
         },
       },
@@ -145,11 +144,6 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
           return;
         case 'cancelPairing':
           cancelPairing();
-          return;
-        case 'cancelRunningPairing':
-          if (authViews.isLoginRunning(auth.get())) {
-            cancelPairing();
-          }
           return;
         case 'resolve':
           for (const waiter of effect.waiters) {
@@ -189,7 +183,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
      * is `end`'s to decide. Rejects when `end` rejects.
      */
     logout<T>(end: () => Promise<T>): Promise<T> {
-      machine.update({ kind: 'roundEnded', by: 'logout' });
+      machine.update({ kind: 'roundClosed', by: 'logout' });
       return queue.call(end);
     },
     /**
@@ -197,7 +191,7 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
      * Never throws.
      */
     cancelLogin(): void {
-      machine.update({ kind: 'roundEnded', by: 'cancel' });
+      machine.update({ kind: 'roundClosed', by: 'cancel' });
     },
   };
 
@@ -228,6 +222,11 @@ export function createAuthCommands({ auth, login, cancelPairing }: Params) {
 /** The round a click joins, if one is open. */
 function getCurrentRound({ current, rounds }: CommandsState): LoginRound | undefined {
   return current === null ? undefined : rounds.get(current);
+}
+
+/** `state` with `round` added or replaced by its id. */
+function withRound(state: CommandsState, round: LoginRound): CommandsState {
+  return { ...state, rounds: new Map(state.rounds).set(round.id, round) };
 }
 
 /** `state` with the round `id` gone, and no round to join when it was the one. */
