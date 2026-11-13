@@ -11,7 +11,6 @@ import { toProductId } from '../runtime/getAskedProductId.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { recordNotified } from '../testing/recordNotified.js';
-import { topbarState } from './topbarState.js';
 import { chatPanelState } from './chatPanelState.js';
 import { noop } from '@dotli/shared';
 import { createMemoryStorage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
@@ -149,7 +148,7 @@ describe('chat panel state', () => {
 
     // Then
     expect(chatPanelState.store.get()).toMatchObject({ activeRoomId: null, unreadByRoom: {}, composerError: null });
-    expect(chatPanelState.getCurrentProductId()).toBe('next.dot');
+    expect(chatPanelState.store.get().runtimeProductId).toBe('next.dot');
   });
 
   it('As a user, I reload the same product and keep my open room', () => {
@@ -174,7 +173,7 @@ describe('chat panel state', () => {
     remove = chatPanelState.start({ storage: local });
 
     // Then
-    expect(chatPanelState.getCurrentProductId()).toBe('early.dot');
+    expect(chatPanelState.store.get().runtimeProductId).toBe('early.dot');
   });
 
   it('As a user, I go back to the room list and see the composer error cleared', () => {
@@ -233,18 +232,12 @@ describe('chat panel state', () => {
     },
   );
 
-  it('As the chat panel, I follow the login, topbar, product and chat changes and read each new value at once', async () => {
+  it('As the chat panel, I follow the login, product and chat changes and read each new value at once', async () => {
     // Given each input set from inside the listener of the one before, and every listener reading the panel
     const seen: unknown[] = [];
     onTestFinished(
       authState.loggedInStore.listen(() => {
         seen.push({ loggedIn: chatPanelState.store.get().loggedIn });
-        topbarState.setVisible(false);
-      }),
-    );
-    onTestFinished(
-      topbarState.store.listen(() => {
-        seen.push({ topbarVisible: chatPanelState.store.get().topbarVisible });
         productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')), details: { chat: true } });
       }),
     );
@@ -266,17 +259,16 @@ describe('chat panel state', () => {
     await postProductMessage('app', 'a');
 
     // Then
-    expect(seen).toEqual([{ loggedIn: true }, { topbarVisible: false }, { label: 'app' }, { unreadByRoom: { a: 1 } }]);
+    expect(seen).toEqual([{ loggedIn: true }, { label: 'app' }, { unreadByRoom: { a: 1 } }]);
     expect(chatPanelState.store.get()).toMatchObject({
       loggedIn: true,
-      topbarVisible: false,
       label: 'app',
       available: true,
       unreadByRoom: { a: 1 },
     });
   });
 
-  it('As a user, I drag the panel past its clamp, clear no error and keep the topbar, and the panel redraws only for a new width', () => {
+  it('As a user, I drag the panel past its clamp and clear no error, and the panel redraws only for a new width', () => {
     // Given
     productState.setLoaded({ label: 'app', productId: asProductId('app.dot'), details: { chat: true } });
     chatPanelState.setWidth(10_000);
@@ -286,24 +278,10 @@ describe('chat panel state', () => {
     chatPanelState.setWidth(10_000);
     chatPanelState.setWidth(900);
     chatPanelState.setComposerError(null);
-    topbarState.setVisible(true);
-    topbarState.reportBlockingModals({ waiting: 0, active: true });
     chatPanelState.setWidth(400);
 
     // Then
     expect(notified.map(state => state.width)).toEqual([400]);
-  });
-
-  it('As a user whose page stopped its shell state, I hide the topbar and the chat panel no longer follows it', () => {
-    // Given the panel state, wired and then stopped
-    remove();
-    remove = noop;
-
-    // When
-    topbarState.setVisible(false);
-
-    // Then
-    expect(chatPanelState.store.get().topbarVisible).toBe(true);
   });
 
   it('As a user whose page started the chat panel state twice, I get a product message and see it count once as unread', async () => {
@@ -318,20 +296,16 @@ describe('chat panel state', () => {
     expect(chatPanelState.store.get().unreadByRoom).toEqual({ a: 1 });
   });
 
-  it('As a user who logged in and hid the topbar early, I wait for the chat panel state to start and see it know both at once', () => {
+  it('As a user who logged in early, I wait for the chat panel state to start and see it know my session at once', () => {
     // Given
     remove();
     authState.set({ tag: 'Connected', session: { connected: true } });
-    topbarState.setVisible(false);
 
     // When
     remove = chatPanelState.start({ chat, storage: local });
 
     // Then
-    expect(chatPanelState.store.get()).toMatchObject({
-      loggedIn: true,
-      topbarVisible: false,
-    });
+    expect(chatPanelState.store.get().loggedIn).toBe(true);
   });
 });
 

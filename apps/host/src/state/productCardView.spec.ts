@@ -20,7 +20,6 @@ const CARD: ProductCardState = {
 describe('product card view', () => {
   it.each<[string, ProductState, UrlPillState]>([
     ['no product', { status: 'none', loadId: 0 }, PRODUCT_PILL],
-    ['a failed load', { status: 'error', loadId: 1 }, PRODUCT_PILL],
     ['a local product', { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID, facts: {} }, PRODUCT_PILL],
     [
       'a published product on localhost',

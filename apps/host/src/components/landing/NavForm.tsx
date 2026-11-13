@@ -38,10 +38,8 @@ export type NavFormProps = {
  * the recents.
  */
 export function NavForm(props: NavFormProps): JSX.Element {
-  const suffix = (): string | null => props.suffix();
   let input: HTMLInputElement | undefined;
-  const [invalid, setInvalid] = createSignal(false);
-  const [message, setMessage] = createSignal('');
+  const [error, setError] = createSignal<string | null>(null);
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
@@ -59,11 +57,10 @@ export function NavForm(props: NavFormProps): JSX.Element {
       return;
     }
     // `validateDotLabel` rejects any dot, so the TLD a visitor typed comes off first.
-    const name = typedName(input.value, suffix() ?? '');
+    const name = typedName(input.value, props.suffix() ?? '');
     const result = validateDotLabel(name);
     if (!result.ok) {
-      setMessage(NAME_ERROR_COPY[result.reason]);
-      setInvalid(true);
+      setError(NAME_ERROR_COPY[result.reason]);
       input.focus();
       return;
     }
@@ -73,14 +70,13 @@ export function NavForm(props: NavFormProps): JSX.Element {
 
   return (
     <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
-      <div class={s['bar']} id="dotli-nav-bar" data-invalid={invalid() ? '' : undefined}>
+      <div class={s['bar']} id="dotli-nav-bar" data-invalid={error() === null ? undefined : ''}>
         <input
           ref={el => {
             input = el;
           }}
           onInput={() => {
-            setInvalid(false);
-            setMessage('');
+            setError(null);
             placeholder?.resume();
           }}
           id="dotli-nav-input"
@@ -89,18 +85,18 @@ export function NavForm(props: NavFormProps): JSX.Element {
           placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
           autocomplete="off"
-          aria-label={['Search a', suffix(), 'name'].filter(Boolean).join(' ')}
-          aria-describedby={invalid() ? 'dotli-nav-error' : undefined}
-          aria-invalid={invalid() ? 'true' : undefined}
-          disabled={suffix() === null}
+          aria-label={['Search a', props.suffix(), 'name'].filter(Boolean).join(' ')}
+          aria-describedby={error() === null ? undefined : 'dotli-nav-error'}
+          aria-invalid={error() === null ? undefined : 'true'}
+          disabled={props.suffix() === null}
         />
-        <span class={s['suffix']}>{suffix()}</span>
-        <button type="submit" class={s['go']} aria-label="Go" disabled={suffix() === null}>
+        <span class={s['suffix']}>{props.suffix()}</span>
+        <button type="submit" class={s['go']} aria-label="Go" disabled={props.suffix() === null}>
           <ArrowRightIcon />
         </button>
       </div>
-      <p id="dotli-nav-error" class={s['error']} role="alert" hidden={!invalid()}>
-        {message()}
+      <p id="dotli-nav-error" class={s['error']} role="alert" hidden={error() === null}>
+        {error() ?? ''}
       </p>
     </form>
   );

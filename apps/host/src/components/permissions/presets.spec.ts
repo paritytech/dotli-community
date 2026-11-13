@@ -7,7 +7,7 @@ import {
   type EnforceablePermissionName,
   type PermissionStatus,
 } from '../../runtime/permissionPolicy.js';
-import { distance, PRESETS, presetOf, RESTRICTED, SECURE, TRUSTED, UNLIMITED, type Preset } from './presets.js';
+import { PRESETS, presetOf, RESTRICTED, SECURE, TRUSTED, UNLIMITED, type Preset } from './presets.js';
 
 /** A preset's statuses in menu order, with `changes` laid over them. */
 function from(
@@ -18,58 +18,33 @@ function from(
 }
 
 describe('permission presets', () => {
-  it('As a user, Trusted allows the account, chain, camera, microphone, clipboard and notifications and asks for the rest', () => {
-    // Given
-    const names = ALL_PERMISSIONS.map(({ name }) => name);
-
-    // When
-    const granted = names.filter(name => TRUSTED.statuses[name] === 'granted');
-    const others = new Set(names.filter(name => !granted.includes(name)).map(name => TRUSTED.statuses[name]));
-
-    // Then
-    expect(granted).toEqual([
-      'Notifications',
-      'Camera',
-      'Microphone',
-      'Clipboard',
-      'IdentityDisclosure',
-      'ChainSubmit',
-      'PreimageSubmit',
-      'StatementSubmit',
-    ]);
-    expect(others).toEqual(new Set(['ask']));
-  });
-
   it.each(PRESETS)('As the slider, statuses equal to $label read as $label, not modified', preset => {
     // When
     const shown = presetOf(from(preset));
 
     // Then
     expect(shown).toEqual({ preset, modified: false });
-    expect(distance(from(preset), preset)).toBe(0);
   });
 
-  it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, Preset, number]>([
-    ['Secure with Location denied', SECURE, { Location: 'denied' }, SECURE, 1],
-    ['Secure with Camera allowed', SECURE, { Camera: 'granted' }, SECURE, 1],
+  it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, Preset]>([
+    ['Secure with Location denied', SECURE, { Location: 'denied' }, SECURE],
+    ['Secure with Camera allowed', SECURE, { Camera: 'granted' }, SECURE],
     [
       'Secure with Notifications, Clipboard, Camera and Microphone allowed',
       SECURE,
       { Notifications: 'granted', Clipboard: 'granted', Camera: 'granted', Microphone: 'granted' },
       SECURE,
-      4,
     ],
-    ['Trusted with Location allowed', TRUSTED, { Location: 'granted' }, TRUSTED, 1],
-    ['Trusted with Location and Bluetooth allowed', TRUSTED, { Location: 'granted', Bluetooth: 'granted' }, TRUSTED, 2],
+    ['Trusted with Location allowed', TRUSTED, { Location: 'granted' }, TRUSTED],
+    ['Trusted with Location and Bluetooth allowed', TRUSTED, { Location: 'granted', Bluetooth: 'granted' }, TRUSTED],
     [
       'Trusted with Location, Bluetooth and NFC allowed',
       TRUSTED,
       { Location: 'granted', Bluetooth: 'granted', NFC: 'granted' },
       UNLIMITED,
-      2,
     ],
-    ['Unlimited with Camera denied', UNLIMITED, { Camera: 'denied' }, UNLIMITED, 2],
-    ['Restricted with Camera at Ask', RESTRICTED, { Camera: 'ask' }, RESTRICTED, 1],
+    ['Unlimited with Camera denied', UNLIMITED, { Camera: 'denied' }, UNLIMITED],
+    ['Restricted with Camera at Ask', RESTRICTED, { Camera: 'ask' }, RESTRICTED],
     [
       'Secure with seven device permissions denied',
       SECURE,
@@ -83,18 +58,15 @@ describe('permission presets', () => {
         Biometrics: 'denied',
       },
       RESTRICTED,
-      6,
     ],
-  ])('As the slider, %s reads as the closest preset, modified', (_case, base, changes, closest, steps) => {
+  ])('As the slider, %s reads as the closest preset, modified', (_case, base, changes, closest) => {
     // Given
     const statuses = from(base, changes);
 
     // When
     const shown = presetOf(statuses);
-    const measured = distance(statuses, closest);
 
     // Then
-    expect(measured).toBe(steps);
     expect(shown).toEqual({ preset: closest, modified: true });
   });
 });

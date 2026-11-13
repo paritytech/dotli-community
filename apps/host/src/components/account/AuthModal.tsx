@@ -21,11 +21,8 @@ export type AuthModalPlacement = 'center' | 'topbar-end';
 /** Names the dialog. The sheet's head shows the same title. */
 const TITLE_ID = 'auth-modal-title';
 
-/** Shown until the modal first opens. */
-const FIRST_VIEW: AuthModalView = { kind: 'spinner' };
-
-/** Shown in place of the phrase form while its chunk loads. */
-const PHRASE_FORM_LOADING: PairingView = { kind: 'spinner' };
+/** Shown until the modal first opens, and in place of the phrase form while its chunk loads. */
+const SPINNER_VIEW: PairingView = { kind: 'spinner' };
 
 /** Shown in place of the phrase form when its chunk failed to load. Its Try again loads it again. */
 const PHRASE_FORM_FAILED: PairingView = {
@@ -80,13 +77,11 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
     onCleanup(track({ element: () => frame, open }));
   }
 
-  const card = (): HTMLElement | null => frame?.querySelector<HTMLElement>('[data-modal-surface]') ?? null;
-
   // While closed it keeps the state it last showed, so it fades out on what it showed. A code queued behind another
   // prompt is drawn only at its turn, since opening takes the new state.
   const shown = createMemo<AuthModalState>(previous => {
     const current = props.state();
-    return current.open ? current : (previous ?? { ...current, view: FIRST_VIEW });
+    return current.open ? current : (previous ?? { ...current, view: SPINNER_VIEW });
   });
   const view = createMemo<AuthModalView>(
     // A copy, so the screen it builds reads plain values.
@@ -98,11 +93,6 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
   const screen = createMemo(view, { equals: sameSignInScreen });
   // Each opening starts a new sign-in, so its screen is built anew.
   const openings = createMemo<number>(previous => (open() ? (previous ?? 0) + 1 : (previous ?? 0)));
-
-  const holdFocus = (): void => {
-    // The card, or focus drops to the body.
-    card()?.focus();
-  };
 
   const partsProps: SignInPartsProps & WindowWaitPartsProps = {
     get host() {
@@ -127,7 +117,10 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
     onFocusWindow: () => {
       props.onFocusWindow();
     },
-    holdFocus,
+    // The reveal stays on the same screen, so the card takes focus, or it drops to the body.
+    holdFocus: () => {
+      frame?.querySelector<HTMLElement>('[data-modal-surface]')?.focus();
+    },
     get drawQr() {
       return props.drawQr;
     },
@@ -143,7 +136,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
   const phraseParts = (form: PhraseForm): SignInParts => {
     switch (form) {
       case 'loading':
-        return signInParts(PHRASE_FORM_LOADING, partsProps);
+        return signInParts(SPINNER_VIEW, partsProps);
       case 'failed':
         // Its Try again loads the form again rather than start a new sign-in.
         return signInParts(PHRASE_FORM_FAILED, merge(partsProps, { onRetry: phraseForm.reload }));

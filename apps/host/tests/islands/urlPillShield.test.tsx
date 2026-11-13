@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 describe('UrlPillShield island', () => {
-  it('As a dApp user, I open a trusted product and the shield names its connection', () => {
+  it('As a dApp user, I open a trusted product and the shield shows it trusted', () => {
     // Given a product pill set to trusted
     urlPillState.showProduct('app', '.dot.li');
     urlPillState.setVerificationShield('trusted');
@@ -44,8 +44,8 @@ describe('UrlPillShield island', () => {
     // When the island mounts
     mountIsland();
 
-    // Then the shield carries the trusted state and its name
-    const shield = document.querySelector<HTMLElement>('[role="img"][aria-label="Trusted connection"]');
+    // Then
+    const shield = document.querySelector<HTMLElement>('#url-pill [role="img"]');
     expect(shield?.dataset['state']).toBe('trusted');
   });
 

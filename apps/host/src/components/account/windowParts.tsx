@@ -289,9 +289,7 @@ function phraseParts(form: PhraseForm, props: WindowPartsProps): SignInParts {
 }
 
 /** What a site gets once the user consents. */
-function siteGets(): string[] {
-  return ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
-}
+const SITE_GETS = ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
 
 /** The way out of a site's round, which tells the site the user left. */
 function siteCancel(props: WindowPartsProps): SignInAction {
@@ -350,7 +348,7 @@ function consentParts(origin: string, group: string | null, props: WindowPartsPr
           <SectionLabel as="h2" text="This site gets" />
           <div role="list" data-testid="session-window-site-gets">
             <Stack>
-              <For each={siteGets()}>
+              <For each={SITE_GETS}>
                 {line => (
                   <div role="listitem">
                     <Callout icon={CheckIcon}>{line}</Callout>
@@ -368,11 +366,11 @@ function consentParts(origin: string, group: string | null, props: WindowPartsPr
 /** What a site asks for, which names its views. */
 type SiteRoute = Extract<WindowStep, { view: 'site-failed' }>['route'];
 
-/** A site's round under way, which the phone may ask the user to approve. */
-function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsProps): SignInParts {
+/** A site's round under way, while it waits on the network or on Polkadot App. */
+function siteWaitParts(title: string, origin: string, props: WindowPartsProps): SignInParts {
   return StatusScreen({
     mark: 'spinner',
-    title: route === 'auth' ? 'Signing in' : 'Preparing the transaction',
+    title,
     body: origin,
     actions: [siteCancel(props)],
     testId: 'session-window-status',
@@ -437,32 +435,6 @@ function siteReviewParts({
       </>
     ),
   };
-}
-
-/** A site's transaction while the user is asked to open Polkadot App for the site account. */
-function siteSharingParts(origin: string, props: WindowPartsProps): SignInParts {
-  return StatusScreen({
-    mark: 'spinner',
-    title: 'Open Polkadot App',
-    body: origin,
-    actions: [siteCancel(props)],
-    testId: 'session-window-status',
-    titleTestId: 'session-window-title',
-    spinnerTestId: 'session-window-spinner',
-  });
-}
-
-/** A site's transaction while the phone signs it. */
-function siteApprovingParts(origin: string, props: WindowPartsProps): SignInParts {
-  return StatusScreen({
-    mark: 'spinner',
-    title: 'Approve the transaction in Polkadot App',
-    body: origin,
-    actions: [siteCancel(props)],
-    testId: 'session-window-status',
-    titleTestId: 'session-window-title',
-    spinnerTestId: 'session-window-spinner',
-  });
 }
 
 /** A step of a site's round failed. Try again, where a step may be tried again, runs the round again. */
@@ -622,13 +594,14 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
     case 'consent':
       return consentParts(step.origin, step.group, props);
     case 'site-signing':
-      return siteSigningParts(step.origin, step.route, props);
+      return siteWaitParts(step.route === 'auth' ? 'Signing in' : 'Preparing the transaction', step.origin, props);
     case 'site-review':
       return siteReviewParts({ origin: step.origin, call: step.call, account: step.account, props });
+    // The user is asked to open Polkadot App for the site account.
     case 'site-sharing':
-      return siteSharingParts(step.origin, props);
+      return siteWaitParts('Open Polkadot App', step.origin, props);
     case 'site-approving':
-      return siteApprovingParts(step.origin, props);
+      return siteWaitParts('Approve the transaction in Polkadot App', step.origin, props);
     case 'site-failed':
       return siteFailedParts({ origin: step.origin, route: step.route, retry: step.retry, props });
     case 'sites':

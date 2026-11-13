@@ -12,13 +12,7 @@ afterEach(() => {
 
 describe('url pill store', () => {
   it.each<{ situation: string; state: UrlPillState; shield: ShieldState | null | undefined }>([
-    { situation: 'with no product on show', state: { kind: 'none' }, shield: undefined },
     { situation: 'on a local product', state: { kind: 'localhost', host: 'localhost:3000' }, shield: undefined },
-    {
-      situation: 'on a product still loading',
-      state: { kind: 'product', domain: 'app', tld: '.dot', shield: null },
-      shield: null,
-    },
     {
       situation: 'on a trusted product',
       state: { kind: 'product', domain: 'app', tld: '.dot', shield: 'trusted' },

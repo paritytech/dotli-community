@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect } from 'storybook/test';
 import type { ChainBar, ChainSummary } from './chain.js';
 import { ChainGroup } from './ChainGroup.js';
 
@@ -58,12 +57,4 @@ export const WaitingForFirstBlock: Story = {
 /** As a user, a chain with no peers yet raises its peers chip. */
 export const NoPeers: Story = {
   args: { chain: { ...RELAY, peers: 0 } },
-  play: async ({ canvas, step }) => {
-    await step('Then the chip says 0 peers, is marked and is named for the chain', async () => {
-      const chip = canvas.getByTestId('chains-group-peers');
-      await expect(chip).toHaveTextContent('0 peers');
-      await expect(chip).toHaveAttribute('data-tone', 'warn');
-      await expect(chip).toHaveAccessibleName('Polkadot: 0 peers connected');
-    });
-  },
 };

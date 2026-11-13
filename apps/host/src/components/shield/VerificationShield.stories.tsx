@@ -3,10 +3,9 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { byId } from '@dotli/ui/testing';
+import { byTestId } from '@dotli/ui/testing';
 import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { productPill, setShield, storyShieldState } from '../../testing/stories/shieldFixtures.js';
-import { VERIFICATION_SHIELD_ID } from './verificationShieldIds.js';
 import { VerificationShield } from './VerificationShield.js';
 
 const meta = {
@@ -42,7 +41,7 @@ export const Trusted: Story = {
 
       // Then the shield is the named glyph in the trusted state
       const shield = await waitFor(() => within(document.body).getByRole('img', { name: 'Trusted connection' }));
-      await expect(shield).toBe(byId(VERIFICATION_SHIELD_ID));
+      await expect(shield).toBe(byTestId('verification-shield'));
       await expect(shield).toHaveAttribute('data-state', 'trusted');
     });
   },
@@ -58,7 +57,7 @@ export const Pending: Story = {
       // Given a product whose load state is not known yet
 
       // When the shield shows
-      const shield = byId(VERIFICATION_SHIELD_ID);
+      const shield = byTestId('verification-shield');
 
       // Then the shield is hidden from screen readers and has no state
       await expect(shield).toHaveAttribute('aria-hidden', 'true');

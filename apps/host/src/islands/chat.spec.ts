@@ -67,6 +67,22 @@ describe('useChatDock', () => {
     dispose();
   });
 
+  it('As a user whose open room disappeared, I open another room and see no error from the one that went', () => {
+    // Given a room whose send failed, then dropped out of the contacts
+    const { dock, dispose } = mountDock();
+    dock.conversation.openRoom('gone');
+    dock.conversation.setComposerError('not delivered');
+    dock.conversation.roomGone();
+
+    // When
+    dock.conversation.openRoom('next');
+    flush();
+
+    // Then
+    expect(dock.conversation.composerError()).toBeNull();
+    dispose();
+  });
+
   it("As a user, my reply goes to the loaded product's room", async () => {
     // Given
     const connection = createRecordingConnection();

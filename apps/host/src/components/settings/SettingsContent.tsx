@@ -35,10 +35,10 @@ import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsRe
 import s from './SettingsContent.module.css';
 
 /** The order the transport choices are listed in. */
-export const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
+const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
 
 /** What the transport choice for each backend says. */
-export const TRANSPORT_FACTS = {
+const TRANSPORT_FACTS = {
   'smoldot-direct': { description: 'Verified in your browser, separate for each tab', recommended: true },
   'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', recommended: false },
   'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
@@ -110,25 +110,12 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   });
 
   function clearAll(): void {
-    if (isResetRunning(untrack(props.reset))) {
-      return;
-    }
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
     void props.onApply(persisted, persisted, { forceFullWipe: true });
   }
 
   function apply(): void {
-    if (!untrack(dirty) || isResetRunning(untrack(props.reset))) {
-      return;
-    }
-    void props.onApply(
-      {
-        backend: untrack(backend),
-        network: untrack(network),
-        cache: untrack(cache),
-      },
-      persisted,
-    );
+    void props.onApply({ backend: backend(), network: network(), cache: cache() }, persisted);
   }
 
   const networks = saved.enabledNetworks;

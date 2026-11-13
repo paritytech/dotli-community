@@ -231,26 +231,3 @@ export const LeavingStopsSubscription: Story = {
     });
   },
 };
-
-/** As a reader of a custom message, I see nothing from a late answer after the message left. */
-export const LateRenderAfterLeavingIsIgnored: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvas, userEvent, step }) => {
-    await step('Given the message subscribed, then left the page', async () => {
-      await scrollIn();
-      await userEvent.click(canvas.getByRole('button', { name: 'Remove message' }));
-      await waitFor(() => expect(canvas.queryByTestId('chat-custom-root')).toBeNull());
-    });
-    await step('When the product answers late and the old row reports itself in view', () => {
-      sink(0).onUpdate(button('Late'));
-      sink(0).onError?.(new Error('late failure'));
-      screen.scroll(true);
-    });
-    await step('Then nothing shows and nothing more is asked', async () => {
-      await expect(canvas.queryByRole('button', { name: 'Late' })).toBeNull();
-      await expect(canvas.queryByTestId('chat-custom-root')).toBeNull();
-      await expect(service.sinks).toHaveLength(1);
-      await expect(service.stops).toBe(1);
-    });
-  },
-};

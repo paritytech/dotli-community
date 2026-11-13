@@ -28,14 +28,14 @@
   background: var(--fill-strong);
 }
 
-.bubble[data-event] {
+.bubble[data-look='event'] {
   background: transparent;
   color: var(--text-muted);
   font-size: 0.72rem;
   font-style: italic;
 }
 
-.bubble[data-custom] {
+.bubble[data-look='custom'] {
   width: 85%;
   max-width: 85%;
   padding: var(--sp-2) var(--sp-3);
@@ -59,7 +59,7 @@
 .row[data-author='user'] .time {
   text-align: right;
 }
-.bubble[data-custom] .time,
+.bubble[data-look='custom'] .time,
 .actions + .time {
   margin-top: var(--sp-2);
 }

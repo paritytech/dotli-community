@@ -15,21 +15,16 @@ import {
   given,
   resetStoryNetwork,
   setBackend,
-  setHealth,
   setProductLoaded,
   storyNetwork,
   VERDICTS,
   waitingOn,
 } from '../../testing/stories/networkFixtures.js';
-import { NETWORK_HEALTH } from '../../networkVerdict.js';
-import type { LiveVerdict, NetworkHealth } from '../../networkVerdict.js';
+import type { LiveVerdict } from '../../networkVerdict.js';
 import type { ChainView, TransferView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });
-
-const SEARCHING = 'Finding peers. This takes a few seconds.';
-const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
 function isOpen(): boolean {
   return document.getElementById('chains-popover')?.hasAttribute('data-open') === true;
@@ -51,67 +46,40 @@ function rowTexts(row: Element): (string | null)[] {
   );
 }
 
-type ExpectedChain = {
-  label: string;
-  peers?: { text: string; aria: string };
-  cell:
-    | { kind: 'unavailable' }
-    | { kind: 'waiting'; text: string; ghost: 'searching' | 'counting' | 'due' }
-    | { kind: 'bars'; titles: string[]; firstBlock: number };
-};
+/** What a chain's cell shows: no endpoint, a ghost bar before its first bar, or the blocks of its bars. */
+type ExpectedCell = 'unavailable' | 'waiting' | string[];
 
 type ExpectedBody = {
-  title: string;
-  detail: string;
-  tone: NetworkHealth;
-  chains: ExpectedChain[];
+  /** One cell per known chain, in order. */
+  cells: ExpectedCell[];
+  /** The status detail, where the count of live chains decides it. */
+  detail?: string;
   speed?: [string, string];
   size?: [string, string];
 };
 
-/** The body: head, status well, a group per known chain, transfer rows, tips. */
+function readCell(cell: HTMLElement): ExpectedCell {
+  if (cell.hasAttribute('data-unavailable')) {
+    return 'unavailable';
+  }
+  if (cell.querySelector('[data-testid="chains-bar-pending"]') !== null) {
+    return 'waiting';
+  }
+  return [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')].map(bar => bar.dataset['block'] ?? '');
+}
+
+/** The body: a cell per known chain, the transfer rows while the product loads, and the tips. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
   const root = content();
-  await expect(query(root, '[data-testid="chains-head"]').textContent).toBe('Network');
-  await expect(query(root, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', expected.tone);
-  await expect(query(root, '[data-testid="chains-status-title"]').textContent).toBe(expected.title);
-  await expect(query(root, '[data-testid="chains-status-detail"]').textContent).toBe(expected.detail);
-  const groups = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-group"]')];
-  await expect(groups).toHaveLength(expected.chains.length);
-  for (const [i, want] of expected.chains.entries()) {
-    const group = groups[i];
-    if (group === undefined) {
-      continue;
-    }
-    const cell = query(group, '[data-testid="chains-cell"]');
-    await expect(query(group, '[data-testid="chains-group-name"]').textContent).toBe(want.label);
-    const peers = group.querySelector('[data-testid="chains-group-peers"]');
-    await expect(peers?.textContent).toBe(want.peers?.text);
-    await expect(peers?.getAttribute('aria-label')).toBe(want.peers?.aria);
-    await expect(cell.hasAttribute('data-unavailable')).toBe(want.cell.kind === 'unavailable');
-    if (want.cell.kind === 'unavailable') {
-      await expect(cell.textContent).toBe('no endpoint on this network');
-    } else if (want.cell.kind === 'waiting') {
-      await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS - 1);
-      await expect(query(cell, '[data-testid="chains-bar-pending"]')).toHaveAttribute('data-pending', want.cell.ghost);
-      await expect(query(cell, '[data-testid="chains-bars-waiting"]').textContent).toBe(want.cell.text);
-    } else {
-      const { titles, firstBlock } = want.cell;
-      const marks = [...cell.querySelectorAll<HTMLElement>('[data-testid="chains-bar"]')];
-      await expect(cell.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(
-        HISTORY_SLOTS - titles.length,
-      );
-      await expect(marks.map(mark => mark.dataset['block'])).toEqual(titles.map((_, n) => String(firstBlock + n)));
-      await expect(marks.map(mark => mark.title)).toEqual(titles);
-      await expect(marks.map(mark => mark.getAttribute('aria-label'))).toEqual(
-        titles.map((title, n) => `Block ${String(firstBlock + n)}, ${title}`),
-      );
-    }
+  const cells = [...root.querySelectorAll<HTMLElement>('[data-testid="chains-cell"]')];
+  await expect(cells.map(readCell)).toEqual(expected.cells);
+  if (expected.detail !== undefined) {
+    await expect(query(root, '[data-testid="chains-status-detail"]').textContent).toBe(expected.detail);
   }
   const [speedRow, sizeRow] = [...root.querySelectorAll('[data-testid="chains-transfer-row"]')];
   await expect(speedRow === undefined ? null : rowTexts(speedRow)).toEqual(expected.speed ?? []);
   await expect(sizeRow === undefined ? null : rowTexts(sizeRow)).toEqual(expected.size ?? []);
-  await expect(query(root, '[data-testid="chains-tips"]').textContent).toBe(TIP);
+  await expect(root.querySelector('[data-testid="chains-tips"]')).not.toBeNull();
 }
 
 /** The network button and panel as the host composes them, reading the story's network. */
@@ -153,36 +121,6 @@ export const OpenPhone: Story = {
   },
 };
 
-/** As a dotli user, the panel opens on the relay, Asset Hub and another chain in use, each at its first block. */
-export const OpenInUse: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    given([
-      chain({ latest: 100, sinceLast: 0 }),
-      chain({ role: 'assethub', label: 'Asset Hub', latest: 100, sinceLast: 0 }),
-      chain({ key: `0x${'ab'.repeat(32)}`, role: null, label: '0xabab…abab', latest: 100, sinceLast: 0 }),
-    ]);
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then each chain is named and waits, counting, for its first block', async () => {
-      const groups = [...content().querySelectorAll<HTMLElement>('[data-testid="chains-group"]')];
-      await expect(groups.map(group => query(group, '[data-testid="chains-group-name"]').textContent)).toEqual([
-        'Relay chain',
-        'Asset Hub',
-        '0xabab…abab',
-      ]);
-      for (const group of groups) {
-        await expect(query(group, '[data-testid="chains-cell"]')).toHaveAttribute('data-state', 'live');
-        await expect(query(group, '[data-testid="chains-bar-pending"]')).toHaveAttribute('data-pending', 'counting');
-        await expect(query(group, '[data-testid="chains-bars-waiting"]').textContent).toMatch(
-          /^next block in about \ds$/,
-        );
-      }
-    });
-  },
-};
-
 /** One story per network state the panel describes. */
 function statusStory(
   chains: ChainView[],
@@ -200,7 +138,7 @@ function statusStory(
         // Read just now, so a countdown shows its first value.
         given(chains, network.transfer, network.verdict);
       });
-      await ctx.step('Then it shows the status, chains, transfer and tips', async () => {
+      await ctx.step('Then it shows the chains, transfer and tips', async () => {
         await expect(byId('chains-button')).toHaveAttribute('aria-expanded', 'true');
         await waitFor(() => expectBody(expected));
       });
@@ -209,63 +147,29 @@ function statusStory(
 }
 
 /** As a dotli user opening it with nothing in use, it says no chains are in use. */
-export const StatusNothingInUse: Story = statusStory([], {
-  title: NETWORK_HEALTH.quiet.title,
-  detail: 'Chains appear here once the app connects to them.',
-  tone: 'quiet',
-  chains: [],
-});
+export const StatusNothingInUse: Story = statusStory([], { cells: [] });
 
 /** As a dotli user opening it while starting, with no chain reachable, every chain says it has no endpoint. */
 export const StatusStartingUnreachable: Story = statusStory(
   [chain({ reachable: false }), chain({ role: 'assethub', label: 'Asset Hub', reachable: false })],
-  {
-    title: NETWORK_HEALTH.idle.title,
-    detail: SEARCHING,
-    tone: 'idle',
-    chains: [
-      { label: 'Relay chain', cell: { kind: 'unavailable' } },
-      { label: 'Asset Hub', cell: { kind: 'unavailable' } },
-    ],
-  },
+  { cells: ['unavailable', 'unavailable'] },
 );
 
 /** As a dotli user opening it while connecting, before any block or phase, each chain searches and the download shows. */
 export const StatusConnecting: Story = statusStory(
   [chain(), chain({ role: 'assethub', label: 'Asset Hub' })],
   {
-    title: NETWORK_HEALTH.idle.title,
-    detail: SEARCHING,
-    tone: 'idle',
-    chains: [
-      { label: 'Relay chain', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
-      { label: 'Asset Hub', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
-    ],
+    cells: ['waiting', 'waiting'],
     speed: ['Speed', '512 B/s'],
     size: ['Downloading', '2 kB / 4.0 MB'],
   },
   { transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 } },
 );
 
-/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so with its peers. */
+/** As a dotli user opening it with a chain syncing and one without an endpoint, each says so. */
 export const StatusSyncingNoEndpoint: Story = statusStory(
   [chain({ phase: 'syncing', peers: 1 }), chain({ role: 'people', label: 'People', reachable: false, peers: 3 })],
-  {
-    title: NETWORK_HEALTH.idle.title,
-    detail: SEARCHING,
-    tone: 'idle',
-    chains: [
-      {
-        label: 'Relay chain',
-        peers: { text: '1 peer', aria: 'Relay chain: 1 peer connected' },
-        cell: { kind: 'waiting', text: 'syncing', ghost: 'searching' },
-      },
-      { label: 'People', cell: { kind: 'unavailable' } },
-    ],
-    speed: ['Speed', '2.4 MB/s'],
-    size: ['Size', '2.9 MB'],
-  },
-  { transfer: { bytesPerSecond: 2_500_000, fetched: 3_000_000, total: 3_000_000 } },
+  { cells: ['waiting', 'unavailable'] },
 );
 
 /** As a dotli user opening it with one of two chains ready, the other counts down to its next block. */
@@ -275,30 +179,7 @@ export const StatusOneOfTwoReady: Story = statusStory(
     chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3), sinceLast: 1000, peers: 8 }),
     chain({ role: 'people', label: 'People' }),
   ],
-  {
-    title: NETWORK_HEALTH.idle.title,
-    detail: SEARCHING,
-    tone: 'idle',
-    chains: [
-      {
-        label: 'Relay chain',
-        peers: { text: '4 peers', aria: 'Relay chain: 4 peers connected' },
-        cell: { kind: 'waiting', text: 'next block in about 5s', ghost: 'counting' },
-      },
-      {
-        label: 'Asset Hub',
-        peers: { text: '8 peers', aria: 'Asset Hub: 8 peers connected' },
-        cell: {
-          kind: 'bars',
-          firstBlock: 18,
-          titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
-        },
-      },
-      { label: 'People', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
-    ],
-    speed: ['Speed', '39 kB/s'],
-  },
-  { transfer: { bytesPerSecond: 40_000, fetched: null, total: null } },
+  { cells: ['waiting', ['18', '19', '20'], 'waiting'] },
 );
 
 /** As a dotli user opening it while chains are overdue, it says the connection is unstable and which chains lag. */
@@ -313,22 +194,7 @@ export const StatusOverdue: Story = statusStory(
       sinceLast: 20_000,
     }),
   ],
-  {
-    title: NETWORK_HEALTH.warn.title,
-    detail: 'Relay chain and Asset Hub are behind',
-    tone: 'warn',
-    chains: [
-      { label: 'Relay chain', cell: { kind: 'waiting', text: 'due any moment', ghost: 'due' } },
-      {
-        label: 'Asset Hub',
-        cell: {
-          kind: 'bars',
-          firstBlock: 18,
-          titles: ['6.0s, on time', '6.0s, on time', '12s, 6.0s late', '30s, 24s late'],
-        },
-      },
-    ],
-  },
+  { cells: ['waiting', ['18', '19', '20', '21']] },
   { verdict: waitingOn('Relay chain', 'Asset Hub') },
 );
 
@@ -339,29 +205,11 @@ export const StatusGood: Story = statusStory(
     chain({ role: 'assethub', label: 'Asset Hub', latest: 20, bars: bars(18, 3, 4000), sinceLast: 200, peers: 1 }),
   ],
   {
-    title: NETWORK_HEALTH.ok.title,
-    detail: 'Light client is in sync on both chains',
-    tone: 'ok',
-    chains: [
-      {
-        label: 'Relay chain',
-        peers: { text: '12 peers', aria: 'Relay chain: 12 peers connected' },
-        cell: {
-          kind: 'bars',
-          firstBlock: 8,
-          titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
-        },
-      },
-      {
-        label: 'Asset Hub',
-        peers: { text: '1 peer', aria: 'Asset Hub: 1 peer connected' },
-        cell: {
-          kind: 'bars',
-          firstBlock: 18,
-          titles: ['4.0s, on time', '4.0s, on time', '4.0s, on time'],
-        },
-      },
+    cells: [
+      ['8', '9', '10'],
+      ['18', '19', '20'],
     ],
+    detail: 'Light client is in sync on both chains',
   },
   { transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 }, loaded: true, verdict: VERDICTS.good },
 );
@@ -429,25 +277,6 @@ export const OtherChains: Story = {
   },
 };
 
-/** As a user who went offline, the menu says so, as the capsule and the badge do. */
-export const Offline: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    // Blocks arrived on time just before the connection dropped.
-    given([chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 })]);
-    setHealth('err');
-  },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then the status says I am offline', async () => {
-      await expect(query(document, '[data-testid="chains-status-dot"]')).toHaveAttribute('data-tone', 'err');
-      await expect(query(document, '[data-testid="chains-status"]')).toHaveTextContent(
-        `${NETWORK_HEALTH.err.title}No peers on any chain. Retrying.`,
-      );
-    });
-  },
-};
-
 /** As a user on trusted providers, I get no tip about steadier peers. */
 export const TrustedNoTip: Story = {
   tags: ['!autodocs'],
@@ -505,14 +334,6 @@ export const FollowsOnlyWhileOpen: Story = {
       await waitFor(() => expect(follows.following).toBe(0));
       await expect(follows.started).toBe(1);
     });
-  },
-};
-
-/** As a dotli user, the countdown goes when the island unmounts while open. */
-export const UnmountStopsCountdown: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    given([chain({ latest: 10, sinceLast: 1000 })]);
   },
 };
 

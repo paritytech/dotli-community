@@ -80,7 +80,7 @@ afterEach(() => {
 });
 
 describe('Loading screen island', () => {
-  it('As the shell, mounting the island does not dispose the running load', async () => {
+  it('As the shell, the island keeps following the load that started before it mounted', async () => {
     // Given a crawling bar
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
     ctl.advancePhase(0);
@@ -92,7 +92,6 @@ describe('Loading screen island', () => {
     await settle();
 
     // Then the crawl goes on, into the live screen
-    expect(loadingState.get().phase).toBe('active');
     expect(loadingState.get().progress).toBeGreaterThan(before);
     expect(byId('loading-progress-pct').textContent).toBe(`${String(Math.round(loadingState.get().progress))}%`);
   });

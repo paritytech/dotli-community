@@ -7,6 +7,7 @@ import { atom, computed } from 'nanostores';
 import type { Backend } from '@dotli/config';
 import type { NetworkHealth } from '../networkVerdict.js';
 import type { NetworkView } from '../components/chains/chains.js';
+import type { ProductState } from '../runtime/state/productState.js';
 import { INITIAL_NETWORK, useNetworkPanel } from './network.js';
 
 /** The page's stores, as boot left them, and the panel's props read from them under a fresh owner. */
@@ -14,7 +15,7 @@ function mount() {
   const stores = {
     health: atom<NetworkHealth>('quiet'),
     network: atom<NetworkView>(INITIAL_NETWORK),
-    product: atom<{ status: string }>({ status: 'idle' }),
+    product: atom<Pick<ProductState, 'status'>>({ status: 'none' }),
     settings: atom<{ backend: Backend } | null>(null),
   };
   // A computed, which has no `init`
@@ -25,20 +26,6 @@ function mount() {
 }
 
 describe('useNetworkPanel', () => {
-  it('As the network panel, I read the product as loading until it has loaded', () => {
-    // Given
-    const { stores, panel, dispose } = mount();
-    expect(panel.productLoaded()).toBe(false);
-
-    // When
-    stores.product.set({ status: 'loaded' });
-    flush();
-
-    // Then
-    expect(panel.productLoaded()).toBe(true);
-    dispose();
-  });
-
   it('As the closed network button, nothing follows the network, and an open panel follows it until it closes', () => {
     // Given
     const { stores, panel, dispose, network } = mount();

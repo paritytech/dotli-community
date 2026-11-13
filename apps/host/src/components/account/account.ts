@@ -30,11 +30,11 @@ export type Account = {
 };
 
 /**
- * What the button's face shows: the account, as its avatar when it has a session to show, the sign-in prompt, which may
- * continue a sign-in made elsewhere, or the alert of a sign-in that cannot be reached.
+ * What the button's face shows: the account as its avatar, the sign-in prompt, which may continue a sign-in made
+ * elsewhere, or the alert of a sign-in that cannot be reached.
  */
 export type AuthButtonFace =
-  { kind: 'account'; session: AccountSession | undefined } | { kind: 'prompt'; resumes: boolean } | { kind: 'alert' };
+  { kind: 'account'; session: AccountSession } | { kind: 'prompt'; resumes: boolean } | { kind: 'alert' };
 
 /** What the auth button shows: its state, which names its label, and the face it shows. */
 export type AuthButtonState =
@@ -49,7 +49,8 @@ type AuthButtonAccount = Pick<Account, 'knowledge' | 'signingOut' | 'loggedIn' |
 
 /**
  * The auth button's state, first match wins: checking, unreachable, signing out, resume, sign in, signed in. The face is
- * the alert while the sign-in cannot be reached, else the account while logged in, else the prompt. Never throws.
+ * the alert while the sign-in cannot be reached, else the account while logged in with a session, else the prompt. Never
+ * throws.
  */
 export function getAuthButtonState(account: AuthButtonAccount): AuthButtonState {
   switch (account.knowledge()) {
@@ -76,9 +77,11 @@ function getKnownState(account: AuthButtonAccount): AuthButtonState {
   return { kind: 'signedIn', face };
 }
 
+/** The account while logged in with a session to show, else the prompt. */
 function getAccountFace(account: AuthButtonAccount): AuthButtonFace {
-  if (account.loggedIn()) {
-    return { kind: 'account', session: account.session() };
+  const session = account.session();
+  if (account.loggedIn() && session !== undefined) {
+    return { kind: 'account', session };
   }
   return { kind: 'prompt', resumes: account.elsewhere() };
 }

@@ -29,9 +29,8 @@ export type EchoHold = {
 export function createEchoHold(field: EchoField): EchoHold {
   // The product text last seen, applied or held.
   let written: string | undefined;
-  // Product text that arrived while the user was typing.
-  let held: string | undefined;
-  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  // Applies the product text that arrived while the user was typing, once they pause.
+  let heldTimer: ReturnType<typeof setTimeout> | null = null;
   let lastTypedAt = Number.NEGATIVE_INFINITY;
 
   const apply = (text: string): void => {
@@ -40,25 +39,24 @@ export function createEchoHold(field: EchoField): EchoHold {
     }
   };
   const dropHeld = (): void => {
-    held = undefined;
-    if (holdTimer !== undefined) {
-      clearTimeout(holdTimer);
-      holdTimer = undefined;
+    if (heldTimer !== null) {
+      clearTimeout(heldTimer);
+      heldTimer = null;
     }
   };
-  const settleHeld = (): void => {
-    holdTimer = undefined;
-    if (held === undefined) {
-      return;
-    }
-    const wait = lastTypedAt + TYPING_HOLD_MS - Date.now();
-    if (wait > 0 && field.isFocused()) {
-      holdTimer = setTimeout(settleHeld, wait);
-      return;
-    }
-    const text = held;
-    held = undefined;
-    apply(text);
+  // Holds `text` until the user has paused for the hold, checking again then, as they may have typed meanwhile.
+  const hold = (text: string): void => {
+    heldTimer = setTimeout(
+      () => {
+        if (lastTypedAt + TYPING_HOLD_MS > Date.now() && field.isFocused()) {
+          hold(text);
+          return;
+        }
+        heldTimer = null;
+        apply(text);
+      },
+      lastTypedAt + TYPING_HOLD_MS - Date.now(),
+    );
   };
 
   return {
@@ -67,12 +65,11 @@ export function createEchoHold(field: EchoField): EchoHold {
         return;
       }
       written = text;
+      dropHeld();
       if (field.isFocused() && Date.now() - lastTypedAt < TYPING_HOLD_MS) {
-        held = text;
-        holdTimer ??= setTimeout(settleHeld, lastTypedAt + TYPING_HOLD_MS - Date.now());
+        hold(text);
         return;
       }
-      dropHeld();
       apply(text);
     },
     typed: () => {

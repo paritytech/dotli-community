@@ -71,22 +71,20 @@ async function land(from: number, to = from): Promise<void> {
   }
 }
 
-/** A strip with bars. */
-const stripStory = {
-  tags: ['!autodocs'],
-  beforeEach: holdRelay,
-} satisfies Story;
-
 function strip(): HTMLElement {
   return byTestId('chains-bars');
 }
 
-/** As a user watching a chain, I see the strip glide left as a new block appears. */
-export const SlidesOnNewBlock: Story = {
-  ...stripStory,
+/**
+ * As a user watching a chain, I see the strip glide left as a new block lands, and the new bar drop its landing mark
+ * once its animation ends.
+ */
+export const LandingMarkDrops: Story = {
+  tags: ['!autodocs'],
+  beforeEach: holdRelay,
   play: async ctx => {
     await open(ctx);
-    await ctx.step('As a user watching a chain, the strip glides left as the new block appears', async () => {
+    await ctx.step('As a user watching a chain, the strip glides left as a new block lands', async () => {
       // Given
       anchor(100);
       await land(101, 102);
@@ -98,40 +96,9 @@ export const SlidesOnNewBlock: Story = {
       await expect(strip()).toHaveAttribute('data-sliding');
       await expect(strip().querySelector('[data-block="103"]')).toHaveAttribute('data-new');
     });
-  },
-};
-
-/** As a user watching a chain, I see a new bar drop its landing mark once its animation ends. */
-export const LandingMarkDrops: Story = {
-  ...stripStory,
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('As a user watching a chain, a new bar drops its landing mark once its animation ends', async () => {
-      // Given
-      anchor(100);
-      await land(101, 102);
-      await land(103);
+    await ctx.step('Then the new bar drops its landing mark once its animation ends', async () => {
       const newest = strip().querySelector('[data-block="103"]');
-      await expect(newest).toHaveAttribute('data-new');
-
-      // Then, once the landing animation has run
       await waitFor(() => expect(newest).not.toHaveAttribute('data-new'), { timeout: 3000 });
-    });
-  },
-};
-
-/** As a user opening the panel on a chain with history, I see nothing slide. */
-export const NoSlideOnOpen: Story = {
-  ...stripStory,
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('As a user opening the panel on a chain with history, nothing slides', async () => {
-      // When
-      anchor(100);
-      await land(101);
-
-      // Then
-      await expect(strip()).not.toHaveAttribute('data-sliding');
     });
   },
 };

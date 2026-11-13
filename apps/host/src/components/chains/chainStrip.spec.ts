@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { HISTORY_SLOTS, landedBars, pendingBar, sameBars, slotOpacity } from './chainStrip.js';
+import {
+  describeBlockDelay,
+  describePeers,
+  HISTORY_SLOTS,
+  landedBars,
+  pendingBar,
+  sameBars,
+  slotOpacity,
+} from './chainStrip.js';
 
 const RELAY = { blockTimeMs: 6000, phase: null };
 
@@ -11,6 +19,19 @@ describe('slotOpacity', () => {
     // When / Then
     expect(slotOpacity(0)).toBe('0.50');
     expect(slotOpacity(HISTORY_SLOTS - 1)).toBe('1.00');
+  });
+});
+
+describe('describeBlockDelay', () => {
+  it.each([
+    { gapMs: 6000, said: '6.0s, on time' },
+    { gapMs: 12_000, said: '12s, 6.0s late' },
+  ])('As a user hovering a block that came after $gapMs ms of a 6s block time, it reads "$said"', ({ gapMs, said }) => {
+    // When
+    const delay = describeBlockDelay(gapMs, 6000);
+
+    // Then
+    expect(delay).toBe(said);
   });
 });
 
@@ -30,7 +51,6 @@ describe('the bar strip motion', () => {
 
   it('As a user opening the panel on a chain with history, bars in a strip that showed none appear without sliding', () => {
     // When / Then
-    expect(landedBars([], bars(101))).toBe(0);
     expect(landedBars([], bars(101, 102))).toBe(0);
   });
 });
@@ -55,7 +75,7 @@ describe('the ghost bar before a chain first bar', () => {
     expect(bar).toEqual({ phase: 'counting', heightPercent: 40, text: 'next block in about 5s' });
   });
 
-  it('As a user of a chain past its block time, the ghost bar stands full and says due any moment, never zero', () => {
+  it('As a user of a chain at or past its block time, the ghost bar stands full and says due any moment, never zero', () => {
     // When
     const bars = [pendingBar(RELAY, 6000), pendingBar(RELAY, 19_000)];
 
@@ -64,6 +84,20 @@ describe('the ghost bar before a chain first bar', () => {
       { phase: 'due', heightPercent: 100, text: 'due any moment' },
       { phase: 'due', heightPercent: 100, text: 'due any moment' },
     ]);
+  });
+});
+
+describe('describePeers', () => {
+  it.each([
+    { peers: 0, chip: { text: '0 peers', tone: 'warn', label: 'Polkadot: 0 peers connected' } },
+    { peers: 1, chip: { text: '1 peer', tone: 'mono', label: 'Polkadot: 1 peer connected' } },
+    { peers: 4, chip: { text: '4 peers', tone: 'mono', label: 'Polkadot: 4 peers connected' } },
+  ])('As a user of a chain with $peers peers, its chip says $chip.text in the $chip.tone tone', ({ peers, chip }) => {
+    // When
+    const shown = describePeers('Polkadot', peers);
+
+    // Then
+    expect(shown).toEqual(chip);
   });
 });
 

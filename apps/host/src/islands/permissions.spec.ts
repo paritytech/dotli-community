@@ -144,18 +144,17 @@ describe('usePermissionsPanel', () => {
     dispose();
   });
 
-  it('As a user, a change applies to the app whose permissions were read, its label passed as is, and resolves what failed', async () => {
+  it('As a user, a change applies to the app whose permissions were read and resolves what failed', async () => {
     // Given
-    const markup = '<img id="injected" src="x">';
     const { panel, dispose, intents, given } = mount();
     intents.change.mockResolvedValueOnce({ failed: ['Camera'] });
-    given({ status: 'loaded', label: markup }, read(['ask', 'ask'], markup));
+    given(LOADED, read(['ask', 'ask']));
 
     // When
     const failed = await panel.onChange({ Camera: 'granted' });
 
     // Then
-    expect(intents.change).toHaveBeenCalledExactlyOnceWith(markup, { Camera: 'granted' });
+    expect(intents.change).toHaveBeenCalledExactlyOnceWith('app', { Camera: 'granted' });
     expect(failed).toEqual(['Camera']);
     dispose();
   });

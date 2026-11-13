@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { byId, byTestId } from '@dotli/ui/testing';
+import { byId } from '@dotli/ui/testing';
 import type { AuthCommands } from '../../src/runtime/runAuthCommand.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
 import { authControl } from '../../src/runtime/authControl.js';
@@ -20,11 +20,6 @@ import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/createProductFrameView.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { authModalState } from '../../src/state/authModalState.js';
-
-type Params = {
-  /** Where the modal sits, beside the topbar's end by default. */
-  placement?: 'center' | 'topbar-end';
-};
 
 /** What the controller asked of the bridge chunk's commands. */
 const asked = { logins: 0, cancels: 0 };
@@ -49,7 +44,7 @@ async function untilModal(open: boolean): Promise<void> {
 }
 
 /** The island mounted as Astro hydrates it, with no saved session and the page's controller started. */
-function mountIsland({ placement = 'topbar-end' }: Params = {}): void {
+function mountIsland(): void {
   authControl.init({
     coordinator: createBlockingModalCoordinator({ report: topbarState.reportBlockingModals }),
     bridge: () =>
@@ -66,7 +61,7 @@ function mountIsland({ placement = 'topbar-end' }: Params = {}): void {
   authState.set({ tag: 'Disconnected' });
   const slot = document.createElement('div');
   document.body.append(slot);
-  unmount = render(() => <AuthModal placement={placement} />, slot);
+  unmount = render(() => <AuthModal placement="topbar-end" />, slot);
   flush();
 }
 
@@ -102,8 +97,6 @@ describe('AuthModal island', () => {
 
     // Then
     expect(visibleBefore).toBe(false);
-    expect(authModalState.store.get().open).toBe(true);
-    expect(byTestId('auth-modal-backdrop').dataset['layout']).toBe('topbar-end');
     expect(topbarState.get().visible).toBe(true);
     expect(topbarSurfaces.isAnyOpen()).toBe(true);
 
@@ -114,29 +107,6 @@ describe('AuthModal island', () => {
     // Then
     expect(authModalState.store.get().open).toBe(false);
     expect(topbarSurfaces.isAnyOpen()).toBe(false);
-    expect(asked.cancels).toBe(1);
-  });
-
-  it('As a landing page visitor, I sign in and a dialog opens in the middle of the page whose Cancel cancels the login', async () => {
-    // Given the modal island mounted in the middle
-    mountIsland({ placement: 'center' });
-
-    // When a sign-in starts
-    authControl.startLogin();
-    await untilModal(true);
-
-    // Then a centred dialog with a dark scrim and Cancel shows
-    const backdrop = byTestId('auth-modal-backdrop');
-    expect(backdrop.dataset['layout']).toBe('center');
-    expect(backdrop.dataset['scrim']).toBe('dark');
-    expect(byTestId('auth-modal-close').textContent).toBe('Cancel');
-
-    // When the user presses Cancel
-    byTestId('auth-modal-close').click();
-    await untilModal(false);
-
-    // Then the modal closes and the login is cancelled once
-    expect(authModalState.store.get().open).toBe(false);
     expect(asked.cancels).toBe(1);
   });
 

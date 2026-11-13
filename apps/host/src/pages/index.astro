@@ -4,7 +4,8 @@
 
 // The shell around a product, on its `<label>.<BASE_DOMAIN>` host. The bare host's root serves landing.astro instead.
 import PageHead from '../components/PageHead.astro';
-import Shell from '../components/Shell.astro';
+import Topbar from '../components/Topbar.astro';
+import { AuthModal } from '../islands/AuthModal.jsx';
 import { LoadingScreen } from '../islands/LoadingScreen.jsx';
 import { Overlays } from '../islands/Overlays.jsx';
 import { TopbarReveal } from '../islands/TopbarReveal.jsx';
@@ -17,7 +18,8 @@ import s from './index.module.css';
     <PageHead />
   </head>
   <body class={s['page']} data-host>
-    <Shell />
+    <Topbar />
+    <AuthModal client:idle placement="topbar-end" />
 
     {/* Outside `#app`, whose content the product replaces. */}
     <LoadingScreen client:load />

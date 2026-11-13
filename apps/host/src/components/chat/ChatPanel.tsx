@@ -19,6 +19,7 @@ import { ChevronLeftIcon, CloseIcon, SendIcon } from '@dotli/ui/icons';
 import { ContactRow } from './ContactRow.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { MessageRow } from './MessageRow.js';
+import { ChatReplyUndeliveredError } from '../../runtime/chat/chatReplyUndeliveredError.js';
 import type { ChatConversation } from './chat.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
 import s from './ChatPanel.module.css';
@@ -30,8 +31,6 @@ type View = 'loading' | 'empty' | 'list' | 'conversation';
 
 // Within this many px of the end, the reader counts as at the newest message.
 const STICK_THRESHOLD_PX = 24;
-
-const READ_ERROR = 'Chat could not be loaded.';
 
 function PanelBody(props: { conversation: ChatConversation; onClose: () => void }): JSX.Element {
   // The binding is fixed for the panel's life.
@@ -166,7 +165,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
   const hint = (): string | null => {
     const v = view();
     if (feed.contactsFailed() || (v === 'conversation' && feed.messagesFailed())) {
-      return READ_ERROR;
+      return 'Chat could not be loaded.';
     }
     if (v === 'empty') {
       return chat.loggedIn() ? 'Waiting for the app to start a chat.' : 'Log in to chat with this app.';
@@ -180,24 +179,30 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     const roomId = chat.activeRoomId();
-    const text = inputEl?.value.trim() ?? '';
-    if (roomId === null || text === '') {
+    const input = inputEl;
+    if (roomId === null || input === undefined) {
       return;
     }
-    if (inputEl !== undefined) {
-      inputEl.value = '';
+    const text = input.value.trim();
+    if (text === '') {
+      return;
     }
+    input.value = '';
     // Sending shows the sent message, even to a reader scrolled up.
     stuck = true;
     try {
       await chat.send(roomId, text);
       chat.setComposerError(null);
     } catch (error) {
-      chat.setComposerError(
-        error instanceof Error && error.message.includes('denied')
-          ? 'Log in to chat with this app.'
-          : 'Message saved, but the app could not be reached.',
-      );
+      if (error instanceof ChatReplyUndeliveredError) {
+        chat.setComposerError('Message saved, but the app could not be reached.');
+        return;
+      }
+      // Nothing was kept, so the text goes back unless the user has typed anew.
+      if (input.value === '') {
+        input.value = text;
+      }
+      chat.setComposerError('Message not sent. Try again.');
     }
   };
 

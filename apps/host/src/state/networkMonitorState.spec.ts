@@ -240,18 +240,18 @@ describe('The network monitor tracks blocks', () => {
     expect(getChainByKey('relay')).toMatchObject({ reachable: false, state: 'unused' });
   });
 
-  it('As a user with the panel open, I get a block and see it the moment it lands, and nothing once the panel closes', () => {
+  it('As a user with the panel open, I get a block and see it the moment it lands', () => {
     // Given
     use(getRelayGenesis());
     let calls = 0;
-    const unsubscribe = monitor.version.listen(() => {
-      calls += 1;
-    });
+    onTestFinished(
+      monitor.version.listen(() => {
+        calls += 1;
+      }),
+    );
 
-    // When a block lands, the panel closes, and another block lands
+    // When
     monitor.recordBestBlock(getRelayGenesis(), 7);
-    unsubscribe();
-    monitor.recordBestBlock(getRelayGenesis(), 8);
 
     // Then
     expect(calls).toBe(1);

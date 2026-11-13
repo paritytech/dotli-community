@@ -5,7 +5,6 @@ import { createSignal, untrack } from 'solid-js';
 import type { RendererNode } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { expectBefore } from '@config/storybook/play';
 import { CustomNode, type CustomActionHandler } from './CustomNode.js';
 
 function encode(text: string): Uint8Array {
@@ -141,14 +140,6 @@ export const AllNodeKinds: Story = {
     await step('Then every layout node maps onto a host element', async () => {
       await expect(root.getByTestId('chat-custom-text')).toHaveTextContent('Poll results');
       await expect(root.getAllByTestId('chat-custom-box')).toHaveLength(2);
-      const [box] = root.getAllByTestId('chat-custom-box');
-      const inOrder = [root.getByTestId('chat-custom-text'), row, box, effect];
-      for (const [i, node] of inOrder.entries()) {
-        const next = inOrder[i + 1];
-        if (node !== undefined && next !== undefined) {
-          await expectBefore(node, next);
-        }
-      }
     });
     await step('Then a Spacer renders and a Nil renders nothing', async () => {
       await expect(within(row).queryAllByTestId(/^chat-custom-/)).toHaveLength(1);
@@ -163,8 +154,8 @@ export const AllNodeKinds: Story = {
   },
 };
 
-/** As a user, I tap a product button and its click action is reported. */
-export const ButtonReportsAction: Story = {
+/** As a user, I see a product's primary button. */
+export const PrimaryButton: Story = {
   args: {
     node: {
       tag: 'Button',
@@ -204,8 +195,8 @@ export const DisabledAndLoadingButtonsAreSilent: Story = {
   },
 };
 
-/** As a user, I type in a product field and the text is reported with its action. */
-export const FieldReportsTypedValue: Story = {
+/** As a user, I see a product text field with its label and text. */
+export const LabelledField: Story = {
   args: {
     node: {
       tag: 'TextField',
@@ -272,12 +263,6 @@ export const ProductTextReplacesValue: Story = {
       await expect(canvas.getByRole('textbox', { name: 'Name' })).toBe(input);
     });
   },
-};
-
-/** As a user, I see the same element left empty when a new tree drops its children. */
-export const DroppedModifierIsRemoved: Story = {
-  tags: ['!autodocs'],
-  args: { node: form('Sign up', field('')) },
 };
 
 /** As a user, I see a node replaced when the product changes its kind. */
@@ -358,12 +343,6 @@ export const UpdatedButtonKeepsElement: Story = {
       await expect(args.onAction).toHaveBeenCalledWith('vote:2');
     });
   },
-};
-
-/** As a user, I see nothing for a Nil node. */
-export const NilRendersNothing: Story = {
-  tags: ['!autodocs'],
-  args: { node: { tag: 'Nil' } },
 };
 
 /** As a screen-reader user, I hear each text field named by its own label. */

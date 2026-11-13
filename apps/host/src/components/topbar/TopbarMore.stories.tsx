@@ -148,22 +148,9 @@ export const PhoneRowMarksGrants: Story = {
         ),
       );
       await expect(statusOf('Camera')).toBe('granted');
+      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },
-};
-
-/**
- * As a mobile user who opened the settings from More, I get focus in the sheet and get it back on More when I close it
- * by Close or Escape.
- */
-export const SettingsFromMoreHandsFocusBack: Story = {
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  render: () => (
-    <GroupFrame room={40}>
-      <SettingsItem {...storySettings} />
-    </GroupFrame>
-  ),
 };
 
 /**

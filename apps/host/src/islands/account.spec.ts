@@ -6,7 +6,6 @@ import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
 import type { DotliAuthState } from '../runtime/session/types.js';
 import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
-import type { Account } from '../components/account/account.js';
 import { useAccount } from './account.js';
 
 const ALICE: TruapiSessionUiState = { connected: true, fullUsername: 'Alice Smith' };
@@ -26,36 +25,7 @@ function mount(auth: DotliAuthState, loggedIn = auth.tag === 'Connected') {
   return { stores, account, dispose };
 }
 
-function read(account: Account) {
-  return {
-    loggedIn: account.loggedIn(),
-    session: account.session(),
-    connected: account.connected(),
-    knowledge: account.knowledge(),
-    signingOut: account.signingOut(),
-    local: account.local(),
-    elsewhere: account.elsewhere(),
-  };
-}
-
 describe('useAccount', () => {
-  it('As a visitor whose session is still being read, the account says so and is signed out', () => {
-    // When
-    const { account, dispose } = mount({ tag: 'Restoring' });
-
-    // Then
-    expect(read(account)).toEqual({
-      loggedIn: false,
-      session: undefined,
-      connected: false,
-      knowledge: 'reading',
-      signingOut: false,
-      local: false,
-      elsewhere: false,
-    });
-    dispose();
-  });
-
   it('As a signed-in user, a pairing that starts elsewhere keeps my session', () => {
     // Given
     const { stores, account, dispose } = mount({ tag: 'Connected', session: ALICE });
@@ -65,7 +35,11 @@ describe('useAccount', () => {
     flush();
 
     // Then
-    expect(read(account)).toMatchObject({ loggedIn: true, session: ALICE, connected: false });
+    expect({ loggedIn: account.loggedIn(), session: account.session(), connected: account.connected() }).toEqual({
+      loggedIn: true,
+      session: ALICE,
+      connected: false,
+    });
     dispose();
   });
 

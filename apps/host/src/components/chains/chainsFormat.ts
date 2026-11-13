@@ -4,7 +4,8 @@
 import { hasLightClient, type Backend } from '@dotli/config';
 import { NETWORK_HEALTH } from '../../networkVerdict.js';
 import type { LiveVerdict, NetworkHealth } from '../../networkVerdict.js';
-import type { ChainView } from './chains.js';
+import { formatRate, formatSize } from '@dotli/shared';
+import type { ChainView, TransferView } from './chains.js';
 
 /** Whether a chain in use waits for its first bar with its last block known, so its countdown has to tick. */
 export function needsCountdown(
@@ -13,6 +14,32 @@ export function needsCountdown(
   return chains.some(
     chain => chain.reachable && chain.state !== 'unused' && chain.bars.length === 0 && chain.sinceLast !== null,
   );
+}
+
+/** A row of the transfer footer. */
+export type TransferRow = { label: string; value: string };
+
+/**
+ * The transfer footer while the product loads: its speed, and its size or how much of it came. Once the product is on
+ * screen speed and size describe history, so both are null. A size shows only with a known, positive total.
+ */
+export function describeTransfer(
+  transfer: TransferView,
+  loading: boolean,
+): { speed: TransferRow | null; size: TransferRow | null } {
+  if (!loading) {
+    return { speed: null, size: null };
+  }
+  const { bytesPerSecond, fetched, total } = transfer;
+  const speed = bytesPerSecond === null ? null : { label: 'Speed', value: formatRate(bytesPerSecond) };
+  if (fetched === null || total === null || total <= 0) {
+    return { speed, size: null };
+  }
+  const size =
+    fetched >= total
+      ? { label: 'Size', value: formatSize(total) }
+      : { label: 'Downloading', value: `${formatSize(fetched)} / ${formatSize(total)}` };
+  return { speed, size };
 }
 
 export type NetworkStatusLine = {
@@ -47,10 +74,15 @@ function inSync(chainCount: number): string {
   return `in sync on all ${NUMBER_WORDS[chainCount - 2] ?? String(chainCount)} chains`;
 }
 
+/** The chains that lag, which either backend names the same way. */
+function behindCaption({ slow }: CaptionFacts): string {
+  return `${joinNames(slow)} ${slow.length === 1 ? 'is' : 'are'} behind`;
+}
+
 const LIGHT_CLIENT = {
   ok: ({ chainCount }) => `Light client is ${inSync(chainCount)}`,
   idle: () => 'Finding peers. This takes a few seconds.',
-  warn: ({ slow }) => `${joinNames(slow)} ${slow.length === 1 ? 'is' : 'are'} behind`,
+  warn: behindCaption,
   err: () => 'No peers on any chain. Retrying.',
   quiet: () => QUIET_DETAIL,
 } satisfies Captions;
@@ -59,10 +91,15 @@ const LIGHT_CLIENT = {
 const GATEWAY = {
   ok: () => 'Served by trusted providers',
   idle: () => 'Reaching trusted providers. This takes a few seconds.',
-  warn: ({ slow }) => `${joinNames(slow)} ${slow.length === 1 ? 'is' : 'are'} behind`,
+  warn: behindCaption,
   err: () => 'Trusted providers are out of reach. Retrying.',
   quiet: () => QUIET_DETAIL,
 } satisfies Captions;
+
+/** Whether the menu speaks of a light client: under one, or while the page has not read its settings (`undefined`). */
+export function isLightClientOrUnread(backend: Backend | undefined): boolean {
+  return backend === undefined || hasLightClient(backend);
+}
 
 /**
  * The network menu's status line.
@@ -71,15 +108,15 @@ const GATEWAY = {
 export function describeNetworkStatus({
   verdict,
   offline,
-  chainCount = 0,
+  chainCount,
   backend,
 }: {
   verdict: LiveVerdict;
   offline: boolean;
-  chainCount?: number;
-  backend?: Backend | undefined;
+  chainCount: number;
+  backend: Backend | undefined;
 }): NetworkStatusLine {
-  const captions: Captions = backend === undefined || hasLightClient(backend) ? LIGHT_CLIENT : GATEWAY;
+  const captions: Captions = isLightClientOrUnread(backend) ? LIGHT_CLIENT : GATEWAY;
   const tone: NetworkHealth = offline ? 'err' : verdict.tone;
   return {
     tone,

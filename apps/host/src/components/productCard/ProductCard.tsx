@@ -60,20 +60,12 @@ function getAuthorSection(author: AuthorStatus): JSX.Element {
       return null;
     case 'ready':
       return author.author === null ? null : (
-        <AuthorSection>
+        <div class={s['author']} data-testid="product-card-author">
+          <p class={s['label']}>Author</p>
           <AuthorRow author={author.author} />
-        </AuthorSection>
+        </div>
       );
   }
-}
-
-function AuthorSection(props: { children: JSX.Element }): JSX.Element {
-  return (
-    <div class={s['author']} data-testid="product-card-author">
-      <p class={s['label']}>Author</p>
-      {props.children}
-    </div>
-  );
 }
 
 function AuthorRow(props: { author: ProductAuthor }): JSX.Element {

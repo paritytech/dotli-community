@@ -175,36 +175,19 @@ describe('The network health store', () => {
     });
   });
 
-  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
-    // Given a follow on a monitor whose subscription counts its unsubscribes
-    let unsubscribes = 0;
-    const counting: HealthMonitor = {
-      ...monitor,
-      // A copy of the atom's members, so the health store follows it only through this `subscribe`.
-      version: {
-        ...monitor.version,
-        subscribe(listener) {
-          const unsubscribe = monitor.version.subscribe(listener);
-          return () => {
-            unsubscribes += 1;
-            unsubscribe();
-          };
-        },
-      },
-    };
-    const stop = startHealth(counting);
+  it('As a store reset during a follow, I end the follow and leave the health quiet', () => {
+    // Given
+    startHealth();
+    useAll();
+    blockAll(100);
 
-    // When the stores reset, then the stop left from the ended follow runs
+    // When the stores reset, and the chains go on
     resetStores();
-    const afterReset = unsubscribes;
-    stop();
+    useAll();
+    blockAll(101);
 
-    // Then the reset ended the follow once, the stop added nothing and the health stays quiet
-    expect({ afterReset, total: unsubscribes, health: health.store.get() }).toEqual({
-      afterReset: 1,
-      total: 1,
-      health: 'quiet',
-    });
+    // Then
+    expect({ health: health.store.get(), pending: timers.countPending() }).toEqual({ health: 'quiet', pending: 0 });
   });
 });
 

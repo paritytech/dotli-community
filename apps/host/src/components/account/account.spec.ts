@@ -31,15 +31,6 @@ const ROWS: Row[] = [
     expected: { kind: 'checking', face: PROMPT },
   },
   {
-    case: 'session is being read while a sign-out waits',
-    knowledge: 'reading',
-    signingOut: true,
-    loggedIn: false,
-    elsewhere: false,
-    session: undefined,
-    expected: { kind: 'checking', face: PROMPT },
-  },
-  {
     case: 'session is being read while a sign-in waits elsewhere',
     knowledge: 'reading',
     signingOut: false,
@@ -110,15 +101,6 @@ const ROWS: Row[] = [
     elsewhere: false,
     session: ALICE,
     expected: { kind: 'signIn', face: PROMPT },
-  },
-  {
-    case: 'session is logged in with no account to show',
-    knowledge: 'known',
-    signingOut: false,
-    loggedIn: true,
-    elsewhere: false,
-    session: undefined,
-    expected: { kind: 'signedIn', face: { kind: 'account', session: undefined } },
   },
   {
     case: 'session is known and signed in',

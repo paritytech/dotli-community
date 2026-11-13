@@ -7,11 +7,11 @@ import { Chip, prefersReducedMotion, Stack } from '@dotli/ui';
 import type { ChainSummary } from './chain.js';
 import {
   describeBlockDelay,
+  describePeers,
   HISTORY_SLOTS,
   landedBars,
   pendingBar,
   sameBars,
-  slideShift,
   slotOpacity,
 } from './chainStrip.js';
 import s from './ChainGroup.module.css';
@@ -22,7 +22,8 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   const gap = Number.parseFloat(style.columnGap) || 0;
   const first = strip.firstElementChild;
   const width = first === null ? 0 : first.getBoundingClientRect().width;
-  const shift = slideShift(landed, width, gap);
+  // The strip starts this far to the right, so the landed bars glide in from where the old ones were.
+  const shift = landed * (width + gap);
   if (shift <= 0) {
     return;
   }
@@ -52,8 +53,8 @@ function PendingBar(props: { chain: ChainSummary; sinceLast: number | null }): J
   // Read four times per render: computed once per tick.
   const pending = createMemo(() => pendingBar(props.chain, props.sinceLast));
   const height = (): JSX.CSSProperties | undefined => {
-    const percent = pending().heightPercent;
-    return percent === undefined ? undefined : { height: `${String(percent)}%` };
+    const view = pending();
+    return view.phase === 'searching' ? undefined : { height: `${String(view.heightPercent)}%` };
   };
   return (
     <>
@@ -74,7 +75,7 @@ function PendingBar(props: { chain: ChainSummary; sinceLast: number | null }): J
 }
 
 function Stubs(props: { count: number }): JSX.Element {
-  const slots = createMemo(() => Array.from({ length: Math.max(0, props.count) }, (_, i) => i));
+  const slots = createMemo(() => Array.from({ length: props.count }, (_, i) => i));
   return (
     <For each={slots()}>
       {slot => <span class={s['stub']} data-testid="chains-bar-stub" style={{ opacity: slotOpacity(slot) }} />}
@@ -86,10 +87,9 @@ function Stubs(props: { count: number }): JSX.Element {
 function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX.Element {
   let strip: HTMLDivElement | undefined;
   // Updates that land no block keep the same bar objects, so the same bars mean no block landed.
-  const bars = createMemo(() => props.chain.bars, { equals: sameBars });
   const visible = createMemo(
     () => {
-      const list = bars();
+      const list = props.chain.bars;
       return list.length > HISTORY_SLOTS ? list.slice(-HISTORY_SLOTS) : list;
     },
     { equals: sameBars },
@@ -154,9 +154,10 @@ function BarStrip(props: { chain: ChainSummary; sinceLast: number | null }): JSX
  * and an estimate, `sinceLast` ms after the chain's last block (null before any).
  */
 export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | null }): JSX.Element {
-  const unused = (): boolean => props.chain.state === 'unused';
-  // No chip rather than "0 peers" until a sample lands: zero is a different claim. An unused chain claims none.
-  const peers = (): number | null => (props.chain.reachable && !unused() ? props.chain.peers : null);
+  // No chip rather than "0 peers" until a sample lands: zero is a different claim.
+  const peers = createMemo(() =>
+    props.chain.reachable && props.chain.peers !== null ? describePeers(props.chain.label, props.chain.peers) : null,
+  );
   return (
     <Stack class={s['group']} testId="chains-group">
       <p class={s['groupLabel']} data-testid="chains-group-label" data-state={props.chain.state}>
@@ -164,21 +165,19 @@ export function ChainGroup(props: { chain: ChainSummary; sinceLast: number | nul
           {props.chain.label}
         </span>
         <Show
-          when={!unused() || !props.chain.reachable}
+          when={props.chain.state !== 'unused' || !props.chain.reachable}
           fallback={
             <Chip tone="mono" testId="chains-group-unused">
               Not in use
             </Chip>
           }
         >
-          <Show when={peers() !== null}>
-            <Chip
-              tone={peers() === 0 ? 'warn' : 'mono'}
-              testId="chains-group-peers"
-              label={`${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`}
-            >
-              {peers() === 1 ? '1 peer' : `${String(peers())} peers`}
-            </Chip>
+          <Show when={peers()}>
+            {chip => (
+              <Chip tone={chip().tone} testId="chains-group-peers" label={chip().label}>
+                {chip().text}
+              </Chip>
+            )}
           </Show>
         </Show>
       </p>

@@ -245,22 +245,6 @@ export const ContinueSession: Story = {
   },
 };
 
-/** As a signed-in user in the bar, I see my initials alone, not my name. */
-export const InitialsNotName: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect(ALICE);
-  },
-};
-
-/** As a logged-in user with a username, I see its initials in the badge. */
-export const UsernameInitials: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect({ publicKey: PUBLIC_KEY, liteUsername: 'pgherveou.04', primaryUsername: 'pgherveou.04' });
-  },
-};
-
 /** As a signed-in user whose name changes, the badge in the bar and my open account follow the new initials. */
 export const NameChangeFollows: Story = {
   tags: ['!autodocs'],
@@ -418,14 +402,6 @@ export const LocalBareSession: Story = {
     await ctx.step('Then it says Connected', async () => {
       await expect(byId('user-popover-username').textContent).toBe('Connected');
     });
-  },
-};
-
-/** As a user who logs out elsewhere, my account leaves no hint behind. */
-export const LoggedOutNoHint: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    connect({ publicKey: PUBLIC_KEY });
   },
 };
 

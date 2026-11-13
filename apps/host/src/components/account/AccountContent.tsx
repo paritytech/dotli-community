@@ -20,7 +20,6 @@ export type AccountContentProps = {
 /** The account popover's body, its own chunk. */
 export function AccountContent(props: AccountContentProps): JSX.Element {
   const popover = usePopover();
-  const local = (): boolean => props.account.local();
   const id = (name: string): string => `${popover.id}-${name}`;
   const username = (): string | undefined => {
     const session = props.account.session();
@@ -33,7 +32,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
   const name = (): string =>
     props.account.session() === undefined
       ? ''
-      : (displayName() ?? (local() ? 'Connected' : 'Connected with Polkadot App'));
+      : (displayName() ?? (props.account.local() ? 'Connected' : 'Connected with Polkadot App'));
   const onDisconnect = (): void => {
     popover.close();
     props.onLogout();
@@ -52,7 +51,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
             {name()}
           </div>
           {/* The keys live in this browser, not in Polkadot App. */}
-          <Show when={local()}>
+          <Show when={props.account.local()}>
             <Chip tone="warn" class={s['local']} testId="account-local">
               Local account
             </Chip>
@@ -60,7 +59,7 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
         </div>
       </div>
       {/* A bare address with no explanation reads as a rendering bug. */}
-      <Show when={props.account.loggedIn() && (username() ?? '').length === 0}>
+      <Show when={props.account.loggedIn() && username() === undefined}>
         <Callout icon={InfoIcon}>
           <span id={id('hint')}>No username found for this account on this network.</span>
         </Callout>

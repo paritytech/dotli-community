@@ -25,8 +25,9 @@ export function useAccount(stores: AccountStores): Account {
   const local = useStore(stores.local);
   const signingOut = useStore(stores.signingOut);
   const elsewhere = useStore(stores.elsewhere);
-  const last = createMemo<TruapiSessionUiState | undefined>(prev => authViews.getSignedInSession(auth()) ?? prev);
-  const connected = createMemo(() => authViews.getSignedInSession(auth()) !== null);
+  const signedIn = createMemo(() => authViews.getSignedInSession(auth()));
+  const last = createMemo<TruapiSessionUiState | undefined>(prev => signedIn() ?? prev);
+  const connected = createMemo(() => signedIn() !== null);
   const knowledge = createMemo(() => authViews.getSessionKnowledge(auth()));
   return {
     loggedIn,

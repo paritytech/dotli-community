@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createRoot, flush } from 'solid-js';
-import { atom, type WritableAtom } from 'nanostores';
+import { atom } from 'nanostores';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { SavedSettings, SettingsResetStatus } from '../components/settings/settings.js';
@@ -13,8 +13,6 @@ import { useSettingsPanel } from './settings.js';
 type Params = {
   /** The intent the panel opens through, a fresh one by default. */
   intent?: ReturnType<typeof createSettingsIntent>;
-  /** The page's settings reset, idle by default. */
-  reset?: WritableAtom<SettingsResetStatus>;
 };
 
 afterEach(() => {
@@ -25,7 +23,8 @@ afterEach(() => {
  * The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner, opened
  * through `intent`.
  */
-function mount({ intent = createSettingsIntent(), reset = atom<SettingsResetStatus>('idle') }: Params = {}) {
+function mount({ intent = createSettingsIntent() }: Params = {}) {
+  const reset = atom<SettingsResetStatus>('idle');
   const settings = atom<SavedSettings | null>(null);
   const theme = atom<{ preference: ThemePreference }>({ preference: 'system' });
   const { panel, dispose } = createRoot(d => ({
@@ -33,9 +32,8 @@ function mount({ intent = createSettingsIntent(), reset = atom<SettingsResetStat
       settings,
       theme,
       selectTheme: () => undefined,
-      apply: () => Promise.resolve(),
-      reset,
-      registerOpener: intent.registerOpener,
+      actions: { applyAndReset: () => Promise.resolve(), reset },
+      intent,
       version: '1.2.3',
       debugMode: () => false,
       openDebugMode: () => undefined,
@@ -43,7 +41,7 @@ function mount({ intent = createSettingsIntent(), reset = atom<SettingsResetStat
     dispose: d,
   }));
   flush();
-  return { panel, dispose, intent, reset };
+  return { panel, dispose, intent };
 }
 
 describe('useSettingsPanel', () => {
@@ -81,18 +79,5 @@ describe('useSettingsPanel', () => {
 
     // Then the panel stays closed
     expect(panel.open()).toBe(false);
-  });
-
-  it("As the settings button, I follow the page's reset once it starts clearing", () => {
-    // Given a panel bound to an idle reset
-    const { panel, reset, dispose } = mount();
-    onTestFinished(dispose);
-
-    // When the page's reset starts clearing
-    reset.set('clearing');
-    flush();
-
-    // Then the panel reads it
-    expect(panel.reset()).toBe('clearing');
   });
 });

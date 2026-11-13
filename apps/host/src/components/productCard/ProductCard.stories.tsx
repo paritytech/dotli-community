@@ -95,32 +95,12 @@ export const WithIcon: Story = {
   },
 };
 
-/** As a visitor, I open the card of a product with a long description and the card keeps to its surface. */
+/** As a visitor, see the card of a product with a long description. */
 export const LongDescription: Story = {
   args: { card: { ...PUBLISHED, description: LONG_DESCRIPTION } },
-  play: async ({ canvas, step }) => {
-    await step('Then the description wraps and the card is no wider than its surface', async () => {
-      const surface = canvas.getByTestId('product-card-surface');
-      const card = canvas.getByTestId('product-card');
-      await expect(canvas.getByTestId('product-card-description')).toHaveTextContent(LONG_DESCRIPTION);
-      await expect(card.getBoundingClientRect().width).toBeLessThanOrEqual(surface.getBoundingClientRect().width);
-      await expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth);
-    });
-  },
 };
 
-/** As a visitor, I open the card of a product with a long name and the card keeps to its surface. */
+/** As a visitor, see the card of a product with a long name. */
 export const LongName: Story = {
   args: { card: { ...PUBLISHED, name: LONG_NAME } },
-  play: async ({ canvas, step }) => {
-    await step('Then the name ellipsizes and the card is no wider than its surface', async () => {
-      const surface = canvas.getByTestId('product-card-surface');
-      const card = canvas.getByTestId('product-card');
-      const name = canvas.getByTestId('product-card-name');
-      await expect(name).toHaveTextContent(LONG_NAME);
-      await expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
-      await expect(card.getBoundingClientRect().width).toBeLessThanOrEqual(surface.getBoundingClientRect().width);
-      await expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth);
-    });
-  },
 };

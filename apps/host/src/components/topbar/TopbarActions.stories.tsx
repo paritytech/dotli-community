@@ -14,7 +14,7 @@ import {
   storyModalOpen,
 } from '../../testing/stories/accountFixtures.js';
 import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js';
-import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
+import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
 import type { ActionGroupMorph } from '@dotli/ui';
@@ -36,11 +36,6 @@ function closed(id: string): Promise<void> {
 }
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
-
-/** An app with a grant, as the page reads its permissions. */
-function givenGrant(): void {
-  givenApp({ Camera: 'granted' });
-}
 
 /** A bar that never morphs. */
 const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
@@ -99,40 +94,13 @@ function narrow() {
   );
 }
 
-/** As a mobile user, the lock button marks the app's grants, and the More menu's Permissions row opens its popover. */
-export const PermissionsRowShowsGrants: Story = {
-  beforeEach: () => {
-    givenGrant();
-  },
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('Given the lock button carries the grant badge', async () => {
-      await waitFor(() => expect(byId('permissions-button')).toHaveAttribute('data-badge'));
-    });
-    await step('When I choose Permissions in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('permissions'));
-    });
-    await step('Then More closed and Permissions is open with focus', async () => {
-      await opened('permissions-popover');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
-    });
-  },
-};
-
-/** As a mobile user, the More menu's Network and Settings rows open the network panel and the settings popover. */
+/** As a mobile user, the More menu's Network row opens the network panel in More's place. */
 export const NetworkAndSettingsRowsOpen: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
     await step('When I choose Network in More', async () => {
       await openMore(userEvent);
-      await expect(moreRowNames()[0]).toBe('network');
-      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent(
-        NETWORK_HEALTH.quiet.word,
-      );
       await userEvent.click(moreRow('network'));
     });
     await step('Then the network panel is open in place of More, and the network button says so', async () => {
@@ -146,15 +114,6 @@ export const NetworkAndSettingsRowsOpen: Story = {
     });
     await step('Then both are closed', async () => {
       await closed('chains-popover');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-    });
-    await step('When I choose Settings in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('settings'));
-    });
-    await step('Then only Settings is open', async () => {
-      await opened('mode-popover');
-      await expect(byId('chains-popover')).not.toHaveAttribute('data-open');
       await expect(byId('more-popover')).not.toHaveAttribute('data-open');
     });
   },

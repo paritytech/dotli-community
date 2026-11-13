@@ -5,7 +5,9 @@ import { createSignal, onSettled } from 'solid-js';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { ThemePreference } from '../runtime/state/themeState.js';
-import type { SavedSettings, SettingsResetStatus } from '../components/settings/settings.js';
+import type { SettingsActions } from '../createSettingsActions.js';
+import type { createSettingsIntent } from '../createSettingsIntent.js';
+import type { SavedSettings } from '../components/settings/settings.js';
 import type { SettingsContentProps } from '../components/settings/SettingsContent.js';
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 
@@ -15,11 +17,10 @@ export type SettingsBinding = {
   settings: ReadableAtom<SavedSettings | null>;
   theme: ReadableAtom<{ preference: ThemePreference }>;
   selectTheme: SettingsContentProps['onTheme'];
-  apply: SettingsContentProps['onApply'];
-  /** The page's settings reset. It never returns to `idle`. */
-  reset: ReadableAtom<SettingsResetStatus>;
-  /** How the page's Open settings reaches the panel. Returns the unregister. */
-  registerOpener: (open: () => void) => () => void;
+  /** The page's settings save and reset. The reset never returns to `idle`. */
+  actions: Pick<SettingsActions, 'applyAndReset' | 'reset'>;
+  /** How the page's Open settings reaches the panel. */
+  intent: Pick<ReturnType<typeof createSettingsIntent>, 'registerOpener'>;
   version: SettingsContentProps['version'];
   debugMode: SettingsContentProps['debugMode'];
   openDebugMode: SettingsContentProps['onDebugMode'];
@@ -30,7 +31,7 @@ export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {
   const [open, setOpen] = createSignal(false);
   // Once mounted, so an Open settings asked before then opens the panel with its button in place.
   onSettled(() =>
-    binding.registerOpener(() => {
+    binding.intent.registerOpener(() => {
       setOpen(true);
     }),
   );
@@ -43,8 +44,8 @@ export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {
       initial: { preference: 'system' } as const,
     }),
     onTheme: binding.selectTheme,
-    onApply: binding.apply,
-    reset: useStore(binding.reset, { initial: 'idle' }),
+    onApply: binding.actions.applyAndReset,
+    reset: useStore(binding.actions.reset, { initial: 'idle' }),
     debugMode: binding.debugMode,
     onDebugMode: binding.openDebugMode,
   };

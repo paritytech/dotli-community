@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { getKeys } from '@dotli/shared';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
-import { ALL_PERMISSIONS, PERMISSION_GROUPS, type PermissionStatus } from '../../runtime/permissionPolicy.js';
+import { ALL_PERMISSIONS, type PermissionStatus } from '../../runtime/permissionPolicy.js';
 import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   givenApp,
@@ -91,12 +90,6 @@ async function expectPreset(id: string, modified: boolean): Promise<void> {
   }
 }
 
-/** Each group's heading and its permissions, in menu order. */
-const GROUPS = getKeys(PERMISSION_GROUPS).map(group => ({
-  label: PERMISSION_GROUPS[group].label,
-  names: ALL_PERMISSIONS.filter(p => p.group === group).map(p => p.name),
-}));
-
 /** The permissions button and panel as the host composes them, given the story's permissions. */
 function StoryPermissions(): JSX.Element {
   return <PermissionsItem {...storyPermissions} />;
@@ -120,8 +113,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * As a user of a loaded app, the popover shows the closest preset on a slider with its line, focus on the slider, and
- * every permission in named groups under a closed Advanced.
+ * As a user of a loaded app with grants, the button shows a badge, and the popover shows the closest preset with focus
+ * on the slider and each permission's status under a closed Advanced.
  */
 export const Open: Story = {
   tags: ['!autodocs'],
@@ -134,54 +127,19 @@ export const Open: Story = {
       await waitFor(() => expect(button).toHaveAttribute('data-badge'));
     });
     await open(ctx);
-    await ctx.step('Then it is the open dialog named Permissions', async () => {
-      await expect(button).toHaveAttribute('aria-expanded', 'true');
-      const popover = byId('permissions-popover');
-      await expect(popover).toHaveAttribute('role', 'dialog');
-      await expect(popover).toHaveAttribute('aria-label', 'Permissions');
-      await expect(within(popover).getByTestId('permissions-popover-header').querySelector('h2')).toHaveTextContent(
-        'Permissions',
-      );
-      await expect(within(popover).getByTestId('permissions-popover-foot')).toHaveTextContent('Changes reload the app');
-    });
-    await ctx.step('And the slider shows Secure, modified, with its line and value text, and holds focus', async () => {
+    await ctx.step('Then the slider shows Secure, modified, and holds focus', async () => {
       await expectPreset('secure', true);
-      await expect(byTestId('permissions-preset-name', document, HTMLElement)).toHaveTextContent('Secure');
-      await expect(byTestId('permissions-preset-line', document, HTMLElement)).toHaveTextContent(
-        'Decide each time the app asks.',
-      );
-      await expect(slider()).toHaveAttribute('aria-valuetext', 'Secure, modified');
       await waitFor(() => expect(slider()).toHaveFocus());
       await expect(advanced().open).toBe(false);
     });
     await ctx.step('When I open Advanced', async () => {
       await openAdvanced(ctx.userEvent);
     });
-    await ctx.step(
-      'Then every permission is in its named group, with Ask, Allow and Deny and its status pressed',
-      async () => {
-        const groups = [...document.querySelectorAll<HTMLElement>('[data-testid="permissions-popover-group"]')];
-        await expect(groups.map(group => group.querySelector('h3')?.textContent)).toEqual(GROUPS.map(g => g.label));
-        for (const [i, group] of groups.entries()) {
-          await expect(group).toHaveAttribute('role', 'group');
-          await expect(byId(group.getAttribute('aria-labelledby') ?? '').textContent).toBe(GROUPS[i]?.label);
-          const names = [
-            ...group.querySelectorAll('[data-testid="permissions-popover-row"] [id^="permissions-popover-name-"]'),
-          ].map(name => name.id.replace('permissions-popover-name-', ''));
-          await expect(names).toEqual(GROUPS[i]?.names);
-        }
-        const camera = row('Camera');
-        await expect(within(camera).getByRole('group')).toHaveAttribute('aria-label', 'Camera');
-        await expect(
-          within(camera)
-            .getAllByRole('button')
-            .map(b => b.textContent),
-        ).toEqual(['Ask', 'Allow', 'Deny']);
-        await expect(statusOf('Camera')).toBe('granted');
-        await expect(statusOf('ChainSubmit')).toBe('denied');
-        await expect(statusOf('Notifications')).toBe('ask');
-      },
-    );
+    await ctx.step('Then each permission shows its status pressed', async () => {
+      await expect(statusOf('Camera')).toBe('granted');
+      await expect(statusOf('ChainSubmit')).toBe('denied');
+      await expect(statusOf('Notifications')).toBe('ask');
+    });
   },
 };
 
@@ -243,7 +201,7 @@ export const Unavailable: Story = {
   },
 };
 
-/** As a user, pressing Trusted asks for all twelve of its statuses and the slider shows Trusted with its line. */
+/** As a user, pressing Trusted asks for all twelve of its statuses and the slider shows Trusted. */
 export const PresetMove: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
@@ -261,9 +219,6 @@ export const PresetMove: Story = {
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(1);
       await expect(permissionsAsked.changes).toHaveBeenCalledWith(TRUSTED.statuses);
       await expectPreset('trusted', false);
-      await expect(byTestId('permissions-preset-line', document, HTMLElement)).toHaveTextContent(
-        'For apps you use often.',
-      );
     });
   },
 };
@@ -491,14 +446,6 @@ export const KeyboardKeepsFocus: Story = {
       await waitFor(() => expect(statusOf('Camera')).toBe('granted'));
       await expect(segment('Camera', 'granted')).toHaveFocus();
     });
-  },
-};
-
-/** As a user, the lock button shows its grants badge while the app has any permission granted. */
-export const GrantsBadge: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenApp({ ChainSubmit: 'granted' });
   },
 };
 

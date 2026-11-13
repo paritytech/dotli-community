@@ -36,13 +36,9 @@ type StartParams = {
 export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   const health = atom<NetworkHealth>('quiet');
   const store: ReadableAtom<NetworkHealth> = health;
-  let recheck: unknown = null;
-  /** Lets a notify that moves no deadline leave `recheck` be. */
-  let recheckAt: number | null = null;
   const run = createSharedRun<Required<StartParams>>({ begin: beginFollowing });
   registerStoreStateReset(() => {
     run.end();
-    disarm();
     health.set('quiet');
   });
 
@@ -62,6 +58,8 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   }
 
   function beginFollowing({ monitor, page }: Required<StartParams>): () => void {
+    /** The armed recheck. Its `at` lets a notify that moves no deadline leave it be. */
+    let recheck: { timer: unknown; at: number } | null = null;
     const unsubscribes = [
       monitor.version.subscribe(judge),
       listen({ target: page.connectivity, type: 'online', handler: judge }),
@@ -79,20 +77,18 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
       const clocks = monitor.getChainClocks(now);
       health.set(judgeNetworkHealth(clocks, page.isOnline()));
       const at = getNextOverdueAt(clocks, now);
-      if (at === recheckAt) {
+      if (at === (recheck?.at ?? null)) {
         return;
       }
       disarm();
       if (at !== null) {
-        recheckAt = at;
         // One past the deadline: overdue is strictly past three block times.
-        recheck = timers.setTimeout(judgeAgain, at + 1 - now);
+        recheck = { timer: timers.setTimeout(judgeAgain, at + 1 - now), at };
       }
     }
 
     function judgeAgain(): void {
       recheck = null;
-      recheckAt = null;
       judge();
     }
 
@@ -102,14 +98,13 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
       }
       disarm();
     }
-  }
 
-  function disarm(): void {
-    if (recheck !== null) {
-      timers.clearTimeout(recheck);
+    function disarm(): void {
+      if (recheck !== null) {
+        timers.clearTimeout(recheck.timer);
+      }
+      recheck = null;
     }
-    recheck = null;
-    recheckAt = null;
   }
 }
 

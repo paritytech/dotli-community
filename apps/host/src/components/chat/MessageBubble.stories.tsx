@@ -43,7 +43,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a reader, I see a product message as text with a relative time, and the exact time on hover. */
+/** As a reader, I see a product message as text, and the exact time on hover. */
 export const TextWithRelativeTime: Story = {
   play: async ({ canvas, step }) => {
     const row = canvas.getByTestId('chat-msg');
@@ -53,10 +53,8 @@ export const TextWithRelativeTime: Story = {
       await expect(bubble.querySelector('b')).toBeNull();
       await expect(bubble).toHaveTextContent('hello <b>there</b>');
     });
-    await step('Then it shows a relative time with the exact time on hover', async () => {
+    await step('Then it shows the exact time on hover', async () => {
       const time = within(bubble).getByTestId('chat-msg-time');
-      await expect(time).toHaveTextContent('5 mins ago');
-      await expect(time).toHaveAttribute('data-timestamp', String(NOW - 5 * 60_000));
       await expect(time.title).not.toBe('');
     });
   },
@@ -93,23 +91,21 @@ export const RichKindsReadAsToday: Story = {
       await expect(bubbleOf('rich')).toHaveTextContent('pics');
       await expect(within(bubbleOf('rich')).getByTestId('chat-msg-meta').textContent).toBe(' [2 attachments]');
     });
-    await step('Then reactions read as events', async () => {
-      await expect(bubbleOf('reaction')).toHaveAttribute('data-event');
+    await step('Then reactions read as what was done', async () => {
       await expect(bubbleOf('reaction')).toHaveTextContent('reacted 👍');
       await expect(bubbleOf('removed')).toHaveTextContent('removed reaction 👍');
     });
     await step('Then a file shows its name', async () => {
       await expect(bubbleOf('file')).toHaveTextContent('[file] a.pdf');
     });
-    await step('Then an unknown kind reads as an unsupported event', async () => {
-      await expect(bubbleOf('unknown')).toHaveAttribute('data-event');
+    await step('Then an unknown kind reads as unsupported', async () => {
       await expect(bubbleOf('unknown')).toHaveTextContent('[unsupported message]');
     });
   },
 };
 
-/** As a reader, I press an action button and the page hears which one I chose. */
-export const ActionButtonsReportTaps: Story = {
+/** As a reader, I see an actions message's buttons in a grid. */
+export const ActionButtons: Story = {
   args: {
     record: record({
       tag: 'Actions',

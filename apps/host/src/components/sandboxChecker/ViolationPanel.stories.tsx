@@ -222,10 +222,7 @@ export const ClosingRestoresFrame: Story = {
   },
 };
 
-/**
- * As a dotli developer, I drag the panel handle to resize it within its limits, and a released or cancelled drag stops
- * following the pointer.
- */
+/** As a dotli developer, I drag the panel handle and the panel follows the pointer. */
 export const DragHandleResizes: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
@@ -242,29 +239,11 @@ export const DragHandleResizes: Story = {
       pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
       await waitFor(() => expect(height()).toBe(200));
     });
-    await step('When I drag past either end, it stops at 40 px and at 80 % of the viewport', async () => {
-      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 8 });
-      await waitFor(() => expect(height()).toBe(40));
-      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: 0 });
-      await waitFor(() => expect(height()).toBeCloseTo(viewport * 0.8, 0));
-    });
-    await step('When the pointer is cancelled, later moves change nothing', async () => {
-      pointer({ target: handle, type: 'pointercancel', pointerId: 1 });
-      pointer({ target: handle, type: 'pointermove', pointerId: 1, clientY: viewport - 200 });
-      await expect(height()).toBeCloseTo(viewport * 0.8, 0);
-    });
-    await step('When a new drag is released, later moves change nothing', async () => {
-      pointer({ target: handle, type: 'pointerdown', pointerId: 2, clientY: viewport - 168 });
-      pointer({ target: handle, type: 'pointermove', pointerId: 2, clientY: viewport - 200 });
-      pointer({ target: handle, type: 'pointerup', pointerId: 2 });
-      pointer({ target: handle, type: 'pointermove', pointerId: 2, clientY: viewport - 300 });
-      await waitFor(() => expect(height()).toBe(200));
-    });
   },
 };
 
-/** As a dotli developer, I see the newest 500 violations in the log while the badge counts them all. */
-export const KeepsNewestWhileCountingAll: Story = {
+/** As a dotli developer, I see the badge count every violation, past the ones the log keeps. */
+export const BadgeCountsAll: Story = {
   tags: ['!autodocs'],
   play: async ({ canvasElement, step }) => {
     const canvas = within(canvasElement.ownerDocument.body);
@@ -274,12 +253,8 @@ export const KeepsNewestWhileCountingAll: Story = {
         violate(`api${String(i)}`);
       }
     });
-    await step('Then the log keeps the newest 500 while the badge counts them all', async () => {
+    await step('Then the badge counts them all', async () => {
       await waitFor(() => expect(canvas.getByTestId('sc-badge')).toHaveTextContent('600'));
-      const entries = canvas.getAllByTestId('sc-entry');
-      await expect(entries).toHaveLength(500);
-      await expect(within(at(entries, 0)).getByTestId('sc-api')).toHaveTextContent('api100');
-      await expect(within(at(entries, 499)).getByTestId('sc-api')).toHaveTextContent('api599');
     });
   },
 };

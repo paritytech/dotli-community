@@ -33,8 +33,8 @@ export type SignInParts = {
   note?: JSX.Element;
 };
 
-/** The colour a status icon is drawn in. `strong` is the text's own, for a step that is neither good nor bad. */
-export type SignInTone = 'ok' | 'err' | 'warn' | 'idle' | 'strong';
+/** The colour a status icon is drawn in. */
+export type SignInTone = 'ok' | 'err' | 'warn' | 'idle';
 
 /** What heads a status: a bare thin-line icon in its tone, or a spinner while something is under way. */
 export type StatusMark = { icon: Component<IconProps>; tone: SignInTone } | 'spinner';
@@ -297,7 +297,7 @@ export function ApprovingScreen(props: ApprovingScreenProps): SignInParts {
   return {
     title: APPROVE_TITLE,
     content: (
-      <div class={s['screen']} data-tone="strong">
+      <div class={s['screen']}>
         <PhoneCheckIcon class={s['markIcon']} />
         <Heading
           level={props.level ?? 1}
@@ -380,7 +380,7 @@ export type ContinueScreenProps = {
   /** The page the sign-in is for, null for a sign-in of its own. */
   host: string | null;
   /** What failed of the last step the user asked for. */
-  failure?: string | null | undefined;
+  failure: string | null;
   onContinue: () => void;
   onUseAnotherAccount: () => void;
 };

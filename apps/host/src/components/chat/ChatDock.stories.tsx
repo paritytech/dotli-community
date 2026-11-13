@@ -311,20 +311,12 @@ export const FailedReplyKeepsMessage: Story = {
   play: async ({ step }) => {
     await step('As a user, a failed reply keeps the message and shows why', async () => {
       // Given
-      stage.sendError = new Error('request denied');
+      stage.sendError = new Error('boom');
       stage.createRoom('main', 'Main');
       openChat();
       await openRoom('Main');
 
       // When
-      send('hello');
-
-      // Then the hint shows as soon as the send fails, and the thread keeps the message
-      await waitFor(() => expect(byId('chat-panel-hint')).toHaveTextContent('Log in to chat with this app.'), SLOW);
-      await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello'));
-
-      // When
-      stage.sendError = new Error('boom');
       send('again');
 
       // Then
@@ -333,6 +325,28 @@ export const FailedReplyKeepsMessage: Story = {
         SLOW,
       );
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('again'));
+    });
+  },
+};
+
+/** As a user whose reply could not be kept, such as with no live connection or a failed store, I keep my text. */
+export const UnkeptReplyKeepsText: Story = {
+  tags: ['!autodocs'],
+  play: async ({ step }) => {
+    await step('As a user, a reply that was not kept stays in the composer', async () => {
+      // Given
+      stage.refuseError = new Error('IndexedDB is gone');
+      stage.createRoom('main', 'Main');
+      openChat();
+      await openRoom('Main');
+
+      // When
+      send('hello');
+
+      // Then
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-input')).toHaveValue('hello');
+      await expect(byId('chat-panel-messages')).not.toHaveTextContent('hello');
     });
   },
 };

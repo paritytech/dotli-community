@@ -3,15 +3,20 @@
 
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { hasLightClient, type Backend } from '@dotli/config';
-import { formatRate, formatSize } from '@dotli/shared';
+import type { Backend } from '@dotli/config';
 import { InfoIcon } from '@dotli/ui/icons';
 import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainGroup } from './ChainGroup.js';
 import { isNetworkOffline } from '../../networkVerdict.js';
 import type { NetworkHealth } from '../../networkVerdict.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
+import {
+  describeNetworkStatus,
+  describeTransfer,
+  isLightClientOrUnread,
+  needsCountdown,
+  type TransferRow,
+} from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const PENDING_TICK_MS = 250;
@@ -26,6 +31,26 @@ export type ChainsContentProps = {
   /** Undefined until the page has read its settings. */
   backend: Accessor<Backend | undefined>;
 };
+
+/** A row of the transfer footer, which keeps its place while it has nothing to say. */
+function TransferLine(props: { row: TransferRow | null }): JSX.Element {
+  return (
+    <p class={s['transferRow']} data-testid="chains-transfer-row">
+      <Show when={props.row}>
+        {row => (
+          <>
+            <span class={s['transferLabel']} data-testid="chains-transfer-label">
+              {row().label}
+            </span>
+            <span class={s['transferValue']} data-testid="chains-transfer-value">
+              {row().value}
+            </span>
+          </>
+        )}
+      </Show>
+    </p>
+  );
+}
 
 /** The network popover's body, its own chunk. */
 export function ChainsContent(props: ChainsContentProps): JSX.Element {
@@ -59,28 +84,7 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
   });
   const sinceLast = (chain: ChainView): number | null =>
     chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, now() - props.network().readAt);
-  const showTips = (): boolean => {
-    const backend = props.backend();
-    return backend === undefined || hasLightClient(backend);
-  };
-  // Once the product is on screen speed and size describe history, so the footer empties.
-  const loading = (): boolean => !props.productLoaded();
-  const speed = (): string | null => {
-    const { bytesPerSecond } = props.network().transfer;
-    return loading() && bytesPerSecond !== null ? formatRate(bytesPerSecond) : null;
-  };
-  const size = (): { label: string; value: string } | null => {
-    const { fetched, total } = props.network().transfer;
-    if (!loading() || fetched === null || total === null || total <= 0) {
-      return null;
-    }
-    return fetched >= total
-      ? { label: 'Size', value: formatSize(total) }
-      : {
-          label: 'Downloading',
-          value: `${formatSize(fetched)} / ${formatSize(total)}`,
-        };
-  };
+  const transfer = createMemo(() => describeTransfer(props.network().transfer, !props.productLoaded()));
   return (
     <Surface width="md" padded testId="chains-content">
       <SurfaceHead title="Network" testId="chains-head" />
@@ -114,39 +118,13 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
       <div
         class={s['transfer']}
         data-testid="chains-transfer"
-        data-empty={speed() === null && size() === null ? '' : undefined}
+        data-empty={transfer().speed === null && transfer().size === null ? '' : undefined}
       >
-        <p class={s['transferRow']} data-testid="chains-transfer-row">
-          <Show when={speed()}>
-            {rate => (
-              <>
-                <span class={s['transferLabel']} data-testid="chains-transfer-label">
-                  Speed
-                </span>
-                <span class={s['transferValue']} data-testid="chains-transfer-value">
-                  {rate()}
-                </span>
-              </>
-            )}
-          </Show>
-        </p>
-        <p class={s['transferRow']} data-testid="chains-transfer-row">
-          <Show when={size()}>
-            {row => (
-              <>
-                <span class={s['transferLabel']} data-testid="chains-transfer-label">
-                  {row().label}
-                </span>
-                <span class={s['transferValue']} data-testid="chains-transfer-value">
-                  {row().value}
-                </span>
-              </>
-            )}
-          </Show>
-        </p>
+        <TransferLine row={transfer().speed} />
+        <TransferLine row={transfer().size} />
       </div>
       {/* Trusted providers have no peers to steady. */}
-      <Show when={showTips()}>
+      <Show when={isLightClientOrUnread(props.backend())}>
         <Callout icon={InfoIcon} testId="chains-tips">
           {TIP}
         </Callout>

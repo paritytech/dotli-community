@@ -17,12 +17,12 @@ export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   return late <= 0 ? `${secs(gapMs)}, on time` : `${secs(gapMs)}, ${secs(late)} late`;
 }
 
-/** The ghost bar before a chain's first bar: what it waits on, how tall it stands (in percent) and what it says. */
-export type PendingBarView = {
-  phase: 'searching' | 'counting' | 'due';
-  heightPercent?: number;
-  text: string;
-};
+/**
+ * The ghost bar before a chain's first bar: what it waits on and what it says. Once a block has landed it also has a
+ * height, in percent.
+ */
+export type PendingBarView =
+  { phase: 'searching'; text: string } | { phase: 'counting' | 'due'; heightPercent: number; text: string };
 
 /**
  * The ghost bar and estimate `sinceLast` ms after the chain's last block, null before any.
@@ -52,9 +52,10 @@ export function landedBars(before: readonly { number: number }[], shown: readonl
   return landed > 0 && shown.length > landed ? landed : 0;
 }
 
-/** In px, how far the strip starts to the right so the landed bars glide in from where the old ones were. */
-export function slideShift(landed: number, barWidth: number, gap: number): number {
-  return landed * (barWidth + gap);
+/** A chain's peers chip: what it says, its tone, which warns at zero peers, and its name, which names the chain. */
+export function describePeers(chain: string, peers: number): { text: string; tone: 'warn' | 'mono'; label: string } {
+  const text = peers === 1 ? '1 peer' : `${String(peers)} peers`;
+  return { text, tone: peers === 0 ? 'warn' : 'mono', label: `${chain}: ${text} connected` };
 }
 
 /** Older slots fade, to half strength at the left edge. */

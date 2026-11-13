@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, needsCountdown } from './chainsFormat.js';
 import type { LiveVerdict } from '../../networkVerdict.js';
 
 describe('describeNetworkStatus under a light client', () => {
@@ -91,28 +91,12 @@ describe('describeNetworkStatus under a light client', () => {
     expect(line.detail).toBe('Light client is in sync on both chains');
   });
 
-  it("As a user on the shared-worker light client, the captions are the light client's", () => {
-    // Given
-    const health: LiveVerdict = { tone: 'ok' };
-
-    // When
-    const line = describeNetworkStatus({
-      verdict: health,
-      offline: false,
-      chainCount: 4,
-      backend: 'smoldot-shared-worker',
-    });
-
-    // Then
-    expect(line.detail).toBe('Light client is in sync on all four chains');
-  });
-
   it("As a user whose settings are not read yet, I open the network menu and see the light client's captions", () => {
     // Given
     const verdict: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 4 });
+    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 4, backend: undefined });
 
     // Then
     expect(line.detail).toBe('Light client is in sync on all four chains');
@@ -157,17 +141,6 @@ describe('describeNetworkStatus under trusted providers', () => {
     expect(line).toEqual({ tone: 'warn', title: 'Connection is unstable', detail: 'Hub and Identity are behind' });
   });
 
-  it('As a user on trusted providers with one stalled chain, the caption says "is"', () => {
-    // Given
-    const health: LiveVerdict = { tone: 'warn', slow: ['Hub'] };
-
-    // When
-    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'rpc-gateway' });
-
-    // Then
-    expect(line.detail).toBe('Hub is behind');
-  });
-
   it('As a user on trusted providers who went offline, the caption speaks of providers, not peers', () => {
     // Given
     const health: LiveVerdict = { tone: 'ok' };
@@ -208,6 +181,47 @@ const waiting = {
   bars: [] as { number: number; health: 'onTime'; gapMs: number }[],
   sinceLast: 1000 as number | null,
 };
+
+describe('describeTransfer', () => {
+  it.each([
+    {
+      case: 'loads the product',
+      transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '512 B/s' }, size: { label: 'Downloading', value: '2 kB / 4.0 MB' } },
+    },
+    {
+      case: 'fetched the whole archive',
+      transfer: { bytesPerSecond: 512, fetched: 3_000_000, total: 3_000_000 },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '512 B/s' }, size: { label: 'Size', value: '2.9 MB' } },
+    },
+    {
+      case: 'loads from cache, with no total',
+      transfer: { bytesPerSecond: 40_000, fetched: null, total: null },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '39 kB/s' }, size: null },
+    },
+    {
+      case: 'has a total of zero',
+      transfer: { bytesPerSecond: null, fetched: 0, total: 0 },
+      loading: true,
+      rows: { speed: null, size: null },
+    },
+    {
+      case: 'has the product on screen',
+      transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 },
+      loading: false,
+      rows: { speed: null, size: null },
+    },
+  ])('As a user whose page $case, the transfer footer shows what the row says', ({ transfer, loading, rows }) => {
+    // When
+    const shown = describeTransfer(transfer, loading);
+
+    // Then
+    expect(shown).toEqual(rows);
+  });
+});
 
 describe('the network panel countdown', () => {
   it('As a user watching a chain between blocks, the countdown runs', () => {

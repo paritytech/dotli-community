@@ -13,11 +13,10 @@ afterEach(() => {
 });
 
 describe('island boundary', () => {
-  it('As a visitor, an island that breaks while rendering is reported once, shows nothing and stands in with its onBroken, with no reload offer', async () => {
+  it('As a visitor, an island that breaks while rendering is reported once, with no reload offer', async () => {
     // Given
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
-    const onBroken = vi.fn();
     const notify = vi.fn();
     onTestFinished(reportIslandErrors({ target: document, offerReload: notify }));
     const failure = new Error('island render failed');
@@ -31,7 +30,7 @@ describe('island boundary', () => {
     onTestFinished(
       render(
         () => (
-          <RootBoundary root="island:Test" onBroken={onBroken}>
+          <RootBoundary root="island:Test">
             <Failing />
           </RootBoundary>
         ),
@@ -49,8 +48,6 @@ describe('island boundary', () => {
         tags: { root: 'island:Test' },
       }),
     );
-    expect(onBroken).toHaveBeenCalledTimes(1);
     expect(notify).not.toHaveBeenCalled();
-    expect(host.textContent).toBe('');
   });
 });

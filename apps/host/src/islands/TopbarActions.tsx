@@ -16,34 +16,25 @@ import { PermissionsButton } from './PermissionsButton.js';
 import { SettingsButton } from './SettingsButton.js';
 
 /**
- * What the bar gives the surfaces in it: their popovers and menus keep the auto-hiding bar up while open, and a phone
- * sheet whose trigger left the page hands focus to the product.
- */
-function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
-  return (
-    <LayerTracker value={topbarSurfaces.register}>
-      <ModalFocusFallback value={productFrameLayout.getFocusFallback}>{props.children}</ModalFocusFallback>
-    </LayerTracker>
-  );
-}
-
-/**
  * The topbar's actions, led by the network button and ending with the account button, sized against the pill's room
- * and waiting out its morphs.
+ * and waiting out its morphs. Their popovers and menus keep the auto-hiding bar up while open, and a phone sheet whose
+ * trigger left the page hands focus to the product.
  */
 export function TopbarActions(): JSX.Element {
   return (
     <RootBoundary root="island:TopbarActions">
-      <TopbarProviders>
-        <Actions
-          room={getTopbarActionRoom}
-          morph={topbarMorph}
-          network={<NetworkButton />}
-          permissions={<PermissionsButton />}
-          settings={<SettingsButton />}
-          account={<AccountButton />}
-        />
-      </TopbarProviders>
+      <LayerTracker value={topbarSurfaces.register}>
+        <ModalFocusFallback value={productFrameLayout.getFocusFallback}>
+          <Actions
+            room={getTopbarActionRoom}
+            morph={topbarMorph}
+            network={<NetworkButton />}
+            permissions={<PermissionsButton />}
+            settings={<SettingsButton />}
+            account={<AccountButton />}
+          />
+        </ModalFocusFallback>
+      </LayerTracker>
     </RootBoundary>
   );
 }

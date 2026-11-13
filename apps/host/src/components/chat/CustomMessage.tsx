@@ -31,8 +31,6 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   const [tree, setTree] = createSignal<RendererNode>();
   const [placeholder, setPlaceholder] = createSignal<string | undefined>('Loading…');
   let root: HTMLDivElement | undefined;
-  // Aborted as the row leaves the page, so the product's late answers change nothing.
-  const shown = new AbortController();
 
   // The same context names the body on the render request and on every
   // action fired inside it, so the product can pair the two.
@@ -53,16 +51,14 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
         payload: payload === undefined ? '0x' : toHex(payload),
       })
       .catch(() => {
-        if (!shown.signal.aborted) {
-          setPlaceholder('The app could not be reached.');
-        }
+        setPlaceholder('The app could not be reached.');
       });
   };
 
   let stopRender: (() => void) | null = null;
 
   const startRender = (): void => {
-    if (shown.signal.aborted || stopRender !== null) {
+    if (stopRender !== null) {
       return;
     }
     stopRender = mount.chat.renderCustomMessage({
@@ -70,17 +66,12 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       request: { context, payload: mount.payload },
       sink: {
         onUpdate: node => {
-          if (shown.signal.aborted) {
-            return;
-          }
           setPlaceholder(undefined);
           setTree(node);
         },
         // A failed render may have delivered a partial tree, which must not stand as final.
         onError: () => {
-          if (!shown.signal.aborted) {
-            setPlaceholder('This message can’t be shown right now.');
-          }
+          setPlaceholder('This message can’t be shown right now.');
         },
       },
     });
@@ -95,10 +86,9 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
 
   onSettled(() => {
     if (root === undefined) {
-      startRender();
       return undefined;
     }
-    const watch = mount.watchVisibility ?? visibilityWatcher(globalThis.IntersectionObserver);
+    const watch = mount.watchVisibility ?? visibilityWatcher(IntersectionObserver);
     return watch(root, visible => {
       if (visible) {
         startRender();
@@ -107,10 +97,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       }
     });
   });
-  onCleanup(() => {
-    shown.abort();
-    stop();
-  });
+  onCleanup(stop);
 
   return (
     <div

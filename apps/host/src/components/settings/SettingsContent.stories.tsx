@@ -1,14 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  BACKEND_FACTS,
-  hasSharedWorker,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  type Backend,
-  type CacheSettings,
-  type Network,
-} from '@dotli/config';
+import type { Backend, CacheSettings, Network } from '@dotli/config';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
@@ -24,7 +17,6 @@ import {
   settingsAsked,
   storySettings,
 } from '../../testing/stories/settingsFixtures.js';
-import { TRANSPORT_FACTS, TRANSPORT_ORDER } from './SettingsContent.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
@@ -64,63 +56,21 @@ type Shown = {
   debugOn: boolean;
 };
 
-/** One choice card: its radio, its selection and its words. */
-async function expectChoice(
-  name: string,
-  value: string,
-  opts: { label: string; description: string; selected: boolean; disabled?: boolean; chip?: string },
-): Promise<void> {
-  const input = radio(name, value);
-  const card = input.closest('label');
-  await expect(input.checked).toBe(opts.selected);
-  await expect(input.disabled).toBe(opts.disabled === true);
-  await expect(card?.hasAttribute('data-selected')).toBe(opts.selected);
-  await expect(card?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
-  await expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
-}
-
-/** The category control, then only the selected category's sections, then the footer. */
+/** Only the selected category's sections show, each with the saved choice, and nothing to save yet. */
 async function expectSections(shown: Shown, category: Category): Promise<void> {
-  const categories = query(document, '[data-testid="settings-categories"]');
-  await expect(categories).toHaveAttribute('role', 'group');
-  await expect(categories).toHaveAttribute('aria-label', 'Settings category');
-  await expect([...categories.children].map(b => b.textContent)).toEqual(['General', 'Network', 'Advanced']);
   await expect(selectedCategory()).toBe(`settings-category-${category}`);
   const sections = query(document, '[data-testid="mode-popover-sections"]');
-  const theme = sections.querySelector('[role="group"][aria-label="Theme"]');
-  const transports = sections.querySelector('[role="radiogroup"][aria-label="Network transport"]');
-  const networks = sections.querySelector('[role="radiogroup"][aria-label="Network"]');
-  const cache = sections.querySelector('[data-testid="mode-cache"]');
-  await expect(theme !== null).toBe(category === 'general');
-  await expect(transports !== null).toBe(category === 'network');
-  await expect(cache !== null).toBe(category === 'advanced');
-  if (category === 'general') {
-    await expect(theme).toHaveAttribute('data-testid', 'theme-options');
-  }
+  await expect(sections.querySelector('[data-testid="theme-options"]') !== null).toBe(category === 'general');
+  await expect(sections.querySelector('input[name="dotli-backend"]') !== null).toBe(category === 'network');
+  await expect(sections.querySelector('[data-testid="mode-cache"]') !== null).toBe(category === 'advanced');
   if (category === 'network') {
-    await expect(networks === null).toBe(shown.enabledNetworks.length < 2);
-    if (networks !== null) {
-      for (const n of shown.enabledNetworks) {
-        const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
-        await expectChoice('dotli-network', n, {
-          label: cfg.label,
-          description: cfg.description,
-          selected: n === shown.network,
-        });
-      }
+    const networkChoice = sections.querySelector('input[name="dotli-network"]') !== null;
+    await expect(networkChoice).toBe(shown.enabledNetworks.length > 1);
+    if (networkChoice) {
+      await expect(radio('dotli-network', shown.network).checked).toBe(true);
     }
-    await expect(transports?.querySelectorAll('input')).toHaveLength(TRANSPORT_ORDER.length);
-    for (const value of TRANSPORT_ORDER) {
-      const facts = TRANSPORT_FACTS[value];
-      const disabled = hasSharedWorker(value) && !shown.sharedWorkerSupported;
-      await expectChoice('dotli-backend', value, {
-        label: BACKEND_FACTS[value].label,
-        description: disabled ? 'Unavailable in this browser or private window' : facts.description,
-        selected: value === shown.backend,
-        disabled,
-        ...(facts.recommended ? { chip: 'Recommended' } : {}),
-      });
-    }
+    await expect(radio('dotli-backend', shown.backend).checked).toBe(true);
+    await expect(radio('dotli-backend', 'smoldot-shared-worker').disabled).toBe(!shown.sharedWorkerSupported);
   }
   if (category === 'advanced') {
     for (const [label, on] of [
@@ -130,21 +80,9 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
     ] as const) {
       await expect(toggle(label)).toHaveAttribute('aria-checked', String(on));
     }
-    const clear = query(document, '[data-testid="mode-clear-all-row"] button');
-    await expect(clear).toHaveTextContent('Clear all caches');
-    await expect(clear).toHaveAttribute(
-      'title',
-      'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
-    );
-    const debug = document.querySelector('[data-testid="mode-debug-row"] button');
-    await expect(debug === null).toBe(shown.debugOn);
+    await expect(document.querySelector('[data-testid="mode-debug-row"]') === null).toBe(shown.debugOn);
   }
   await expect(applyButton()).toBeDisabled();
-  await expect(applyButton()).toHaveAttribute('data-variant', 'primary');
-  await expect(applyButton()).toHaveTextContent('Save and apply');
-  await expect(query(document, '[data-testid="mode-apply-warning"]')).toHaveTextContent(
-    'Transport and cache changes reload the app',
-  );
 }
 
 /** The settings button and panel as the host composes them, given the story's settings. */

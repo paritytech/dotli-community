@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, merge, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, merge, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isShallowEqual } from '@dotli/shared';
 import type { SignInScreen, WindowScreen } from '../../state/sessionWindowState.js';
@@ -45,35 +45,39 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
   const step = createMemo<WindowStep>(
     () => {
       const screen = props.screen;
-      if (screen.view === 'pairing') {
-        // A copy, so the screen it builds reads plain values.
-        return { view: screen.view, pairing: { ...screen.pairing } };
+      switch (screen.view) {
+        case 'pairing':
+          // A copy, so the screen it builds reads plain values.
+          return { view: screen.view, pairing: { ...screen.pairing } };
+        case 'continue':
+          return { view: screen.view, offer: screen.offer, phoneFailed: screen.failure === 'phone' };
+        case 'phrase':
+          return { view: screen.view, form: phraseForm.form() };
+        case 'consent':
+          return { view: screen.view, origin: screen.origin, group: screen.group };
+        case 'site-signing':
+          return { view: screen.view, origin: screen.origin, route: screen.route };
+        case 'site-review':
+          return { view: screen.view, origin: screen.origin, call: screen.call, account: screen.account };
+        case 'site-sharing':
+        case 'site-approving':
+          return { view: screen.view, origin: screen.origin };
+        case 'site-failed':
+          return { view: screen.view, origin: screen.origin, route: screen.route, retry: screen.retry };
+        case 'sites':
+          return { view: screen.view, sites: screen.sites };
+        case 'connecting':
+        case 'failed':
+        case 'refused':
+        case 'done-no-opener':
+        case 'signing-out':
+        case 'signed-out':
+        case 'site-not-allowed':
+        case 'site-unsupported':
+        case 'sites-loading':
+        case 'sites-failed':
+          return { view: screen.view };
       }
-      if (screen.view === 'continue') {
-        return { view: screen.view, offer: screen.offer, phoneFailed: screen.failure === 'phone' };
-      }
-      if (screen.view === 'phrase') {
-        return { view: screen.view, form: phraseForm.form() };
-      }
-      if (screen.view === 'consent') {
-        return { view: screen.view, origin: screen.origin, group: screen.group };
-      }
-      if (screen.view === 'site-signing') {
-        return { view: screen.view, origin: screen.origin, route: screen.route };
-      }
-      if (screen.view === 'site-review') {
-        return { view: screen.view, origin: screen.origin, call: screen.call, account: screen.account };
-      }
-      if (screen.view === 'site-sharing' || screen.view === 'site-approving') {
-        return { view: screen.view, origin: screen.origin };
-      }
-      if (screen.view === 'site-failed') {
-        return { view: screen.view, origin: screen.origin, route: screen.route, retry: screen.retry };
-      }
-      if (screen.view === 'sites') {
-        return { view: screen.view, sites: screen.sites };
-      }
-      return { view: screen.view };
     },
     { equals: sameStep },
   );
@@ -105,11 +109,44 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
   return <WindowShell view={props.screen.view} parts={parts()} />;
 }
 
-/** The window page's frame for one screen, laid out for the view it shows. */
+/**
+ * The window page's frame for one screen, laid out for the view it shows: its content and buttons in a card with the
+ * note under it, or on a phone over the whole page, with the content in the middle and the buttons and the note at the
+ * foot. The buttons stack with the main answer first and the way out last.
+ */
 export function WindowShell(props: { view: WindowScreen['view']; parts: SignInParts }): JSX.Element {
+  let card: HTMLElement | undefined;
+  const buttons = (): boolean =>
+    props.parts.actions !== undefined || props.parts.reveal !== undefined || props.parts.dismiss !== undefined;
+  // A new screen may replace the control that had focus, so the card takes it rather than leave it on the page.
+  createEffect(
+    () => props.parts,
+    (_, previous) => {
+      if (previous !== undefined && document.activeElement === document.body) {
+        card?.focus();
+      }
+    },
+  );
   return (
     <main class={s['window']} data-testid="session-window" data-view={props.view}>
-      <WindowLayout parts={props.parts} />
+      <section
+        ref={el => {
+          card = el;
+        }}
+        class={s['card']}
+        tabindex="-1"
+        data-testid="session-window-card"
+      >
+        <div class={s['content']}>{props.parts.content}</div>
+        <Show when={buttons()}>
+          <div class={s['actions']}>
+            {props.parts.actions}
+            {props.parts.reveal}
+            {props.parts.dismiss}
+          </div>
+        </Show>
+      </section>
+      {props.parts.note}
     </main>
   );
 }
@@ -121,29 +158,4 @@ function signInOf(screen: WindowScreen): SignInScreen | null {
 
 function sameStep(a: WindowStep, b: WindowStep): boolean {
   return a.view === 'pairing' && b.view === 'pairing' ? sameSignInScreen(a.pairing, b.pairing) : isShallowEqual(a, b);
-}
-
-/**
- * Places a screen on the window page: its content and buttons in a card with the note under it, or on a phone over the
- * whole page, with the content in the middle and the buttons and the note at the foot. The buttons stack with the main
- * answer first and the way out last.
- */
-function WindowLayout(props: { parts: SignInParts }): JSX.Element {
-  const buttons = (): boolean =>
-    props.parts.actions !== undefined || props.parts.reveal !== undefined || props.parts.dismiss !== undefined;
-  return (
-    <>
-      <section class={s['card']} data-testid="session-window-card">
-        <div class={s['content']}>{props.parts.content}</div>
-        <Show when={buttons()}>
-          <div class={s['actions']}>
-            {props.parts.actions}
-            {props.parts.reveal}
-            {props.parts.dismiss}
-          </div>
-        </Show>
-      </section>
-      {props.parts.note}
-    </>
-  );
 }

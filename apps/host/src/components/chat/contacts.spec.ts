@@ -17,11 +17,7 @@ describe('contacts', () => {
     );
 
     // Then
-    expect(entries.map(e => [e.kind, e.id])).toEqual([
-      ['room', 'old'],
-      ['room', 'new'],
-      ['bot', 'bot'],
-    ]);
+    expect(entries.map(e => e.id)).toEqual(['old', 'new', 'bot']);
   });
 
   it('As a user, a room shows the footer its product set, and a room or bot without one takes text', () => {

@@ -9,6 +9,7 @@ import { byTestId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
 import { must } from '@dotli/shared/testing';
 import type { PairingView } from '../../state/authModalState.js';
+import type { SiteListScreen } from '../../runtime/siteSignIn/createSiteList.js';
 import type { SignInScreen } from '../../state/sessionWindowState.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 import { expectPhone } from '../../testing/stories/topbarFrame.js';
@@ -825,6 +826,39 @@ export const SiteListFailed: Story = {
       await waitFor(() => expect(onSiteListRetry).toHaveBeenCalledTimes(1));
       await expect(onRetry).not.toHaveBeenCalled();
       await expect(onSiteRetry).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** The site list's view, which a story moves as its read is tried again. */
+const [listScreen, setListScreen] = createSignal<SiteListScreen>({ view: 'sites-failed' });
+
+/** As a keyboard user, I press Try again on a list that could not be read and keep focus in the window. */
+export const RetryKeepsFocus: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    setListScreen({ view: 'sites-failed' });
+  },
+  render: args => (
+    <SessionWindow
+      {...args}
+      screen={listScreen()}
+      onSiteListRetry={() => {
+        setListScreen({ view: 'sites-loading' });
+      }}
+    />
+  ),
+  play: async ({ canvas, userEvent, step }) => {
+    let pressed: HTMLElement | undefined;
+    await step('When I press Try again from the keyboard', async () => {
+      pressed = canvas.getByRole('button', { name: 'Try again' });
+      pressed.focus();
+      await expect(pressed).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then the button is gone and focus is on the window card, not the page', async () => {
+      await waitFor(() => expect(pressed?.isConnected).toBe(false));
+      await waitFor(() => expect(card()).toHaveFocus());
     });
   },
 };
