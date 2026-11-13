@@ -185,7 +185,7 @@ function createHarness({
       productId: asProductId(product.productId ?? toProductId(product.label)),
       local,
       isStale() {
-        const check = local ? Promise.resolve(false) : Promise.resolve(walletFound?.() ?? false);
+        const check = local ? Promise.resolve(false) : Promise.resolve().then(() => walletFound?.() ?? false);
         staleChecks.push(check);
         return check;
       },
@@ -1352,7 +1352,7 @@ describe('page core after a failed wallet read', () => {
   });
 
   it('As an operator, I see a stale check that fails on a stored session change counted, and the user keeps the core', async () => {
-    // Given a pairing core whose wallet read throws once the store changes
+    // Given a pairing core whose wallet read rejects once the store changes
     let readBroken = false;
     const { core, contexts, storeListeners, staleChecks, counted, changes } = createReportingHarness({
       walletFound: () => {
@@ -1371,11 +1371,11 @@ describe('page core after a failed wallet read', () => {
     for (const listener of [...storeListeners]) {
       listener();
     }
-    await changes.until(() => counted('page_core.stale_read').length === 1);
+    await changes.until(() => counted('page_core.transition').length === 1);
     const next = await core.acquire();
 
     // Then the failure is counted once and the core stays
-    expect(counted('page_core.stale_read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(counted('page_core.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(next.runtime).toBe(lease.runtime);
     expect(contexts).toHaveLength(1);
   });

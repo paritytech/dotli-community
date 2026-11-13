@@ -107,7 +107,7 @@ export async function startHost({
   // island mounts on a store not yet started.
   startShellState?.();
   // The pause and its targets last the page's life, so their stops go unused.
-  networkPause.start();
+  networkPause.start(document);
   networkPause.addTarget(getProtocolClient().chains);
   // The chunk loads before the settings settle, so it must not depend on them. Its failure is awaited at the bridge load, or
   // dropped when the settings fail first.

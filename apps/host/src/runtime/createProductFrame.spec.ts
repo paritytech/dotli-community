@@ -25,6 +25,7 @@ import {
   type ProductFrameView,
 } from './createProductFrame.js';
 import { productState } from './state/productState.js';
+import { chatConnections } from './chat/createChatConnections.js';
 import type { ProductFacts } from '../getProductFacts.js';
 import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
 import type { PermissionsChange } from './state/productPermissions.js';
@@ -734,6 +735,25 @@ describe('product frame status', () => {
     // Then
     expect(firstOutcome).toBe('resolved');
     expect(fakes.readLastStatus()).toBe('connected');
+  });
+
+  it('As a dApp user with a chat view waiting for my product, I open a newer version before the first connects and the chat view gets only the live connection', async () => {
+    // Given a chat product whose first render is superseded before its connection is answered
+    const registered: string[] = [];
+    onTestFinished(chatConnections.onRegister(productId => registered.push(productId)));
+    const fakes = createHarness();
+    const first = fakes.frame.render(buildSubdomainProduct('product', { cid: 'first-cid', chat: true }));
+    await fakes.changes.until(() => fakes.connections.length === 1);
+    const second = fakes.frame.render(buildSubdomainProduct('product', { cid: 'second-cid', chat: true }));
+    await readOutcome(first);
+
+    // When the first connection is answered late, then the second
+    await answerConnection(fakes, 0);
+    await answerConnection(fakes, 1);
+    await second;
+
+    // Then
+    expect(registered).toHaveLength(1);
   });
 });
 
