@@ -26,7 +26,7 @@ export function createAuthStateChanged(
     if (!isInService()) {
       return;
     }
-    session.reportCoreAuthState(state, pairing);
+    session.reportCoreAuthState(state, pairing, isInService);
   }
 
   return authStateChanged;

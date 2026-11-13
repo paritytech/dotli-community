@@ -24,6 +24,12 @@ export type DotliAuthState =
   | { tag: 'Connected'; session: TruapiSessionUiState }
   | { tag: 'LoginFailed'; kind: LoginFailureKind; reason: string };
 
+/**
+ * A state a core reported, as the page shows it, and whether that core still speaks for the page. A core goes out of
+ * service when it goes down or turns stale, and reports nothing after.
+ */
+export type CoreReport = { auth: DotliAuthState; isInService: () => boolean };
+
 /** The auth state while the core pairs, with what the pairing presents. */
 export type PairingState = Extract<DotliAuthState, { tag: 'Pairing' }>;
 

@@ -9,7 +9,7 @@ import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, listen, noop, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import type { CoreLease } from '../createPageCore.js';
-import type { DotliAuthState } from '../session/types.js';
+import type { CoreReport } from '../session/types.js';
 import { judgeReport, MainAccountError, type MainAccount, type ReportVerdict } from './mainAccount.js';
 
 const report = createReporter({ flow: 'wallet' });
@@ -25,11 +25,11 @@ type Params = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
   /**
-   * What the page's core itself reported last, null while no core reported. It keeps a core's last report after that
-   * core went down, until another core reports or the page's last core goes. Every report is a new object, so a report
-   * is never the same object as an earlier one.
+   * What the page's core itself reported last, with whether that core is still in service, null while no core
+   * reported. It keeps a core's last report after that core went down, until another core reports or the page's last
+   * core goes.
    */
-  coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'>;
+  coreReport: Pick<ReadableAtom<CoreReport | null>, 'get' | 'listen'>;
 };
 
 /** How one read settles. */
@@ -39,17 +39,15 @@ type Reply = { resolve: (account: MainAccount) => void; reject: (error: MainAcco
 type Reads = ReadonlyMap<Reply, () => void>;
 
 /**
- * `stale` is the report on show when the last held lease went down. A read skips it, since it is the dead core's and
- * not an answer of a core that is up. `shown` is the report heard last while holding. `stop` removes the held lease's
- * down listener and the report listener.
+ * `shown` is the report heard last while holding. `stop` removes the held lease's down listener and the report
+ * listener.
  */
 type SourceState =
-  | { kind: 'unleased'; stale: DotliAuthState | null }
-  | { kind: 'leasing'; stale: DotliAuthState | null; reads: Reads }
+  | { kind: 'unleased' }
+  | { kind: 'leasing'; reads: Reads }
   | {
       kind: 'holding';
-      stale: DotliAuthState | null;
-      shown: DotliAuthState | null;
+      shown: CoreReport | null;
       reads: Reads;
       lease: HeldLease;
       stop: () => void;
@@ -62,7 +60,7 @@ type SourceEvent =
   | { kind: 'readAborted'; reply: Reply; reason: unknown }
   | { kind: 'leased'; lease: HeldLease }
   | { kind: 'leaseFailed'; error: unknown }
-  | { kind: 'reported'; report: DotliAuthState | null }
+  | { kind: 'reported'; report: CoreReport | null }
   | { kind: 'down' }
   | { kind: 'disposed' };
 
@@ -109,11 +107,11 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     });
   };
   const machine = createStateMachine<SourceMachine>({
-    initial: { kind: 'unleased', stale: null },
+    initial: { kind: 'unleased' },
     handlers: {
       unleased: {
-        readAsked({ stale }, event, transition) {
-          transition.emitState({ kind: 'leasing', stale, reads: addRead(new Map(), event, transition) });
+        readAsked(_state, event, transition) {
+          transition.emitState({ kind: 'leasing', reads: addRead(new Map(), event, transition) });
           takeLease(transition);
         },
         disposed(_state, _event, { emitState }) {
@@ -125,7 +123,7 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           transition.emitState({ ...state, reads: addRead(state.reads, event, transition) });
         },
         readAborted: abortRead,
-        leased({ stale, reads }, { lease }, { emitState, update }) {
+        leased({ reads }, { lease }, { emitState, update }) {
           // A core already down calls its listener during the subscribe, so its `down` runs before the `reported` below.
           const stopDown = lease.subscribeDown(() => {
             update({ kind: 'down' });
@@ -138,11 +136,11 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
             stopReport();
           }
           const shown = coreReport.get();
-          emitState({ kind: 'holding', stale, shown, reads, lease, stop });
+          emitState({ kind: 'holding', shown, reads, lease, stop });
           update({ kind: 'reported', report: shown });
         },
-        leaseFailed({ stale, reads }, { error }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'unleased', stale });
+        leaseFailed({ reads }, { error }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'unleased' });
           emitSideEffect({ kind: 'settled', reads, outcome: { kind: 'failed', error: createReadError(error) } });
         },
         disposed({ reads }, _event, { emitState, emitSideEffect }) {
@@ -158,14 +156,14 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
         reported(state, { report }, transition) {
           answerReads({ ...state, shown: report }, transition);
         },
-        down({ shown: stale, reads, lease, stop }, _event, transition) {
+        down({ reads, lease, stop }, _event, transition) {
           // A replacement reports anew, so the reads still open wait for it on a new lease. The new lease is taken
           // before the old one goes, so the core is never left with no holder.
           if (reads.size > 0) {
-            transition.emitState({ kind: 'leasing', stale, reads });
+            transition.emitState({ kind: 'leasing', reads });
             takeLease(transition);
           } else {
-            transition.emitState({ kind: 'unleased', stale });
+            transition.emitState({ kind: 'unleased' });
           }
           stop();
           transition.emitSideEffect({ kind: 'released', lease });
@@ -253,15 +251,15 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
   }
 
   /**
-   * Moves to `state`, settling its reads when its report answers them. No report yet, and the dead core's `stale` one,
-   * keep them waiting.
+   * Moves to `state`, settling its reads when its report answers them. No report yet, and the last report of a core
+   * out of service, keep them waiting, since a core that went down speaks no more and its replacement reports anew.
    */
   function answerReads(
     state: Extract<SourceState, { kind: 'holding' }>,
     { emitState, emitSideEffect }: Transition<SourceMachine>,
   ): void {
-    const { shown, stale } = state;
-    const verdict: ReportVerdict = shown === null || shown === stale ? { kind: 'waiting' } : judgeReport(shown);
+    const { shown } = state;
+    const verdict: ReportVerdict = shown?.isInService() === true ? judgeReport(shown.auth) : { kind: 'waiting' };
     if (verdict.kind === 'waiting') {
       emitState(state);
       return;

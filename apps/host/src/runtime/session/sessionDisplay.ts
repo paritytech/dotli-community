@@ -3,7 +3,7 @@
 
 // When the saved copy or a core speaks for the page, and what the page then shows.
 
-import type { DotliAuthState, Presence } from './types.js';
+import type { CoreReport, DotliAuthState, Presence } from './types.js';
 
 /** The rules of what the page's session state shows. */
 export const sessionDisplay = {
@@ -18,8 +18,8 @@ export const sessionDisplay = {
  * with no news from the core, whose session read already ended. A pairing stays the core's, and the core's next report
  * decides from there. While a core's own report is open to it, the copy may also replace a sign-in it showed itself.
  */
-function isCopyAllowedToShow(coreReport: DotliAuthState | null, shown: DotliAuthState): boolean {
-  return coreReport === null || isOpenToCopy(shown.tag) || isOpenToCopy(coreReport.tag);
+function isCopyAllowedToShow(coreReport: CoreReport | null, shown: DotliAuthState): boolean {
+  return coreReport === null || isOpenToCopy(shown.tag) || isOpenToCopy(coreReport.auth.tag);
 }
 
 /** Whether the flag says a sign-in made elsewhere waits for a page that shows `tag`. */
@@ -31,11 +31,11 @@ function isSignInWaitingElsewhere(flag: Presence, tag: DotliAuthState['tag']): b
  * The state a page shows once the copy withdraws its sign-in, the core's own report, with `Unreachable` shown as
  * `Disconnected` since the read that withdrew the sign-in has just answered.
  */
-function getWithdrawnState(coreReport: DotliAuthState): DotliAuthState {
-  if (coreReport.tag === 'Unreachable') {
+function getWithdrawnState({ auth }: CoreReport): DotliAuthState {
+  if (auth.tag === 'Unreachable') {
     return { tag: 'Disconnected' };
   }
-  return coreReport;
+  return auth;
 }
 
 /** The states in which the page holds no sign-in of its own and its button offers one. */

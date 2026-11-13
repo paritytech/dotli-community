@@ -84,7 +84,7 @@ function waitForFailedRead(): Promise<void> {
 
 /** The core reporting a state, as its auth presenter does. */
 function reportFromCore(state: AuthState, pairing: PairingPresentation = PAIRING): void {
-  session.reportCoreAuthState(state, pairing);
+  session.reportCoreAuthState(state, pairing, () => true);
 }
 
 describe('session state', () => {
@@ -895,7 +895,7 @@ describe('session state', () => {
 
     // When a core reports the session and the page's last core goes after it
     reportFromCore({ tag: 'Connected', value: buildConnectedSessionUiInfo() });
-    const reported = session.coreReport.get();
+    const reported = session.coreReport.get()?.auth;
     session.reportCoresGone();
     const afterTheCores = session.coreReport.get();
 

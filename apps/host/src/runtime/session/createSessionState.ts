@@ -20,7 +20,7 @@ import { readSavedSession, type LoadRestore, type SavedSessionSource } from './r
 import { sessionDisplay } from './sessionDisplay.js';
 import type { TruapiSessionUiState } from './parseUiStateCache.js';
 import { authViews } from './authViews.js';
-import type { DotliAuthState, Presence } from './types.js';
+import type { CoreReport, DotliAuthState, Presence } from './types.js';
 
 const report = createReporter({ flow: 'wallet' });
 const sessionStateTransitionMetric = defineCount<'error'>('session.state_transition');
@@ -67,14 +67,14 @@ type State =
   | {
       kind: 'live';
       shown: DotliAuthState;
-      coreReport: DotliAuthState | null;
+      coreReport: CoreReport | null;
       flag: Presence;
       storeReadFailed: boolean;
       stopReads: () => void;
       follow: Follow;
       read: Read;
     }
-  | { kind: 'disposed'; coreReport: DotliAuthState | null };
+  | { kind: 'disposed'; coreReport: CoreReport | null };
 
 type Live = Extract<State, { kind: 'live' }>;
 
@@ -86,7 +86,7 @@ type Event =
   | { kind: 'storeStatus'; status: SharedStoreStatus }
   | { kind: 'storedSessionChanged' }
   | { kind: 'coresGone' }
-  | { kind: 'coreReported'; state: CoreAuthState; pairing: PairingPresentation }
+  | ({ kind: 'coreReported'; state: CoreAuthState; pairing: PairingPresentation } & Pick<CoreReport, 'isInService'>)
   | { kind: 'loginFailed'; reason: string }
   | { kind: 'signedOut' }
   | { kind: 'flagRead'; presence: Presence }
@@ -222,19 +222,19 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
           emitState({ ...state, coreReport: null });
           update({ kind: 'readAsked', source: 'store' });
         },
-        coreReported(state, { state: core, pairing }, transition) {
+        coreReported(state, { state: core, pairing, isInService }, transition) {
           const local = isLocalWallet();
           const reported = getCoreReport(core, pairing);
           // The core reads an unreadable store as no session, which is not a logout, so the cached account stays.
-          const coreReport: DotliAuthState =
+          const auth: DotliAuthState =
             reported.tag === 'Disconnected' && !local && state.storeReadFailed ? { tag: 'Unreachable' } : reported;
-          show(state, { shown: coreReport, coreReport }, transition);
+          show(state, { shown: auth, coreReport: { auth, isInService } }, transition);
           if (local) {
             return;
           }
-          switch (coreReport.tag) {
+          switch (auth.tag) {
             case 'Connected':
-              transition.emitSideEffect({ kind: 'uiCacheKept', value: JSON.stringify(coreReport.session) });
+              transition.emitSideEffect({ kind: 'uiCacheKept', value: JSON.stringify(auth.session) });
               return;
             case 'Disconnected':
               transition.emitSideEffect({ kind: 'uiCacheKept', value: null });
@@ -380,8 +380,9 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
 
   return {
     /**
-     * The state the page's core itself reported last, as the page shows it. Null before any core reported and again
-     * once the page's last core went. The saved copy never writes it, so it holds only a core's own report.
+     * The state the page's core itself reported last, as the page shows it, with whether that core is still in service.
+     * Null before any core reported and again once the page's last core went. The saved copy never writes it, so it
+     * holds only a core's own report.
      */
     coreReport: computed(machine.state, state => state.coreReport),
     /**
@@ -409,10 +410,15 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
     },
     /**
      * A state the core reported, which also keeps the UI-state cache. From then the page is
-     * that core's, which follows the copy itself, until the page's last core went.
+     * that core's, which follows the copy itself, until the page's last core went. `isInService` tells whether the
+     * reporting core still speaks for the page.
      */
-    reportCoreAuthState(state: CoreAuthState, pairing: PairingPresentation): void {
-      machine.update({ kind: 'coreReported', state, pairing });
+    reportCoreAuthState(
+      state: CoreAuthState,
+      pairing: PairingPresentation,
+      isInService: CoreReport['isInService'],
+    ): void {
+      machine.update({ kind: 'coreReported', state, pairing, isInService });
     },
     /** A login that failed before the core could report it. */
     reportLoginFailure(reason: string): void {

@@ -7,7 +7,7 @@ import { hashBlake2b, createDeferred, fromHex, toHex } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
-import type { DotliAuthState } from '../session/types.js';
+import type { CoreReport, DotliAuthState } from '../session/types.js';
 import { createMainAccountSource, type MainAccountSource } from './createMainAccountSource.js';
 import { MainAccountError } from './mainAccount.js';
 
@@ -48,15 +48,22 @@ function createSourceOverCore({
   releaseFailure,
 }: Params = {}) {
   const changes = createChanges();
-  const report = atom<DotliAuthState | null>(null);
+  const reports = atom<CoreReport | null>(null);
+  /** The core that reports now, which goes out of service when it goes down. */
+  let reporter = { inService: true };
+  /** The reporting core goes out of service, and its replacement reports from then on. */
+  function retireReporter(): void {
+    reporter.inService = false;
+    reporter = { inService: true };
+  }
   /** The report listeners the source added, counted by the lease taken when each was added. */
   const waitsByLease = new Map<number, number>();
-  const coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'> = {
-    get: () => report.get(),
+  const coreReport: Pick<ReadableAtom<CoreReport | null>, 'get' | 'listen'> = {
+    get: () => reports.get(),
     listen(listener) {
       waitsByLease.set(leases.length, (waitsByLease.get(leases.length) ?? 0) + 1);
       changes.notify();
-      return report.listen(listener);
+      return reports.listen(listener);
     },
   };
   const failures = [...acquireFailures];
@@ -71,10 +78,14 @@ function createSourceOverCore({
       }
       const listeners = new Set<() => void>();
       const dead = leases.length < deadCores;
+      if (dead) {
+        retireReporter();
+      }
       const lease: FakeLease = {
         released: 0,
         countListeners: () => listeners.size,
         goDown() {
+          retireReporter();
           for (const listener of [...listeners]) {
             listener();
           }
@@ -105,7 +116,14 @@ function createSourceOverCore({
   });
   return {
     source,
-    report,
+    /** What the core in service reports. */
+    report: {
+      set(auth: DotliAuthState): void {
+        const from = reporter;
+        reports.set({ auth, isInService: () => from.inService });
+      },
+    },
+    retireReporter,
     countAcquires: () => acquires,
     leases,
     /** Resolves once a read waits on the core's report through the `nth` lease taken. */
@@ -342,6 +360,26 @@ describe('main account', () => {
     expect(core.countAcquires()).toBe(2);
     expect(pendingBeforeReport).toBe(true);
     expect((await reading).owner).toBe(OWNER);
+  });
+
+  it("As a user whose core went down before any site's round, I start one and the read waits for the replacement's report", async () => {
+    // Given a core that reported a session and went down before the source took a lease
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    core.retireReporter();
+
+    // When the round reads, and the replacement reports another account once the read waits on it
+    let settled = false;
+    const reading = core.source.read(createLiveSignal()).finally(() => {
+      settled = true;
+    });
+    await core.waitUntilReadWaits();
+    const pendingBeforeReport = !settled;
+    core.report.set({ tag: 'Connected', session: { connected: true, publicKey: OTHER_KEY } });
+
+    // Then the read waited past the dead core's report and resolves with the replacement's account
+    expect(pendingBeforeReport).toBe(true);
+    expect((await reading).owner).toBe(toHex(hashBlake2b(fromHex(OTHER_KEY), 32)));
   });
 
   it('As a dotli integrator, I dispose the main account source and it lets go of its lease and hears no more of its core', async () => {
