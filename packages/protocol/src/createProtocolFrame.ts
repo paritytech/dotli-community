@@ -130,11 +130,10 @@ type FrameEvent<E> =
   | { kind: 'loadTimedOut' }
   | { kind: 'readyTimedOut' }
   | { kind: 'iframeLoaded'; iframe: E }
-  | { kind: 'iframeFailed'; iframe: E }
   | { kind: 'handshakeDone'; iframe: E }
   | { kind: 'frameReadied'; iframe: E }
   | { kind: 'frameFailed'; iframe: E; thrown: unknown }
-  | { kind: 'aliveChecked'; transport: ProtocolTransport }
+  | { kind: 'aliveAsked'; transport: ProtocolTransport }
   | { kind: 'heartbeatAnswered'; transport: ProtocolTransport }
   | { kind: 'heartbeatFailed'; transport: ProtocolTransport; error: Error }
   | { kind: 'frameUnresponsive'; transport: ProtocolTransport; error: Error };
@@ -318,12 +317,13 @@ export function createProtocolFrame<E extends FrameElement>({
     const failure = toFrameFailure(thrown);
     const { error } = failure;
     const { waits, frame, held, incident: left } = leave(state, transition);
+    let incident = left;
     if (state.kind === 'ready') {
       emitSideEffect({ kind: 'frameLost', error, capture: !left.captured });
+      incident = withLoss(left, error);
     } else {
       emitSideEffect({ kind: 'bootFailed', phase: BOOT_PHASES[state.kind], ...failure });
     }
-    const incident = state.kind === 'ready' ? withLoss(left, error) : left;
     const { config } = state;
     // Rebuilding cannot fix a frame that refused the host's wire version, and a reload can, so it is final.
     if (error instanceof ProtocolVersionMismatchError) {
@@ -345,27 +345,21 @@ export function createProtocolFrame<E extends FrameElement>({
     emitSideEffect({ kind: 'drop', frame, reason: error });
   }
 
-  /** The handler of both asks in the states of `Kind`. */
-  type AskHandler<Kind extends FrameState<E>['kind']> = HandlerOf<FrameMachine<E>, Kind, 'readyAsked'> &
-    HandlerOf<FrameMachine<E>, Kind, 'transportAsked'>;
-
-  // An intersection of slots gives a handler no contextual type, so the parameters of these are written out.
-  const bootOnAsk: AskHandler<'idle' | 'resetting'> = (
-    { config, incident }: Extract<FrameState<E>, { kind: 'idle' | 'resetting' }>,
+  /** A handler of either ask in the states of `Kind`. */
+  type AskHandler<Kind extends FrameState<E>['kind']> = (
+    state: Extract<FrameState<E>, { kind: Kind }>,
     ask: Ask,
     transition: Transition<FrameMachine<E>>,
-  ) => {
+  ) => void;
+
+  const bootOnAsk: AskHandler<'idle' | 'resetting'> = ({ config, incident }, ask, transition) => {
     boot({ config, ...getAskWaits(ask), held: null, incident }, transition);
   };
 
   // A caller of either ask that finds the frame down cuts its backoff short, unless a frame is held. A held frame
   // answers the shared store, and a light client that failed to start fails a ready wait at once until the next boot,
   // which the backoff starts.
-  const bootOnAskWhenDown: AskHandler<'failed'> = (
-    state: Extract<FrameState<E>, { kind: 'failed' }>,
-    ask: Ask,
-    transition: Transition<FrameMachine<E>>,
-  ) => {
+  const bootOnAskWhenDown: AskHandler<'failed'> = (state, ask, transition) => {
     const { config, held, incident, error, stopWait } = state;
     if (held !== null) {
       switch (ask.kind) {
@@ -382,11 +376,7 @@ export function createProtocolFrame<E extends FrameElement>({
   };
 
   // Each ask waits for the first config, and fails when none comes within `configureMs`.
-  const queueAsk: AskHandler<'unconfigured'> = (
-    state: Extract<FrameState<E>, { kind: 'unconfigured' }>,
-    ask: Ask,
-    transition: Transition<FrameMachine<E>>,
-  ) => {
+  const queueAsk: AskHandler<'unconfigured'> = (state, ask, transition) => {
     const stopWait = startActiveTimeout({
       ms: timeouts.configureMs,
       onElapsed: () => {
@@ -397,20 +387,11 @@ export function createProtocolFrame<E extends FrameElement>({
     enter({ kind: 'unconfigured', waits: [...state.waits, { ...ask, stopWait }] }, transition);
   };
 
-  const resolveFrameTransport: HandlerOf<FrameMachine<E>, 'listening' | 'ready', 'transportAsked'> &
-    HandlerOf<FrameMachine<E>, 'ready', 'readyAsked'> = (
-    { frame }: Extract<FrameState<E>, { kind: 'listening' | 'ready' }>,
-    { wait }: Ask,
-    { emitSideEffect }: Transition<FrameMachine<E>>,
-  ) => {
+  const resolveFrameTransport: AskHandler<'listening' | 'ready'> = ({ frame }, { wait }, { emitSideEffect }) => {
     emitSideEffect({ kind: 'resolve', waits: [wait], transport: frame.transport });
   };
 
-  const rejectMismatched: AskHandler<'mismatched'> = (
-    { error }: Extract<FrameState<E>, { kind: 'mismatched' }>,
-    { wait }: Ask,
-    { emitSideEffect }: Transition<FrameMachine<E>>,
-  ) => {
+  const rejectMismatched: AskHandler<'mismatched'> = ({ error }, { wait }, { emitSideEffect }) => {
     emitSideEffect({ kind: 'reject', waits: [wait], error });
   };
 
@@ -449,25 +430,6 @@ export function createProtocolFrame<E extends FrameElement>({
     transition,
   ) => {
     enter({ ...state, readies: [...state.readies, wait] }, transition);
-  };
-
-  // A frame ready without a `listening` of its own waited no time for ready.
-  const markReady: HandlerOf<FrameMachine<E>, 'connecting' | 'listening', 'frameReadied'> = (
-    state,
-    { iframe },
-    transition,
-  ) => {
-    if (iframe !== state.frame.iframe) {
-      return;
-    }
-    const { frame, config, incident, readies } = state;
-    const { held } = leave(state, transition);
-    enter({ kind: 'ready', config, frame, readyAt: timers.now(), incident }, transition);
-    transition.emitSideEffect({ kind: 'resolve', waits: readies, transport: frame.transport });
-    if (state.kind === 'connecting') {
-      transition.emitSideEffect({ kind: 'readyWaited', ms: 0 });
-    }
-    transition.emitSideEffect({ kind: 'drop', frame: held, reason: new Error(PROTOCOL_ERRORS.FRAME_RESET) });
   };
 
   // A dropped frame's own status ends with its loss, which was reported when it was dropped.
@@ -513,7 +475,7 @@ export function createProtocolFrame<E extends FrameElement>({
     FrameMachine<E>,
     CheckedKind,
     MachineTypes<Check, FrameEvent<E>, FrameEffect<E>>,
-    'aliveChecked' | 'heartbeatAnswered' | 'heartbeatFailed'
+    'aliveAsked' | 'heartbeatAnswered' | 'heartbeatFailed'
   >({
     find: (state, { transport }) => getFrames(state).find(frame => frame.transport === transport)?.check ?? null,
     store(state, { transport }, check) {
@@ -533,7 +495,7 @@ export function createProtocolFrame<E extends FrameElement>({
     },
     handlers: {
       idle: {
-        aliveChecked(_check, { transport }, { emitState, emitSideEffect }) {
+        aliveAsked(_check, { transport }, { emitState, emitSideEffect }) {
           emitState({ kind: 'asking' });
           emitSideEffect({ kind: 'askAlive', transport });
         },
@@ -610,17 +572,11 @@ export function createProtocolFrame<E extends FrameElement>({
           transition.emitSideEffect({ kind: 'stopWait', stopWait: state.stopWait });
           transition.emitSideEffect({ kind: 'resolve', waits: state.loads, transport });
         },
-        iframeFailed(state, { iframe }, transition) {
-          if (iframe !== state.iframe) {
-            return;
-          }
-          loseFrame(state, new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED), transition);
-        },
         loadTimedOut(state, _event, transition) {
           loseFrame(state, new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT), transition);
         },
         frameFailed: failFrame,
-        aliveChecked: checkFrame,
+        aliveAsked: checkFrame,
         heartbeatAnswered: checkFrame,
         heartbeatFailed: checkFrame,
         frameUnresponsive: dropUnresponsiveHeld,
@@ -650,9 +606,18 @@ export function createProtocolFrame<E extends FrameElement>({
           const reason = new Error(PROTOCOL_ERRORS.FRAME_RESET);
           transition.emitSideEffect({ kind: 'drop', frame: state.held, reason });
         },
-        frameReadied: markReady,
+        // A frame ready without a `listening` of its own waited no time for ready.
+        frameReadied({ config, frame, readies, held, incident }, { iframe }, transition) {
+          if (iframe !== frame.iframe) {
+            return;
+          }
+          enter({ kind: 'ready', config, frame, readyAt: timers.now(), incident }, transition);
+          transition.emitSideEffect({ kind: 'resolve', waits: readies, transport: frame.transport });
+          transition.emitSideEffect({ kind: 'readyWaited', ms: 0 });
+          transition.emitSideEffect({ kind: 'drop', frame: held, reason: new Error(PROTOCOL_ERRORS.FRAME_RESET) });
+        },
         frameFailed: failFrame,
-        aliveChecked: checkFrame,
+        aliveAsked: checkFrame,
         heartbeatAnswered: checkFrame,
         heartbeatFailed: checkFrame,
         frameUnresponsive: loseUnresponsive,
@@ -664,9 +629,17 @@ export function createProtocolFrame<E extends FrameElement>({
         readyTimedOut(state, _event, transition) {
           loseFrame(state, new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT), transition);
         },
-        frameReadied: markReady,
+        frameReadied({ config, frame, stopWait, listenedAt, readies, incident }, { iframe }, transition) {
+          if (iframe !== frame.iframe) {
+            return;
+          }
+          transition.emitSideEffect({ kind: 'stopWait', stopWait });
+          transition.emitSideEffect({ kind: 'readyWaited', ms: timers.now() - listenedAt });
+          enter({ kind: 'ready', config, frame, readyAt: timers.now(), incident }, transition);
+          transition.emitSideEffect({ kind: 'resolve', waits: readies, transport: frame.transport });
+        },
         frameFailed: failFrame,
-        aliveChecked: checkFrame,
+        aliveAsked: checkFrame,
         heartbeatAnswered: checkFrame,
         heartbeatFailed: checkFrame,
         frameUnresponsive: loseUnresponsive,
@@ -676,7 +649,7 @@ export function createProtocolFrame<E extends FrameElement>({
         transportAsked: resolveFrameTransport,
         configured: reconfigure,
         frameFailed: failFrame,
-        aliveChecked: checkFrame,
+        aliveAsked: checkFrame,
         heartbeatAnswered: checkFrame,
         heartbeatFailed: checkFrame,
         frameUnresponsive: loseUnresponsive,
@@ -688,7 +661,7 @@ export function createProtocolFrame<E extends FrameElement>({
         rebuildDue({ config, held, incident }, _event, transition) {
           boot({ config, loads: [], readies: [], held, incident }, transition);
         },
-        aliveChecked: checkFrame,
+        aliveAsked: checkFrame,
         heartbeatAnswered: checkFrame,
         heartbeatFailed: checkFrame,
         frameUnresponsive: dropUnresponsiveHeld,
@@ -733,7 +706,7 @@ export function createProtocolFrame<E extends FrameElement>({
       return mismatchListeners.subscribe(listener);
     },
     checkAlive(transport) {
-      machine.update({ kind: 'aliveChecked', transport });
+      machine.update({ kind: 'aliveAsked', transport });
     },
   };
 
@@ -834,7 +807,7 @@ export function createProtocolFrame<E extends FrameElement>({
     }
     function handleError(): void {
       iframe.removeEventListener('load', handleLoad);
-      machine.update({ kind: 'iframeFailed', iframe });
+      machine.update({ kind: 'frameFailed', iframe, thrown: new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED) });
     }
     iframe.addEventListener('load', handleLoad, { once: true });
     iframe.addEventListener('error', handleError, { once: true });
