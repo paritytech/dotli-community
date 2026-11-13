@@ -428,6 +428,24 @@ describe('The loading controller drives the loading store', () => {
     expect(loadingState.get().explanationOpacity).toBe(1);
   });
 
+  it('As a visitor whose status tick stops mid-type, I see the explanation finished rather than frozen half typed', () => {
+    // Given an explanation half typed
+    const { controller } = setupController();
+    controller.initPhases(ROOT_PHASES);
+    controller.advancePhase(0);
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS / 2);
+    const halfTyped = readExplanation();
+
+    // When
+    controller.stopStatusTick();
+    vi.advanceTimersByTime(MESSAGE_ROTATE_MS);
+
+    // Then
+    expect(halfTyped).not.toBe('');
+    expect(readExplanation()).toBe('Looking for other computers to talk to');
+    expect(loadingState.get().explanationOpacity).toBe(1);
+  });
+
   it('As a visitor whose app loaded, I get a late step while the screen fades and the bar stays full with no crawl started', () => {
     // Given a screen fading out
     const { controller } = setupController();

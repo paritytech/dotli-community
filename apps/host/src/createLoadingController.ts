@@ -81,7 +81,7 @@ type Band =
   | {
       kind: 'banded';
       index: number;
-      target: number;
+      phase: LoadingPhase;
       crawlStep: number;
       creepCeiling: number;
       creepStep: number;
@@ -99,6 +99,8 @@ type Rotation = { kind: 'still' } | { kind: 'rotating'; explanations: readonly s
 /** The explanation being typed, one animation frame at a time. */
 type Typing =
   { kind: 'still' } | { kind: 'typing'; frame: number; from: string; to: string; startedAt: number; eraseMs: number };
+
+type TypingState = Extract<Typing, { kind: 'typing' }>;
 
 /** A stall, rotation, fade or frame is cleared as its state is left, so none fires for a state that moved on. */
 type ScreenState =
@@ -243,8 +245,8 @@ export function createLoadingController({
           });
           emitState({ ...state, stopFollowing });
         },
-        phasesSet(state, { phases }, transition) {
-          const next: ActiveState = {
+        phasesSet(state, { phases }, { emitState, update }) {
+          emitState({
             ...state,
             phases,
             bar: { percent: 0, shown: -1, shownAt: timers.now(), realShown: -1 },
@@ -252,20 +254,37 @@ export function createLoadingController({
             released: false,
             stall: { kind: 'idle' },
             stageIndex: -1,
-          };
-          transition.emitState(next);
+          });
           stopCrawl(state.band);
           stopStall(state.stall);
           // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
           // the explanation clock starts now.
-          enterStage(next, 'starting', transition);
+          update({ kind: 'stageSet', stage: 'starting' });
         },
         domainSet(state, { domain }, { emitState }) {
           emitState({ ...state, domain });
         },
         warningSet: showWarning,
         stageSet(state, { stage }, transition) {
-          enterStage(state, stage, transition);
+          const stageIndex = LOADING_STAGES.indexOf(stage);
+          // Only forward, so a late event cannot walk the story backwards or restart a running stage.
+          if (stageIndex <= state.stageIndex) {
+            return;
+          }
+          const { step, srText, explanations } = getStageLines(stage, state.domain);
+          // The opening step line has been up since first paint, so its first explanation is due from then.
+          const firstDelay =
+            state.stageIndex === -1 ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
+          transition.emitState({
+            ...state,
+            stageIndex,
+            rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, transition) },
+            typing: { kind: 'still' },
+            explanation: '',
+          });
+          stopRotation(state.rotation);
+          stopTyping(state.typing);
+          transition.emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
         },
         phaseEntered(state, { index }, transition) {
           const { phases, band } = state;
@@ -283,7 +302,7 @@ export function createLoadingController({
             band: {
               kind: 'banded',
               index,
-              target,
+              phase,
               // A constant slice per tick, so the bar moves steadily through a long sync instead of stalling near the
               // top.
               crawlStep: ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS),
@@ -299,7 +318,7 @@ export function createLoadingController({
             transition.emitState(next);
           }
           stopCrawl(band);
-          // A step enters its stage too, from the state this transition leaves.
+          // Enters the step's stage as setLoadingStage does, right after this transition.
           transition.update({ kind: 'stageSet', stage: phase.stage });
         },
         progressNudged(state, { fraction, stage }, transition) {
@@ -307,8 +326,8 @@ export function createLoadingController({
           if (band.kind !== 'banded' || !Number.isFinite(fraction)) {
             return;
           }
-          const phase = state.phases[band.index];
-          if (phase?.stage !== stage) {
+          const { phase } = band;
+          if (phase.stage !== stage) {
             return;
           }
           const { base, target } = phase;
@@ -330,16 +349,19 @@ export function createLoadingController({
           emitState({ ...state, released: true, band: band.kind === 'banded' ? { ...band, owner: 'clock' } : band });
         },
         tickStopped(state, _event, { emitState, emitSideEffect }) {
-          const { band } = state;
+          const { band, typing } = state;
+          // An explanation cut off mid-type would stay half written, so it is finished at once.
+          const explanation = typing.kind === 'typing' ? typing.to : state.explanation;
           emitState({
             ...state,
             band: band.kind === 'banded' ? { ...band, crawl: { kind: 'still' } } : band,
             stall: { kind: 'idle' },
             rotation: { kind: 'still' },
             typing: { kind: 'still' },
+            explanation,
           });
           stopPhase(state);
-          emitSideEffect({ kind: 'drawn', view: { explanationOpacity: 1 } });
+          emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: 1 } });
         },
         crawled(state, _event, transition) {
           const { band, bar } = state;
@@ -348,8 +370,8 @@ export function createLoadingController({
           }
           // A step reporting a real percentage owns the bar, and the guesses must not run past it.
           if (band.owner === 'clock') {
-            if (bar.percent < band.target) {
-              moveBar(state, { percent: Math.min(bar.percent + band.crawlStep, band.target) }, transition);
+            if (bar.percent < band.phase.target) {
+              moveBar(state, { percent: Math.min(bar.percent + band.crawlStep, band.phase.target) }, transition);
               return;
             }
             if (bar.percent < band.creepCeiling) {
@@ -361,7 +383,7 @@ export function createLoadingController({
           if (timers.now() - bar.shownAt < PROGRESS_FLOOR_MS) {
             return;
           }
-          const ceiling = Math.min(band.owner === 'count' ? band.target : band.creepCeiling, CREEP_CEILING);
+          const ceiling = Math.min(band.owner === 'count' ? band.phase.target : band.creepCeiling, CREEP_CEILING);
           const next = Math.min(Math.floor(bar.percent) + 1, ceiling);
           if (next > bar.percent) {
             moveBar(state, { percent: next, cosmetic: true }, transition);
@@ -385,7 +407,6 @@ export function createLoadingController({
             ...state,
             rotation: { ...rotation, line, timer: startRotationTimer(MESSAGE_ROTATE_MS, transition) },
           };
-          transition.emitState(turned);
           showLine(turned, rotation.explanations[line] ?? '', transition);
         },
         frameDrawn(state, { now }, { emitState, emitSideEffect, update }) {
@@ -393,27 +414,15 @@ export function createLoadingController({
           if (typing.kind !== 'typing') {
             return;
           }
-          const { from, to, startedAt, eraseMs } = typing;
-          const elapsedMs = now - startedAt;
-          if (elapsedMs >= eraseMs + TYPE_MS) {
-            emitState({ ...state, typing: { kind: 'still' }, explanation: to });
-            emitSideEffect({ kind: 'drawn', view: { explanation: to, explanationOpacity: 1 } });
+          const elapsedMs = now - typing.startedAt;
+          if (elapsedMs >= typing.eraseMs + TYPE_MS) {
+            emitState({ ...state, typing: { kind: 'still' }, explanation: typing.to });
+            emitSideEffect({ kind: 'drawn', view: { explanation: typing.to, explanationOpacity: 1 } });
             return;
           }
-          const drawing: Typing = { ...typing, frame: requestTypingFrame(update) };
-          // The frame clock can start a little before `startedAt`, so a zero-length erase is skipped, not divided by.
-          if (eraseMs > 0 && elapsedMs < eraseMs) {
-            const gone = applyEaseInOut(elapsedMs / eraseMs);
-            const explanation = from.slice(0, Math.ceil(from.length * (1 - gone)));
-            emitState({ ...state, typing: drawing, explanation });
-            // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
-            emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: 1 - 0.25 * gone } });
-            return;
-          }
-          const shown = applyEaseInOut((elapsedMs - eraseMs) / TYPE_MS);
-          const explanation = to.slice(0, Math.ceil(to.length * shown));
-          emitState({ ...state, typing: drawing, explanation });
-          emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: 0.75 + 0.25 * shown } });
+          const { explanation, opacity } = getTypingFrame(typing, elapsedMs);
+          emitState({ ...state, typing: { ...typing, frame: requestTypingFrame(update) }, explanation });
+          emitSideEffect({ kind: 'drawn', view: { explanation, explanationOpacity: opacity } });
         },
         hidden: hide,
         dismissed(state, _event, { emitState, emitSideEffect, update }) {
@@ -548,27 +557,6 @@ export function createLoadingController({
     return { kind: 'armed', percent, timer };
   }
 
-  /** Only moves forward, so a late event cannot walk the story backwards or restart a running stage. */
-  function enterStage(state: ActiveState, stage: LoadingStage, transition: Transition<ScreenMachine>): void {
-    const stageIndex = LOADING_STAGES.indexOf(stage);
-    if (stageIndex <= state.stageIndex) {
-      return;
-    }
-    const { step, srText, explanations } = getStageLines(stage, state.domain);
-    // The opening step line has been up since first paint, so its first explanation is due from then.
-    const firstDelay = state.stageIndex === -1 ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
-    transition.emitState({
-      ...state,
-      stageIndex,
-      rotation: { kind: 'rotating', explanations, line: -1, timer: startRotationTimer(firstDelay, transition) },
-      typing: { kind: 'still' },
-      explanation: '',
-    });
-    stopRotation(state.rotation);
-    stopTyping(state.typing);
-    transition.emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
-  }
-
   /** Turns the explanation over to `explanation`, typed unless it is up already or the visitor wants less motion. */
   function showLine(
     state: ActiveState,
@@ -661,6 +649,21 @@ function getLentCeiling(next: LoadingPhase | undefined): number {
     return CREEP_CEILING;
   }
   return next.reportsProgress === true ? next.base : next.target;
+}
+
+/** The part-typed explanation `elapsedMs` into `typing`, and its opacity. */
+function getTypingFrame(
+  { from, to, eraseMs }: TypingState,
+  elapsedMs: number,
+): { explanation: string; opacity: number } {
+  // The frame clock can start a little before `startedAt`, so a zero-length erase is skipped, not divided by.
+  if (eraseMs > 0 && elapsedMs < eraseMs) {
+    const gone = applyEaseInOut(elapsedMs / eraseMs);
+    // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
+    return { explanation: from.slice(0, Math.ceil(from.length * (1 - gone))), opacity: 1 - 0.25 * gone };
+  }
+  const shown = applyEaseInOut((elapsedMs - eraseMs) / TYPE_MS);
+  return { explanation: to.slice(0, Math.ceil(to.length * shown)), opacity: 0.75 + 0.25 * shown };
 }
 
 function applyEaseInOut(progress: number): number {
