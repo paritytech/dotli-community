@@ -2,8 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { fromHex } from '@dotli/shared';
-import { computeNamehash, computeMappingSlot, addToSlot, readWordAsBigInt, decodeBytesSlot } from './storageSlots.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { fromHex, toHex } from '@dotli/shared';
+import {
+  computeNamehash,
+  computeMappingSlot,
+  addToSlot,
+  readWordAsBigInt,
+  decodeBytesSlot,
+  encodeSlotKey,
+  computeArrayElementSlot,
+} from './storageSlots.js';
 
 describe('computeNamehash', () => {
   // eth and foo.eth are well-known ENS test vectors.
@@ -128,6 +137,35 @@ describe('addToSlot', () => {
     // Then
     expect(stepped).toBe(expected);
   });
+});
+
+describe('encodeSlotKey', () => {
+  it('As the resolver reading dotNS storage, I encode a plain slot number as a 32-byte big-endian key', () => {
+    // When
+    const key = encodeSlotKey(5);
+
+    // Then
+    expect(key).toBe('0x0000000000000000000000000000000000000000000000000000000000000005');
+  });
+});
+
+describe('computeArrayElementSlot', () => {
+  // Solidity keeps a dynamic array's elements from keccak256(uint256(slot)) on, one slot each.
+  const firstElementSlot = toHex(new Uint8Array(keccak_256(fromHex(encodeSlotKey(3)))));
+
+  it.each([
+    ['the first element', 'keccak256 of the array slot', 0, firstElementSlot],
+    ['the third element', 'two slots past the first', 2, addToSlot(firstElementSlot, 2)],
+  ] as const)(
+    'As the resolver reading dotNS storage, I compute the slot of %s of an array as %s',
+    (_element, _outcome, index, expected) => {
+      // When
+      const slot = computeArrayElementSlot(3, index);
+
+      // Then
+      expect(slot).toBe(expected);
+    },
+  );
 });
 
 describe('readWordAsBigInt', () => {
