@@ -77,6 +77,11 @@ export function getFailureRecovery(failure: SandboxFailure): SandboxRecovery {
   }
 }
 
+/** Returns whether a retry can fix `failure`, so the run keeps it open for one. */
+export function canRetry(failure: SandboxFailure): boolean {
+  return getFailureRecovery(failure) === 'retry';
+}
+
 /** The title and message a failure is shown with. Throws what `getGatewayHost` throws. */
 export function describeSandboxFailure(
   failure: SandboxFailure,

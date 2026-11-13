@@ -7,9 +7,9 @@ import { BACKEND_FACTS, hasLightClient, isVerifiedSession, withActiveTld, type B
 import { createRandomId, realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
-import type { ShowErrorPage } from '@dotli/ui';
+import type { ErrorAction, ShowErrorPage } from '@dotli/ui';
 import { createReporter } from '@dotli/metrics';
-import type { ErrorDescription } from './describeError.js';
+import type { ErrorDescription, Recovery } from './describeError.js';
 import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
@@ -70,27 +70,20 @@ type Params = {
 export function presentLoadFailure(failure: LoadFailure, params: Params): void {
   const { error } = failure;
   report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
-  switch (error.recovery) {
-    case 'landing':
-      params.showErrorPage({
-        title: error.title,
-        detail: error.message,
-        tips: error.tips,
-        actions: [{ label: HOME_BTN_LABEL, onClick: params.goHome }],
-      });
-      return;
-    case 'reload':
-      params.showErrorPage({
-        title: error.title,
-        detail: error.message,
-        tips: error.tips,
-        actions: [{ label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload }],
-      });
-      return;
-    case 'switch-backend':
-      presentFailover(failure, params);
-      return;
+  if (error.recovery === 'switch-backend') {
+    presentFailover(failure, params);
+    return;
   }
+  const actions = {
+    landing: { label: HOME_BTN_LABEL, onClick: params.goHome },
+    reload: { label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload },
+  } satisfies Record<Exclude<Recovery, 'switch-backend'>, ErrorAction>;
+  params.showErrorPage({
+    title: error.title,
+    detail: error.message,
+    tips: error.tips,
+    actions: [actions[error.recovery]],
+  });
 }
 
 /** Shows the screen of a failure whose recovery is to switch backend. */

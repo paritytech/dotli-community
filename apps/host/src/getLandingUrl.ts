@@ -34,8 +34,7 @@ export function searchOnLanding(name: string): void {
 
 /**
  * Returns the name `search` asks the landing page to open on, or undefined when it holds none the landing's form
- * accepts,
- * such as a subname.
+ * accepts, such as a subname.
  */
 export function readLandingName(search: string): string | undefined {
   const name = new URLSearchParams(search).get(LANDING_NAME_PARAM)?.trim() ?? '';

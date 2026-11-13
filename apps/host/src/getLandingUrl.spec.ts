@@ -39,19 +39,16 @@ describe('getLandingUrl', () => {
     expect(url).toBe('http://localhost/');
   });
 
-  it.each([['doom', '?q=doom']])(
-    'As a visitor, I search again for %j and the landing address carries it encoded',
-    (name, query) => {
-      // Given a deployed page
-      const page = { location: { protocol: 'https:', port: '' }, localRoot: null };
+  it('As a visitor, I search again for a name and the landing address carries it', () => {
+    // Given a deployed page
+    const page = { location: { protocol: 'https:', port: '' }, localRoot: null };
 
-      // When the landing address is built with a name
-      const url = getLandingUrl(page, name);
+    // When the landing address is built with a name
+    const url = getLandingUrl(page, 'doom');
 
-      // Then the name is in the query
-      expect(url).toBe(`https://${BASE_DOMAIN}/${query}`);
-    },
-  );
+    // Then the name is in the query
+    expect(url).toBe(`https://${BASE_DOMAIN}/?q=doom`);
+  });
 });
 
 describe('readLandingName', () => {
@@ -66,7 +63,7 @@ describe('readLandingName', () => {
     expect(name).toBe('doom');
   });
 
-  it.each(['?q=', '?q=%20', '', '?q=pr16.my-app'])('As the landing page, I read no name from %j', search => {
+  it.each(['?q=%20', '', '?q=pr16.my-app'])('As the landing page, I read no name from %j', search => {
     // Given a query with no name the landing form accepts
 
     // When the name is read

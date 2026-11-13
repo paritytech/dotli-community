@@ -13,6 +13,7 @@ import { APP_LOG_TAG } from './appLogTag.js';
 import type { HostMessages } from './createHostMessages.js';
 import type { SandboxAction, SandboxUi } from './createSandboxUi.js';
 import {
+  canRetry,
   describeSandboxFailure,
   getFailureRecovery,
   getFailureStep,
@@ -99,7 +100,7 @@ type RunEffect =
   | { kind: 'loadFailed'; step: LoadStep; error: unknown; attempt: number; dependency: LoadDependency }
   | { kind: 'retryRefused' }
   /** Offers `retry` with the failure when given. */
-  | { kind: 'showFailure'; failure: SandboxFailure; retry?: () => void }
+  | { kind: 'showFailure'; failure: SandboxFailure; retry?: (() => void) | undefined }
   | { kind: 'showRetry' };
 
 type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
@@ -253,21 +254,19 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   ): void {
     const dependency = hasLightClient(params.backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
     const failure: SandboxFailure = { kind: 'load', step, error, dependency };
-    if (getFailureRecovery(failure) !== 'retry') {
-      emitState({ kind: 'ended' });
-      emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
-      emitSideEffect({ kind: 'showFailure', failure });
-      return;
-    }
+    const retryable = canRetry(failure);
     const failedState: FailedRun = { kind: 'failed', params, attempt };
-    emitState(failedState);
+    // A failure no retry fixes ends the run.
+    emitState(retryable ? failedState : { kind: 'ended' });
     emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
     emitSideEffect({
       kind: 'showFailure',
       failure,
-      retry: () => {
-        update({ kind: 'retried', from: failedState });
-      },
+      retry: retryable
+        ? () => {
+            update({ kind: 'retried', from: failedState });
+          }
+        : undefined,
     });
   }
 
@@ -359,7 +358,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     step: SandboxStep,
   ): SandboxAction | undefined {
     const recover = getRecover(recovery, retry);
-    if (recover === null) {
+    if (recover === undefined) {
       return undefined;
     }
     return {
@@ -382,13 +381,13 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   }
 
   /**
-   * What pressing the failure's action does, or null for a retry recovery without its retry. Only a failed attempt
+   * What pressing the failure's action does, or nothing for a retry recovery without its retry. Only a failed attempt
    * that the run keeps open hands a retry over, so the guard holds that pairing across the two modules.
    */
-  function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | null {
+  function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | undefined {
     switch (recovery) {
       case 'retry':
-        return retry ?? null;
+        return retry;
       case 'landing':
       case 'reload':
         return () => {

@@ -31,7 +31,6 @@ type ActionCase = {
   cause: string;
   page: SandboxPage;
   outcomes: LoadOutcome[];
-  label: string;
   goal: string;
   /** The last thing the run did once the action was pressed. */
   event: string;
@@ -537,7 +536,6 @@ describe('runSandbox failure actions', () => {
       cause: 'a load whose archive index failed',
       page: toFramedPage(createSandboxUrl()),
       outcomes: [archiveIndexFailed],
-      label: 'Go to dot.li',
       goal: 'the host opens its landing and nothing loads again',
       event: 'navigate landing',
       loads: 1,
@@ -546,7 +544,6 @@ describe('runSandbox failure actions', () => {
       cause: 'a contract this sandbox cannot read',
       page: toFramedPage(createSandboxUrl({ overrides: { [SANDBOX_CONTRACT_PARAMS.v]: '999' } })),
       outcomes: [],
-      label: 'Reload',
       goal: 'the host reloads its page',
       event: 'navigate reload',
       loads: 0,
@@ -555,7 +552,6 @@ describe('runSandbox failure actions', () => {
       cause: 'a frame off its app origin',
       page: toFramedPage(createSandboxUrl({ host: 'app.dot.li' })),
       outcomes: [],
-      label: 'Go to dot.li',
       goal: 'dot.li opens apart from the frame',
       event: 'open landing',
       loads: 0,
@@ -564,12 +560,11 @@ describe('runSandbox failure actions', () => {
       cause: 'the sandbox URL opened as the page',
       page: { href: createSandboxUrl(), framed: false },
       outcomes: [],
-      label: 'Open in dot.li',
       goal: 'the tab moves to the product on dot.li',
       event: 'open app',
       loads: 0,
     },
-  ])('As a visitor facing $cause, I press $label and $goal', async ({ page, outcomes, event, loads }) => {
+  ])('As a visitor facing $cause, I press its action and $goal', async ({ page, outcomes, event, loads }) => {
     // Given a failure on screen
     const sandbox = createHarness(outcomes);
     await sandbox.start(page).await();

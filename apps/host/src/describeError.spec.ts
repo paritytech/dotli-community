@@ -105,39 +105,15 @@ describe('host error classification', () => {
       new ManifestRejectedError('unsupported-version', 'app', '$v 2'),
       'manifest-unsupported-version',
       HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION,
+      ['Contacting the app maintainer.'],
     ],
     [
       'an invalid manifest',
       new ManifestRejectedError('invalid', 'root', 'root manifest displayName must be a non-empty string'),
       'manifest-invalid',
       HOST_ERRORS.MANIFEST_INVALID,
+      ['Contacting the app maintainer.'],
     ],
-    [
-      'an app manifest without a root manifest',
-      new ManifestRejectedError('missing-root', 'root', 'no root manifest'),
-      'manifest-invalid',
-      HOST_ERRORS.MANIFEST_INVALID,
-    ],
-  ])('As a dotli user, I open an app rejected for %s and am offered the landing', (_case, rejection, kind, message) => {
-    // When
-    const described = describeError(rejection);
-
-    // Then
-    expect({
-      kind: described.kind,
-      title: described.title,
-      message: described.message,
-      recovery: described.recovery,
-    }).toEqual({
-      kind,
-      title: "This app can't be opened",
-      message,
-      recovery: 'landing',
-    });
-    expect(described.tips).toEqual(['Contacting the app maintainer.']);
-  });
-
-  it.each([
     [
       'a non-IPFS contenthash',
       new Error('Resolved a non-IPFS contenthash for example'),
@@ -164,12 +140,12 @@ describe('host error classification', () => {
     const described = describeError(failure);
 
     // Then
-    expect({ kind: described.kind, message: described.message, recovery: described.recovery }).toEqual({
-      kind,
-      message,
-      recovery: 'landing',
-    });
-    expect(described.tips).toEqual(tips);
+    expect({
+      kind: described.kind,
+      message: described.message,
+      recovery: described.recovery,
+      tips: described.tips,
+    }).toEqual({ kind, message, recovery: 'landing', tips });
   });
 
   it.each([

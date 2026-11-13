@@ -1387,31 +1387,24 @@ describe('product frame rebuilds', () => {
 });
 
 describe('product frame navigates the page', () => {
-  it('As a visitor on a broken app, I press Go to dot.li in its frame and the page opens the landing', async () => {
-    // Given a product on screen
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('broken'), 0);
+  it.each([
+    { to: 'landing', called: 'goHome', other: 'reload' },
+    { to: 'reload', called: 'reload', other: 'goHome' },
+  ] as const)(
+    'As a visitor on a broken app, I pick $to in its frame and the page does it',
+    async ({ to, called, other }) => {
+      // Given a product on screen
+      const fakes = createHarness();
+      await fakes.settle(buildSubdomainProduct('broken'), 0);
 
-    // When its sandbox asks the page to open the landing
-    fakes.askToNavigate({ to: 'landing' });
+      // When its sandbox asks the page to navigate
+      fakes.askToNavigate({ to });
 
-    // Then the page opens the landing and does not reload
-    expect(fakes.page.goHome).toHaveBeenCalledOnce();
-    expect(fakes.page.reload).not.toHaveBeenCalled();
-  });
-
-  it('As a visitor on a broken app, I press Reload in its frame and the page reloads', async () => {
-    // Given a product on screen
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('broken'), 0);
-
-    // When its sandbox asks the page to reload
-    fakes.askToNavigate({ to: 'reload' });
-
-    // Then the page reloads and does not open the landing
-    expect(fakes.page.reload).toHaveBeenCalledOnce();
-    expect(fakes.page.goHome).not.toHaveBeenCalled();
-  });
+      // Then the page does what was asked and nothing else
+      expect(fakes.page[called]).toHaveBeenCalledOnce();
+      expect(fakes.page[other]).not.toHaveBeenCalled();
+    },
+  );
 
   it("As a dApp user, I stay on my app while a sandbox of another product asks the page to navigate and the page I'm on stays", async () => {
     // Given my product on screen, and the origin of another product
