@@ -168,7 +168,7 @@ type Step =
   | { kind: 'connecting'; attempt: Attempt; chat: boolean; core: CoreSide }
   | { kind: 'readingAllow'; attempt: Attempt; link: Link; core: CoreSide }
   | { kind: 'building'; attempt: Attempt; link: Link; core: CoreSide }
-  | { kind: 'loadingPanel'; attempt: Attempt; iframe: HTMLIFrameElement };
+  | { kind: 'loadingPanel'; attempt: Attempt };
 
 /** Who a render's outcome is told to: the caller that asked for it, or the frame's own report. */
 type RunOrigin = { kind: 'asked'; reply: Reply<void> } | { kind: 'rerender'; reason: RerenderReason };
@@ -196,13 +196,13 @@ type Lively = {
   shown: Shown | null;
   /** Quick core deaths in a row, and when the render on the latest replacement core began. */
   deaths: { count: number; replacedAt: number | null };
-  /** Spaces the rebuilds a reloaded sandbox asks for. `waiting` is the one newer ask, by the product it came from. */
+  /** Spaces the rebuilds a reloaded sandbox asks for. `waiting` is the one newer ask, by the attempt it came from. */
   recover:
     | { kind: 'ready' }
-    | { kind: 'running'; waiting: { asking: Attempt } | null }
-    | { kind: 'spacing'; timer: unknown; waiting: { asking: Attempt } | null };
+    | { kind: 'running'; waiting: Attempt | null }
+    | { kind: 'spacing'; timer: unknown; waiting: Attempt | null };
   /** Spaces the renders on a replacement core. */
-  replacement: { kind: 'ready' } | { kind: 'running' } | { kind: 'spacing'; timer: unknown };
+  replacement: { kind: 'ready' } | { kind: 'spacing'; timer: unknown };
 };
 
 /** `halted` keeps the product on screen without its core, under a failure screen the page shows. */
@@ -234,7 +234,7 @@ type StepEvent =
 type FrameEvent =
   | StepEvent
   | { kind: 'frameBuilt'; attempt: Attempt; iframeHost: IframeHost }
-  | { kind: 'panelLoaded'; attempt: Attempt; mountPanel: (iframe: HTMLIFrameElement) => () => void }
+  | { kind: 'panelMounted'; attempt: Attempt }
   | { kind: 'stepFailed'; attempt: Attempt; error: unknown }
   | { kind: 'renderAsked'; product: FrameProduct; reply: Reply<void> }
   /** The answer to a device grant reached the product, on the frame of `asking`. */
@@ -333,7 +333,7 @@ export function createProductFrame({
       },
       readingChat: {
         chatRead(run, { chatCapable }, { emitState, emitSideEffect, update }) {
-          const { attempt, lease, core: coreSide } = run;
+          const { attempt, product, lease, core: coreSide } = run;
           emitState({ ...getRunParts(run), kind: 'connecting', attempt, chat: chatCapable, core: coreSide });
           emitSideEffect({ kind: 'chatResolved', capable: chatCapable });
           update(
@@ -346,6 +346,11 @@ export function createProductFrame({
                 attempt.core.hold(() => {
                   coreProvider.dispose();
                 });
+                // Registered before the allow attribute is read, which reads the newest registration.
+                attempt.core.hold(permissions.register(product.label, coreProvider));
+                if (chatCapable) {
+                  attempt.core.hold(registerProductChat(connection));
+                }
                 return { kind: 'opened', attempt, connection, coreProvider };
               },
             ),
@@ -367,10 +372,6 @@ export function createProductFrame({
           };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
           emitSideEffect({ kind: 'walletConnected', chat });
-          attempt.core.hold(permissions.register(product.label, coreProvider));
-          if (chat) {
-            attempt.core.hold(registerProductChat(connection));
-          }
           update(
             runStepWork(
               attempt,
@@ -395,21 +396,7 @@ export function createProductFrame({
                   allow: `${allow}; cross-origin-isolated`,
                   sandbox: getFrameSandbox(product),
                   onPort: port => {
-                    const productProvider = createMessagePortProvider(port);
-                    attempt.core.hold(() => {
-                      productProvider.dispose();
-                    });
-                    attempt.core.hold(
-                      pipeProviders({
-                        product: productProvider,
-                        core: link.coreProvider,
-                        flowId: flows.bridge,
-                        label: product.label,
-                        productId: link.productId,
-                        noteForwarded: link.responses.noteForwarded,
-                        timers,
-                      }),
-                    );
+                    pipeProductPort(port, { attempt, link, label: product.label, flowId: flows.bridge, timers });
                   },
                 }),
               iframeHost => {
@@ -503,7 +490,7 @@ export function createProductFrame({
       );
       return;
     }
-    moveTo(state, { ...state, recover: { ...recover, waiting: { asking } } }, transition);
+    moveTo(state, { ...state, recover: { ...recover, waiting: asking } }, transition);
   };
 
   const spaceRecover: HandlerOf<FrameMachine, LivelyKind, 'recoverSpaced'> = (state, { timer }, transition) => {
@@ -512,7 +499,7 @@ export function createProductFrame({
       return;
     }
     // A rebuild since the ask already answered it.
-    if (state.shown === null || recover.waiting?.asking !== state.shown.attempt) {
+    if (recover.waiting === null || recover.waiting !== state.shown?.attempt) {
       moveTo(state, { ...state, recover: { kind: 'ready' } }, transition);
       return;
     }
@@ -548,7 +535,7 @@ export function createProductFrame({
     if (shown?.attempt !== attempt) {
       return;
     }
-    loseCore({ ...getLively(state), kind: state.kind, shown }, transition);
+    loseCore({ ...state, shown }, transition);
   };
 
   // The frame starts no render of its own again, so a run in flight is told it was superseded and spaces nothing.
@@ -565,17 +552,11 @@ export function createProductFrame({
   const endFrame: HandlerOf<FrameMachine, 'idle' | LivelyKind | 'halted', 'disposed'> = (state, _event, transition) => {
     moveTo(state, { kind: 'disposed' }, transition);
     transition.emitSideEffect({ kind: 'unsubscribed' });
-    switch (state.kind) {
-      case 'idle':
-        return;
-      case 'halted':
-        break;
-      case 'connecting':
-      case 'connected':
-      case 'lost':
-      case 'failed':
-        stopInFlight(state, transition);
-        break;
+    if (state.kind === 'idle') {
+      return;
+    }
+    if (state.kind !== 'halted') {
+      stopInFlight(state, transition);
     }
     if (state.shown !== null) {
       transition.emitSideEffect({ kind: 'attemptEnded', attempt: state.shown.attempt });
@@ -621,9 +602,6 @@ export function createProductFrame({
           const { loadCheckerPanel } = view;
           const shown: Shown = { attempt, link: run.link, iframeHost, core: run.core };
           const { iframe } = iframeHost;
-          const next: Run =
-            loadCheckerPanel === undefined ? run : { ...getRunParts(run), kind: 'loadingPanel', attempt, iframe };
-          moveTo(state, { ...state, shown, run: next }, transition);
           transition.emitSideEffect({ kind: 'frameAttached', iframe });
           if (previous !== null) {
             transition.emitSideEffect({ kind: 'attemptEnded', attempt: previous.attempt });
@@ -638,19 +616,21 @@ export function createProductFrame({
             endRun({ ...state, shown }, transition);
             return;
           }
+          moveTo(state, { ...state, shown, run: { ...getRunParts(run), kind: 'loadingPanel', attempt } }, transition);
           transition.update(
-            runStepWork(attempt, loadCheckerPanel, mountPanel => ({ kind: 'panelLoaded', attempt, mountPanel })),
+            runStepWork(
+              attempt,
+              async () => (await loadCheckerPanel())(iframe),
+              stopPanel => {
+                attempt.frame.hold(stopPanel);
+                return { kind: 'panelMounted', attempt };
+              },
+            ),
           );
         },
-        panelLoaded(state, { attempt, mountPanel }, transition) {
+        panelMounted(state, { attempt }, transition) {
           const { run, shown } = state;
           if (run.attempt !== attempt || run.kind !== 'loadingPanel' || shown === null) {
-            return;
-          }
-          try {
-            attempt.frame.hold(mountPanel(run.iframe));
-          } catch (error) {
-            failRun(state, { origin: run.origin, error }, transition);
             return;
           }
           endRun({ ...state, shown }, transition);
@@ -868,6 +848,9 @@ export function createProductFrame({
             },
             transition,
           );
+    if (previous !== null) {
+      dropRun(previous, lively.shown, transition);
+    }
     const product = lively.target;
     const setupStartedAt = timers.now();
     let url: URL;
@@ -875,34 +858,21 @@ export function createProductFrame({
       url = buildFrameUrl(product, page.location());
     } catch (error) {
       failRun({ ...lively, kind: from.kind }, { origin, error }, transition);
-      if (previous !== null) {
-        dropRun(previous, lively.shown, transition);
-      }
       return;
     }
     const flows = { render: createRandomId(), bridge: createRandomId() };
     const run: Run = { product, origin, url, flows, setupStartedAt, kind: 'leasing', attempt: createAttempt(1) };
     moveTo(from, { ...lively, kind: 'connecting', run }, transition);
-    if (previous !== null) {
-      dropRun(previous, lively.shown, transition);
-    }
     transition.emitSideEffect({ kind: 'traced', milestone: 'begun', run });
-    switch (product.mode) {
-      case 'iframe':
-        if (lively.shown === null) {
-          // This path has no loading overlay to keep.
-          transition.emitSideEffect({ kind: 'screensCleared', loading: true });
-          transition.emitSideEffect({ kind: 'mountCleared' });
-        }
-        transition.emitSideEffect({
-          kind: 'productNamed',
-          product: { label: product.label, productId: product.productId },
-        });
-        break;
-      case 'subdomain':
-        transition.emitSideEffect({ kind: 'productNamed', product: { label: product.label } });
-        break;
+    // A direct iframe has no loading overlay to keep.
+    if (product.mode === 'iframe' && lively.shown === null) {
+      transition.emitSideEffect({ kind: 'screensCleared', loading: true });
+      transition.emitSideEffect({ kind: 'mountCleared' });
     }
+    transition.emitSideEffect({
+      kind: 'productNamed',
+      product: { label: product.label, productId: product.mode === 'iframe' ? product.productId : undefined },
+    });
     transition.update(leaseCore(run.attempt));
   }
 
@@ -1030,7 +1000,7 @@ export function createProductFrame({
     transition: Transition<FrameMachine>,
   ): void {
     startRun(
-      { ...lost, deaths: { ...lost.deaths, replacedAt: timers.now() }, replacement: { kind: 'running' } },
+      { ...lost, deaths: { ...lost.deaths, replacedAt: timers.now() }, replacement: { kind: 'ready' } },
       { kind: 'rerender', reason: 'replacement' },
       transition,
     );
@@ -1156,6 +1126,34 @@ function runStepWork<T>(
   return new Promise<T>(resolve => {
     resolve(work());
   }).then(toEvent, (error: unknown): FrameEvent => ({ kind: 'stepFailed', attempt, error }));
+}
+
+/** Pipes the product's port to the core under `attempt` until the attempt's core side ends. */
+function pipeProductPort(
+  port: MessagePort,
+  {
+    attempt,
+    link,
+    label,
+    flowId,
+    timers,
+  }: { attempt: Attempt; link: Link; label: string; flowId: string; timers: Timers },
+): void {
+  const productProvider = createMessagePortProvider(port);
+  attempt.core.hold(() => {
+    productProvider.dispose();
+  });
+  attempt.core.hold(
+    pipeProviders({
+      product: productProvider,
+      core: link.coreProvider,
+      flowId,
+      label,
+      productId: link.productId,
+      noteForwarded: link.responses.noteForwarded,
+      timers,
+    }),
+  );
 }
 
 /** Nobody asked for a render the frame starts on its own, so the frame is the one to report it. */
