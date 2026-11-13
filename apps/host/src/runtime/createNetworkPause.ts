@@ -30,11 +30,6 @@ type Params = {
   poll?: Poll;
 };
 
-type StartParams = {
-  /** The page whose visibility drives the pause, the browser's document unless given. */
-  visibility?: VisibilitySource;
-};
-
 type FollowedPage = { source: VisibilitySource; stopListening: () => void };
 
 /** `hidden` is a hidden page kept awake by a hold. `grace` and `paused` are a hidden page with no hold. */
@@ -50,10 +45,11 @@ type GraceState = Extract<PauseState, { kind: 'grace' }>;
 type PauseEvent =
   | { kind: 'followed'; source: VisibilitySource }
   | { kind: 'unfollowed' }
-  | { kind: 'visibilityChanged' }
+  | { kind: 'shown' }
+  | { kind: 'hid' }
   | { kind: 'holdChanged' }
   | { kind: 'graceEnded'; grace: GraceState }
-  | { kind: 'ticked' };
+  | { kind: 'ticked'; at: number };
 
 type PauseEffect = { kind: 'paused' } | { kind: 'resumed' } | { kind: 'returned' };
 
@@ -68,19 +64,17 @@ const SLEEP_TICK_MS = 10_000;
 
 /** The page's network pause: a grace after the page hides, holds that keep it awake, and a check for a sleep. */
 export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Params = {}) {
+  // Read when a `holdChanged` is handled, not sent, so a hold taken and released while the machine is busy nets out.
   let held = false;
   const targets = new Set<ChainPoolControl>();
   const returns = createListenerSet<undefined>({ onListenerError: report.listener('network_pause.return') });
-  /** Hears a hidden page shown again as a return to it. */
-  const detectReturn: HandlerOf<PauseMachine, 'hidden' | 'grace' | 'paused', 'visibilityChanged'> = (
-    state,
-    _event,
-    transition,
-  ) => {
-    if (state.page.source.visibilityState !== 'visible') {
-      return;
+  /** Moves a hidden page that shows again to `visible`. A paused network resumes before the return is told. */
+  const returnToPage: HandlerOf<PauseMachine, 'hidden' | 'grace' | 'paused', 'shown'> = (state, _event, transition) => {
+    enterVisible(state.page, transition);
+    if (state.kind === 'paused') {
+      transition.emitSideEffect({ kind: 'resumed' });
     }
-    returnToPage(state, transition);
+    transition.emitSideEffect({ kind: 'returned' });
   };
   /** Stops following the page, and resumes the network if it is paused. */
   const stopFollowing: HandlerOf<PauseMachine, 'visible' | 'hidden' | 'grace' | 'paused', 'unfollowed'> = (
@@ -111,7 +105,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
             target: source,
             type: 'visibilitychange',
             handler: () => {
-              transition.update({ kind: 'visibilityChanged' });
+              transition.update({ kind: source.visibilityState === 'visible' ? 'shown' : 'hid' });
             },
           });
           const page = { source, stopListening };
@@ -123,19 +117,14 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
         },
       },
       visible: {
-        visibilityChanged({ page, stopTick }, _event, transition) {
-          // A page whose grace already found it visible hears its late `visibilitychange` as no return.
-          if (page.source.visibilityState === 'visible') {
-            return;
-          }
+        hid({ page, stopTick }, _event, transition) {
           stopTick();
           hidePage(page, transition);
         },
-        ticked(state, _event, { emitState, emitSideEffect }) {
-          const now = timers.now();
-          emitState({ ...state, lastTickAt: now });
+        ticked(state, { at }, { emitState, emitSideEffect }) {
+          emitState({ ...state, lastTickAt: at });
           // A busy page's timer runs late without any sleep, so only a tick later than that slack reads as a return.
-          if (now - state.lastTickAt > SLEEP_TICK_MS + 30_000) {
+          if (at - state.lastTickAt > SLEEP_TICK_MS + 30_000) {
             emitSideEffect({ kind: 'returned' });
           }
         },
@@ -148,7 +137,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
           }
           enterGrace(page, transition);
         },
-        visibilityChanged: detectReturn,
+        shown: returnToPage,
         unfollowed: stopFollowing,
       },
       grace: {
@@ -165,13 +154,13 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
           }
           // A frozen page fires its timer late, and may be visible by then with its event still to come.
           if (state.page.source.visibilityState === 'visible') {
-            returnToPage(state, transition);
+            transition.update({ kind: 'shown' });
             return;
           }
           transition.emitState({ kind: 'paused', page: state.page });
           transition.emitSideEffect({ kind: 'paused' });
         },
-        visibilityChanged: detectReturn,
+        shown: returnToPage,
         unfollowed: stopFollowing,
       },
       paused: {
@@ -182,7 +171,7 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
           emitState({ kind: 'hidden', page });
           emitSideEffect({ kind: 'resumed' });
         },
-        visibilityChanged: detectReturn,
+        shown: returnToPage,
         unfollowed: stopFollowing,
       },
     },
@@ -233,18 +222,14 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
      * Follows `visibility` for the page's life, from its state now. A second call joins the first. Returns the stop,
      * which resumes the network if it is paused. Never throws.
      */
-    start,
+    start: following.join,
     /** Pauses `target` at once when a pause is in force, and tells it every change after. Returns its removal. Never throws. */
     addTarget,
     /** Keeps the network awake until the returned release, which acts once. Never throws. */
-    hold,
+    hold: holds.join,
     /** Hears each return to the page, from hiding or from a sleep. Returns the removal. Never throws. */
-    onReturn,
+    onReturn: returns.subscribe,
   };
-
-  function start({ visibility = document }: StartParams = {}): () => void {
-    return following.join(visibility);
-  }
 
   function addTarget(target: ChainPoolControl): () => void {
     targets.add(target);
@@ -257,18 +242,10 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     };
   }
 
-  function hold(): () => void {
-    return holds.join();
-  }
-
-  function onReturn(listener: () => void): () => void {
-    return returns.subscribe(listener);
-  }
-
   /** Starts the sleep check's tick and moves to `visible`. */
   function enterVisible(page: FollowedPage, { emitState, update }: Transition<PauseMachine>): void {
     const stopTick = poll.start(() => {
-      update({ kind: 'ticked' });
+      update({ kind: 'ticked', at: timers.now() });
     }, SLEEP_TICK_MS);
     emitState({ kind: 'visible', page, stopTick, lastTickAt: timers.now() });
   }
@@ -289,18 +266,6 @@ export function createNetworkPause({ timers = realTimers, poll = pagePoll }: Par
     timers.setTimeout(() => {
       update({ kind: 'graceEnded', grace });
     }, NETWORK_PAUSE_GRACE_MS);
-  }
-
-  /** Moves a hidden page that shows again to `visible`. A paused network resumes before the return is told. */
-  function returnToPage(
-    state: Extract<PauseState, { kind: 'hidden' | 'grace' | 'paused' }>,
-    transition: Transition<PauseMachine>,
-  ): void {
-    enterVisible(state.page, transition);
-    if (state.kind === 'paused') {
-      transition.emitSideEffect({ kind: 'resumed' });
-    }
-    transition.emitSideEffect({ kind: 'returned' });
   }
 
   /**
