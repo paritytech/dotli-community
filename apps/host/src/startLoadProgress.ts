@@ -298,12 +298,12 @@ export function startLoadProgress({
             }
             return;
           }
-          // A chain whose boot completed has nothing left to stall on.
           const { peers } = watch;
           const reason = sync.kind === 'stalled' ? sync.reason : undefined;
           const watched = withWatch(
             state,
             chain,
+            // A chain whose boot completed has nothing left to stall on.
             sync.kind === 'bootstrapComplete'
               ? { kind: 'quiet', peers, reason }
               : { kind: 'watching', timer: startStallTimer(chain, transition), peers, reason },
@@ -615,11 +615,9 @@ function measureThroughput({ samples, bytesPerSecond }: Throughput, received: nu
   if (received < (samples.at(-1)?.total ?? 0)) {
     return { samples: [{ at: now, total: received }], bytesPerSecond };
   }
-  const kept = [...samples, { at: now, total: received }];
-  while (kept.length > 1 && now - (kept[0]?.at ?? now) > SPEED_WINDOW_MS) {
-    kept.shift();
-  }
-  const oldest = kept[0] ?? { at: now, total: received };
+  const newest = { at: now, total: received };
+  const kept = [...samples, newest].filter(sample => now - sample.at <= SPEED_WINDOW_MS);
+  const oldest = kept[0] ?? newest;
   const span = now - oldest.at;
   return { samples: kept, bytesPerSecond: span > 0 ? ((received - oldest.total) / span) * 1000 : bytesPerSecond };
 }
