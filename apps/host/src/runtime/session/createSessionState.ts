@@ -102,9 +102,7 @@ type Event =
 type Effect =
   | { kind: 'shown'; shown: DotliAuthState; elsewhere: boolean }
   | { kind: 'elsewhereTold'; elsewhere: boolean }
-  | { kind: 'readSession'; source: SavedSessionSource }
   | { kind: 'readFailed'; error: unknown }
-  | { kind: 'writeUiCache'; value: string | null }
   | { kind: 'stopped'; stops: readonly (() => void)[] };
 
 type SessionMachine = MachineTypes<State, Event, Effect>;
@@ -232,10 +230,10 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
           }
           switch (coreReport.tag) {
             case 'Connected':
-              transition.emitSideEffect({ kind: 'writeUiCache', value: JSON.stringify(coreReport.session) });
+              transition.update(writeUiCache(JSON.stringify(coreReport.session)));
               return;
             case 'Disconnected':
-              transition.emitSideEffect({ kind: 'writeUiCache', value: null });
+              transition.update(writeUiCache(null));
               return;
             // Only a sign-in or a sign-out changes the cached account.
             case 'Restoring':
@@ -313,24 +311,12 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
         case 'elsewhereTold':
           setElsewhere(effect.elsewhere);
           return;
-        case 'readSession':
-          machine.update(
-            readSavedSession({ source: effect.source, store, restore }).then(
-              ({ session, flag }) => ({ kind: 'readLanded', session, flag }),
-              (error: unknown) => ({ kind: 'readRejected', error }),
-            ),
-          );
-          return;
         case 'readFailed':
           report.defect(effect.error, {
             step: 'saved_session_read',
             metric: savedSessionReadMetric,
             message: '[dot.li] A saved session read failed',
           });
-          return;
-        case 'writeUiCache':
-          // No state handles the event, which only lets `await()` cover the write.
-          machine.update(store.writeUiCache(effect.value).then((): Event => ({ kind: 'uiCacheWritten' })));
           return;
         case 'stopped':
           for (const stop of effect.stops) {
@@ -365,9 +351,19 @@ export function createSessionState({ store, restore, auth, setElsewhere, isLocal
     return sessionDisplay.isSignInWaitingElsewhere(flag, shown.tag) && isResumeOffered();
   }
 
-  function startRead(source: SavedSessionSource, { emitState, emitSideEffect }: Transition<ReadMachine>): void {
+  function startRead(source: SavedSessionSource, { emitState, update }: Transition<ReadMachine>): void {
     emitState({ kind: 'reading', rerun: null });
-    emitSideEffect({ kind: 'readSession', source });
+    update(
+      readSavedSession({ source, store, restore }).then(
+        ({ session, flag }) => ({ kind: 'readLanded', session, flag }),
+        (error: unknown) => ({ kind: 'readRejected', error }),
+      ),
+    );
+  }
+
+  /** Keeps the account the core reported in the UI-state cache. No state handles its event, which lets `await()` cover the write. */
+  function writeUiCache(value: string | null): Promise<Event> {
+    return store.writeUiCache(value).then(() => ({ kind: 'uiCacheWritten' }));
   }
 
   function endRead(rerun: SavedSessionSource | null, transition: Transition<ReadMachine>): void {
