@@ -14,6 +14,18 @@ export type SandboxStep =
 /** The backend a load read its content through, named in its failure. */
 export type LoadDependency = 'smoldot-bitswap' | 'ipfs-gateway';
 
+/** What the visitor can do next after a failure. */
+export type SandboxRecovery = 'retry' | 'landing' | 'reload' | 'open-app' | 'open-landing';
+
+/** The label of the action each recovery offers. */
+export const RECOVERY_LABELS = {
+  retry: 'Retry',
+  landing: 'Go to dot.li',
+  reload: 'Reload',
+  'open-app': 'Open in dot.li',
+  'open-landing': 'Go to dot.li',
+} satisfies Record<SandboxRecovery, string>;
+
 /** A way the run failed, with the facts its wording needs. */
 export type SandboxFailure =
   /** The sandbox URL was opened as the page itself, at `host`. */
@@ -49,28 +61,31 @@ export function getFailureStep(failure: SandboxFailure): SandboxStep {
   }
 }
 
-/** The title and message a failure is shown with. Throws what `getGatewayHost` throws. */
+/** The title, message and recovery a failure is shown with. Throws what `getGatewayHost` throws. */
 export function describeSandboxFailure(
   failure: SandboxFailure,
   { baseDomain, getGatewayHost }: DescribeParams,
-): { title: string; message: string } {
+): { title: string; message: string; recovery: SandboxRecovery } {
   switch (failure.kind) {
     case 'topLevel':
       return {
         title: 'Sandbox URL not supported',
         message: `Open this dApp through https://${baseDomain}. The sandbox origin (${failure.host}) is not a standalone entry point.`,
+        recovery: 'open-app',
       };
     case 'offOrigin':
       return {
         title: 'Sandbox URL not supported',
         message: `This page must load as a dotns app subdomain (e.g. myapp.app.${baseDomain}) through dot.li.`,
+        recovery: 'open-landing',
       };
     case 'unreadable':
-      return { title: 'Invalid sandbox URL', message: failure.reason };
+      return { title: 'Invalid sandbox URL', message: failure.reason, recovery: 'reload' };
     case 'retryLimit':
       return {
         title: 'Too many retry attempts',
         message: `Reached ${String(failure.attempts)} failed attempts. Reload the page to start over.`,
+        recovery: 'reload',
       };
     case 'load': {
       const { error, dependency } = failure;
@@ -79,7 +94,11 @@ export function describeSandboxFailure(
         dependency === 'ipfs-gateway' && getErrorName(error) === CONTENT_ERRORS.GATEWAY_UNREACHABLE
           ? describeGatewayUnreachable(getGatewayHost())
           : `${getErrorMessage(error)} (via ${dependency})`;
-      return { title: 'Failed to load content', message };
+      return {
+        title: 'Failed to load content',
+        message,
+        recovery: failure.step === 'archive_index' ? 'landing' : 'retry',
+      };
     }
   }
 }

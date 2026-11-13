@@ -123,16 +123,16 @@ describe('sandbox UI', () => {
     // Given
     const module = createFakeUi();
     const { ui } = createHarness(() => Promise.resolve(module));
-    const retry = vi.fn();
+    const action = { label: 'Retry', onClick: vi.fn() };
 
     // When
-    ui.showError('Failed to load content', 'The network did not answer', { retry });
+    ui.showError('Failed to load content', 'The network did not answer', { action });
     await ui.loadUi();
 
     // Then
     expect(module.showError).toHaveBeenCalledWith('Failed to load content', {
       detail: 'The network did not answer',
-      action: retry,
+      action,
     });
   });
 

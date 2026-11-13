@@ -12,6 +12,7 @@ import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
 import type { HostMessages } from './createHostMessages.js';
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
 import type { SandboxPage } from './readSandboxContract.js';
+import type { SandboxAction } from './createSandboxUi.js';
 import type { SandboxStep } from './describeSandboxFailure.js';
 import { DecryptionCancelledError } from './errors.js';
 import { runSandbox, type RunSandboxDeps } from './runSandbox.js';
@@ -20,7 +21,7 @@ type Failure = {
   step: SandboxStep;
   title: string;
   message: string;
-  retry: (() => void) | undefined;
+  action: SandboxAction | undefined;
 };
 
 type Run = ReturnType<typeof runSandbox>;
@@ -86,7 +87,7 @@ function createHarness(
       notifyLoadingDone(result) {
         if (result.outcome === 'failed') {
           events.push(`failed ${result.failedStep}`);
-          failures.push({ step: result.failedStep, title: '', message: '', retry: undefined });
+          failures.push({ step: result.failedStep, title: '', message: '', action: undefined });
         }
       },
       askRerender:
@@ -96,10 +97,10 @@ function createHarness(
         }),
     },
     ui: {
-      showError(title, message, { retry } = {}) {
+      showError(title, message, { action } = {}) {
         const shown = failures.at(-1);
         if (shown !== undefined) {
-          Object.assign(shown, { title, message, retry });
+          Object.assign(shown, { title, message, action });
         }
       },
       showRetryScreen: () => {
@@ -138,11 +139,11 @@ function createHarness(
   };
 
   function retryLatest(): Promise<void> {
-    const retry = failures.at(-1)?.retry;
-    if (retry === undefined || started === undefined) {
+    const action = failures.at(-1)?.action;
+    if (action === undefined || started === undefined) {
       throw new Error('the latest failure offers no retry');
     }
-    retry();
+    action.onClick();
     return started.await();
   }
 }
@@ -445,7 +446,7 @@ describe('runSandbox retries', () => {
       return secondLoad.promise;
     };
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
-    const retry = sandbox.failures[0]?.retry;
+    const retry = sandbox.failures[0]?.action?.onClick;
     if (retry === undefined) {
       throw new Error('no retry offered');
     }
@@ -465,7 +466,7 @@ describe('runSandbox retries', () => {
     // Given a first failure whose retry ran, and a second failure from that retry
     const sandbox = createHarness([failed]);
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
-    const olderRetry = sandbox.failures[0]?.retry;
+    const olderRetry = sandbox.failures[0]?.action?.onClick;
     if (olderRetry === undefined) {
       throw new Error('no retry offered');
     }
@@ -497,7 +498,7 @@ describe('runSandbox retries', () => {
       step: 'retry_limit',
       title: 'Too many retry attempts',
       message: 'Reached 5 failed attempts. Reload the page to start over.',
-      retry: undefined,
+      action: undefined,
     });
   });
 });
@@ -515,7 +516,7 @@ describe('runSandbox broken dependencies', () => {
     // Then
     expect(sandbox.events).toEqual(['configure paseo-next-v2', 'failed init']);
     expect(sandbox.failures).toMatchObject([{ step: 'init', title: 'Failed to load content' }]);
-    expect(sandbox.failures[0]?.retry).toBeTypeOf('function');
+    expect(sandbox.failures[0]?.action?.onClick).toBeTypeOf('function');
     expect(captured).toMatchObject([{ error: broken, context: { step: 'init' } }]);
   });
 

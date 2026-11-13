@@ -15,6 +15,7 @@ import type { SandboxUi } from './createSandboxUi.js';
 import {
   describeSandboxFailure,
   getFailureStep,
+  RECOVERY_LABELS,
   type LoadDependency,
   type SandboxFailure,
 } from './describeSandboxFailure.js';
@@ -324,7 +325,9 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     try {
       deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
       const { title, message } = describeSandboxFailure(failure, deps);
-      deps.ui.showError(title, message, { retry });
+      deps.ui.showError(title, message, {
+        action: retry === undefined ? undefined : { label: RECOVERY_LABELS.retry, onClick: retry },
+      });
     } catch (error) {
       report.defect(error, {
         step: 'failure_show',
