@@ -8,9 +8,13 @@ import { createDeferred } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
 import { ApiStoppedError } from './apiStoppedError.js';
 import { createRawApi, type Api } from './createRawApi.js';
-import { CONTRACT_ADDRESS } from './testing/constants.js';
-import { createFakeSubstrateClient } from './testing/createFakeSubstrateClient.js';
+import { getAccountInfoKey, getChildSlotKey } from './reviveStorageKeys.js';
+import { CONTRACT_ACCOUNT_INFO, CONTRACT_ADDRESS } from './testing/constants.js';
+import { createFakeSubstrateClient, type FakeFollow } from './testing/createFakeSubstrateClient.js';
 import { createNewBlockEvent } from './testing/createNewBlockEvent.js';
+
+/** The trie id `CONTRACT_ACCOUNT_INFO` holds. */
+const TRIE_ID = new Uint8Array([1]);
 
 describe('createRawApi', () => {
   it('As a dotli user on a light client, I let finality move on and the resolver unpins the blocks it left behind', () => {
@@ -240,6 +244,167 @@ describe('createRawApi', () => {
     });
   });
 
+  describe('batched reads', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('As the resolver, I read three slots of one contract in one call and get them in order, with null for the unset one', async () => {
+      // Given a contract whose first and third slots are set
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      const answers = new Map<string, string>([
+        [getChildSlotKey(slotKeyAt(0)), '0x0a'],
+        [getChildSlotKey(slotKeyAt(2)), '0x0c'],
+      ]);
+      follow.storage.mockImplementation((_hash, _type, key) => Promise.resolve(answers.get(key) ?? null));
+
+      // When
+      const values = await readSlotsUpTo(api, 3);
+
+      // Then
+      expect(askedKeys(follow)).toEqual([[0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)))]);
+      expect(values).toEqual([new Uint8Array([0x0a]), null, new Uint8Array([0x0c])]);
+    });
+
+    it('As the resolver, I read 300 slots and they go out as two calls of at most 256 keys', async () => {
+      // Given
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+
+      // When
+      await readSlotsUpTo(api, 300);
+
+      // Then
+      expect(askedKeys(follow).map(keys => keys.length)).toEqual([256, 44]);
+    });
+
+    it('As the resolver on a server that discards the last two keys of a call, I still get every value', async () => {
+      // Given every slot set, and a server that discards the tail of the first call
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storage.mockResolvedValue('0x01');
+      follow.storageSubscription.mockImplementationOnce(
+        (_hash, inputs, _childTrie, onItems, _onError, onDone, onDiscardedItems) => {
+          onDiscardedItems(2);
+          onItems(inputs.slice(0, -2).map(({ key }) => ({ key, value: '0x01' })));
+          onDone();
+          return () => undefined;
+        },
+      );
+
+      // When
+      const values = await readSlotsUpTo(api, 3);
+
+      // Then
+      const keys = [0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)));
+      expect(askedKeys(follow)).toEqual([keys, keys.slice(1)]);
+      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1]), new Uint8Array([1])]);
+    });
+
+    it('As the resolver on a server that answers in two item events, I get the values of both', async () => {
+      // Given a server that sends each item in its own event
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storageSubscription.mockImplementationOnce(
+        (_hash, inputs, _childTrie, onItems, _onError, onDone, onDiscardedItems) => {
+          onDiscardedItems(0);
+          for (const { key } of inputs) {
+            onItems([{ key, value: '0x01' }]);
+          }
+          onDone();
+          return () => undefined;
+        },
+      );
+
+      // When
+      const values = await readSlotsUpTo(api, 2);
+
+      // Then
+      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
+    });
+
+    it('As the resolver, I resolve the trie ids of two contracts in one main-trie call, null for an account that is not a contract', async () => {
+      // Given two contracts and an account that is not one
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      const otherContract = '0x0000000000000000000000000000000000000002';
+      const account = '0x0000000000000000000000000000000000000003';
+      const accountInfos = new Map<string, string>([
+        [getAccountInfoKey(CONTRACT_ADDRESS), CONTRACT_ACCOUNT_INFO],
+        [getAccountInfoKey(otherContract), '0x000402'],
+        [getAccountInfoKey(account), '0x01'],
+      ]);
+      follow.storage.mockImplementation((_hash, _type, key) => Promise.resolve(accountInfos.get(key) ?? null));
+
+      // When
+      const trieIds = await api.resolveTrieIds([CONTRACT_ADDRESS, otherContract, account], '0x0a');
+
+      // Then
+      expect(follow.storageSubscription.mock.calls.map(([, inputs, childTrie]) => [inputs.length, childTrie])).toEqual([
+        [3, null],
+      ]);
+      expect(trieIds).toEqual(
+        new Map([
+          [CONTRACT_ADDRESS, TRIE_ID],
+          [otherContract, new Uint8Array([2])],
+          [account, null],
+        ]),
+      );
+    });
+
+    it('As the resolver, a batch the light client cannot serve yet is retried until it is', async () => {
+      // Given a light client that cannot serve the first call
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client, now: () => 0 });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storage.mockResolvedValue('0x01');
+      follow.storageSubscription.mockImplementationOnce((_hash, _inputs, _childTrie, _onItems, onError) => {
+        onError(new OperationInaccessibleError());
+        return () => undefined;
+      });
+
+      // When
+      const read = readSlotsUpTo(api, 2);
+      await vi.runAllTimersAsync();
+      const values = await read;
+
+      // Then
+      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
+    });
+
+    it('As the resolver, a batch in flight when the follow stops rejects', async () => {
+      // Given a batch waiting to retry a call the light client cannot serve
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      const subscriptionAsked = createDeferred<undefined>();
+      follow.storageSubscription.mockImplementation((_hash, _inputs, _childTrie, _onItems, onError) => {
+        subscriptionAsked.resolve(undefined);
+        onError(new OperationInaccessibleError());
+        return () => undefined;
+      });
+      const read = readSlotsUpTo(api, 2).catch((error: unknown) => error);
+      await subscriptionAsked.promise;
+
+      // When
+      follow.stop();
+      await vi.runAllTimersAsync();
+      const error = await read;
+
+      // Then
+      expect(error).toBeInstanceOf(ApiStoppedError);
+    });
+  });
+
   describe('the end of the chain follow', () => {
     it('As a resolver whose stop listener throws, I am reported and the next stop listener still hears the stop', () => {
       // Given
@@ -422,6 +587,20 @@ describe('createRawApi', () => {
 
 /** Reads slot `index` pinned to `0x0a` with a known trie id, so the read is exactly one storage call. */
 function readSlotAt(api: Api, index: number): Promise<Uint8Array | null> {
-  const slotKey: `0x${string}` = `0x${index.toString(16).padStart(64, '0')}`;
-  return api.readSlot(CONTRACT_ADDRESS, slotKey, { atHash: '0x0a', trieId: new Uint8Array([1]) });
+  return api.readSlot(CONTRACT_ADDRESS, slotKeyAt(index), { atHash: '0x0a', trieId: TRIE_ID });
+}
+
+/** Reads slots `0..count` pinned to `0x0a` with a known trie id, so the read asks for no `trie_id`. */
+function readSlotsUpTo(api: Api, count: number): Promise<(Uint8Array | null)[]> {
+  const slotKeys = Array.from({ length: count }, (_, index) => slotKeyAt(index));
+  return api.readSlots(CONTRACT_ADDRESS, slotKeys, { atHash: '0x0a', trieId: TRIE_ID });
+}
+
+function slotKeyAt(index: number): `0x${string}` {
+  return `0x${index.toString(16).padStart(64, '0')}`;
+}
+
+/** The keys a `storageSubscription` call asked for, one list per call. */
+function askedKeys(follow: FakeFollow): string[][] {
+  return follow.storageSubscription.mock.calls.map(([, inputs]) => inputs.map(({ key }) => key));
 }

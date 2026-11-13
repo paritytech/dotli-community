@@ -4,9 +4,15 @@
 // Faked at papi's `SubstrateClient.chainHead`, which hands the test the follow's event callback.
 
 import { vi, type Mock } from 'vitest';
-import { StopError, type FollowEventWithoutRuntime, type SubstrateClient } from '@polkadot-api/substrate-client';
+import {
+  StopError,
+  type FollowEventWithoutRuntime,
+  type FollowResponse,
+  type SubstrateClient,
+} from '@polkadot-api/substrate-client';
 
 type StorageFn = (hash: string, type: string, key: string, childTrie: string | null) => Promise<string | null>;
+type StorageSubscriptionFn = FollowResponse['storageSubscription'];
 
 /** The test's side of one chainHead follow. */
 export type FakeFollow = {
@@ -16,6 +22,11 @@ export type FakeFollow = {
   stop: () => void;
   /** Answers every storage request. Resolves `null` unless the test sets an answer. */
   storage: Mock<StorageFn>;
+  /**
+   * Answers every batched storage request. Unless the test replaces it, reports no discarded key, answers each key
+   * through `storage`, delivers the set ones in one items event and ends, or reports the first `storage` rejection.
+   */
+  storageSubscription: Mock<StorageSubscriptionFn>;
   /** Answers every unpin. Resolves unless the test sets an answer. */
   unpin: Mock<(hashes: string[]) => Promise<void>>;
   /** Ends the follow. Returns unless the test makes it throw. */
@@ -28,6 +39,23 @@ export function createFakeSubstrateClient(): { client: SubstrateClient; follow: 
     emit: () => undefined,
     stop: () => undefined,
     storage: vi.fn<StorageFn>(() => Promise.resolve(null)),
+    storageSubscription: vi.fn<StorageSubscriptionFn>(
+      (hash, inputs, childTrie, onItems, onError, onDone, onDiscardedItems) => {
+        onDiscardedItems(0);
+        void Promise.all(
+          inputs.map(async ({ key }) => ({ key, value: await follow.storage(hash, 'value', key, childTrie) })),
+        ).then(
+          answers => {
+            onItems(answers.flatMap(({ key, value }) => (value === null ? [] : [{ key, value }])));
+            onDone();
+          },
+          (error: unknown) => {
+            onError(error instanceof Error ? error : new Error('fake storage rejected', { cause: error }));
+          },
+        );
+        return () => undefined;
+      },
+    ),
     unpin: vi.fn<(hashes: string[]) => Promise<void>>(() => Promise.resolve()),
     unfollow: vi.fn<() => void>(),
   };
@@ -44,6 +72,7 @@ export function createFakeSubstrateClient(): { client: SubstrateClient; follow: 
       };
       return {
         storage: follow.storage,
+        storageSubscription: follow.storageSubscription,
         unpin: follow.unpin,
         unfollow: follow.unfollow,
       };
