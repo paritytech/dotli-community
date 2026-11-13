@@ -24,7 +24,13 @@ import { productState } from './runtime/state/productState.js';
 import { networkMonitorState } from './state/networkMonitorState.js';
 import { createChainReporter } from './createChainReporter.js';
 import { readPageClock } from './readPageClock.js';
-import { describeProgressStall, describeStall, isCriticalChain, type CriticalChain } from './warnings.js';
+import {
+  describeProgressStall,
+  describeStall,
+  isCriticalChain,
+  type CriticalChain,
+  type StallFacts,
+} from './warnings.js';
 import { STILL_WORKING } from './stillWorking.js';
 
 const report = createReporter({ flow: 'chain' });
@@ -37,13 +43,13 @@ export type ContentProgressFacts = {
 
 /** Where the load's reports come from: the protocol frame and the sandbox's content fetch. Each returns its unsubscribe. */
 export type LoadEvents = {
-  /** Calls `listener` with each chain's lifecycle milestones. Returns its unsubscribe. Never throws. */
+  /** Calls `listener` with each chain's lifecycle milestones. Never throws. */
   onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
-  /** Calls `listener` with each chain's details. Returns its unsubscribe. Never throws. */
+  /** Calls `listener` with each chain's details. Never throws. */
   onChainDetail: (listener: (event: ChainDetail) => void) => () => void;
-  /** Calls `listener` with the load's byte total so far. Returns its unsubscribe. Never throws. */
+  /** Calls `listener` with the load's byte total so far. Never throws. */
   onNetBytes: (listener: (event: { received: number }) => void) => () => void;
-  /** Calls `listener` with the content fetch's progress. Returns its unsubscribe. Never throws. */
+  /** Calls `listener` with the content fetch's progress. Never throws. */
   onContentProgress: (listener: (event: ContentProgressFacts) => void) => () => void;
 };
 
@@ -93,16 +99,16 @@ type Params = {
 type Warning = { kind: 'hidden' } | { kind: 'pending'; message: string; timer: unknown } | { kind: 'shown' };
 
 /** What a critical chain's stall message reads, kept across its watches. */
-type StallFacts = { peers: number | null; reason: string | undefined };
+type WatchFacts = Pick<StallFacts, 'peers' | 'reason'>;
 
 /**
  * One critical chain's stall watch. Every lifecycle event re-arms it, so a chain warns only when it sits in one state
  * past the threshold. A watch's timer warns only while that watch is still the chain's.
  */
 type StallWatch =
-  | ({ kind: 'quiet' } & StallFacts)
-  | ({ kind: 'watching'; timer: unknown } & StallFacts)
-  | ({ kind: 'warned' } & StallFacts);
+  | ({ kind: 'quiet' } & WatchFacts)
+  | ({ kind: 'watching'; timer: unknown } & WatchFacts)
+  | ({ kind: 'warned' } & WatchFacts);
 
 /**
  * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
@@ -149,7 +155,13 @@ type ProgressEvent =
   | { kind: 'warningDue'; timer: unknown }
   | { kind: 'disposed' };
 
-type ProgressMachine = MachineTypes<ProgressState, ProgressEvent>;
+/** What the machine decides from its state: a warning to show, a rate it measured, a byte total it sampled. */
+type ProgressEffect =
+  | { kind: 'warningShown'; message: string }
+  | { kind: 'rateMeasured'; bytesPerSecond: number }
+  | { kind: 'byteTotalSampled'; received: number; at: number };
+
+type ProgressMachine = MachineTypes<ProgressState, ProgressEvent, ProgressEffect>;
 
 // Every other 500ms byte total, which still resolves the peak.
 const CHAIN_BYTES_DEBUG_MS = 1000;
@@ -238,27 +250,25 @@ export function startLoadProgress({
                 update({ kind: 'contentProgressed', ...facts });
               }),
             );
-            if (!gateway) {
-              stops.push(
-                loading.onProgressStall(() => {
-                  update({ kind: 'barStalled' });
-                }),
-              );
-              stops.push(
-                productState.store.listen(product => {
-                  if (product.status === 'loaded') {
-                    update({ kind: 'productLoaded' });
-                  }
-                }),
-              );
+            if (gateway) {
+              emitState({ kind: 'gateway', stops });
+              return;
             }
+            stops.push(
+              loading.onProgressStall(() => {
+                update({ kind: 'barStalled' });
+              }),
+            );
+            stops.push(
+              productState.store.listen(product => {
+                if (product.status === 'loaded') {
+                  update({ kind: 'productLoaded' });
+                }
+              }),
+            );
           } catch (error) {
             stopEach(stops);
             throw error;
-          }
-          if (gateway) {
-            emitState({ kind: 'gateway', stops });
-            return;
           }
           emitState({
             kind: 'lightClient',
@@ -294,29 +304,31 @@ export function startLoadProgress({
           moveBarOnChainSync(sync, loading);
         },
         chainDetailed: recordDetail,
-        netBytes(state, { received }, { emitState }) {
+        netBytes(state, { received }, { emitState, emitSideEffect }) {
           const throughput = measureThroughput(state.throughput, received, readClock());
-          const totals = state.byteTotals;
-          const now = timers.now();
-          // A new total is sampled a second after the last, up to the cap.
-          const sampled =
-            totals.kind === 'open' &&
-            totals.samples < CHAIN_BYTES_DEBUG_MAX &&
-            received !== totals.lastTotal &&
-            now - totals.lastAt >= CHAIN_BYTES_DEBUG_MS;
-          let byteTotals = totals;
-          if (totals.kind === 'open') {
-            byteTotals = sampled
-              ? { kind: 'open', latest: received, lastAt: now, lastTotal: received, samples: totals.samples + 1 }
-              : { ...totals, latest: received };
+          const { byteTotals } = state;
+          const at = timers.now();
+          if (byteTotals.kind === 'closed') {
+            emitState({ ...state, throughput });
+          } else if (
+            byteTotals.samples >= CHAIN_BYTES_DEBUG_MAX ||
+            received === byteTotals.lastTotal ||
+            at - byteTotals.lastAt < CHAIN_BYTES_DEBUG_MS
+          ) {
+            emitState({ ...state, throughput, byteTotals: { ...byteTotals, latest: received } });
+          } else {
+            // A new total is sampled a second after the last, up to the cap.
+            const samples = byteTotals.samples + 1;
+            emitState({
+              ...state,
+              throughput,
+              byteTotals: { kind: 'open', latest: received, lastAt: at, lastTotal: received, samples },
+            });
+            emitSideEffect({ kind: 'byteTotalSampled', received, at });
           }
-          emitState({ ...state, throughput, byteTotals });
           trace.recordBytes(received);
           if (throughput.bytesPerSecond !== null) {
-            networkMonitorState.recordTransfer({ bytesPerSecond: throughput.bytesPerSecond });
-          }
-          if (sampled) {
-            emitByteTotal(received, now);
+            emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
           }
         },
         contentProgressed(_state, { bytesFetched, totalBytes }) {
@@ -344,14 +356,14 @@ export function startLoadProgress({
           }
           showWarning(state, message, transition);
         },
-        productLoaded(state, _event, { emitState }) {
+        productLoaded(state, _event, { emitState, emitSideEffect }) {
           const totals = state.byteTotals;
           if (totals.kind === 'closed') {
             return;
           }
           emitState({ ...state, byteTotals: { kind: 'closed' } });
           if (totals.latest !== totals.lastTotal) {
-            emitByteTotal(totals.latest, timers.now());
+            emitSideEffect({ kind: 'byteTotalSampled', received: totals.latest, at: timers.now() });
           }
         },
         phaseResolved(_state, { phase }) {
@@ -368,13 +380,13 @@ export function startLoadProgress({
           if (watch?.kind !== 'watching' || watch.timer !== timer) {
             return;
           }
-          const facts: StallFacts = { peers: watch.peers, reason: watch.reason };
-          const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, ...facts });
+          const { peers, reason } = watch;
+          const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
           if (message === null) {
-            transition.emitState(withWatch(state, chain, { kind: 'quiet', ...facts }));
+            transition.emitState(withWatch(state, chain, { kind: 'quiet', peers, reason }));
             return;
           }
-          const warned = withWatch(state, chain, { kind: 'warned', ...facts });
+          const warned = withWatch(state, chain, { kind: 'warned', peers, reason });
           transition.emitState(warned);
           showWarning(warned, message, transition);
         },
@@ -388,6 +400,26 @@ export function startLoadProgress({
         disposed: stop,
       },
       disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'warningShown':
+          trace.markWarningShown();
+          loading.setLoadingWarning(effect.message);
+          return;
+        case 'rateMeasured':
+          networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
+          return;
+        case 'byteTotalSampled':
+          debugBus.emit({
+            layer: 'chain',
+            event: 'bytes',
+            flowId,
+            timestamp: effect.at,
+            payload: { received: effect.received },
+          });
+          return;
+      }
     },
     onError: error => {
       report.defect(error, {
@@ -449,7 +481,7 @@ export function startLoadProgress({
       }
       return;
     }
-    const facts: StallFacts = { peers: watch.peers, reason: sync.kind === 'stalled' ? sync.reason : undefined };
+    const facts: WatchFacts = { peers: watch.peers, reason: sync.kind === 'stalled' ? sync.reason : undefined };
     let next: StallWatch = { kind: 'quiet', ...facts };
     if (sync.kind !== 'bootstrapComplete') {
       const timer = timers.setTimeout(() => {
@@ -458,22 +490,23 @@ export function startLoadProgress({
       next = { kind: 'watching', timer, ...facts };
     }
     const watched = withWatch(state, chain, next);
-    transition.emitState(watched);
-    if (watch.kind !== 'warned' || hasWarnedWatch(watched.watches)) {
+    // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
+    const recovered =
+      watch.kind === 'warned' &&
+      sync.kind !== 'stalled' &&
+      sync.kind !== 'connecting' &&
+      !hasWarnedWatch(watched.watches);
+    if (!recovered || state.warning.kind === 'hidden') {
+      transition.emitState(watched);
       return;
     }
     // Recovered, but hiding the row would flash it, so fall back to the general slow-load line.
-    switch (state.warning.kind) {
-      case 'hidden':
-        return;
-      case 'pending':
-        transition.emitState({ ...watched, warning: { kind: 'hidden' } });
-        return;
-      case 'shown':
-        // A shown warning is past the minimum load age already.
-        revealWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
-        return;
+    if (state.warning.kind === 'pending') {
+      transition.emitState({ ...watched, warning: { kind: 'hidden' } });
+      return;
     }
+    // A shown warning is past the minimum load age already.
+    revealWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
   }
 
   /** Shows `message` as the slow-load warning, or parks it until the load is old enough to be slow. */
@@ -495,14 +528,13 @@ export function startLoadProgress({
   }
 
   /** Shows `message` as the slow-load warning at once, in place of a parked one. */
-  function revealWarning(state: LightClientState, message: string, { emitState }: Transition<ProgressMachine>): void {
+  function revealWarning(
+    state: LightClientState,
+    message: string,
+    { emitState, emitSideEffect }: Transition<ProgressMachine>,
+  ): void {
     emitState({ ...state, warning: { kind: 'shown' } });
-    trace.markWarningShown();
-    loading.setLoadingWarning(message);
-  }
-
-  function emitByteTotal(received: number, at: number): void {
-    debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
+    emitSideEffect({ kind: 'warningShown', message });
   }
 }
 

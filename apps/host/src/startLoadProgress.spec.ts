@@ -186,6 +186,21 @@ describe('startLoadProgress', () => {
     expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
   });
 
+  it('As a visitor in direct mode, I was told a chain has no peers, it reports a stall, and its line stays', async () => {
+    // Given the relay's line shown for a chain with no peers
+    const { chainSync, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(5_000);
+    const shown = loadingState.get().warning;
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'stalled' });
+
+    // Then
+    expect(loadingState.get().warning).toBe(shown);
+  });
+
   it('As a visitor in direct mode, I wait on two chains that stall before the load is old enough to be slow and am told of the later stall at that mark', async () => {
     // Given the relay and Asset Hub find no peers, and the relay starts connecting
     const { chainSync, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
