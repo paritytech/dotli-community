@@ -18,8 +18,11 @@ import { createSyncedClient, type ChainClient, type SyncedClientState } from './
 import { decodeIpfsContenthashResult } from './decodeIpfsContenthashResult.js';
 import type { ExecutableKind } from './manifestTypes.js';
 import { NetworkSyncTimeoutError } from './networkSyncTimeoutError.js';
+import { readAppLabels } from './readAppLabels.js';
 import { readExecutableManifest } from './readExecutableManifest.js';
+import { readLabelStores } from './readLabelStores.js';
 import { readNameOwner } from './readNameOwner.js';
+import { readNewLabels, type LabelStoreCursor } from './readNewLabels.js';
 import { readPinnedBytes } from './readPinnedBytes.js';
 import { readRootManifest } from './readRootManifest.js';
 import { computeMappingSlot, computeNamehash } from './storageSlots.js';
@@ -250,6 +253,37 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
      */
     resolveRootManifest: (label: string, options: ResolveOptions = {}) =>
       read(options, api => readRootManifest({ api, dotns, label })),
+    /**
+     * Reads the addresses of the label stores at index `known` and above, in creation order. Rejects with
+     * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it fails
+     * for any other reason or the chain keeps halting.
+     */
+    readLabelStores: (known: number, options: ResolveOptions = {}): Promise<string[]> =>
+      read(options, api => readLabelStores({ api, dotns, known })),
+    /**
+     * Reads the second-level labels the stores added past their cursors, deduped, with each cursor moved to its store's
+     * entry count. Rejects with `PartialStorageReadError` when a long name's data slot is missing,
+     * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it fails
+     * for any other reason or the chain keeps halting.
+     */
+    readNewLabels: (
+      stores: readonly LabelStoreCursor[],
+      options: ResolveOptions = {},
+    ): Promise<{ stores: LabelStoreCursor[]; labels: string[] }> =>
+      read(options, api => readNewLabels({ api, dotns, stores })),
+    /**
+     * Reads which of `labels` publish an app. Rejects with `NetworkSyncTimeoutError` when Asset Hub does not sync
+     * within the budget, and the read's own error when it fails for any other reason or the chain keeps halting.
+     */
+    readAppLabels: (labels: readonly string[], options: ResolveOptions = {}): Promise<Set<string>> =>
+      read(options, api => readAppLabels({ api, dotns, labels })),
+    /**
+     * Ends the Asset Hub client, kept or building, so its lease closes. A read still running retries on a new client,
+     * and the next read builds one. Does nothing while no client is kept or building.
+     */
+    release: (): void => {
+      assetHubClient.release();
+    },
     /**
      * Settles once Asset Hub is synced: the client setup of a name read without the read. Rejects with
      * `NetworkSyncTimeoutError` when it does not sync in time, or the client's own error.

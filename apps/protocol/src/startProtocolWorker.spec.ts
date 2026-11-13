@@ -207,6 +207,10 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
         resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
         resolveOwner: () => Promise.resolve(null),
         resolveRootManifest: () => Promise.reject(new Error('no manifests in this test')),
+        readLabelStores: () => Promise.resolve([]),
+        readNewLabels: stores => Promise.resolve({ stores: [...stores], labels: [] }),
+        readAppLabels: () => Promise.resolve(new Set()),
+        release: () => undefined,
         waitForAssetHubFinalized: presync ?? (() => defaultPresync),
         // Never settles, as People warms in the background.
         waitForPeopleFinalized() {

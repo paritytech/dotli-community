@@ -11,6 +11,7 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
   - contenthash decoding
   - manifest records
   - a name's owner
+  - the names the label stores hold, and which of them publish an app
 - **Owns** the wait for chain sync before a read, and the resolution errors.
 - **Owns** the naming rules:
   - product hosts
@@ -26,26 +27,29 @@ Resolves a `.dot` name to its manifests and content hash from the dotNS contract
 
 ### `@dotli/resolver`
 
-| Export                                                                                       | What it does                               |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`      | Resolves a name.                           |
-| `toRootManifestResult`, `toExecutableManifestResult`                                         | Validate manifest text.                    |
-| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                         | Manifest types.                            |
-| `dotNsUrl`                                                                                   | Tells a product host from a website.       |
-| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult` | Name validation.                           |
-| `getSandboxLabel`                                                                            | A product's sandbox origin label.          |
-| `isExecutableKind`                                                                           | Whether a kind has an executable manifest. |
-| `ResolverErrorName`, `isApiStoppedError`                                                     | Resolution errors.                         |
-| `loadResolve`                                                                                | Lazy loader.                               |
+| Export                                                                                                      | What it does                               |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`, `LabelStoreCursor` | Resolves a name.                           |
+| `toRootManifestResult`, `toExecutableManifestResult`                                                        | Validate manifest text.                    |
+| `RootManifest`, `ExecutableManifest`, `ManifestResult`, `AppVersion`                                        | Manifest types.                            |
+| `dotNsUrl`                                                                                                  | Tells a product host from a website.       |
+| `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `DotLabelResult`                | Name validation.                           |
+| `getSandboxLabel`                                                                                           | A product's sandbox origin label.          |
+| `isExecutableKind`                                                                                          | Whether a kind has an executable manifest. |
+| `ResolverErrorName`, `isApiStoppedError`                                                                    | Resolution errors.                         |
+| `loadResolve`                                                                                               | Lazy loader.                               |
 
 ## Design
 
 - **Passed-in connection:** the resolver reads through the Asset Hub follow its owner already keeps.
 - **Direct storage reads:** contracts are read from Revive storage slots, with no runtime call. A multi-slot read pins
   one block, so bytes are never torn.
+- **Batched reads:** a read of many slots sends up to 256 keys in one storage call. A key the server discards goes out
+  again.
 - **Halts:** a read on a halted chain is retried a few times. The resolver spots a halt by the shared marker, so it
   never imports the chain pool.
 - **Sync wait** has a timeout, since a chain with no peers never syncs.
+- **Release:** a caller that is done ends the client, kept or building, so its lease closes.
 - **Error names** are read verbatim by dashboards and Sentry filters. Never rename them.
 - **Lazy loading:** the resolver is heavy and loads through `loadResolve`. Manifest validators stay off the chain code,
   so the eager path can take them.
