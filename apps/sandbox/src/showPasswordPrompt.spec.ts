@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { chooseModalButton, shownModal } from '@dotli/ui/testing';
 import { type ModalView, modals } from '@dotli/ui';
-import { DECRYPTION_CANCELLED, showPasswordPrompt } from './showPasswordPrompt.js';
+import { DecryptionCancelledError } from './errors.js';
+import { showPasswordPrompt } from './showPasswordPrompt.js';
 
 /** A password dialog as the app builds one. Its copy is the app's. */
 const LOCKED: ModalView<'cancel' | 'unlock'> = {
@@ -45,7 +46,7 @@ describe('password prompt', () => {
     chooseModalButton('Cancel');
 
     // Then
-    await expect(password).rejects.toThrow(DECRYPTION_CANCELLED);
+    await expect(password).rejects.toThrow(DecryptionCancelledError);
   });
 
   it('As a dotli user, I unlock with an empty field and the load gets a cancellation', async () => {
@@ -56,6 +57,6 @@ describe('password prompt', () => {
     chooseModalButton('Unlock', '');
 
     // Then
-    await expect(password).rejects.toThrow(DECRYPTION_CANCELLED);
+    await expect(password).rejects.toThrow(DecryptionCancelledError);
   });
 });

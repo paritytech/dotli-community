@@ -16,7 +16,8 @@ import {
   type CookieChanges,
   type CookieJar,
 } from './createCookiePresence.js';
-import { createStorePresence, getFlagWriteReport, type FlagWrite } from './createStorePresence.js';
+import { createStorePresence } from './createStorePresence.js';
+import { getFlagWriteReport, type FlagWrite } from './sessionFlagWriteMetric.js';
 import type { Presence, SessionPresence } from './types.js';
 
 const report = createReporter({ flow: 'wallet' });
@@ -40,6 +41,9 @@ type Params = {
   /** The domain the flag cookie is set on. The root domain by default. */
   domain?: string;
 };
+
+/** Where the page's flag lives. */
+type FlagStore = 'none' | 'store' | 'cookie';
 
 const documentJar: CookieJar = {
   read: () => document.cookie,
@@ -76,18 +80,30 @@ export function createPagePresence({
   let inner: SessionPresence | undefined;
 
   function pickPresence(): SessionPresence {
-    if (!isShared()) {
-      return unsharedPresence;
+    switch (getFlagStore(isShared(), localhost)) {
+      case 'none':
+        return unsharedPresence;
+      case 'store':
+        return createStorePresence(channel());
+      case 'cookie':
+        return createCookiePresence({ jar, domain });
     }
-    if (localhost) {
-      return createStorePresence(channel());
-    }
-    return createCookiePresence({ jar, domain });
   }
 
   function getPresence(): SessionPresence {
     inner ??= pickPresence();
     return inner;
+  }
+
+  /** The write `name` of the flag, which reports its own failure and never rejects. */
+  function write(name: FlagWrite): () => Promise<void> {
+    return () =>
+      callSettled(
+        () => getPresence()[name](),
+        error => {
+          reportWalletFailure(error, { what: `signed-in flag ${name}`, ...getFlagWriteReport(name) });
+        },
+      );
   }
 
   return {
@@ -99,27 +115,9 @@ export function createPagePresence({
           return 'unknown';
         },
       ),
-    set: () =>
-      callSettled(
-        () => getPresence().set(),
-        error => {
-          reportWriteFailure(error, 'set');
-        },
-      ),
-    clear: () =>
-      callSettled(
-        () => getPresence().clear(),
-        error => {
-          reportWriteFailure(error, 'clear');
-        },
-      ),
-    renew: () =>
-      callSettled(
-        () => getPresence().renew(),
-        error => {
-          reportWriteFailure(error, 'renew');
-        },
-      ),
+    set: write('set'),
+    clear: write('clear'),
+    renew: write('renew'),
   };
 }
 
@@ -136,12 +134,16 @@ export const sessionPresence: SessionPresence = createPagePresence({
  * Returns the unsubscribe.
  */
 export function listenForSessionFlagChange(listener: () => void): () => void {
-  const cookie = isFlagShared(pageRole.get()) && !isLocalhost;
+  const cookie = getFlagStore(isFlagShared(pageRole.get()), isLocalhost) === 'cookie';
   return listenForCookieFlagChange(cookie ? getDocumentCookieChanges() : null, listener);
 }
 
-function reportWriteFailure(error: unknown, write: FlagWrite): void {
-  reportWalletFailure(error, { what: `signed-in flag ${write}`, ...getFlagWriteReport(write) });
+/** Where the page's flag lives: none for a page that shares no flag, the dev HTTP store on a local root, else the cookie. */
+function getFlagStore(isShared: boolean, localhost: boolean): FlagStore {
+  if (!isShared) {
+    return 'none';
+  }
+  return localhost ? 'store' : 'cookie';
 }
 
 /** Runs `call` in the caller's turn and answers with `fallback` for a throw or a rejection. */

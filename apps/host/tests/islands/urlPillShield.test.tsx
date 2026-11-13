@@ -11,7 +11,7 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { UrlPillShield } from '../../src/islands/UrlPillShield.js';
-import { toProductId } from '../../src/runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../../src/runtime/getAskedProductId.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { productCardState } from '../../src/state/productCardState.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 describe('UrlPillShield island', () => {
-  it('As a dApp user, I open a trusted product and the shield names its connection', () => {
+  it('As a dApp user, I open a trusted product and the shield shows it trusted', () => {
     // Given a product pill set to trusted
     urlPillState.showProduct('app', '.dot.li');
     urlPillState.setVerificationShield('trusted');
@@ -44,8 +44,8 @@ describe('UrlPillShield island', () => {
     // When the island mounts
     mountIsland();
 
-    // Then the shield carries the trusted state and its name
-    const shield = document.querySelector<HTMLElement>('[role="img"][aria-label="Trusted connection"]');
+    // Then
+    const shield = document.querySelector<HTMLElement>('#url-pill [role="img"]');
     expect(shield?.dataset['state']).toBe('trusted');
   });
 

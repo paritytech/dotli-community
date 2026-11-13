@@ -5,13 +5,19 @@
 // The peer list the watch lacks goes over the chain's JSON-RPC under a reserved string id.
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
-import { createReporter, m } from '@dotli/metrics';
-import { createListenerSet, getErrorMessage, isRecord, log } from '@dotli/shared';
+import { createReporter, defineCount, m } from '@dotli/metrics';
+import { createListenerSet, isRecord } from '@dotli/shared';
 import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 import { SYSTEM_PEERS } from './jsonRpcMethods.js';
 
 const resolveReport = createReporter({ flow: 'resolve' });
 const protocolReport = createReporter({ flow: 'protocol' });
+
+/** Tagged `outcome` (error) and `reason` (`refused` or `ended`). */
+const chainLifecycleWatchMetric = defineCount<'error'>('chain_sync.lifecycle_watch');
+
+/** A peer-list request whose connection was already gone. Tagged `outcome` (error) and `reason` (`closed`). */
+const chainPeersRequestMetric = defineCount<'error'>('chain_sync.peers_request');
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export type ChainSyncKind =
@@ -74,19 +80,31 @@ export type ChainLifecycleWatch = {
 export type ChainSyncTap = {
   /** `true` means the frame was ours and must not reach polkadot-api. */
   intercept(parsed: ParsedRpcMessage): boolean;
-  /** Closes the chain's lifecycle watch. A repeated call does nothing. */
+  /** Closes the chain's lifecycle watch, and applies no snapshot after it. A repeated call does nothing. */
   stop(): void;
 };
 
 /** The sync milestones and chain facts of one light client, with the replay a late subscriber needs. */
 export type ChainSyncReporter = ReturnType<typeof createChainSyncReporter>;
 
-type DetailCallback = (detail: ChainDetail) => void;
-type SyncCallback = (event: ChainSyncEvent) => void;
-
 type Params = {
   /** Ask a ready chain for its peer list. Off on a build without metrics, which has nowhere to send it. */
   askPeers: boolean;
+};
+
+/** What a chain last reported, kept across its taps so a tap that takes over goes on from it. */
+type ChainSyncState = {
+  phase: ChainLifecycle['phase']['kind'] | null;
+  /** `getHealthKey` of the last health. */
+  health: string | null;
+  stallReason: string | null;
+  peers: number | null;
+  /** The last block a warp proved in this run, for `warpSyncFinished`. */
+  warpAt: number | null;
+  /** Whether this run emitted `firstPeer`. */
+  firstPeer: boolean;
+  /** Whether this run asked the chain for its peers. A flag, since a chain that warps again returns to `ready`. */
+  peersRequested: boolean;
 };
 
 type AttachChainSyncParams = {
@@ -112,7 +130,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
   // Latest per chain and kind, so a reconnecting chain replaces its entry instead of growing the replay.
   const detailHistory = new Map<string, ChainDetail>();
 
-  function onChainDetail(callback: DetailCallback): () => void {
+  function onChainDetail(callback: (detail: ChainDetail) => void): () => void {
     const unsubscribe = detailListeners.subscribe(callback);
     for (const detail of detailHistory.values()) {
       detailListeners.deliver(callback, detail);
@@ -145,7 +163,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
   // Latest event per chain and kind, so the replay stays bounded.
   const syncHistory = new Map<string, ChainSyncEvent>();
 
-  function onChainSync(callback: SyncCallback): () => void {
+  function onChainSync(callback: (event: ChainSyncEvent) => void): () => void {
     const unsubscribe = syncListeners.subscribe(callback);
     for (const event of syncHistory.values()) {
       syncListeners.deliver(callback, event);
@@ -157,8 +175,17 @@ export function createChainSyncReporter({ askPeers }: Params) {
     if (!prepareSyncHistory(event)) {
       return;
     }
-    syncHistory.set(`${event.chain}:${event.kind}`, event);
+    const key = `${event.chain}:${event.kind}`;
+    // `set` keeps a key's first position, so the replay would run a chain's new step before its outdated ones.
+    syncHistory.delete(key);
+    syncHistory.set(key, event);
     syncListeners.emit(event);
+  }
+
+  function dropSyncHistory(chain: ChainRole, kinds: readonly ChainSyncKind[]): void {
+    for (const kind of kinds) {
+      syncHistory.delete(`${chain}:${kind}`);
+    }
   }
 
   /** Drops the replay entry `event` outdates. Returns `false` for an event that repeats the last one. */
@@ -185,6 +212,27 @@ export function createChainSyncReporter({ askPeers }: Params) {
     }
   }
 
+  // A chain outlives its taps, so what it reported is kept per chain.
+  const chainSyncStates = new Map<ChainRole, ChainSyncState>();
+
+  function getChainSyncState(chain: ChainRole): ChainSyncState {
+    const known = chainSyncStates.get(chain);
+    if (known !== undefined) {
+      return known;
+    }
+    const created: ChainSyncState = {
+      phase: null,
+      health: null,
+      stallReason: null,
+      peers: null,
+      warpAt: null,
+      firstPeer: false,
+      peersRequested: false,
+    };
+    chainSyncStates.set(chain, created);
+    return created;
+  }
+
   // Opt-in per chain, since each costs a lifecycle watch.
   const reportingChains = new Set<ChainRole>();
 
@@ -199,23 +247,17 @@ export function createChainSyncReporter({ askPeers }: Params) {
       return null;
     }
 
+    const sync = getChainSyncState(chain);
     let stopped = false;
-    let lastPhase: string | null = null;
-    let lastHealth: string | null = null;
-    let lastStallReason: string | null = null;
-    let lastPeers: number | null = null;
-    let lastWarpAt: number | null = null;
-    let firstPeerEmitted = false;
-    // `ready` is not terminal, since a chain that warps again returns to it.
-    let peersRequested = false;
 
     function applyLifecycleState(state: ChainLifecycle): void {
       const { peers, phase, health } = state;
-      if (peers > 0 && !firstPeerEmitted) {
-        firstPeerEmitted = true;
+      if (peers > 0 && !sync.firstPeer) {
+        sync.firstPeer = true;
         emitChainSync({ chain, kind: 'firstPeer' });
       }
-      if (peers !== lastPeers) {
+      if (peers !== sync.peers) {
+        sync.peers = peers;
         emitChainSync({
           chain,
           kind: 'peers',
@@ -223,15 +265,15 @@ export function createChainSyncReporter({ askPeers }: Params) {
           isSyncing: phase.kind !== 'ready',
         });
       }
-      lastPeers = peers;
 
-      if (phase.kind !== lastPhase) {
-        applyPhaseChange(phase);
-        lastPhase = phase.kind;
+      if (phase.kind !== sync.phase) {
+        const previous = sync.phase;
+        sync.phase = phase.kind;
+        applyPhaseChange(previous, phase);
       }
       // On every syncing snapshot, since the target keeps moving.
       if (phase.kind === 'syncing') {
-        lastWarpAt = phase.at;
+        sync.warpAt = phase.at;
         emitChainSync({
           chain,
           kind: 'warpSyncProgress',
@@ -241,27 +283,35 @@ export function createChainSyncReporter({ askPeers }: Params) {
       }
 
       const healthKey = getHealthKey(health);
-      if (healthKey !== lastHealth) {
+      if (healthKey !== sync.health) {
+        sync.health = healthKey;
         applyHealthChange(health);
-        lastHealth = healthKey;
       }
     }
 
-    function applyPhaseChange(phase: ChainLifecycle['phase']): void {
+    function applyPhaseChange(previous: ChainSyncState['phase'], phase: ChainLifecycle['phase']): void {
       switch (phase.kind) {
         case 'connecting':
+          // A chain's first tap starts its first run, which has nothing to drop.
+          if (previous !== null) {
+            startRun();
+          }
           emitChainSync({ chain, kind: 'connecting' });
           return;
         case 'syncing':
+          // A warp again outdates the last warp's end and the ready chain it led to.
+          if (previous === 'ready') {
+            dropSyncHistory(chain, ['warpSyncFinished', 'bootstrapComplete']);
+          }
           // A syncing chain reports its progress on every snapshot, not on the change.
           return;
         case 'ready':
           // Before `bootstrapComplete`, so the warp never finishes after the chain is up.
-          if (lastWarpAt !== null) {
+          if (sync.warpAt !== null) {
             emitChainSync({
               chain,
               kind: 'warpSyncFinished',
-              finalized: lastWarpAt,
+              finalized: sync.warpAt,
             });
           }
           emitChainSync({ chain, kind: 'bootstrapComplete' });
@@ -270,21 +320,31 @@ export function createChainSyncReporter({ askPeers }: Params) {
       }
     }
 
+    // A chain that connects again starts over, so a late subscriber must not see the old run's ready chain.
+    function startRun(): void {
+      sync.firstPeer = false;
+      sync.peersRequested = false;
+      sync.warpAt = null;
+      dropSyncHistory(chain, ['firstPeer', 'warpSyncProgress', 'warpSyncFinished', 'bootstrapComplete']);
+    }
+
     function applyHealthChange(health: ChainLifecycle['health']): void {
       switch (health.kind) {
-        case 'ok':
-          if (lastStallReason !== null) {
+        case 'ok': {
+          const stallReason = sync.stallReason;
+          sync.stallReason = null;
+          if (stallReason !== null) {
             emitChainSync({
               chain,
               kind: 'recovered',
-              reason: lastStallReason,
+              reason: stallReason,
             });
           }
-          lastStallReason = null;
           return;
+        }
         case 'stalled':
+          sync.stallReason = health.reason;
           emitChainSync({ chain, kind: 'stalled', reason: health.reason });
-          lastStallReason = health.reason;
           return;
       }
     }
@@ -292,10 +352,10 @@ export function createChainSyncReporter({ askPeers }: Params) {
     // The peer list is asked once at ready, when it explains the bootstrap time, and only by a reporter that asks peers.
     // `system_peers` is legacy JSON-RPC, so smoldot warns once per chain, but the new API has no peer list.
     function requestPeers(): void {
-      if (peersRequested || stopped || !askPeers) {
+      if (sync.peersRequested || stopped || !askPeers) {
         return;
       }
-      peersRequested = true;
+      sync.peersRequested = true;
       try {
         send(
           JSON.stringify({
@@ -307,7 +367,11 @@ export function createChainSyncReporter({ askPeers }: Params) {
         );
       } catch (error: unknown) {
         // Telemetry only, and it throws only on a connection already gone, which the visitor never notices.
-        log.debug(`[dot.li chain-sync] peer list unavailable for ${chain}: ${getErrorMessage(error)}`);
+        protocolReport.expected(error, {
+          step: 'chain_peers_request',
+          metric: chainPeersRequestMetric,
+          reason: 'closed',
+        });
       }
     }
 
@@ -343,8 +407,12 @@ export function createChainSyncReporter({ askPeers }: Params) {
     try {
       watch = watchLifecycle();
     } catch (error: unknown) {
-      // The loading screen falls back to its own timings, so this is progress, not a failure.
-      protocolReport.log.event('Chain lifecycle watch unavailable', { chain, reason: getErrorMessage(error) });
+      // The loading screen falls back to its own timings, so the visitor never notices.
+      protocolReport.expected(error, {
+        step: 'chain_lifecycle_watch',
+        metric: chainLifecycleWatchMetric,
+        reason: 'refused',
+      });
       return { intercept, stop: () => undefined };
     }
 
@@ -354,11 +422,19 @@ export function createChainSyncReporter({ askPeers }: Params) {
       try {
         // `undefined` once `stop` closes the watch or the chain is gone.
         for (let state; (state = await lifecycle.next()) !== undefined;) {
+          // A snapshot already on its way when `stop` ran is read off the watch but not applied.
+          if (stopped) {
+            continue;
+          }
           applyLifecycleState(state);
         }
       } catch (error: unknown) {
         // As when the watch is refused, the loading screen falls back to its own timings.
-        protocolReport.log.event('Chain lifecycle watch ended', { chain, reason: getErrorMessage(error) });
+        protocolReport.expected(error, {
+          step: 'chain_lifecycle_watch',
+          metric: chainLifecycleWatchMetric,
+          reason: 'ended',
+        });
       }
     }
 
@@ -381,6 +457,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     onChainDetail,
     /**
      * Replays the latest event per chain and kind, so a listener attaching mid-sync knows where each chain stands.
+     * The replay holds the chain's current run only, in the order each event was last emitted.
      * Returns the unsubscribe.
      */
     onChainSync,
@@ -391,7 +468,7 @@ export function createChainSyncReporter({ askPeers }: Params) {
     /**
      * The tap must see every response, in order, before polkadot-api does.
      * Returns `null` for a chain nobody asked to report, so it costs neither a watch nor a per-response check.
-     * Never throws: a refused lifecycle watch returns a tap that does nothing, and a failed peers send is logged.
+     * Never throws: a refused lifecycle watch returns a tap that does nothing, and a failed peers send is counted.
      */
     attachChainSync,
   };

@@ -22,22 +22,9 @@ export type RecentListProps = {
 
 /** Recently visited names as a list of links. */
 export function RecentList(props: RecentListProps): JSX.Element {
-  const labels = (): readonly string[] => props.labels();
   const suffix = (): string => props.suffix() ?? '';
   const [revealed, setRevealed] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
-
-  const forget = (e: MouseEvent, label: string): void => {
-    e.preventDefault();
-    props.onForget(label);
-  };
-
-  // Swallow the tap that ends a long press rather than open the site being forgotten.
-  const open = (e: MouseEvent, label: string): void => {
-    if (revealed() === label) {
-      e.preventDefault();
-    }
-  };
 
   let pressTimer: ReturnType<typeof setTimeout> | null = null;
   const cancelPress = (): void => {
@@ -60,7 +47,7 @@ export function RecentList(props: RecentListProps): JSX.Element {
   };
 
   const onDocumentPointerDown = (e: Event): void => {
-    if (container?.contains(e.target as Node) !== true) {
+    if (!(e.target instanceof Node) || container?.contains(e.target) !== true) {
       setRevealed(null);
     }
   };
@@ -85,13 +72,13 @@ export function RecentList(props: RecentListProps): JSX.Element {
       }}
       id="dotli-recent"
       class={s['recent']}
-      hidden={labels().length === 0}
+      hidden={props.labels().length === 0}
     >
-      <Show when={labels().length > 0}>
+      <Show when={props.labels().length > 0}>
         <SectionLabel as="h2" text="Recent" id="dotli-recent-label" />
         <div class={s['list']} role="group" aria-labelledby="dotli-recent-label" data-testid="landing-recent-list">
           <Well layout="controls">
-            <For each={labels()}>
+            <For each={props.labels()}>
               {label => (
                 <Row
                   class={s['item']}
@@ -103,7 +90,10 @@ export function RecentList(props: RecentListProps): JSX.Element {
                       data-testid="landing-recent-link"
                       data-label={label}
                       onClick={e => {
-                        open(e, label);
+                        // Swallow the tap that ends a long press rather than open the site being forgotten.
+                        if (revealed() === label) {
+                          e.preventDefault();
+                        }
                       }}
                     >
                       <span class={s['label']} data-testid="landing-recent-label">
@@ -123,7 +113,8 @@ export function RecentList(props: RecentListProps): JSX.Element {
                     aria-label={`Remove ${label}${suffix()} from recently visited`}
                     title="Remove"
                     onClick={e => {
-                      forget(e, label);
+                      e.preventDefault();
+                      props.onForget(label);
                     }}
                   >
                     <CloseIcon class={s['removeIcon']} />

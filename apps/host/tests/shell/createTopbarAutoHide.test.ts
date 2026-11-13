@@ -127,10 +127,7 @@ function setupAutoHidePage() {
       isMobile: () => false,
       isPhone: () => false,
       watchPhone: () => () => undefined,
-      layout: {
-        setTopbarLayout: () => undefined,
-        getFrame: getAppFrame,
-      },
+      layout: { getFrame: getAppFrame },
       page: getBrowserTopbarPage,
       timers,
     });

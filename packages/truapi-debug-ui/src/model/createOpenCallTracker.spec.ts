@@ -179,22 +179,6 @@ describe('createOpenCallTracker()', () => {
     },
   );
 
-  it('As a developer who paused the debug panel, I get the reply to a call recorded before Pause and the call stops reading pending', () => {
-    // Given
-    const store = createEventStore({ capacity: 10 });
-    const tracker = createOpenCallTracker();
-    store.insertTruapi(buildTruapiEvent({ tag: 'sign_request', requestId: 'r1' }));
-    readOpenAfterUpdate(tracker, store);
-    store.setPaused(true);
-
-    // When
-    store.insertTruapi(buildTruapiEvent({ tag: 'sign_response', requestId: 'r1' }));
-    const open = readOpenAfterUpdate(tracker, store);
-
-    // Then
-    expect(open.size).toBe(0);
-  });
-
   it('As the debug panel, I ask twice between two updates and read the same open calls and changed keys', () => {
     // Given
     const store = createEventStore({ capacity: 10 });

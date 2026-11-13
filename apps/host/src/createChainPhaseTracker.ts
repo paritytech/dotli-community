@@ -10,23 +10,14 @@ import { PHASE_BY_MILESTONE } from './phaseByMilestone.js';
  * client sends no new phase for one it never left, so recovery returns the chain to the phase the stall interrupted.
  */
 export function createChainPhaseTracker(): (chain: string, kind: ChainSyncKind) => ChainPhase | undefined {
-  const current = new Map<string, ChainPhase>();
-  const beforeStall = new Map<string, ChainPhase>();
+  /** Each chain's last phase other than a stall, the one a recovery returns to. */
+  const resumable = new Map<string, ChainPhase>();
 
   function track(chain: string, kind: ChainSyncKind): ChainPhase | undefined {
-    const now = current.get(chain);
-    let phase: ChainPhase | undefined;
-    if (kind === 'recovered') {
-      // With nothing known to return to, the chain is syncing until told otherwise.
-      phase = now === 'stalled' ? (beforeStall.get(chain) ?? 'syncing') : (now ?? 'syncing');
-    } else {
-      phase = PHASE_BY_MILESTONE[kind];
-      if (phase === 'stalled' && now !== undefined && now !== 'stalled') {
-        beforeStall.set(chain, now);
-      }
-    }
-    if (phase !== undefined) {
-      current.set(chain, phase);
+    // With nothing known to return to, the chain is syncing until told otherwise.
+    const phase = kind === 'recovered' ? (resumable.get(chain) ?? 'syncing') : PHASE_BY_MILESTONE[kind];
+    if (phase !== undefined && phase !== 'stalled') {
+      resumable.set(chain, phase);
     }
     return phase;
   }

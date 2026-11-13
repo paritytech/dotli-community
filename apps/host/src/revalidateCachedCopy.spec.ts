@@ -8,8 +8,9 @@ import { createDeferred } from '@dotli/shared';
 import type { CachedManifests } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type RevalidateCachedCopyParams } from './revalidateCachedCopy.js';
-import type { ProductManifests } from './cachedManifest.js';
+import { toCachedManifest, type ProductManifests } from './cachedManifest.js';
 import { createNameSource, type NameSource } from './createNameSource.js';
+import { APP, ROOT } from './testing/manifestFixtures.js';
 
 type Notice = Parameters<ShowNotification>[0];
 
@@ -93,11 +94,11 @@ describe('revalidateCachedCopy', () => {
     expect(rig.reload).not.toHaveBeenCalled();
 
     // When
-    await reading.finish({ root: { kind: 'empty' }, app: { kind: 'empty' }, owner: null });
+    await reading.finish({ root: ROOT, app: APP, owner: null });
 
     // Then
     expect(rig.written).toEqual([
-      { label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null, owner: null } },
+      { label: 'doom', cid: 'bafy-latest', manifests: toCachedManifest({ root: ROOT, app: APP, owner: null }) },
     ]);
     expect(rig.reload).toHaveBeenCalledOnce();
   });

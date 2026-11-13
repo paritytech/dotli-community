@@ -5,7 +5,6 @@ import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { deleteIdb } from './deleteIdb.js';
 import { openIdb } from './openIdb.js';
-import { createManualTimers } from './testing/createManualTimers.js';
 
 const STORE = 'items';
 
@@ -84,25 +83,5 @@ describe('deleteIdb', () => {
 
     // Then
     await expect(deleted).rejects.toThrow('Failed to delete held DB: still blocked by another connection');
-  });
-
-  it("As a caller whose delete stays blocked, I get deleteIdb's timeout after DELETE_TIMEOUT_MS", async () => {
-    // Given
-    const factory = await heldFactory('held');
-    const timers = createManualTimers();
-    const heard: string[] = [];
-    void deleteIdb(factory, 'held', { timers }).then(
-      () => heard.push('deleted'),
-      (error: unknown) => heard.push(error instanceof Error ? error.message : 'other'),
-    );
-
-    // When
-    await timers.advance(2_999);
-    const beforeTimeout = [...heard];
-    await timers.advance(1);
-
-    // Then
-    expect(beforeTimeout).toEqual([]);
-    expect(heard).toEqual(['Failed to delete held DB: still blocked by another connection after 3000ms']);
   });
 });

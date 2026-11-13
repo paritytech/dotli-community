@@ -5,7 +5,7 @@
 
 import { base64urlnopad } from '@scure/base';
 import { fromHex, hashBlake2b, toHex } from '@dotli/shared';
-import type { MainAccount } from '../runtime/siteSignIn/createMainAccountSource.js';
+import type { MainAccount } from '../runtime/siteSignIn/mainAccount.js';
 
 /** The site's origin. */
 export const SITE_ORIGIN = 'https://my-site.com';

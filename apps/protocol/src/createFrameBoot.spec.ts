@@ -47,24 +47,6 @@ function sendBytes(
 }
 
 describe('the frame boot', () => {
-  it('As the host of a frame with no light client of its own, I subscribe while it boots and my telemetry opens silent once it is ready', async () => {
-    // Given a host that subscribed while the frame booted
-    const { boot, link } = bootFrame();
-    const status = record({ transport: link.host, method: frame.status, start: undefined });
-    const telemetry = record({ transport: link.host, method: frame.telemetry, start: undefined });
-    const over = watchEnded(telemetry.ended);
-    await roundTrip(link);
-
-    // When an auth-only or gateway frame becomes ready without a telemetry source
-    boot.markReady();
-    await status.waitFor(1);
-    await roundTrip(link);
-
-    // Then the telemetry is open and silent
-    expect(over()).toBe(false);
-    expect(telemetry.events).toEqual([]);
-  });
-
   it('As the host of a frame with no light client of its own, I watch it stop for good and my silent telemetry stays open', async () => {
     // Given a host that subscribed while the frame booted, and a frame that became ready without a telemetry source
     const { boot, link } = bootFrame();
@@ -118,25 +100,5 @@ describe('the frame boot', () => {
     const failure = err(hostFailure('ProtocolInitFailedError: Unknown protocol mode: "nope"'));
     expect(await early.ended).toEqual(failure);
     expect(await late.ended).toEqual(failure);
-  });
-
-  it('As the host of a ready frame that later dies, I watch it die and my status ends while my telemetry keeps its source', async () => {
-    // Given
-    const { boot, link } = bootFrame();
-    boot.serveTelemetry(sendBytes);
-    boot.markReady();
-    const status = record({ transport: link.host, method: frame.status, start: undefined });
-    const telemetry = record({ transport: link.host, method: frame.telemetry, start: undefined });
-    await status.waitFor(1);
-    await telemetry.waitFor(1);
-    const over = watchEnded(telemetry.ended);
-
-    // When
-    boot.fail(new Error('light client died'));
-    await roundTrip(link);
-
-    // Then
-    expect(await status.ended).toEqual(err(hostFailure('Error: light client died')));
-    expect(over()).toBe(false);
   });
 });

@@ -4,13 +4,9 @@
 /** Calls `onChange` as `el` scrolls in and out of view, until the returned stop. */
 export type WatchVisibility = (el: Element, onChange: (visible: boolean) => void) => () => void;
 
-/** Watches with `Observer`. Without one every row counts as in view at once. */
-export function visibilityWatcher(Observer: typeof IntersectionObserver | undefined): WatchVisibility {
+/** Watches with `Observer`, the browser's IntersectionObserver or a test's stand-in. */
+export function visibilityWatcher(Observer: typeof IntersectionObserver): WatchVisibility {
   return (el, onChange) => {
-    if (Observer === undefined) {
-      onChange(true);
-      return () => undefined;
-    }
     const observer = new Observer(entries => {
       for (const entry of entries) {
         onChange(entry.isIntersecting);

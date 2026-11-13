@@ -13,9 +13,14 @@ type Sent = {
 };
 
 /** A follow over a session the test answers, and what it reported. */
-function follow(options: { live?: () => boolean } = {}) {
+function follow(
+  options: {
+    onFollowing?: (value: boolean, handle: ReturnType<typeof openWatchFollow>) => void;
+  } = {},
+) {
   const sent: Sent[] = [];
   const following: boolean[] = [];
+  let refused = 0;
   const best: number[] = [];
   let deliver: (message: unknown) => void = () => undefined;
   let disconnected = 0;
@@ -33,11 +38,17 @@ function follow(options: { live?: () => boolean } = {}) {
         },
       };
     },
-    onFollowing: value => following.push(value),
+    onFollowing: value => {
+      following.push(value);
+      options.onFollowing?.(value, handle);
+    },
+    onRefused: () => {
+      refused += 1;
+    },
     onBestBlock: value => best.push(value),
-    live: options.live ?? (() => true),
   };
   const handle = openWatchFollow(watch);
+  handle.start();
 
   function findLastSent(method: string): Sent {
     return must(sent.filter(message => message.method === method).at(-1), method);
@@ -49,9 +60,13 @@ function follow(options: { live?: () => boolean } = {}) {
     following,
     best,
     countDisconnects: () => disconnected,
+    countRefusals: () => refused,
     findLastSent,
     answer: (id: string, result: unknown) => {
       deliver({ jsonrpc: '2.0', id, result });
+    },
+    answerError: (id: string, error: { code: number; message: string }) => {
+      deliver({ jsonrpc: '2.0', id, error });
     },
     emitEvent: (token: string, result: Record<string, unknown>) => {
       deliver({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: token, result } });
@@ -82,23 +97,17 @@ describe('openWatchFollow', () => {
     ]);
   });
 
-  it('As the network panel, I have a follow the chain stops started again while the chain lives, and not once it closed', () => {
+  it('As the network panel, I have a follow the chain stops started again', () => {
     // Given
-    let live = true;
-    const watch = follow({ live: () => live });
+    const watch = follow();
     watch.answer(watch.findLastSent('chainHead_v1_follow').id, 'tok');
 
     // When
     watch.emitEvent('tok', { event: 'stop' });
-    const followsWhileLive = watch.sent.filter(message => message.method === 'chainHead_v1_follow').length;
-    watch.answer(watch.findLastSent('chainHead_v1_follow').id, 'tok2');
-    live = false;
-    watch.emitEvent('tok2', { event: 'stop' });
 
     // Then
-    expect(followsWhileLive).toBe(2);
     expect(watch.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(2);
-    expect(watch.following).toEqual([true, false, true, false]);
+    expect(watch.following).toEqual([true, false]);
   });
 
   it("As the network panel closing, I end my follow's session and start no other", () => {
@@ -112,6 +121,51 @@ describe('openWatchFollow', () => {
 
     // Then
     expect(watch.countDisconnects()).toBe(1);
+    expect(watch.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(1);
+  });
+
+  it('As the network panel, my follow is refused and I hear it refused', () => {
+    // Given
+    const watch = follow();
+
+    // When
+    watch.answerError(watch.findLastSent('chainHead_v1_follow').id, { code: -32800, message: 'limit' });
+
+    // Then
+    expect(watch.countRefusals()).toBe(1);
+    expect(watch.following).toEqual([]);
+    expect(watch.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(1);
+  });
+
+  it('As the network panel, my follow the chain stops is refused again and I hear it refused', () => {
+    // Given
+    const watch = follow();
+    watch.answer(watch.findLastSent('chainHead_v1_follow').id, 'tok');
+    watch.emitEvent('tok', { event: 'stop' });
+
+    // When
+    watch.answerError(watch.findLastSent('chainHead_v1_follow').id, { code: -32800, message: 'limit' });
+
+    // Then
+    expect(watch.countRefusals()).toBe(1);
+    expect(watch.following).toEqual([true, false]);
+  });
+
+  it("As the network panel who closes while my follow's stop is reported, I start no other follow", () => {
+    // Given
+    const watch = follow({
+      onFollowing: (value, handle) => {
+        if (!value) {
+          handle.disconnect();
+        }
+      },
+    });
+    watch.answer(watch.findLastSent('chainHead_v1_follow').id, 'tok');
+
+    // When
+    watch.emitEvent('tok', { event: 'stop' });
+
+    // Then
     expect(watch.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(1);
   });
 });

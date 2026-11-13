@@ -24,7 +24,7 @@ export type SignInPartsProps = {
   /** Signs in again from a failure's Try again. */
   onRetry: () => void;
   level?: HeadingLevel | undefined;
-  /** Takes focus before a pressed control is replaced, so it never drops to the page. */
+  /** Takes focus before the pairing's reveal goes, so it never drops to the page. */
   holdFocus?: (() => void) | undefined;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
@@ -36,11 +36,6 @@ export type SignInPartsProps = {
  * code, lasts until then.
  */
 export function signInParts(view: PairingView, props: SignInPartsProps): SignInParts {
-  const retry = (): void => {
-    // The retry replaces the pressed button.
-    props.holdFocus?.();
-    props.onRetry();
-  };
   switch (view.kind) {
     case 'spinner':
     case 'pairing':
@@ -59,7 +54,18 @@ export function signInParts(view: PairingView, props: SignInPartsProps): SignInP
         title: view.title,
         body: view.subtitle,
         detail: view.detail,
-        actions: view.retry ? [{ label: 'Try again', primary: true, onPress: retry, testId: 'auth-modal-retry' }] : [],
+        actions: view.retry
+          ? [
+              {
+                label: 'Try again',
+                primary: true,
+                onPress: () => {
+                  props.onRetry();
+                },
+                testId: 'auth-modal-retry',
+              },
+            ]
+          : [],
         level: props.level,
         testId: 'auth-modal-failure',
         titleId: 'auth-modal-title',

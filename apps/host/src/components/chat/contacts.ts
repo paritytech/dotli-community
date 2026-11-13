@@ -6,7 +6,6 @@ import type { ChatBot, ChatRoom } from './chat.js';
 
 /** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */
 export type ContactEntry = {
-  kind: 'room' | 'bot';
   id: string;
   name: string;
   icon: string;
@@ -24,7 +23,6 @@ export function contactEntries(
 ): ContactEntry[] {
   const entries: ContactEntry[] = [
     ...rooms.map(room => ({
-      kind: 'room' as const,
       id: room.roomId,
       name: room.name,
       icon: room.icon,
@@ -33,7 +31,6 @@ export function contactEntries(
       footer: room.footer ?? 'TextInput',
     })),
     ...bots.map(bot => ({
-      kind: 'bot' as const,
       id: bot.botId,
       name: bot.name,
       icon: bot.icon,

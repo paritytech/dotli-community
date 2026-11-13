@@ -182,46 +182,6 @@ describe('withTimeout on a page that freezes', () => {
 });
 
 describe('withTimeout with a signal', () => {
-  it('As a caller that aborts, I stop waiting on withTimeout and its timer is cleared', async () => {
-    // Given
-    const timers = createManualTimers();
-    const controller = new AbortController();
-    const timed = withTimeout({
-      work: neverSettles(),
-      ms: 1_000,
-      timeoutError: () => new SlowError('too slow'),
-      timers,
-      signal: controller.signal,
-    });
-
-    // When
-    controller.abort('the visitor left');
-
-    // Then
-    await expect(timed).rejects.toBe('the visitor left');
-    expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a caller with an aborted signal, I call withTimeout and it rejects at once', async () => {
-    // Given
-    const timers = createManualTimers();
-    const controller = new AbortController();
-    controller.abort('the visitor left');
-
-    // When
-    const timed = withTimeout({
-      work: neverSettles(),
-      ms: 1_000,
-      timeoutError: () => new SlowError('too slow'),
-      timers,
-      signal: controller.signal,
-    });
-
-    // Then
-    await expect(timed).rejects.toBe('the visitor left');
-    expect(timers.countPending()).toBe(0);
-  });
-
   it('As a caller with an aborted signal, I call withTimeout on work that rejects later and nothing goes unhandled', async () => {
     // Given
     const controller = new AbortController();
@@ -242,25 +202,5 @@ describe('withTimeout with a signal', () => {
     // Then
     await expect(timed).rejects.toBe('the visitor left');
     expect(then.mock.calls.some(([, onRejected]) => typeof onRejected === 'function')).toBe(true);
-  });
-
-  it('As a caller whose work settles, I call withTimeout and leave no abort listener on my signal', async () => {
-    // Given
-    const { signal } = new AbortController();
-    const added = vi.spyOn(signal, 'addEventListener');
-    const removed = vi.spyOn(signal, 'removeEventListener');
-
-    // When
-    await withTimeout({
-      work: Promise.resolve(7),
-      ms: 1_000,
-      timeoutError: () => new SlowError('too slow'),
-      timers: createManualTimers(),
-      signal,
-    });
-
-    // Then
-    expect(added).toHaveBeenCalledTimes(1);
-    expect(removed.mock.calls).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
   });
 });

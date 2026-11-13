@@ -17,18 +17,20 @@ export type QrDrawOptions = {
   color: { dark: string; light: string };
 };
 
+type QrDrawParams = {
+  canvas: HTMLCanvasElement;
+  payload: string;
+  options: QrDrawOptions;
+  signal: AbortSignal;
+};
+
 /** Draws `payload` as a QR code onto `canvas`. Once `signal` aborts the code is off show, so drawing it is wasted. */
-export type DrawQr = (
-  canvas: HTMLCanvasElement,
-  payload: string,
-  options: QrDrawOptions,
-  signal?: AbortSignal,
-) => Promise<void>;
+export type DrawQr = (params: QrDrawParams) => Promise<void>;
 
 /** Draws `payload` as a QR code with the lazily loaded `qrcode` chunk. */
-export const drawQrCode: DrawQr = async (canvas, payload, options, signal) => {
+export const drawQrCode: DrawQr = async ({ canvas, payload, options, signal }) => {
   const QRCode = await loadQrCode();
-  if (signal?.aborted === true) {
+  if (signal.aborted) {
     return;
   }
   const { modules } = QRCode.default.create(payload, { errorCorrectionLevel: options.errorCorrectionLevel });

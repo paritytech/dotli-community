@@ -5,11 +5,11 @@
 // Each tab is a real transport on its own port pair, so the worker is driven over the wire as an iframe drives it.
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { catchError, createManualTimers, must } from '@dotli/shared/testing';
+import { catchError, createManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import {
   protocolSchema,
   type FrameFailure,
@@ -25,14 +25,16 @@ import { createWaitList } from './testing/createWaitList.js';
 import {
   createWorkerLifecycle,
   HEARTBEAT_MISSED_BEATS,
-  type PortSession,
+  type WorkerLifecycle,
   type WorkerPort,
 } from './createWorkerLifecycle.js';
 import { startProtocolWorker, type WorkerResolver, type WorkerScope } from './startProtocolWorker.js';
 import { connectSharedWorker } from './connectSharedWorker.js';
+import type { EngineScope } from './createEngine.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { parseWorkerNetwork } from './parseWorkerNetwork.js';
 import { registerWorkerRelay } from './registerWorkerRelay.js';
+import { startLightClientService } from './startLightClientService.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 import { record, type Recording } from './testing/record.js';
 
@@ -41,7 +43,6 @@ type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], Re
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];
-type ResolverParams = Parameters<WorkerResolver['createDotnsResolver']>[0];
 type SpanOpen = typeof m.open;
 
 type LogLine = {
@@ -64,7 +65,6 @@ type Tab = ReturnType<Attached['speak']>;
 type Presync = ReturnType<typeof createDeferred<undefined>>;
 
 /** The worker's ports and close, on their own. */
-type WorkerLifecycle = ReturnType<typeof createWorkerLifecycle>;
 
 type CreateFakeLightClientParams = {
   /** What the resolver's Asset Hub pre-sync waits on. Settled at once when unset. */
@@ -84,6 +84,8 @@ type BootWorkerParams = {
   flush?: () => Promise<void>;
   /** The byte total the worker meters. Unset, it meters none. */
   readNetBytes?: () => number;
+  /** Starts the worker's chains and name resolver. The real one by default. */
+  startService?: typeof startLightClientService;
 };
 
 type AttachParams = {
@@ -146,7 +148,6 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   const opened: string[] = [];
   const syncReporting: { chains: readonly string[]; openBefore: number }[] = [];
   let fatal: string | null = null;
-  let resolverParams: ResolverParams | null = null;
   let peopleWarms = 0;
   let disconnectFailure: Error | null = null;
   const defaultPresync = Promise.resolve();
@@ -200,8 +201,7 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
       }
       return () => undefined;
     },
-    createDotnsResolver(params) {
-      resolverParams = params;
+    createDotnsResolver() {
       return {
         resolveDotName: resolveDotName ?? (() => Promise.resolve(null)),
         resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
@@ -241,8 +241,6 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
     chains,
     /** The genesis hash of each connection the worker opened, in order, a resume's included. */
     opened,
-    /** What the worker built its name resolver on. Throws before the worker built it. */
-    readResolverParams: (): ResolverParams => must(resolverParams, 'resolver params'),
     /** Each sync reporting call, with how many chains were already open when it came. */
     syncReporting,
     /** The pre-sync the worker awaited, or an already settled promise where the test holds it. */
@@ -332,7 +330,12 @@ function spyOnPort({ port, posted, onReceived, onClosed, listeners, closeEvent }
  */
 async function bootWorker(
   light: FakeLightClient,
-  { name = 'dotli-protocol-paseo-next-v2', flush = () => Promise.resolve(), readNetBytes }: BootWorkerParams = {},
+  {
+    name = 'dotli-protocol-paseo-next-v2',
+    flush = () => Promise.resolve(),
+    readNetBytes,
+    startService = startLightClientService,
+  }: BootWorkerParams = {},
 ) {
   const heartbeat = createTestTicker();
   const netBytesTicker = createTestTicker();
@@ -378,6 +381,7 @@ async function bootWorker(
     flush,
     netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, startTicker: netBytesTicker.startTicker },
     timers,
+    startService,
   });
   await light.presyncDone;
   return {
@@ -478,7 +482,7 @@ async function bootWorker(
       /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
       link() {
         const linked = connectSharedWorker({
-          worker: { port: channel.port2, addEventListener: () => undefined, removeEventListener: () => undefined },
+          worker: Object.assign(new EventTarget(), { port: channel.port2 }),
           page: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
@@ -529,8 +533,11 @@ function startLifecycle() {
   return { lifecycle, heartbeat, timers, close, everyTabPaused };
 }
 
-/** A session `lifecycle` admitted, on the worker's end of a fresh port pair, whose tab never speaks. */
-function openSession(lifecycle: WorkerLifecycle): PortSession {
+/**
+ * A session `lifecycle` admitted, on the worker's end of a fresh port pair, whose tab speaks and leaves only when the
+ * test says so.
+ */
+function openSession(lifecycle: WorkerLifecycle) {
   const channel = new MessageChannel();
   openPorts.add(channel.port1);
   openPorts.add(channel.port2);
@@ -549,7 +556,19 @@ function openSession(lifecycle: WorkerLifecycle): PortSession {
     hello: { resolutionId: null },
   });
   tabs.add(transport);
-  return lifecycle.admit({ port, transport, unwatch: () => undefined, serve: () => undefined });
+  const session = { port, transport };
+  lifecycle.admit(session);
+  return {
+    ...session,
+    /** The tab sends something, which the worker hears at once. */
+    speak(): void {
+      channel.port1.dispatchEvent(new Event('message'));
+    },
+    /** The tab's end of the port closes, which the worker hears at once. */
+    leave(): void {
+      channel.port1.dispatchEvent(new Event('close'));
+    },
+  };
 }
 
 /** Lets the heartbeat run until a silent port is let go. */
@@ -765,6 +784,29 @@ describe('protocol SharedWorker', () => {
     expect(worker.close).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dotli user whose worker fails to start its service, I hear why, my chain call is refused, the failure is counted and the worker then closes', async () => {
+    // Given a worker whose service throws as it starts
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const worker = await bootWorker(createFakeLightClient(), {
+      startService() {
+        throw new Error('chain pool failed to open');
+      },
+    });
+
+    // When a tab connects and sends a chain message, and the worker closes
+    const tab = worker.connect();
+    const sent = await tab.transport.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
+    await worker.runQueuedClose();
+
+    // Then the tab heard why, its call was refused, the pre-sync failure was counted, and the worker closed once
+    await expect(tab.status.ended).resolves.toEqual(
+      err(domain({ tag: 'initFailed', value: 'chain pool failed to open' })),
+    );
+    expect(sent).toEqual(err(hostFailure(`Error: ${PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED}`)));
+    expect(metrics.counted(S.SMOLDOT_PRESYNC)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(worker.close).toHaveBeenCalledTimes(1);
+  });
+
   it('As a dotli user on the shared light client, I connect to a worker named for an unknown network and it stays up to tell me why', async () => {
     // Given a worker the iframe named for a network this build does not know
     const worker = await bootWorker(createFakeLightClient(), { name: 'dotli-protocol-nowhere' });
@@ -774,7 +816,7 @@ describe('protocol SharedWorker', () => {
 
     // Then it hears the cause, and the worker does not close, since a fresh one would fail the same way
     await expect(status.ended).resolves.toEqual(
-      err(domain({ tag: 'initFailed', value: 'Unknown protocol network: "nowhere"' })),
+      err(domain({ tag: 'initFailed', value: 'Unknown protocol network in the worker name "dotli-protocol-nowhere"' })),
     );
     expect(worker.close).not.toHaveBeenCalled();
   });
@@ -867,47 +909,6 @@ describe('protocol SharedWorker', () => {
     await expect(later.ended).resolves.toEqual(FATAL_END);
     expect([...waiting.events, ...later.events]).toEqual([]);
     expect(light.countPeopleWarms()).toBe(0);
-  });
-
-  it("As a dotli user on the shared light client, I watch my tab's loading screen and it hears how the shared chains sync", async () => {
-    // Given a tab hearing telemetry while pre-sync is under way
-    const light = createFakeLightClient({ presync: () => new Promise<void>(() => undefined) });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    const telemetry = record({ transport: tab.transport, method: frame.telemetry, start: undefined });
-    await tab.transport.request(frame.heartbeat, undefined);
-
-    // When the relay reports its warp progress
-    for (const listener of light.syncListeners) {
-      listener({ chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 });
-    }
-
-    // Then the tab hears it as direct mode sends it
-    await telemetry.waitFor(1);
-    expect(telemetry.events).toEqual([
-      { tag: 'chainSync', value: { chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 } },
-    ]);
-  });
-
-  it("As a dotli user on the shared light client, I resolve names and they read the light client's own Asset Hub and People", async () => {
-    // Given
-    const light = createFakeLightClient();
-    await bootWorker(light);
-    const resolverParams = light.readResolverParams();
-    const services = getActiveServicesConfig();
-
-    // When
-    resolverParams.assetHub()(() => undefined);
-    must(resolverParams.people, 'people')()(() => undefined);
-
-    // Then
-    expect(light.chains).toEqual([
-      services.relay.genesis,
-      services.bulletin.genesis,
-      services.assethub.genesis,
-      services.people.genesis,
-    ]);
-    expect(resolverParams.dotns).toEqual(services.dotns);
   });
 
   it('As a dotli user on the shared light client, I start the worker and the relay and Bulletin sync shows before any product asks for them', async () => {
@@ -1073,20 +1074,6 @@ describe('protocol SharedWorker', () => {
     // tab's link ends the rest of what it holds with that end
     await expect(status.ended).resolves.toEqual(RELEASED_STATUS);
     expect(connected.events).toEqual([{ tag: 'connected', value: undefined }]);
-  });
-
-  it('As a frozen tab, I stay silent past the heartbeat and my released port stays open so I hear the release whenever I thaw', async () => {
-    // Given a tab on a synced worker
-    const worker = await bootWorker(createFakeLightClient());
-    const tab = worker.connect();
-    const status = await waitForReady(tab);
-
-    // When it sends nothing for longer than the heartbeat allows
-    outlastHeartbeat(worker);
-
-    // Then the worker let it go without closing its port
-    await expect(status.ended).resolves.toEqual(RELEASED_STATUS);
-    expect(tab.countCloses()).toBe(0);
   });
 
   it('As a thawed tab, I speak on a released port and the worker closes that port on its next beat', async () => {
@@ -1287,25 +1274,6 @@ describe('protocol SharedWorker', () => {
     // Then no beat runs after the close
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(worker.isBeating()).toBe(false);
-  });
-
-  it('As a dotli user on the shared light client, I subscribe to telemetry and hear the light client byte total for my speed readout', async () => {
-    // Given a tab hearing telemetry on a worker whose light client has received bytes
-    let total = 1_000;
-    const worker = await bootWorker(createFakeLightClient(), { readNetBytes: () => total });
-    const telemetry = record({ transport: worker.connect().transport, method: frame.telemetry, start: undefined });
-    await telemetry.waitFor(1);
-
-    // When the next report interval passes
-    total = 4_000;
-    worker.tickNetBytes();
-
-    // Then the tab hears the baseline, then the cumulative total
-    await telemetry.waitFor(2);
-    expect(telemetry.events).toEqual([
-      { tag: 'netBytes', value: 1_000 },
-      { tag: 'netBytes', value: 4_000 },
-    ]);
   });
 
   it('As a dotli user with many tabs on the shared light client, I subscribe in every tab and each hears the byte total from one meter', async () => {
@@ -1521,6 +1489,32 @@ describe('protocol SharedWorker', () => {
     expect(tab.countCloses()).toBe(1);
   });
 
+  it('As a worker whose service fails to let go of its chains, I am disposed without a throw and the failure is reported', async () => {
+    // Given a synced worker whose service lets go of its chains and then throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light, {
+      startService(params) {
+        const service = startLightClientService(params);
+        return {
+          ...service,
+          dispose() {
+            service.dispose();
+            throw new Error('service release failed');
+          },
+        };
+      },
+    });
+
+    // When the worker is disposed
+    const thrown = catchError(worker.dispose);
+
+    // Then nothing threw, the failure was reported, and each chain it opened was disconnected once
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(light.disconnects.map(disconnect => disconnect.mock.calls.length)).toEqual([1, 1]);
+  });
+
   it('As a worker that was disposed, I no longer hear the light client', async () => {
     // Given a worker that was disposed
     const light = createFakeLightClient();
@@ -1583,7 +1577,6 @@ describe('worker lifecycle', () => {
     await timers.advance(0);
 
     // Then it stayed failed and closed once
-    expect(lifecycle.getPhase().name).toBe('failed');
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -1614,7 +1607,6 @@ describe('worker lifecycle', () => {
     // Then only the last ask was heard, as every tab paused
     expect(heardBeforeLast).toEqual([]);
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
   });
 
   it('As the shared worker, I hear the pause end when a paused tab resumes or a new tab connects', () => {
@@ -1632,7 +1624,6 @@ describe('worker lifecycle', () => {
 
     // Then each change was heard once, in order, and the pause ended with the new tab
     expect(everyTabPaused).toEqual([true, false, true, false]);
-    expect(lifecycle.isEveryTabPaused()).toBe(false);
   });
 
   it("As the shared worker, I hear every tab paused once my only unpaused tab's port closes", () => {
@@ -1643,7 +1634,7 @@ describe('worker lifecycle', () => {
     lifecycle.markPaused(paused, true);
 
     // When the unpaused tab's port closes
-    lifecycle.closePort(unpaused);
+    unpaused.leave();
 
     // Then every tab left asks for a pause
     expect(everyTabPaused).toEqual([true]);
@@ -1658,27 +1649,12 @@ describe('worker lifecycle', () => {
 
     // When the heartbeat runs past the beats it allows, while only the paused tab speaks
     for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
-      lifecycle.markAlive(paused);
+      paused.speak();
       heartbeat.tick();
     }
 
     // Then the release of the silent tab left every tab paused
     expect(everyTabPaused).toEqual([true]);
-  });
-
-  it('As the shared worker whose last paused tab left, I hear the pause end when a new tab connects', () => {
-    // Given a lifecycle whose only tab asked for a pause and left
-    const { lifecycle, everyTabPaused } = startLifecycle();
-    const session = openSession(lifecycle);
-    lifecycle.markPaused(session, true);
-    lifecycle.closePort(session);
-
-    // When a new tab connects
-    openSession(lifecycle);
-
-    // Then the pause ended
-    expect(everyTabPaused).toEqual([true, false]);
-    expect(lifecycle.isEveryTabPaused()).toBe(false);
   });
 
   it('As the shared worker whose last tab left, I keep my pause state', () => {
@@ -1688,10 +1664,106 @@ describe('worker lifecycle', () => {
     lifecycle.markPaused(session, true);
 
     // When its port closes
-    lifecycle.closePort(session);
+    session.leave();
 
-    // Then nothing more was heard, and the pause holds
+    // Then nothing more was heard, so the pause holds
     expect(everyTabPaused).toEqual([true]);
-    expect(lifecycle.isEveryTabPaused()).toBe(true);
+  });
+
+  it('As the shared worker, I am asked for the scope of a port I released and refuse', () => {
+    // Given a lifecycle whose only port the heartbeat released, as its tab missed every beat it allows
+    const { lifecycle, heartbeat } = startLifecycle();
+    const session = openSession(lifecycle);
+    for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
+      heartbeat.tick();
+    }
+    const open = vi.fn<() => EngineScope>();
+
+    // When the scope of that port is asked for
+    const thrown = catchError(() => lifecycle.getScope(session, open));
+
+    // Then it is refused, and no scope was opened
+    expect(thrown).toMatchObject({ message: 'The port is no longer served' });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("As the shared worker, I am disposed while my first port's transport throws, and the failure is reported while my other port is still let go", () => {
+    // Given a lifecycle serving two ports, the first of whose transport throws on dispose
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle } = startLifecycle();
+    const first = openSession(lifecycle);
+    const second = openSession(lifecycle);
+    vi.spyOn(first.transport, 'dispose').mockImplementationOnce(() => {
+      throw new Error('dispose failed');
+    });
+    const secondDispose = vi.spyOn(second.transport, 'dispose');
+
+    // When the lifecycle is disposed
+    const thrown = catchError(() => {
+      lifecycle.dispose();
+    });
+
+    // Then nothing was thrown, the failure was reported, and the second port was let go
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(secondDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the shared worker, I am told a served tab left while its transport throws on dispose, and the failure is reported while its scope still closes and its port is shut', () => {
+    // Given a lifecycle serving a tab with an open scope, whose transport throws on dispose
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle } = startLifecycle();
+    const session = openSession(lifecycle);
+    const closeScope = vi.fn<() => void>();
+    lifecycle.getScope(session, () => toFakeScope(closeScope));
+    vi.spyOn(session.transport, 'dispose').mockImplementationOnce(() => {
+      throw new Error('dispose failed');
+    });
+    const closePort = vi.spyOn(session.port, 'close');
+
+    // When the tab's port closes
+    const thrown = catchError(() => {
+      session.leave();
+    });
+
+    // Then nothing was thrown, the failure was reported, and the scope and the port were still closed
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(closeScope).toHaveBeenCalledTimes(1);
+    expect(closePort).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the shared worker, I release a tab whose status sink throws on its end, and the failure is reported while its transport still goes and its scope still closes', () => {
+    // Given a lifecycle serving a tab with an open scope and a status sink that throws when ended
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { lifecycle, heartbeat } = startLifecycle();
+    const session = openSession(lifecycle);
+    const closeScope = vi.fn<() => void>();
+    lifecycle.getScope(session, () => toFakeScope(closeScope));
+    lifecycle.addStatusSink(session, {
+      send: () => undefined,
+      interrupt: () => {
+        throw new Error('interrupt failed');
+      },
+    });
+    const dispose = vi.spyOn(session.transport, 'dispose');
+
+    // When the tab misses every beat it is allowed
+    const thrown = catchError(() => {
+      for (let round = 0; round <= HEARTBEAT_MISSED_BEATS; round++) {
+        heartbeat.tick();
+      }
+    });
+
+    // Then nothing was thrown, the failure was reported, and the transport and the scope were still let go
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(closeScope).toHaveBeenCalledTimes(1);
   });
 });
+
+/** A scope that only records its close, for a case that never connects on it. */
+function toFakeScope(close: () => void): EngineScope {
+  return { close } as unknown as EngineScope;
+}

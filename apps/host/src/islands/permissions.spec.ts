@@ -1,15 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
 import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
-import type {
-  ChangeOutcome,
-  PendingPermissions,
-  ProductPermissionsState,
+import { createPermissionAuthorizations } from '../runtime/createPermissionAuthorizations.js';
+import {
+  createProductPermissions,
+  type ChangeOutcome,
+  type PendingPermissions,
 } from '../runtime/state/productPermissions.js';
+import type { ProductPermissionsState } from '../runtime/state/productPermissionsState.js';
+import type { ProductState } from '../runtime/state/productState.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ShownProduct, usePermissionsPanel } from './permissions.js';
 
@@ -42,13 +45,32 @@ function mount() {
   return { panel, dispose, intents, given, pending };
 }
 
-const read = (statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState => ({
-  status: 'read',
-  label,
-  statuses,
-});
+function read(statuses: readonly PermissionStatus[], label = 'app'): ProductPermissionsState {
+  return {
+    status: 'read',
+    label,
+    statuses,
+  };
+}
 
 describe('usePermissionsPanel', () => {
+  it('As a user, I open the topbar before the permissions of the app are read, and the permissions button shows no grants', () => {
+    // Given
+    const product = atom<ProductState>({ status: 'none', loadId: 0 });
+    const store = createProductPermissions({ registry: createPermissionAuthorizations(), product });
+
+    // When
+    const { panel, dispose } = createRoot(d => ({
+      panel: usePermissionsPanel({ permissions: PERMISSIONS, product, store }),
+      dispose: d,
+    }));
+    onTestFinished(dispose);
+    flush();
+
+    // Then
+    expect(panel.hasGrants()).toBe(false);
+  });
+
   it.each<[string, ShownProduct, ProductPermissionsState, string | undefined]>([
     ['the product is still loading', { status: 'none' }, { status: 'none' }, 'loading'],
     ['there is no app', { status: 'error' }, { status: 'none' }, 'no-app'],
@@ -122,18 +144,17 @@ describe('usePermissionsPanel', () => {
     dispose();
   });
 
-  it('As a user, a change applies to the app whose permissions were read, its label passed as is, and resolves what failed', async () => {
+  it('As a user, a change applies to the app whose permissions were read and resolves what failed', async () => {
     // Given
-    const markup = '<img id="injected" src="x">';
     const { panel, dispose, intents, given } = mount();
     intents.change.mockResolvedValueOnce({ failed: ['Camera'] });
-    given({ status: 'loaded', label: markup }, read(['ask', 'ask'], markup));
+    given(LOADED, read(['ask', 'ask']));
 
     // When
     const failed = await panel.onChange({ Camera: 'granted' });
 
     // Then
-    expect(intents.change).toHaveBeenCalledExactlyOnceWith(markup, { Camera: 'granted' });
+    expect(intents.change).toHaveBeenCalledExactlyOnceWith('app', { Camera: 'granted' });
     expect(failed).toEqual(['Camera']);
     dispose();
   });

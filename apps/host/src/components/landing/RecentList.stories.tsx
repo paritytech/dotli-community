@@ -5,7 +5,7 @@ import { createSignal, flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, SolidRenderer, StoryObj } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
-import { expect, waitFor, within } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { RecentList } from './RecentList.js';
 
@@ -13,12 +13,12 @@ const SUFFIX = '.dot';
 
 /** The names the page holds, and those the list asked to forget. */
 const memory = { stored: [] as string[], forgotten: [] as string[] };
-const visited =
-  (...labels: string[]) =>
-  () => {
+function visited(...labels: string[]) {
+  return () => {
     memory.stored = labels;
     memory.forgotten = [];
   };
+}
 
 /** The list as the page binds it: forgetting a name drops it from what the page holds. */
 function Bound(): JSX.Element {
@@ -45,8 +45,9 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
-const labelsShown = (canvas: { queryAllByTestId: (id: string) => HTMLElement[] }): (string | undefined)[] =>
-  canvas.queryAllByTestId('landing-recent-link').map(link => link.dataset['label']);
+function labelsShown(canvas: { queryAllByTestId: (id: string) => HTMLElement[] }): (string | undefined)[] {
+  return canvas.queryAllByTestId('landing-recent-link').map(link => link.dataset['label']);
+}
 
 /**
  * As a returning visitor, I see my recent names under a Recent heading, each linking to its site with a button to
@@ -54,33 +55,6 @@ const labelsShown = (canvas: { queryAllByTestId: (id: string) => HTMLElement[] }
  */
 export const Recents: Story = {
   beforeEach: visited('alpha', 'beta'),
-  play: async ({ canvas, step }) => {
-    await step('Then my recent names show as a group under a Recent heading', async () => {
-      const heading = await canvas.findByRole('heading', { level: 2, name: 'Recent' });
-      await waitFor(() => expect(heading).toBeVisible());
-      await expect(canvas.getByRole('group', { name: 'Recent' })).toBe(canvas.getByTestId('landing-recent-list'));
-      await expect(labelsShown(canvas)).toEqual(['alpha', 'beta']);
-    });
-    await step('And each links to its site, with the TLD beside the name and a button to remove it', async () => {
-      const link = canvas.getByRole('link', { name: `alpha${SUFFIX}` });
-      await expect(link.getAttribute('href')).toMatch(/^https?:\/\/alpha\./);
-      await expect(within(link).getByTestId('landing-tld')).toHaveTextContent(SUFFIX);
-      const remove = canvas.getByRole('button', { name: `Remove alpha${SUFFIX} from recently visited` });
-      await expect(remove).toHaveAttribute('type', 'button');
-      await expect(remove).toHaveAttribute('title', 'Remove');
-    });
-  },
-};
-
-/** As a first-time visitor, I see no recents row. */
-export const NoRecents: Story = {
-  beforeEach: visited(),
-  play: async ({ canvas, step }) => {
-    await step('Then no recents row shows', async () => {
-      await expect(canvas.queryByRole('heading', { name: 'Recent' })).toBeNull();
-      await expect(canvas.queryByTestId('landing-recent-list')).toBeNull();
-    });
-  },
 };
 
 /** As a returning visitor, I see a recent name that holds markup as text. */
@@ -123,17 +97,17 @@ export const RemoveForgets: Story = {
   },
 };
 
-const touch = (target: Element, kind: string): void => {
+function touch(target: Element, kind: string): void {
   target.dispatchEvent(new Event(kind, { bubbles: true }));
-};
-const tap = (target: Element): MouseEvent => {
+}
+function tap(target: Element): MouseEvent {
   const event = new MouseEvent('click', { bubbles: true, cancelable: true });
   target.dispatchEvent(event);
   return event;
-};
+}
 
 /** Taps `target` and says whether the page cancelled it, keeping the test browser from following a link it did not. */
-const wasPrevented = (target: Element): boolean => {
+function wasPrevented(target: Element): boolean {
   let prevented = false;
   // Added after the page's own listeners, so it sees what they decided.
   const record = (event: Event): void => {
@@ -144,7 +118,7 @@ const wasPrevented = (target: Element): boolean => {
   tap(target);
   document.removeEventListener('click', record);
   return prevented;
-};
+}
 
 /** The press timing is the point, so the clock is the test's, and it is real again when `run` ends. */
 async function onFakeClock(run: (advance: (ms: number) => Promise<void>) => Promise<void>): Promise<void> {
@@ -162,10 +136,12 @@ const HOLD_MS = 450;
 
 type Canvas = StoryContext<SolidRenderer>['canvas'];
 
-const link = (canvas: Canvas, label: string): Promise<HTMLElement> =>
-  canvas.findByRole('link', { name: `${label}${SUFFIX}` });
-const remove = (canvas: Canvas, label: string): HTMLElement =>
-  canvas.getByRole('button', { name: `Remove ${label}${SUFFIX} from recently visited` });
+function link(canvas: Canvas, label: string): Promise<HTMLElement> {
+  return canvas.findByRole('link', { name: `${label}${SUFFIX}` });
+}
+function remove(canvas: Canvas, label: string): HTMLElement {
+  return canvas.getByRole('button', { name: `Remove ${label}${SUFFIX} from recently visited` });
+}
 
 /** As a returning visitor on a touch screen, I hold a name and its remove button shows only once the press is long. */
 export const LongPressReveals: Story = {

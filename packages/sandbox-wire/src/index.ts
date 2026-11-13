@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contractParams.js';
+export { removeContractParams, SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contractParams.js';
 export { validateSandboxParams } from './validateSandboxParams.js';
 export { SandboxContractError } from './sandboxContractError.js';
 export type {
@@ -17,6 +17,13 @@ export type {
   BitswapResultMessage,
   HostToSandboxMessage,
   SandboxLoadOutcome,
+  SandboxRecoverAcceptedMessage,
   SandboxToHostMessage,
 } from './sandboxMessages.js';
-export { isLoadedOutcome, parseApiViolationMessage, parseHostToSandboxMessage, postToHost } from './sandboxMessages.js';
+export {
+  isLoadedOutcome,
+  parseApiViolationMessage,
+  parseHostToSandboxMessage,
+  parseRecoverAcceptedMessage,
+  postToHost,
+} from './sandboxMessages.js';

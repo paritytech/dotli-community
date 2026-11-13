@@ -40,9 +40,24 @@ function captureArchiveFailure(event: MessageEvent<unknown>): void {
     error.name = message.name;
   }
   report.capture(error, {
-    step: message.stage === 'restore' ? 'sw_restore' : 'sw_persist',
+    step: getCaptureStep(message.stage),
     tags: { surface: 'app_sw' },
   });
+}
+
+/** The step a failure the worker reports at `stage` is captured under. */
+function getCaptureStep(stage: unknown): string {
+  switch (stage) {
+    case 'restore':
+      return 'sw_restore';
+    case 'serve':
+      return 'sw_serve';
+    case 'transition':
+      return 'sw_transition';
+    // `persist`, and the stage of a worker from a release that named none.
+    default:
+      return 'sw_persist';
+  }
 }
 
 /** Whether a worker's message reports an archive failure. Its other fields stay unchecked until they are read. */

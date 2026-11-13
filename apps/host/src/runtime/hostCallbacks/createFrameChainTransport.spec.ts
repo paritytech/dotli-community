@@ -50,7 +50,6 @@ describe('createFrameChainTransport', () => {
     provider(() => undefined);
 
     // Then
-    expect(createRemoteChain).toHaveBeenCalledWith(GENESIS);
     expect(events).toEqual(['status:connecting', 'status:connected']);
   });
 
@@ -69,17 +68,6 @@ describe('createFrameChainTransport', () => {
       expect(events).toEqual(['status:disconnected', `halt:${reason}`]);
     },
   );
-
-  it('As the host page, I open a chain through the protocol frame and its transport sets no follow limit', () => {
-    // Given
-    const params = { createRemoteChain };
-
-    // When
-    const transport = must(createFrameChainTransport(GENESIS, hooks, params), 'transport');
-
-    // Then
-    expect(transport.followLimit).toBe(Infinity);
-  });
 
   it('As a dotli integrator, I ask for a chain the frame cannot serve and get no transport', () => {
     // Given

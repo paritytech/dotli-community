@@ -7,9 +7,10 @@ import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { EventSeq } from '../model/storedEvent.js';
 import type { TimelineLane } from '../model/buildTimeline.js';
+import { MARGIN_WIDTH } from '../model/timelineGeometry.js';
 import s from './Timeline.module.css';
 
-export type TimelineSelect = (seq: EventSeq, element: Element) => void;
+type TimelineSelect = (seq: EventSeq, element: Element) => void;
 
 export function Timeline(props: {
   lanes: readonly TimelineLane[];
@@ -27,9 +28,9 @@ export function Timeline(props: {
 
 function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelect: TimelineSelect }): JSX.Element {
   // One scan per selection change, rather than one per box.
-  const selectedKey = createMemo((): EventSeq | null => {
+  const selectedBoxSeq = createMemo((): EventSeq | null => {
     const seq = props.selectedSeq;
-    return seq === null ? null : (props.lane.boxes.find(b => b.memberSeqs.includes(seq))?.key ?? null);
+    return seq === null ? null : (props.lane.boxes.find(b => b.memberSeqs.includes(seq))?.seq ?? null);
   });
   const viewBox = (): string => `0 0 ${String(props.lane.width)} ${String(props.lane.height)}`;
   return (
@@ -48,16 +49,15 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
           height={props.lane.height}
           viewBox={viewBox()}
         >
-          <line class={s['divider']} x1={props.lane.marginX} y1={0} x2={props.lane.marginX} y2={props.lane.height} />
+          <line class={s['divider']} x1={MARGIN_WIDTH} y1={0} x2={MARGIN_WIDTH} y2={props.lane.height} />
           <Show when={props.lane.railsEndX}>
             {x => <line class={s['divider']} x1={x()} y1={0} x2={x()} y2={props.lane.height} />}
           </Show>
-          <For each={props.lane.rails} keyed={rail => rail.key}>
+          <For each={props.lane.rails} keyed={rail => rail.seq}>
             {rail => (
               <line
                 class={s['rail']}
                 data-testid="td-tl-rail"
-                data-kind="rail"
                 data-seq={rail().seq}
                 data-tooltip={rail().tooltip}
                 x1={rail().x}
@@ -72,15 +72,14 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
               />
             )}
           </For>
-          <For each={props.lane.ticks} keyed={tick => tick.key}>
+          <For each={props.lane.ticks} keyed={tick => tick.seq}>
             {tick => (
               <circle
                 class={s['tick']}
                 data-testid="td-tl-tick"
-                data-kind="tick"
                 data-seq={tick().seq}
                 data-tooltip={tick().tooltip}
-                cx={tick().cx}
+                cx={MARGIN_WIDTH / 2}
                 cy={tick().cy}
                 r={2}
                 style={{ fill: tick().color }}
@@ -90,17 +89,16 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
               />
             )}
           </For>
-          <For each={props.lane.boxes} keyed={box => box.key}>
+          <For each={props.lane.boxes} keyed={box => box.seq}>
             {box => (
               <>
                 <rect
                   class={s['segment']}
                   data-testid="td-tl-segment"
-                  data-kind="segment"
                   data-seq={box().seq}
                   data-tooltip={box().tooltip}
                   data-pending={box().pending ? '' : undefined}
-                  data-selected={selectedKey() === box().key ? '' : undefined}
+                  data-selected={selectedBoxSeq() === box().seq ? '' : undefined}
                   x={box().x}
                   y={box().y}
                   width={box().width}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getLocalRoot } from './getLocalRoot.js';
-import { readRuntimeGlobal } from './readRuntimeNetworkConfig.js';
+import { readRuntimeNetworkConfig } from './readRuntimeNetworkConfig.js';
 
 // A plain string, not a union, because deployments include ephemeral root domains. `isSharedAuthSiteId` validates it
 // at runtime.
@@ -47,11 +47,7 @@ function deriveBaseDomain(): string {
  * Must be a suffix of the hostname, or a page could widen the cross-origin allowlist to an unrelated host.
  */
 function getConfiguredBaseDomain(): string | null {
-  const raw = readRuntimeGlobal();
-  if (typeof raw !== 'object' || raw === null) {
-    return null;
-  }
-  const candidate = 'baseDomain' in raw ? raw.baseDomain : undefined;
+  const candidate = readRuntimeNetworkConfig()?.baseDomain;
   if (candidate === undefined) {
     return null;
   }

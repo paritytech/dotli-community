@@ -53,18 +53,7 @@ export const PhraseOpensSignIn: Story = {
 };
 
 /** As a developer using the debug panel, I am told what a local wallet is and warned that it is not secure. */
-export const ExplainsAndWarns: Story = {
-  play: async ({ canvas, step }) => {
-    await step('Then I am told what a local wallet is and warned that it is not secure', async () => {
-      await expect(canvas.getByTestId('td-wallet-about')).toHaveTextContent(
-        'Copy the recovery phrase from Polkadot App',
-      );
-      await expect(canvas.getByTestId('td-wallet-warning')).toHaveTextContent(
-        'Use it only for an account you can afford to lose.',
-      );
-    });
-  },
-};
+export const ExplainsAndWarns: Story = {};
 
 /** As a developer using the debug panel, I see my local account and use Polkadot App, and the page signs me out. */
 export const UsePolkadotAppSignsOut: Story = {

@@ -15,3 +15,20 @@ export type SavedSettings = {
 
 /** Saves `next` over `prior` and reloads the app. A full wipe clears every cache whatever `next` says. */
 export type ApplySettings = (next: Settings, prior: Settings, options?: { forceFullWipe?: boolean }) => Promise<void>;
+
+/**
+ * Whether a reset runs: `applying` for a save, `clearing` for a full wipe. A reset that started never ends, since the
+ * reload follows it.
+ */
+export type SettingsResetStatus = 'idle' | 'applying' | 'clearing';
+
+/** Returns whether `status` is a running reset, a save or a full wipe. Never throws. */
+export function isResetRunning(status: SettingsResetStatus): boolean {
+  switch (status) {
+    case 'idle':
+      return false;
+    case 'applying':
+    case 'clearing':
+      return true;
+  }
+}

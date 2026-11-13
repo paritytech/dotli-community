@@ -2,40 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Runs first in a product page of a checker build. It reports each use of an API a product should reach only through
-// the host, and lets the call run. The product's HTML inlines it bundled, so it imports only types.
+// the host, and lets the call run. The product's HTML inlines it bundled with what it imports.
 
 import type { ReportViolation } from './createParentReporter.js';
+import { trapWallets } from './trapWallets.js';
 
 /** The product page, as much of it as the checker wraps. */
 export type CheckedPage = Window & typeof globalThis;
 
 type AnyConstructor = new (...args: unknown[]) => unknown;
 
-type WrapConstructorParams = {
-  /** The page whose global the wrapper replaces. */
-  page: CheckedPage;
-  /** The global the wrapper replaces. */
-  name: string;
-  /** The constructor the wrapper calls. */
-  original: AnyConstructor;
-  /** Called with each construction's arguments, before it runs. */
-  report: (args: unknown[]) => void;
-  /** The static constants the wrapper copies from `original`. */
-  constants?: readonly string[];
-};
-
-type WrapStorageParams = {
-  /** The storage whose methods report, or nothing when the page has none. */
-  storage: Storage | null | undefined;
-  /** Names the storage in each report. */
-  label: string;
-  /** Called with each use of the storage, before it runs. */
-  report: ReportViolation;
-};
-
-// Wallet extensions write their globals while they bootstrap, so reads count only after this long.
-const WALLET_READY_MS = 3000;
-const WALLET_GLOBALS = ['injectedWeb3', 'polkadot', 'ethereum'] as const;
+/** The constructors the checker reports, whether a report names the URL in their first argument, and their statics. */
+const WATCHED_CONSTRUCTORS: readonly { name: string; reportsUrl: boolean; constants: readonly string[] }[] = [
+  { name: 'WebSocket', reportsUrl: true, constants: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'] },
+  { name: 'RTCPeerConnection', reportsUrl: false, constants: [] },
+  { name: 'EventSource', reportsUrl: true, constants: ['CONNECTING', 'OPEN', 'CLOSED'] },
+  { name: 'Worker', reportsUrl: true, constants: [] },
+  { name: 'SharedWorker', reportsUrl: true, constants: [] },
+];
 
 /** Wraps every API the checker watches on `page`, each reporting to `report` and then running. Never throws. */
 export function installSandboxChecker(page: CheckedPage, report: ReportViolation): void {
@@ -44,8 +28,8 @@ export function installSandboxChecker(page: CheckedPage, report: ReportViolation
   wrapConstructors(page, report);
   wrapNavigator(page, report);
   wrapCreateElement(page, report);
-  wrapStorage({ storage: page.localStorage, label: 'localStorage', report });
-  wrapStorage({ storage: page.sessionStorage, label: 'sessionStorage', report });
+  wrapStorage(page, 'localStorage', report);
+  wrapStorage(page, 'sessionStorage', report);
   wrapIndexedDb(page, report);
   wrapCaches(page, report);
   wrapCookie(page, report);
@@ -55,27 +39,6 @@ export function installSandboxChecker(page: CheckedPage, report: ReportViolation
 /** The page's globals by name, for the ones a browser may lack. */
 function getGlobals(page: CheckedPage): Record<string, unknown> {
   return page as unknown as Record<string, unknown>;
-}
-
-/**
- * Replaces the global constructor `name` with one that reports, then constructs `original`. `instanceof` and the
- * listed static constants keep working.
- */
-function wrapConstructor({ page, name, original, report, constants = [] }: WrapConstructorParams): void {
-  // A plain function that constructs, so `new` on it works as on the original.
-  const wrapper = function (...args: unknown[]): unknown {
-    report(args);
-    return new original(...args);
-  } as unknown as AnyConstructor & Record<string, unknown>;
-  // Every function and constructor has a prototype, which its type does not let a write reach.
-  (wrapper as { prototype: unknown }).prototype = (original as { prototype: unknown }).prototype;
-  Object.defineProperty(wrapper.prototype, 'constructor', { value: wrapper });
-  // The static constants are read by name.
-  const statics = original as unknown as Record<string, unknown>;
-  for (const constant of constants) {
-    wrapper[constant] = statics[constant];
-  }
-  getGlobals(page)[name] = wrapper;
 }
 
 function wrapFetch(page: CheckedPage, report: ReportViolation): void {
@@ -117,69 +80,42 @@ function wrapXhr(page: CheckedPage, report: ReportViolation): void {
     try {
       const url = new URL(String(rawUrl), page.location.href);
       if (url.origin !== page.location.origin) {
-        report('XMLHttpRequest', { details: { url: url.href, method } });
+        report('XMLHttpRequest', { details: { url: url.href, method: String(method) } });
       }
     } catch {
       // An input no URL parses is still a request to report, and the call itself still runs.
-      report('XMLHttpRequest', { details: { url: String(rawUrl), method } });
+      report('XMLHttpRequest', { details: { url: String(rawUrl), method: String(method) } });
     }
     Reflect.apply(original, this, args);
   };
 }
 
+/**
+ * Replaces each watched global constructor with one that reports, then constructs the original. `instanceof` and the
+ * listed static constants keep working.
+ */
 function wrapConstructors(page: CheckedPage, report: ReportViolation): void {
   const globals = getGlobals(page);
-  const getUrlDetails = (args: unknown[]): Record<string, unknown> => ({ url: String(args[0]) });
-  // A global the page has under `name` is that constructor.
-  const getConstructor = (name: string): AnyConstructor | undefined => globals[name] as AnyConstructor | undefined;
-
-  const webSocket = getConstructor('WebSocket');
-  if (webSocket) {
-    wrapConstructor({
-      page,
-      name: 'WebSocket',
-      original: webSocket,
-      report: args => {
-        report('WebSocket', { details: getUrlDetails(args) });
-      },
-      constants: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'],
-    });
-  }
-  const peerConnection = getConstructor('RTCPeerConnection') ?? getConstructor('webkitRTCPeerConnection');
-  if (peerConnection) {
-    wrapConstructor({
-      page,
-      name: 'RTCPeerConnection',
-      original: peerConnection,
-      report: () => {
-        report('RTCPeerConnection');
-      },
-    });
-  }
-  const eventSource = getConstructor('EventSource');
-  if (eventSource) {
-    wrapConstructor({
-      page,
-      name: 'EventSource',
-      original: eventSource,
-      report: args => {
-        report('EventSource', { details: getUrlDetails(args) });
-      },
-      constants: ['CONNECTING', 'OPEN', 'CLOSED'],
-    });
-  }
-  for (const name of ['Worker', 'SharedWorker']) {
-    const worker = getConstructor(name);
-    if (worker) {
-      wrapConstructor({
-        page,
-        name,
-        original: worker,
-        report: args => {
-          report(name, { details: getUrlDetails(args) });
-        },
-      });
+  for (const { name, reportsUrl, constants } of WATCHED_CONSTRUCTORS) {
+    // A global the page has under `name` is that constructor.
+    const original = globals[name] as AnyConstructor | undefined;
+    if (original === undefined) {
+      continue;
     }
+    // A plain function that constructs, so `new` on it works as on the original.
+    const wrapper = function (...args: unknown[]): unknown {
+      report(name, reportsUrl ? { details: { url: String(args[0]) } } : {});
+      return new original(...args);
+    } as unknown as AnyConstructor & Record<string, unknown>;
+    // Every function and constructor has a prototype, which its type does not let a write reach.
+    (wrapper as { prototype: unknown }).prototype = (original as { prototype: unknown }).prototype;
+    Object.defineProperty(wrapper.prototype, 'constructor', { value: wrapper });
+    // The static constants are read by name.
+    const statics = original as unknown as Record<string, unknown>;
+    for (const constant of constants) {
+      wrapper[constant] = statics[constant];
+    }
+    globals[name] = wrapper;
   }
 }
 
@@ -219,11 +155,21 @@ function wrapCreateElement(page: CheckedPage, report: ReportViolation): void {
   });
 }
 
-function wrapStorage({ storage, label, report }: WrapStorageParams): void {
+function wrapStorage(page: CheckedPage, name: 'localStorage' | 'sessionStorage', report: ReportViolation): void {
+  // A browser with storage turned off has none, whatever the DOM types say.
+  const optional = page as Partial<Record<typeof name, Storage | null>>;
+  let storage: Storage | null | undefined;
+  try {
+    storage = optional[name];
+  } catch {
+    // A browser that blocks the origin's storage throws on the read. The product's own reads throw the same, so there
+    // is nothing to wrap.
+    return;
+  }
   if (!storage) {
     return;
   }
-  const api = `Direct storage access (${label})`;
+  const api = `Direct storage access (${name})`;
   const getItem = storage.getItem.bind(storage);
   const setItem = storage.setItem.bind(storage);
   const removeItem = storage.removeItem.bind(storage);
@@ -286,9 +232,7 @@ function wrapCaches(page: CheckedPage, report: ReportViolation): void {
 
 function wrapCookie(page: CheckedPage, report: ReportViolation): void {
   const api = 'Direct storage access (cookie)';
-  const cookie =
-    Object.getOwnPropertyDescriptor(page.Document.prototype, 'cookie') ??
-    Object.getOwnPropertyDescriptor(page.HTMLDocument.prototype, 'cookie');
+  const cookie = Object.getOwnPropertyDescriptor(page.Document.prototype, 'cookie');
   if (!cookie?.get || !cookie.set) {
     return;
   }
@@ -308,35 +252,4 @@ function wrapCookie(page: CheckedPage, report: ReportViolation): void {
       set.call(document, value);
     },
   });
-}
-
-/** Extensions write a wallet global once to register, so only later writes, and reads once they settle, count. */
-function trapWallets(page: CheckedPage, report: ReportViolation): void {
-  let ready = false;
-  page.setTimeout(() => {
-    ready = true;
-  }, WALLET_READY_MS);
-  const globals = getGlobals(page);
-  for (const name of WALLET_GLOBALS) {
-    let value = globals[name];
-    let firstWrite = true;
-    Object.defineProperty(page, name, {
-      configurable: true,
-      enumerable: true,
-      get: () => {
-        if (value !== undefined && ready) {
-          report(`Direct wallet access (${name})`, { details: { action: 'read' } });
-        }
-        return value;
-      },
-      set: (next: unknown) => {
-        if (firstWrite) {
-          firstWrite = false;
-        } else {
-          report(`Direct wallet access (${name})`, { details: { action: 'write' } });
-        }
-        value = next;
-      },
-    });
-  }
 }

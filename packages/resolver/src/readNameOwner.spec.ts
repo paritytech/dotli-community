@@ -11,7 +11,7 @@ import { addToSlot, computeMappingSlot, computeNamehash } from './storageSlots.j
 type SlotRead = {
   contractAddress: string;
   slotKey: `0x${string}`;
-  options: { atHash?: string; trieId?: Uint8Array } | undefined;
+  options: Parameters<Api['readSlot']>[2];
 };
 
 /** The words each contract holds, by slot key. */

@@ -5,14 +5,10 @@ import { createEffect, createSignal, Loading, onCleanup, untrack } from 'solid-j
 import type { JSX } from '@solidjs/web';
 import { RootBoundary } from '../../mount/rootBoundary.js';
 import { anchorName } from './anchorName.js';
+import { createTooltipVisibility } from './createTooltipVisibility.js';
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import { Surface, type SurfaceWidth } from '../primitives/Surface.js';
 import s from './Tooltip.module.css';
-
-/** How long a mouse rests on the trigger before showing. */
-const SHOW_MS = 200;
-/** Grace after the pointer leaves both the trigger and the tooltip. */
-const HIDE_MS = 100;
 
 export type TooltipProps = {
   id: string;
@@ -30,34 +26,10 @@ export type TooltipProps = {
  */
 export function Tooltip(props: TooltipProps): JSX.Element {
   const [open, setOpenSignal] = createSignal(false, { ownedWrite: true });
-  /** Open as last set, for a read in the same tick as the write. */
-  let current = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let showTimer: ReturnType<typeof setTimeout> | undefined;
+  const visibility = createTooltipVisibility({ onChange: setOpenSignal });
   onCleanup(() => {
-    clearTimeout(timer);
-    clearTimeout(showTimer);
+    visibility.dispose();
   });
-  const setOpen = (next: boolean): void => {
-    clearTimeout(timer);
-    if (next !== current) {
-      current = next;
-      setOpenSignal(next);
-    }
-  };
-  const show = (): void => {
-    setOpen(true);
-  };
-  const hide = (): void => {
-    setOpen(false);
-  };
-  const hideSoon = (): void => {
-    clearTimeout(timer);
-    timer = setTimeout(hide, HIDE_MS);
-  };
-  const hold = (): void => {
-    clearTimeout(timer);
-  };
   const trigger = (): HTMLElement | undefined => untrack(() => props.trigger);
 
   createEffect(
@@ -74,14 +46,11 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         if (ev.pointerType !== 'mouse') {
           return;
         }
-        hold();
-        clearTimeout(showTimer);
-        showTimer = setTimeout(show, SHOW_MS);
+        visibility.rest();
       };
       const onPointerLeave = (ev: PointerEvent): void => {
-        clearTimeout(showTimer);
         if (ev.pointerType === 'mouse') {
-          hideSoon();
+          visibility.leave();
         }
       };
       const release = (): void => {
@@ -91,22 +60,23 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       };
       const onPointerDown = (): void => {
         pressing = true;
+        visibility.cancelShow();
         window.addEventListener('pointerup', release, true);
         window.addEventListener('pointercancel', release, true);
       };
       const onFocus = (): void => {
         if (!pressing && el.matches(':focus-visible')) {
-          show();
+          visibility.show();
         }
       };
       const onClick = (ev: MouseEvent): void => {
         // A tap, Enter or Space (click `detail` 0) toggles it. A mouse's click leaves what its hover did.
         const tap = ev instanceof PointerEvent && ev.pointerType !== 'mouse' && ev.pointerType !== '';
         if (tap || ev.detail === 0) {
-          if (current) {
-            hide();
+          if (visibility.isOpen()) {
+            visibility.hide();
           } else {
-            show();
+            visibility.show();
           }
         }
       };
@@ -114,16 +84,16 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       el.addEventListener('pointerleave', onPointerLeave);
       el.addEventListener('pointerdown', onPointerDown);
       el.addEventListener('focus', onFocus);
-      el.addEventListener('blur', hide);
+      el.addEventListener('blur', visibility.hide);
       el.addEventListener('click', onClick);
       return () => {
-        clearTimeout(showTimer);
+        visibility.cancelShow();
         release();
         el.removeEventListener('pointerenter', onPointerEnter);
         el.removeEventListener('pointerleave', onPointerLeave);
         el.removeEventListener('pointerdown', onPointerDown);
         el.removeEventListener('focus', onFocus);
-        el.removeEventListener('blur', hide);
+        el.removeEventListener('blur', visibility.hide);
         el.removeEventListener('click', onClick);
         el.style.removeProperty('anchor-name');
         // The next trigger gets them from the effects that run for it.
@@ -150,29 +120,29 @@ export function Tooltip(props: TooltipProps): JSX.Element {
     const onKeyDown = (ev: KeyboardEvent): void => {
       // Not prevented: an auto popover under the pointer closes on the same key.
       if (ev.key === 'Escape' && !ev.isComposing) {
-        hide();
+        visibility.hide();
       }
     };
     const onPointerDown = (ev: PointerEvent): void => {
       if (outside(ev.target)) {
-        hide();
+        visibility.hide();
       }
     };
     // Focus moved without the trigger's blur: a tap never focused it (Safari), or a modal took focus.
     const onFocusIn = (ev: FocusEvent): void => {
       if (outside(ev.target)) {
-        hide();
+        visibility.hide();
       }
     };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('focusin', onFocusIn);
-    window.addEventListener('blur', hide);
+    window.addEventListener('blur', visibility.hide);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('focusin', onFocusIn);
-      window.removeEventListener('blur', hide);
+      window.removeEventListener('blur', visibility.hide);
     };
   });
 
@@ -181,20 +151,20 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       id={props.id}
       kind="manual"
       open={open()}
-      onClose={hide}
+      onClose={visibility.hide}
       trigger={trigger}
       placement={props.placement ?? 'trigger-start'}
       role="tooltip"
       class={[s['tooltip'], props.class].filter(Boolean).join(' ')}
-      onPointerEnter={hold}
+      onPointerEnter={visibility.hold}
       onPointerLeave={ev => {
         // A tap on the tooltip fires a leave too, so only a mouse moving off hides it.
         if (ev.pointerType === 'mouse') {
-          hideSoon();
+          visibility.leave();
         }
       }}
     >
-      <RootBoundary root={`tooltip:${props.id}`} onBroken={hide}>
+      <RootBoundary root={`tooltip:${props.id}`} onBroken={visibility.hide}>
         <Loading fallback={null}>
           <Surface width={props.width ?? 'md'}>{props.children}</Surface>
         </Loading>

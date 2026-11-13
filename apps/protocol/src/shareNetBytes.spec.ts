@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { catchError } from '@dotli/shared/testing';
 import { createTestTicker } from './createIntervalTicker.fake.js';
 import { shareNetBytes } from './shareNetBytes.js';
@@ -46,52 +47,6 @@ describe('shareNetBytes', () => {
     expect(clock.countRunning()).toBe(1);
     expect(first).toEqual([7]);
     expect(second).toEqual([7, 7]);
-  });
-
-  it('As a worker serving many tabs, I stop the ticker with the last tab and start it again for the next', () => {
-    // Given two tabs that listened, the first of which left
-    const clock = createTestTicker();
-    const subscribe = shareNetBytes({ read: () => 7, startTicker: clock.startTicker });
-    const stopFirst = subscribe(() => undefined);
-    const stopSecond = subscribe(() => undefined);
-    stopFirst();
-
-    // When the last tab leaves, and a new one comes
-    stopSecond();
-    const running = clock.countRunning();
-    subscribe(() => undefined);
-
-    // Then the ticker stopped with the last, and starts again for the new one
-    expect(running).toBe(0);
-    expect(clock.countStarted()).toBe(2);
-  });
-
-  it('As a dotli operator, I watch a listener throw and see it reported while the others still hear the tick', () => {
-    // Given
-    const clock = createTestTicker();
-    const reported: unknown[] = [];
-    const subscribe = shareNetBytes({
-      read: () => 3,
-      startTicker: clock.startTicker,
-      report: error => reported.push(error),
-    });
-    const broken = new Error('port is gone');
-    let throwing = false;
-    subscribe(() => {
-      if (throwing) {
-        throw broken;
-      }
-    });
-    const heard: number[] = [];
-    subscribe(total => heard.push(total));
-
-    // When
-    throwing = true;
-    clock.tick();
-
-    // Then
-    expect(heard).toEqual([3, 3]);
-    expect(reported).toEqual([broken]);
   });
 
   it('As a worker, I subscribe while the baseline read throws and leave no subscriber and no ticker behind', () => {
@@ -142,9 +97,8 @@ describe('shareNetBytes', () => {
 
   it('As a dotli operator, I watch the meter fail tick after tick and see it reported once per run of failures, as the meter', () => {
     // Given a meter whose reads I break and mend
+    const reports = recordReports({ onFinished: onTestFinished });
     const clock = createTestTicker();
-    const readFailures: unknown[] = [];
-    const listenerFailures: unknown[] = [];
     const broken = new Error('meter is gone');
     let total: number | null = 1;
     const subscribe = shareNetBytes({
@@ -155,8 +109,6 @@ describe('shareNetBytes', () => {
         return total;
       },
       startTicker: clock.startTicker,
-      report: error => listenerFailures.push(error),
-      reportRead: error => readFailures.push(error),
     });
     const heard: number[] = [];
     subscribe(received => heard.push(received));
@@ -171,8 +123,97 @@ describe('shareNetBytes', () => {
     clock.tick();
 
     // Then each run of failures was reported once, as the meter's, and the good tick was heard
-    expect(readFailures).toEqual([broken, broken]);
-    expect(listenerFailures).toEqual([]);
+    expect(reports.exceptions).toMatchObject([
+      { step: 'net_bytes_read', error: broken },
+      { step: 'net_bytes_read', error: broken },
+    ]);
     expect(heard).toEqual([1, 9]);
+  });
+
+  it('As a dotli operator, I watch a broken meter idle and come back, and see its failures reported again', () => {
+    // Given a meter whose reads fail on a tick while one tab listens
+    const reports = recordReports({ onFinished: onTestFinished });
+    const clock = createTestTicker();
+    const broken = new Error('meter is gone');
+    let total: number | null = 1;
+    const subscribe = shareNetBytes({
+      read() {
+        if (total === null) {
+          throw broken;
+        }
+        return total;
+      },
+      startTicker: clock.startTicker,
+    });
+    const stop = subscribe(() => undefined);
+    total = null;
+    clock.tick();
+
+    // When the tab leaves, and another one subscribes while the meter is briefly readable, then fails on a tick
+    stop();
+    total = 2;
+    subscribe(() => undefined);
+    total = null;
+    clock.tick();
+
+    // Then each run was reported
+    expect(reports.exceptions).toMatchObject([
+      { step: 'net_bytes_read', error: broken },
+      { step: 'net_bytes_read', error: broken },
+    ]);
+  });
+
+  it('As a worker, I see the last tab leave and a new one come while a tick is heard, and a ticker runs on for the new one', () => {
+    // Given the only tab, which on hearing a tick leaves and listens again
+    const clock = createTestTicker();
+    const subscribe = shareNetBytes({ read: () => 3, startTicker: clock.startTicker });
+    const heard: number[] = [];
+    let baselineHeard = false;
+    const stop = subscribe(() => {
+      if (!baselineHeard) {
+        baselineHeard = true;
+        return;
+      }
+      stop();
+      subscribe(total => heard.push(total));
+    });
+
+    // When two ticks pass
+    clock.tick();
+    clock.tick();
+
+    // Then the new listener heard its baseline and the next tick, on a ticker that runs
+    expect(heard).toEqual([3, 3]);
+    expect(clock.countRunning()).toBe(1);
+  });
+
+  it('As a dotli operator, I watch the last tab leave while the ticker fails to stop and see it reported, not thrown, while the next tab still hears ticks', () => {
+    // Given a meter whose ticker throws once it stopped, the first time
+    const reports = recordReports({ onFinished: onTestFinished });
+    const clock = createTestTicker();
+    let failing = true;
+    function startTicker(onTick: () => void): () => void {
+      const stopTicker = clock.startTicker(onTick);
+      return () => {
+        stopTicker();
+        if (failing) {
+          failing = false;
+          throw new Error('stop failed');
+        }
+      };
+    }
+    const subscribe = shareNetBytes({ read: () => 4, startTicker });
+    const stop = subscribe(() => undefined);
+    const heard: number[] = [];
+
+    // When the only tab leaves, a new one subscribes, and a tick passes
+    const thrown = catchError(stop);
+    subscribe(total => heard.push(total));
+    clock.tick();
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'net_bytes_stop' }]);
+    expect(heard).toEqual([4, 4]);
   });
 });

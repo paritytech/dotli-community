@@ -15,26 +15,4 @@ describe('getPathInBuild', () => {
     // Then the prefix is gone
     expect(paths).toEqual(['/assets/x.js', '/']);
   });
-
-  it('As a user on an old shell on host.localhost, I ask for the protocol build at its root and the lookup keeps my path', () => {
-    // Given the protocol build's route, which host.localhost reaches
-    const route: Route = { site: 'protocol', bare: false };
-
-    // When the version file is looked up
-    const path = getPathInBuild(route, '/host_version.json');
-
-    // Then the path is kept
-    expect(path).toBe('/host_version.json');
-  });
-
-  it('As a page on localhost, I load a host file and it is looked up under its own path', () => {
-    // Given the bare host's route
-    const route: Route = { site: 'host', bare: true };
-
-    // When a host file is looked up
-    const path = getPathInBuild(route, '/a');
-
-    // Then the path is kept
-    expect(path).toBe('/a');
-  });
 });

@@ -7,7 +7,8 @@ export function getEndpointHost(endpoint: string | undefined): string | undefine
     return undefined;
   }
   try {
-    return new URL(endpoint).hostname;
+    // A value without a scheme, such as `localhost:9944`, parses with `localhost:` as the scheme and an empty host.
+    return new URL(endpoint).hostname || endpoint;
   } catch {
     return endpoint;
   }

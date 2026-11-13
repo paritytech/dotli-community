@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { recordReports } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createBlockingModalCoordinator, type BlockingModalCounts } from './createBlockingModalCoordinator.js';
 
@@ -45,20 +47,6 @@ function queueHeldPrompt() {
   return { bar, step, next, first, second };
 }
 
-/** A prompt on screen until the test finishes it, a second queued behind it, and the bar that counts them. */
-function queueTwoPrompts() {
-  const bar = createCountsSink();
-  const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
-  const shown = createDeferred<undefined>();
-  const first = scope.enqueue(() => shown.promise);
-  const second = scope.enqueue(() => new Promise<void>(() => {}));
-  onTestFinished(async () => {
-    scope.dispose();
-    await second.catch(() => {});
-  });
-  return { bar, shown, first };
-}
-
 describe('blocking modal queue', () => {
   it('As a dotli integrator, I run a prompt that throws and the next prompt shows, with the failed one run once', async () => {
     // Given two hosts, the first with a prompt that throws
@@ -81,6 +69,29 @@ describe('blocking modal queue', () => {
     await expect(failed).rejects.toThrow('render failed');
     await expect(completed).resolves.toBe('next');
     expect(throwing).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, I report the counts to a store whose listener throws, and every prompt still answers and the next one shows', async () => {
+    // Given counts reported to a store whose listener throws on every change
+    const reports = recordReports({ onFinished: onTestFinished });
+    const counts = atom<BlockingModalCounts>({ waiting: 0, active: false });
+    onTestFinished(
+      counts.listen(() => {
+        throw new Error('listener failed');
+      }),
+    );
+    const scope = createBlockingModalCoordinator({ report: next => counts.set(next) }).createScope();
+    onTestFinished(() => {
+      scope.dispose();
+    });
+
+    // When two prompts are queued
+    const first = scope.enqueue(() => 'first');
+    const second = scope.enqueue(() => 'second');
+
+    // Then both answer, and each throw is reported as the counts' own
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(new Set(reports.exceptions.map(({ step }) => step))).toEqual(new Set(['counts']));
   });
 
   it('As a dotli integrator, I run a prompt that disposes its own scope and then rejects, and it settles as aborted', async () => {
@@ -115,6 +126,36 @@ describe('blocking modal queue', () => {
     // Then the stuck prompt is aborted and the next one shows
     await expect(stuck).rejects.toMatchObject({ name: 'AbortError' });
     await expect(next).resolves.toBe('shown');
+  });
+
+  it('As a dotli integrator, I dispose the shown host and the next one together and the prompt after them runs once', async () => {
+    // Given a shown prompt that, once let through, disposes its own host and the next, with a third host waiting
+    const coordinator = createBlockingModalCoordinator();
+    const gateScope = coordinator.createScope();
+    const firstScope = coordinator.createScope();
+    const secondScope = coordinator.createScope();
+    const thirdScope = coordinator.createScope();
+    onTestFinished(() => {
+      thirdScope.dispose();
+    });
+    const gate = createDeferred<undefined>();
+    const opened = gateScope.enqueue(() => gate.promise);
+    const first = firstScope.enqueue(() => {
+      firstScope.dispose();
+      secondScope.dispose();
+      return new Promise<never>(() => {});
+    });
+    const second = secondScope.enqueue(() => 'second');
+    const third = vi.fn(() => new Promise<never>(() => {}));
+    void thirdScope.enqueue(third).catch(() => undefined);
+
+    // When the gate lets the first prompt through
+    gate.resolve(undefined);
+    await opened;
+    await Promise.allSettled([first, second]);
+
+    // Then the third host's prompt runs once
+    expect(third).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli integrator, I dispose a host as its prompt comes up and the prompt never runs', async () => {
@@ -176,6 +217,29 @@ describe('blocking modal queue, waiting count', () => {
     expect(bar.latest()).toEqual({ waiting: 1, active: true });
   });
 
+  it('As a user, I hold the slot past an answer and the bar is told only when the counts change', async () => {
+    // Given a prompt that holds the slot past its answer, with every report seen
+    const seen: BlockingModalCounts[] = [];
+    const bar = createCountsSink({ onReport: counts => seen.push(counts) });
+    const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
+    const step = createDeferred<undefined>();
+
+    // When it answers and then what it holds settles
+    await scope.enqueue((_signal, hold) => {
+      hold(step.promise);
+      return 'answered';
+    });
+    step.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(bar.latest()).toEqual({ waiting: 0, active: false });
+    });
+
+    // Then no report repeats the one before it
+    expect(
+      seen.filter((counts, index) => index > 0 && JSON.stringify(counts) === JSON.stringify(seen[index - 1])),
+    ).toEqual([]);
+  });
+
   it('As a dotli integrator, I hold the slot past my answer and the next prompt shows once what I hold settles', async () => {
     // Given a prompt that answered and still holds the slot
     const { bar, step, first, second } = queueHeldPrompt();
@@ -210,35 +274,6 @@ describe('blocking modal queue, waiting count', () => {
     // Then the holding prompt had answered and the next one shows
     await expect(answered).resolves.toBe('answered');
     await expect(next).resolves.toBe('next');
-  });
-
-  it('As a user, I queue a second prompt and the bar counts it waiting behind the one on screen', () => {
-    // Given the bar that counts the prompts
-    const bar = createCountsSink();
-    const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
-
-    // When two prompts are queued
-    const first = scope.enqueue(() => new Promise<void>(() => {}));
-    const second = scope.enqueue(() => new Promise<void>(() => {}));
-    onTestFinished(async () => {
-      scope.dispose();
-      await Promise.allSettled([first, second]);
-    });
-
-    // Then one is on screen and one waits
-    expect(bar.latest()).toEqual({ active: true, waiting: 1 });
-  });
-
-  it('As a user, I answer the prompt on screen and the bar counts none waiting', async () => {
-    // Given a prompt on screen and a second one behind it
-    const { bar, shown, first } = queueTwoPrompts();
-
-    // When the first is answered
-    shown.resolve(undefined);
-    await first;
-
-    // Then nothing waits
-    expect(bar.latest().waiting).toBe(0);
   });
 
   it('As a user, I answer one prompt with another queued and the bar stays busy with no idle gap between them', async () => {

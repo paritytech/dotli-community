@@ -7,130 +7,22 @@ export type DotliDebugEvent =
   BootEvent | ResolveEvent | RenderEvent | BridgeEvent | FailoverEvent | MainEvent | SandboxEvent | ChainEvent;
 
 /**
- * Forwarded from the sandbox iframe as `postMessage({ type: "dotli:debug-event", event })`.
- * Without them the sandbox's content fetch is a silent gap on the host.
+ * Forwarded from the sandbox iframe as `postMessage({ type: "dotli:debug-event", event })`, so the host sees when the
+ * sandbox wrote the product's page.
  */
-export type SandboxEvent =
-  | {
-      layer: 'sandbox';
-      event: 'started';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        contentBackend: string;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'sw_register_begin';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        waitForFreshController: boolean;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'sw_ready';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        durationMs: number;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'fetch_begin';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        contentBackend: string;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'helia_ready';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        durationMs: number;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'status';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        /** Mirrors the sandbox's own loading overlay text. */
-        message: string;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'fetch_complete';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        kind: 'single' | 'archive';
-        durationMs: number;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'decrypt_started';
-      flowId: string;
-      timestamp: number;
-      payload: { cid: string };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'decrypt_complete';
-      flowId: string;
-      timestamp: number;
-      payload: { cid: string };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'archive_stored';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        fileCount: number;
-        durationMs: number;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'document_written';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        totalMs: number;
-        /** Decoded size across both the cache-hit and fetch paths. */
-        bytes?: number;
-        fileCount?: number;
-      };
-    }
-  | {
-      layer: 'sandbox';
-      event: 'failed';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string | null;
-        reason: string;
-      };
-    };
+export type SandboxEvent = {
+  layer: 'sandbox';
+  event: 'document_written';
+  flowId: string;
+  timestamp: number;
+  payload: {
+    cid: string;
+    totalMs: number;
+    /** Decoded size across both the cache-hit and fetch paths. */
+    bytes?: number;
+    fileCount?: number;
+  };
+};
 
 export type MainEvent =
   | {
@@ -224,13 +116,6 @@ export type BootEvent =
     }
   | {
       layer: 'boot';
-      event: 'landing_page_shown';
-      flowId: string;
-      timestamp: number;
-      payload: Record<string, never>;
-    }
-  | {
-      layer: 'boot';
       event: 'ready';
       flowId: string;
       timestamp: number;
@@ -271,17 +156,6 @@ export type ResolveEvent =
       payload: {
         label: string;
         phase: string;
-      };
-    }
-  | {
-      layer: 'resolve';
-      event: 'storage_read';
-      flowId: string;
-      timestamp: number;
-      payload: {
-        label: string;
-        bytes: number;
-        durationMs: number;
       };
     }
   | {

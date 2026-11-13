@@ -109,8 +109,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   // Not cleared on release, because the frame's chains live on whether or not this tab holds them.
   const frameWasReady = new Set<ChainRole>();
   let transfer = createIdleTransfer();
-  let changes = 0;
-  const versionAtom = atom(changes);
+  const versionAtom = atom(0);
   const version: ReadableAtom<number> = versionAtom;
   registerStoreStateReset(() => {
     known = null;
@@ -170,8 +169,7 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   };
 
   function notify(): void {
-    changes += 1;
-    versionAtom.set(changes);
+    versionAtom.set(versionAtom.get() + 1);
   }
 
   /** Seeded on first use, so a network chosen before boot is the one listed. */
@@ -201,7 +199,11 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     return getKnownChains().get(genesis) ?? extras.get(genesis);
   }
 
-  function recordBlock(state: ChainState, blockNumber: number): void {
+  function recordBestBlock(genesisHash: string, blockNumber: number): void {
+    const state = findChain(genesisHash);
+    if (state === undefined || state.consumers === 0) {
+      return;
+    }
     // A reorg can repeat a number or go lower, and must not add a bar.
     if (state.latest !== null && blockNumber <= state.latest) {
       return;
@@ -221,15 +223,11 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     }
     state.latest = blockNumber;
     state.lastAt = now;
-    rearmAlarms(state);
-    notify();
-  }
-
-  /** A block proves the chain is up again, so a later drop is a regression worth an alarm. */
-  function rearmAlarms(state: ChainState): void {
+    // A block proves the chain is up again, so a later drop is a regression worth an alarm.
     if (state.role !== null && phases.get(state.role) === 'ready') {
       frameWasReady.add(state.role);
     }
+    notify();
   }
 
   function recordReturn(): void {
@@ -284,13 +282,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
       }
     }
     notify();
-  }
-
-  function recordBestBlock(genesisHash: string, blockNumber: number): void {
-    const state = findChain(genesisHash);
-    if (state !== undefined && state.consumers > 0) {
-      recordBlock(state, blockNumber);
-    }
   }
 
   function recordPeerCount(role: ChainRole, peers: number): void {

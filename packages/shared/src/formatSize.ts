@@ -6,8 +6,11 @@ const MIB = 1_048_576;
 
 /** A byte count as people read it. Under a kilobyte it stays in bytes, so a few bytes never read as "0 kB". */
 export function formatSize(bytes: number): string {
-  if (bytes < KIB) {
+  if (Math.round(bytes) < KIB) {
     return `${String(Math.round(bytes))} B`;
   }
-  return bytes < MIB ? `${String(Math.round(bytes / KIB))} kB` : `${(bytes / MIB).toFixed(1)} MB`;
+  if (Math.round(bytes / KIB) < KIB) {
+    return `${String(Math.round(bytes / KIB))} kB`;
+  }
+  return `${(bytes / MIB).toFixed(1)} MB`;
 }

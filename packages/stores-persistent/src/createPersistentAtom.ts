@@ -11,9 +11,9 @@ export type PersistentAtomParams<Value> = {
   storage: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
   /** The value when nothing usable is stored. Setting it back removes the key. */
   initial: Value;
-  /** Parses the stored text, or returns undefined when it no longer parses. Never throws. */
+  /** Parses the stored text, or returns undefined when it no longer parses. */
   decode: (raw: string) => Value | undefined;
-  /** Turns a value into the stored text. Never throws. */
+  /** Turns a value into the stored text. */
   encode: (value: Value) => string;
 };
 

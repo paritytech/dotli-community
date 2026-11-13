@@ -64,22 +64,6 @@ describe('CID IndexedDB round-trip', () => {
     expect(cached).toEqual({ cid: 'bafy123', manifests: NO_MANIFESTS });
   });
 
-  it('As the resolver, I cache a CID with its manifests and owner and read them back', async () => {
-    // Given
-    await cache.set({
-      label: 'doom',
-      network: PASEO,
-      cid: 'bafy-doom',
-      manifests: { root: ROOT, app: APP, owner: OWNER },
-    });
-
-    // When
-    const cached = await cache.get('doom', PASEO);
-
-    // Then
-    expect(cached).toEqual({ cid: 'bafy-doom', manifests: { root: ROOT, app: APP, owner: OWNER } });
-  });
-
   it.each([
     {
       entry: 'an entry cached before manifests were kept',

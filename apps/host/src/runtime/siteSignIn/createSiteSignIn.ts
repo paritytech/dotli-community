@@ -4,23 +4,51 @@
 // A site's sign-in, the action a site's round runs on the auth route. It tells the site the main account's username
 // and nothing else, and signs nothing.
 
-import { createSiteSignInResult, type SiteSignInResult } from './createSiteSignInResult.js';
-import { createSiteRound, type SiteAction, type SiteRound, type SiteRoundParams } from './createSiteRound.js';
+import { atom } from 'nanostores';
+import { noop } from '@dotli/shared';
+import {
+  createSiteRound,
+  type SiteAction,
+  type SiteActionState,
+  type SiteRound,
+  type SiteRoundParams,
+} from './createSiteRound.js';
+import type { MainAccount } from './mainAccount.js';
 import { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';
+
+/** What a site receives for its sign-in: the main account's username alone. */
+type SiteSignInResult = {
+  /** The main account's username, or null when it has none. */
+  username: MainAccount['username'];
+};
 
 type Params = Omit<SiteRoundParams<SiteSignInResult, 'granted'>, 'action'>;
 
 /** A site's sign-in in the session window: the site's round with the sign-in as its action. */
-export function createSiteSignIn({ ...round }: Params): SiteRound {
-  return createSiteRound({ ...round, action: getSiteSignInAction() });
+export function createSiteSignIn(round: Params): SiteRound {
+  return createSiteRound({ ...round, action: createSiteSignInAction() });
 }
 
-/** Resolves with the main account's username, or `null` when it has none. Never rejects. */
-export function getSiteSignInAction(): SiteAction<SiteSignInResult, 'granted'> {
+/**
+ * The sign-in action, done at once on its start with the main account's username, or `null` when it has none. It has
+ * two phases and no async work, so a plain atom holds them.
+ */
+function createSiteSignInAction(): SiteAction<SiteSignInResult, 'granted'> {
+  const state = atom<SiteActionState<SiteSignInResult>>({ kind: 'idle' });
   return {
     route: 'auth',
     metric: SITE_ROUTE_METRICS.auth,
     outcome: () => 'granted',
-    run: ({ main }) => Promise.resolve(createSiteSignInResult(main.username)),
+    state,
+    prepare: noop,
+    start(main) {
+      if (state.get().kind !== 'idle') {
+        return;
+      }
+      state.set({ kind: 'done', result: { username: main.username } });
+    },
+    confirm: noop,
+    end: noop,
+    await: () => Promise.resolve(),
   };
 }

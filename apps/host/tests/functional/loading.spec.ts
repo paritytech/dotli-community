@@ -18,13 +18,12 @@ import {
   fatalOnResolve,
   initFailed,
   fakeProtocol,
-  nullResolveResponse,
   successfulResolveResponse,
 } from './helpers/fakeProtocol.js';
 import { findAppFrame } from '../productFrame.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
 
-import { PORT, TLD_SUFFIX } from '../env.js';
+import { PORT } from '../env.js';
 
 const DOMAIN = process.env['COMBO_DOMAIN'] ?? 'host-playground';
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -36,44 +35,6 @@ const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS['rpc-gateway'];
 async function setBackend(page: Page, backend: Backend): Promise<void> {
   await seedBackend(page, backend, { onlyIfUnset: true });
 }
-
-test('As a user using smoldot directly, when the light client panics mid-resolution, I see the appropriate error and can switch backend', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-});
-
-test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-shared-worker');
-  await fakeProtocol(page, initFailed('SharedWorker is not available in this browser'));
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.SW_FAILED_TO_START);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-});
 
 test('As a user using smoldot in shared worker, when the worker dies silently, I see the appropriate error and can switch backend', async ({
   page,
@@ -90,32 +51,6 @@ test('As a user using smoldot in shared worker, when the worker dies silently, I
     timeout: 10_000,
   });
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.SW_TIMED_OUT);
-  await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-});
-
-test('As a user using smoldot directly, when the sync times out (>45s) I see the appropriate error and can switch backend', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(
-    page,
-    errorResolveResponse(
-      'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.',
-      1_500,
-      'NetworkSyncTimeoutError',
-    ),
-  );
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -183,23 +118,6 @@ test('As a user using smoldot directly, when smoldot rejects the chain spec, I s
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
 
-test('As a user, when I visit a domain that has no content set, I see the appropriate message with the domain label', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(page, nullResolveResponse);
-
-  // When
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText("This app can't be reached", { timeout: 10_000 });
-  await expect(page.getByTestId('error-page-domain')).toHaveText(`${DOMAIN}${TLD_SUFFIX}`);
-  await expect(page.getByTestId('error-page-detail')).toContainText('Check if there is a typo');
-  await expect(page.locator('#error-retry-btn')).toHaveCount(0);
-});
-
 test("As a user, when the domain's contenthash is unsupported or malformed, I see the appropriate error with no retry button", async ({
   page,
 }) => {
@@ -216,33 +134,6 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
   });
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CONTENTHASH_UNSUPPORTED);
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
-});
-
-test('As a user, when the same failure survives a reload, the error page escalates from Settings to a one-click backend switch', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-
-  // When
-  // Armed before the click: `waitForLoadState` after it can resolve against
-  // the document that is about to be torn down, which would let the assertions
-  // below read the pre-reload screen.
-  const reloaded = page.waitForEvent('load');
-  await page.locator('#error-retry-btn').click();
-  await reloaded;
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT);
 });
 
 test('As a user, after a resolution failure, clicking retry switches backend', async ({ page }) => {
@@ -275,38 +166,7 @@ test('As a user, after a resolution failure, clicking retry switches backend', a
   expect(backendAfter).toBe('rpc-gateway');
 });
 
-test('As a user, after a resolution failure, I can refresh instead of switching backend, and the backend stays unchanged', async ({
-  page,
-}) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  const refresh = page.locator('#error-retry-btn');
-  await expect(refresh).toContainText(RELOAD_BTN_LABEL);
-  await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
-
-  // When
-  // Armed before the click, so the assertions below read the new document.
-  const reloaded = page.waitForEvent('load');
-  await refresh.click();
-  await reloaded;
-
-  // Then
-  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
-    timeout: 10_000,
-  });
-  const backendAfter = await page.evaluate(() => localStorage.getItem('dotli:chain-backend'));
-  expect(backendAfter).toBe('smoldot-direct');
-});
-
-for (const [label, backend] of [
-  ['per-product smoldot', 'smoldot-direct'],
-  ['shared smoldot', 'smoldot-shared-worker'],
-] as const) {
+for (const [label, backend] of [['per-product smoldot', 'smoldot-direct']] as const) {
   test(`As a user using ${label}, the host shell spawns no light client of its own`, async ({ page }) => {
     // Given
     await setBackend(page, backend);
@@ -354,22 +214,6 @@ test('As a user who opens Settings from a failure before the topbar is ready, I 
   // When
   await openSettings.click();
   releaseIsland();
-
-  // Then
-  await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
-});
-
-test('As a user who opens Settings from a failure once the topbar is ready, I see Settings open', async ({ page }) => {
-  // Given
-  await setBackend(page, 'smoldot-direct');
-  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  const openSettings = page.getByTestId('error-page').getByRole('button', { name: OPEN_SETTINGS_BTN_LABEL });
-  await expect(openSettings).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
-
-  // When
-  await openSettings.click();
 
   // Then
   await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');

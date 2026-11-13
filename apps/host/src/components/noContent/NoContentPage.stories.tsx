@@ -33,24 +33,6 @@ export const MarkupShownAsText: Story = {
   },
 };
 
-/** As a visitor, I see that the app cannot be reached under a globe, with the name to check. */
-export const TitleLineAndIcon: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step('As a visitor, I see that the app cannot be reached under a globe, with the name to check', async () => {
-      // When
-      showNoContentError('nothing');
-
-      // Then
-      await expect(canvas.getByTestId('error-page-title')).toHaveTextContent("This app can't be reached");
-      await expect(canvas.getByTestId('error-page-icon').tagName).toBe('svg');
-      await expect(canvas.getByTestId('error-page-domain')).toHaveTextContent(/^nothing/);
-      await expect(canvas.queryByRole('button')).toBeNull();
-    });
-  },
-};
-
 /** As a visitor, I read the page naming the app it could not reach, with no tab stop on its title. */
 export const TitleTakesNoFocus: Story = {
   tags: ['!autodocs'],

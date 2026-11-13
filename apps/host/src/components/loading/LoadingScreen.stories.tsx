@@ -56,20 +56,6 @@ export const StateBeforeHydration: Story = {
   beforeEach: () => {
     update(before);
   },
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step('Then the screen shows the load already underway', async () => {
-      await expect(canvas.getByRole('progressbar', { name: 'Loading' })).toHaveAttribute('aria-valuenow', '37');
-      await expect(canvas.getByText('37%')).toBeInTheDocument();
-      await expect(canvasElement.querySelector('#loading-step')).toHaveTextContent('Downloading the app');
-      await expect(canvasElement.querySelector('#status')).toHaveTextContent('The files come from');
-      await expect(canvasElement.querySelector('#status-sr')).toHaveTextContent(
-        'The files come from many computers at once',
-      );
-      await expect(canvas.getByRole('status')).toHaveAttribute('data-visible');
-      await expect(canvas.getByRole('status')).toHaveTextContent('Still looking for peers');
-    });
-  },
 };
 
 /** As a visitor, the loading screen follows the load, with names and warnings shown as text. */

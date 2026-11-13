@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { realTimers, type Timers } from '@dotli/shared';
-import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { createEffect, createMemo, createSignal, type Accessor } from 'solid-js';
 
 type Params = {
   /** Whether the content is open. */
@@ -16,7 +16,7 @@ type Params = {
 /**
  * A new number at each opening, kept through the exit (`exitMs` on `timers`), then 0.
  * Content keyed on it remounts per opening and mounts in the opening's flush, so focus can move in at once. Called
- * inside a component, which clears the exit timer when it is disposed. Never throws.
+ * inside a component, which clears the exit timer when it is disposed.
  */
 export function createPresence({ open, exitMs, timers = realTimers }: Params): Accessor<number> {
   const opening = createMemo<{ count: number; open: boolean }>(previous => {
@@ -25,25 +25,21 @@ export function createPresence({ open, exitMs, timers = realTimers }: Params): A
     return { count: now && previous?.open !== true ? count + 1 : count, open: now };
   });
   const [lingering, setLingering] = createSignal(false);
-  let timer: unknown;
-  let wasOpen = false;
-  createEffect(open, now => {
-    timers.clearTimeout(timer);
+  createEffect(open, (now, wasOpen = false) => {
     if (now) {
-      wasOpen = true;
       setLingering(true);
       return;
     }
     if (!wasOpen) {
       return;
     }
-    wasOpen = false;
-    timer = timers.setTimeout(() => {
+    const timer = timers.setTimeout(() => {
       setLingering(false);
     }, exitMs);
-  });
-  onCleanup(() => {
-    timers.clearTimeout(timer);
+    // A reopening, or the component's disposal, cancels the exit.
+    return () => {
+      timers.clearTimeout(timer);
+    };
   });
   return () => (open() || lingering() ? opening().count : 0);
 }

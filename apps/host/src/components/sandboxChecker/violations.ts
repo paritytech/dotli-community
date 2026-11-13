@@ -16,27 +16,26 @@ const MAX_VIEWPORT_SHARE = 0.8;
 /** Older entries are dropped, but the badge still counts them. */
 const MAX_ENTRIES = 500;
 
-function parseViolation(raw: unknown, now: () => number): ParsedViolation | null {
-  const message = parseApiViolationMessage(raw);
-  if (message === null) {
-    return null;
-  }
-  return {
-    api: message.api,
-    details: Object.entries(message.details ?? {})
-      .map(([k, v]) => `${k}=${String(v)}`)
-      .join(' '),
-    timestamp: message.timestamp ?? now(),
-  };
-}
-
 /** The violation a message reports, or null when another window sent it or it is not one. */
 export function violationFrom(
   message: { source: unknown; data: unknown },
   product: unknown,
   now: () => number = Date.now,
 ): ParsedViolation | null {
-  return message.source === product ? parseViolation(message.data, now) : null;
+  if (message.source !== product) {
+    return null;
+  }
+  const parsed = parseApiViolationMessage(message.data);
+  if (parsed === null) {
+    return null;
+  }
+  return {
+    api: parsed.api,
+    details: Object.entries(parsed.details ?? {})
+      .map(([k, v]) => `${k}=${String(v)}`)
+      .join(' '),
+    timestamp: parsed.timestamp ?? now(),
+  };
 }
 
 /** Adds `entry` in place and drops the oldest past {@link MAX_ENTRIES}, since a copy per violation is quadratic. */

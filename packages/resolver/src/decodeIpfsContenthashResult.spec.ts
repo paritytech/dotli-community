@@ -32,31 +32,17 @@ describe('decodeIpfsContenthashResult', () => {
     expect(result).toMatchObject({ kind: 'unsupported-codec' });
   });
 
-  it('As the resolver reading dotNS storage, I read an IPFS CIDv1 contenthash as its CID', () => {
+  it.each([
+    ['with its 0x prefix', '0xe3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f'],
+    ['without a prefix', 'e3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f'],
+  ])('As the resolver reading dotNS storage, I read an IPFS CIDv1 contenthash %s as its CID', (_form, contenthash) => {
     // Given
     // Real ENS-encoded IPFS CIDv1: encode('ipfs', 'bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4')
-    const validIpfsContenthash = 'e3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
 
     // When
-    const result = decodeIpfsContenthashResult(validIpfsContenthash);
+    const result = decodeIpfsContenthashResult(contenthash);
 
     // Then
-    expect(result).toEqual({
-      kind: 'ok',
-      cid: 'bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4',
-    });
-  });
-
-  it('As the resolver reading dotNS storage, I read a contenthash the same with or without its 0x prefix', () => {
-    // Given
-    const hex = '0xe3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
-    const hexWithout = 'e3010170122029f2d17be6139079dc48696d1f582a8530eb9805b561eda517e22a892c7e3f1f';
-
-    // When
-    const withPrefix = decodeIpfsContenthashResult(hex);
-    const withoutPrefix = decodeIpfsContenthashResult(hexWithout);
-
-    // Then
-    expect(withPrefix).toEqual(withoutPrefix);
+    expect(result).toEqual({ kind: 'ok', cid: 'bafybeibj6lixxzqtsb45ysdjnupvqkufgdvzqbnvmhw2kf7cfkesy7r7d4' });
   });
 });

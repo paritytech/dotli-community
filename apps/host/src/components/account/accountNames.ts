@@ -26,7 +26,11 @@ export function sessionInitials(state: AccountSession): string | undefined {
 }
 
 export function sessionUsername(state: AccountSession): string | undefined {
-  return state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
+  return [state.primaryUsername, state.fullUsername, state.liteUsername].find(isNonEmpty);
+}
+
+function isNonEmpty(name: string | undefined): name is string {
+  return name !== undefined && name.length > 0;
 }
 
 export function shortenAccount(account: string | undefined): string | undefined {

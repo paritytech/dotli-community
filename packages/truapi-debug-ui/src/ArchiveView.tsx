@@ -1,17 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { getErrorMessage, formatSize } from '@dotli/shared';
+import { formatSize } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
-import { getImageType } from './getImageType.js';
+import { createArchiveReader } from './createArchiveReader.js';
 import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
 import { formatArchiveSummary } from './formatArchiveSummary.js';
-import { toLoadedArchive, type ArchiveRead, type LoadedArchive } from './toLoadedArchive.js';
-import type { ArchiveLoader } from './host.js';
-import type { HostProduct } from './host.js';
+import type { LoadedArchive } from './toLoadedArchive.js';
+import type { ArchiveLoader, HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
 import { CodeBlock } from './shared/CodeBlock.js';
 import { EmptyState } from './shared/EmptyState.js';
@@ -21,107 +20,79 @@ import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
-export type ObjectUrls = {
-  /** Returns a URL that serves `blob`. Never throws. */
-  create: (blob: Blob) => string;
-  /** Frees `url`, a URL `create` returned. Never throws. */
-  revoke: (url: string) => void;
-};
-
 /** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARACTERS = 1_000_000;
-
-const pageObjectUrls: ObjectUrls = {
-  create: blob => URL.createObjectURL(blob),
-  revoke: url => {
-    URL.revokeObjectURL(url);
-  },
-};
 
 export function ArchiveView(props: {
   active: boolean;
   load: ArchiveLoader;
   product: ReadableAtom<HostProduct>;
-  /** Without them, the browser's own object URLs. */
-  objectUrls?: ObjectUrls | undefined;
+  /** Without them, the browser's own object URLs. Read once when the tab mounts. */
+  objectUrls?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'> | undefined;
 }): JSX.Element {
-  const objectUrls = (): ObjectUrls => props.objectUrls ?? pageObjectUrls;
+  const objectUrls = untrack(() => props.objectUrls) ?? URL;
   const product = useStore(untrack(() => props.product));
   function getCid(): string | undefined {
     const state = product();
     return state.status === 'loaded' ? state.cid : undefined;
   }
-  const [read, setRead] = createSignal<ArchiveRead>({ status: 'loading' });
-  const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
+  const reader = createArchiveReader({ load: cid => props.load(cid) });
+  const state = useStore(reader.state);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
-  // Read on first show, and again only for a new CID.
-  let readCid: string | null = null;
   createEffect(
     () => (props.active ? (getCid() ?? null) : null),
-    next => {
-      if (next === null || next === readCid) {
+    cid => {
+      if (cid === null) {
         return;
       }
-      readCid = next;
-      setSelectedPath(null);
-      setRead({ status: 'loading' });
-      props.load(next).then(
-        files => {
-          if (readCid === next) {
-            setRead(toLoadedArchive(files));
-          }
-        },
-        (error: unknown) => {
-          if (readCid === next) {
-            setRead({ status: 'failed', reason: getErrorMessage(error) });
-          }
-        },
-      );
+      reader.update({ kind: 'shown', cid });
     },
   );
 
   const selected = createMemo((): ArchiveFile | undefined => {
-    const current = read();
-    const path = selectedPath();
-    return current.status === 'loaded' && path !== null ? current.files.find(file => file.path === path) : undefined;
+    const current = state();
+    if (current.kind !== 'read') {
+      return undefined;
+    }
+    const { archive, selectedPath } = current;
+    return archive.files.find(file => file.path === selectedPath);
   });
   const shown = createMemo((): Preview | undefined => {
     const file = selected();
     return file === undefined ? undefined : previewFile(file);
   });
 
-  let url: string | null = null;
-  function revokeUrl(): void {
-    if (url !== null) {
-      objectUrls().revoke(url);
-      url = null;
-    }
-  }
   createEffect(
-    () => (shown()?.kind === 'image' ? selected() : undefined),
-    file => {
-      revokeUrl();
-      const type = file === undefined ? undefined : getImageType(file.path);
-      if (file !== undefined && type !== undefined) {
-        url = objectUrls().create(new Blob([file.bytes.slice()], { type }));
+    () => {
+      const preview = shown();
+      const file = selected();
+      return preview?.kind === 'image' && file !== undefined ? { bytes: file.bytes, type: preview.type } : null;
+    },
+    image => {
+      if (image === null) {
+        setImageUrl(null);
+        return;
       }
+      const url = objectUrls.createObjectURL(new Blob([image.bytes.slice()], { type: image.type }));
       setImageUrl(url);
+      return () => {
+        objectUrls.revokeObjectURL(url);
+      };
     },
   );
-  onCleanup(revokeUrl);
 
   function getShownText(): string | undefined {
     const current = shown();
     return current?.kind === 'text' ? current.text : undefined;
   }
   function getLoadedArchive(): LoadedArchive | undefined {
-    const current = read();
-    return current.status === 'loaded' ? current : undefined;
+    const current = state();
+    return current.kind === 'read' ? current.archive : undefined;
   }
   function getFailure(): string | undefined {
-    const current = read();
-    return current.status === 'failed' ? current.reason : undefined;
+    const current = state();
+    return current.kind === 'failed' ? current.reason : undefined;
   }
 
   return (
@@ -158,11 +129,11 @@ export function ArchiveView(props: {
                       <Item
                         testId="td-archive-file"
                         value={file.path}
-                        selected={selectedPath() === file.path}
+                        selected={selected()?.path === file.path}
                         title={file.path}
                         meta={formatSize(file.bytes.length)}
                         onSelect={() => {
-                          setSelectedPath(file.path);
+                          reader.update({ kind: 'fileSelected', path: file.path });
                         }}
                       >
                         {file.path}
@@ -180,7 +151,7 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
-                      {source => <img class={s['image']} src={source()} alt={selectedPath() ?? ''} />}
+                      {source => <img class={s['image']} src={source()} alt={selected()?.path ?? ''} />}
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>

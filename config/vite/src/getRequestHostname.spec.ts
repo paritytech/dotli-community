@@ -26,4 +26,15 @@ describe('getRequestHostname', () => {
     // Then it is the Host header without its port
     expect(hostname).toBe('browse.localhost');
   });
+
+  it('As a visitor on the IPv6 loopback, I send a request whose Host header names it in brackets and get the address whole', () => {
+    // Given a request's headers with a bracketed IPv6 host and a port
+    const headers = { host: '[::1]:4001' };
+
+    // When the host is read from them
+    const hostname = getRequestHostname(headers);
+
+    // Then it is the bracketed address without its port
+    expect(hostname).toBe('[::1]');
+  });
 });

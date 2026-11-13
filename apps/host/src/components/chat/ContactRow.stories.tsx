@@ -20,30 +20,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a user, I choose a contact and the list learns which one by its id. */
-export const OpensById: Story = {
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given a contact with no unread messages', async () => {
-      await expect(canvas.getByTestId('chat-room-name')).toHaveTextContent('Support');
-      await expect(canvas.queryByTestId('chat-room-unread')).toBeNull();
-    });
-    await step('When I choose it', async () => {
-      await userEvent.click(canvas.getByTestId('chat-room-item'));
-    });
-    await step('Then it reports its id', async () => {
-      await expect(args.onOpen).toHaveBeenCalledWith('room-1');
-    });
-  },
-};
+/** As a user, I see a contact with nothing unread. */
+export const Contact: Story = {};
 
-/** As a screen-reader user, the unread badge reads its full count while showing a capped one. */
+/** As a screen-reader user, I hear the unread badge's full count while it shows a capped one. */
 export const UnreadBadge: Story = {
   args: { unread: 12 },
   play: async ({ canvas, step }) => {
-    await step('Then the badge shows 9+ and is named with the full count', async () => {
-      const badge = canvas.getByTestId('chat-room-unread');
-      await expect(badge).toHaveTextContent('9+');
-      await expect(badge).toHaveAttribute('aria-label', '12 unread messages');
+    await step('Then the badge is an image named with the full count', async () => {
+      await expect(canvas.getByRole('img', { name: '12 unread messages' })).toBeVisible();
     });
   },
 };

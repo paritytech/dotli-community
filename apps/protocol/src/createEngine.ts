@@ -5,24 +5,19 @@
 // themselves are shared by every scope of the engine.
 
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
-import { TIMEOUTS } from '@dotli/config';
-import {
-  getBudget,
-  type ProtocolContext,
-  type ProtocolHandler,
-  protocolSchema,
-  type RemoteFailure,
-  toRemoteEnd,
-} from '@dotli/protocol';
-import type { DotnsResolver } from '@dotli/resolver';
-import { toError } from '@dotli/shared';
-import { err, ok, type AnyMethod, type CallError, type MethodTypes, type ResultPayload } from '@dotli/transport';
+import { createReporter, defineCount } from '@dotli/metrics';
+import type { ProtocolContext, ProtocolHandler, protocolSchema } from '@dotli/protocol';
+import { ok, type MethodTypes } from '@dotli/transport';
 
+import { assertNonEmpty } from './assertNonEmpty.js';
+import { createNameReads, type NameReadsParams } from './createNameReads.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
-type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
+const report = createReporter({ flow: 'protocol' });
+/** A chain connection's disconnect threw as its scope closed or the engine was disposed. */
+const engineDisconnectMetric = defineCount<'error'>('protocol.engine.disconnect');
 
-type NameSink = Parameters<ProtocolHandler<typeof methods.resolve.dotName>>[2];
+type ChainSink = Parameters<ProtocolHandler<Methods['chain']['connect']>>[2];
 
 /** One tab's chain connections and budget. */
 export type EngineScope = ReturnType<ProtocolEngine['openScope']>;
@@ -30,7 +25,7 @@ export type EngineScope = ReturnType<ProtocolEngine['openScope']>;
 /** The chain and name methods, with the chains every scope shares. */
 export type ProtocolEngine = ReturnType<typeof createEngine>;
 
-export type EngineParams = {
+export type EngineParams = NameReadsParams & {
   /** The chains every scope connects to. `dispose` releases them. */
   pool: ChainPool;
   /** Whether a scope may connect to the chain. */
@@ -39,24 +34,12 @@ export type EngineParams = {
   onWarmup?: () => Promise<void>;
   /** Breadcrumbs for each connection's first answer, halt and close. */
   log?: (message: string) => void;
-  /** The name reads. Unset, each read is refused at once instead of leaving the caller to hang. */
-  resolver?: EngineResolver;
-  /** Caps each read's sync budget, for a tester who needs a timeout to show quickly. */
-  syncBudgetCapMs?: number | undefined;
 };
 
-export type EngineResolver = Pick<
-  DotnsResolver,
-  'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest'
->;
+/** A live connection, and whether it has heard its first message, which is the only one noted. */
+type Held = { connection: StringJsonRpcConnection; sink: ChainSink; answered: boolean };
 
-type Connection = {
-  readonly connectionId: string;
-  readonly connection: StringJsonRpcConnection;
-  readonly sink: ChainSink;
-};
-
-const methods = protocolSchema.sections;
+type Methods = typeof protocolSchema.sections;
 
 /** One scope's budget, which is one tab's. */
 export const MAX_CONNECTIONS = 10;
@@ -70,7 +53,10 @@ export function createEngine({
   resolver,
   syncBudgetCapMs,
 }: EngineParams) {
-  const scopes = new Set<Map<string, Connection>>();
+  // Each tab's live connections by scope id, then by connection id. A scope with none leaves the map.
+  const scopes = new Map<string, Map<string, Held>>();
+  let disposed = false;
+  // The pool's session ids are engine-wide, so each scope prefixes its own.
   let scopeCount = 0;
 
   return {
@@ -78,73 +64,85 @@ export function createEngine({
     openScope,
     /** Answers once the mode's warmup settles. Rejects with what the warmup rejects with. */
     warmup,
+    ...createNameReads({ resolver, syncBudgetCapMs }),
     /**
-     * Sends each phase, then the result, then ends cleanly, or ends with the read's failure. Throws when the mode
-     * resolves no names or `label` is empty.
-     */
-    resolveDotName,
-    /** Answers the name's owner, or the failure as a remote error, a mode that resolves no names included. */
-    resolveOwner,
-    /**
-     * Answers the name's executable manifest, or the failure as a remote error, a mode that resolves no names
-     * included.
-     */
-    resolveExecutableManifest,
-    /** Answers the name's root manifest, or the failure as a remote error, a mode that resolves no names included. */
-    resolveRootManifest,
-    /**
-     * Disconnects every scope's connections and releases the pool's chains. Throws what a connection's disconnect
-     * throws, never what closing a chain throws, which is reported.
+     * Disconnects every scope's connections and releases the pool's chains, and every later connect is refused. A
+     * repeated call does nothing. Reports a connection's disconnect that throws, and still runs the others and the
+     * release. The pool reports what closing a chain throws.
      */
     dispose,
   };
 
-  function countConnections(): number {
-    let total = 0;
-    for (const connections of scopes) {
-      total += connections.size;
+  function dispose(): void {
+    if (disposed) {
+      return;
     }
-    return total;
+    disposed = true;
+    const held = [...scopes.values()].flatMap(connections => [...connections.values()]);
+    scopes.clear();
+    for (const { connection } of held) {
+      disconnect(connection);
+    }
+    pool.disconnectAll();
   }
 
   function openScope() {
-    // Connection ids are unique only within a scope, so each scope keeps its own.
-    const connections = new Map<string, Connection>();
-    // The pool's session ids are engine-wide, so each scope prefixes its own.
     const scopeId = String(scopeCount++);
 
     return {
       /**
        * Opens a chain connection for the subscription. Stopping it disconnects it, and a chain halt ends it cleanly.
-       * Throws on an empty or reused id, past `MAX_CONNECTIONS`, on an unsupported chain, or when the pool cannot
-       * connect.
+       * Throws once the engine was disposed, on an empty or reused id, past `MAX_CONNECTIONS`, on an unsupported
+       * chain, or when the pool cannot connect.
        */
       connect,
       /** Sends `message` on the connection. Throws on an empty field or an unknown connection. */
       send,
       /**
-       * Ends each connection's subscription cleanly and releases it. The scope stays usable. Throws what a
-       * connection's disconnect throws.
+       * Ends each connection's subscription cleanly and releases it. The scope stays usable. Reports a connection's
+       * disconnect that throws, and still releases the others.
        */
       close,
     };
 
-    /** Forgets the connection if it is still the one held under its id. */
-    function forget(held: Connection): boolean {
-      if (connections.get(held.connectionId) !== held) {
+    function close(): void {
+      const connections = scopes.get(scopeId);
+      if (connections === undefined) {
+        return;
+      }
+      // Forgotten first, so neither the end nor a halt the disconnect causes releases a connection again.
+      scopes.delete(scopeId);
+      for (const { connection, sink } of connections.values()) {
+        disconnect(connection);
+        sink.interrupt(ok());
+      }
+    }
+
+    /** Forgets the connection under `connectionId` if it is still `held`. Returns whether it was. */
+    function forget(connectionId: string, held: Held): boolean {
+      const connections = scopes.get(scopeId);
+      if (connections?.get(connectionId) !== held) {
         return false;
       }
-      connections.delete(held.connectionId);
+      connections.delete(connectionId);
+      if (connections.size === 0) {
+        scopes.delete(scopeId);
+      }
       return true;
     }
 
     function connect(
-      { genesisHash, connectionId }: MethodTypes<typeof methods.chain.connect>['start'],
+      { genesisHash, connectionId }: MethodTypes<Methods['chain']['connect']>['start'],
       _context: ProtocolContext,
       sink: ChainSink,
     ): () => void {
+      if (disposed) {
+        throw new Error('The engine was disposed');
+      }
       assertNonEmpty(genesisHash, 'genesisHash');
       assertNonEmpty(connectionId, 'connectionId');
+      // Connection ids are unique only within a scope, so each scope checks its own.
+      const connections = scopes.get(scopeId) ?? new Map<string, Held>();
       if (connections.has(connectionId)) {
         throw new Error(`Duplicate chain connection: ${connectionId}`);
       }
@@ -154,22 +152,24 @@ export function createEngine({
       if (!isChainSupported(genesisHash)) {
         throw new Error(`Unsupported chain: ${genesisHash}`);
       }
-      // Only the first message is noted, later ones would push the load's steps out of the breadcrumb trail.
-      let answered = false;
-      let held: Connection | null = null;
+      // Set once the pool hands the connection over, so a message or halt before then finds nothing.
+      let held: Held | null = null;
       const connection = pool.connectRemote({
         genesisHash,
         connectionId: `${scopeId} ${connectionId}`,
         onMessage: message => {
-          if (!answered) {
-            answered = true;
+          if (held === null || scopes.get(scopeId)?.get(connectionId) !== held) {
+            return;
+          }
+          if (!held.answered) {
+            held.answered = true;
             log(`First chain message for ${connectionId} (${String(message.length)} bytes)`);
           }
           sink.send({ tag: 'message', value: message });
         },
         onHalt: () => {
           // The broker has already answered pending requests and stopped follows, so there is nothing to disconnect.
-          if (held === null || !forget(held)) {
+          if (held === null || !forget(connectionId, held)) {
             return;
           }
           log(`Chain halted: ${connectionId} (${String(countConnections())} remaining)`);
@@ -179,168 +179,63 @@ export function createEngine({
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
-      const opened: Connection = { connectionId, connection, sink };
+      const opened: Held = { connection, sink, answered: false };
       held = opened;
       connections.set(connectionId, opened);
-      scopes.add(connections);
+      scopes.set(scopeId, connections);
       log(`Chain connected: ${connectionId} (${String(countConnections())} total)`);
       sink.send({ tag: 'connected', value: undefined });
-      return disconnect;
-
-      function disconnect(): void {
-        if (forget(opened)) {
-          opened.connection.disconnect();
+      return () => {
+        if (forget(connectionId, opened)) {
+          disconnect(connection);
           log(`Chain disconnected: ${connectionId} (${String(countConnections())} remaining)`);
         }
-      }
+      };
     }
 
     // Typed as the protocol's handler answers, so the scope's type is no narrower than the method it serves.
     function send(
-      { connectionId, message }: MethodTypes<typeof methods.chain.send>['request'],
+      { connectionId, message }: MethodTypes<Methods['chain']['send']>['request'],
       _context: ProtocolContext,
-    ): ReturnType<ProtocolHandler<typeof methods.chain.send>> {
+    ): ReturnType<ProtocolHandler<Methods['chain']['send']>> {
       assertNonEmpty(connectionId, 'connectionId');
       assertNonEmpty(message, 'message');
-      const held = connections.get(connectionId);
+      const held = scopes.get(scopeId)?.get(connectionId);
       if (held === undefined) {
         throw new Error(`Unknown chain connection: ${connectionId}`);
       }
       held.connection.send(message);
       return ok();
     }
-
-    function close(): void {
-      for (const held of [...connections.values()]) {
-        // Forgotten first, so neither the end nor a halt the disconnect causes releases it again.
-        forget(held);
-        held.sink.interrupt(ok());
-        held.connection.disconnect();
-      }
-      scopes.delete(connections);
-    }
   }
 
-  function requireResolver(unsupported: string): EngineResolver {
-    if (resolver === undefined) {
-      throw new Error(unsupported);
-    }
-    return resolver;
-  }
-
-  /**
-   * The resolver's sync budget for a read: the method's budget, counted from when the call arrives, less a grace for
-   * the typed error to cross back while the call still waits.
-   */
-  function toSyncOptions(method: AnyMethod): { syncTimeoutMs?: number } {
-    const budgetMs = getBudget(method);
-    if (budgetMs === null) {
-      return {};
-    }
-    const budget = Math.max(1, budgetMs - TIMEOUTS.RESPONSE_DELIVERY_GRACE);
-    return { syncTimeoutMs: syncBudgetCapMs === undefined ? budget : Math.min(budget, syncBudgetCapMs) };
-  }
-
-  function resolveDotName(
-    { label }: MethodTypes<typeof methods.resolve.dotName>['start'],
-    _context: ProtocolContext,
-    sink: NameSink,
-  ): () => void {
-    const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
-    assertNonEmpty(label, 'label');
-    void reader
-      .resolveDotName(label, {
-        onPhase: phase => {
-          sink.send({ tag: 'phase', value: phase });
-        },
-        ...toSyncOptions(methods.resolve.dotName),
-      })
-      .then(
-        resolved => {
-          sink.send({ tag: 'resolved', value: resolved });
-          sink.interrupt(ok());
-        },
-        (error: unknown) => {
-          sink.interrupt(err(toRemoteEnd(toError(error))));
-        },
-      );
-    // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.
-    return () => undefined;
-  }
-
-  function dispose(): void {
-    for (const connections of [...scopes]) {
-      for (const held of connections.values()) {
-        held.connection.disconnect();
-      }
-      connections.clear();
-    }
-    scopes.clear();
-    pool.disconnectAll();
-  }
-
-  // Each request handler below takes the context and returns what the protocol's handler returns, so the engine's
-  // type is no narrower than the method it serves.
+  // Takes the context and returns what the protocol's handler returns, so the type is no narrower than the method.
   function warmup(
-    _request: MethodTypes<typeof methods.frame.warmup>['request'],
+    _request: MethodTypes<Methods['frame']['warmup']>['request'],
     _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.frame.warmup>> {
-    return answerWarmup(onWarmup);
+  ): ReturnType<ProtocolHandler<Methods['frame']['warmup']>> {
+    return (onWarmup?.() ?? Promise.resolve()).then(() => ok());
   }
 
-  function resolveOwner(
-    { label }: MethodTypes<typeof methods.resolve.owner>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.owner>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveOwner(label, toSyncOptions(methods.resolve.owner));
-    });
+  /** The live connections across every scope. */
+  function countConnections(): number {
+    let total = 0;
+    for (const connections of scopes.values()) {
+      total += connections.size;
+    }
+    return total;
   }
 
-  function resolveExecutableManifest(
-    { label, kind }: MethodTypes<typeof methods.resolve.executableManifest>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.executableManifest>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveExecutableManifest(label, kind, toSyncOptions(methods.resolve.executableManifest));
-    });
-  }
-
-  function resolveRootManifest(
-    { label }: MethodTypes<typeof methods.resolve.rootManifest>['request'],
-    _context: ProtocolContext,
-  ): ReturnType<ProtocolHandler<typeof methods.resolve.rootManifest>> {
-    return answerRead(() => {
-      const reader = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
-      assertNonEmpty(label, 'label');
-      return reader.resolveRootManifest(label, toSyncOptions(methods.resolve.rootManifest));
-    });
-  }
-}
-
-/** Answers once `onWarmup` settles. Rejects with what it rejects with. */
-async function answerWarmup(
-  onWarmup: (() => Promise<void>) | undefined,
-): Promise<MethodTypes<typeof methods.frame.warmup>['response']> {
-  await onWarmup?.();
-  return ok();
-}
-
-function assertNonEmpty(value: string, name: string): void {
-  if (value.length === 0) {
-    throw new Error(`Invalid ${name}: expected non-empty string`);
-  }
-}
-
-/** Answers a read with its value, or with its failure as a remote error ends a call. */
-async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, CallError<RemoteFailure>>> {
-  try {
-    return ok(await read());
-  } catch (error) {
-    return err(toRemoteEnd(toError(error)));
+  /** Disconnects `connection`, reporting a throw so the other connections and the caller carry on. */
+  function disconnect(connection: StringJsonRpcConnection): void {
+    try {
+      connection.disconnect();
+    } catch (error) {
+      report.defect(error, {
+        step: 'disconnect',
+        metric: engineDisconnectMetric,
+        message: '[dot.li] A chain connection could not be disconnected:',
+      });
+    }
   }
 }

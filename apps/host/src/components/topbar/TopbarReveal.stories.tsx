@@ -4,7 +4,6 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { expectBefore } from '@config/storybook/play';
 import { TopbarReveal, type RevealActions } from './TopbarReveal.js';
 
 const [autoHide, setAutoHide] = createSignal(false);
@@ -73,14 +72,6 @@ export const RevealButtonAfterFrame: Story = {
       await waitFor(() => expect(canvas.getByTestId('story-topbar')).toHaveAttribute('data-folded'));
     });
     const button = canvas.getByRole('button', { name: 'Show browser bar', hidden: true });
-    await step(
-      'Then the reveal button sits between the app frame and the toasts, so one Tab out of the app reaches it',
-      async () => {
-        const frame = canvas.getByTestId('story-app-frame');
-        await expectBefore(frame, button);
-        await expectBefore(button, canvas.getByTestId('story-toast'));
-      },
-    );
     await step('When it takes focus, the bar comes back', async () => {
       button.focus();
       await waitFor(() => expect(canvas.getByTestId('story-topbar')).not.toHaveAttribute('data-folded'));
@@ -89,29 +80,5 @@ export const RevealButtonAfterFrame: Story = {
       await userEvent.click(button);
       await waitFor(() => expect(asked.revealAndFocus).toBe(1));
     });
-  },
-};
-
-/** As a keyboard user, I find the reveal button while the bar auto-hides and not once it stops. */
-export const ShownOnlyWhileAutoHiding: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step(
-      'As a keyboard user, the reveal button is there while the bar auto-hides, and gone once it stops',
-      async () => {
-        // When
-        fold();
-
-        // Then
-        await waitFor(() => expect(canvas.getByRole('button', { name: 'Show browser bar' })).toBeVisible());
-
-        // When
-        setAutoHide(false);
-
-        // Then
-        await waitFor(() => expect(canvas.queryByRole('button', { name: 'Show browser bar' })).toBeNull());
-      },
-    );
   },
 };

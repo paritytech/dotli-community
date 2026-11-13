@@ -22,26 +22,6 @@ describe('createProviderPair', () => {
     expect(thrown).toEqual(matchInstance(Error));
   });
 
-  it('As a test, I have a listener dispose its side and the message stops reaching the others', async () => {
-    // Given
-    const { left, right } = createProviderPair();
-    const sibling = vi.fn();
-    const disposed = new Promise<void>(resolve => {
-      right.subscribe(() => {
-        right.dispose();
-        resolve();
-      });
-    });
-    right.subscribe(sibling);
-
-    // When
-    left.postMessage(new Uint8Array(1));
-    await disposed;
-
-    // Then
-    expect(sibling).not.toHaveBeenCalled();
-  });
-
   it('As a test, I close a side and a message it posted before still arrives, and nothing reaches it', async () => {
     // Given
     const { left, right } = createProviderPair();

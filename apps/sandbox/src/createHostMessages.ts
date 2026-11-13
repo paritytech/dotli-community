@@ -6,7 +6,7 @@
 import { postToHost } from '@dotli/sandbox-wire';
 import { realTimers, type Timers } from '@dotli/shared';
 
-import type { SandboxStep } from './runSandbox.js';
+import type { SandboxStep } from './describeSandboxFailure.js';
 
 type Params = {
   /** The host page that framed this sandbox. */
@@ -23,6 +23,8 @@ type ReportDebugParams = {
   /** What the event carries. */
   payload: Record<string, unknown>;
 };
+
+export type HostMessages = ReturnType<typeof createHostMessages>;
 
 /** The messages this sandbox posts to `parent`, the host page that framed it. */
 export function createHostMessages({ parent, timers = realTimers }: Params) {

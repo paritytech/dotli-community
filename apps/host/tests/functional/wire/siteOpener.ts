@@ -49,7 +49,7 @@ window.addEventListener('message', event => {
 });
 
 button.addEventListener('click', () => {
-  // A sign-in names no account. `account=none` leaves the account out of a transaction, as a site that forgot it would.
+  // A sign-in names no account.
   const params =
     route === 'sign'
       ? {
@@ -58,9 +58,7 @@ button.addEventListener('click', () => {
           round,
           chain: NETWORK_NAME_TO_SERVICES_CONFIG[net].assethub.genesis,
           call,
-          ...(query.get('account') === 'none'
-            ? {}
-            : { account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0` }),
+          account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0`,
         }
       : { v: PROTOCOL_VERSION, net, round };
   opened = window.open(createRequestUrl({ origin: windowOrigin, route, params }), '_blank');

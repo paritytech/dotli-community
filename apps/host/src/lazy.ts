@@ -7,6 +7,7 @@ import type * as AccountContentNamespace from './components/account/AccountConte
 import type { HostBridge } from './runtime/bridge.js';
 import type * as ChainsContentNamespace from './components/chains/ChainsContent.js';
 import type * as ChatPanelNamespace from './components/chat/ChatPanel.js';
+import type { ChatStore } from './runtime/chat/createChatStore.js';
 import type * as DebugPanelHostNamespace from './debugPanelHost.js';
 import type * as HostWebNamespace from '@parity/truapi-host/web';
 import type * as HostWorkerNamespace from '@parity/truapi-host/worker-runtime?worker';
@@ -31,14 +32,13 @@ type HostRuntimeChunk = {
 /** `qrcode` is CommonJS, so its dynamic import also carries the whole module as `default`. */
 type QrCodeModule = typeof QrCodeNamespace & { default: typeof QrCodeNamespace };
 
-export type DebugPanelHostModule = typeof DebugPanelHostNamespace;
 export type ChatPanelModule = typeof ChatPanelNamespace;
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
 export type PhraseScreenModule = typeof PhraseScreenNamespace;
 
 /** The page as the debug panel reads it. Rejects when its chunk fails to load. */
-export function loadDebugPanelHost(): Promise<DebugPanelHostModule> {
-  return import('./debugPanelHost.js');
+export async function loadDebugPanelHost(): Promise<typeof DebugPanelHostNamespace.debugPanelHost> {
+  return (await import('./debugPanelHost.js')).debugPanelHost;
 }
 
 /**
@@ -53,6 +53,11 @@ export function loadWireDescriber(): Promise<typeof WireDescriberNamespace> {
 /** The chat panel. Rejects when its chunk fails to load. */
 export function loadChatPanel(): Promise<ChatPanelModule> {
   return import('./components/chat/ChatPanel.js');
+}
+
+/** The page's chat store, which only a product's chat writes to. Rejects when its chunk fails to load. */
+export async function loadChatStore(): Promise<ChatStore> {
+  return (await import('./runtime/chat/createChatStore.js')).chatStore;
 }
 
 /** The account view. Rejects when its chunk fails to load. */

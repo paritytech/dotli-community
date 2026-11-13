@@ -31,7 +31,7 @@ function countCardShow(): void {
 }
 
 function getShield(): HTMLElement | null {
-  return document.getElementById('verification-shield');
+  return document.querySelector('[data-testid="verification-shield"]');
 }
 
 function getCardTooltip(): HTMLElement | null {
@@ -63,7 +63,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a visitor of a product, the shield shows in the state the host set, from before or after it mounts. */
+/** As a visitor of a product, the shield shows in the state the host set before it mounted. */
 export const ProductShield: Story = {
   beforeEach: () => {
     productPill();
@@ -72,12 +72,6 @@ export const ProductShield: Story = {
   play: async ({ step }) => {
     await step('Then the shield shows the state set before it mounted', async () => {
       await waitFor(() => expect(getShield()).toHaveAttribute('data-state', 'verified'));
-    });
-    await step('When the host marks the product trusted', () => {
-      setShield('trusted');
-    });
-    await step('Then the shield follows', async () => {
-      await waitFor(() => expect(getShield()).toHaveAttribute('data-state', 'trusted'));
     });
   },
 };

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** The ways a site's round ends short of a result: a refusal, a failed step, or the user's rejection. */
+/** The ways a site's round ends short of a result: a refusal or a failed step. */
 
 import type { RefusalReason } from '../sessionHandoff/sessionMessages.js';
 
@@ -40,14 +40,5 @@ export class SiteRoundFailure extends Error {
     super(message, { cause });
     this.step = step;
     this.retry = retry;
-  }
-}
-
-/** The user rejected the action's request, which cancels the round. */
-export class SiteRoundRejected extends Error {
-  override name = 'SiteRoundRejected';
-
-  constructor({ cause }: ErrorOptions = {}) {
-    super("The site's request was rejected", { cause });
   }
 }

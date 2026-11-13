@@ -16,13 +16,13 @@ export type ProductCardView = {
   connection: ShieldState | null;
 };
 
-export type ProductCardSources = { product: ProductState; pill: UrlPillState; card: ProductCardState };
+type Params = { product: ProductState; pill: UrlPillState; card: ProductCardState };
 
 /**
  * The card's view, or null while there is no card to show: no product on screen, a local or preview product, or a URL
  * pill that shows no product. Never throws.
  */
-export function getProductCardView({ product, pill, card }: ProductCardSources): ProductCardView | null {
+export function getProductCardView({ product, pill, card }: Params): ProductCardView | null {
   if (product.status !== 'loaded' || product.cid === undefined || pill.kind !== 'product') {
     return null;
   }

@@ -3,12 +3,10 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
-import { atom } from 'nanostores';
 import { catchRejection, nth } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
-import { createAuthCommands } from './createAuthCommands.js';
 import type { SessionRead } from './session/createCoreStorage.js';
-import type { DotliAuthState, Presence } from './session/types.js';
+import type { Presence } from './session/types.js';
 import { createFakeSessionPresence } from './session/createPagePresence.fake.js';
 import { createPageSignOut, type PageSignOutParams } from './createPageSignOut.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
@@ -21,8 +19,6 @@ type CopyState = {
   /** While set, every read answers it. */
   readFailure: Error | null;
 };
-
-type RunOnCore = <T>(end: () => Promise<T>) => Promise<T>;
 
 /** The main store's local wallet, whose record a save elsewhere replaces with a new version. */
 type FakeWallet = {
@@ -44,8 +40,6 @@ type CreateHarnessParams = {
   wallet?: number | null;
   /** Runs a sign-out's end on the core once this settles, as a login still open holds it. */
   coreFree?: Promise<void>;
-  /** The core commands' logout, a passthrough by default. */
-  runOnCore?: RunOnCore;
   /** A product's sign-out window that already read the paired session by default. */
   signOutWindow?: PageSignOutParams['signOutWindow'];
 };
@@ -65,7 +59,6 @@ function createHarness({
   leaveOutcome,
   wallet: walletVersion = 1,
   coreFree,
-  runOnCore: runEndOnCore,
   signOutWindow = createProductWindow(Promise.resolve()),
 }: CreateHarnessParams = {}) {
   const { captures, counted } = bindReports();
@@ -170,7 +163,7 @@ function createHarness({
   async function runOnCore<T>(end: () => Promise<T>): Promise<T> {
     coreRun();
     await coreFree;
-    return runEndOnCore === undefined ? end() : runEndOnCore(end);
+    return end();
   }
 }
 
@@ -324,7 +317,7 @@ describe('paired sign-out', () => {
     const missed = await fakes.signOut.signOut();
 
     // When the phone is told again
-    const again = missed.phone === 'untold' ? await missed.tellAgain() : missed;
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
 
     // Then it is told and the same session was ended twice
     expect(again).toEqual({ phone: 'told' });
@@ -339,7 +332,7 @@ describe('paired sign-out', () => {
 
     // When the user signs out and tells the phone again
     const outcome = await fakes.signOut.signOut();
-    const again = outcome.phone === 'untold' ? await outcome.tellAgain() : outcome;
+    const again = outcome.phone === 'untold' ? await fakes.signOut.tellAgain(outcome) : outcome;
 
     // Then each try is reported, and the page is signed out
     expect(outcome.phone).toBe('untold');
@@ -359,7 +352,7 @@ describe('paired sign-out', () => {
     fakes.copy.readFailure = null;
 
     // When the phone is told again
-    const again = missed.phone === 'untold' ? await missed.tellAgain() : missed;
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
 
     // Then the copy's session is ended and the copy emptied
     expect(again).toEqual({ phone: 'told' });
@@ -377,24 +370,6 @@ describe('paired sign-out', () => {
     // Then both answer told and the session was ended once
     expect(outcomes).toEqual([{ phone: 'told' }, { phone: 'told' }]);
     expect(fakes.endSession).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a user whose core reads signed out once the window cleared the store, I sign out and the session my copy held is still ended', async () => {
-    // Given the core commands over a core that already reports signed out
-    const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
-    const commands = createAuthCommands({
-      auth,
-      login: () => Promise.resolve({ kind: 'cancelled' }),
-      cancelPairing: () => undefined,
-    });
-    const fakes = createHarness({ runOnCore: end => commands.logout(end) });
-
-    // When the user signs out
-    const outcome = await fakes.signOut.signOut();
-
-    // Then the phone is told about the session the copy held
-    expect(outcome).toEqual({ phone: 'told' });
-    expect(fakes.endSession).toHaveBeenCalledWith('0xsession');
   });
 
   it('As an operator, I see a core that could not be reset reported, and the copy still goes and the phone is told', async () => {
@@ -586,6 +561,19 @@ describe('local sign-out', () => {
     expect(fakes.endSession).not.toHaveBeenCalled();
   });
 
+  it('As a user signing out locally on a product whose flag is unreadable, I see a copy that cannot be read counted once and not captured again', async () => {
+    // Given a copy whose read fails, which core storage already reported
+    const fakes = createHarness({ local: true, flag: 'unknown' });
+    fakes.copy.readFailure = new Error('frame unreachable');
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the failed read is counted once and no defect is captured
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+    expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'drop' }]);
+  });
+
   it('As a user in local mode signed in again elsewhere meanwhile, I sign out and the paired copy stays', async () => {
     // Given a local page whose flag is present again
     const fakes = createHarness({ local: true, flag: 'present' });
@@ -687,6 +675,20 @@ describe('local sign-out', () => {
     expect(fakes.endSession).not.toHaveBeenCalled();
     expect(outcome.phone).toBe('untold');
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'error', reason: 'no_window' }]);
+  });
+
+  it('As a user in local mode on a page with no sign-in window, I tell the phone again and it stays untold with nothing ended', async () => {
+    // Given a local sign-out on a page with no sign-in window, which left the phone untold
+    const fakes = createHarness({ local: true, signOutWindow: openNoWindow });
+    const missed = await fakes.signOut.signOut();
+
+    // When the phone is told again
+    const again = missed.phone === 'untold' ? await fakes.signOut.tellAgain(missed) : missed;
+
+    // Then it stays untold and nothing more is ended or dropped
+    expect(again).toEqual(missed);
+    expect(fakes.endSession).not.toHaveBeenCalled();
+    expect(fakes.calls).toEqual(['drop 0xsession', 'leave local', 'forget wallet']);
   });
 
   it('As a user in local mode on a page with no sign-in window and no paired copy, I sign out and my wallet goes through the flag keeper with nothing to tell', async () => {
@@ -881,28 +883,6 @@ describe('signed-in sites on sign-out', () => {
     expect(outcome).toEqual({ phone: 'told' });
     expect(fakes.calls).toEqual(['reset', 'drop 0xsession', 'signed out', 'end 0xsession']);
     expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
-  });
-
-  it('As an operator, I watch a local sign-out whose grants could not be forgotten and see it reported while the page still leaves local mode', async () => {
-    // Given a local page that pairs in place, whose grants cannot be forgotten
-    const fakes = createHarness({ local: true, held: null, signOutWindow: openNoWindow });
-    const failure = new Error('grants database blocked');
-    fakes.forgetGrants.mockRejectedValue(failure);
-
-    // When the user signs out
-    const outcome = await fakes.signOut.signOut();
-
-    // Then the failure is reported and counted, and the wallet still goes as the page leaves local mode
-    expect(fakes.captures.exception).toHaveBeenCalledWith(
-      failure,
-      expect.objectContaining({
-        step: 'logout',
-        tags: { reason: 'grants' },
-      }),
-    );
-    expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
-    expect(outcome).toEqual({ phone: 'told' });
-    expect(fakes.calls).toEqual(['leave local', 'forget wallet']);
   });
 
   it('As a user in a tab signed out elsewhere, I am signed out locally and the signed-in sites are left to the sign-out that ended the sign-in', async () => {

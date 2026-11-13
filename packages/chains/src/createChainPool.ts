@@ -4,20 +4,34 @@
 // Each chain's lanes, shared by every consumer in this JS context. Each lease is a consumer of the chain's lanes, which
 // spread the chain's follows over as many connections as its transport's follow limit needs. An entry closes
 // `destroyDelay` after its last lease is released, and at once when any lane's transport halts. While someone watches
-// the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A pause closes
-// every lane's connection under the same leases, and a resume opens them again. A local provider's lease takes the
-// rebuilt chain after a halt, behind the pool's redial, and a remote session ends at its chain's halt.
+// the pool, each held chain also carries the watchers' own follow, which is a consumer but not a lease. A follow the
+// node refuses is tried again behind a backoff while the chain is held. A pause closes every lane's connection under
+// the same leases, and a resume opens them again. A local provider's lease takes the rebuilt chain after a halt, behind
+// the pool's redial, and a remote session ends at its chain's halt.
 
-import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransport, ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
 import { createReporter } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, log, realTimers, type ListenerSet, type Timers } from '@dotli/shared';
+import {
+  createStateMachine,
+  log,
+  nest,
+  realTimers,
+  type HandlerOf,
+  type HandlersOf,
+  type MachineTypes,
+  type Timers,
+  type Transition,
+} from '@dotli/shared';
+import type { BrokerConnection } from './brokerMessages.js';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
 import { chainLaneOpenMetric } from './chainLaneOpenMetric.js';
 import { chainPoolCloseMetric } from './chainPoolCloseMetric.js';
 import { createChainLanes, type ChainLanes } from './createChainLanes.js';
 import { createChainRedial } from './createChainRedial.js';
-import { createHealingLease } from './createHealingLease.js';
+import { createLaterListeners } from './createLaterListeners.js';
+import { createHealingLease, type AttachAnswer } from './createHealingLease.js';
+import { createRedialGate, type RedialGate } from './createRedialGate.js';
 import { openWatchFollow } from './openWatchFollow.js';
 import type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
 
@@ -59,7 +73,7 @@ type Params = {
 };
 
 type ConnectRemoteParams = Parameters<ChainBrokerManager['connectRemote']>[0] & {
-  /** Hears the chain's halt. */
+  /** Hears the chain's halt once the session is open. */
   onHalt?: (error?: unknown) => void;
 };
 type GetLocalProviderParams = NonNullable<Parameters<ChainBrokerManager['getLocalProvider']>[1]>;
@@ -67,8 +81,9 @@ type GetLocalProviderParams = NonNullable<Parameters<ChainBrokerManager['getLoca
 export type ChainPool = {
   /**
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
-   * and its halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
-   * `connectionId` already has a session.
+   * and its later halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
+   * `connectionId` already has a session. Throws when the chain halts while the session opens, with the halt's error as
+   * the cause.
    */
   connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
@@ -79,12 +94,12 @@ export type ChainPool = {
   getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
   status(genesisHash: string): ConnectionStatus;
-  /** Hears each change of the chain's status, and returns the unsubscribe. */
+  /** Hears each change of the chain's status once the call that changed it has returned, and returns the unsubscribe. */
   onStatusChanged(genesisHash: string, callback: (status: ConnectionStatus) => void): () => void;
   /**
-   * Reports each chain's leases, status, follow and best blocks. The chains held now are replayed first. A chain
-   * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept. Never
-   * throws.
+   * Reports each chain's leases, status, follow and best blocks, each once the call that changed it has returned. The
+   * chains held now are replayed first, during the call. A chain someone holds is followed for its blocks until its
+   * last lease is released, and no chain is opened or kept. Never throws.
    */
   watch(watcher: ChainPoolWatcher): () => void;
   /**
@@ -108,60 +123,101 @@ export type ChainPool = {
 /** What a pool's owner may tell it from outside: pause and resume. */
 export type ChainPoolControl = Pick<ChainPool, 'pause' | 'resume'>;
 
+/** The watchers' own follow, as it is opened on a chain's lanes. */
+type WatchFollow = ReturnType<typeof openWatchFollow>;
+
+/** The chain a watch follows, held by the watch since a watch's handlers see only the watch. */
+type WatchChain = {
+  lanes: ChainLanes;
+  /** Holds back the watchers' follow after the node refuses it. */
+  followGate: RedialGate;
+};
+
+/** The watchers' own follow on a held chain. */
+type Watch =
+  | { kind: 'off'; chain: WatchChain }
+  | { kind: 'open'; chain: WatchChain; follow: WatchFollow; following: boolean }
+  | {
+      kind: 'refused';
+      chain: WatchChain;
+      /** The timer of the wait to try the follow again. */
+      retry: unknown;
+    };
+
+/** Why a chain closed: its halt, or `null` for a close on release or unload. */
+type Halt = { error: unknown } | null;
+
+/**
+ * One chain's lanes as the pool holds them. `unheld` has no lease and no countdown, and `expiring` counts down to its
+ * close. `closed` stays until the chain is asked for again, so a lease that opened as the chain halted reads the halt.
+ * `chain` holds the facts that outlive every kind. The follow gate outlives `held`, so a chain leased again still
+ * waits out its backoff.
+ */
 type Entry = {
-  readonly key: string;
-  readonly lanes: ChainLanes;
-  leases: number;
-  /** The pending destroy's timer handle, `null` while none is pending. */
-  destroyTimer: unknown;
-  live: boolean;
-  /** Why the entry halted, for a lease that took it as it halted and so missed the halt. `null` otherwise. */
-  halt: { error: unknown } | null;
-  following: boolean;
-  watchFollow: { disconnect: () => void } | null;
-};
+  chain: WatchChain & {
+    /** Outlives the lanes, so a chain that halts and is rebuilt keeps its warning count. */
+    warn: BrokerWarner;
+  };
+  status: ConnectionStatus;
+} & (
+  | { kind: 'held'; leases: number; watch: Watch }
+  | { kind: 'unheld' }
+  | {
+      kind: 'expiring';
+      /** The timer of the countdown to the chain's close. */
+      countdown: unknown;
+    }
+  | { kind: 'closed'; halt: Halt }
+);
 
-type LeaseParams<Connection> = {
-  /** The chain the lease holds. */
-  entry: Entry;
-  /** The broker session the lease wraps. */
-  connection: Connection;
-  /** Names the lease in debug logs. */
-  holder: string;
-};
+type LiveKind = 'held' | 'unheld' | 'expiring';
+type LiveEntry = Extract<Entry, { kind: LiveKind }>;
+type UnheldEntry = Extract<Entry, { kind: 'unheld' }>;
 
-type AttachLocalParams = {
-  /** The chain to lease. */
-  genesisHash: string;
-  /** Names the lease in debug logs. */
-  holder: string;
-  /** Hears the lease's messages. */
-  onMessage: (message: JsonRpcMessage) => void;
-  /** Hears the chain's halt, including one that came while the lease was taken. */
-  onHalt: (error?: unknown) => void;
-};
+type PoolState =
+  { kind: 'running'; entries: ReadonlyMap<string, Entry> } | { kind: 'paused'; entries: ReadonlyMap<string, Entry> };
 
-type ConnectHealingParams = {
-  /** The chain, lowercase. */
-  key: string;
-  /** Names the lease in debug logs. */
-  holder: string;
-  /** Hears every message of every lease the healing lease takes. */
-  onMessage: (message: JsonRpcMessage) => void;
-};
+type PoolKind = PoolState['kind'];
 
-type HaltOnFailureParams = {
-  /** The chain to pause or resume. */
-  entry: Entry;
-  /** What to do to its lanes, which also names the step in the report. */
-  action: 'pause' | 'resume';
-};
+/** Each `key` is a chain's lowercase genesis hash, and each `lanes` the lanes the event is about. */
+type PoolEvent =
+  | { kind: 'chainAsked'; key: string }
+  | { kind: 'leased'; key: string; lanes: ChainLanes; holder: string }
+  | { kind: 'released'; key: string; lanes: ChainLanes; holder: string }
+  | { kind: 'askEnded'; key: string }
+  | { kind: 'closeDue'; key: string }
+  | { kind: 'laneStatus'; key: string; lanes: ChainLanes; status: ConnectionStatus }
+  | { kind: 'laneHalted'; key: string; lanes: ChainLanes; error: unknown }
+  | { kind: 'syncDue'; key: string }
+  | { kind: 'followChanged'; key: string; follow: WatchFollow; following: boolean }
+  | { kind: 'followRefused'; key: string; follow: WatchFollow }
+  | { kind: 'bestBlock'; key: string; follow: WatchFollow; blockNumber: number }
+  | { kind: 'retryDue'; key: string }
+  | { kind: 'followFailed'; key: string; lanes: ChainLanes; error: unknown }
+  | { kind: 'modeAsked'; mode: PoolKind }
+  | { kind: 'watchersChanged' }
+  | { kind: 'closeAsked' };
+
+/** What happened to a chain or the pool. The runner reads the activity from the state the transition left. */
+type PoolEffect =
+  | { kind: 'status'; key: string; status: ConnectionStatus }
+  | { kind: 'activity' | 'built' | 'followed' | 'unfollowed'; key: string }
+  | { kind: 'leased' | 'released'; key: string; holder: string }
+  | { kind: 'closed'; key: string; halt: Halt }
+  | { kind: 'bestBlock'; key: string; blockNumber: number }
+  | { kind: 'modeSet'; mode: PoolKind; chains: number }
+  | { kind: 'buildFailed' | 'followFailed'; key: string; error: unknown }
+  | { kind: 'stopTimer'; timer: unknown }
+  | { kind: 'endWatch'; watch: Watch }
+  | { kind: 'disconnectLanes'; lanes: ChainLanes };
+
+type PoolMachine = MachineTypes<PoolState, PoolEvent, PoolEffect>;
+type EntryMachine = MachineTypes<Entry, PoolEvent, PoolEffect>;
+type WatchMachine = MachineTypes<Watch, PoolEvent, PoolEffect>;
 
 /** What the pool tells its watchers, one listener per watcher. */
 type WatchEvent =
   { kind: 'activity'; activity: ChainActivity } | { kind: 'bestBlock'; genesisHash: string; blockNumber: number };
-
-const DEFAULT_DESTROY_DELAY_MS = 60_000;
 
 // Names the pool in its log lines. Lease traffic logs at debug level, so it prints only with VITE_APP_DEBUG.
 const POOL_TAG = '[dot.li chain-pool]';
@@ -175,442 +231,425 @@ const POOL_TAG = '[dot.li chain-pool]';
  */
 export function createChainPool({
   createTransport,
-  destroyDelay = DEFAULT_DESTROY_DELAY_MS,
+  destroyDelay = 60_000,
   isFrameDown = () => false,
   timers = realTimers,
 }: Params): ChainPool {
-  const entries = new Map<string, Entry>();
-  // Outlives the entries, so a chain that halts and is rebuilt keeps its warning count.
-  const warners = new Map<string, BrokerWarner>();
-  const statuses = new Map<string, ConnectionStatus>();
-  const listeners = new Map<string, ListenerSet<ConnectionStatus>>();
+  // Each hears the pool once the call that changed it has returned, so one that asks the pool for a chain finds it
+  // settled.
+  const listeners = new Map<string, ReturnType<typeof createLaterListeners<ConnectionStatus>>>();
   let sessionCounter = 0;
-  let healCounter = 0;
-  let paused = false;
-  const watchers = createListenerSet<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
-  const redial = createChainRedial({ status: key => statuses.get(key) ?? 'disconnected', isFrameDown, timers });
-  const waits = createAsyncTaskPool({ poolSize: 1, timers });
+  const watchers = createLaterListeners<WatchEvent>({ onListenerError: protocolReport.listener('chain_pool.watch') });
+  const redial = createChainRedial({ status: readStatus, isFrameDown, timers });
   const healingLeases = new Set<JsonRpcConnection>();
 
-  function getActivity(entry: Entry): ChainActivity {
-    return {
-      genesisHash: entry.key,
-      consumers: entry.live ? entry.leases : 0,
-      status: statuses.get(entry.key) ?? 'disconnected',
-      following: entry.live && entry.following,
-    };
-  }
-
-  function report(entry: Entry): void {
-    watchers.emit({ kind: 'activity', activity: getActivity(entry) });
-  }
-
-  function setStatus(key: string, status: ConnectionStatus): void {
-    if (statuses.get(key) === status) {
-      return;
-    }
-    statuses.set(key, status);
-    listeners.get(key)?.emit(status);
-  }
-
-  /** Close an entry: quietly on release or unload, telling its leases on a halt. */
-  function destroy(entry: Entry, halt: { error: unknown } | null): void {
-    if (!entry.live) {
-      return;
-    }
-    entry.live = false;
-    entry.halt = halt;
-    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
-    // The lanes drop it with the other consumers.
-    entry.watchFollow = null;
-    if (entry.destroyTimer !== null) {
-      timers.clearTimeout(entry.destroyTimer);
-      entry.destroyTimer = null;
-    }
-    entries.delete(entry.key);
-    // Before the lanes call: a halt handler may lease the chain again, and
-    // the rebuilt entry's status must not be overwritten afterwards.
-    setStatus(entry.key, 'disconnected');
-    report(entry);
-    // The entry is already gone, so one chain's failure must not keep the others open.
-    try {
-      if (halt === null) {
-        entry.lanes.disconnectAll();
-      } else {
-        entry.lanes.halt(halt.error);
-      }
-    } catch (error) {
-      protocolReport.defect(error, {
-        step: 'chain_pool_close',
-        metric: chainPoolCloseMetric,
-        message: `${POOL_TAG} closing ${getShortKey(entry.key)} (${halt === null ? 'on release or unload' : 'on a halt'}) failed:`,
-      });
-    }
-  }
-
-  /** Gives a chain's new status to the pool's statuses and the watchers, and nothing once the chain is closed. */
-  function applyStatus(entry: Entry, status: ConnectionStatus): void {
-    if (!entry.live) {
-      return;
-    }
-    setStatus(entry.key, status);
-    report(entry);
-  }
-
-  /** Pauses or resumes one chain's lanes, and halts the chain when that throws so its leases recover. */
-  function haltOnFailure({ entry, action }: HaltOnFailureParams): void {
-    try {
-      entry.lanes[action]();
-    } catch (error) {
-      protocolReport.defect(error, {
-        step: `chain_pool_${action}`,
-        metric: chainPoolCloseMetric,
-        message: `${POOL_TAG} ${action} of ${getShortKey(entry.key)} failed:`,
-      });
-      destroy(entry, { error });
-    }
-  }
-
-  /** The watchers' own follow on a held chain, which reports to them while the entry lives. */
-  function openFollow(entry: Entry): { disconnect: () => void } {
-    // Names the chain, so the follow's debug log says which one refused it.
-    const sessionId = `watch:${getShortKey(entry.key)}:${sessionCounter.toString(36)}`;
-    sessionCounter += 1;
-    const follow = openWatchFollow({
-      sessionId,
-      connect: onMessage => entry.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
-      live: () => entry.live,
-      onFollowing: following => {
-        if (entry.live && entry.following !== following) {
-          entry.following = following;
-          report(entry);
-        }
-      },
-      onBestBlock: blockNumber => {
-        if (entry.live) {
-          watchers.emit({ kind: 'bestBlock', genesisHash: entry.key, blockNumber });
-        }
-      },
-    });
-    return {
-      disconnect() {
-        follow.disconnect();
-        // Reported by whoever stopped it, with the change that stopped it.
-        entry.following = false;
-      },
-    };
-  }
-
-  /**
-   * Opens the watchers' follow. A failure leaves the chain without one, and the next sync tries again. Never throws.
-   */
-  function startWatchFollow(entry: Entry): void {
-    try {
-      entry.watchFollow = openFollow(entry);
-    } catch (error) {
-      // The follow has no caller to throw to. A halted chain tells its leases itself, so only a live chain is reported.
-      if (entry.live) {
-        protocolReport.defect(error, {
-          step: 'chain_pool_watch_follow',
-          metric: chainLaneOpenMetric,
-          message: `${POOL_TAG} ${getShortKey(entry.key)} the network panel's follow could not open:`,
-        });
-      }
-    }
-  }
-
-  /** The watchers' follow runs exactly while the chain is held and watched. */
-  function syncWatchFollow(entry: Entry): void {
-    const wanted = entry.live && watchers.size > 0 && entry.leases > 0;
-    if (wanted && entry.watchFollow === null) {
-      log.debug(`${POOL_TAG} ${getShortKey(entry.key)} held, the network panel follows it`);
-      startWatchFollow(entry);
-    } else if (!wanted && entry.watchFollow !== null) {
-      const watchFollow = entry.watchFollow;
-      entry.watchFollow = null;
-      log.debug(
-        `${POOL_TAG} ${getShortKey(entry.key)} the network panel stops following it (${String(entry.leases)} leases)`,
-      );
-      watchFollow.disconnect();
-    }
-  }
-
-  function build(key: string): Entry | null {
-    // Null until the lanes exist, so a hook that fires earlier has nothing to report on.
-    let entry: Entry | null = null;
-    const warn = warners.get(key) ?? createBrokerWarner();
-    const lanes = createChainLanes({
-      label: getShortKey(key),
-      createTransport: hooks => createTransport(key, hooks),
-      warn,
-      paused,
-      onStatus: status => {
-        if (entry !== null) {
-          applyStatus(entry, status);
-        }
-      },
-      onHalt: error => {
-        if (entry?.live === true) {
-          destroy(entry, { error });
-        }
-      },
-    });
-    if (lanes === null) {
-      return null;
-    }
-    warners.set(key, warn);
-    const created: Entry = {
-      key,
-      lanes,
-      leases: 0,
-      destroyTimer: null,
-      live: true,
-      halt: null,
-      following: false,
-      watchFollow: null,
-    };
-    log.debug(`${POOL_TAG} ${getShortKey(key)} opening`);
-    entry = created;
-    entries.set(key, created);
-    setStatus(key, lanes.status());
-    report(created);
-    return created;
-  }
-
-  function acquire(genesisHash: string): Entry | null {
-    const key = genesisHash.toLowerCase();
-    const entry = entries.get(key) ?? build(key);
-    if (entry === null) {
-      return null;
-    }
-    if (!paused) {
-      haltOnFailure({ entry, action: 'resume' });
-    }
-    if (entry.destroyTimer !== null) {
-      timers.clearTimeout(entry.destroyTimer);
-      entry.destroyTimer = null;
-    }
-    // A chain that failed to reopen is halted, so the lease takes the chain built in its place.
-    return entry.live ? entry : (entries.get(key) ?? build(key));
-  }
-
-  function idle(entry: Entry): void {
-    if (entry.leases > 0 || !entry.live || entry.destroyTimer !== null) {
-      return;
-    }
-    if (destroyDelay <= 0) {
-      destroy(entry, null);
-      return;
-    }
-    // `setTimeout` clamps a non-finite delay to about 1 ms, which would close the entry at once.
-    if (!Number.isFinite(destroyDelay)) {
-      return;
-    }
-    entry.destroyTimer = timers.setTimeout(() => {
-      entry.destroyTimer = null;
-      destroy(entry, null);
-    }, destroyDelay);
-  }
-
-  /** Count `connection` as a lease on `entry`, released once by its first `disconnect()`. */
-  function lease<Connection extends { disconnect: () => void }>({
+  const storeStatus: HandlerOf<EntryMachine, LiveKind, 'laneStatus'> = (
     entry,
-    connection,
-    holder,
-  }: LeaseParams<Connection>): Connection {
-    entry.leases += 1;
-    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} leased by ${holder} (${String(entry.leases)} held)`);
-    report(entry);
-    syncWatchFollow(entry);
-    let released = false;
-    return {
-      ...connection,
-      disconnect() {
-        if (released) {
-          return;
-        }
-        released = true;
-        connection.disconnect();
-        // A halted entry is already gone, so its leases count for nothing.
-        if (!entry.live) {
-          return;
-        }
-        entry.leases -= 1;
-        log.debug(`${POOL_TAG} ${getShortKey(entry.key)} released by ${holder} (${String(entry.leases)} held)`);
-        // Before the report, so the last release reaches the watchers with the follow already stopped.
-        syncWatchFollow(entry);
-        report(entry);
-        idle(entry);
+    { key, status },
+    { emitState, emitSideEffect },
+  ) => {
+    emitState({ ...entry, status });
+    if (entry.status !== status) {
+      emitSideEffect({ kind: 'status', key, status });
+    }
+    emitSideEffect({ kind: 'activity', key });
+  };
+  const closeOnHalt: HandlerOf<EntryMachine, LiveKind, 'laneHalted'> = (entry, { key, error }, transition) => {
+    closeEntry({ key, entry, halt: { error } }, transition);
+  };
+  const closeQuietly: HandlerOf<EntryMachine, LiveKind, 'closeDue'> = (entry, { key }, transition) => {
+    closeEntry({ key, entry, halt: null }, transition);
+  };
+  // Sent as an event, so a failure that a halt of the chain caused finds the chain closed by that queued halt and goes
+  // unreported.
+  const reportFollowFailure: HandlerOf<EntryMachine, LiveKind, 'followFailed'> = (
+    _entry,
+    { key, error },
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'followFailed', key, error });
+  };
+  const holdEntry: HandlerOf<EntryMachine, 'unheld' | 'expiring', 'leased'> = (
+    entry,
+    { key, holder },
+    { emitState, emitSideEffect, update },
+  ) => {
+    const { chain, status } = entry;
+    emitState({ kind: 'held', chain, status, leases: 1, watch: { kind: 'off', chain } });
+    emitSideEffect({ kind: 'leased', key, holder });
+    update({ kind: 'syncDue', key });
+    if (entry.kind === 'expiring') {
+      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+    }
+  };
+
+  // A watch with no watcher left stops its follow, or its wait to follow again.
+  const leaveWhenUnwatched: HandlerOf<WatchMachine, 'open' | 'refused', 'syncDue'> = (watch, { key }, transition) => {
+    if (watchers.size > 0) {
+      return;
+    }
+    stopWatch(watch, key, transition);
+  };
+
+  // The watchers' follow runs exactly while the chain is held and watched.
+  const handleWatch = nest<
+    EntryMachine,
+    'held',
+    WatchMachine,
+    'syncDue' | 'followChanged' | 'followRefused' | 'bestBlock' | 'retryDue'
+  >({
+    find({ watch }, event) {
+      switch (event.kind) {
+        case 'syncDue':
+        case 'retryDue':
+          return watch;
+        case 'followChanged':
+        case 'followRefused':
+        case 'bestBlock':
+          return watch.kind === 'open' && watch.follow === event.follow ? watch : null;
+      }
+    },
+    store: (entry, _event, watch) => ({ ...entry, watch }),
+    handlers: {
+      off: {
+        syncDue({ chain }, { key }, transition) {
+          if (watchers.size === 0) {
+            return;
+          }
+          if (chain.followGate.waitMs() > 0) {
+            waitToRetry(chain, key, transition);
+            return;
+          }
+          openFollow(chain, key, transition);
+        },
       },
-    };
-  }
-
-  /** Takes the chain for a local provider, and lets it go idle once its caller has had this turn to connect. */
-  function acquireForProvider(genesisHash: string): Entry | null {
-    const entry = acquire(genesisHash);
-    if (entry === null) {
-      return null;
-    }
-    // Callers call the provider at once. One that never does must not keep
-    // the entry for good, so its countdown starts once this turn is over.
-    queueMicrotask(() => {
-      idle(entry);
-    });
-    return entry;
-  }
-
-  /**
-   * A healing lease's attach: leases the chain as the pool holds it now, on the object wire. Returns `null` when no
-   * transport can be had, and throws as the chain's connect throws.
-   */
-  function attachLocal({ genesisHash, holder, onMessage, onHalt }: AttachLocalParams): JsonRpcConnection | null {
-    const entry = acquire(genesisHash);
-    if (entry === null) {
-      return null;
-    }
-    const sessionId = `local:${sessionCounter.toString(36)}`;
-    sessionCounter += 1;
-    let connection: JsonRpcConnection;
-    try {
-      // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
-      connection = lease({
-        entry,
-        connection: entry.lanes.connect({
-          sessionId,
-          onMessage: onMessage as (message: unknown) => void,
-          wireMode: 'object',
-          onHalt,
-        }),
-        holder,
-      }) as JsonRpcConnection;
-    } catch (error) {
-      idle(entry);
-      throw error;
-    }
-    // A halt while the lease is taken may not reach it, so a lease on an entry that is no longer live hears it here.
-    if (!entry.live) {
-      onHalt(entry.halt?.error);
-    }
-    return connection;
-  }
-
-  /** A healing lease on `key`, which `disconnectAll` ends while it is held. */
-  function connectHealing({ key, holder, onMessage }: ConnectHealingParams): JsonRpcConnection {
-    healCounter += 1;
-    const connection = createHealingLease({
-      key,
-      attach: (onLeaseMessage, onHalt) => attachLocal({ genesisHash: key, holder, onMessage: onLeaseMessage, onHalt }),
-      redial,
-      waits,
-      waitPool: `chain_heal:${String(healCounter)}`,
-      logTag: POOL_TAG,
-      holder,
-      onMessage,
-    });
-    const held: JsonRpcConnection = {
-      send: connection.send,
-      disconnect() {
-        healingLeases.delete(held);
-        connection.disconnect();
+      open: {
+        syncDue: leaveWhenUnwatched,
+        followChanged(watch, { key, following }, { emitState, emitSideEffect }) {
+          if (watch.following === following) {
+            return;
+          }
+          emitState({ ...watch, following });
+          emitSideEffect({ kind: 'activity', key });
+        },
+        followRefused(watch, { key }, transition) {
+          watch.chain.followGate.noteHalt();
+          waitToRetry(watch.chain, key, transition);
+          transition.emitSideEffect({ kind: 'endWatch', watch });
+        },
+        bestBlock(_watch, { key, blockNumber }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'bestBlock', key, blockNumber });
+        },
       },
-    };
-    healingLeases.add(held);
-    return held;
-  }
+      refused: {
+        // A watcher still here changes nothing, since the backoff is pending.
+        syncDue: leaveWhenUnwatched,
+        retryDue({ chain }, { key }, transition) {
+          // The timer and the gate's clock may disagree, so the follow waits again as the gate says.
+          if (!chain.followGate.tryDial()) {
+            waitToRetry(chain, key, transition);
+            return;
+          }
+          openFollow(chain, key, transition);
+        },
+      },
+    },
+  });
 
-  /** Ends a healing lease for `disconnectAll`, which goes on with the others when one fails. */
-  function endHealing(held: JsonRpcConnection): void {
-    try {
-      held.disconnect();
-    } catch (error) {
-      protocolReport.defect(error, {
-        step: 'chain_pool_close',
-        metric: chainPoolCloseMetric,
-        message: `${POOL_TAG} ending a healing lease failed:`,
-      });
-    }
-  }
-
-  return {
-    connectRemote({ genesisHash, connectionId, onMessage, onHalt }) {
-      const entry = acquire(genesisHash);
+  const handleEntry = nest<
+    PoolMachine,
+    PoolKind,
+    EntryMachine,
+    Exclude<PoolEvent['kind'], 'modeAsked' | 'watchersChanged' | 'closeAsked'>
+  >({
+    find({ entries }, event) {
+      const entry = entries.get(event.key) ?? null;
       if (entry === null) {
         return null;
       }
+      switch (event.kind) {
+        case 'leased':
+        case 'released':
+        case 'laneStatus':
+        case 'laneHalted':
+        case 'followFailed':
+          return entry.chain.lanes === event.lanes ? entry : null;
+        // An ask that ends after a rebuild still counts the rebuilt chain down.
+        case 'askEnded':
+        case 'chainAsked':
+        case 'closeDue':
+        case 'syncDue':
+        case 'followChanged':
+        case 'followRefused':
+        case 'bestBlock':
+        case 'retryDue':
+          return entry;
+      }
+    },
+    store: (state, { key }, entry) => ({ ...state, entries: new Map(state.entries).set(key, entry) }),
+    handlers: {
+      held: {
+        leased(entry, { key, holder }, { emitState, emitSideEffect, update }) {
+          emitState({ ...entry, leases: entry.leases + 1 });
+          emitSideEffect({ kind: 'leased', key, holder });
+          update({ kind: 'syncDue', key });
+        },
+        released(entry, { key, holder }, transition) {
+          transition.emitSideEffect({ kind: 'released', key, holder });
+          if (entry.leases > 1) {
+            transition.emitState({ ...entry, leases: entry.leases - 1 });
+            return;
+          }
+          const { chain, status } = entry;
+          const unheld: UnheldEntry = { kind: 'unheld', chain, status };
+          transition.emitState(unheld);
+          transition.emitSideEffect({ kind: 'endWatch', watch: entry.watch });
+          idle(key, unheld, transition);
+        },
+        laneStatus: storeStatus,
+        laneHalted: closeOnHalt,
+        closeDue: closeQuietly,
+        followFailed: reportFollowFailure,
+        syncDue: handleWatch,
+        followChanged: handleWatch,
+        followRefused: handleWatch,
+        bestBlock: handleWatch,
+        retryDue: handleWatch,
+      },
+      unheld: {
+        leased: holdEntry,
+        askEnded(entry, { key }, transition) {
+          idle(key, entry, transition);
+        },
+        laneStatus: storeStatus,
+        laneHalted: closeOnHalt,
+        closeDue: closeQuietly,
+        followFailed: reportFollowFailure,
+      },
+      expiring: {
+        chainAsked(entry, _event, { emitState, emitSideEffect }) {
+          const { chain, status } = entry;
+          emitState({ kind: 'unheld', chain, status });
+          emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+        },
+        leased: holdEntry,
+        laneStatus: storeStatus,
+        laneHalted: closeOnHalt,
+        closeDue: closeQuietly,
+        followFailed: reportFollowFailure,
+      },
+      closed: null,
+    },
+  });
+
+  const poolHandlers: HandlersOf<PoolMachine, PoolKind> = {
+    chainAsked(state, event, transition) {
+      const { key } = event;
+      const asked = state.entries.get(key) ?? null;
+      if (asked !== null && isLive(asked)) {
+        handleEntry(state, event, transition);
+        return;
+      }
+      const warn = asked?.chain.warn ?? createBrokerWarner();
+      let lanes: ChainLanes | null = null;
       try {
-        // Prefixed so no remote id can collide with a local lease's `local:N`.
-        return lease({
-          entry,
-          connection: entry.lanes.connect({
-            sessionId: `remote:${connectionId}`,
-            // On the string wire the broker sends JSON text, which it types as `unknown`.
-            onMessage: onMessage as (message: unknown) => void,
-            wireMode: 'string',
-            onHalt: onHalt ?? null,
-          }),
-          holder: `remote:${connectionId}`,
+        lanes = createChainLanes({
+          label: getShortKey(key),
+          createTransport: hooks => createTransport(key, hooks),
+          warn,
+          paused: state.kind === 'paused',
+          // Null until the lanes exist, so a hook that fires earlier has nothing to report on.
+          onStatus: status => {
+            if (lanes !== null) {
+              transition.update({ kind: 'laneStatus', key, lanes, status });
+            }
+          },
+          onHalt: error => {
+            if (lanes !== null) {
+              haltLanes({ kind: 'laneHalted', key, lanes, error });
+            }
+          },
         });
       } catch (error) {
-        idle(entry);
-        throw error;
+        transition.emitSideEffect({ kind: 'buildFailed', key, error });
+        return;
+      }
+      if (lanes === null) {
+        return;
+      }
+      const built: Entry = {
+        kind: 'unheld',
+        chain: { lanes, followGate: createRedialGate({ timers }), warn },
+        status: lanes.status(),
+      };
+      transition.emitState({ ...state, entries: new Map(state.entries).set(key, built) });
+      if (asked?.status !== built.status) {
+        transition.emitSideEffect({ kind: 'status', key, status: built.status });
+      }
+      transition.emitSideEffect({ kind: 'built', key });
+    },
+    modeAsked(state, { mode }, { emitState, emitSideEffect }) {
+      if (state.kind === mode) {
+        return;
+      }
+      emitState({ ...state, kind: mode });
+      emitSideEffect({ kind: 'modeSet', mode, chains: [...state.entries.values()].filter(isLive).length });
+    },
+    watchersChanged({ entries }, _event, { update }) {
+      for (const key of entries.keys()) {
+        update({ kind: 'syncDue', key });
+      }
+    },
+    closeAsked({ entries }, _event, { update }) {
+      for (const key of entries.keys()) {
+        update({ kind: 'closeDue', key });
+      }
+    },
+    leased: handleEntry,
+    released: handleEntry,
+    askEnded: handleEntry,
+    closeDue: handleEntry,
+    laneStatus: handleEntry,
+    laneHalted: handleEntry,
+    syncDue: handleEntry,
+    followChanged: handleEntry,
+    followRefused: handleEntry,
+    bestBlock: handleEntry,
+    retryDue: handleEntry,
+    followFailed: handleEntry,
+  };
+
+  const machine = createStateMachine<PoolMachine>({
+    initial: { kind: 'running', entries: new Map() },
+    handlers: { running: poolHandlers, paused: poolHandlers },
+    onEffect: runEffect,
+    onError: error => {
+      protocolReport.defect(error, {
+        step: 'chain_pool_close',
+        metric: chainPoolCloseMetric,
+        message: `${POOL_TAG} a transition failed:`,
+      });
+    },
+  });
+
+  return {
+    connectRemote({ genesisHash, connectionId, onMessage, onHalt }) {
+      // Prefixed so no remote id can collide with a local lease's `local:N`.
+      const sessionId = `remote:${connectionId}`;
+      const key = genesisHash.toLowerCase();
+      const answer = takeLease(key, sessionId, {
+        sessionId,
+        // On the string wire the broker sends JSON text, which it types as `unknown`.
+        onMessage: onMessage as (message: unknown) => void,
+        wireMode: 'string',
+        onHalt: onHalt ?? null,
+      });
+      switch (answer.kind) {
+        case 'attached':
+          return answer.connection;
+        case 'unreachable':
+          return null;
+        case 'halted':
+          throw new Error(`chain ${getShortKey(key)} halted while remote session ${connectionId} opened`, {
+            cause: answer.error,
+          });
       }
     },
 
     getLocalProvider(genesisHash, { holder = 'local' } = {}) {
-      const entry = acquireForProvider(genesisHash);
-      if (entry === null) {
+      const key = genesisHash.toLowerCase();
+      machine.update({ kind: 'chainAsked', key });
+      // Callers call the provider at once. One that never does must not keep
+      // the entry for good, so its countdown starts once this turn is over.
+      machine.update(Promise.resolve<PoolEvent>({ kind: 'askEnded', key }));
+      if (findLive(key) === null) {
         return null;
       }
-      const { key } = entry;
-      return onMessage => connectHealing({ key, holder, onMessage });
+      return onMessage => {
+        const connection = createHealingLease({
+          key,
+          attach: onHalt => {
+            const sessionId = `local:${sessionCounter.toString(36)}`;
+            sessionCounter += 1;
+            return takeLease(key, holder, {
+              sessionId,
+              // On the object wire the broker passes JSON-RPC messages through, which it types as `unknown`.
+              onMessage: onMessage as (message: unknown) => void,
+              wireMode: 'object',
+              onHalt,
+            });
+          },
+          redial,
+          timers,
+          holder,
+          onMessage,
+        });
+        const held: JsonRpcConnection = {
+          send: connection.send,
+          disconnect() {
+            healingLeases.delete(held);
+            connection.disconnect();
+          },
+        };
+        healingLeases.add(held);
+        return held;
+      };
     },
 
     disconnectAll() {
+      // Each lease ends even when an earlier one fails to.
       for (const held of [...healingLeases]) {
-        endHealing(held);
+        try {
+          held.disconnect();
+        } catch (error) {
+          protocolReport.defect(error, {
+            step: 'chain_pool_close',
+            metric: chainPoolCloseMetric,
+            message: `${POOL_TAG} ending a healing lease failed:`,
+          });
+        }
       }
-      for (const entry of [...entries.values()]) {
-        destroy(entry, null);
-      }
+      machine.update({ kind: 'closeAsked' });
     },
 
     pause() {
-      if (paused) {
+      if (machine.state.get().kind === 'paused') {
         return;
       }
-      paused = true;
-      const live = [...entries.values()];
-      for (const entry of live) {
-        haltOnFailure({ entry, action: 'pause' });
+      machine.update({ kind: 'modeAsked', mode: 'paused' });
+      // Each chain is read as the loop comes to it, since a consumer that hears an earlier chain may close a later one.
+      for (const key of [...machine.state.get().entries.keys()]) {
+        const entry = findLive(key);
+        if (entry !== null) {
+          runOnLanes(key, entry.chain.lanes, 'pause');
+        }
       }
-      protocolReport.log.event(`${POOL_TAG} paused`, { chains: live.length });
     },
 
     resume() {
-      if (!paused) {
+      if (machine.state.get().kind === 'running') {
         return;
       }
-      paused = false;
-      const live = [...entries.values()];
-      // Each transport reports its own status as it opens, some inside this call, so none is set here.
-      for (const entry of live) {
-        // A consumer's delivery in this loop may have closed the chain.
-        if (entry.live && entry.leases > 0) {
-          haltOnFailure({ entry, action: 'resume' });
+      machine.update({ kind: 'modeAsked', mode: 'running' });
+      // Each transport reports its own status as it opens, some inside this call, so none is set here. Each chain is
+      // read as the loop comes to it, since a consumer that hears an earlier chain may close a later one.
+      for (const key of [...machine.state.get().entries.keys()]) {
+        const entry = machine.state.get().entries.get(key);
+        if (entry?.kind === 'held') {
+          runOnLanes(key, entry.chain.lanes, 'resume');
         }
       }
-      protocolReport.log.event(`${POOL_TAG} resumed`, { chains: live.length });
     },
 
     status(genesisHash) {
-      return statuses.get(genesisHash.toLowerCase()) ?? 'disconnected';
+      return readStatus(genesisHash.toLowerCase());
     },
 
     onStatusChanged(genesisHash, callback) {
       const key = genesisHash.toLowerCase();
       let callbacks = listeners.get(key);
       if (callbacks === undefined) {
-        callbacks = createListenerSet<ConnectionStatus>({
+        callbacks = createLaterListeners<ConnectionStatus>({
           onListenerError: protocolReport.listener('chain_pool.status'),
         });
         listeners.set(key, callbacks);
@@ -632,19 +671,360 @@ export function createChainPool({
       function unwatch(): void {
         unsubscribe();
         if (watchers.size === 0) {
-          for (const entry of [...entries.values()]) {
-            syncWatchFollow(entry);
-          }
+          machine.update({ kind: 'watchersChanged' });
         }
       }
       const unsubscribe = watchers.subscribe(hear);
-      for (const entry of [...entries.values()]) {
-        watchers.deliver(hear, { kind: 'activity', activity: getActivity(entry) });
-        syncWatchFollow(entry);
+      for (const [key, entry] of machine.state.get().entries) {
+        if (isLive(entry)) {
+          watchers.deliver(hear, { kind: 'activity', activity: getActivity(key) });
+        }
       }
+      machine.update({ kind: 'watchersChanged' });
       return unwatch;
     },
   };
+
+  /** Runs one effect a transition emitted. */
+  function runEffect(effect: PoolEffect): void {
+    switch (effect.kind) {
+      case 'status':
+        listeners.get(effect.key)?.emit(effect.status);
+        return;
+      case 'activity':
+        watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
+        return;
+      case 'leased':
+      case 'released': {
+        const activity = getActivity(effect.key);
+        const held = `(${String(activity.consumers)} held)`;
+        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} ${effect.kind} by ${effect.holder} ${held}`);
+        watchers.emit({ kind: 'activity', activity });
+        return;
+      }
+      case 'built':
+        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} opening`);
+        watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
+        return;
+      case 'closed':
+        log.debug(
+          `${POOL_TAG} ${getShortKey(effect.key)} closing`,
+          effect.halt === null ? 'on release or unload' : effect.halt.error,
+        );
+        watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
+        return;
+      case 'followed':
+        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} held, the network panel follows it`);
+        return;
+      case 'unfollowed':
+        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} the network panel stops following it`);
+        return;
+      case 'bestBlock':
+        watchers.emit({ kind: 'bestBlock', genesisHash: effect.key, blockNumber: effect.blockNumber });
+        return;
+      case 'modeSet':
+        protocolReport.log.event(`${POOL_TAG} ${effect.mode === 'paused' ? 'paused' : 'resumed'}`, {
+          chains: effect.chains,
+        });
+        return;
+      case 'buildFailed':
+        protocolReport.defect(effect.error, {
+          step: 'chain_lane_build',
+          metric: chainLaneOpenMetric,
+          message: `${POOL_TAG} building ${getShortKey(effect.key)} failed:`,
+        });
+        return;
+      case 'followFailed':
+        protocolReport.defect(effect.error, {
+          step: 'chain_pool_watch_follow',
+          metric: chainLaneOpenMetric,
+          message: `${POOL_TAG} ${getShortKey(effect.key)} the network panel's follow could not open:`,
+        });
+        return;
+      case 'stopTimer':
+        timers.clearTimeout(effect.timer);
+        return;
+      case 'endWatch':
+        endWatch(effect.watch);
+        return;
+      case 'disconnectLanes':
+        effect.lanes.disconnectAll();
+        return;
+    }
+  }
+
+  function readStatus(key: string): ConnectionStatus {
+    return machine.state.get().entries.get(key)?.status ?? 'disconnected';
+  }
+
+  function findLive(key: string): LiveEntry | null {
+    const entry = machine.state.get().entries.get(key);
+    return entry !== undefined && isLive(entry) ? entry : null;
+  }
+
+  function getActivity(key: string): ChainActivity {
+    const entry = machine.state.get().entries.get(key);
+    const status = entry?.status ?? 'disconnected';
+    if (entry?.kind !== 'held') {
+      return { genesisHash: key, consumers: 0, status, following: false };
+    }
+    const { watch } = entry;
+    return { genesisHash: key, consumers: entry.leases, status, following: watch.kind === 'open' && watch.following };
+  }
+
+  /**
+   * Closes a live entry, quietly on release or unload, or on its halt. A halt calls no lanes method here, since its
+   * lanes are halted only once the entry reads closed.
+   */
+  function closeEntry(
+    { key, entry, halt }: { key: string; entry: LiveEntry; halt: Halt },
+    { emitState, emitSideEffect }: Transition<EntryMachine>,
+  ): void {
+    const { chain, status } = entry;
+    emitState({ kind: 'closed', chain, status: 'disconnected', halt });
+    if (status !== 'disconnected') {
+      emitSideEffect({ kind: 'status', key, status: 'disconnected' });
+    }
+    emitSideEffect({ kind: 'closed', key, halt });
+    if (entry.kind === 'expiring') {
+      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+    }
+    const watch = entry.kind === 'held' ? entry.watch : null;
+    if (halt === null) {
+      // Each its own effect, so a failure leaves the rest of the chain closed.
+      if (watch !== null) {
+        emitSideEffect({ kind: 'endWatch', watch });
+      }
+      emitSideEffect({ kind: 'disconnectLanes', lanes: chain.lanes });
+      return;
+    }
+    // This path disconnects no follow and no lane, so only a refused watch has a timer to stop.
+    if (watch?.kind === 'refused') {
+      emitSideEffect({ kind: 'endWatch', watch });
+    }
+  }
+
+  /** Closes an unheld entry at once, keeps it, or counts it down to its close, as `destroyDelay` says. */
+  function idle(key: string, entry: UnheldEntry, transition: Transition<EntryMachine>): void {
+    if (destroyDelay <= 0) {
+      closeEntry({ key, entry, halt: null }, transition);
+      return;
+    }
+    // `setTimeout` clamps a non-finite delay to about 1 ms, which would close the entry at once.
+    if (!Number.isFinite(destroyDelay)) {
+      return;
+    }
+    const countdown = timers.setTimeout(() => {
+      transition.update({ kind: 'closeDue', key });
+    }, destroyDelay);
+    transition.emitState({ ...entry, kind: 'expiring', countdown });
+  }
+
+  /** Stops the watchers' follow, or its wait to follow again. */
+  function endWatch(watch: Watch): void {
+    switch (watch.kind) {
+      case 'off':
+        return;
+      case 'open':
+        watch.follow.disconnect();
+        return;
+      case 'refused':
+        timers.clearTimeout(watch.retry);
+        return;
+    }
+  }
+
+  /** Turns the watch off, and stops its follow or its wait to follow again. */
+  function stopWatch(watch: Watch, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
+    emitState({ kind: 'off', chain: watch.chain });
+    emitSideEffect({ kind: 'unfollowed', key });
+    emitSideEffect({ kind: 'endWatch', watch });
+  }
+
+  /** Holds the watchers' follow as refused until its gate's wait ends. */
+  function waitToRetry(chain: WatchChain, key: string, { emitState, update }: Transition<WatchMachine>): void {
+    const retry = timers.setTimeout(() => {
+      update({ kind: 'retryDue', key });
+    }, chain.followGate.waitMs());
+    emitState({ kind: 'refused', chain, retry });
+  }
+
+  /**
+   * Opens and starts the watchers' follow. A follow that cannot open or start leaves the watch off, and the next sync
+   * tries again.
+   */
+  function openFollow(
+    chain: WatchChain,
+    key: string,
+    { emitState, emitSideEffect, update }: Transition<WatchMachine>,
+  ): void {
+    emitSideEffect({ kind: 'followed', key });
+    // Names the chain, so the follow's debug log says which one refused it.
+    const sessionId = `watch:${getShortKey(key)}:${sessionCounter.toString(36)}`;
+    sessionCounter += 1;
+    let follow: WatchFollow;
+    try {
+      follow = openWatchFollow({
+        sessionId,
+        connect: onMessage => chain.lanes.connect({ sessionId, onMessage, wireMode: 'object' }),
+        onFollowing: following => {
+          update({ kind: 'followChanged', key, follow, following });
+        },
+        onRefused: () => {
+          update({ kind: 'followRefused', key, follow });
+        },
+        onBestBlock: blockNumber => {
+          update({ kind: 'bestBlock', key, follow, blockNumber });
+        },
+      });
+    } catch (error) {
+      emitState({ kind: 'off', chain });
+      update({ kind: 'followFailed', key, lanes: chain.lanes, error });
+      return;
+    }
+    const open: Watch = { kind: 'open', chain, follow, following: false };
+    emitState(open);
+    try {
+      follow.start();
+    } catch (error) {
+      emitState({ kind: 'off', chain });
+      emitSideEffect({ kind: 'endWatch', watch: open });
+      update({ kind: 'followFailed', key, lanes: chain.lanes, error });
+    }
+  }
+
+  /**
+   * Tells the pool its chain's lanes halted, then halts them once the pool closed the chain, so a lease taken again from
+   * inside that halt builds the chain anew. Reports a halt that throws.
+   */
+  function haltLanes(event: Extract<PoolEvent, { kind: 'laneHalted' }>): void {
+    machine.update(event);
+    // A halt heard inside a pool transition, such as a follow whose new lane could not be built, waits in the pool's
+    // queue, and a lease taken now could not build the chain. Its lanes halt once that transition is done.
+    if (findLive(event.key)?.chain.lanes === event.lanes) {
+      queueMicrotask(() => {
+        haltLanesNow(event);
+      });
+      return;
+    }
+    haltLanesNow(event);
+  }
+
+  function haltLanesNow({ key, lanes, error: haltError }: Extract<PoolEvent, { kind: 'laneHalted' }>): void {
+    try {
+      lanes.halt(haltError);
+    } catch (error) {
+      protocolReport.defect(error, {
+        step: 'chain_pool_close',
+        metric: chainPoolCloseMetric,
+        message: `${POOL_TAG} closing ${getShortKey(key)} (on a halt) failed:`,
+      });
+    }
+  }
+
+  /** Pauses or resumes one chain's lanes, and halts the chain when that throws so its leases recover. */
+  function runOnLanes(key: string, lanes: ChainLanes, action: 'pause' | 'resume'): void {
+    try {
+      lanes[action]();
+    } catch (error) {
+      protocolReport.defect(error, {
+        step: `chain_pool_${action}`,
+        metric: chainPoolCloseMetric,
+        message: `${POOL_TAG} ${action} of ${getShortKey(key)} failed:`,
+      });
+      haltLanes({ kind: 'laneHalted', key, lanes, error });
+    }
+  }
+
+  /**
+   * Leases the chain at `key` for one session on its lanes, as the pool holds it once the chain is asked for. Answers
+   * `halted` when the chain halted while the session opened, and gives the session's `onHalt` only a later halt.
+   * Throws as the lanes' connect throws.
+   */
+  function takeLease(
+    key: string,
+    holder: string,
+    session: Parameters<ChainLanes['connect']>[0],
+  ): AttachAnswer<BrokerConnection> {
+    // A chain closed by the pause, and not resumed since no lease held it, opens again under its new lease. Lanes that
+    // are not paused ignore the resume.
+    const live = findLive(key);
+    if (machine.state.get().kind === 'running' && live !== null) {
+      runOnLanes(key, live.chain.lanes, 'resume');
+    }
+    machine.update({ kind: 'chainAsked', key });
+    const entry = findLive(key);
+    if (entry === null) {
+      machine.update({ kind: 'askEnded', key });
+      return { kind: 'unreachable' };
+    }
+    const { lanes } = entry.chain;
+    // A halt heard while the session opens goes in the answer.
+    let phase: { kind: 'opening'; halt: Halt } | { kind: 'open' } | { kind: 'released' } = {
+      kind: 'opening',
+      halt: null,
+    };
+    let connection: BrokerConnection;
+    try {
+      connection = lanes.connect({
+        ...session,
+        onHalt: error => {
+          switch (phase.kind) {
+            case 'opening':
+              phase = { kind: 'opening', halt: { error } };
+              return;
+            case 'open':
+              session.onHalt?.(error);
+              return;
+            case 'released':
+              return;
+          }
+        },
+      });
+    } catch (error) {
+      machine.update({ kind: 'askEnded', key });
+      throw error;
+    }
+    machine.update({ kind: 'leased', key, lanes, holder });
+    // A halt while the session opens may not reach it, and a session on a closed chain would never hear one.
+    const openingHalt = phase.halt;
+    if (openingHalt !== null || findLive(key)?.chain.lanes !== lanes) {
+      phase = { kind: 'released' };
+      connection.disconnect();
+      machine.update({ kind: 'released', key, lanes, holder });
+      const closed = machine.state.get().entries.get(key);
+      return {
+        kind: 'halted',
+        error: closed?.kind === 'closed' && closed.chain.lanes === lanes ? closed.halt?.error : openingHalt?.error,
+      };
+    }
+    phase = { kind: 'open' };
+    return {
+      kind: 'attached',
+      connection: {
+        send: connection.send,
+        disconnect() {
+          if (phase.kind !== 'open') {
+            return;
+          }
+          phase = { kind: 'released' };
+          connection.disconnect();
+          machine.update({ kind: 'released', key, lanes, holder });
+        },
+      },
+    };
+  }
+}
+
+function isLive(entry: Entry): entry is LiveEntry {
+  switch (entry.kind) {
+    case 'held':
+    case 'unheld':
+    case 'expiring':
+      return true;
+    case 'closed':
+      return false;
+  }
 }
 
 function getShortKey(key: string): string {

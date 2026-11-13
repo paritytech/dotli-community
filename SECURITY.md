@@ -26,7 +26,7 @@ Responsible investigation and reporting includes, but isn't limited to, the foll
   before a fix as been created and deployed.
 - Don’t make repeat submissions of low quality, rejected or automated vulnerability reports. You will put yourself at
   risk of being banned permanently.
-- Don’t defraud or harm Parity Technologies or Polkadot or its users during your research; you should make a good faith
+- Don’t defraud or harm Parity Technologies or Polkadot or its users during your research. You should make a good faith
   effort to not interrupt or degrade our and the network's services. Investigate and report bugs in a way that makes a
   reasonable, good faith effort not to be disruptive or harmful to us or our users. Otherwise, your actions might be
   interpreted as an attack rather than an effort to be helpful.

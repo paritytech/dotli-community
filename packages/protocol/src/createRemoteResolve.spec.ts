@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { catchRejection, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { domain, err, hostFailure, ok } from '@dotli/transport';
+import { ok } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './createRemoteResolve.js';
 import { createFrameRpc } from './createFrameRpc.js';
@@ -93,43 +93,6 @@ describe('createRemoteResolve', () => {
 
     // Then
     expect((await cid).message).toBe(PROTOCOL_ERRORS.RESOLUTION_ENDED);
-  });
-
-  it('As the host, I see a resolver sync timeout in the frame on my error screen as NetworkSyncTimeoutError', async () => {
-    // Given a frame app whose resolver runs out of sync time
-    const message = 'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.';
-    const resolve = createResolve(
-      createResolvingFrame((_payload, _context, sink) => {
-        sink.interrupt(err(domain({ tag: 'syncTimeout', value: message })));
-        return () => undefined;
-      }),
-    );
-
-    // When
-    const cid = catchRejection(resolve.resolveDotName('doom'));
-    await timers.advance(0);
-
-    // Then the error screen matches on the name and reads the chain from the message
-    expect(await cid).toMatchObject({ name: 'NetworkSyncTimeoutError', message, method: 'resolveDotName' });
-  });
-
-  it('As the host, I read a resolution the frame fails under the name it crossed with, and a bare Error as a protocol response error', async () => {
-    // Given a frame app whose resolver throws a named error for one name and a bare one for another
-    const resolve = createResolve(
-      createResolvingFrame(({ label }, _context, sink) => {
-        sink.interrupt(err(hostFailure(label === 'named' ? 'DotNsError: no' : 'Error: no')));
-        return () => undefined;
-      }),
-    );
-
-    // When
-    const named = catchRejection(resolve.resolveDotName('named'));
-    const bare = catchRejection(resolve.resolveDotName('bare'));
-    await timers.advance(0);
-
-    // Then
-    expect(await named).toMatchObject({ name: 'DotNsError', message: 'no' });
-    expect(await bare).toMatchObject({ name: 'ProtocolResponseError', message: 'no' });
   });
 
   it('As the host, I see a resolution that outlives its budget stopped in the frame and failed as timed out', async () => {

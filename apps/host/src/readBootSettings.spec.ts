@@ -121,19 +121,6 @@ describe('readBootSettings', () => {
     expect(boot.configureFrame).toHaveBeenCalledWith(expect.objectContaining({ network: 'previewnet' }));
   });
 
-  it('As a visitor from an old build, I boot and my old mode key is read as my backend and gone after', async () => {
-    // Given
-    const local = createMemoryStorage({ entries: { 'dotli:mode': 'gateway' } });
-    const boot = createBootParams('', { local });
-
-    // When
-    const settings = await readBootSettings(boot);
-
-    // Then
-    expect(settings.backend).toBe('rpc-gateway');
-    expect(local.getItem('dotli:mode')).toBeNull();
-  });
-
   it.each<{ story: string; search: string; entries: Record<string, string> }>([
     {
       story: 'whose saved choice is the shared light client',

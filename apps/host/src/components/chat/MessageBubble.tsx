@@ -41,53 +41,42 @@ export function MessageBubble(props: {
     </time>
   );
 
+  const wrap = (look: 'message' | 'event' | 'custom', body: JSX.Element): JSX.Element => (
+    <div class={s['bubble']} data-testid="chat-msg-bubble" data-look={look}>
+      {body}
+      {time}
+    </div>
+  );
+
+  // Reactions and kinds this page does not know read as events beside the conversation.
   const bubble = (): JSX.Element => {
     switch (content.tag) {
       case 'Text':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble">
-            {content.value.text}
-            {time}
-          </div>
-        );
+        return wrap('message', content.value.text);
       case 'RichText': {
         const count = content.value.media.length;
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble">
+        return wrap(
+          'message',
+          <>
             {content.value.text ?? ''}
             <Show when={count > 0}>
               <span class={s['meta']} data-testid="chat-msg-meta">
                 {` [${String(count)} attachment${count === 1 ? '' : 's'}]`}
               </span>
             </Show>
-            {time}
-          </div>
+          </>,
         );
       }
       case 'Reaction':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
-            {`reacted ${content.value.emoji}`}
-            {time}
-          </div>
-        );
+        return wrap('event', `reacted ${content.value.emoji}`);
       case 'ReactionRemoved':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
-            {`removed reaction ${content.value.emoji}`}
-            {time}
-          </div>
-        );
+        return wrap('event', `removed reaction ${content.value.emoji}`);
       case 'File':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble">
-            {`[file] ${content.value.fileName}`}
-            {time}
-          </div>
-        );
+        return wrap('message', `[file] ${content.value.fileName}`);
       case 'Actions':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble">
+        return wrap(
+          'message',
+          <>
             <Show when={content.value.text !== undefined && content.value.text !== ''}>
               <span>{content.value.text}</span>
             </Show>
@@ -110,23 +99,12 @@ export function MessageBubble(props: {
                 )}
               </For>
             </div>
-            {time}
-          </div>
+          </>,
         );
       case 'Custom':
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble" data-custom="">
-            {props.custom({ messageType: content.value.messageType, payload: content.value.payload })}
-            {time}
-          </div>
-        );
+        return wrap('custom', props.custom({ messageType: content.value.messageType, payload: content.value.payload }));
       default:
-        return (
-          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
-            [unsupported message]
-            {time}
-          </div>
-        );
+        return wrap('event', '[unsupported message]');
     }
   };
 

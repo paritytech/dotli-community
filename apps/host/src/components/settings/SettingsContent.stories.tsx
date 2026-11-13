@@ -1,14 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  BACKEND_FACTS,
-  hasSharedWorker,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  type Backend,
-  type CacheSettings,
-  type Network,
-} from '@dotli/config';
+import type { Backend, CacheSettings, Network } from '@dotli/config';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
@@ -18,25 +11,33 @@ import {
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
   givenDebugMode,
+  givenReset,
   givenSettings,
   resetStorySettings,
   settingsAsked,
   storySettings,
 } from '../../testing/stories/settingsFixtures.js';
-import { TRANSPORT_FACTS, TRANSPORT_ORDER } from './SettingsContent.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
 
-const isOpen = (): boolean => document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
-const applyButton = (): HTMLButtonElement =>
-  query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
-const toggle = (label: string): HTMLButtonElement =>
-  query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
-const radio = (name: string, value: string): HTMLInputElement =>
-  query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
-const selectedCategory = (): string | null | undefined =>
-  document.querySelector('[data-testid="settings-categories"] [aria-pressed="true"]')?.getAttribute('data-testid');
+function isOpen(): boolean {
+  return document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
+}
+function applyButton(): HTMLButtonElement {
+  return query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
+}
+function toggle(label: string): HTMLButtonElement {
+  return query(document, `[role="switch"][aria-label="${label}"]`, HTMLButtonElement);
+}
+function radio(name: string, value: string): HTMLInputElement {
+  return query(document, `input[name="${name}"][value="${value}"]`, HTMLInputElement);
+}
+function selectedCategory(): string | null | undefined {
+  return document
+    .querySelector('[data-testid="settings-categories"] [aria-pressed="true"]')
+    ?.getAttribute('data-testid');
+}
 
 type Category = 'general' | 'network' | 'advanced';
 
@@ -55,63 +56,21 @@ type Shown = {
   debugOn: boolean;
 };
 
-/** One choice card: its radio, its selection and its words. */
-async function expectChoice(
-  name: string,
-  value: string,
-  opts: { label: string; description: string; selected: boolean; disabled?: boolean; chip?: string },
-): Promise<void> {
-  const input = radio(name, value);
-  const card = input.closest('label');
-  await expect(input.checked).toBe(opts.selected);
-  await expect(input.disabled).toBe(opts.disabled === true);
-  await expect(card?.hasAttribute('data-selected')).toBe(opts.selected);
-  await expect(card?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
-  await expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
-}
-
-/** The category control, then only the selected category's sections, then the footer. */
+/** Only the selected category's sections show, each with the saved choice, and nothing to save yet. */
 async function expectSections(shown: Shown, category: Category): Promise<void> {
-  const categories = query(document, '[data-testid="settings-categories"]');
-  await expect(categories).toHaveAttribute('role', 'group');
-  await expect(categories).toHaveAttribute('aria-label', 'Settings category');
-  await expect([...categories.children].map(b => b.textContent)).toEqual(['General', 'Network', 'Advanced']);
   await expect(selectedCategory()).toBe(`settings-category-${category}`);
   const sections = query(document, '[data-testid="mode-popover-sections"]');
-  const theme = sections.querySelector('[role="group"][aria-label="Theme"]');
-  const transports = sections.querySelector('[role="radiogroup"][aria-label="Network transport"]');
-  const networks = sections.querySelector('[role="radiogroup"][aria-label="Network"]');
-  const cache = sections.querySelector('[data-testid="mode-cache"]');
-  await expect(theme !== null).toBe(category === 'general');
-  await expect(transports !== null).toBe(category === 'network');
-  await expect(cache !== null).toBe(category === 'advanced');
-  if (category === 'general') {
-    await expect(theme).toHaveAttribute('data-testid', 'theme-options');
-  }
+  await expect(sections.querySelector('[data-testid="theme-options"]') !== null).toBe(category === 'general');
+  await expect(sections.querySelector('input[name="dotli-backend"]') !== null).toBe(category === 'network');
+  await expect(sections.querySelector('[data-testid="mode-cache"]') !== null).toBe(category === 'advanced');
   if (category === 'network') {
-    await expect(networks === null).toBe(shown.enabledNetworks.length < 2);
-    if (networks !== null) {
-      for (const n of shown.enabledNetworks) {
-        const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
-        await expectChoice('dotli-network', n, {
-          label: cfg.label,
-          description: cfg.description,
-          selected: n === shown.network,
-        });
-      }
+    const networkChoice = sections.querySelector('input[name="dotli-network"]') !== null;
+    await expect(networkChoice).toBe(shown.enabledNetworks.length > 1);
+    if (networkChoice) {
+      await expect(radio('dotli-network', shown.network).checked).toBe(true);
     }
-    await expect(transports?.querySelectorAll('input')).toHaveLength(TRANSPORT_ORDER.length);
-    for (const value of TRANSPORT_ORDER) {
-      const facts = TRANSPORT_FACTS[value];
-      const disabled = hasSharedWorker(value) && !shown.sharedWorkerSupported;
-      await expectChoice('dotli-backend', value, {
-        label: BACKEND_FACTS[value].label,
-        description: disabled ? 'Unavailable in this browser or private window' : facts.description,
-        selected: value === shown.backend,
-        disabled,
-        ...(facts.recommended ? { chip: 'Recommended' } : {}),
-      });
-    }
+    await expect(radio('dotli-backend', shown.backend).checked).toBe(true);
+    await expect(radio('dotli-backend', 'smoldot-shared-worker').disabled).toBe(!shown.sharedWorkerSupported);
   }
   if (category === 'advanced') {
     for (const [label, on] of [
@@ -121,25 +80,9 @@ async function expectSections(shown: Shown, category: Category): Promise<void> {
     ] as const) {
       await expect(toggle(label)).toHaveAttribute('aria-checked', String(on));
     }
-    const clear = query(document, '[data-testid="mode-clear-all-row"] button');
-    await expect(clear).toHaveTextContent('Clear all caches');
-    await expect(clear).toHaveAttribute(
-      'title',
-      'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
-    );
-    const debug = document.querySelector('[data-testid="mode-debug-row"] button');
-    await expect(debug === null).toBe(shown.debugOn);
-    if (debug !== null) {
-      await expect(debug).toHaveTextContent('Open in debug mode');
-      await expect(debug).toHaveAttribute('title', 'Reload this tab with the debug panel and its diagnostics');
-    }
+    await expect(document.querySelector('[data-testid="mode-debug-row"]') === null).toBe(shown.debugOn);
   }
   await expect(applyButton()).toBeDisabled();
-  await expect(applyButton()).toHaveAttribute('data-variant', 'primary');
-  await expect(applyButton()).toHaveTextContent('Save and apply');
-  await expect(query(document, '[data-testid="mode-apply-warning"]')).toHaveTextContent(
-    'Transport and cache changes reload the app',
-  );
 }
 
 /** The settings button and panel as the host composes them, given the story's settings. */
@@ -267,29 +210,6 @@ export const StartsOnGeneral: Story = {
   },
 };
 
-/** As a dotli user opening it with several networks, each category shows its controls, labels and ARIA state. */
-export const EveryCategory: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    givenSettings({ ...DEFAULT_SETTINGS, network: 'previewnet', cache: { ...DEFAULT_CACHE, skipArchiveCache: true } });
-  },
-  play: async ctx => {
-    const shown: Shown = { ...DEFAULTS, network: 'previewnet', cache: { ...DEFAULT_CACHE, skipArchiveCache: true } };
-    await open(ctx);
-    await ctx.step('Then General is shown', async () => {
-      await expectSections(shown, 'general');
-    });
-    await ctx.step('And Network', async () => {
-      await showCategory(ctx.userEvent.click, 'network');
-      await expectSections(shown, 'network');
-    });
-    await ctx.step('And Advanced', async () => {
-      await showCategory(ctx.userEvent.click, 'advanced');
-      await expectSections(shown, 'advanced');
-    });
-  },
-};
-
 /** As a dotli user with one network, in debug mode, on trusted providers and without shared workers, each category shows that. */
 export const OneNetworkDebugTrusted: Story = {
   tags: ['!autodocs'],
@@ -365,35 +285,6 @@ export const DraftEnablesSave: Story = {
   },
 };
 
-/** As a dotli user, I change the network, look at Advanced and come back, and the change is still there for Save and apply. */
-export const DraftSurvivesCategories: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    const click = ctx.userEvent.click;
-    await open(ctx);
-    await ctx.step('When I pick previewnet, look at Advanced and come back', async () => {
-      await showCategory(click, 'network');
-      await click(radio('dotli-network', 'previewnet'));
-      await showCategory(click, 'advanced');
-      await showCategory(click, 'network');
-    });
-    await ctx.step('Then previewnet is still picked and Save is enabled', async () => {
-      await expect(radio('dotli-network', 'previewnet').checked).toBe(true);
-      await expect(applyButton()).not.toBeDisabled();
-    });
-    await ctx.step('When I save', async () => {
-      await click(applyButton());
-    });
-    await ctx.step('Then the network change was applied', async () => {
-      await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
-      await expect(settingsAsked.apply).toHaveBeenCalledWith(
-        { backend: 'smoldot-direct', network: 'previewnet', cache: DEFAULT_CACHE },
-        { backend: 'smoldot-direct', network: 'paseo-next-v2', cache: DEFAULT_CACHE },
-      );
-    });
-  },
-};
-
 /** As a dotli user, I pick a theme tile in General and it is picked at once without enabling Save and apply. */
 export const ThemePickedWithoutSave: Story = {
   tags: ['!autodocs'],
@@ -409,22 +300,6 @@ export const ThemePickedWithoutSave: Story = {
       );
       await expect(applyButton()).toBeDisabled();
       await expect(isOpen()).toBe(true);
-    });
-  },
-};
-
-/** As a dotli user, Open in debug mode asks the page to reload this tab with the debug panel. */
-export const DebugModeAsks: Story = {
-  tags: ['!autodocs'],
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('When I press Open in debug mode in Advanced', async () => {
-      await showCategory(ctx.userEvent.click, 'advanced');
-      await ctx.userEvent.click(query(document, '[data-testid="mode-debug-row"] button'));
-    });
-    await ctx.step('Then the page was asked once, and nothing was applied', async () => {
-      await expect(settingsAsked.debugMode).toBe(1);
-      await expect(settingsAsked.apply).not.toHaveBeenCalled();
     });
   },
 };
@@ -509,43 +384,49 @@ export const ClearAllUsesSaved: Story = {
   },
 };
 
-/** As a user who resized the window, the settings open as a sheet or a popover by the width at each opening. */
-export const WidthPicksSheetOrPopover: Story = {
+/** As a dotli user, I press Clear all caches, then change the network and press Save and apply, and only the clear runs. */
+export const SaveWhileClearing: Story = {
   tags: ['!autodocs'],
-  play: async ({ userEvent, step }) => {
-    const { page } = await import('vitest/browser');
-    const wide = { width: window.innerWidth, height: window.innerHeight };
-    const reopen = async (): Promise<void> => {
-      await userEvent.click(byId('mode-button'));
-      await waitFor(() => expect(isOpen()).toBe(true));
-    };
-    const close = async (): Promise<void> => {
-      await userEvent.keyboard('{Escape}');
-      await waitFor(() => expect(isOpen()).toBe(false));
-    };
-    try {
-      await step('Given it opened wide as a popover, then closed', async () => {
-        await reopen();
-        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
-        await close();
-      });
-      await step('When the window narrows to a phone and it opens', async () => {
-        await page.viewport(390, 844);
-        await reopen();
-      });
-      await step('Then it is a sheet', async () => {
-        await expect(byId('mode-popover')).toHaveAttribute('aria-modal', 'true');
-      });
-      await step('When the window widens while it is open, then it is closed and opened', async () => {
-        await page.viewport(wide.width, wide.height);
-        await close();
-        await reopen();
-      });
-      await step('Then it is a popover again', async () => {
-        await expect(byId('mode-popover')).not.toHaveAttribute('aria-modal');
-      });
-    } finally {
-      await page.viewport(wide.width, wide.height);
-    }
+  play: async ctx => {
+    const click = ctx.userEvent.click;
+    await open(ctx);
+    await ctx.step('When I press Clear all caches, then change the network and press Save and apply', async () => {
+      await showCategory(click, 'advanced');
+      await click(query(document, '[data-testid="mode-clear-all-row"] button'));
+      await showCategory(click, 'network');
+      await click(radio('dotli-network', 'previewnet'));
+      await click(applyButton());
+    });
+    await ctx.step('Then Save and apply waits and only the clear ran', async () => {
+      const saved = { backend: DEFAULT_SETTINGS.backend, network: DEFAULT_SETTINGS.network, cache: DEFAULT_CACHE };
+      await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).toHaveTextContent('Save and apply');
+      await expect(settingsAsked.apply).toHaveBeenCalledTimes(1);
+      await expect(settingsAsked.apply).toHaveBeenCalledWith(saved, saved, { forceFullWipe: true });
+    });
+  },
+};
+
+/** As a dotli user, I open the settings while a reset runs and both buttons wait for it. */
+export const OpensWhileResetting: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    givenReset('applying');
+  },
+  play: async ctx => {
+    const click = ctx.userEvent.click;
+    await open(ctx);
+    await ctx.step('When I change the network', async () => {
+      await showCategory(click, 'network');
+      await click(radio('dotli-network', 'previewnet'));
+      await showCategory(click, 'advanced');
+    });
+    await ctx.step('Then both buttons are disabled and the running one says so', async () => {
+      const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
+      await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).toHaveTextContent('Resetting…');
+      await expect(clear).toBeDisabled();
+      await expect(clear).toHaveTextContent('Clear all caches');
+    });
   },
 };

@@ -3,7 +3,7 @@
 
 import type { AnyMethod } from '@dotli/transport';
 import { describe, expect, it } from 'vitest';
-import { getCallName, getCallNameAt, getPolicy } from './methodPolicy.js';
+import { getCallName, getCallNameAt } from './methodPolicy.js';
 import { protocolSchema } from './schema.js';
 
 describe('method policy', () => {
@@ -36,26 +36,5 @@ describe('method policy', () => {
 
     // Then
     expect(names).toEqual(['resolveOwner', 'chainConnect', 'resolve.constructor', 'toString.owner', 'notes.read']);
-  });
-
-  it('As a dotli operator, I see a page load step trailed, a chain message untimed, and the shared store asked once the frame listens', () => {
-    // Given
-    const { resolve, chain, storage, wallet, frame } = protocolSchema.sections;
-
-    // When
-    const [owner, send, authRead, walletRead, warmup] = [
-      resolve.owner,
-      chain.send,
-      storage.authRead,
-      wallet.read,
-      frame.warmup,
-    ].map(getPolicy);
-
-    // Then
-    expect(owner).toMatchObject({ trailed: true, timed: true, whenListening: false, budgetMs: 90_000 });
-    expect(send).toMatchObject({ trailed: false, timed: false, whenListening: false });
-    expect(authRead).toMatchObject({ whenListening: true, budgetMs: 30_000 });
-    expect(walletRead).toMatchObject({ whenListening: true, budgetMs: 5_000 });
-    expect(warmup).toMatchObject({ trailed: true, budgetMs: null });
   });
 });

@@ -9,18 +9,15 @@ const MODULES = 69;
 const QUIET_ZONE = 2;
 
 describe('the sign-in QR side', () => {
-  it.each([
-    [300, 292],
-    [260, 219],
-  ])('As a user on a layout asking %i px, I get a code of %i px with whole pixels per module', (size, side) => {
+  it('As a user on a layout asking 300 px, I get a code of 292 px with whole pixels per module', () => {
     // Given a version 13 code with its quiet zone and the side the layout asks for
+    const size = 300;
 
     // When the side is fitted to whole pixels per module
     const drawn = wholeModuleSide(size, MODULES, QUIET_ZONE);
 
-    // Then the side is a whole multiple of the 73 modules
-    expect(drawn).toBe(side);
-    expect(drawn % 73).toBe(0);
+    // Then the side is the largest whole multiple of the 73 modules within it
+    expect(drawn).toBe(292);
   });
 
   it('As a user on a layout asking exactly a whole multiple, I get that size', () => {

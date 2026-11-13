@@ -4,8 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createDebugPanelHost } from './debugPanelHost.js';
-import { createProductFrameLayout } from './createProductFrameLayout.js';
-import type { FrameBox } from './getFrameBox.js';
+import { createProductFrameLayout, type FrameBox } from './createProductFrameLayout.js';
 import { createFakeIframe } from './runtime/createProductFrame.fake.js';
 
 afterEach(() => {

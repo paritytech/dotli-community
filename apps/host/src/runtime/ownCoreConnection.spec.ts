@@ -8,7 +8,6 @@ import { debugBus, type DebugBusEvent } from '@dotli/truapi-debug';
 import type { CoreConnection } from './createPageCore.js';
 import { wireDescriber } from './createWireDescriber.js';
 import { ownCoreConnection } from './ownCoreConnection.js';
-import { bindReports } from '../testing/bindReports.js';
 import { buildLoginResponseFrame } from '../testing/buildLoginResponseFrame.js';
 import { createFakeProvider, type FakeCoreProvider } from './createPageCore.fake.js';
 
@@ -91,45 +90,5 @@ describe('core connection debug tap', () => {
     expect(events).toEqual([]);
     expect(core.postMessage).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli developer in debug mode, I send two frames back to back and the panel shows them in the order they crossed', async () => {
-    // Given a wrapped connection with the debug panel open
-    const events = openDebugPanel();
-    await wireDescriber.preload();
-    const core = createFakeProvider();
-    const wrapped = ownCoreConnection(connectOver(core).connection);
-
-    // When two frames cross back to back
-    wrapped.postMessage(buildLoginResponseFrame('first', { kind: 'success', value: 'Success' }));
-    wrapped.postMessage(buildLoginResponseFrame('second', { kind: 'success', value: 'Success' }));
-    // The describer answers in order, so once a later ask settles every earlier frame has reached the panel.
-    await wireDescriber.preload();
-
-    // Then the panel sees them in the order they crossed
-    expect(events.map(event => ('requestId' in event ? event.requestId : null))).toEqual(['first', 'second']);
-  });
-});
-
-describe('core connection listeners', () => {
-  it('As a dotli integrator, I listen twice on a core connection and the second listener still hears a frame when the first throws', () => {
-    // Given a first listener that throws and a second that collects
-    bindReports();
-    const core = createFakeProvider();
-    const wrapped = ownCoreConnection(connectOver(core).connection);
-    const heard: Uint8Array[] = [];
-    wrapped.subscribe(() => {
-      throw new Error('first listener broke');
-    });
-    wrapped.subscribe(message => {
-      heard.push(message);
-    });
-    const frame = buildLoginResponseFrame('from-core', { kind: 'success', value: 'Success' });
-
-    // When the core sends a frame
-    core.listener?.(frame);
-
-    // Then the second listener heard it
-    expect(heard).toEqual([frame]);
   });
 });

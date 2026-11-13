@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { toasts } from '../../page/state/createToasts.js';
+import { EMPTY_TOASTS, toasts } from '../../page/state/createToasts.js';
 import { useStore } from '@dotli/stores-solid';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard } from './ToastCard.js';
@@ -15,8 +15,8 @@ import s from './ToastStack.module.css';
  * starts the countdowns.
  */
 export function ToastStack(): JSX.Element {
-  const items = useStore(toasts.store, state => state.items);
-  const expanded = useStore(toasts.store, state => state.expanded);
+  const items = useStore(toasts.store, state => state.items, { initial: EMPTY_TOASTS });
+  const expanded = useStore(toasts.store, state => state.expanded, { initial: EMPTY_TOASTS });
   let root: HTMLDivElement | undefined;
   let cards: HTMLDivElement | undefined;
 

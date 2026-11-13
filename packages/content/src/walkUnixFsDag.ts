@@ -37,8 +37,10 @@ export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }:
   // The pool bounds only the fetches, so a node waiting on its children never holds a slot they need.
   const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
 
+  const walkAbort = new AbortController();
+
   function fetchBlock(cid: CID): Promise<Uint8Array> {
-    return fetches.call(() => blockSource(cid));
+    return fetches.call(() => blockSource(cid), { signal: walkAbort.signal });
   }
 
   /** One chunk of a file and everything under it. */
@@ -97,20 +99,20 @@ export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }:
     );
   }
 
+  /** A CAR at the root is a whole site packed as one file. Deeper CAR-shaped files stay content. */
+  async function addFile(path: string, content: Uint8Array): Promise<void> {
+    if (path === '' && isCarFile(content)) {
+      Object.assign(files, await parseInnerArchive(content));
+      return;
+    }
+    files[path || 'index.html'] = content;
+  }
+
   async function processNode(cid: CID, path: string): Promise<void> {
     const bytes = await fetchBlock(cid);
-    const isRoot = path === '';
 
-    // A CAR at the root is a whole site packed as one block. Deeper CAR-shaped blocks stay content.
     if (cid.code === RAW) {
-      if (isRoot && isCarFile(bytes)) {
-        const inner = await parseInnerArchive(bytes);
-        for (const [innerPath, data] of Object.entries(inner)) {
-          files[innerPath] = data;
-        }
-        return;
-      }
-      files[path || 'index.html'] = bytes;
+      await addFile(path, bytes);
       return;
     }
 
@@ -132,23 +134,20 @@ export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }:
     }
 
     if (unixFs === null || unixFs.type === 'file' || unixFs.type === 'raw') {
-      const content = await readFileNode(cid, node);
-      // A CAR at the root, uploaded as a chunked file.
-      if (isRoot && isCarFile(content)) {
-        const inner = await parseInnerArchive(content);
-        for (const [innerPath, data] of Object.entries(inner)) {
-          files[innerPath] = data;
-        }
-      } else {
-        files[path || 'index.html'] = content;
-      }
+      await addFile(path, await readFileNode(cid, node));
       return;
     }
 
     throw new Error(`Unsupported UnixFS node type "${unixFs.type}" at path="${path}"`);
   }
 
-  await processNode(rootCid, '');
+  try {
+    await processNode(rootCid, '');
+  } catch (error) {
+    // The other branches stop fetching once one has failed the walk.
+    walkAbort.abort(error);
+    throw error;
+  }
   return files;
 }
 

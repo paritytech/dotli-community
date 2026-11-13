@@ -45,7 +45,7 @@ export function readRuntimeNetworkConfig(): RuntimeNetworkConfig | null {
   if (!RUNTIME_CONFIG_ENABLED) {
     return null;
   }
-  const raw = readGlobal();
+  const raw: unknown = Reflect.get(globalThis, RUNTIME_GLOBAL_KEY);
   if (raw === undefined || raw === null) {
     return null;
   }
@@ -65,16 +65,4 @@ export function parseRuntimeNetworkConfig(value: unknown): RuntimeNetworkConfig 
     networks: networks === undefined ? undefined : readRecord(networks, `${path}.networks`),
     baseDomain,
   };
-}
-
-/** The runtime global as the page set it, unchecked, or undefined when the build reads none. Never throws. */
-export function readRuntimeGlobal(): unknown {
-  if (!RUNTIME_CONFIG_ENABLED) {
-    return undefined;
-  }
-  return readGlobal();
-}
-
-function readGlobal(): unknown {
-  return Reflect.get(globalThis, RUNTIME_GLOBAL_KEY);
 }

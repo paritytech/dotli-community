@@ -63,13 +63,18 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
   });
   onCleanup(hold.dispose);
 
+  // Shows the product's current text with nothing held or typed, as a new element would.
+  const startFresh = (el: HTMLInputElement): void => {
+    const text = untrack(() => props.value.props.text);
+    hold.reset(text);
+    el.value = text;
+  };
+
   // Not a `value` binding, which Solid rewrites on every tree and which would move the caret.
   createEffect(
     () => props.value.props.text,
     text => {
-      if (input !== undefined) {
-        hold.receive(text);
-      }
+      hold.receive(text);
     },
   );
   // Position matching hands this element another field when the product inserts or removes one above.
@@ -80,9 +85,7 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
       if (input === undefined || previous === undefined || identity === previous) {
         return;
       }
-      const text = untrack(() => props.value.props.text);
-      hold.reset(text);
-      input.value = text;
+      startFresh(input);
       if (document.activeElement === input) {
         input.blur();
       }
@@ -98,9 +101,7 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
       <input
         ref={el => {
           input = el;
-          const text = untrack(() => props.value.props.text);
-          hold.reset(text);
-          el.value = text;
+          startFresh(el);
         }}
         id={inputId}
         type="text"

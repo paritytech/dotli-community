@@ -229,6 +229,43 @@ export const PhoneClosesReturnFocus: Story = {
   },
 };
 
+/** As a phone user, I turn the screen with the popover open and it stays open with focus, as a sheet on the phone and anchored when wide again. */
+export const FollowsTheViewportWhileOpen: Story = {
+  play: async ({ step }) => {
+    const { page } = await import('vitest/browser');
+    const wide = { width: window.innerWidth, height: window.innerHeight };
+    const popover = () => document.getElementById('story-popover');
+    const isShown = () => popover()?.matches(':popover-open') === true;
+    try {
+      await step('Given the popover is open and anchored on a wide screen', async () => {
+        await press('trigger');
+        await waitFor(() => expect(isShown()).toBe(true));
+      });
+      await step('When the screen narrows to a phone', async () => {
+        await page.viewport(390, 844);
+      });
+      await step('Then the popover is still open, as a sheet with focus inside', async () => {
+        await waitFor(() => expect(body.getByTestId('popover-sheet-title')).toHaveTextContent('Example'));
+        await expect(popover()).toHaveAttribute('data-open');
+        await expect(body.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'true');
+        await waitFor(() => expect(popover()?.contains(document.activeElement)).toBe(true));
+      });
+      await step('When the screen widens again', async () => {
+        await page.viewport(wide.width, wide.height);
+      });
+      await step('Then the popover is still open, anchored again with focus inside', async () => {
+        await waitFor(() => expect(body.queryByTestId('popover-sheet-title')).toBeNull());
+        await waitFor(() => expect(isShown()).toBe(true));
+        await expect(body.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'true');
+        await waitFor(() => expect(popover()?.contains(document.activeElement)).toBe(true));
+      });
+    } finally {
+      // The next story must not inherit the phone.
+      await page.viewport(wide.width, wide.height);
+    }
+  },
+};
+
 /** As a dotli user, I press a button the popover let go and its own click runs and nothing opens. */
 export const ReleasedTriggerOpensNothing: Story = {
   args: { handOver: true },

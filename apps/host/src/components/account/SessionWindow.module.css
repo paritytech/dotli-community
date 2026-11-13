@@ -31,6 +31,11 @@
   text-align: center;
 }
 
+/* The card takes focus only so it never drops to the page as a screen is swapped, so it draws no ring. */
+.card:focus-visible {
+  outline: none;
+}
+
 .actions {
   display: flex;
   flex-direction: column;

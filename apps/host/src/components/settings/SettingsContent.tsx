@@ -31,14 +31,14 @@ import {
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
-import type { ApplySettings, SavedSettings } from './settings.js';
+import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from './settings.js';
 import s from './SettingsContent.module.css';
 
 /** The order the transport choices are listed in. */
-export const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
+const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
 
 /** What the transport choice for each backend says. */
-export const TRANSPORT_FACTS = {
+const TRANSPORT_FACTS = {
   'smoldot-direct': { description: 'Verified in your browser, separate for each tab', recommended: true },
   'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', recommended: false },
   'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
@@ -51,6 +51,13 @@ const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'network', label: 'Network', testId: 'settings-category-network' },
   { value: 'advanced', label: 'Advanced', testId: 'settings-category-advanced' },
 ];
+
+/** What each button reads while the page's settings reset is in each state. */
+const RESET_LABELS = {
+  idle: { apply: 'Save and apply', clear: 'Clear all caches' },
+  applying: { apply: 'Resetting…', clear: 'Clear all caches' },
+  clearing: { apply: 'Save and apply', clear: 'Clearing…' },
+} satisfies Record<SettingsResetStatus, { apply: string; clear: string }>;
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
 
@@ -72,6 +79,8 @@ export type SettingsContentProps = {
   theme: Accessor<ThemePreference>;
   onTheme: (theme: ThemePreference) => void;
   onApply: ApplySettings;
+  /** The page's settings reset, which disables both buttons while it runs. */
+  reset: Accessor<SettingsResetStatus>;
   /** The debug panel is on in this tab, so Advanced offers no way to turn it on. */
   debugMode: Accessor<boolean>;
   /** Reloads the tab with the debug panel. */
@@ -90,8 +99,6 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
   const [category, setCategory] = createSignal<Category>('general');
-  const [applying, setApplying] = createSignal(false);
-  const [clearing, setClearing] = createSignal(false);
 
   const dirty = createMemo(() => {
     const draft = cache();
@@ -103,27 +110,12 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   });
 
   function clearAll(): void {
-    if (untrack(clearing)) {
-      return;
-    }
-    setClearing(true);
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
     void props.onApply(persisted, persisted, { forceFullWipe: true });
   }
 
   function apply(): void {
-    if (!untrack(dirty) || untrack(applying)) {
-      return;
-    }
-    setApplying(true);
-    void props.onApply(
-      {
-        backend: untrack(backend),
-        network: untrack(network),
-        cache: untrack(cache),
-      },
-      persisted,
-    );
+    void props.onApply({ backend: backend(), network: network(), cache: cache() }, persisted);
   }
 
   const networks = saved.enabledNetworks;
@@ -230,10 +222,10 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 block
                 onClick={clearAll}
                 title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-                disabled={clearing()}
+                disabled={isResetRunning(props.reset())}
               >
                 <TrashIcon class={s['icon']} />
-                {clearing() ? 'Clearing…' : 'Clear all caches'}
+                {RESET_LABELS[props.reset()].clear}
               </Button>
             </div>
           </Stack>
@@ -259,8 +251,13 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
         }
       >
         <div class={s['apply']} data-testid="mode-apply-row">
-          <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
-            {applying() ? 'Resetting…' : 'Save and apply'}
+          <Button
+            variant="primary"
+            block={popover.sheet()}
+            onClick={apply}
+            disabled={!dirty() || isResetRunning(props.reset())}
+          >
+            {RESET_LABELS[props.reset()].apply}
           </Button>
         </div>
       </SurfaceFoot>

@@ -21,6 +21,7 @@
     "fake-indexeddb": "6.2.7"
   },
   "dependencies": {
-    "@noble/hashes": "2.4.0"
+    "@noble/hashes": "2.4.0",
+    "nanostores": "1.5.5"
   }
 }

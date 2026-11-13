@@ -17,6 +17,6 @@ export const NETWORK: Network = (() => {
   return raw;
 })();
 
-export const TLD_SUFFIX = `.${NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK].dotns.TLD}`;
+const TLD_SUFFIX = `.${NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK].dotns.TLD}`;
 
 export const DOTNS_NAME = `${DOMAIN}${TLD_SUFFIX}`;

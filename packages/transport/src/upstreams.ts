@@ -23,7 +23,7 @@ export function registerUpstream(transport: Transport<unknown>, upstream: Upstre
   upstreams.set(transport, upstream);
 }
 
-/** What a forwarder reaches of `transport`, or undefined for a transport this library did not build. */
-export function getUpstream(transport: Transport<unknown>): Upstream | undefined {
-  return upstreams.get(transport);
+/** What a forwarder reaches of `transport`, or null for a transport this library did not build. */
+export function getUpstream(transport: Transport<unknown>): Upstream | null {
+  return upstreams.get(transport) ?? null;
 }

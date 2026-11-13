@@ -26,7 +26,7 @@
     "test:root": "node --test scripts/*.test.ts",
     "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
     "lint": "turbo run lint lint:root",
-    "lint:root": "eslint .",
+    "lint:root": "eslint . && node scripts/checkProse.ts",
     "knip": "knip",
     "format": "prettier --write --ignore-unknown .",
     "format:check": "prettier --check --ignore-unknown .",

@@ -55,10 +55,9 @@ export function useStore<Value, Selected>(
     throw new Error('useStore must be called inside a component or reactive owner');
   }
 
-  const select = typeof selectOrParams === 'function' ? selectOrParams : undefined;
+  const select: (state: Value) => Value | Selected =
+    typeof selectOrParams === 'function' ? selectOrParams : state => state;
   const { equals, initial } = typeof selectOrParams === 'object' ? selectOrParams : selectParams;
-
-  const pick = (state: Value): Value | Selected => (select === undefined ? state : select(state));
   // The store notifies from whatever owner a producer's `set` runs under, so the write opts out of
   // Solid's owned-scope check.
   const [version, setVersion] = createSignal(0, { ownedWrite: true });
@@ -68,11 +67,11 @@ export function useStore<Value, Selected>(
   return createMemo(
     () => {
       version();
-      return pick(store.get());
+      return select(store.get());
     },
     {
       ssrSource: 'client',
-      loadingValue: selectBuildValue({ store, select: pick, initial }),
+      loadingValue: selectBuildValue({ store, select, initial }),
       ...(equals === undefined ? {} : { equals }),
     },
   );

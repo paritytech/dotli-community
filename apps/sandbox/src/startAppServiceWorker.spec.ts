@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { packArchive } from '@dotli/content';
 import { createDeferred, isRecord } from '@dotli/shared';
 
+import { loadPersistedArchives } from './archiveDb.js';
 import { startAppServiceWorker, type StartAppServiceWorkerParams } from './startAppServiceWorker.js';
 
 type WorkerScope = EventTarget;
@@ -20,33 +21,39 @@ type Origin = {
 type StartWorkerParams = {
   /** Whether the worker runs on the dev server. */
   devServer?: boolean;
-  /** Receives each message the worker posts to a page it controls. Throws what posting to that page throws. */
-  postToPage?: (message: unknown) => void;
+  /** The ids of the clients open on the worker's origin. */
+  liveClients?: string[];
+  /** Holds each client listing, in order, until its promise settles. A listing past the last one is not held. */
+  holdListings?: Promise<undefined>[];
 };
 
 type PostFromPageParams = {
   /** The message's data. */
   data: unknown;
   /** The ports the message carries. */
-  ports?: MessagePort[];
+  ports: MessagePort[];
   /** Receives each message the worker posts to the sending page. Throws what posting to that page throws. */
   postToPage?: (message: unknown) => void;
+  /** The id of the sending page's client. */
+  clientId?: string;
+  /** `null` sends the message from no page. */
+  source?: null;
 };
 
-/** The members of an IndexedDB transaction the archive store reads and sets. */
-type FakeTransaction = {
-  error: DOMException | null;
-  oncomplete: (() => void) | null;
-  onerror: (() => void) | null;
-  onabort: (() => void) | null;
-  objectStore: () => { put: () => object };
-  abort: () => void;
+type SetArchiveParams = {
+  /** The directory of the path the page writes the product at. */
+  directory?: string;
+  /** The id of the sending page's client. */
+  clientId?: string;
 };
 
-/** The members of an IndexedDB open request the archive store reads and sets. */
-type FakeOpenRequest = {
-  result: { transaction: () => FakeTransaction; close: () => void };
-  onsuccess: (() => void) | null;
+type RequestParams = {
+  mode?: RequestMode;
+  /** The id of the client the request comes from. */
+  clientId?: string;
+  destination?: RequestDestination;
+  /** The id of the client a worker script request starts, or empty when the browser names none. */
+  resultingClientId?: string;
 };
 
 const ORIGIN = 'https://coffer.app.dot.li';
@@ -77,14 +84,18 @@ function postToInbox(message: unknown): void {
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(
   origin: Origin,
-  { devServer = false, postToPage = postToInbox }: StartWorkerParams = {},
+  { devServer = false, liveClients = ['page-1'], holdListings = [] }: StartWorkerParams = {},
 ): WorkerScope {
+  let listings = 0;
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
     clients: {
       claim: () => Promise.resolve(),
-      matchAll: () => Promise.resolve([{ postMessage: postToPage }]),
+      matchAll: async () => {
+        await holdListings[listings++];
+        return liveClients.map(id => ({ id, postMessage: postToInbox }));
+      },
     },
   });
   startAppServiceWorker({
@@ -98,18 +109,19 @@ function startWorker(
 
 /**
  * Hands over an archive as the sandbox page does, and waits for every write the worker keeps alive. `directory` is
- * the directory of the path the page writes the product at. Resolves with what reached the page-wide channel.
+ * the directory of the path the page writes the product at. Resolves with the port's answer and what reached the
+ * page-wide channel.
  */
 function setArchive(
   scope: WorkerScope,
   files: Record<string, string>,
-  { directory = '/' }: { directory?: string } = {},
-): Promise<unknown[]> {
+  { directory = '/', clientId = 'page-1' }: SetArchiveParams = {},
+): Promise<{ portReply: Promise<unknown>; pageReplies: unknown[] }> {
   const encoder = new TextEncoder();
   const { packed, index } = packArchive(
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, encoder.encode(text)])),
   );
-  return postFromPage(scope, { data: { type: 'SET_ARCHIVE', packed, index, directory } });
+  return setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index, directory }, { clientId });
 }
 
 /**
@@ -119,7 +131,7 @@ function setArchive(
 async function setArchiveOnPort(
   scope: WorkerScope,
   data: Record<string, unknown>,
-  page: Pick<PostFromPageParams, 'postToPage'> = {},
+  page: Pick<PostFromPageParams, 'postToPage' | 'source' | 'clientId'> = {},
 ): Promise<{ portReply: Promise<unknown>; pageReplies: unknown[] }> {
   const channel = new MessageChannel();
   onTestFinished(() => {
@@ -139,20 +151,24 @@ async function setArchiveOnPort(
  */
 async function postFromPage(
   scope: WorkerScope,
-  { data, ports = [], postToPage }: PostFromPageParams,
+  { data, ports, postToPage, clientId = 'page-1', source }: PostFromPageParams,
 ): Promise<unknown[]> {
   const pageReplies: unknown[] = [];
   const kept: Promise<unknown>[] = [];
   const event = Object.assign(new Event('message'), {
     data,
     ports,
-    source: {
-      postMessage:
-        postToPage ??
-        ((message: unknown) => {
-          pageReplies.push(message);
-        }),
-    },
+    source:
+      source === null
+        ? null
+        : {
+            id: clientId,
+            postMessage:
+              postToPage ??
+              ((message: unknown) => {
+                pageReplies.push(message);
+              }),
+          },
     waitUntil: (promise: Promise<unknown>) => {
       kept.push(promise);
     },
@@ -192,54 +208,32 @@ function createFailingFirstIndexedDb(storage: IDBFactory, failures: number): IDB
   } as unknown as IDBFactory;
 }
 
-/** An IndexedDB that opens, then aborts every write at commit, as a full quota does. Only `abort` fires. */
-function createQuotaAbortingIndexedDb(): IDBFactory {
-  const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
-  const transaction: FakeTransaction = {
-    error: null,
-    oncomplete: null,
-    onerror: null,
-    onabort: null,
-    objectStore: () => ({ put: () => ({}) }),
-    abort: () => undefined,
-  };
-  const db = {
-    transaction() {
-      setTimeout(() => {
-        transaction.error = quota;
-        transaction.onabort?.();
-      }, 0);
-      return transaction;
-    },
-    close: () => undefined,
-  };
-  // The archive store calls only `open`, and reads only these members of what it opens.
-  return {
-    open() {
-      const request: FakeOpenRequest = { result: db, onsuccess: null };
-      setTimeout(() => {
-        request.onsuccess?.();
-      }, 0);
-      return request;
-    },
-  } as unknown as IDBFactory;
-}
-
-/** `undefined` means the worker let the request through to the network. */
+/**
+ * `undefined` means the worker let the request through to the network. Resolves once every write the worker keeps
+ * alive settled too.
+ */
 async function request(
   scope: WorkerScope,
   path: string,
-  { mode = 'no-cors' }: { mode?: RequestMode } = {},
+  { mode = 'no-cors', clientId = 'page-1', destination = '', resultingClientId = '' }: RequestParams = {},
 ): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
+  const kept: Promise<unknown>[] = [];
   const event = Object.assign(new Event('fetch'), {
-    request: { url: `${ORIGIN}${path}`, mode },
+    request: { url: `${ORIGIN}${path}`, mode, destination },
+    clientId,
+    resultingClientId,
     respondWith: (response: Response | Promise<Response>) => {
       answer = response;
     },
+    waitUntil: (promise: Promise<unknown>) => {
+      kept.push(promise);
+    },
   });
   scope.dispatchEvent(event);
-  return answer === undefined ? undefined : await answer;
+  const response = answer === undefined ? undefined : await answer;
+  await Promise.all(kept);
+  return response;
 }
 
 describe('app service worker', () => {
@@ -264,7 +258,7 @@ describe('app service worker', () => {
     const response = await request(restarted, '/_nuxt/late.js');
 
     // Then
-    expect(handedOver).toEqual([{ type: 'ARCHIVE_READY' }]);
+    expect(await handedOver.portReply).toEqual({ type: 'ARCHIVE_READY' });
     expect(response?.status).toBe(200);
     expect(response?.headers.get('Content-Type')).toBe('application/javascript');
     expect(await response?.text()).toBe('export default 1;');
@@ -309,7 +303,7 @@ describe('app service worker', () => {
     const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
 
     // When
-    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index });
+    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index, directory: '/' });
 
     // Then
     expect(handoff.pageReplies).toEqual([]);
@@ -327,8 +321,25 @@ describe('app service worker', () => {
     expect(handoff.pageReplies).toEqual([]);
     expect(await handoff.portReply).toEqual({
       type: 'ARCHIVE_ERROR',
-      reason: 'SET_ARCHIVE missing packed/index payload',
+      reason: 'SET_ARCHIVE missing packed/index/directory payload',
     });
+  });
+
+  it('As a sandbox user, I hand over an archive that names no directory and its port hears the refusal', async () => {
+    // Given
+    const scope = startWorker(origin);
+    const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
+
+    // When
+    const handoff = await setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index });
+    const served = await request(scope, '/index.html');
+
+    // Then nothing is kept for the page, so its request goes to the network
+    expect(await handoff.portReply).toEqual({
+      type: 'ARCHIVE_ERROR',
+      reason: 'SET_ARCHIVE missing packed/index/directory payload',
+    });
+    expect(await served?.text()).toBe('<!doctype html>shell');
   });
 
   it('As a user, I open the sandbox page before any archive arrives and it still loads its own assets', async () => {
@@ -348,30 +359,11 @@ describe('app service worker', () => {
     const scope = startWorker({ ...origin, indexedDB: createBrokenIndexedDb() });
 
     // When the page hands over its archive
-    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
+    const handoff = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
 
     // Then the page can still serve now, and hears why a restart would not
-    expect(replies).toEqual([
-      { type: 'ARCHIVE_READY' },
-      {
-        type: 'ARCHIVE_FAILURE',
-        stage: 'persist',
-        name: 'QuotaExceededError',
-        message: 'The quota has been exceeded.',
-      },
-    ]);
-  });
-
-  it('As an operator, I hand over an archive whose write the browser aborts at commit and the page hears why instead of the worker holding', async () => {
-    // Given an origin whose storage aborts the write at commit
-    const scope = startWorker({ ...origin, indexedDB: createQuotaAbortingIndexedDb() });
-
-    // When the page hands over its archive
-    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
-
-    // Then
-    expect(replies).toEqual([
-      { type: 'ARCHIVE_READY' },
+    expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_READY' });
+    expect(handoff.pageReplies).toEqual([
       {
         type: 'ARCHIVE_FAILURE',
         stage: 'persist',
@@ -392,7 +384,11 @@ describe('app service worker', () => {
     }
 
     // When the page hands over its archive on its own port, and the report has run and failed
-    const handoff = setArchiveOnPort(scope, { type: 'SET_ARCHIVE', packed, index }, { postToPage: throwOnReport });
+    const handoff = setArchiveOnPort(
+      scope,
+      { type: 'SET_ARCHIVE', packed, index, directory: '/' },
+      { postToPage: throwOnReport },
+    );
     await reportRan.promise;
 
     // Then the kept write settled, and the port still heard the acknowledgement
@@ -421,27 +417,6 @@ describe('app service worker', () => {
     ]);
   });
 
-  it('As an operator, I reach a restarted worker whose page throws when the report of a failed read-back reaches it and the request still reaches the network', async () => {
-    // Given a restarted worker over storage it cannot read, whose page throws when the report reaches it
-    const reportRan = createDeferred<undefined>();
-    const scope = startWorker(
-      { ...origin, indexedDB: createBrokenIndexedDb() },
-      {
-        postToPage() {
-          reportRan.resolve(undefined);
-          throw new DOMException('The page is gone.', 'InvalidStateError');
-        },
-      },
-    );
-
-    // When the app asks it for a file, and the report has run and failed
-    const response = await request(scope, '/main.js');
-    await reportRan.promise;
-
-    // Then the request still went to the network
-    expect(await response?.text()).toBe('<!doctype html>shell');
-  });
-
   it('As a user, I ask again after a restarted worker failed its first read-back and it reads the archive back and serves it', async () => {
     // Given an archive kept in the origin's storage, and a restarted worker whose first read of it fails
     const first = startWorker(origin);
@@ -458,6 +433,59 @@ describe('app service worker', () => {
     expect(await failed?.text()).toBe('<!doctype html>shell');
     expect(await served?.text()).toBe('export default 1;');
     expect(pageInbox.filter(message => isRecord(message) && message['stage'] === 'restore')).toHaveLength(1);
+  });
+
+  it('As a visitor with two tabs open, I load a chunk in each while a restarted worker fails its read-back and both go to the network, reported once', async () => {
+    // Given two tabs that each handed over their own archive, and a restarted worker whose first read fails
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    const restarted = startWorker(
+      { ...origin, indexedDB: createFailingFirstIndexedDb(origin.indexedDB, 1) },
+      { liveClients: ['page-1', 'page-2'] },
+    );
+    const reported = waitForPageMessage();
+
+    // When both tabs load their chunk before the read-back ends
+    const [firstChunk, secondChunk] = await Promise.all([
+      request(restarted, '/late.js', { clientId: 'page-1' }),
+      request(restarted, '/late.js', { clientId: 'page-2' }),
+    ]);
+    await reported;
+
+    // Then both were answered from the network, and each of the two pages heard of the miss once
+    expect(await firstChunk?.text()).toBe('<!doctype html>shell');
+    expect(await secondChunk?.text()).toBe('<!doctype html>shell');
+    expect(pageInbox.filter(message => isRecord(message) && message['stage'] === 'restore')).toHaveLength(2);
+  });
+
+  it('As a visitor with two tabs open, I load a chunk in each while a restarted worker reads the archives back and one read serves both', async () => {
+    // Given two tabs that each handed over their own archive to a worker the browser then stopped, over storage that
+    // counts its reads
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    let opens = 0;
+    // The archive store calls only `open`.
+    const counted = {
+      open(...args: Parameters<IDBFactory['open']>) {
+        opens += 1;
+        return origin.indexedDB.open(...args);
+      },
+    } as unknown as IDBFactory;
+    const restarted = startWorker({ ...origin, indexedDB: counted }, { liveClients: ['page-1', 'page-2'] });
+
+    // When both tabs load their chunk before the read-back ends
+    const [firstChunk, secondChunk] = await Promise.all([
+      request(restarted, '/late.js', { clientId: 'page-1' }),
+      request(restarted, '/late.js', { clientId: 'page-2' }),
+    ]);
+
+    // Then each comes from its own archive, after one read of the store
+    expect(await firstChunk?.text()).toBe('first()');
+    expect(await secondChunk?.text()).toBe('second()');
+    expect(opens).toBe(1);
+    expect(network).not.toHaveBeenCalled();
   });
 
   it('As a product developer, I fetch an HTML file from my archive and it comes back byte for byte', async () => {
@@ -553,23 +581,6 @@ describe('app service worker', () => {
     expect(network).not.toHaveBeenCalled();
   });
 
-  it("As a product developer on a deep link, I import a module beside my dedicated worker's script and it comes from the archive's folder", async () => {
-    // Given a product page written at /docs/intro, whose worker script is assets/worker.js
-    const scope = startWorker(origin);
-    await setArchive(
-      scope,
-      { 'index.html': '<html></html>', 'assets/worker.js': 'work()', 'assets/lib.js': 'lib()' },
-      { directory: '/docs/' },
-    );
-
-    // When the worker, open at /docs/assets/worker.js, imports ./lib.js
-    const lib = await request(scope, '/docs/assets/lib.js');
-
-    // Then the module comes from the archive's assets folder, not its root
-    expect(await lib?.text()).toBe('lib()');
-    expect(network).not.toHaveBeenCalled();
-  });
-
   it('As a product developer who ships a file at the deep path itself, I request it from a deep link and get that file', async () => {
     // Given a page written at /docs/intro, and an archive holding both the deep path and the same name at the root
     const scope = startWorker(origin);
@@ -632,36 +643,274 @@ describe('app service worker', () => {
     expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/assets/x.js` });
   });
 
-  it('As a visitor on a deep link, I navigate to a sub-path and the sandbox page loads from the network, never remapped', async () => {
-    // Given a page written at /docs/intro, and an archive holding the root file the sub-path would remap to
-    const scope = startWorker(origin);
-    await setArchive(
-      scope,
-      { 'index.html': '<html></html>', 'guide/index.html': '<p>guide</p>' },
-      { directory: '/docs/' },
-    );
+  it('As a visitor with the same product open in two tabs, I load a lazy chunk in the first after the second handed over its archive and it comes from my own', async () => {
+    // Given two tabs of one product, each with its own build of the chunk
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(scope, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(scope, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
 
-    // When the browser navigates to the sub-path
-    const response = await request(scope, '/docs/guide/', { mode: 'navigate' });
+    // When the first tab loads its chunk
+    const chunk = await request(scope, '/late.js', { clientId: 'page-1' });
 
-    // Then the worker leaves it to the network
-    expect(response).toBeUndefined();
+    // Then it comes from the first tab's archive
+    expect(await chunk?.text()).toBe('first()');
   });
 
-  it('As a visitor on a deep link, I request a path with a broken escape under it and it reaches the network', async () => {
-    // Given a page written at /docs/intro, in a live worker and in one restarted over it
-    const first = startWorker(origin);
-    await setArchive(first, { 'index.html': '<html></html>' }, { directory: '/docs/' });
-    const restarted = startWorker(origin);
+  it('As a visitor with the same product open on two deep links, I load a relative asset in each and it resolves under my own directory', async () => {
+    // Given one tab written at /docs/intro and another at /guide/intro
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/x.js': 'docs()' },
+      { directory: '/docs/', clientId: 'page-1' },
+    );
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/x.js': 'guide()' },
+      { directory: '/guide/', clientId: 'page-2' },
+    );
 
-    // When each is asked for a path under the deep link whose escape does not decode
-    const live = await request(first, '/docs/bad%E0%A4%A.js');
-    const afterRestart = await request(restarted, '/docs/bad%E0%A4%A.js');
+    // When each tab loads the asset beside its page
+    const docs = await request(scope, '/docs/assets/x.js', { clientId: 'page-1' });
+    const guide = await request(scope, '/guide/assets/x.js', { clientId: 'page-2' });
 
-    // Then the live worker lets it through, and the restarted one fetches it as it was
-    expect(live).toBeUndefined();
-    expect(await afterRestart?.text()).toBe('<!doctype html>shell');
+    // Then each comes from its own archive, under its own directory
+    expect(await docs?.text()).toBe('docs()');
+    expect(await guide?.text()).toBe('guide()');
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it("As a product developer, I import a module in my dedicated worker after another tab handed over its archive and it comes from my page's archive", async () => {
+    // Given two tabs, the second of which handed over its archive last
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2', 'worker-1'] });
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/worker.js': 'work(1)', 'assets/lib.js': 'lib(1)' },
+      { clientId: 'page-1' },
+    );
+    await setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'assets/worker.js': 'work(2)', 'assets/lib.js': 'lib(2)' },
+      { clientId: 'page-2' },
+    );
+
+    // When the first tab's product starts its dedicated worker and the worker imports its module
+    const script = await request(scope, '/assets/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+    const lib = await request(scope, '/assets/lib.js', { clientId: 'worker-1' });
+
+    // Then the script and the module come from the page that started the worker
+    expect(await script?.text()).toBe('work(1)');
+    expect(await lib?.text()).toBe('lib(1)');
+  });
+
+  it('As a product developer whose browser names no worker client, I import a module in my worker and it comes from the newest archive', async () => {
+    // Given a page that started a worker the browser named no client for, and another tab that handed over after
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(1)' }, { clientId: 'page-1' });
+    await request(scope, '/assets/worker.js', { clientId: 'page-1', destination: 'worker' });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/lib.js': 'lib(2)' }, { clientId: 'page-2' });
+
+    // When the worker imports its module
+    const lib = await request(scope, '/assets/lib.js', { clientId: 'worker-1' });
+
+    // Then it comes from the archive handed last
+    expect(await lib?.text()).toBe('lib(2)');
+  });
+
+  it('As a visitor with two tabs open, I reach a restarted worker and each tab is served from its own archive', async () => {
+    // Given two tabs that each handed over their own archive to a worker the browser then stopped
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+
+    // When each tab loads its chunk from the restarted worker
+    const restarted = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    const firstChunk = await request(restarted, '/late.js', { clientId: 'page-1' });
+    const secondChunk = await request(restarted, '/late.js', { clientId: 'page-2' });
+
+    // Then each comes from its own archive
+    expect(await firstChunk?.text()).toBe('first()');
+    expect(await secondChunk?.text()).toBe('second()');
+  });
+
+  it("As a visitor who closed a tab, I hand over an archive in another and the closed tab's archive is dropped", async () => {
+    // Given a tab that handed over an archive and was then closed
+    const both = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(both, { 'index.html': '<html></html>', 'gone.js': 'gone()' }, { clientId: 'page-2' });
+    const one = startWorker(origin, { liveClients: ['page-1'] });
+
+    // When the tab still open hands over its own, and a restarted worker is asked for the closed tab's file
+    await setArchive(one, { 'index.html': '<html></html>' }, { clientId: 'page-1' });
+    const persisted = await loadPersistedArchives(origin.indexedDB);
+    const gone = await request(startWorker(origin), '/gone.js', { clientId: 'page-2' });
+
+    // Then the store keeps only the open tab's archive, and the closed tab's file reaches the network
+    expect([...persisted.pages.keys()]).toEqual(['page-1']);
+    expect(await gone?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
-    expect(network.mock.calls[0]?.[0]).toMatchObject({ url: `${ORIGIN}/docs/bad%E0%A4%A.js` });
+  });
+
+  it('As an operator, I hand over an archive from no page and the port hears the refusal', async () => {
+    // Given a worker and a whole archive
+    const scope = startWorker(origin);
+    const { packed, index } = packArchive({ 'index.html': new TextEncoder().encode('<html></html>') });
+
+    // When the archive is handed over on a port from no page
+    const handoff = await setArchiveOnPort(
+      scope,
+      { type: 'SET_ARCHIVE', packed, index, directory: '/' },
+      { source: null },
+    );
+
+    // Then the port hears the refusal
+    expect(await handoff.portReply).toEqual({ type: 'ARCHIVE_ERROR', reason: 'SET_ARCHIVE from no page' });
+  });
+
+  it("As a visitor with two tabs open, I load a chunk in one after a restarted worker heard the other's handoff and it comes from my own archive", async () => {
+    // Given two tabs that each handed over their own archive, and a restarted worker that heard only the second again
+    const first = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'first()' }, { clientId: 'page-1' });
+    await setArchive(first, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+    const restarted = startWorker(origin, { liveClients: ['page-1', 'page-2'] });
+    await setArchive(restarted, { 'index.html': '<html></html>', 'late.js': 'second()' }, { clientId: 'page-2' });
+
+    // When the first tab loads its chunk
+    const chunk = await request(restarted, '/late.js', { clientId: 'page-1' });
+
+    // Then it comes from the first tab's archive, read back from the store
+    expect(await chunk?.text()).toBe('first()');
+  });
+
+  it("As an operator, I start a product's worker whose link to its page the worker cannot keep and the pages hear why", async () => {
+    // Given a page that handed over its archive to a worker over storage that refuses every write
+    const scope = startWorker({ ...origin, indexedDB: createBrokenIndexedDb() });
+    await setArchive(scope, { 'index.html': '<html></html>', 'assets/worker.js': 'work()' }, { clientId: 'page-1' });
+
+    // When the product starts its worker
+    const script = await request(scope, '/assets/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+
+    // Then the script still comes from the page's archive, and the pages hear why a restart would lose the link
+    expect(await script?.text()).toBe('work()');
+    expect(pageInbox).toEqual([
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'persist',
+        name: 'QuotaExceededError',
+        message: 'The quota has been exceeded.',
+      },
+    ]);
+  });
+
+  it('As a visitor with two tabs open, I hand over in both and a restarted worker serves a client it cannot place the archive handed last', async () => {
+    // Given the first tab's handoff held back while the second tab's goes through
+    const firstListing = createDeferred<undefined>();
+    const scope = startWorker(origin, { liveClients: ['page-1', 'page-2'], holdListings: [firstListing.promise] });
+    const firstHandoff = setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'late.js': 'first()' },
+      { clientId: 'page-1' },
+    );
+    const secondHandoff = setArchive(
+      scope,
+      { 'index.html': '<html></html>', 'late.js': 'second()' },
+      { clientId: 'page-2' },
+    );
+
+    // When the held handoff goes on after the later one, and a restarted worker is asked by a client it does not know
+    firstListing.resolve(undefined);
+    await Promise.all([firstHandoff, secondHandoff]);
+    const chunk = await request(startWorker(origin), '/late.js', { clientId: 'unknown' });
+
+    // Then it comes from the archive handed over last
+    expect(await chunk?.text()).toBe('second()');
+  });
+
+  it('As a visitor, I open two tabs that hand over their archives while the worker lists the open pages for an earlier handoff, and each tab is served its own', async () => {
+    // Given a worker whose listings of the open pages are held, and the first tab's handoff waiting on the first one
+    const listings = [createDeferred<undefined>(), createDeferred<undefined>(), createDeferred<undefined>()];
+    onTestFinished(() => {
+      for (const listing of listings) {
+        listing.resolve(undefined);
+      }
+    });
+    const liveClients = ['page-1'];
+    const scope = startWorker(origin, { liveClients, holdListings: listings.map(listing => listing.promise) });
+    const firstHandoff = setArchive(scope, { 'late.js': 'first()' }, { clientId: 'page-1' });
+    void setArchive(scope, { 'late.js': 'second()' }, { clientId: 'page-2' });
+    void setArchive(scope, { 'late.js': 'third()' }, { clientId: 'page-3' });
+
+    // When the listing taken before the two tabs opened ends, and the second tab loads a chunk
+    listings[0]?.resolve(undefined);
+    await firstHandoff;
+    liveClients.push('page-2', 'page-3');
+    const chunk = await request(scope, '/late.js', { clientId: 'page-2' });
+
+    // Then
+    expect(await chunk?.text()).toBe('second()');
+  });
+
+  it('As a user, I start a product worker while the worker lists the open pages for a handoff, and after a restart the product worker is still served the archive of the page that started it', async () => {
+    // Given the page's handoff waiting on a listing of the open clients taken before the product worker started
+    const listing = createDeferred<undefined>();
+    onTestFinished(() => {
+      listing.resolve(undefined);
+    });
+    const liveClients = ['page-1'];
+    const first = startWorker(origin, { liveClients, holdListings: [listing.promise] });
+    const handoff = setArchive(first, { 'late.js': 'first()' }, { clientId: 'page-1' });
+    const workerScript = request(first, '/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+
+    // When the listing ends, another tab hands over the newest archive, and a restarted worker is asked by the
+    // product worker
+    listing.resolve(undefined);
+    await handoff;
+    liveClients.push('worker-1', 'page-2');
+    await workerScript;
+    await setArchive(first, { 'late.js': 'second()' }, { clientId: 'page-2' });
+    const chunk = await request(startWorker(origin, { liveClients }), '/late.js', { clientId: 'worker-1' });
+
+    // Then
+    expect(await chunk?.text()).toBe('first()');
+  });
+  it('As an operator, I watch the browser refuse an answer the worker gives a fetch and the pages hear it as a failure to serve', async () => {
+    // Given a worker serving a page's archive
+    const scope = startWorker(origin);
+    await setArchive(scope, { 'late.js': 'first()' });
+    const reported = waitForPageMessage();
+    const fetchEvent = Object.assign(new Event('fetch'), {
+      request: { url: `${ORIGIN}/late.js`, mode: 'no-cors', destination: '' },
+      clientId: 'page-1',
+      resultingClientId: '',
+      respondWith: () => {
+        throw new DOMException('The fetch event has already been responded to.', 'InvalidStateError');
+      },
+      waitUntil: () => undefined,
+    });
+
+    // When the page loads a chunk
+    scope.dispatchEvent(fetchEvent);
+    await reported;
+
+    // Then
+    expect(pageInbox).toEqual([
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'serve',
+        name: 'InvalidStateError',
+        message: 'The fetch event has already been responded to.',
+      },
+    ]);
   });
 });

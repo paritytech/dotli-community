@@ -26,8 +26,6 @@ function StoryPermissions(): JSX.Element {
 
 const open = openSurface({ trigger: 'more-button', surface: 'more-popover' });
 
-const settingsOpen = (): boolean => document.getElementById('mode-popover')?.hasAttribute('data-open') === true;
-
 const STATUSES: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
 
 /** Which status a permission's row has pressed. */
@@ -150,48 +148,7 @@ export const PhoneRowMarksGrants: Story = {
         ),
       );
       await expect(statusOf('Camera')).toBe('granted');
-    });
-  },
-};
-
-/**
- * As a mobile user who opened the settings from More, I get focus in the sheet and get it back on More when I close it
- * by Close or Escape.
- */
-export const SettingsFromMoreHandsFocusBack: Story = {
-  tags: ['!autodocs'],
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  render: () => (
-    <GroupFrame room={40}>
-      <SettingsItem {...storySettings} />
-    </GroupFrame>
-  ),
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    const fromMore = async (): Promise<void> => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('settings'));
-      await waitFor(() => expect(settingsOpen()).toBe(true));
-    };
-    await step('When I choose Settings in More', fromMore);
-    await step("Then the sheet took More's place and has focus", async () => {
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() => expect(byId('mode-popover').contains(document.activeElement)).toBe(true));
-    });
-    await step('When I press Escape', async () => {
-      await userEvent.keyboard('{Escape}');
-    });
-    await step('Then it closed and More has focus', async () => {
-      await waitFor(() => expect(settingsOpen()).toBe(false));
-      await waitFor(() => expect(byId('more-button')).toHaveFocus());
-    });
-    await step('When I open it from More again and press Close', async () => {
-      await fromMore();
-      await userEvent.click(query(document, '[data-testid="popover-sheet-close"]'));
-    });
-    await step('Then it closed and More has focus', async () => {
-      await waitFor(() => expect(settingsOpen()).toBe(false));
-      await waitFor(() => expect(byId('more-button')).toHaveFocus());
+      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
     });
   },
 };

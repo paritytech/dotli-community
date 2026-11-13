@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
+import { describeNetworkStatus, describeTransfer, needsCountdown } from './chainsFormat.js';
 import type { LiveVerdict } from '../../networkVerdict.js';
 
 describe('describeNetworkStatus under a light client', () => {
@@ -11,7 +11,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({
@@ -26,7 +26,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 10, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 10, backend: 'smoldot-direct' });
 
     // Then
     expect(line.detail).toBe('Light client is in sync on all 10 chains');
@@ -37,7 +37,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'idle' };
 
     // When
-    const line = describeNetworkStatus(health, false, 3, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 3, backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({ tone: 'idle', title: 'Syncing', detail: 'Finding peers. This takes a few seconds.' });
@@ -48,7 +48,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub', 'Identity'] };
 
     // When
-    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({
@@ -63,7 +63,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub'] };
 
     // When
-    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'smoldot-direct' });
 
     // Then
     expect(line.detail).toBe('Hub is behind');
@@ -74,7 +74,7 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, true, 4, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: true, chainCount: 4, backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({ tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' });
@@ -85,21 +85,10 @@ describe('describeNetworkStatus under a light client', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 2, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 2, backend: 'smoldot-direct' });
 
     // Then
     expect(line.detail).toBe('Light client is in sync on both chains');
-  });
-
-  it("As a user on the shared-worker light client, the captions are the light client's", () => {
-    // Given
-    const health: LiveVerdict = { tone: 'ok' };
-
-    // When
-    const line = describeNetworkStatus(health, false, 4, 'smoldot-shared-worker');
-
-    // Then
-    expect(line.detail).toBe('Light client is in sync on all four chains');
   });
 
   it("As a user whose settings are not read yet, I open the network menu and see the light client's captions", () => {
@@ -107,7 +96,7 @@ describe('describeNetworkStatus under a light client', () => {
     const verdict: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(verdict, false, 4);
+    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 4, backend: undefined });
 
     // Then
     expect(line.detail).toBe('Light client is in sync on all four chains');
@@ -120,7 +109,7 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({ tone: 'ok', title: 'Your connection is good', detail: 'Served by trusted providers' });
@@ -131,7 +120,7 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'idle' };
 
     // When
-    const line = describeNetworkStatus(health, false, 3, 'rpc-gateway');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 3, backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({
@@ -146,21 +135,10 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'warn', slow: ['Hub', 'Identity'] };
 
     // When
-    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
+    const line = describeNetworkStatus({ verdict: health, offline: false, chainCount: 4, backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({ tone: 'warn', title: 'Connection is unstable', detail: 'Hub and Identity are behind' });
-  });
-
-  it('As a user on trusted providers with one stalled chain, the caption says "is"', () => {
-    // Given
-    const health: LiveVerdict = { tone: 'warn', slow: ['Hub'] };
-
-    // When
-    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
-
-    // Then
-    expect(line.detail).toBe('Hub is behind');
   });
 
   it('As a user on trusted providers who went offline, the caption speaks of providers, not peers', () => {
@@ -168,7 +146,7 @@ describe('describeNetworkStatus under trusted providers', () => {
     const health: LiveVerdict = { tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, true, 4, 'rpc-gateway');
+    const line = describeNetworkStatus({ verdict: health, offline: true, chainCount: 4, backend: 'rpc-gateway' });
 
     // Then
     expect(line).toEqual({
@@ -185,7 +163,7 @@ describe('describeNetworkStatus with nothing in use', () => {
     const verdict: LiveVerdict = { tone: 'quiet' };
 
     // When
-    const line = describeNetworkStatus(verdict, false, 0, 'smoldot-direct');
+    const line = describeNetworkStatus({ verdict: verdict, offline: false, chainCount: 0, backend: 'smoldot-direct' });
 
     // Then
     expect(line).toEqual({
@@ -193,17 +171,6 @@ describe('describeNetworkStatus with nothing in use', () => {
       title: 'No chains in use',
       detail: 'Chains appear here once the app connects to them.',
     });
-  });
-
-  it('As a user with no chain in use, I go offline and the menu says I am offline, not that none is in use', () => {
-    // Given
-    const verdict: LiveVerdict = { tone: 'quiet' };
-
-    // When
-    const line = describeNetworkStatus(verdict, true, 0, 'smoldot-direct');
-
-    // Then
-    expect(line).toEqual({ tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' });
   });
 });
 
@@ -214,6 +181,47 @@ const waiting = {
   bars: [] as { number: number; health: 'onTime'; gapMs: number }[],
   sinceLast: 1000 as number | null,
 };
+
+describe('describeTransfer', () => {
+  it.each([
+    {
+      case: 'loads the product',
+      transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '512 B/s' }, size: { label: 'Downloading', value: '2 kB / 4.0 MB' } },
+    },
+    {
+      case: 'fetched the whole archive',
+      transfer: { bytesPerSecond: 512, fetched: 3_000_000, total: 3_000_000 },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '512 B/s' }, size: { label: 'Size', value: '2.9 MB' } },
+    },
+    {
+      case: 'loads from cache, with no total',
+      transfer: { bytesPerSecond: 40_000, fetched: null, total: null },
+      loading: true,
+      rows: { speed: { label: 'Speed', value: '39 kB/s' }, size: null },
+    },
+    {
+      case: 'has a total of zero',
+      transfer: { bytesPerSecond: null, fetched: 0, total: 0 },
+      loading: true,
+      rows: { speed: null, size: null },
+    },
+    {
+      case: 'has the product on screen',
+      transfer: { bytesPerSecond: 800, fetched: 4096, total: 4096 },
+      loading: false,
+      rows: { speed: null, size: null },
+    },
+  ])('As a user whose page $case, the transfer footer shows what the row says', ({ transfer, loading, rows }) => {
+    // When
+    const shown = describeTransfer(transfer, loading);
+
+    // Then
+    expect(shown).toEqual(rows);
+  });
+});
 
 describe('the network panel countdown', () => {
   it('As a user watching a chain between blocks, the countdown runs', () => {

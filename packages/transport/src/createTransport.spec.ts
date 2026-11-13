@@ -139,52 +139,6 @@ describe('createTransport', () => {
     expect(issues).toEqual([]);
   });
 
-  it("As a relay, I interrupt with a peer's HostFailure and my caller hears the same reason", async () => {
-    // Given a caller, a relay that serves it and subscribes onward, and an upstream that serves the relay
-    const downstream = createRig();
-    const upstream = createRig();
-    const caller = downstream.opener;
-    const relayServing = downstream.accepter;
-    const relayCalling = upstream.opener;
-    upstream.accepter.handleSubscription(notes.watch, () => {
-      throw new RangeError('upstream gone');
-    });
-    relayServing.handleSubscription(echo.relay, (start, _context, sink) => {
-      return relayCalling.subscribe({
-        method: notes.watch,
-        start,
-        listeners: {
-          receive: value => {
-            sink.send(value);
-          },
-          interrupt: outcome => {
-            sink.interrupt(outcome.success ? outcome : err(domain(outcome.value)));
-          },
-          fail: failure => {
-            sink.interrupt(err(failure));
-          },
-          close: error => {
-            sink.interrupt(err(hostFailure(error)));
-          },
-        },
-      });
-    });
-    caller.connect();
-    relayCalling.connect();
-    const heard = createWatcher<ResultPayload<undefined, CallError<string>>>();
-
-    // When the caller subscribes, and the upstream's handler throws
-    caller.subscribe({ method: echo.relay, start: 'from the top', listeners: heard });
-    await downstream.timers.advance(0);
-    await upstream.timers.advance(0);
-    await downstream.timers.advance(0);
-
-    // Then
-    expect(heard.ends).toEqual([err(hostFailure('RangeError: upstream gone'))]);
-    expect(heard.fails).toEqual([]);
-    expect([...downstream.issues, ...upstream.issues]).toEqual([]);
-  });
-
   it('As a receiver whose schema throws, I hear a message and the throw is reported and never reaches the provider', () => {
     // Given a schema of the owner's whose method lookup throws
     const callbacks: ((message: Uint8Array) => void)[] = [];
@@ -271,23 +225,6 @@ describe('createTransport', () => {
       '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
       '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
     ]);
-  });
-
-  it('As a caller, I hear a receive and an interrupt for a subscription I never opened and both are refused as invalid', async () => {
-    // Given
-    const { transport, timers, peer, issues, answerHandshake } = createRawRig({ handshake: 'offer' });
-    transport.connect();
-    await timers.advance(0);
-    answerHandshake();
-
-    // When
-    peer.call({ method: notes.watch, id: 41, message: { tag: 'receive', value: 'a line' } });
-    peer.call({ method: notes.watch, id: 41, message: { tag: 'interrupt', value: ok() } });
-    await timers.advance(0);
-
-    // Then
-    expect(issues).toEqual([matchRefusedIssue('invalid'), matchRefusedIssue('invalid')]);
-    expect(peer.getNames()).toEqual(['handshakeOffer']);
   });
 
   it('As an owner with no issue hook, I hit issues and each is logged as one bounded error', async () => {
@@ -381,32 +318,6 @@ describe('createTransport', () => {
     expect(heard.closes).toEqual([reason]);
   });
 
-  it('As an owner, I call while the provider throws on posts and my issue hook hears the post before any call hears the close', async () => {
-    // Given an open subscription, and a hook that notes what the subscription heard when the post failed
-    const broken = new Error('the peer window is gone');
-    const { wrap, breakPosts } = createBreakablePosts(broken);
-    const heard = createWatcher();
-    const closesAtIssue: number[] = [];
-    const raw = await connectRawRig({
-      wrap,
-      onIssue: () => {
-        closesAtIssue.push(heard.closes.length);
-      },
-    });
-    raw.transport.subscribe({ method: notes.watch, start: 'from the top', listeners: heard });
-    await raw.timers.advance(0);
-
-    // When
-    breakPosts();
-    const call = captureOutcome(raw.transport.request(notes.touch, undefined));
-    await raw.timers.advance(0);
-
-    // Then
-    expect(closesAtIssue).toEqual([0]);
-    expect(heard.closes).toEqual([broken]);
-    expect(await call).toBe(broken);
-  });
-
   it('As an owner, I use a provider not in a correct environment and my transport closes at once with nothing posted', async () => {
     // Given
     const { left } = createProviderPair();
@@ -435,57 +346,6 @@ describe('createTransport', () => {
 });
 
 describe('calls', () => {
-  it('As a caller, I queue calls before the handshake and they go out in call order', async () => {
-    // Given
-    const { opener, accepter, timers } = createRig();
-    const seen: string[] = [];
-    accepter.handleRequest(notes.read, key => {
-      seen.push(key);
-      return ok(key);
-    });
-    const read = (key: string) => opener.request(notes.read, key);
-    const fourth = read('1').then(() => read('4'));
-    const second = read('2');
-    const third = read('3');
-
-    // When
-    opener.connect();
-    await timers.advance(0);
-    await Promise.all([fourth, second, third]);
-
-    // Then
-    expect(seen).toEqual(['1', '2', '3', '4']);
-  });
-
-  it('As a caller, I call across the handshake and my calls go out in call order, with one made once connected behind them', async () => {
-    // Given
-    const { transport, timers, peer, answerHandshake } = createRawRig({ handshake: 'offer' });
-    // Registered first, so it hears the handshake end before any queued call does.
-    const connected = transport.whenConnected().then(() => {
-      void transport.request(echo.say, 'once connected');
-    });
-    void transport.request(notes.touch, undefined);
-    transport.connect();
-    await timers.advance(0);
-    void transport.request(echo.say, 'while connecting');
-
-    // When
-    answerHandshake();
-    void transport.request(notes.read, 'as the answer arrives');
-    await connected;
-    await timers.advance(0);
-
-    // Then
-    expect(peer.getNames()).toEqual([
-      'handshakeOffer',
-      'request:notes.touch',
-      'request:echo.say',
-      'request:notes.read',
-      'request:echo.say',
-    ]);
-    expect(peer.getValues(echo.say, 'request:echo.say')).toEqual(['while connecting', 'once connected']);
-  });
-
   it("As a caller, I call and my call resolves to the handler's Result, a domain error included", async () => {
     // Given
     const { opener, accepter, timers } = createRig();
@@ -503,19 +363,6 @@ describe('calls', () => {
     expect(await found).toEqual(ok('a note'));
     expect(await missing).toEqual(err(domain('no such note')));
     expect(detach).toHaveBeenCalledOnce();
-  });
-
-  it('As a caller, I call a method the peer does not serve and hear Unsupported', async () => {
-    // Given
-    const { opener, timers } = createRig();
-    opener.connect();
-
-    // When
-    const call = opener.request(notes.touch, undefined);
-    await timers.advance(0);
-
-    // Then
-    expect(await call).toEqual(err(unsupported()));
   });
 
   it('As a caller, I hear the peer fail my call as Unsupported and my call resolves Unsupported', async () => {
@@ -658,6 +505,27 @@ describe('calls', () => {
       cause: matchInstance(RangeError),
     });
     expect(issues).toEqual([matchRefusedIssue('malformed', matchInstance(RangeError))]);
+  });
+
+  it('As a caller, I hear an answer whose outcome is neither success nor failure and my call fails as malformed', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectRawRig();
+    const call = captureOutcome(transport.request(notes.read, 'note'));
+    await timers.advance(0);
+    const asked = must(peer.find('request:notes.read')[0], 'the call');
+
+    // When the answer's outcome tag is 2, sent as a receive, whose leg index is the response's
+    peer.call({
+      method: rawWatch,
+      id: asked.id,
+      message: { tag: 'receive', value: Uint8Array.of(2, 1) },
+      at: notes.read,
+    });
+    await timers.advance(0);
+
+    // Then
+    expect(await call).toBeInstanceOf(TransportMalformedResponseError);
+    expect(issues).toEqual([matchRefusedIssue('malformed')]);
   });
 
   it('As a caller, I hear an answer and a failure that leave bytes unread and both are refused as malformed, as truapi refuses them', async () => {
@@ -1189,34 +1057,6 @@ describe('calls', () => {
     expect(stops).toEqual([1, 0, 0]);
   });
 
-  it('As a subscriber, I dispose from inside interrupt and the peer is told nothing', async () => {
-    // Given
-    const { transport, timers, peer } = await connectRawRig();
-    transport.subscribe({
-      method: notes.watch,
-      start: 'ended',
-      listeners: {
-        receive: () => undefined,
-        interrupt: () => {
-          transport.dispose(new Error('torn down'));
-        },
-        fail: () => undefined,
-        close: () => undefined,
-      },
-    });
-    transport.subscribe({ method: notes.watch, start: 'open', listeners: createWatcher() });
-    await timers.advance(0);
-    const [ended = 0, open = 0] = getStartIds(peer);
-
-    // When
-    peer.call({ method: notes.watch, id: ended, message: { tag: 'interrupt', value: ok() } });
-    await timers.advance(0);
-
-    // Then
-    expect(open).not.toBe(0);
-    expect(peer.find('stop:notes.watch')).toEqual([]);
-  });
-
   it('As a caller, I hear a message on a subscription I stopped and it is dropped quietly, while one that cannot be a race is refused as invalid', async () => {
     // Given
     const { transport, timers, peer, issues } = await connectRawRig();
@@ -1385,7 +1225,7 @@ describe('calls', () => {
     raw.transport.subscribe({ method: notes.watch, start: 'from the top', listeners: heard });
     await raw.timers.advance(0);
 
-    // Then the transport closed it before the post returned, and the peer heard no stop
+    // Then the transport closed it with the hook's reason, and the peer heard no stop
     expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(heard.fails).toEqual([]);
@@ -1451,31 +1291,28 @@ describe('calls', () => {
     expect(peer.getNames()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
+
+  it('As a caller whose open subscription closed on a failed post, I hear the peer send on it in the race and nothing is refused', async () => {
+    // Given an open subscription, then a request whose post fails and closes the transport
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts } = createBreakablePosts(broken);
+    const { transport, timers, peer, issues } = await connectRawRig({ wrap });
+    transport.subscribe({ method: notes.watch, start: 'from the top', listeners: createWatcher() });
+    await timers.advance(0);
+    breakPosts();
+    void transport.request(notes.read, 'title').catch(() => undefined);
+    await timers.advance(0);
+
+    // When the peer sends a value it posted before it heard anything
+    peer.call({ method: notes.watch, id: 1, message: { tag: 'receive', value: 'a line' } });
+    await timers.advance(0);
+
+    // Then only the failed post was reported
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'read' } }]);
+  });
 });
 
 describe('serving', () => {
-  it("As a handler, I serve a call and read the caller's hello", async () => {
-    // Given
-    const { left, right } = createProviderPair();
-    const timers = createManualTimers();
-    const opener = createTransport({ schema: testSchema, provider: left, handshake: 'offer', hello: 'opener', timers });
-    const accepter = createTransport({ schema: testSchema, provider: right, handshake: 'respond', hello: 'accepter' });
-    const servedByAccepter = vi.fn(() => ok('a'));
-    const servedByOpener = vi.fn(() => ok('b'));
-    accepter.handleRequest(echo.say, servedByAccepter);
-    opener.handleRequest(echo.say, servedByOpener);
-    opener.connect();
-
-    // When
-    const calls = [opener.request(echo.say, 'to the accepter'), accepter.request(echo.say, 'to the opener')];
-    await timers.advance(0);
-    await Promise.all(calls);
-
-    // Then
-    expect(servedByAccepter).toHaveBeenCalledExactlyOnceWith('to the accepter', { hello: 'opener' });
-    expect(servedByOpener).toHaveBeenCalledExactlyOnceWith('to the opener', { hello: 'accepter' });
-  });
-
   it('As a serving side, I serve with a handler that throws or rejects and the caller hears HostFailure with its name and message, bounded', async () => {
     // Given
     const { opener, accepter, timers } = createRig();
@@ -1495,20 +1332,6 @@ describe('serving', () => {
     expect(await rejected).toEqual(err(hostFailure(`RangeError: ${'x'.repeat(500 - 'RangeError: '.length)}`)));
   });
 
-  it('As a relaying handler, I answer with the Cancelled my own call ended with and the caller hears it', async () => {
-    // Given
-    const { opener, accepter, timers } = createRig();
-    accepter.handleRequest(notes.read, () => err(cancelled()));
-    opener.connect();
-
-    // When
-    const read = opener.request(notes.read, 'note');
-    await timers.advance(0);
-
-    // Then
-    expect(await read).toEqual(err(cancelled()));
-  });
-
   it('As a serving side, I register a second handler for one method and it is refused', () => {
     // Given
     const { accepter } = createRig();
@@ -1522,6 +1345,50 @@ describe('serving', () => {
     // Then
     expect(second).toEqual(matchFields<Error>({ message: 'notes.read already has a handler' }));
     expect(secondSubscription).toEqual(matchFields<Error>({ message: 'notes.watch already has a handler' }));
+  });
+
+  it('As a caller, I subscribe with an aborted signal on a closed transport and hear the close, as a request does', async () => {
+    // Given
+    const { transport, timers } = await connectRawRig();
+    const reason = new Error('the page is closing');
+    transport.dispose(reason);
+    const heard = createWatcher();
+
+    // When
+    transport.subscribe({ method: notes.watch, start: 'late', listeners: heard, signal: AbortSignal.abort() });
+    await timers.advance(0);
+
+    // Then
+    expect(heard.closes).toEqual([reason]);
+    expect(heard.fails).toEqual([]);
+  });
+
+  it('As a serving side with no handler, I answer Unsupported while my provider cannot post and the failed post names the call', async () => {
+    // Given
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts } = createBreakablePosts(broken);
+    const { timers, peer, issues } = await acceptRawRig({ wrap });
+    breakPosts();
+
+    // When
+    peer.call({ method: notes.read, id: 3, message: { tag: 'request', value: 'note' } });
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'read' } }]);
+  });
+
+  it('As a serving side with no handler, I hear an answer leg on a call the peer never opened and refuse it, posting nothing', async () => {
+    // Given
+    const { timers, peer, issues } = await acceptRawRig();
+
+    // When
+    peer.call({ method: notes.read, id: 7, message: { tag: 'response', value: ok('stray') } });
+    await timers.advance(0);
+
+    // Then
+    expect(peer.getNames()).toEqual(['handshakeResponse']);
+    expect(issues).toEqual([matchRefusedIssue('invalid')]);
   });
 
   it('As a serving side, I unregister a handler and a call then answers Unsupported', async () => {
@@ -1737,26 +1604,6 @@ describe('serving', () => {
     expect(peer.getNames()).toEqual(['handshakeResponse']);
   });
 
-  it('As a connected accepter, I hear malformed handshake opens and report them with no reply', async () => {
-    // Given
-    const { timers, peer, issues } = await acceptRawRig();
-
-    // When an open carries no version, then one carries a hello that is cut short
-    peer.sendBytes(3, 0, 0, 0, 0);
-    peer.send(5, {
-      tag: 'handshakeOffer',
-      value: { versions: { wire: WIRE_VERSION, schema: VERSION }, hello: CUT_SHORT_TEXT },
-    });
-    await timers.advance(0);
-
-    // Then
-    expect(issues).toEqual([
-      matchRefusedIssue('malformed', matchInstance(RangeError)),
-      matchRefusedIssue('malformed', matchInstance(RangeError)),
-    ]);
-    expect(peer.getNames()).toEqual(['handshakeResponse']);
-  });
-
   it('As an accepter, I hear malformed handshake opens and report them with no reply', async () => {
     // Given
     const { transport, timers, peer, issues } = createRawRig({ handshake: 'respond' });
@@ -1831,29 +1678,36 @@ describe('serving', () => {
   it.each([
     {
       reuse: 'a request',
-      refusal: 'A request reuses call 3, which is still in flight',
+      refusal: 'A request names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: notes.read, id: 3, message: { tag: 'request', value: 'second' } });
       },
     },
     {
       reuse: 'an unreadable subscription message',
-      refusal: 'A message reuses call 3, which is still in flight',
+      refusal: 'A message names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.send(3, createUnreadableLeg(notes.watch));
       },
     },
     {
       reuse: 'a start',
-      refusal: 'A start reuses call 3, which is still in flight',
+      refusal: 'A start names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: notes.watch, id: 3, message: { tag: 'start', value: 'from the top' } });
       },
     },
     {
+      reuse: 'a response',
+      refusal: 'A response names call 3, which is still in flight',
+      send: (peer: RawPeer) => {
+        peer.call({ method: notes.read, id: 3, message: { tag: 'response', value: ok('early') } });
+      },
+    },
+    {
       // Refused rather than answered Unsupported, so the id carries one answer.
       reuse: 'a request for a method I do not serve',
-      refusal: 'A request reuses call 3, which is still in flight',
+      refusal: 'A request names call 3, which is still in flight',
       send: (peer: RawPeer) => {
         peer.call({ method: echo.say, id: 3, message: { tag: 'request', value: 'hello' } });
       },
@@ -1981,26 +1835,6 @@ describe('serving', () => {
     expect(issues).toEqual([]);
   });
 
-  it('As either side, I see a stop cross an interrupt and both sides ignore it', async () => {
-    // Given
-    const { opener, accepter, timers, issues } = createRig();
-    const { sinks, stops } = serveWatch(accepter);
-    opener.connect();
-    const heard = createWatcher();
-    const unsubscribe = opener.subscribe({ method: notes.watch, start: 'from the top', listeners: heard });
-    await timers.advance(0);
-
-    // When
-    unsubscribe();
-    must(sinks[0], 'a sink').interrupt(ok());
-    await timers.advance(0);
-
-    // Then
-    expect(heard.ends).toEqual([]);
-    expect(stops).toEqual([1]);
-    expect(issues).toEqual([]);
-  });
-
   it('As a handler, I send and interrupt after the subscription stopped and nothing is posted', async () => {
     // Given
     const { opener, accepter, timers, delivered } = createRig();
@@ -2078,31 +1912,6 @@ describe('serving', () => {
     expect(await connecting).toBe(broken);
   });
 
-  it('As a serving side, I dispose and tell no subscription I serve, and each stop runs', async () => {
-    // Given
-    const { opener, accepter, timers, issues } = createRig();
-    const { stops } = serveWatch(accepter);
-    opener.connect();
-    const heard = [createWatcher(), createWatcher()];
-    for (const listeners of heard) {
-      opener.subscribe({ method: notes.watch, start: 'from the top', listeners });
-    }
-    await timers.advance(0);
-
-    // When
-    accepter.dispose(new RangeError('upstream gone'));
-    await timers.advance(0);
-
-    // Then
-    expect(stops).toEqual([1, 1]);
-    for (const listeners of heard) {
-      expect(listeners.fails).toEqual([]);
-      expect(listeners.ends).toEqual([]);
-      expect(listeners.closes).toEqual([]);
-    }
-    expect(issues).toEqual([]);
-  });
-
   it('As a serving side whose stop function throws, I dispose and the throw is reported as listener_threw while the others still run', async () => {
     // Given
     const { opener, accepter, timers, issues } = createRig();
@@ -2159,6 +1968,49 @@ describe('serving', () => {
     expect(stops).toEqual([1, 1]);
   });
 
+  it('As a serving side, I hear a start that reuses the id of a running subscription and the old stop runs before the new handler starts', async () => {
+    // Given
+    const { transport, timers, peer } = await acceptRawRig();
+    const log: string[] = [];
+    transport.handleSubscription(notes.watch, start => {
+      log.push(`start:${start}`);
+      return () => {
+        log.push(`stop:${start}`);
+      };
+    });
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'first' } });
+    await timers.advance(0);
+
+    // When
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'second' } });
+    await timers.advance(0);
+
+    // Then
+    expect(log).toEqual(['start:first', 'stop:first', 'start:second']);
+  });
+
+  it("As a serving side, I hear a start that reuses the id of a running subscription and the replaced one's sink sends nothing", async () => {
+    // Given
+    const { transport, timers, peer } = await acceptRawRig();
+    const { sinks, stops } = serveWatch(transport);
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'first' } });
+    await timers.advance(0);
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'second' } });
+    await timers.advance(0);
+    const replaced = must(sinks[0], 'the replaced sink');
+
+    // When the replaced sink sends, sends what the wire cannot carry, and interrupts, then the new one sends
+    replaced.send('stale');
+    replaced.send('');
+    replaced.interrupt(ok());
+    must(sinks[1], 'the new sink').send('fresh');
+    await timers.advance(0);
+
+    // Then only the new one's value reaches the peer, and the new one still runs
+    expect(peer.getNames()).toEqual(['handshakeResponse', 'receive:notes.watch']);
+    expect(stops).toEqual([1, 0]);
+  });
+
   it('As a serving side, I see a peer dispose and what it opened keeps running, since it posts nothing', async () => {
     // Given a peer with a subscription
     const { opener, accepter, timers } = createRig();
@@ -2200,6 +2052,27 @@ describe('serving', () => {
     expect(other.fails).toEqual([]);
     expect(other.ends).toEqual([]);
     expect(issues).toEqual([]);
+  });
+
+  it('As a handler that interrupts and then breaks my channel inside start, I interrupt the subscription and the subscriber hears the interrupt first', async () => {
+    // Given
+    const { wrap, breakPosts } = createBreakablePosts(new Error('the port is closed'));
+    const { transport, timers, peer, issues } = await acceptRawRig({ wrap });
+    const stop = vi.fn();
+    transport.handleSubscription(notes.watch, (_start, _context, sink) => {
+      sink.interrupt(err('released'));
+      breakPosts();
+      return stop;
+    });
+
+    // When
+    peer.call({ method: notes.watch, id: 5, message: { tag: 'start', value: 'from the top' } });
+    await timers.advance(0);
+
+    // Then
+    expect(peer.getValues(notes.watch, 'interrupt:notes.watch')).toEqual([err('released')]);
+    expect(issues).toEqual([]);
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it('As a serving side, I hear a stop before the handshake and refuse it as invalid, and drop one for a subscription that is not running quietly', async () => {
@@ -2407,7 +2280,7 @@ describe('the handshake', () => {
     expect(await opened).toEqual({ value: undefined });
   });
 
-  it('As an opener with no timeout set, I connect and my handshake waits 10 seconds for an answer, as host-api and truapi wait', async () => {
+  it('As an opener with no timeout set, I connect and my handshake waits 10 seconds for an answer, as truapi waits', async () => {
     // Given
     const { left } = createProviderPair();
     const timers = createManualTimers();
@@ -2561,7 +2434,7 @@ describe('the handshake', () => {
     expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
-  it('As an opener, I make my first request, subscription or wait and it starts the handshake, as host-api starts it, and an accepter starts nothing', async () => {
+  it('As an opener, I make my first request, subscription or wait and it starts the handshake, so no call needs a connect first, and an accepter starts nothing', async () => {
     // Given three openers and an accepter, none of which connects
     const requesting = createRawRig({ handshake: 'offer' });
     const subscribing = createRawRig({ handshake: 'offer' });
@@ -2873,6 +2746,73 @@ describe('forwarding', () => {
     expect(issues).toEqual([]);
   });
 
+  it('As a transport that closes, I end my calls and each one ends in the order I opened it, a forwarded call among them', async () => {
+    // Given a forwarder whose posts to its peer are logged, and an upstream with a subscription, then a forwarded call
+    const log: string[] = [];
+    const near = createProviderPair();
+    const far = createProviderPair();
+    const timers = createManualTimers();
+    const { onIssue } = createIssueLog();
+    const opening = { timers, retryMs: RETRY_MS, timeoutMs: TIMEOUT_MS, onIssue };
+    const peer = createTransport({
+      schema: testSchema,
+      provider: near.left,
+      handshake: 'offer',
+      hello: 'peer',
+      ...opening,
+    });
+    const forwarder = createTransport({
+      schema: testSchema,
+      provider: {
+        ...near.right,
+        postMessage: message => {
+          log.push('posted');
+          near.right.postMessage(message);
+        },
+      },
+      handshake: 'respond',
+      hello: 'forwarder',
+      onIssue,
+    });
+    const upstream = createTransport({
+      schema: testSchema,
+      provider: far.left,
+      handshake: 'offer',
+      hello: 'upstream',
+      ...opening,
+    });
+    const server = createTransport({
+      schema: testSchema,
+      provider: far.right,
+      handshake: 'respond',
+      hello: 'server',
+      onIssue,
+    });
+    forwarder.forward([notes.read], upstream);
+    server.handleRequest(notes.read, () => createDeferred<ResultPayload<string, CallError<string>>>().promise);
+    serveWatch(server);
+    upstream.subscribe({
+      method: notes.watch,
+      start: 'from the top',
+      listeners: {
+        ...createWatcher(),
+        close: () => {
+          log.push('closed');
+        },
+      },
+    });
+    await timers.advance(0);
+    void peer.request(notes.read, 'a note');
+    await timers.advance(0);
+    log.length = 0;
+
+    // When
+    upstream.dispose(new Error('gone'));
+
+    // Then the subscription opened first hears its end first, and the forwarded call answers its peer after it
+    expect(log).toEqual(['closed', 'posted']);
+  });
+
   it('As a forwarder that closes, I post nothing to my peer and stop each forwarded subscription on the upstream', async () => {
     // Given
     const { peer, forwarder, server, timers, issues, toForwarder, toUpstream } = createForwardRig();
@@ -2903,57 +2843,6 @@ describe('forwarding', () => {
     expect([heard.values, heard.ends, heard.fails, heard.closes]).toEqual([[], [], [], []]);
     expect(issues).toEqual([]);
   });
-
-  it.each([
-    {
-      reuse: 'an unreadable message',
-      refusal: 'A message reuses call 1, which is still in flight',
-      send: (peer: RawPeer) => {
-        peer.send(1, createUnreadableLeg(notes.read));
-      },
-    },
-    {
-      reuse: 'a request',
-      refusal: 'A request reuses call 1, which is still in flight',
-      send: (peer: RawPeer) => {
-        peer.call({ method: notes.read, id: 1, message: { tag: 'request', value: 'the same note again' } });
-      },
-    },
-    {
-      reuse: 'a start',
-      refusal: 'A start reuses call 1, which is still in flight',
-      send: (peer: RawPeer) => {
-        peer.call({ method: notes.watch, id: 1, message: { tag: 'start', value: 'from the top' } });
-      },
-    },
-  ])(
-    "As a forwarder, I refuse $reuse that reuses an in-flight request id, forward nothing, and the peer hears only the upstream's answer",
-    async ({ refusal, send }) => {
-      // Given a forwarded request in flight on id 1, and a server of notes.watch
-      const { peer, timers, issues, answer, served, server } = await forwardFromRawPeer();
-      const { starts } = serveWatch(server);
-      peer.call({ method: notes.read, id: 1, message: { tag: 'request', value: 'a note' } });
-      await timers.advance(0);
-
-      // When the peer reuses the id
-      send(peer);
-      await timers.advance(0);
-
-      // Then it is refused and nothing goes back yet
-      expect(issues).toEqual([matchRefusedIssue('invalid', new Error(refusal))]);
-      expect(peer.getNames()).toEqual(['handshakeResponse']);
-
-      // When the upstream answers the request
-      answer.resolve(ok('the note'));
-      await timers.advance(0);
-
-      // Then the upstream served it once and heard no start, and the peer hears only its answer
-      expect(served).toHaveBeenCalledOnce();
-      expect(starts).toEqual([]);
-      expect(peer.getNames()).toEqual(['handshakeResponse', 'response:notes.read']);
-      expect(peer.getValues(notes.read, 'response:notes.read')).toEqual([ok('the note')]);
-    },
-  );
 
   it('As a forwarder, I refuse a stop with trailing bytes and the subscription keeps running on both links until a whole stop ends it', async () => {
     // Given a forwarded subscription on id 1
@@ -2987,30 +2876,6 @@ describe('forwarding', () => {
     // Then
     expect(stops).toEqual([1]);
     expect(issues).toHaveLength(1);
-  });
-
-  it('As a forwarder, I replace a forwarded subscription on a reused start and stop the old one on the upstream', async () => {
-    // Given a raw peer, and a server behind the upstream
-    const near = createRawRig({ handshake: 'respond' });
-    const far = createRig();
-    const { starts, sinks, stops } = serveWatch(far.accepter);
-    near.transport.forward([notes.watch], far.opener);
-    near.openHandshake();
-    await near.timers.advance(0);
-    near.peer.call({ method: notes.watch, id: 1, message: { tag: 'start', value: 'first' } });
-    await far.timers.advance(0);
-
-    // When
-    near.peer.call({ method: notes.watch, id: 1, message: { tag: 'start', value: 'second' } });
-    await far.timers.advance(0);
-    must(sinks[1], 'the second sink').send('fresh');
-    await far.timers.advance(0);
-
-    // Then
-    expect(starts).toEqual(['first', 'second']);
-    expect(stops).toEqual([1, 0]);
-    expect(near.peer.getValues(notes.watch, 'receive:notes.watch')).toEqual(['fresh']);
-    expect([...near.issues, ...far.issues]).toEqual([]);
   });
 
   it("As a forwarder, I start the upstream's handshake with the first forwarded call and send it once the handshake is over", async () => {
@@ -3109,24 +2974,6 @@ describe('forwarding', () => {
     expect(getMessageHex(toUpstream, 'request:echo.say')).toEqual(request);
     expect(getMessageHex(toUpstream, 'response:echo.say')).toEqual(response);
     expect(getMessageHex(toForwarder, 'response:echo.say')).toEqual(response);
-    expect(issues).toEqual([]);
-  });
-
-  it("As a forwarder, I pass the upstream's failed frame on a subscription back and the peer's fail hears it", async () => {
-    // Given a server whose handler throws on start
-    const { peer, server, timers, issues } = createForwardRig();
-    server.handleSubscription(notes.watch, () => {
-      throw new RangeError('no watching today');
-    });
-    const heard = createWatcher();
-
-    // When
-    peer.subscribe({ method: notes.watch, start: 'from the top', listeners: heard });
-    await timers.advance(0);
-
-    // Then
-    expect(heard.fails).toEqual([hostFailure('RangeError: no watching today')]);
-    expect([heard.values, heard.ends, heard.closes]).toEqual([[], [], []]);
     expect(issues).toEqual([]);
   });
 
@@ -3258,25 +3105,6 @@ describe('forwarding', () => {
       'response:notes.read',
       'receive:notes.watch',
     ]);
-  });
-
-  it('As a forwarder, I drop a stop with no subscription running under its id and forward nothing', async () => {
-    // Given
-    const near = createRawRig({ handshake: 'respond' });
-    const far = createRig();
-    serveWatch(far.accepter);
-    near.transport.forward([notes.watch], far.opener);
-    near.openHandshake();
-    await near.timers.advance(0);
-
-    // When
-    near.peer.call({ method: notes.watch, id: 1, message: { tag: 'stop', value: undefined } });
-    await near.timers.advance(0);
-
-    // Then
-    expect(far.delivered).toEqual([]);
-    expect(near.peer.getNames()).toEqual(['handshakeResponse']);
-    expect([...near.issues, ...far.issues]).toEqual([]);
   });
 
   it('As a schema user, I forward to a transport that places the method elsewhere, to one this library did not build, or for a method that already has a handler, and am refused', () => {

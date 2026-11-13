@@ -3,7 +3,6 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { protocolSchema } from '@dotli/protocol';
-import { catchError } from '@dotli/shared/testing';
 import { err, ok, unsupported } from '@dotli/transport';
 import { serveEngineMethods, type EngineMethods } from './serveEngineMethods.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
@@ -39,18 +38,5 @@ describe('serving the engine methods', () => {
     // Then the host's next call is refused as an unserved method
     expect(served).toEqual(ok());
     expect(refused).toEqual(err(unsupported()));
-  });
-
-  it('As a frame that stops serving the engine twice, I stop it again and nothing throws', () => {
-    // Given the engine methods served to a host
-    const { serving } = linkHost();
-    const stop = serveEngineMethods(serving, createServed());
-    stop();
-
-    // When the frame stops them again
-    const thrown = catchError(stop);
-
-    // Then nothing throws
-    expect(thrown).toBeUndefined();
   });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { CountAttributes, CountMetric } from '@dotli/metrics';
 import type { CallName } from '@dotli/protocol';
 import { createRefusalReporter } from './createRefusalReporter.js';
+import { InvalidInputError } from './invalidInputError.js';
 import type { FrameRefusal, FrameRoute } from './withRefusalReports.js';
 
 type Row = {
@@ -14,6 +15,8 @@ type Row = {
 };
 
 const FAILURE = new Error('storage read failed');
+const INVALID = new InvalidInputError('Invalid siteId: evil.li');
+const BLOCKED = Object.assign(new Error('The operation is insecure'), { name: 'SecurityError' });
 
 const FAILED_METHODS: Record<FrameRoute, CallName> = {
   auth: 'authStorageWrite',
@@ -22,24 +25,23 @@ const FAILED_METHODS: Record<FrameRoute, CallName> = {
   chain: 'resolveDotName',
 };
 
-/** A refusal of the route, as its handler failed. */
-function toRefusal(route: FrameRoute): FrameRefusal {
-  return { route, method: FAILED_METHODS[route], error: FAILURE };
+/** A refusal of the route, as its handler failed with `error`. */
+function toRefusal(route: FrameRoute, error: Error = FAILURE): FrameRefusal {
+  return { route, method: FAILED_METHODS[route], error };
 }
 
 const TABLE: Row[] = [
   {
-    refusal: toRefusal('auth'),
+    refusal: toRefusal('auth', INVALID),
     warned: [],
     counted: [['shared_storage.rejected', { store: 'auth', reason: 'validation' }]],
   },
   {
-    refusal: toRefusal('mode'),
-    warned: [],
-    counted: [['shared_storage.rejected', { store: 'mode', reason: 'validation' }]],
+    refusal: toRefusal('auth', BLOCKED),
+    warned: [['[dot.li protocol] authStorageWrite failed', BLOCKED]],
+    counted: [['shared_storage.rejected', { store: 'auth', reason: 'SecurityError' }]],
   },
   { refusal: toRefusal('wallet'), warned: [['[dot.li protocol] localWalletRead failed', FAILURE]], counted: [] },
-  { refusal: toRefusal('chain'), warned: [['[dot.li protocol] resolveDotName failed', FAILURE]], counted: [] },
 ];
 
 /** A log and a counter that keep what they were handed. */

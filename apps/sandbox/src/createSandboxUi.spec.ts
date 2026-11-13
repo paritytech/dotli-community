@@ -3,6 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { atom } from 'nanostores';
 import type { PageUiModule } from './lazy.js';
@@ -23,7 +24,16 @@ function createHarness(load: () => Promise<PageUiModule>, { queued = [] }: { que
   const toasts = atom<{ items: readonly unknown[] }>({ items: queued });
   const texts: string[] = [];
   const hideFallback = vi.fn<() => void>();
-  const ui: SandboxUi = createSandboxUi({ load, toasts, showFallback: text => texts.push(text), hideFallback });
+  const ui: SandboxUi = createSandboxUi({
+    load,
+    toasts,
+    fallback: {
+      show: text => {
+        texts.push(text);
+      },
+      hide: hideFallback,
+    },
+  });
   return { ui, toasts, texts, captures, hideFallback };
 }
 
@@ -39,20 +49,29 @@ describe('sandbox UI', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, I get toasts before the UI is up and it loads and mounts once', async () => {
-    // Given
+  it('As a visitor, I get a toast after the page UI failed to load, and it shows once the UI loads', async () => {
+    // Given two loads that fail and a third that succeeds, and a first toast whose failed load has settled
+    const mounted = createDeferred<undefined>();
     const module = createFakeUi();
-    const load = vi.fn(() => Promise.resolve(module));
+    vi.mocked(module.mountOverlays).mockImplementation(() => {
+      mounted.resolve(undefined);
+    });
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValueOnce(module);
     const { ui, toasts } = createHarness(load);
-
-    // When
     toasts.set({ items: ['reload offer'] });
+    await ui.loadUi().catch(() => undefined);
+
+    // When a second toast is queued
     toasts.set({ items: ['reload offer', 'stale worker'] });
+    await mounted.promise;
     await ui.loadUi();
 
-    // Then
-    expect(load).toHaveBeenCalledOnce();
-    expect(module.mountOverlays).toHaveBeenCalledOnce();
+    // Then the UI loaded again and the queue stopped listening
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(toasts.lc).toBe(0);
   });
 
   it('As a visitor, I open the sandbox with a toast already queued and it still shows', async () => {
@@ -117,19 +136,6 @@ describe('sandbox UI', () => {
     });
   });
 
-  it('As an operator, I watch the page UI fail to load under several screens and see the miss recorded once', async () => {
-    // Given
-    const { ui, captures } = createHarness(() => Promise.reject(new Error('chunk missing')));
-
-    // When
-    ui.showError('Failed to load content', 'The network did not answer');
-    ui.showRetryScreen();
-    await ui.loadUi().catch(() => undefined);
-
-    // Then
-    expect(captures.expected).toHaveBeenCalledOnce();
-  });
-
   it('As a visitor whose network dropped, I get the failure text and a Reload button when the page UI cannot load', async () => {
     // Given
     const missing = new Error('chunk missing');
@@ -183,6 +189,24 @@ describe('sandbox UI', () => {
     expect(hideFallback).toHaveBeenCalledOnce();
   });
 
+  it('As a visitor shown a failure on the fallback screen, I get a toast whose load brings the UI up and the failure moves into it', async () => {
+    // Given a failure the fallback screen shows, since its load failed
+    const module = createFakeUi();
+    const load = vi.fn<() => Promise<PageUiModule>>();
+    load.mockRejectedValueOnce(new Error('chunk missing'));
+    load.mockResolvedValueOnce(module);
+    const { ui, toasts } = createHarness(load);
+    ui.showError('First', 'failure');
+    await ui.loadUi().catch(() => undefined);
+
+    // When a toast loads the UI
+    toasts.set({ items: ['reload offer'] });
+    await ui.loadUi();
+
+    // Then
+    expect(module.showError).toHaveBeenCalledWith('First', { detail: 'failure', action: undefined });
+  });
+
   it('As a visitor, I get a retry screen while the UI cannot load and it still offers Reload', async () => {
     // Given
     const { ui, texts } = createHarness(() => Promise.reject(new Error('chunk missing')));
@@ -228,4 +252,63 @@ describe('sandbox UI', () => {
     // Then
     expect(module.showError).not.toHaveBeenCalled();
   });
+
+  it('As an operator, I watch the screens that wait for the UI throw as it comes up and see each counted as a defect of the UI', async () => {
+    // Given a UI whose error page and retry screen throw
+    const module = createFakeUi();
+    const brokenError = new Error('error page blew up');
+    const brokenRetry = new Error('retry screen blew up');
+    vi.mocked(module.showError).mockImplementation(() => {
+      throw brokenError;
+    });
+    const retryShown = createDeferred<undefined>();
+    vi.mocked(module.showRetryScreen).mockImplementation(() => {
+      retryShown.resolve(undefined);
+      throw brokenRetry;
+    });
+    const { ui, captures } = createHarness(() => Promise.resolve(module));
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+    // When a failure and a retry both need the UI before it loads, and the sandbox waits on the retry screen alone
+    ui.showError('Failed to load content', 'The network did not answer');
+    ui.showRetryScreen();
+    await retryShown.promise;
+
+    // Then the overlays are up once and each throw is a defect of the UI
+    expect(module.mountOverlays).toHaveBeenCalledOnce();
+    expect(captures.exception).toHaveBeenCalledWith(brokenError, expect.objectContaining({ step: 'ui_transition' }));
+    expect(captures.exception).toHaveBeenCalledWith(brokenRetry, expect.objectContaining({ step: 'ui_transition' }));
+    expect(sentry.counted('sandbox.ui_transition')).toEqual([
+      { outcome: 'error', reason: 'Error' },
+      { outcome: 'error', reason: 'Error' },
+    ]);
+  });
+
+  it.each([
+    ['error page', (ui: SandboxUi) => ui.showError('Failed to load content', 'The network did not answer')],
+    ['retry screen', (ui: SandboxUi) => ui.showRetryScreen()],
+  ])(
+    'As an operator, I watch the %s throw once the UI is up and see it counted as a defect of the UI',
+    async (_label, show) => {
+      // Given a UI that is up, whose screens throw
+      const module = createFakeUi();
+      const broken = new Error('screen blew up');
+      vi.mocked(module.showError).mockImplementation(() => {
+        throw broken;
+      });
+      vi.mocked(module.showRetryScreen).mockImplementation(() => {
+        throw broken;
+      });
+      const { ui, captures } = createHarness(() => Promise.resolve(module));
+      await ui.loadUi();
+      const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+      // When the screen is shown
+      show(ui);
+
+      // Then the throw is a defect of the UI
+      expect(captures.exception).toHaveBeenCalledWith(broken, expect.objectContaining({ step: 'ui_transition' }));
+      expect(sentry.counted('sandbox.ui_transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    },
+  );
 });

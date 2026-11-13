@@ -32,7 +32,9 @@ function carriesResolution(r: Request): boolean {
   return /"transaction":"[^"]*resolution/.test(body) || body.includes('dotli.resolution');
 }
 
-const isEnvelope = (r: Request): boolean => r.url().endsWith('/t') && r.method() === 'POST';
+function isEnvelope(r: Request): boolean {
+  return r.url().endsWith('/t') && r.method() === 'POST';
+}
 
 async function journey(name: string, warm: Warm | null): Promise<Warm> {
   const b = warm?.b ?? (await chromium.launch());

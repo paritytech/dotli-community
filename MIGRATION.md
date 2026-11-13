@@ -14,11 +14,11 @@ dotli still has two protocol layers:
 
 The active launch path is `apps/host/src/runtime/bridge.ts`:
 
-- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
-- starts a Web Worker that owns the `truapi-server` WASM core;
-- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/createHostCallbacks.ts`;
-- creates a product-scoped provider with `runtime.createProvider({ productId })`;
+- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`
+- starts a Web Worker that owns the `truapi-server` WASM core
+- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`
+- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/createHostCallbacks.ts`
+- creates a product-scoped provider with `runtime.createProvider({ productId })`
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
 
 Product frames enter the Rust core through the iframe `MessageChannel`. Account, signing, statement-store, SSO pairing,
@@ -33,7 +33,7 @@ dotli still supplies platform primitives that are host policy or browser UI:
 | navigation                | `apps/host/src/runtime/hostCallbacks/createNavigateTo.ts`                                               |
 | notifications             | `apps/host/src/runtime/hostCallbacks/createNotificationAdapters.ts`                                     |
 | device/remote permissions | `apps/host/src/runtime/hostCallbacks/createPromptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
-| feature support           | `apps/host/src/runtime/hostCallbacks/createFeatureSupported.ts`                                         |
+| feature support           | `apps/host/src/runtime/hostCallbacks/getFeatureSupport.ts`                                              |
 | product storage           | `apps/host/src/runtime/hostCallbacks/createLocalStorageCallbacks.ts`                                    |
 | session persistence       | `apps/host/src/runtime/session/createCoreStorage.ts`, `createSessionState.ts`                           |
 | pairing presentation      | `apps/host/src/runtime/session/createAuthStateChanged.ts`                                               |

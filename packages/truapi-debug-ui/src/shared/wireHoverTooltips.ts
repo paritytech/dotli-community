@@ -26,7 +26,8 @@ type HoveredTooltip = Pick<ShowAtParams, 'element' | 'text'>;
  * Zero-delay tooltip for `[data-tooltip]` elements under `root`, skipping the native `title` delay.
  *
  * Delegated so elements can come and go. `data-tooltip-prose` wraps the text. The placer caches the panel box and
- * tooltip size, so pointermove never forces layout. Returns its dispose, which removes the listeners. Never throws.
+ * tooltip size, so only the move that shows the tooltip forces layout. Returns its dispose, which removes the
+ * listeners. Never throws.
  */
 export function wireHoverTooltips({ root, tooltip, panel }: WireHoverTooltipsParams): () => void {
   const place = createTooltipPlacer<Element>({
@@ -77,9 +78,6 @@ export function wireHoverTooltips({ root, tooltip, panel }: WireHoverTooltipsPar
     showAt({ ...hovered, clientX: event.clientX, clientY: event.clientY });
   }
   function handlePointerMove(event: PointerEvent): void {
-    if (tooltip()?.hasAttribute('data-visible') !== true) {
-      return;
-    }
     const hovered = findTooltip(event.target);
     if (hovered === null) {
       hide();

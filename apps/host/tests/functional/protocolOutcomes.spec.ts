@@ -16,18 +16,21 @@ import { BLOCK_PROVIDER_WASM, PROTOCOL_SHARED_WORKER, prependToWorker } from './
 const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 
 /** The telemetry event that tells how `chain` started from its stored database. */
-const smoldotDb = (chain: string): MessageMatch => ({
-  section: 'frame',
-  method: 'telemetry',
-  tag: 'receive',
-  body: { tag: 'smoldotDb', value: { chain } },
-});
+function smoldotDb(chain: string): MessageMatch {
+  return {
+    section: 'frame',
+    method: 'telemetry',
+    tag: 'receive',
+    body: { tag: 'smoldotDb', value: { chain } },
+  };
+}
 
 /** The frame status ending, as the frame's typed failure. */
 const frameStatusEnd: MessageMatch = { section: 'frame', method: 'status', tag: 'interrupt' };
 
-const isProviderWasm = (url: URL): boolean =>
-  isProtocolFrameUrl(url.href) && url.pathname.includes('truapi_provider_bg');
+function isProviderWasm(url: URL): boolean {
+  return isProtocolFrameUrl(url.href) && url.pathname.includes('truapi_provider_bg');
+}
 
 test('As a user on a per-tab light client that cannot start, I see the crash the protocol frame reports', async ({
   page,

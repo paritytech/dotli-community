@@ -59,9 +59,7 @@ export function watchWorkerStatus({ transport, onReady }: Params) {
      */
     onEnd,
     /** Ends the subscription, safe to call twice and after the status ended. A listener still waiting hears no end. */
-    dispose(): void {
-      unsubscribe();
-    },
+    dispose: unsubscribe,
   };
 
   // The transport ends a subscription once.

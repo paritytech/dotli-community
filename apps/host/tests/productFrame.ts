@@ -4,9 +4,8 @@
 // The sandbox swaps in the product HTML with `document.write`, which keeps the Frame, so the sandbox Frame is the
 // product Frame once `dotli:app:end` fires.
 
-import { errors, expect, type Frame, type Page } from '@playwright/test';
+import { errors, type Frame, type Page } from '@playwright/test';
 import { isSandboxUrl, waitForFrame } from './functional/helpers/frames.js';
-import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire/contract-params';
 
 export type ProductLocation = {
   pathname: string;
@@ -80,13 +79,6 @@ export async function getProductLocation(frame: Frame): Promise<ProductLocation>
     hash: window.location.hash,
     href: window.location.href,
   }));
-}
-
-export function assertNoContractKeys(search: string): void {
-  const params = new URLSearchParams(search);
-  for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
-    expect(params.has(key), `contract key "${key}" leaked into product location.search`).toBe(false);
-  }
 }
 
 /** "title: detail", or "" when the page has no error title. */

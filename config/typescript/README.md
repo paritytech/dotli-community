@@ -1,28 +1,28 @@
 # `@config/typescript`
 
-Shared `tsconfig` bases for the monorepo, so every package compiles under the same strict settings.
+## Overview
 
-## Responsibility
+Shared `tsconfig` bases, so every package compiles under the same strict settings.
 
-- Hold the compiler options every package extends.
-- Not a package's own `include`, `paths` or project references: each package keeps those in its own TypeScript config.
+## Responsibilities
 
-## Design
+- **Owns:** the compiler options every package extends.
+- **Does not own:** a package's `include` or `paths`. Nor its project references.
 
-- `@config/typescript/base.json` targets ES2022 with DOM libs and `NodeNext` resolution. It is strict and adds
-  `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noPropertyAccessFromIndexSignature`, `verbatimModuleSyntax`
-  and `erasableSyntaxOnly`. It is `noEmit` and checks JS files. It allows `.ts` import extensions for the files Node
-  loads directly.
-- `@config/typescript/node.json` extends the base with `lib: ES2024` and Node types, for tooling packages.
-- Shipped code targets ES2022. A workspace whose tests use ES2024 APIs raises `lib` to ES2024 in its own config and
-  checks its shipped sources against ES2022 with a second, shipped-only config, which its `typecheck` script runs too.
-- `@config/typescript/solid.json` adds the JSX settings (`preserve`, `@solidjs/web`). Combine it with the base.
-- `@config/typescript/viteEnv.d.ts` declares the `VITE_*` keys of `import.meta.env`, so dot access passes
-  `noPropertyAccessFromIndexSignature`. Vite inlines only dot reads. It also types `?inline-script` imports as a string.
+## Public API
 
-## Entry points
+| File                              | What it sets                                                               |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `@config/typescript/base.json`    | ES2022 and DOM with `NodeNext`. Strict plus extra checks, and `noEmit`.    |
+| `@config/typescript/node.json`    | The base plus `lib: ES2024` and Node types, for tooling.                   |
+| `@config/typescript/solid.json`   | JSX for Solid. Combine with the base.                                      |
+| `@config/typescript/viteEnv.d.ts` | Types the `VITE_*` keys of `import.meta.env` and `?inline-script` imports. |
 
-A package extends one or more files from its TypeScript config:
+- **Dot reads only:** Vite inlines `import.meta.env.X` only when read with a dot.
+- **ES2024 in tests:** a workspace may raise `lib` to ES2024, but then checks shipped sources against ES2022 with a
+  second config in its `typecheck` script.
+
+## Usage
 
 ```json
 { "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"] }

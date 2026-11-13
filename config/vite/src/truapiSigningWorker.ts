@@ -76,7 +76,7 @@ export function rewriteWasmGlue(code: string, id: string): string {
  * holds the package, or its manifest has no runtime export. `this.resolve` is not used because in dev it returns the
  * optimizer's pre-bundled copy, which has the web glue inlined.
  */
-export function findPublishedRuntime(root: string): string {
+function findPublishedRuntime(root: string): string {
   for (let dir = resolve(root); ; dir = dirname(dir)) {
     const manifest = join(dir, 'node_modules', PUBLISHED_PACKAGE, 'package.json');
     if (existsSync(manifest)) {

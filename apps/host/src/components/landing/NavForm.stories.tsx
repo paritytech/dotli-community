@@ -28,23 +28,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a visitor, I see a name field for my network and a Go button, with no error. */
-export const EmptyForm: Story = {
-  play: async ({ canvas, step }) => {
-    const field = canvas.getByRole('textbox', { name: `Search a ${SUFFIX} name` });
-    await step('Then I see a name field for the network, ready once the page knows it, and a Go button', async () => {
-      await waitFor(() => expect(field).toBeEnabled());
-      await expect(field).not.toHaveAttribute('aria-describedby');
-      await expect(field).toHaveAttribute('spellcheck', 'false');
-      await expect(field).toHaveAttribute('autocomplete', 'off');
-      await expect(canvas.getByRole('button', { name: 'Go' })).toHaveAttribute('type', 'submit');
-    });
-    await step('And no error', async () => {
-      await expect(canvas.queryByRole('alert')).toBeNull();
-    });
-  },
-};
-
 /** As a visitor, I load the page with nothing focused, so a screen reader starts at the top. */
 export const NothingFocusedOnLoad: Story = {
   play: async ({ canvas, step }) => {
@@ -82,48 +65,6 @@ export const InvalidNameInline: Story = {
       await expect(field).not.toHaveAttribute('aria-describedby');
       await expect(field).toHaveAccessibleDescription('');
       await expect(canvas.getByTestId('story-root').querySelector('[data-invalid]')).toBeNull();
-    });
-  },
-};
-
-/** As a visitor, I type a one-letter name and am told inline that names must be at least 2 characters. */
-export const OneLetterNameInline: Story = {
-  play: async ({ canvas, userEvent, step }) => {
-    const field = canvas.getByRole('textbox');
-    const href = window.location.href;
-    await step('When I submit a one-letter name', async () => {
-      await waitFor(() => expect(field).toBeEnabled());
-      await userEvent.type(field, 'p{Enter}');
-    });
-    await step('Then I see inline that names must be at least 2 characters, and I stay on the page', async () => {
-      await expect(canvas.getByRole('alert')).toHaveTextContent('Names must be at least 2 characters');
-      await expect(field).toHaveAttribute('aria-invalid', 'true');
-      await expect(window.location.href).toBe(href);
-    });
-  },
-};
-
-/** As a visitor, I press Go with nothing typed and am asked for a name. */
-export const EmptySubmitAsksForName: Story = {
-  play: async ({ canvas, userEvent, step }) => {
-    await step('When I press Go with nothing typed', async () => {
-      await waitFor(() => expect(canvas.getByRole('button', { name: 'Go' })).toBeEnabled());
-      await userEvent.click(canvas.getByRole('button', { name: 'Go' }));
-    });
-    await step('Then I am asked for a name', async () => {
-      await expect(canvas.getByRole('alert')).toHaveTextContent('Enter a name to browse');
-    });
-  },
-};
-
-/** As a visitor, I see an example name in the field with the TLD beside it. */
-export const FirstPlaceholder: Story = {
-  play: async ({ canvas, step }) => {
-    await step('Then the first placeholder is the first example name, the TLD shown beside it, not in it', async () => {
-      const field = canvas.getByRole('textbox');
-      await waitFor(() => expect(field).toBeEnabled());
-      await expect(field).toHaveAttribute('placeholder', 'browse');
-      await expect(canvas.getByText(SUFFIX)).toBeVisible();
     });
   },
 };

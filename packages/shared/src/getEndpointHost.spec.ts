@@ -22,6 +22,7 @@ describe('getEndpointHost', () => {
       endpoint: 'https://gateway.example.io:8443/ipfs/',
       host: 'gateway.example.io',
     },
+    { label: 'an endpoint without a scheme', endpoint: 'localhost:9944', host: 'localhost:9944' },
     { label: 'a missing endpoint', endpoint: undefined, host: undefined },
     { label: 'an empty endpoint', endpoint: '', host: undefined },
     // An unparseable value is what an operator typed into the config, so it still helps the visitor.

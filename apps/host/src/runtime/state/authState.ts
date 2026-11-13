@@ -34,7 +34,7 @@ export const authState = {
    * `loggedInStore` may not have folded it yet. A listener that throws is reported, and the others still hear the
    * step. Returns the unsubscribe.
    */
-  subscribeSteps,
+  subscribeSteps: steps.subscribe,
   /**
    * Whether the user is logged in: from `Connected` until `Disconnected` or `Unreachable`. The login steps in between
    * leave it as it was, so a logged-in user who pairs again stays logged in. It already matches the step an auth `store`
@@ -56,10 +56,6 @@ function set(next: DotliAuthState): void {
   } finally {
     steps.emit(next);
   }
-}
-
-function subscribeSteps(listener: (step: DotliAuthState) => void): () => void {
-  return steps.subscribe(listener);
 }
 
 function followSession(): void {

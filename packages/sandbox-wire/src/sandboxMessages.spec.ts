@@ -4,12 +4,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  isLoadedOutcome,
   parseApiViolationMessage,
   parseHostToSandboxMessage,
+  parseRecoverAcceptedMessage,
   parseSandboxToHostMessage,
-  postToHost,
-  type SandboxLoadOutcome,
   type SandboxToHostMessage,
 } from './sandboxMessages.js';
 
@@ -27,10 +25,8 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
     },
   ],
   ['a recover request', { type: 'dotli:sandbox-recover' }],
-  ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX' }],
-  ['a teardown abort', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'] }],
-  ['a block request from a named frame', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
-  ['a teardown abort from a named frame', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'], frame: 'f-1' }],
+  ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
+  ['a teardown abort', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'], frame: 'f-1' }],
 ];
 
 describe('sandbox messages', () => {
@@ -45,8 +41,10 @@ describe('sandbox messages', () => {
   it.each([
     ['a non-object', 'dotli:loading-status'],
     ['an unknown type', { type: 'dotli:unknown' }],
-    ['a block request without a CID', { type: 'dotli:bitswap-get', id: 'r-1', cid: '' }],
-    ['an abort with a non-string id', { type: 'dotli:bitswap-abort', ids: [1] }],
+    ['a block request without a CID', { type: 'dotli:bitswap-get', id: 'r-1', cid: '', frame: 'f-1' }],
+    ['a block request without a frame id', { type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }],
+    ['an abort with a non-string id', { type: 'dotli:bitswap-abort', ids: [1], frame: 'f-1' }],
+    ['an abort without a frame id', { type: 'dotli:bitswap-abort', ids: ['r-1'] }],
     ['a debug event from another layer', { type: 'dotli:debug-event', event: { layer: 'main' } }],
   ])('As the host, I drop %s', (_name, data) => {
     // When
@@ -67,6 +65,18 @@ describe('sandbox messages', () => {
 
     // Then
     expect(received).toEqual({ type: 'dotli:loading-status' });
+  });
+
+  it.each([
+    ['a step that is not a token', { outcome: 'failed', failedStep: 'Failed: <script>' }],
+    ['a step beside a loaded outcome', { outcome: 'loaded', failedStep: 'content_fetch' }],
+    ['a step without an outcome', { failedStep: 'content_fetch' }],
+  ])('As the host, I drop %s from a loading status', (_name, fields) => {
+    // When
+    const received = parseSandboxToHostMessage({ type: 'dotli:loading-status', done: true, ...fields });
+
+    // Then
+    expect(received).not.toHaveProperty('failedStep');
   });
 
   it('As the sandbox, I read a block the host fetched with its bytes', () => {
@@ -118,20 +128,24 @@ describe('sandbox messages', () => {
     expect(received).toBeNull();
   });
 
-  it('As the sandbox, I post to my host whatever its origin', () => {
-    // Given
-    const posted: [unknown, string][] = [];
-    const host = {
-      postMessage: (message: unknown, targetOrigin: string) => {
-        posted.push([message, targetOrigin]);
-      },
-    } as Pick<Window, 'postMessage'>;
-
+  it("As the sandbox, I read the host's acceptance of my recover ask", () => {
     // When
-    postToHost(host, { type: 'dotli:sandbox-recover' });
+    const received = parseRecoverAcceptedMessage({ type: 'dotli:sandbox-recover-accepted', extra: 1 });
 
     // Then
-    expect(posted).toEqual([[{ type: 'dotli:sandbox-recover' }, '*']]);
+    expect(received).toEqual({ type: 'dotli:sandbox-recover-accepted' });
+  });
+
+  it.each([
+    ['a block result', { type: 'dotli:bitswap-result', id: 'r-1', ok: true }],
+    ['null', null],
+    ['a bare type string', 'dotli:sandbox-recover-accepted'],
+  ])('As the sandbox, I drop %s as no acceptance', (_name, data) => {
+    // When
+    const received = parseRecoverAcceptedMessage(data);
+
+    // Then
+    expect(received).toBeNull();
   });
 });
 
@@ -155,27 +169,19 @@ describe('parseApiViolationMessage', () => {
     expect(parsed).toEqual({ type: 'DOTLI_API_VIOLATION', api: 'fetch' });
   });
 
-  it('As the host of a checker build, I drop anything that is not a violation', () => {
+  it('As the host of a checker build, I drop anything that is not a violation or names no API', () => {
     // When
-    const parsed = [{ type: 'dotli:loading-status' }, 'DOTLI_API_VIOLATION', null, 42].map(parseApiViolationMessage);
+    const parsed = [
+      { type: 'dotli:loading-status' },
+      'DOTLI_API_VIOLATION',
+      null,
+      42,
+      { type: 'DOTLI_API_VIOLATION' },
+      { type: 'DOTLI_API_VIOLATION', api: '' },
+      { type: 'DOTLI_API_VIOLATION', api: { name: 'fetch' } },
+    ].map(parseApiViolationMessage);
 
     // Then
-    expect(parsed).toEqual([null, null, null, null]);
-  });
-});
-
-describe('sandbox load outcome', () => {
-  it.each<{ outcome: SandboxLoadOutcome; loaded: boolean }>([
-    { outcome: 'loaded', loaded: true },
-    { outcome: 'failed', loaded: false },
-  ])('As the host, I ask whether the load $outcome succeeded and hear $loaded', ({ outcome, loaded }) => {
-    // Given
-    const ended: SandboxLoadOutcome = outcome;
-
-    // When
-    const answer = isLoadedOutcome(ended);
-
-    // Then
-    expect(answer).toBe(loaded);
+    expect(parsed).toEqual([null, null, null, null, null, null, null]);
   });
 });

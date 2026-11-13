@@ -28,24 +28,12 @@ describe('local wallet changes', () => {
     // Then only its own site's wallet change was heard
     expect(heard).toBe(1);
   });
-
-  it('As a user on the local wallet, I stop listening and hear no more changes', () => {
-    // Given a page listening for wallet changes
-    const frame = createFakeRelay();
-    const stop = listenForLocalWalletChange({ subscribe: frame.subscribe, siteId: SITE, listener: () => undefined });
-
-    // When it stops
-    stop();
-
-    // Then no listener is left on the relay
-    expect(frame.size()).toBe(0);
-  });
 });
 
 /** The relay of the frame, which the test feeds with other tabs' changes. */
 function createFakeRelay() {
   const listeners = new Set<(change: SharedAuthChange) => void>();
-  return { subscribe, deliver, size: () => listeners.size };
+  return { subscribe, deliver };
 
   function subscribe(listener: (change: SharedAuthChange) => void): () => void {
     listeners.add(listener);

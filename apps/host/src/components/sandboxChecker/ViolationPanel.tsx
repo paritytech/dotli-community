@@ -40,13 +40,8 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   const iframe = untrack(() => props.iframe);
   let panel: HTMLDivElement | undefined;
   let log: HTMLDivElement | undefined;
-  let handle: HTMLDivElement | undefined;
   let nextId = 0;
   const drags = createDrags();
-
-  const reserve = (bottom: number): void => {
-    props.onReserve(bottom);
-  };
 
   const onMessage = (event: MessageEvent): void => {
     const violation = violationFrom(event, iframe.contentWindow);
@@ -63,6 +58,15 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
     setTotal(n => n + 1);
   };
 
+  // The dragged size while the panel is open. None while it is collapsed or was never dragged.
+  const openHeights = (): { panel: string; log: string } | undefined => {
+    const panelHeight = height();
+    if (collapsed() || panelHeight === null) {
+      return undefined;
+    }
+    return { panel: `${String(panelHeight)}px`, log: `${String(panelHeight - HEADER_AND_HANDLE)}px` };
+  };
+
   const onDragMove = (event: PointerEvent): void => {
     setHeight(clampPanelHeight(event.clientY, window.innerHeight));
   };
@@ -71,7 +75,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   onCleanup(() => {
     window.removeEventListener('message', onMessage);
     drags.stopAll();
-    reserve(0);
+    props.onReserve(0);
   });
 
   // A new entry can grow the log, so it refits the frame too. Both measures are read before either
@@ -91,7 +95,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
       }
       if (bottom !== reserved) {
         reserved = bottom;
-        reserve(bottom);
+        props.onReserve(bottom);
       }
     },
   );
@@ -103,7 +107,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
       data-visible={total() > 0 ? '' : undefined}
       data-collapsed={collapsed() ? '' : undefined}
       style={{
-        height: !collapsed() && height() !== null ? `${String(height())}px` : undefined,
+        height: openHeights()?.panel,
       }}
       ref={el => {
         panel = el;
@@ -112,12 +116,9 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
       <div
         class={s['resizeHandle']}
         data-testid="sc-resize-handle"
-        ref={el => {
-          handle = el;
-        }}
         onPointerDown={event => {
-          if (!collapsed() && handle !== undefined) {
-            drags.start({ target: handle, down: event, handlers: { move: onDragMove } });
+          if (!collapsed()) {
+            drags.start({ target: event.currentTarget, down: event, handlers: { move: onDragMove } });
           }
         }}
       />
@@ -155,8 +156,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
         // Focusable so a keyboard can scroll the log.
         tabindex="0"
         style={{
-          'max-height':
-            !collapsed() && height() !== null ? `${String((height() ?? 0) - HEADER_AND_HANDLE)}px` : undefined,
+          'max-height': openHeights()?.log,
         }}
         ref={el => {
           log = el;

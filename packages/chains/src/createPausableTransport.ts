@@ -14,14 +14,13 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from '@polkadot-api/json-rpc-provider';
-import { runEvery } from '@dotli/shared';
+import { isRecord, runEvery } from '@dotli/shared';
 import { createJsonRpcError } from './createJsonRpcError.js';
 import {
   CHAIN_HEAD_FOLLOW,
   CHAIN_HEAD_FOLLOW_EVENT,
   CHAIN_HEAD_UNFOLLOW,
   CHAIN_HEAD_UNPIN,
-  STATEMENT_UNSUBSCRIBE,
   SUBMIT_AND_WATCH,
   TRANSACTION_BROADCAST,
   TRANSACTION_STOP,
@@ -43,13 +42,19 @@ type PausingConnectionParams = {
 
 type PausingConnection = ReturnType<typeof createPausingConnection>;
 
+/** Where one consumer's connection is in its life. */
+type ConnectionState =
+  | { kind: 'open'; upstream: JsonRpcConnection }
+  | { kind: 'paused'; kept: JsonRpcRequest[]; held: JsonRpcRequest[] }
+  | { kind: 'closed' };
+
+type PausedState = Extract<ConnectionState, { kind: 'paused' }>;
+
 /** What a pause does to a request in flight. */
 type PauseOutcome = 'done' | 'failed' | 'kept';
 
 /** A request whose id the connection can match to its answer. */
 type IdentifiedRequest = JsonRpcRequest & { id: string | number };
-
-const CHAIN_HEAD_PREFIX = 'chainHead_v1_';
 
 /** A transport wrapped so its connection can close and open again while its consumers stay connected. */
 export type PausableTransport = ReturnType<typeof createPausableTransport>;
@@ -104,14 +109,12 @@ export function createPausableTransport({ transport }: Params) {
       );
     },
     /**
-     * Opens them again and sends what was held. A call while not paused does nothing. After every other connection is
-     * open and every delivery made, throws what the transport's reopening, its send or a consumer threw: the one
-     * `Error`, or an AggregateError otherwise. A connection whose reopening throws stays closed and keeps what it held.
+     * Opens every connection that is not open and sends what it held. A connection already open is left as it is.
+     * After every other connection is open and every delivery made, throws what the transport's reopening, its send or
+     * a consumer threw: the one `Error`, or an AggregateError otherwise. A connection whose reopening throws stays
+     * closed, keeps what it held, and is opened by the next resume.
      */
     resume() {
-      if (!paused) {
-        return;
-      }
       paused = false;
       runEvery(
         [...connections].map(pausing => pausing.resume),
@@ -125,11 +128,8 @@ export function createPausableTransport({ transport }: Params) {
 
 /** One consumer's connection, which outlives the transport connections a pause closes under it. */
 function createPausingConnection({ transport, onMessage, paused }: PausingConnectionParams) {
-  // `null` while paused and once the consumer has left.
-  let upstream: JsonRpcConnection | null = null;
-  // Bumped on each close, so a transport connection already closed cannot deliver.
-  let generation = 0;
-  let closed = false;
+  const initial: PausedState = { kind: 'paused', kept: [], held: [] };
+  let state: ConnectionState = initial;
   let replay: (() => void) | null = null;
   // Insertion order is send order, which the resume keeps.
   const inFlight = new Map<string | number, IdentifiedRequest>();
@@ -138,11 +138,9 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
   const openedIds = new Set<string>();
   // Ids closed transport connections issued that the consumer has not released yet.
   const closedIds = new Set<string>();
-  let kept: JsonRpcRequest[] = [];
-  let held: JsonRpcRequest[] = [];
 
   if (!paused) {
-    open();
+    open(initial);
   }
 
   return {
@@ -161,36 +159,50 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
     },
   };
 
-  function open(): void {
-    generation += 1;
-    const own = generation;
-    upstream = transport(message => {
-      if (generation === own) {
+  /**
+   * Opens a transport connection out of the paused `from`, and returns whether the connection is open on it now. A
+   * throw from the transport leaves `from` in place with what it holds.
+   */
+  function open(from: PausedState): boolean {
+    let opened: ConnectionState | null = null;
+    const upstream = transport(message => {
+      if (state === opened) {
         receive(message);
       }
     });
+    // The consumer may leave while the transport connects, which closes this connection before it is ever used.
+    if (state !== from) {
+      upstream.disconnect();
+      return false;
+    }
+    opened = { kind: 'open', upstream };
+    state = opened;
+    return true;
   }
 
   function send(message: JsonRpcRequest): void {
-    if (closed) {
-      return;
-    }
     const released = getReleasedId(message);
     if (released !== null && closedIds.has(released) && !openedIds.has(released)) {
       answerReleaseLocally(message, released);
       return;
     }
-    if (upstream === null) {
-      held.push(message);
-      return;
+    const current = state;
+    switch (current.kind) {
+      case 'closed':
+        return;
+      case 'paused':
+        current.held.push(message);
+        return;
+      case 'open':
+        if (released !== null && endsReleasedId(message.method)) {
+          forget(released);
+        }
+        if (hasId(message)) {
+          inFlight.set(message.id, message);
+        }
+        current.upstream.send(message);
+        return;
     }
-    if (released !== null && endsReleasedId(message.method)) {
-      forget(released);
-    }
-    if (hasId(message)) {
-      inFlight.set(message.id, message);
-    }
-    upstream.send(message);
   }
 
   function answerReleaseLocally(message: JsonRpcRequest, released: string): void {
@@ -241,12 +253,10 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
   }
 
   function pause(): void {
-    if (upstream === null) {
+    const closing = state;
+    if (closing.kind !== 'open') {
       return;
     }
-    const closing = upstream;
-    upstream = null;
-    generation += 1;
     const stopped = [...follows];
     const requests = [...inFlight.values()];
     for (const id of openedIds) {
@@ -256,12 +266,13 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
     follows.clear();
     inFlight.clear();
     const outcomes = requests.map(request => ({ request, outcome: getPauseOutcome(request.method) }));
-    kept = outcomes.filter(({ outcome }) => outcome === 'kept').map(({ request }) => request);
+    const kept = outcomes.filter(({ outcome }) => outcome === 'kept').map(({ request }) => request);
+    state = { kind: 'paused', kept, held: [] };
     // The answers are already taken out of the bookkeeping, so a failing step must not cost a consumer its answer.
     runEvery(
       [
         () => {
-          closing.disconnect();
+          closing.upstream.disconnect();
         },
         ...stopped.map(subscription => () => {
           deliver(createStopEvent(subscription));
@@ -288,13 +299,14 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
   }
 
   function resume(): void {
-    if (closed || upstream !== null) {
+    const from = state;
+    if (from.kind !== 'paused') {
       return;
     }
-    open();
-    const pending = [...kept, ...held];
-    kept = [];
-    held = [];
+    if (!open(from)) {
+      return;
+    }
+    const pending = [...from.kept, ...from.held];
     runEvery(
       [
         ...pending.map(message => () => {
@@ -309,24 +321,23 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
   }
 
   function disconnect(): void {
-    if (closed) {
+    const from = state;
+    if (from.kind === 'closed') {
       return;
     }
-    closed = true;
-    generation += 1;
-    upstream?.disconnect();
-    upstream = null;
+    state = { kind: 'closed' };
+    if (from.kind === 'open') {
+      from.upstream.disconnect();
+    }
     replay = null;
     inFlight.clear();
     follows.clear();
     openedIds.clear();
     closedIds.clear();
-    kept = [];
-    held = [];
   }
 
   function deliver(message: JsonRpcMessage): void {
-    if (!closed) {
+    if (state.kind !== 'closed') {
       onMessage(message);
     }
   }
@@ -334,10 +345,6 @@ function createPausingConnection({ transport, onMessage, paused }: PausingConnec
 
 function hasId(message: JsonRpcRequest): message is IdentifiedRequest {
   return typeof message.id === 'string' || typeof message.id === 'number';
-}
-
-function isChainHeadMethod(method: string): boolean {
-  return method.startsWith(CHAIN_HEAD_PREFIX);
 }
 
 /** Whether a string answer to `method` is an id a later release names. */
@@ -349,12 +356,7 @@ function isOpeningMethod(method: string): boolean {
 }
 
 function isReleaseMethod(method: string): boolean {
-  if (
-    method === CHAIN_HEAD_UNFOLLOW ||
-    method === CHAIN_HEAD_UNPIN ||
-    method === TRANSACTION_STOP ||
-    method === STATEMENT_UNSUBSCRIBE
-  ) {
+  if (method === CHAIN_HEAD_UNFOLLOW || method === CHAIN_HEAD_UNPIN || method === TRANSACTION_STOP) {
     return true;
   }
   return method.includes('unsubscribe') || method.includes('unwatch');
@@ -377,18 +379,12 @@ function getReleasedId(message: JsonRpcRequest): string | null {
 
 /** The follow a transport `stop` event ends, or `null` for any other message. */
 function getStoppedFollow(message: JsonRpcRequest): string | null {
-  if (message.method !== CHAIN_HEAD_FOLLOW_EVENT) {
-    return null;
-  }
   const params: unknown = message.params;
-  if (typeof params !== 'object' || params === null || !('subscription' in params) || !('result' in params)) {
+  if (message.method !== CHAIN_HEAD_FOLLOW_EVENT || !isRecord(params) || !isRecord(params['result'])) {
     return null;
   }
-  const { subscription, result } = params;
-  if (typeof subscription !== 'string' || typeof result !== 'object' || result === null || !('event' in result)) {
-    return null;
-  }
-  return result.event === 'stop' ? subscription : null;
+  const subscription = params['subscription'];
+  return params['result']['event'] === 'stop' && typeof subscription === 'string' ? subscription : null;
 }
 
 function getPauseOutcome(method: string): PauseOutcome {
@@ -396,7 +392,7 @@ function getPauseOutcome(method: string): PauseOutcome {
     // Every id in flight at a pause belongs to the closing connection, which a resume never reopens.
     return 'done';
   }
-  if (isChainHeadMethod(method) && method !== CHAIN_HEAD_FOLLOW) {
+  if (method.startsWith('chainHead_v1_') && method !== CHAIN_HEAD_FOLLOW) {
     return 'failed';
   }
   return 'kept';

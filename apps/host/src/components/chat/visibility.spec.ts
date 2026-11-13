@@ -32,17 +32,6 @@ class FakeObserver {
 const row = {} as Element;
 
 describe('visibilityWatcher', () => {
-  it('As a user, without IntersectionObserver a message counts as in view at once', () => {
-    // Given
-    const seen: boolean[] = [];
-
-    // When
-    visibilityWatcher(undefined)(row, visible => seen.push(visible));
-
-    // Then
-    expect(seen).toEqual([true]);
-  });
-
   it('As a user, a message is in view only while the observer says so, until it stops watching', () => {
     // Given
     const seen: boolean[] = [];

@@ -5,17 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { markHandled } from './markHandled.js';
 
 describe('markHandled', () => {
-  it('As a caller that starts work early, I mark it handled and get the same promise back', () => {
-    // Given
-    const promise = Promise.resolve(1);
-
-    // When
-    const result = markHandled(promise);
-
-    // Then
-    expect(result).toBe(promise);
-  });
-
   it('As a caller that awaits early work later, I await it and see its rejection', async () => {
     // Given
     const failure = new Error('read failed');

@@ -115,19 +115,12 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
   let resetButton: HTMLButtonElement | undefined;
 
   // Reset writes nothing on Secure itself, so it is off there.
-  const atSecure = (): boolean => {
-    const list = props.statuses();
-    if (list === undefined) {
-      return true;
-    }
+  const atSecure = (list: readonly PermissionStatus[]): boolean => {
     const shown = presetOf(list);
     return shown.preset === SECURE && !shown.modified;
   };
 
   const resetToSecure = (): void => {
-    if (atSecure()) {
-      return;
-    }
     // Disabling the focused button would drop focus to the body, closing the popover.
     if (document.activeElement === resetButton) {
       document.getElementById(popover.id)?.focus();
@@ -190,20 +183,22 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
           )}
         </Show>
       </div>
-      <Show when={props.statuses() !== undefined}>
-        <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={ReloadIcon}>Changes reload the app</Hint>}>
-          <Button
-            ref={el => {
-              resetButton = el;
-            }}
-            size="sm"
-            disabled={atSecure()}
-            onClick={resetToSecure}
-            testId="permissions-popover-reset"
-          >
-            Reset to Secure
-          </Button>
-        </SurfaceFoot>
+      <Show when={props.statuses()}>
+        {list => (
+          <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={ReloadIcon}>Changes reload the app</Hint>}>
+            <Button
+              ref={el => {
+                resetButton = el;
+              }}
+              size="sm"
+              disabled={atSecure(list())}
+              onClick={resetToSecure}
+              testId="permissions-popover-reset"
+            >
+              Reset to Secure
+            </Button>
+          </SurfaceFoot>
+        )}
       </Show>
     </Surface>
   );

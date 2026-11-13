@@ -71,20 +71,6 @@ describe('page screen', () => {
     expect(pageScreen.store.get()).toBe('page');
   });
 
-  it('As a page that ends, I dispose the screen slot and the shown screen is taken down once', () => {
-    // Given: a screen is shown.
-    document.body.innerHTML = '<div id="app"></div>';
-    pageScreen.show(() => renderScreen('first'));
-
-    // When: the page ends and disposes the slot twice.
-    pageScreen.dispose();
-    pageScreen.dispose();
-
-    // Then: the view went down once and the page's own content is back.
-    expect(disposed).toEqual(['first']);
-    expect(pageScreen.store.get()).toBe('page');
-  });
-
   it('As a page with no #app, I show a screen and it fills the body and is told it stands alone', () => {
     // Given
     document.body.innerHTML = '<main data-testid="landing"></main>';

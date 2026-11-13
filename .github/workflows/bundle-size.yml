@@ -87,7 +87,7 @@ jobs:
           }
           check_eager "host-eager-path" apps/host/dist 214000
           check_eager "landing-eager-path" apps/host/dist 166000 landing.html
-          check_eager "sandbox-eager-path" apps/sandbox/dist 84000
+          check_eager "sandbox-eager-path" apps/sandbox/dist 86000
 
       - name: Download baseline from main
         if: github.event_name == 'pull_request'

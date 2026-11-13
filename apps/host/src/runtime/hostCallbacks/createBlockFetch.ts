@@ -17,7 +17,7 @@ export type PreimageBlock = {
 export type PreimageFetch = (cid: string, signal: AbortSignal) => Promise<PreimageBlock>;
 
 /** Where blocks come from on each backend. */
-export type BlockSources = {
+type BlockSources = {
   /** The backend in force, never null. Never throws. */
   backend: () => Backend;
   /** Fetches over bitswap on the light client backends. Rejects when the fetch fails or `signal` aborts. */
@@ -26,26 +26,15 @@ export type BlockSources = {
   fetchFromGateway: (cid: string) => Promise<Uint8Array>;
 };
 
-type FetchFromParams = {
-  /** The backend the block is fetched over. */
-  source: Backend;
-  cid: string;
-  signal: AbortSignal;
-};
-
 /**
  * Fetches over the backend selected at call time, so a settings change applies to the next attempt. The fetch rejects
  * with an error that names the backend, with the backend's failure as its cause.
  */
 export function createBlockFetch({ backend, fetchOverBitswap, fetchFromGateway }: BlockSources): PreimageFetch {
-  function fetchFrom({ source, cid, signal }: FetchFromParams): Promise<Uint8Array> {
-    return hasLightClient(source) ? fetchOverBitswap(cid, signal) : fetchFromGateway(cid);
-  }
-
   async function fetchBlock(cid: string, signal: AbortSignal): Promise<PreimageBlock> {
     const source = backend();
     try {
-      const data = await fetchFrom({ source, cid, signal });
+      const data = await (hasLightClient(source) ? fetchOverBitswap(cid, signal) : fetchFromGateway(cid));
       return { data, source };
     } catch (error) {
       throw new Error(`Preimage fetch via ${source} failed`, { cause: error });

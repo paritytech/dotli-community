@@ -5,10 +5,10 @@
 
 import { walletIdb, type DotliIdb } from './db.js';
 import { LocalWalletUnreadableError } from './localWalletUnreadableError.js';
+import { WALLET_STORE as STORE } from './schema.js';
 import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { areBytesEqual, waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 
-const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';
 const IV_BYTES = 12;
 
@@ -44,13 +44,6 @@ type Params = {
  * also rejects as its own entry says.
  */
 export function createLocalWalletStore({ idb = walletIdb }: Params = {}) {
-  async function readRecord(): Promise<LocalWalletRecord | undefined> {
-    const db = await idb.connect();
-    return unsafe_readStoredRecord<LocalWalletRecord | undefined>(
-      await waitForIdbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID)),
-    );
-  }
-
   /** Resolves on commit, so a reload right after never loses the write. */
   async function write(change: (store: IDBObjectStore) => void): Promise<void> {
     const db = await idb.connect();
@@ -75,7 +68,10 @@ export function createLocalWalletStore({ idb = walletIdb }: Params = {}) {
   }
 
   async function load(): Promise<LocalWallet | null> {
-    const record = await readRecord();
+    const db = await idb.connect();
+    const record = unsafe_readStoredRecord<LocalWalletRecord | undefined>(
+      await waitForIdbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID)),
+    );
     if (record === undefined) {
       return null;
     }
@@ -84,21 +80,14 @@ export function createLocalWalletStore({ idb = walletIdb }: Params = {}) {
 
   // Reads and writes in one transaction, so a forget that commits meanwhile cannot be undone by a put.
   async function updateIdentity(identity: LocalWalletIdentity): Promise<void> {
-    const db = await idb.connect();
-    await runIdbTransaction({
-      db,
-      stores: STORE,
-      mode: 'readwrite',
-      body: transaction => {
-        const store = transaction.objectStore(STORE);
-        const request = store.get(RECORD_ID);
-        request.onsuccess = () => {
-          const record = unsafe_readStoredRecord<LocalWalletRecord | undefined>(request.result);
-          if (record !== undefined) {
-            store.put({ ...record, identity });
-          }
-        };
-      },
+    await write(store => {
+      const request = store.get(RECORD_ID);
+      request.onsuccess = () => {
+        const record = unsafe_readStoredRecord<LocalWalletRecord | undefined>(request.result);
+        if (record !== undefined) {
+          store.put({ ...record, identity });
+        }
+      };
     });
   }
 
@@ -110,23 +99,16 @@ export function createLocalWalletStore({ idb = walletIdb }: Params = {}) {
 
   async function forgetIf(version: Uint8Array): Promise<boolean> {
     let forgot = false;
-    const db = await idb.connect();
-    await runIdbTransaction({
-      db,
-      stores: STORE,
-      mode: 'readwrite',
-      body: transaction => {
-        const store = transaction.objectStore(STORE);
-        const request = store.get(RECORD_ID);
-        request.onsuccess = () => {
-          const current = unsafe_readStoredRecord<LocalWalletRecord | undefined>(request.result);
-          // Every save draws a fresh IV, so the IV is the record's version.
-          if (current !== undefined && areBytesEqual(current.iv, version)) {
-            store.delete(RECORD_ID);
-            forgot = true;
-          }
-        };
-      },
+    await write(store => {
+      const request = store.get(RECORD_ID);
+      request.onsuccess = () => {
+        const current = unsafe_readStoredRecord<LocalWalletRecord | undefined>(request.result);
+        // Every save draws a fresh IV, so the IV is the record's version.
+        if (current !== undefined && areBytesEqual(current.iv, version)) {
+          store.delete(RECORD_ID);
+          forgot = true;
+        }
+      };
     });
     return forgot;
   }
@@ -135,8 +117,8 @@ export function createLocalWalletStore({ idb = walletIdb }: Params = {}) {
     /** Encrypts `entropy` under a fresh key and IV and stores it with `identity`. Resolves on commit. */
     save,
     /**
-     * Resolves the wallet, or null when none is stored. Rejects with `LocalWalletUnreadableError` when the record
-     * cannot be decrypted.
+     * Resolves the wallet, or null when none is stored. Rejects with `LocalWalletUnreadableError`, carrying the record's
+     * version, when the record cannot be decrypted.
      */
     load,
     /**
@@ -165,6 +147,6 @@ async function decryptRecord(record: LocalWalletRecord): Promise<Uint8Array> {
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: record.iv }, record.key, record.ciphertext),
     );
   } catch (error) {
-    throw new LocalWalletUnreadableError(error);
+    throw new LocalWalletUnreadableError(error, record.iv);
   }
 }

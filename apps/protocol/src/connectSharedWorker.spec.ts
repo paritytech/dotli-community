@@ -144,6 +144,12 @@ function createFakeWorker() {
     failToStart(message: string): void {
       workerTarget.dispatchEvent(new ErrorEvent('error', { message }));
     },
+    /** Makes each later removal of a listener from the worker throw `error`. */
+    refuseListenerRemoval(error: Error): void {
+      worker.removeEventListener = () => {
+        throw error;
+      };
+    },
   };
 
   function waitForHeartbeat(): Promise<void> {
@@ -371,6 +377,28 @@ describe('connectSharedWorker', () => {
     ]);
   });
 
+  it('As a dotli maintainer, I watch a SharedWorker fail to load after its ready wait ran out and see no failure after ready reported', async () => {
+    // Given a link whose ready wait ran out
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const timers = createManualTimers();
+    const worker = createFakeWorker();
+    const failed = link(worker, { timers }).ready.catch(() => undefined);
+    await worker.statusHeard;
+    await timers.advance(READY_TIMEOUT_MS);
+    await failed;
+
+    // When the worker's script then fails to load
+    worker.failToStart('late script error');
+
+    // Then nothing is captured, nothing is counted as a failure after ready, and the ready wait holds only its one timeout
+    expect(captured.map(capture => capture.step)).toEqual([]);
+    expect(metrics.counted('protocol.shared_worker_error')).toEqual([]);
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      { outcome: 'timeout' },
+    ]);
+  });
+
   it('As a tab on the shared light client, I hear each beat of the worker and answer it with a heartbeat from my page load', async () => {
     // Given a tab linked while the worker still syncs, whose timers never run
     const worker = createFakeWorker();
@@ -389,6 +417,23 @@ describe('connectSharedWorker', () => {
 
     // Then the worker heard a heartbeat for each beat, from this page load
     expect(worker.heartbeats).toEqual(['load-1', 'load-1']);
+  });
+
+  it('As a tab whose worker gets ready while my heartbeat waits for its answer, my frame is up without waiting on it', async () => {
+    // Given a tab whose heartbeat to the syncing worker is held
+    const worker = createFakeWorker();
+    const linked = link(worker);
+    await worker.beatsHeard;
+    worker.holdHeartbeats();
+    const asked = worker.waitForHeartbeat();
+    worker.beatTab();
+    await asked;
+
+    // When the worker says it is ready
+    worker.status.markReady();
+
+    // Then the ready wait resolves while the heartbeat is still held
+    await expect(linked.ready).resolves.toBeUndefined();
   });
 
   it('As a dotli maintainer, I watch the worker refuse a heartbeat and see it reported once while the tab stops answering', async () => {
@@ -417,23 +462,6 @@ describe('connectSharedWorker', () => {
     expect(captured.map(capture => capture.step)).toEqual(['worker_heartbeat']);
     expect(metrics.counted('protocol.worker_heartbeat')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.heartbeats).toHaveLength(1);
-  });
-
-  it('As a tab kept in the back-forward cache, I hide my page and keep my worker transport', async () => {
-    // Given a tab on a ready worker
-    const page = createFakePage();
-    const worker = createFakeWorker();
-    const linked = link(worker, { page });
-    worker.status.markReady();
-    await linked.ready;
-    const { transport } = linked;
-
-    // When its page enters the back-forward cache, and the tab then sends a heartbeat
-    page.hide(true);
-    const answer = transport.request(frame.heartbeat, undefined);
-
-    // Then its transport still reaches the worker
-    await expect(answer).resolves.toEqual(ok());
   });
 
   it('As a tab that leaves for good, I hide my page and my worker transport is disposed', async () => {
@@ -537,8 +565,9 @@ describe('connectSharedWorker', () => {
     expect(captured.map(capture => capture.step)).toEqual([]);
   });
 
-  it('As a tab that let go of its link before the worker was ready, I hear the ready wait fail', async () => {
+  it('As a dotli operator, I watch a tab let go before its worker was ready and see the wait counted as let go, not as a worker report', async () => {
     // Given a tab whose worker still syncs
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = createFakeWorker();
     const linked = link(worker);
     const failed = linked.ready.catch((error: unknown) => error);
@@ -546,10 +575,32 @@ describe('connectSharedWorker', () => {
 
     // When the tab lets go of its link
     linked.dispose();
+    await failed;
 
-    // Then the ready wait failed as the port closed, and the worker hears its port close
+    // Then
+    expect(metrics.distributions.filter(d => d.name === 'dotli.protocol.sw_ready').map(d => d.attributes)).toEqual([
+      { outcome: 'error', reason: 'let_go' },
+    ]);
+  });
+
+  it('As a tab whose worker script still loads, I let go of my link and my ready wait fails at once as the port closed', async () => {
+    // Given a worker whose port nothing answers on yet, and timers that never run
+    const channel = new MessageChannel();
+    channels.add(channel);
+    const linked = connectSharedWorker({
+      worker: Object.assign(new EventTarget(), { port: channel.port2 }),
+      page: createFakePage().window,
+      resolutionId: null,
+      readyTimeoutMs: READY_TIMEOUT_MS,
+      timers: createManualTimers(),
+    });
+    const failed = linked.ready.catch((error: unknown) => error);
+
+    // When
+    linked.dispose();
+
+    // Then
     await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
-    await worker.portClosed;
   });
 
   it('As a tab whose worker stopped serving it, I stop answering its beats and a heartbeat it then fails is not reported', async () => {
@@ -578,5 +629,28 @@ describe('connectSharedWorker', () => {
     // Then the later beat went unanswered, and the failed heartbeat was not captured
     expect(worker.heartbeats).toHaveLength(1);
     expect(captured.map(capture => capture.step)).toEqual([]);
+  });
+
+  it('As a tab whose worker refuses to drop my listener, I let go of my link before ready and the failure is reported, not thrown, while my ready wait still fails and my page keeps no pagehide listener', async () => {
+    // Given a tab whose worker still syncs, and throws when a listener is removed
+    const reports = recordReports({ onFinished: onTestFinished });
+    const page = createFakePage();
+    const countListeners = countPageHideListeners(page);
+    const worker = createFakeWorker();
+    const linked = link(worker, { page });
+    const failed = linked.ready.catch((error: unknown) => error);
+    await worker.statusHeard;
+    worker.refuseListenerRemoval(new Error('listener removal failed'));
+
+    // When
+    const thrown = catchError(() => {
+      linked.dispose();
+    });
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(countListeners()).toBe(0);
+    await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
   });
 });

@@ -3,7 +3,7 @@
 
 import { asProductId } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
-import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../runtime/getAskedProductId.js';
 import { parsePolkadotAccount } from '../runtime/polkadotAccount.js';
 import type { ProductState } from '../runtime/state/productState.js';
 import { getProductCardView } from './productCardView.js';
@@ -20,7 +20,6 @@ const CARD: ProductCardState = {
 describe('product card view', () => {
   it.each<[string, ProductState, UrlPillState]>([
     ['no product', { status: 'none', loadId: 0 }, PRODUCT_PILL],
-    ['a failed load', { status: 'error', loadId: 1 }, PRODUCT_PILL],
     ['a local product', { status: 'loaded', loadId: 1, label: 'swap', productId: PRODUCT_ID, facts: {} }, PRODUCT_PILL],
     [
       'a published product on localhost',
@@ -82,24 +81,5 @@ describe('product card view', () => {
 
     // Then the label names it and there is no description
     expect(view).toMatchObject({ name: 'swap', description: null });
-  });
-
-  it('As a visitor of a product whose shield has not settled, I see the card with no connection row', () => {
-    // Given a loaded product and a pill whose shield is not known yet
-    const product: ProductState = {
-      status: 'loaded',
-      loadId: 1,
-      label: 'swap',
-      productId: PRODUCT_ID,
-      cid: 'bafy',
-      facts: {},
-    };
-    const pill: UrlPillState = { ...PRODUCT_PILL, shield: null };
-
-    // When the card's view is taken
-    const view = getProductCardView({ product, pill, card: CARD });
-
-    // Then the view has no connection
-    expect(view).toMatchObject({ connection: null });
   });
 });

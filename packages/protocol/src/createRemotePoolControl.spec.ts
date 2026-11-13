@@ -68,6 +68,36 @@ describe('createRemotePoolControl', () => {
     expect(server.frames).toEqual([[true, false]]);
   });
 
+  it('As a hidden host page, I pause twice and my ready frame hears one pause', async () => {
+    // Given
+    const server = createPauseServer();
+    const { control } = createControl(server);
+
+    // When
+    control.pause();
+    control.pause();
+    await settle();
+
+    // Then
+    expect(server.frames).toEqual([[true]]);
+  });
+
+  it('As a visible host page, I resume twice after a pause and my ready frame hears one resume', async () => {
+    // Given a paused host whose ready frame heard the pause
+    const server = createPauseServer();
+    const { control } = createControl(server);
+    control.pause();
+    await settle();
+
+    // When
+    control.resume();
+    control.resume();
+    await settle();
+
+    // Then
+    expect(server.frames).toEqual([[true, false]]);
+  });
+
   it('As a host page whose frame is rebuilt while paused, I tell the new frame to pause once it is ready', async () => {
     // Given a paused host whose first frame heard it
     const server = createPauseServer();

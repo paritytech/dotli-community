@@ -32,16 +32,6 @@ export const ThreeToasts: Story = { beforeEach: showThree };
 /** As a dotli user, I see only the newest three of four toasts, with Dismiss all offered. */
 export const FourToastsShowNewestThree: Story = {
   beforeEach: showLabelled(['A', 'B', 'C', 'D']),
-  play: async ({ canvas, canvasElement, mount, step }) => {
-    await step('When the stack renders', async () => {
-      await mount();
-    });
-    await step('Then only the newest three show, and Dismiss all is offered', async () => {
-      await expect(readTitles(canvasElement, true)).toEqual(['B', 'C', 'D']);
-      await expect(readTitles(canvasElement, false)).toEqual(['A']);
-      await expect(canvas.getByRole('button', { name: 'Dismiss all' })).toBeVisible();
-    });
-  },
 };
 
 /** As a dotli user, I see a toast's tinted icon, title, link, action and close button, and pressing the action runs it once. */

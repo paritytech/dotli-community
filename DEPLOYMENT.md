@@ -84,7 +84,7 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
 
 ## Re-runs and follow-ups
 
-- `make provision` is idempotent; re-run it to pick up nginx config or build changes.
+- `make provision` is idempotent. Re-run it to pick up nginx config or build changes.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
 - For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the **Deploy nginx** workflow from the Actions tab: pick
   the environment and it runs the same target against that environment's box, behind that environment's protection
@@ -113,6 +113,4 @@ builds are rsynced separately, so check each origin to cover all of them:
 | `https://x.app.<base>/host_version.json` | app      |
 
 The protocol build is served under `/p/` on `<base>`, from the same folder as before, so the rsync layout is unchanged.
-`host.<base>` serves that folder too for one more release, so a shell that a service worker cached from the previous
-release still finds its frame. After that release remove its server block (and `host` becomes an ordinary product
-label).
+`host.<base>` no longer serves it, so `host` is an ordinary product label.

@@ -105,8 +105,8 @@ export function listStaticImports(code: string): string[] {
 }
 
 function readAttribute(attributes: string, name: string): string | null {
-  const match = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i').exec(attributes);
-  return match?.[1] ?? null;
+  const match = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`, 'i').exec(attributes);
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 }
 
 // The `gzip` CLI on a file path, since zlib runs up to 2% larger and piped stdin drops the filename from the header.

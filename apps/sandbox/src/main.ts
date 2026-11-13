@@ -21,10 +21,11 @@ import { createSandboxUi } from './createSandboxUi.js';
 import { showPasswordPrompt } from './showPasswordPrompt.js';
 import { createHostMessages } from './createHostMessages.js';
 import { stripContractParams } from './stripContractParams.js';
-import { createBitswapBridge, createHostOriginRule } from './createBitswapBridge.js';
-import { loadProduct, type BlockSource, type SandboxParams } from './loadProduct.js';
+import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './createBitswapBridge.js';
+import { loadProduct, type SandboxParams } from './loadProduct.js';
 import { purgeSandboxOriginState } from './purgeSandboxOriginState.js';
 import { runSandbox } from './runSandbox.js';
+import { waitForRecoverAccepted } from './waitForRecoverAccepted.js';
 import { listenForArchiveFailures } from './listenForArchiveFailures.js';
 import { offerReloadNotice } from './offerReloadNotice.js';
 import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
@@ -37,13 +38,14 @@ listenForChunkFailures({
 
 const hostMessages = createHostMessages({ parent: window.parent });
 
+const isHostOrigin = createHostOriginRule(BASE_DOMAIN);
+
 const fallbackScreen = createFallbackScreen({ page: document, reload: reloadPage });
 
 const ui = createSandboxUi({
   load: loadPageUi,
   toasts: toasts.store,
-  showFallback: fallbackScreen.show,
-  hideFallback: fallbackScreen.hide,
+  fallback: fallbackScreen,
 });
 
 const STARTED_AT = performance.now();
@@ -85,19 +87,6 @@ function writeProductPage(html: string): void {
   document.close();
 }
 
-/** Shows the run's failure on the sandbox's error page, with its retry. */
-function showFailure(title: string, message: string, { retry }: { retry?: (() => Promise<void>) | undefined }): void {
-  if (retry === undefined) {
-    ui.showError(title, message);
-    return;
-  }
-  ui.showError(title, message, {
-    retry: () => {
-      void retry();
-    },
-  });
-}
-
 /** Inline, since document.write() replaces the page. */
 async function injectCheckerIfEnabled(html: string): Promise<string> {
   if (import.meta.env.VITE_SANDBOX_CHECKER !== 'true') {
@@ -108,7 +97,7 @@ async function injectCheckerIfEnabled(html: string): Promise<string> {
 }
 
 // One bridge for the document, so every retry reuses its listeners. Built in `configure`, once the backend is known.
-let blockSource: BlockSource | null = null;
+let blockSource: BitswapBridge['requestBlock'] | null = null;
 
 function configure(params: SandboxParams): void {
   // Said at once, since the sandbox must not stay silent, and the purge before the next progress can take seconds.
@@ -126,18 +115,18 @@ function configure(params: SandboxParams): void {
     blockSource = createBitswapBridge({
       window,
       parent: window.parent,
-      isHostOrigin: createHostOriginRule(BASE_DOMAIN),
+      isHostOrigin,
     }).requestBlock;
   }
 }
 
-void runSandbox(
+runSandbox(
   { href: window.location.href, framed: window.self !== window.top },
   {
     configure,
     load: input =>
       loadProduct(input, {
-        showStatus: hostMessages.showStatus,
+        hostMessages,
         purge: () =>
           purgeSandboxOriginState({
             indexedDB: typeof indexedDB === 'undefined' ? null : indexedDB,
@@ -148,31 +137,24 @@ void runSandbox(
             document,
             pathname: window.location.pathname,
           }),
-        registerWorker: options => registerAppServiceWorker(appWorker, options),
-        isControlled: () => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null,
+        registerWorker: async options => {
+          await registerAppServiceWorker(appWorker, options);
+          return (appWorker.container?.controller ?? null) !== null;
+        },
         fetchArchive,
         blockSource,
         decrypt: decryptIfNeeded,
         storeArchive: files =>
           storeArchiveInServiceWorker({ container: appWorker.container, files, pagePath: window.location.pathname }),
         prepareHtml: injectCheckerIfEnabled,
-        report: hostMessages.reportDebug,
-        notifyLoaded: () => {
-          hostMessages.notifyLoadingDone({ outcome: 'loaded' });
-        },
         write: writeProductPage,
         measureSinceStart,
       }),
-    notifyFailed: step => {
-      hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
-    },
-    show: showFailure,
-    showRetrying: () => {
-      ui.showRetryScreen();
-    },
-    askRerender: hostMessages.askRerender,
+    hostMessages,
+    ui,
+    waitForRecoverAccepted: () =>
+      waitForRecoverAccepted({ window, parent: window.parent, isHostOrigin, ms: SANDBOX_TIMEOUTS.RECOVER }),
     getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
-    recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },
 );

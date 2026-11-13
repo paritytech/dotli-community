@@ -5,13 +5,14 @@ import type { Backend } from '@dotli/config';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import type { NetworkHealth } from '../networkVerdict.js';
+import type { ProductState } from '../runtime/state/productState.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
 
 export type NetworkStores = {
   health: ReadableAtom<NetworkHealth>;
   network: ReadableAtom<NetworkView>;
-  product: ReadableAtom<{ status: string }>;
+  product: ReadableAtom<Pick<ProductState, 'status'>>;
   settings: ReadableAtom<{ backend: Backend } | null>;
 };
 

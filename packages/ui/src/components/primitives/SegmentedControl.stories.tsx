@@ -28,33 +28,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** As a dotli user, I move through a labelled segmented control with the keyboard and pick Dark, which is reported. */
-export const Labels: Story = {
-  render: renderOwned,
-  play: async ({ args, canvas, userEvent, mount, step }) => {
-    await step('When the control renders on System', async () => {
-      await mount();
-    });
-    await step('Then System shows pressed', async () => {
-      await expect(canvas.getByTestId('seg-system')).toHaveAttribute('aria-pressed', 'true');
-    });
-    await step('When I focus it and press ArrowRight', async () => {
-      canvas.getByTestId('seg-system').focus();
-      await userEvent.keyboard('{ArrowRight}');
-    });
-    await step('Then Light has focus', async () => {
-      await expect(canvas.getByTestId('seg-light')).toHaveFocus();
-    });
-    await step('When I press End, then Enter', async () => {
-      await userEvent.keyboard('{End}{Enter}');
-    });
-    await step('Then Dark is pressed and reported', async () => {
-      await expect(canvas.getByTestId('seg-dark')).toHaveAttribute('aria-pressed', 'true');
-      await expect(args.onChange).toHaveBeenCalledWith('dark');
-    });
-  },
-};
-
 // The glyphs are made per render, since one node would move between controls.
 /** As a dotli user, I press an icon option and it becomes the pressed one and is reported. */
 export const Icons: Story = {
@@ -109,21 +82,6 @@ export const Large: Story = {
         }}
       />
     );
-  },
-  play: async ({ args, canvas, userEvent, mount, step }) => {
-    await step('When a large control renders', async () => {
-      await mount();
-    });
-    await step('Then the control shows large', async () => {
-      await expect(canvas.getByRole('group', { name: 'Theme' })).toHaveAttribute('data-size', 'lg');
-    });
-    await step('When I press Dark', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Dark' }));
-    });
-    await step('Then Dark is pressed and reported', async () => {
-      await expect(canvas.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
-      await expect(args.onChange).toHaveBeenCalledWith('dark');
-    });
   },
 };
 

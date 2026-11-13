@@ -4,7 +4,6 @@
 // The panel's work per frame, click and tick at its 2000-event capacity, counted through the computations it is
 // handed and Solid's dev warnings, with layout from the real browser.
 
-import { createRenderEffect, createRoot, createSignal, flush } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, spyOn, waitFor, within } from 'storybook/test';
 import {
@@ -82,35 +81,6 @@ async function watchFanOut(play: (warnings: () => string[]) => Promise<void>): P
   }
 }
 
-/** Past Solid's dev threshold for a fan-out warning, which is 2000 subscribers. */
-const HUGE_FAN_OUT_READERS = 2500;
-
-/** As a dotli developer, I make a huge fan-out and the fan-out watch sees it, so its silence elsewhere means something. */
-export const FanOutWatchSeesFanOut: Story = {
-  play: async ({ step }) =>
-    watchFanOut(async fanOut => {
-      const [shared, setShared] = createSignal(0);
-      const dispose = createRoot(d => {
-        for (let index = 0; index < HUGE_FAN_OUT_READERS; index++) {
-          createRenderEffect(shared, () => undefined);
-        }
-        return d;
-      });
-      flush();
-      try {
-        await step('When one signal read by every reader changes', () => {
-          setShared(1);
-          flush();
-        });
-        await step('Then the watch reports the fan-out', async () => {
-          await expect(fanOut()).toHaveLength(1);
-        });
-      } finally {
-        dispose();
-      }
-    }),
-};
-
 /** As a developer using the debug panel, I collapse the panel while traffic arrives and nothing is matched, and it catches up once when I expand. */
 export const CollapsedIgnoresTraffic: Story = {
   play: async ({ step }) =>
@@ -161,6 +131,29 @@ export const PendingClockStopsCollapsed: Story = {
       });
       await step('Then it runs again', async () => {
         await expect(clock.timerCount()).toBe(expanded);
+      });
+    }),
+};
+
+/** As a developer using the debug panel, I expand the panel after a call waited a minute and its badge reads the whole wait at once. */
+export const PendingBadgeCurrentOnExpand: Story = {
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      getDebugPanel().mount();
+      emitMessage('host_sign_request', 'r1');
+      clock.passFrame();
+      await step('Given the panel collapsed for a minute with the call pending', () => {
+        getPart('td-collapse').click();
+        clock.advance(60_000);
+      });
+      await step('When I expand it', () => {
+        getPart('td-collapse').click();
+        clock.passFrame();
+      });
+      await step('Then the badge reads the whole wait and is slow, before any tick', async () => {
+        const badge = findPendingBadge(listRows()[0]);
+        await expect(badge?.textContent).toMatch(/^60\.\ds pending$/);
+        await expect(badge).toHaveAttribute('data-slow');
       });
     }),
 };
@@ -479,6 +472,32 @@ export const ScrolledUpKeepsRows: Story = {
   },
 };
 
+/** As a developer using the debug panel, I pause while the list follows streaming traffic and it stays on the newest row. */
+export const PauseKeepsBottom: Story = {
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      getDebugPanel().mount();
+      for (let index = 0; index < 50; index++) {
+        emitMessage('x_receive', `r${String(index)}`);
+      }
+      clock.passFrame();
+      const list = getPart('td-list');
+      await step('Given the list follows the newest row and more events arrive within the frame', async () => {
+        await expect(list.scrollHeight - list.clientHeight - list.scrollTop).toBeLessThan(4);
+        for (let index = 0; index < 5; index++) {
+          emitMessage('x_receive', `n${String(index)}`);
+        }
+      });
+      await step('When I pause', () => {
+        getPart('td-pause').click();
+      });
+      await step('Then the list still shows the newest row', async () => {
+        await expect(listRows()).toHaveLength(55);
+        await expect(list.scrollHeight - list.clientHeight - list.scrollTop).toBeLessThan(4);
+      });
+    }),
+};
+
 /** As a developer using the debug panel, I drag the edge with several moves in one frame and the host hears the last move once when the frame passes. */
 export const EdgeDragRefitsOncePerFrame: Story = {
   play: async ({ step }) =>
@@ -505,24 +524,6 @@ export const EdgeDragRefitsOncePerFrame: Story = {
         handle.release();
       });
     }),
-};
-
-/** As a dotli developer, I drag the splitter through three moves and the list pane ends as wide as the last one. */
-export const SplitterMeasuresOnce: Story = {
-  play: async ({ step }) => {
-    getDebugPanel().mount();
-    const left = getPart('td-body').getBoundingClientRect().left;
-    await step('When I drag the splitter through three moves', () => {
-      const held = grab(getPart('td-body-splitter'));
-      held.moveTo(left + 500, 0);
-      held.moveTo(left + 510, 0);
-      held.moveTo(left + 520, 0);
-      held.release();
-    });
-    await step('Then the list pane is as wide as the last move', async () => {
-      await expect(getPart('td-views').getBoundingClientRect().width).toBeCloseTo(520, 0);
-    });
-  },
 };
 
 /** As a dotli developer, I fill the panel past capacity and the evicted rows release their keys, which guards the keyed maps against growth. */

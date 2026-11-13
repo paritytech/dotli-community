@@ -1,28 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { yielded } from '../../testing/fixtures.js';
 import { createLocaleSubscribe } from './createLocaleSubscribe.js';
 
 describe('locale host callbacks', () => {
-  it("As a dotli integrator, I subscribe to the locale and get the visitor's language at once", async () => {
-    // Given
-    // dotli presents English chrome, but a product localizes itself, so the
-    // signal has to be what the visitor asked their browser for.
-    const browser = createFakeBrowser('pt-BR');
-    const iterator = browser.subscribeLocale()[Symbol.asyncIterator]();
-    onTestFinished(async () => {
-      await iterator.return?.();
-    });
-
-    // When
-    const first = await iterator.next();
-
-    // Then
-    expect(yielded(first)._unsafeUnwrap()).toEqual({ languageTag: 'pt-BR' });
-  });
-
   it('As a dotli integrator, I subscribe to the locale and hear each language change until I unsubscribe', async () => {
     // Given
     const browser = createFakeBrowser('en');

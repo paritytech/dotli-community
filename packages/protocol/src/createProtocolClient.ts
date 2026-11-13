@@ -31,10 +31,9 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
       /**
        * Resolves once the frame is ready, booting one if none was asked for yet. Rejects with the error the boot it
        * waits on failed with, such as a `ProtocolInitFailedError`, a `ProtocolVersionMismatchError` or an `Error` with a
-       * `PROTOCOL_ERRORS` text, and with an `Error` of the `FRAME_RESET` text when a config change drops the frame,
-       * unless a status listener queued ahead of it has already asked for the rebuilt frame, and then it waits on that
-       * frame. While a frame whose light client failed to start is held, it rejects at once with why the frame is down
-       * until the next boot.
+       * `PROTOCOL_ERRORS` text, and with an `Error` of the `FRAME_RESET` text when a config change drops the frame.
+       * While a frame whose light client failed to start is held, it rejects at once with why the frame is down until
+       * the next boot.
        */
       async ensureReady(): Promise<void> {
         await frame.waitUntilReady();
@@ -56,9 +55,8 @@ export function createProtocolClient<E extends FrameElement>(params: ProtocolFra
        * Says what the frame is built with. Nothing boots before it, and requests made before the first config wait for
        * it up to a bound, so callers need not order themselves around the host's boot. The same config again does
        * nothing. A different one rebuilds a frame already asked for at once: its requests and ready waiters are
-       * rejected, and its chain connections halt as for a dead frame. A ready waiter queued behind a status listener
-       * that already asked for the rebuilt frame waits on that frame instead. A SharedWorker keeps its sync progress,
-       * only this tab's port cycles. Never throws.
+       * rejected, and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress, only this
+       * tab's port cycles.
        */
       configure: (config: ProtocolFrameConfig): void => {
         frame.configure(config);

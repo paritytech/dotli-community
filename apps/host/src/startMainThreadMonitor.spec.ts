@@ -8,7 +8,7 @@ import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
 import { startMainThreadMonitor } from './startMainThreadMonitor.js';
 import { createManualPoll } from './testing/createManualPoll.js';
 
-/** A monitor on the real bus over the page's own clock, and what it emitted. */
+/** A monitor on the real bus over one manual clock, and what it emitted. */
 type MonitorStand = {
   timers: ManualTimers;
   emitted: DotliDebugEvent[];

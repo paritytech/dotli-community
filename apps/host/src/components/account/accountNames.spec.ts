@@ -59,6 +59,17 @@ describe('account names', () => {
     expect(name).toBe('0x000102...1e1f');
   });
 
+  it('As a user whose account answers an empty username, I see my shortened address instead', () => {
+    // Given
+    const session = { publicKey: PUBLIC_KEY, fullUsername: '', primaryUsername: '' };
+
+    // When
+    const name = sessionDisplayName(session);
+
+    // Then
+    expect(name).toBe('0x000102...1e1f');
+  });
+
   it('As a user with a username, my username wins over my address, primary first', () => {
     // Given
     const session = {

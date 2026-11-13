@@ -34,9 +34,6 @@ type Params = {
 
 const SESSION_FILE = 'session.html';
 
-/** The session window's built file, which only its paths may serve, since those paths are what refuse framing. */
-const SESSION_FILE_PATH = `/${SESSION_FILE}`;
-
 /** Missing, these are a 404 rather than the shell, which a browser would try to run. */
 const NO_FALLBACK: ReadonlySet<string> = new Set([...SERVICE_WORKER_PATHS, `/${BUILD_INFO_FILE}`]);
 
@@ -65,7 +62,9 @@ export function resolveFile({ dir, route, pathname, isFile = isFileOnDisk }: Par
   }
   // The leading slash makes `normalize` settle `..` against the root, so no path leaves `dir`.
   const normalized = normalize(`/${decoded}`);
-  if (route.site === 'host' && normalized === SESSION_FILE_PATH) {
+  // The session window's built file is served only under its paths, since those are what refuse framing. Compared
+  // whatever its case, since a disk that ignores case, as macOS does, finds the file under any spelling.
+  if (route.site === 'host' && normalized.toLowerCase() === `/${SESSION_FILE}`) {
     return undefined;
   }
   const file = join(dir, normalized);

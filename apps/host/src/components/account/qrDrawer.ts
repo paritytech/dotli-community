@@ -16,7 +16,7 @@ const authQrRenderMetric = defineCount<'error' | 'ok'>('auth.qr_render');
 
 export type QrShowing<Canvas> = {
   /** Draws `payload` onto `canvas`. Once `signal` aborts the code is off show. */
-  drawQr: (canvas: Canvas, payload: string, options: QrDrawOptions, signal: AbortSignal) => Promise<void>;
+  drawQr: (params: { canvas: Canvas; payload: string; options: QrDrawOptions; signal: AbortSignal }) => Promise<void>;
   /** The canvas this showing draws on, made once. */
   createCanvas: (payload: string) => Canvas;
   /** The side to draw at. */
@@ -33,18 +33,18 @@ export function presentQr<Canvas>(payload: string, deps: QrShowing<Canvas>): () 
   const shown = new AbortController();
   const canvas = deps.createCanvas(payload);
   deps
-    .drawQr(
+    .drawQr({
       canvas,
       payload,
-      {
+      options: {
         width: deps.size(),
         margin: 2,
         // The badge hides the code's centre: Q recovers a quarter of it.
         errorCorrectionLevel: 'Q',
         color: { dark: '#000000', light: '#ffffff' },
       },
-      shown.signal,
-    )
+      signal: shown.signal,
+    })
     .then(
       () => {
         if (shown.signal.aborted) {

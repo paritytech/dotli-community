@@ -8,7 +8,7 @@ import { middleware as compatibilityMiddleware } from '@polkadot-api/ws-middlewa
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { InnerJsonRpcProvider } from '@polkadot-api/json-rpc-provider-proxy';
 import type { JsonRpcProvider } from 'polkadot-api';
-import { getWsProvider, WsEvent, type StatusChange } from '@polkadot-api/ws-provider';
+import { getWsProvider, WsEvent } from '@polkadot-api/ws-provider';
 import { getActiveCoreGatewayChains, getActiveServicesConfig } from '@dotli/config';
 import type { ChainService } from '@dotli/config';
 import {
@@ -26,8 +26,8 @@ type Params = {
 };
 
 type CreateGatewayProviderParams = {
-  /** The core gateway chain to reach, or `null` for a chain that is not one, which gets no provider. */
-  chain: ChainService | null;
+  /** The core gateway chain to reach. */
+  chain: ChainService;
   /** Hears each status change of the chain's socket. */
   hooks: Pick<ChainTransportHooks, 'onStatus'> | undefined;
   /** The socket class the provider's sockets extend. */
@@ -46,7 +46,8 @@ const HEARTBEAT_TIMEOUT_MS = 120_000;
 
 const WS_CLOSING = 2;
 
-const connectedEndpoints = new Map<string, { uri: string; owner: object }>();
+// One row per lane of a chain, so a lane that closes removes only its own node.
+const connectedEndpoints = new Map<string, Map<object, string>>();
 
 /**
  * The chain's transport over its configured RPC nodes, or `null` for a chain that is not a core gateway chain. A
@@ -56,8 +57,11 @@ export function createCoreRpcChainTransport(
   genesisHash: string,
   { hooks, WebSocketBase = globalThis.WebSocket }: Params = {},
 ): ChainTransport | null {
-  const provider = createGatewayProvider({ chain: findCoreGatewayChain(genesisHash), hooks, WebSocketBase });
-  return provider === null ? null : { provider, followLimit: RPC_FOLLOW_LIMIT };
+  const chain = findCoreGatewayChain(genesisHash);
+  if (chain === null) {
+    return null;
+  }
+  return { provider: createGatewayProvider({ chain, hooks, WebSocketBase }), followLimit: RPC_FOLLOW_LIMIT };
 }
 
 /** Whether the active network's gateway serves `genesisHash` over RPC nodes. */
@@ -65,52 +69,36 @@ export function isCoreRpcChainSupported(genesisHash: string): boolean {
   return findCoreGatewayChain(genesisHash) !== null;
 }
 
-/** The RPC node the chain's socket is connected to, or `null` between sockets. */
+/** The RPC node of one connected lane of the chain, or `null` when none is connected. */
 export function getConnectedRpcEndpoint(genesisHash: string): string | null {
-  return connectedEndpoints.get(genesisHash.toLowerCase())?.uri ?? null;
+  const rows = connectedEndpoints.get(genesisHash.toLowerCase());
+  return rows?.values().next().value ?? null;
 }
 
-/** The node Asset Hub is talking to, which may not be the first configured one, since the transport rotates. */
+/**
+ * The node of one connected Asset Hub lane, or `null` when none is connected.
+ * It may not be the first configured node, since the transport rotates.
+ */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
   return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
 
-function createGatewayProvider({ chain, hooks, WebSocketBase }: CreateGatewayProviderParams): JsonRpcProvider | null {
-  if (chain === null) {
-    return null;
-  }
+function createGatewayProvider({ chain, hooks, WebSocketBase }: CreateGatewayProviderParams): JsonRpcProvider {
   let replay: () => void = () => undefined;
   const { WebSocketClass, closeLatest } = createClosingWebSocketClass(WebSocketBase);
   const owner = {};
   const genesisKey = chain.genesis.toLowerCase();
-  // Only the provider that recorded the endpoint may clear it.
+  function recordEndpoint(uri: string): void {
+    connectedEndpoints.set(
+      genesisKey,
+      (connectedEndpoints.get(genesisKey) ?? new Map<object, string>()).set(owner, uri),
+    );
+  }
   function clearEndpoint(): void {
-    if (connectedEndpoints.get(genesisKey)?.owner === owner) {
+    const rows = connectedEndpoints.get(genesisKey);
+    rows?.delete(owner);
+    if (rows?.size === 0) {
       connectedEndpoints.delete(genesisKey);
-    }
-  }
-  function recordEndpoint(event: StatusChange): void {
-    switch (event.type) {
-      case WsEvent.CONNECTING:
-      case WsEvent.CONNECTED:
-        connectedEndpoints.set(genesisKey, { uri: event.uri, owner });
-        return;
-      case WsEvent.ERROR:
-      case WsEvent.CLOSE:
-        clearEndpoint();
-        return;
-    }
-  }
-  function applyStatus(status: ConnectionStatus): void {
-    switch (status) {
-      case 'connecting':
-        return;
-      case 'connected':
-        replay();
-        return;
-      case 'disconnected':
-        closeLatest();
-        return;
     }
   }
   const socket = getWsProvider([...chain.rpcs], {
@@ -118,10 +106,21 @@ function createGatewayProvider({ chain, hooks, WebSocketBase }: CreateGatewayPro
     websocketClass: WebSocketClass,
     middleware: inner => withOwnMessages(compatibilityMiddleware(inner)),
     onStatusChanged: event => {
-      recordEndpoint(event);
-      const status = STATUS_BY_WS_EVENT[event.type];
-      applyStatus(status);
-      hooks?.onStatus(status);
+      switch (event.type) {
+        case WsEvent.CONNECTING:
+          recordEndpoint(event.uri);
+          break;
+        case WsEvent.CONNECTED:
+          recordEndpoint(event.uri);
+          replay();
+          break;
+        case WsEvent.ERROR:
+        case WsEvent.CLOSE:
+          clearEndpoint();
+          closeLatest();
+          break;
+      }
+      hooks?.onStatus(STATUS_BY_WS_EVENT[event.type]);
     },
   });
   const replaying = withSubscriptionReplay(socket, callback => {

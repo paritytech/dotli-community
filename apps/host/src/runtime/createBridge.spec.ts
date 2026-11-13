@@ -14,7 +14,7 @@ import {
   type BlockingModalScope,
 } from './createBlockingModalCoordinator.js';
 import { createBridge, type Bridge } from './createBridge.js';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { toProductId } from './getAskedProductId.js';
 import type { CoreContext } from './createPageCore.js';
 import { createFakeProvider } from './createPageCore.fake.js';
 import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
@@ -77,10 +77,6 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
         runtimeCalls.push('disconnectSession');
         const failure = runtimes.length === 1 ? firstDisconnectError : undefined;
         return failure === undefined ? Promise.resolve() : Promise.reject(failure);
-      }),
-      resetSessionState: vi.fn(() => {
-        runtimeCalls.push('resetSessionState');
-        return Promise.resolve();
       }),
       activateExternalSession: vi.fn((_blob: Uint8Array) => {
         runtimeCalls.push('activateExternalSession');
@@ -175,23 +171,6 @@ describe('bridge', () => {
 
     // Then no core was booted
     expect(contexts).toHaveLength(0);
-  });
-
-  it('As a user signing out, I reset the core already running and no other boots', async () => {
-    // Given a page whose core runs
-    const { bridge, contexts, runtimeCalls } = createHarness();
-    bridge.initBridge(createBlockingModalCoordinator());
-    const lease = await bridge.core.acquire();
-    onTestFinished(() => {
-      lease.release();
-    });
-
-    // When the sign-out resets the session
-    await bridge.core.resetSession();
-
-    // Then the running core reset its session and no other booted
-    expect(contexts).toHaveLength(1);
-    expect(runtimeCalls).toEqual(['resetSessionState']);
   });
 
   it('As a user signing out, I end the stored session on a memory-only core of my own, which stays up to tell the phone and ends the next one too', async () => {

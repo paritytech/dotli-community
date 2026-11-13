@@ -2,45 +2,37 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { catchError, createManualTimers } from '@dotli/shared/testing';
+import { catchError } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
-import { realTimers, type Timers } from '@dotli/shared';
+import { createChainPool, type ChainTransport } from '@dotli/chains';
 import { observeChains } from './observeChains.js';
 
 type Built = {
   genesisHash: string;
   disconnect: Mock<() => void>;
-  /** The transport halts for good. */
-  halt: (error: unknown) => void;
 };
 
 type CreatePoolParams = {
   /** Chains the pool has no transport for. */
   unsupported?: readonly string[];
-  /** The timers the pool's redial waits run on. */
-  timers?: Timers;
 };
 
-function createPool(destroyDelay: number, { unsupported = [], timers = realTimers }: CreatePoolParams = {}) {
+function createPool(destroyDelay: number, { unsupported = [] }: CreatePoolParams = {}) {
   const built: Built[] = [];
   return {
     /** The pool whose chains are watched. */
-    pool: createChainPool({ createTransport, destroyDelay, timers }),
+    pool: createChainPool({ createTransport, destroyDelay }),
     /** Each chain transport the pool built, in order. */
     built,
   };
 
-  function createTransport(genesisHash: string, hooks: ChainTransportHooks): ChainTransport | null {
+  function createTransport(genesisHash: string): ChainTransport | null {
     if (unsupported.includes(genesisHash)) {
       return null;
     }
     const record: Built = {
       genesisHash,
       disconnect: vi.fn<() => void>(),
-      halt: error => {
-        hooks.onHalt(error);
-      },
     };
     built.push(record);
     const provider: JsonRpcProvider = (): JsonRpcConnection => ({
@@ -93,34 +85,5 @@ describe('observeChains', () => {
     expect(opened).toEqual(['0xbb']);
     expect(thrown).toBeUndefined();
     expect(built.map(b => b.disconnect.mock.calls.length)).toEqual([1]);
-  });
-
-  it('As the sync observer, my chain halts and the pool gives it back under my lease', () => {
-    // Given
-    const { pool, built } = createPool(0);
-    observeChains({ pool, genesisHashes: ['0xaa', '0xbb'] });
-
-    // When
-    built[0]?.halt(new Error('gone'));
-
-    // Then
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xbb', '0xaa']);
-    expect(built[2]?.disconnect).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli integrator, I stop the watch while a halted chain waits on its gate and it is not reopened', async () => {
-    // Given a chain that halts again right after its first heal, so its second heal waits on the gate
-    const timers = createManualTimers();
-    const { pool, built } = createPool(0, { timers });
-    const stop = observeChains({ pool, genesisHashes: ['0xaa'] });
-    built[0]?.halt(new Error('gone'));
-    built[1]?.halt(new Error('gone again'));
-
-    // When
-    stop();
-    await timers.advance(30_000);
-
-    // Then
-    expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xaa']);
   });
 });

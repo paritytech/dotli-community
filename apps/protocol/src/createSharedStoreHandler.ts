@@ -20,6 +20,7 @@ import {
 import type { Failure, ResultPayload, Sink } from '@dotli/transport';
 
 import { answerAdmitted } from './answerAdmitted.js';
+import { InvalidInputError } from './invalidInputError.js';
 
 const report = createReporter({ flow: 'storage' });
 
@@ -167,8 +168,8 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
     }
   }
 
-  function broadcastSession({ siteId, key, value }: SessionChange): void {
-    broadcast({ tag: 'session', value: { siteId, key, value } });
+  function broadcastSession(change: SessionChange): void {
+    broadcast({ tag: 'session', value: change });
   }
 
   // BroadcastChannel skips the sender, so a tab never hears its own write here.
@@ -242,11 +243,14 @@ function openSharedAuthChannel(): SharedAuthChannel | null {
   return new BroadcastChannel(SHARED_AUTH_CHANNEL);
 }
 
-/** Answers with what `use` returns for the call's stored key once its site and key check. Either failing throws. */
+/**
+ * Answers with what `use` returns for the call's stored key once its site and key check. Rejects with an
+ * `InvalidInputError` when either does not check, and with what `use` throws.
+ */
 function answerKeyed<T>({ keys, payload, use }: AnswerKeyedParams<T>): Promise<ResultPayload<T, Failure>> {
   return answerAdmitted(payload, site => {
     if (!keys.isValid(payload.key)) {
-      throw new Error(`Invalid shared ${keys.name} key: ${payload.key}`);
+      throw new InvalidInputError(`Invalid shared ${keys.name} key: ${payload.key}`);
     }
     return use(keys.build(site, payload.key));
   });

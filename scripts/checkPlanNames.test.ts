@@ -40,7 +40,13 @@ const BUILTINS = new Set(['Promise', 'Record']);
 
 function check(text: string, files: Record<string, string>, disk: Disk = NO_DISK) {
   const tree = createFakeTree(files);
-  return checkPlanNames(parsePlan(text, TOP_LEVEL, NO_BRANCHES), tree, tree, disk, BUILTINS);
+  return checkPlanNames({
+    plan: parsePlan(text, TOP_LEVEL, NO_BRANCHES),
+    base: tree,
+    head: tree,
+    disk,
+    builtins: BUILTINS,
+  });
 }
 
 describe('parsePlan', () => {

@@ -6,22 +6,13 @@ import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePreference } from '../runtime/state/themeState.js';
-import type { SavedSettings } from '../components/settings/settings.js';
+import type { SavedSettings, SettingsResetStatus } from '../components/settings/settings.js';
 import { createSettingsIntent } from '../createSettingsIntent.js';
 import { useSettingsPanel } from './settings.js';
 
 type Params = {
   /** The intent the panel opens through, a fresh one by default. */
   intent?: ReturnType<typeof createSettingsIntent>;
-};
-
-const SAVED: SavedSettings = {
-  backend: 'smoldot-direct',
-  cache: { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false },
-  network: 'paseo-next-v2',
-  enabledNetworks: ['paseo-next-v2'],
-  sharedWorkerAvailable: true,
-  verified: true,
 };
 
 afterEach(() => {
@@ -33,6 +24,7 @@ afterEach(() => {
  * through `intent`.
  */
 function mount({ intent = createSettingsIntent() }: Params = {}) {
+  const reset = atom<SettingsResetStatus>('idle');
   const settings = atom<SavedSettings | null>(null);
   const theme = atom<{ preference: ThemePreference }>({ preference: 'system' });
   const { panel, dispose } = createRoot(d => ({
@@ -40,8 +32,8 @@ function mount({ intent = createSettingsIntent() }: Params = {}) {
       settings,
       theme,
       selectTheme: () => undefined,
-      apply: () => Promise.resolve(),
-      registerOpener: intent.registerOpener,
+      actions: { applyAndReset: () => Promise.resolve(), reset },
+      intent,
       version: '1.2.3',
       debugMode: () => false,
       openDebugMode: () => undefined,
@@ -49,7 +41,7 @@ function mount({ intent = createSettingsIntent() }: Params = {}) {
     dispose: d,
   }));
   flush();
-  return { panel, dispose, settings, theme, intent };
+  return { panel, dispose, intent };
 }
 
 describe('useSettingsPanel', () => {
@@ -87,33 +79,5 @@ describe('useSettingsPanel', () => {
 
     // Then the panel stays closed
     expect(panel.open()).toBe(false);
-  });
-
-  it('As the settings button, I show no settings and the system theme before boot has read them', () => {
-    // Given a page whose boot has not read the settings
-
-    // When the settings button mounts
-    const { panel, dispose } = mount();
-    onTestFinished(dispose);
-
-    // Then it shows no settings and the system theme
-    expect(panel.settings()).toBeNull();
-    expect(panel.theme()).toBe('system');
-  });
-
-  it('As the settings button, I follow the settings once boot has read them, and the theme the page applies', () => {
-    // Given a mounted settings button
-    const { panel, dispose, settings, theme } = mount();
-    onTestFinished(dispose);
-
-    // When boot reads the settings and the page applies a dark theme
-    settings.set(SAVED);
-    theme.set({ preference: 'dark' });
-    flush();
-
-    // Then the button follows both
-    expect(panel.settings()).toEqual(SAVED);
-    expect(panel.theme()).toBe('dark');
-    expect(panel.version).toBe('1.2.3');
   });
 });

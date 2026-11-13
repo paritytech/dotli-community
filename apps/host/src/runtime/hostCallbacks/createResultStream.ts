@@ -16,9 +16,9 @@ export function createResultStream<T>(
   return {
     [Symbol.asyncIterator](): AsyncIterator<Result<T, GenericError>> {
       const queue: Result<T, GenericError>[] = initial.map(value => ok(value));
+      // An object, as a plain `let` would read as still false after `start` returns, though `start` can stop the stream.
       const state = { stopped: false };
       let cleanup: (() => void) | null = null;
-      let cleanedUp = false;
       let resolve: ((result: IteratorResult<Result<T, GenericError>>) => void) | null = null;
 
       function complete(): IteratorResult<Result<T, GenericError>> {
@@ -26,24 +26,26 @@ export function createResultStream<T>(
       }
 
       function runCleanup(): void {
-        if (cleanedUp || cleanup === null) {
+        const run = cleanup;
+        cleanup = null;
+        run?.();
+      }
+
+      function deliver(result: Result<T, GenericError>): void {
+        if (resolve) {
+          const send = resolve;
+          resolve = null;
+          send({ done: false, value: result });
           return;
         }
-        cleanedUp = true;
-        cleanup();
+        queue.push(result);
       }
 
       function push(value: T): void {
         if (state.stopped) {
           return;
         }
-        if (resolve) {
-          const send = resolve;
-          resolve = null;
-          send({ done: false, value: ok(value) });
-          return;
-        }
-        queue.push(ok(value));
+        deliver(ok(value));
       }
 
       function pushError(error: GenericError): void {
@@ -52,14 +54,7 @@ export function createResultStream<T>(
         }
         state.stopped = true;
         runCleanup();
-        const result = err<T, GenericError>(error);
-        if (resolve) {
-          const send = resolve;
-          resolve = null;
-          send({ done: false, value: result });
-          return;
-        }
-        queue.push(result);
+        deliver(err(error));
       }
 
       cleanup = start(push, pushError);

@@ -8,7 +8,6 @@ import { createBlockFetch } from './createBlockFetch.js';
 describe('preimage block fetch', () => {
   it.each<{ backend: Backend; over: string; calls: { bitswap: number; gateway: number } }>([
     { backend: 'smoldot-direct', over: 'bitswap', calls: { bitswap: 1, gateway: 0 } },
-    { backend: 'smoldot-shared-worker', over: 'bitswap', calls: { bitswap: 1, gateway: 0 } },
     { backend: 'rpc-gateway', over: 'gateway', calls: { bitswap: 0, gateway: 1 } },
   ])(
     'As a product developer on $backend, I fetch a preimage block and it comes over $over',

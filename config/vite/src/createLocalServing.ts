@@ -33,7 +33,7 @@ const LOCAL_SERVER_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /** The Content-Type a local server sends for each file extension. */
-export const MIME_TYPES: Readonly<Record<string, string>> = {
+const MIME_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript',
   '.mjs': 'text/javascript',
@@ -64,11 +64,7 @@ export function createLocalServing(roots: readonly string[]) {
     if (root === undefined && isProtocolPath(pathname)) {
       return { site: 'protocol', bare: false };
     }
-    // Kept for one release so a shell cached by an older release still finds its frame.
-    if (root !== undefined && name === `host.${root}`) {
-      return { site: 'protocol', bare: false };
-    }
-    if (name.includes('.app.')) {
+    if (root !== undefined && name.endsWith(`.app.${root}`)) {
       return { site: 'app', bare: false };
     }
     return { site: 'host', bare: root === undefined };
@@ -124,7 +120,7 @@ export function createLocalServing(roots: readonly string[]) {
   return {
     /**
      * Returns the build a local hostname and path reach. Never throws. The protocol app answers under its prefix on the
-     * bare host, and at `host.` under a local root. Any host but a local root's subdomain is the bare host.
+     * bare host. Any host but a local root's subdomain is the bare host.
      */
     getRoute,
     /** Every local root and its subdomains, on any port and scheme, which an isolated page lets frame it. */

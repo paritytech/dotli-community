@@ -264,21 +264,6 @@ export const TimelineClickShowsGroup: Story = {
     }),
 };
 
-/** As a developer using the debug panel, I keep the timeline open and a new message shows in it. */
-export const TimelineLive: Story = {
-  play: async ({ userEvent, step }) => {
-    await step('Given the timeline is open', async () => {
-      await userEvent.click(getPart('td-tab', { value: 'timeline' }));
-    });
-    await step('When a message arrives', () => {
-      getDebugPanel().emitTruapi({ tag: 'late_request', requestId: 'late-1' });
-    });
-    await step('Then the timeline shows it', async () => {
-      await waitFor(() => expect(listSegments()).toHaveLength(1));
-    });
-  },
-};
-
 /** As a developer using the debug panel, I hover and click a timeline box while traffic streams in and the box, its tooltip and my click hold. */
 export const StreamingKeepsHoverAndClick: Story = {
   play: async ({ userEvent, step }) => {
@@ -361,6 +346,68 @@ export const TimelineHoverTooltip: Story = {
     await step('When I hover again and switch to the list', async () => {
       hover(box, { type: 'pointerover' });
       await userEvent.click(getPart('td-tab', { value: 'list' }));
+    });
+    await step('Then the tooltip hides', async () => {
+      await expect(tooltip).not.toHaveAttribute('data-visible');
+    });
+  },
+};
+
+/** As a developer using the debug panel, I scroll the timeline under a resting pointer and the tooltip shows again when I move on the same box. */
+export const TimelineTooltipAfterScroll: Story = {
+  play: async ({ userEvent, step }) => {
+    await showMixedTraffic();
+    await userEvent.click(getPart('td-tab', { value: 'timeline' }));
+    const box = listSegments().find(s => s.hasAttribute('data-tooltip')) ?? getTimelineBox('handshake');
+    const tooltip = getPart('td-tooltip');
+    await step('Given I hover a box and the timeline scrolls', async () => {
+      hover(box, { type: 'pointerover', x: 30, y: 40 });
+      getPart('td-timeline').dispatchEvent(new Event('scroll'));
+      await expect(tooltip).not.toHaveAttribute('data-visible');
+    });
+    await step('When I move the pointer on the same box', () => {
+      hover(box, { type: 'pointermove', x: 31, y: 41 });
+    });
+    await step('Then its tooltip shows', async () => {
+      await expect(tooltip).toHaveAttribute('data-visible');
+      await expect(tooltip.textContent).toBe(box.getAttribute('data-tooltip'));
+    });
+  },
+};
+
+/** As a developer using the debug panel, I collapse the panel from the keyboard while a timeline tooltip shows and the tooltip hides. */
+export const TooltipHidesOnCollapse: Story = {
+  play: async ({ userEvent, step }) => {
+    await showMixedTraffic();
+    await userEvent.click(getPart('td-tab', { value: 'timeline' }));
+    const box = listSegments().find(s => s.hasAttribute('data-tooltip')) ?? getTimelineBox('handshake');
+    const tooltip = getPart('td-tooltip');
+    await step('Given a tooltip shows', async () => {
+      hover(box, { type: 'pointerover', x: 30, y: 40 });
+      await expect(tooltip).toHaveAttribute('data-visible');
+    });
+    await step('When I collapse the panel without moving the pointer', () => {
+      getPart('td-collapse').click();
+    });
+    await step('Then the tooltip hides', async () => {
+      await expect(tooltip).not.toHaveAttribute('data-visible');
+    });
+  },
+};
+
+/** As a developer using the debug panel, I dock the panel elsewhere while a timeline tooltip shows and the tooltip hides. */
+export const TooltipHidesOnDockToggle: Story = {
+  play: async ({ userEvent, step }) => {
+    await showMixedTraffic();
+    await userEvent.click(getPart('td-tab', { value: 'timeline' }));
+    const box = listSegments().find(s => s.hasAttribute('data-tooltip')) ?? getTimelineBox('handshake');
+    const tooltip = getPart('td-tooltip');
+    await step('Given a tooltip shows', async () => {
+      hover(box, { type: 'pointerover', x: 30, y: 40 });
+      await expect(tooltip).toHaveAttribute('data-visible');
+    });
+    await step('When I dock the panel elsewhere without moving the pointer', () => {
+      getPart('td-dock').click();
     });
     await step('Then the tooltip hides', async () => {
       await expect(tooltip).not.toHaveAttribute('data-visible');

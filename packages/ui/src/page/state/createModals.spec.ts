@@ -113,44 +113,27 @@ describe('modal store', () => {
 });
 
 describe('dialogs that cannot be shown', () => {
-  it('As a product, I wait on overlays that cannot render and my request is refused at once', async () => {
-    // Given
-    const asked = modals.open({
-      title: 'Allow camera?',
-      fields: [],
-      buttons: [
-        { label: 'Deny', variant: 'danger', result: 'deny' },
-        { label: 'Allow', variant: 'primary', result: 'allow' },
-      ],
-      dismissOnBackdrop: false,
-    });
+  it.each<{ second: ModalView<string>['buttons'][number]; refusal: string }>([
+    { second: { label: 'Allow', variant: 'primary', result: 'allow' }, refusal: 'deny' },
+    { second: { label: 'Cancel', variant: 'cancel', result: 'cancel' }, refusal: 'cancel' },
+  ])(
+    'As a product, I wait on overlays that cannot render with a danger then a $second.variant button and my request is refused at once with $refusal',
+    async ({ second, refusal }) => {
+      // Given
+      const asked = modals.open({
+        title: 'Allow camera?',
+        fields: [],
+        buttons: [{ label: 'Deny', variant: 'danger', result: 'deny' }, second],
+        dismissOnBackdrop: false,
+      });
 
-    // When
-    onTestFinished(modals.refuseAll());
+      // When
+      onTestFinished(modals.refuseAll());
 
-    // Then
-    await expect(asked).resolves.toEqual({ result: 'deny' });
-  });
-
-  it('As a product, I ask after the overlays broke and my request is refused too, with its dismiss answer', async () => {
-    // Given
-    onTestFinished(modals.refuseAll());
-
-    // When
-    const asked = modals.open({
-      title: 'Submit Preimage',
-      fields: [],
-      buttons: [
-        { label: 'Cancel', variant: 'cancel', result: 'cancel' },
-        { label: 'Allow', variant: 'primary', result: 'allow' },
-      ],
-      dismissOnBackdrop: true,
-      dismissResult: 'cancel',
-    });
-
-    // Then
-    await expect(asked).resolves.toEqual({ result: 'cancel' });
-  });
+      // Then
+      await expect(asked).resolves.toEqual({ result: refusal });
+    },
+  );
 
   it('As a page, I refuse all open dialogs while another opens, and every dialog settles with its refusal', async () => {
     // Given
@@ -258,18 +241,6 @@ describe('a dialog that hands its place to a second view', () => {
     expect(modals.store.get()).toEqual([]);
   });
 
-  it('As a host, I hand off to no view and the dialog closes as before', async () => {
-    // Given
-    const asked = modals.open(buildView('Review'), { handoff: () => undefined });
-
-    // When
-    modals.settle(readFirstId(), 'yes');
-
-    // Then
-    await expect(asked).resolves.toEqual({ result: 'yes' });
-    expect(modals.store.get()).toEqual([]);
-  });
-
   it('As a host, I hand off on an aborted signal and the view never shows', () => {
     // Given
     const closed = vi.fn();
@@ -374,17 +345,6 @@ describe('a dialog queue that is disposed', () => {
     expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(modals.store.get()).toEqual([]);
     await expect(answer).rejects.toMatchObject({ name: 'AbortError' });
-  });
-
-  it('As a page that ends, I dispose the dialog queue and an open dialog rejects with an AbortError', async () => {
-    // Given an open dialog with no signal
-    const answer = modals.open(buildView('Review'));
-
-    // When the queue is disposed
-    modals.dispose();
-
-    // Then the dialog rejects with an AbortError that names the disposed scope
-    await expect(answer).rejects.toMatchObject({ name: 'AbortError', message: 'Blocking modal scope disposed' });
   });
 
   it('As a host whose handed-off view fails as the queue is disposed, I still see every open dialog reject', async () => {

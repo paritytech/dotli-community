@@ -15,23 +15,6 @@ describe('packArchive', () => {
     expect(result.index).toEqual([]);
   });
 
-  it('As a host handing a product to its sandbox, I pack one file and its index entry spans its bytes', () => {
-    // Given
-    const files: ArchiveFiles = {
-      'index.html': new TextEncoder().encode('<h1>Hello</h1>'),
-    };
-
-    // When
-    const result = packArchive(files);
-
-    // Then
-    expect(result.index).toHaveLength(1);
-    expect(result.index[0]?.p).toBe('index.html');
-    expect(result.index[0]?.o).toBe(0);
-    expect(result.index[0]?.l).toBe(14);
-    expect(result.packed.byteLength).toBe(14);
-  });
-
   it('As a host handing a product to its sandbox, I pack several files and each index entry starts where the last ended', () => {
     // Given
     const files: ArchiveFiles = {

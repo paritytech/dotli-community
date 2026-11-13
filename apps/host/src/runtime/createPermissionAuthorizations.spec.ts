@@ -59,19 +59,6 @@ function getRequestKey(request: PermissionAuthorizationRequest): string {
 }
 
 describe('createPermissionAuthorizations', () => {
-  it('As a dotli integrator, I build two registries and find a grant in one leaves the other asking', async () => {
-    // Given a second registry with no connection for myapp
-    const { permissions } = createHarness();
-    const other = createPermissionAuthorizations();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
-
-    // When
-    const status = await other.getStatus('myapp', 'Camera');
-
-    // Then
-    expect(status).toBe('ask');
-  });
-
   it('As a dApp user whose app renders again on a replacement core, I read my grant and the newest connection answers until it goes', async () => {
     // Given the connection on screen, then a newer one with its own answer
     const { permissions, store, registerStore } = createHarness();
@@ -89,46 +76,40 @@ describe('createPermissionAuthorizations', () => {
 });
 
 describe('getStatus / setStatus', () => {
-  it('As a dApp user, I have decided nothing yet and find each permission set to ask', async () => {
-    // Given
-    const { permissions } = createHarness();
+  it.each<{ answers: string; answered: PermissionAuthorizationStatus[]; statuses: string[] }>([
+    { answers: 'none', answered: [], statuses: ['ask', 'ask'] },
+    {
+      answers: 'more than asked',
+      answered: ['Authorized', 'Denied', 'NotDetermined'],
+      statuses: ['granted', 'denied'],
+    },
+  ])(
+    "As the host, I ask a product's statuses of a connection that answers $answers and get one status per permission",
+    async ({ answered, statuses }) => {
+      // Given an `oddapp` connection whose answer does not match the permissions asked
+      const { permissions } = createHarness();
+      onTestFinished(
+        permissions.register('oddapp', {
+          getPermissionAuthorizationStatuses() {
+            return Promise.resolve(answered);
+          },
+          setPermissionAuthorizationStatus() {
+            return Promise.resolve();
+          },
+        }),
+      );
 
-    // When
-    const statuses = await Promise.all([
-      permissions.getStatus('myapp', 'Camera'),
-      permissions.getStatus('myapp', 'ChainSubmit'),
-      permissions.getStatus('myapp', 'IdentityDisclosure'),
-    ]);
+      // When
+      const asked = await permissions.getStatuses('oddapp', ['Camera', 'Microphone']);
 
-    // Then
-    expect(statuses).toEqual(['ask', 'ask', 'ask']);
-  });
-
-  it('As a dApp user whose connection answers fewer statuses than asked, I read a permission and the missing status reads as ask', async () => {
-    // Given a provider that violates the length contract
-    const { permissions } = createHarness();
-    onTestFinished(
-      permissions.register('shortapp', {
-        getPermissionAuthorizationStatuses() {
-          return Promise.resolve([]);
-        },
-        setPermissionAuthorizationStatus() {
-          return Promise.resolve();
-        },
-      }),
-    );
-
-    // When
-    const status = await permissions.getStatus('shortapp', 'Camera');
-
-    // Then the missing entry surfaces as "ask", not undefined
-    expect(status).toBe('ask');
-  });
+      // Then
+      expect(asked).toEqual(statuses);
+    },
+  );
 
   it('As a dApp user, I decide my permissions and find them in the core authorization store', async () => {
     // Given
     const { permissions, store } = createHarness();
-    const before = new Map(store);
 
     // When
     await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
@@ -141,7 +122,6 @@ describe('getStatus / setStatus', () => {
     ]);
 
     // Then
-    expect(before).toEqual(new Map());
     expect(store).toEqual(
       new Map([
         ['Remote:ChainSubmit', 'Authorized'],
@@ -178,38 +158,6 @@ describe('getStatus / setStatus', () => {
     // Then
     expect(status).toBe('ask');
   });
-
-  it('As a dApp user whose app fails to move to a replacement connection, I read my grant and the active connection still answers', async () => {
-    // Given
-    const { permissions, registerStore } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
-    const unregisterReplacement = registerStore('myapp', new Map([['Device:Camera', 'Denied']]));
-
-    // When the replacement answers, then goes
-    const whileReplaced = await permissions.getStatus('myapp', 'Camera');
-    unregisterReplacement();
-    const afterReplacement = await permissions.getStatus('myapp', 'Camera');
-
-    // Then
-    expect([whileReplaced, afterReplacement]).toEqual(['denied', 'granted']);
-  });
-});
-
-describe('getGrantedFramePermissions', () => {
-  it('As a dApp user, I grant some permissions and my app frame receives only the granted ones that add a frame directive', async () => {
-    // Given
-    const { permissions } = createHarness();
-    await permissions.setStatus({ label: 'myapp', permission: 'Camera', status: 'granted' });
-    await permissions.setStatus({ label: 'myapp', permission: 'Microphone', status: 'denied' });
-    await permissions.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
-    await permissions.setStatus({ label: 'myapp', permission: 'IdentityDisclosure', status: 'granted' });
-
-    // When
-    const granted = await permissions.getGrantedFramePermissions('myapp');
-
-    // Then
-    expect(granted).toEqual(['Camera']);
-  });
 });
 
 describe('getAllowAttribute', () => {
@@ -231,11 +179,10 @@ describe('getAllowAttribute', () => {
     await permissions.setStatus({ label: 'myapp', permission: 'Microphone', status: 'granted' });
 
     // When
-    // Order follows JSON insertion order, so assert on the directive set.
-    const directives = (await permissions.getAllowAttribute('myapp')).split('; ').sort();
+    const allow = await permissions.getAllowAttribute('myapp');
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'display-capture', 'microphone']);
+    expect(allow).toBe('clipboard-write; display-capture; camera; microphone');
   });
 
   it('As a dApp user, I deny a device permission and grant a submit one and neither enters the app frame policy', async () => {

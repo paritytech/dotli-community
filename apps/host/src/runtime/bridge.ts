@@ -16,13 +16,12 @@ import { pageNotifications } from '../pageNotifications.js';
 import { getProductFrameContainer, productFrameView } from '../createProductFrameView.js';
 import { networkMonitorState } from '../state/networkMonitorState.js';
 import { createBridge } from './createBridge.js';
-import type { AuthCommands } from './createAuthCommands.js';
+import type { AuthCommands } from './runAuthCommand.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
 import { createCoreRuntimeBoot } from './createCoreRuntimeBoot.js';
 import { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 import { hostChainPool } from './hostCallbacks/createHostChainPool.js';
 import { hostBitswapClient } from './hostCallbacks/createHostBitswapClient.js';
-import { watchHostChains } from './hostCallbacks/watchHostChains.js';
 import { readOriginalAccount } from './readOriginalAccount.js';
 import { readPeopleUsernames } from './readPeopleUsernames.js';
 import { wireDescriber } from './createWireDescriber.js';
@@ -54,7 +53,7 @@ import type { WindowSignOutParams } from './sessionHandoff/signOutInWindow.js';
 import { authState } from './state/authState.js';
 import { signingOutState } from './state/signingOutState.js';
 import { walletModeState } from './state/walletModeState.js';
-import { pageWalletBoot } from './createWalletBoot.js';
+import { pageWalletBoot } from './pageWalletBoot.js';
 import { walletSwitch } from './createWalletSwitch.js';
 
 /** Dynamic import of the container chunk. */
@@ -111,7 +110,7 @@ const bridge = createBridge({
   notify: hostPrompts.notify,
   watchChains: () => {
     // The watch lasts the page's life, so its stop goes unused.
-    watchHostChains({
+    hostChainPool.watch({
       onActivity: networkMonitorState.recordChainActivity,
       onBestBlock: networkMonitorState.recordBestBlock,
     });
@@ -353,6 +352,7 @@ export const hostBridge = {
   siteTxSigner,
   siteChain,
   authCommands,
+  pageSignOut,
   applyWindowResult,
   windowStore,
   startSessionLease,

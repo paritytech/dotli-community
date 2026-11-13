@@ -6,51 +6,70 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { createReporter, defineCount } from '@dotli/metrics';
-import type { AsyncTaskPool } from '@dotli/shared';
+import { createStateMachine, type MachineTypes, type Timers, type Transition } from '@dotli/shared';
 import { getHaltReason, type RemoteChainHalt } from './chainHaltError.js';
 import { createChainHaltedError } from './createChainHaltedError.js';
-import type { ChainRedial } from './createChainRedial.js';
+import type { ChainRedial, LeaseHalt } from './createChainRedial.js';
 import { createJsonRpcError } from './createJsonRpcError.js';
+
+/** What a take of a chain found, holding the lease's `Connection` when it attached. */
+export type AttachAnswer<Connection = JsonRpcConnection> =
+  { kind: 'attached'; connection: Connection } | { kind: 'halted'; error: unknown } | { kind: 'unreachable' };
 
 type Params = {
   /** The chain, lowercase. */
   key: string;
   /**
-   * Takes a lease on the chain as the pool holds it now, its halt to `onHalt`. Returns null when the pool has no
-   * transport for it. Throws what the pool's connect throws.
+   * Takes a lease on the chain as the pool holds it now, and answers what it found. A halt heard while it takes the
+   * lease comes back as `halted`, and only a later one reaches `onHalt`. Throws what the pool's connect throws.
    */
-  attach: (onMessage: (message: JsonRpcMessage) => void, onHalt: (error?: unknown) => void) => JsonRpcConnection | null;
+  attach: (onHalt: (error?: unknown) => void) => AttachAnswer;
   /** The pool's redial. */
-  redial: Pick<ChainRedial, 'noteHalt' | 'tryDial' | 'waitMs' | 'tryDialGate' | 'gateWaitMs'>;
-  /** Where each redial waits. */
-  waits: Pick<AsyncTaskPool, 'call'>;
-  /** The pool name of this lease's own waits, so its heals queue one after another and never hold another lease's. */
-  waitPool: string;
-  /** The prefix of this lease's log lines. */
-  logTag: string;
+  redial: ChainRedial;
+  /** The timers each wait to heal runs on. */
+  timers: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
   /** Names the lease in debug logs. */
   holder: string;
-  /** Hears every message of every lease the connection takes, and the answers it gives itself. */
+  /** Hears the halted marker the connection answers a request with while it holds no chain. */
   onMessage: (message: JsonRpcMessage) => void;
 };
 
-/** One attach's own state, so a halt heard inside its attach, or late from a replaced lease, touches no other. */
-type LeaseSlot = {
-  connection: JsonRpcConnection | null;
-  haltedBy: RemoteChainHalt | null;
-};
+/** One attach, minted for it, so a halt from an earlier lease finds the state moved on. */
+type Take = object;
 
-/** One detached spell, from a halt until a take holds the chain again. */
-type Spell = {
-  /** Aborted once a take holds the chain or the lease is released, which cancels the spell's pending wait. */
-  ended: AbortController;
-  /** Whether the spell tried a take. A take that holds the chain ends the spell, so each one it tried failed. */
-  tried: boolean;
-};
+/** What a take found, or its throw. */
+type TakeAnswer = AttachAnswer | { kind: 'threw'; error: unknown };
 
-type AttachOutcome = 'ok' | 'halted' | 'no_transport';
+/**
+ * `taking` holds the sends that wait for its take's answer, and the halt it heals. `detached` waits on `timer` for its
+ * dial to open. `releasing` is a take released before its answer came.
+ */
+type LeaseState =
+  | { kind: 'taking'; reason: RemoteChainHalt; sends: JsonRpcRequest[] }
+  | { kind: 'attached'; take: Take; connection: JsonRpcConnection }
+  | { kind: 'detached'; halt: LeaseHalt; timer: unknown }
+  | { kind: 'releasing' }
+  | { kind: 'released' };
+
+type LeaseEvent =
+  | { kind: 'taken'; take: Take; answer: TakeAnswer }
+  | { kind: 'leaseHalted'; take: Take; error: unknown }
+  | { kind: 'healDue' }
+  | { kind: 'sendAsked'; message: JsonRpcRequest }
+  | { kind: 'releaseAsked' };
+
+type LeaseEffect =
+  | { kind: 'send'; connection: JsonRpcConnection; message: JsonRpcRequest }
+  | { kind: 'answerHalted'; message: JsonRpcRequest }
+  | { kind: 'disconnect'; connection: JsonRpcConnection }
+  | { kind: 'answered'; answer: TakeAnswer };
+
+type LeaseMachine = MachineTypes<LeaseState, LeaseEvent, LeaseEffect>;
 
 const report = createReporter({ flow: 'protocol' });
+
+// Prefixes this lease's debug lines, which print only with VITE_APP_DEBUG, and its defect messages, which always do.
+const LEASE_TAG = '[dot.li chain-lease]';
 
 /**
  * A lease's new take of its chain after a halt, for every holder. Tagged `outcome` and, on error, `reason`:
@@ -59,28 +78,145 @@ const report = createReporter({ flow: 'protocol' });
  */
 const chainPoolHealMetric = defineCount<'error' | 'ok'>('chain_pool.heal');
 
+const HEAL_COUNTS = {
+  attached: { outcome: 'ok' },
+  halted: { outcome: 'error', reason: 'halted' },
+  unreachable: { outcome: 'error', reason: 'no_transport' },
+} as const;
+
 /**
  * A connection that takes the rebuilt chain after a halt. Throws when the first attach finds no transport, or as
  * `attach` throws.
  */
-export function createHealingLease({
-  key,
-  attach,
-  redial,
-  waits,
-  waitPool,
-  logTag,
-  holder,
-  onMessage,
-}: Params): JsonRpcConnection {
-  const released = new AbortController();
-  let current: JsonRpcConnection | null = null;
-  // Why the last lease halted, so the next try waits on that reason's gate.
-  let haltedBy: RemoteChainHalt = 'chain';
-  // The factory's first take runs in a spell of its own, which a halted first take keeps.
-  let spell = createSpell();
-
-  takeFirst();
+export function createHealingLease({ key, attach, redial, timers, holder, onMessage }: Params): JsonRpcConnection {
+  const first: Take = {};
+  // A halt only reaches `onHalt` after the attach returned, so the machine exists by then.
+  const answer = attach(error => {
+    lease.update({ kind: 'leaseHalted', take: first, error });
+  });
+  if (answer.kind === 'unreachable') {
+    throw new Error(`No chain transport for ${key}`);
+  }
+  const lease = createStateMachine<LeaseMachine>({
+    // The first take that holds the chain is no heal, so it counts none. One that halted waits in `taking` only for its
+    // queued answer below.
+    initial:
+      answer.kind === 'attached'
+        ? { kind: 'attached', take: first, connection: answer.connection }
+        : { kind: 'taking', reason: getHaltReason(answer.error), sends: [] },
+    handlers: {
+      taking: {
+        taken({ reason, sends }, { take, answer: found }, transition) {
+          transition.emitSideEffect({ kind: 'answered', answer: found });
+          switch (found.kind) {
+            case 'attached':
+              transition.emitState({ kind: 'attached', take, connection: found.connection });
+              for (const message of sends) {
+                transition.emitSideEffect({ kind: 'send', connection: found.connection, message });
+              }
+              return;
+            case 'halted': {
+              const haltedBy = getHaltReason(found.error);
+              redial.noteHalt(key, haltedBy);
+              failTake(sends, haltedBy, transition);
+              return;
+            }
+            case 'unreachable':
+            case 'threw':
+              failTake(sends, reason, transition);
+              return;
+          }
+        },
+        sendAsked(state, { message }, { emitState }) {
+          emitState({ ...state, sends: [...state.sends, message] });
+        },
+        releaseAsked(_state, _event, { emitState }) {
+          emitState({ kind: 'releasing' });
+        },
+      },
+      attached: {
+        leaseHalted({ take: held }, { take, error }, transition) {
+          if (take !== held) {
+            return;
+          }
+          const reason = getHaltReason(error);
+          redial.noteHalt(key, reason);
+          retake({ reason, tried: false }, transition);
+        },
+        // Only a send queued while a transition ran comes here, since `send` sends on a held chain itself.
+        sendAsked({ connection }, { message }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'send', connection, message });
+        },
+        releaseAsked(_state, _event, { emitState }) {
+          emitState({ kind: 'released' });
+        },
+      },
+      detached: {
+        healDue({ halt }, _event, transition) {
+          retake(halt, transition);
+        },
+        // A send tries once and starts no wait, since the state's own wait is still pending.
+        sendAsked({ halt, timer }, { message }, transition) {
+          if (!redial.tryDial(key, halt)) {
+            transition.emitSideEffect({ kind: 'answerHalted', message });
+            return;
+          }
+          timers.clearTimeout(timer);
+          startTake(halt.reason, [message], transition);
+        },
+        releaseAsked({ timer }, _event, { emitState }) {
+          emitState({ kind: 'released' });
+          timers.clearTimeout(timer);
+        },
+      },
+      releasing: {
+        taken(_state, { answer: found }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'released' });
+          emitSideEffect({ kind: 'answered', answer: found });
+          // A release while it attached leaves nothing to keep the new lease.
+          if (found.kind === 'attached') {
+            emitSideEffect({ kind: 'disconnect', connection: found.connection });
+          }
+        },
+      },
+      released: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'send':
+          effect.connection.send(effect.message);
+          return;
+        case 'answerHalted': {
+          const { id } = effect.message;
+          // A notification has nothing to answer.
+          if (id !== undefined && id !== null) {
+            onMessage(createJsonRpcError(id, createChainHaltedError()));
+          }
+          return;
+        }
+        case 'disconnect':
+          effect.connection.disconnect();
+          return;
+        case 'answered': {
+          const { answer: found } = effect;
+          if (found.kind === 'threw') {
+            reportHealDefect(found.error, `${LEASE_TAG} ${holder} could not take ${key} again:`);
+            return;
+          }
+          report.log.debug(`${LEASE_TAG} ${key} taken again by ${holder}: ${found.kind}`);
+          chainPoolHealMetric.count(HEAL_COUNTS[found.kind]);
+          return;
+        }
+      }
+    },
+    onError: error => {
+      reportHealDefect(error, `${LEASE_TAG} ${holder}'s heal of ${key} failed:`);
+    },
+  });
+  // The first take's answer is queued like a retake's, so its halt is counted and followed as one.
+  if (answer.kind === 'halted') {
+    lease.update({ kind: 'taken', take: first, answer });
+  }
 
   return {
     /**
@@ -88,175 +224,68 @@ export function createHealingLease({
      * halted marker and drops a notification. Throws only as the held lease's `send` throws.
      */
     send(message: JsonRpcRequest): void {
-      if (released.signal.aborted) {
+      const state = lease.state.get();
+      // Sent here, not as an effect, so the held lease's throw reaches the caller.
+      if (state.kind === 'attached') {
+        state.connection.send(message);
         return;
       }
-      const connection = current ?? tryHealOnSend();
-      if (connection === null) {
-        answerHalted(message);
-        return;
-      }
-      connection.send(message);
+      lease.update({ kind: 'sendAsked', message });
     },
     /** Releases the lease held now, once, and stops healing. Throws only as that lease's `disconnect` throws. */
     disconnect(): void {
-      if (released.signal.aborted) {
-        return;
+      const state = lease.state.get();
+      lease.update({ kind: 'releaseAsked' });
+      // Released here, not as an effect, so the held lease's throw reaches the caller.
+      if (state.kind === 'attached') {
+        state.connection.disconnect();
       }
-      released.abort();
-      spell.ended.abort();
-      const connection = current;
-      current = null;
-      connection?.disconnect();
     },
   };
 
-  function takeFirst(): void {
-    const outcome = take();
-    switch (outcome) {
-      case 'ok':
-        return;
-      case 'no_transport':
-        throw new Error(`No chain transport for ${key}`);
-      case 'halted':
-        countHeal(outcome);
-        schedule();
-        return;
-    }
-  }
-
-  function take(): AttachOutcome {
-    spell.tried = true;
-    const slot: LeaseSlot = { connection: null, haltedBy: null };
-    const connection = attach(onMessage, error => {
-      onLeaseHalt(slot, error);
-    });
-    if (connection === null) {
-      return 'no_transport';
-    }
-    if (slot.haltedBy !== null) {
-      noteHalt(slot.haltedBy);
-      return 'halted';
-    }
-    // A release while it attached leaves nothing to keep the new lease.
-    if (released.signal.aborted) {
-      connection.disconnect();
-      return 'ok';
-    }
-    slot.connection = connection;
-    current = connection;
-    spell.ended.abort();
-    return 'ok';
-  }
-
-  function onLeaseHalt(slot: LeaseSlot, error: unknown): void {
-    if (slot.haltedBy !== null) {
+  /** Takes the chain again when its dial passes now, and otherwise waits in `detached` for the dial to open. */
+  function retake(halt: LeaseHalt, transition: Transition<LeaseMachine>): void {
+    if (redial.tryDial(key, halt)) {
+      startTake(halt.reason, [], transition);
       return;
     }
-    slot.haltedBy = getHaltReason(error);
-    // A halt inside `attach` is noted once it returns, and a late one from a replaced lease touches nothing.
-    if (slot.connection === null || slot.connection !== current) {
-      return;
+    const timer = timers.setTimeout(
+      () => {
+        transition.update({ kind: 'healDue' });
+      },
+      redial.waitMs(key, halt),
+    );
+    transition.emitState({ kind: 'detached', halt, timer });
+  }
+
+  /** Answers the failed take's waiting sends with the halted marker, and takes the chain again or waits. */
+  function failTake(sends: JsonRpcRequest[], reason: RemoteChainHalt, transition: Transition<LeaseMachine>): void {
+    for (const message of sends) {
+      transition.emitSideEffect({ kind: 'answerHalted', message });
     }
-    current = null;
-    spell = createSpell();
-    noteHalt(slot.haltedBy);
-    schedule();
+    retake({ reason, tried: true }, transition);
   }
 
-  function noteHalt(reason: RemoteChainHalt): void {
-    haltedBy = reason;
-    redial.noteHalt(key, reason);
-  }
-
-  // Only a halt and a failed heal schedule, and the wait ends with its spell, so a detached lease has one at a time.
-  function schedule(): void {
-    const { signal } = spell.ended;
-    void waits.call(heal, { pool: waitPool, delay: waitMs(), signal }).catch((error: unknown) => {
-      // A take that holds the chain, or a release, cancels the waiting heal, which is no failure.
-      if (signal.aborted && error === signal.reason) {
-        return;
-      }
-      reportHealDefect(error, `${logTag} ${holder}'s heal of ${key} failed:`);
-    });
-  }
-
-  // A heal queued behind one that took the chain, or left after the release, finds the work done.
-  function heal(): void {
-    if (current !== null || released.signal.aborted) {
-      return;
-    }
-    if (!tryDial()) {
-      schedule();
-      return;
-    }
-    if (retake() !== 'ok') {
-      schedule();
-    }
-  }
-
-  // A send tries once and never schedules, since the wait a halt scheduled is still pending.
-  function tryHealOnSend(): JsonRpcConnection | null {
-    if (!tryDial()) {
-      return null;
-    }
-    retake();
-    return current;
-  }
-
-  // A spell whose take failed waits on the gate even while the chain is up, since that chain refused this lease and a
-  // free join would take it again at once.
-  function pickDial(): Pick<ChainRedial, 'tryDial' | 'waitMs'> {
-    return spell.tried ? { tryDial: redial.tryDialGate, waitMs: redial.gateWaitMs } : redial;
-  }
-
-  function tryDial(): boolean {
-    return pickDial().tryDial(key, haltedBy);
-  }
-
-  function waitMs(): number {
-    return pickDial().waitMs(key, haltedBy);
-  }
-
-  function retake(): AttachOutcome | 'error' {
+  /** Takes the chain again. Its answer is queued, so a release or a send heard during the attach is handled first. */
+  function startTake(
+    reason: RemoteChainHalt,
+    sends: JsonRpcRequest[],
+    { emitState, update }: Transition<LeaseMachine>,
+  ): void {
+    emitState({ kind: 'taking', reason, sends });
+    const take: Take = {};
+    let answer: TakeAnswer;
     try {
-      const outcome = take();
-      countHeal(outcome);
-      return outcome;
-    } catch (error: unknown) {
-      reportHealDefect(error, `${logTag} ${holder} could not take ${key} again:`);
-      return 'error';
+      answer = attach(error => {
+        update({ kind: 'leaseHalted', take, error });
+      });
+    } catch (error) {
+      answer = { kind: 'threw', error };
     }
+    update({ kind: 'taken', take, answer });
   }
 
   function reportHealDefect(error: unknown, message: string): void {
     report.defect(error, { step: 'chain_heal', metric: chainPoolHealMetric, message });
-  }
-
-  function countHeal(outcome: AttachOutcome): void {
-    report.log.debug(`${logTag} ${key} taken again by ${holder}: ${outcome}`);
-    switch (outcome) {
-      case 'ok':
-        chainPoolHealMetric.count({ outcome: 'ok' });
-        return;
-      case 'halted':
-        chainPoolHealMetric.count({ outcome: 'error', reason: 'halted' });
-        return;
-      case 'no_transport':
-        chainPoolHealMetric.count({ outcome: 'error', reason: 'no_transport' });
-        return;
-    }
-  }
-
-  function createSpell(): Spell {
-    return { ended: new AbortController(), tried: false };
-  }
-
-  function answerHalted(message: JsonRpcRequest): void {
-    // A notification has nothing to answer.
-    if (message.id === undefined || message.id === null) {
-      return;
-    }
-    onMessage(createJsonRpcError(message.id, createChainHaltedError()));
   }
 }

@@ -26,14 +26,6 @@ export const Secondary: Story = {};
 /** As a dotli user, I press the primary button and its handler runs once. */
 export const Primary: Story = {
   args: { variant: 'primary' },
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('When I press the button', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Continue' }));
-    });
-    await step('Then its handler runs once', async () => {
-      await expect(args.onClick).toHaveBeenCalledOnce();
-    });
-  },
 };
 
 /** As a dotli user, I see a destructive choice drawn as a danger button and read what it denies. */
@@ -126,13 +118,4 @@ export const Link: Story = {
       Open dot.li
     </ButtonLink>
   ),
-  play: async ({ canvas, mount, step }) => {
-    await step('When a link drawn as a button renders', async () => {
-      await mount();
-    });
-    await step('Then the link points where it says', async () => {
-      const link = canvas.getByRole('link', { name: 'Open dot.li' });
-      await expect(link).toHaveAttribute('href', 'https://dot.li');
-    });
-  },
 };

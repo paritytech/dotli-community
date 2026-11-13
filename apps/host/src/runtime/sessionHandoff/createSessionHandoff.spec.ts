@@ -114,21 +114,6 @@ describe('session handoff, opener side', () => {
     expect(page.metrics.counted('session_window.signin')).toEqual([{ outcome: 'opened', reason: 'phrase' }]);
   });
 
-  it('As a user resuming a sign-in made elsewhere, I open the window and its request carries the resume intent', () => {
-    // Given a resume round whose window is open
-    const page = createPage();
-    void page.handoff.signIn('resume');
-    const window = must(page.windows[0], 'the window');
-
-    // When the window says ready
-    page.post({ data: READY, origin: ROOT, source: window });
-
-    // Then the request names resume, the hello carries the request's round and the open is counted under resume
-    expect(page.opened[0]?.params).toMatchObject({ intent: 'resume' });
-    expect(window.posted).toEqual([createHelloPost('round-1')]);
-    expect(page.metrics.counted('session_window.signin')).toEqual([{ outcome: 'opened', reason: 'resume' }]);
-  });
-
   it('As a user on a dot.li page, I open a window for every sign-in and sign-out and each gets a fresh round in its URL', () => {
     // Given a page with no window open
     const page = createPage();
@@ -204,25 +189,6 @@ describe('session handoff, opener side', () => {
     expect(page.countListeners()).toBe(2);
   });
 
-  it('As a user signing in on a dot.li page, I see my window send a malformed result for my round and the page keeps the round going', () => {
-    // Given a sign-in round whose window is open
-    const page = createPage();
-    void page.handoff.signIn('signin');
-    const window = must(page.windows[0], 'the window');
-
-    // When my window sends a result for my round that is no session result, and a result message with none at all
-    page.post({
-      data: createWindowResult('round-1', { session: { uiState: null }, localWallet: null }),
-      origin: ROOT,
-      source: window,
-    });
-    page.post({ data: { type: 'dotli:s:result', round: 'round-1' }, origin: ROOT, source: window });
-
-    // Then the round goes on and still hears its window
-    expect(page.metrics.counted('session_window.round')).toEqual([]);
-    expect(page.countListeners()).toBe(2);
-  });
-
   it('As a user signing in on a dot.li page, I see the window refuse the page and the round ends refused', async () => {
     // Given a sign-in round whose window is open
     const page = createPage();
@@ -291,21 +257,6 @@ describe('session handoff, opener side', () => {
 
     // Then the round ends with that result
     expect(await outcome).toEqual({ kind: 'result', result: createSessionResult('0x01') });
-  });
-
-  it('As a user signing in on a dot.li page, I close my window as it posts an unknown message and the page keeps the round going', () => {
-    // Given a sign-in round whose window is open
-    const page = createPage();
-    void page.handoff.signIn('signin');
-    const window = must(page.windows[0], 'the window');
-
-    // When the window posts a message of a type I do not know, and is closed
-    window.closed = true;
-    page.post({ data: { type: 'dotli:s:unknown', round: 'round-1' }, origin: ROOT, source: window });
-
-    // Then the round goes on until the page finds the window closed
-    expect(page.metrics.counted('session_window.signin')).toEqual([{ outcome: 'opened', reason: 'signin' }]);
-    expect(page.countListeners()).toBe(2);
   });
 
   it('As a user signing in on a dot.li page, I come back to the page after closing my window and the round ends cancelled', async () => {
@@ -397,18 +348,17 @@ describe('session handoff, opener side', () => {
     expect(page.opened[1]?.params).toMatchObject({ intent: 'phrase' });
   });
 
-  it('As a user signing in on a dot.li page, I see my window say ready again after a reload and every ready gets a hello for my round on the root origin', () => {
+  it('As a user signing in on a dot.li page, I see my window say ready in another version beside mine and it gets a hello for my round on the root origin', () => {
     // Given a sign-in round whose window is open
     const page = createPage();
     void page.handoff.signIn('signin');
     const window = must(page.windows[0], 'the window');
 
-    // When the window says ready twice, the second time after a reload, once speaking another version beside mine
-    page.post({ data: READY, origin: ROOT, source: window });
+    // When the window says ready speaking another version beside mine
     page.post({ data: { type: 'dotli:s:ready', versions: [2, 1] }, origin: ROOT, source: window });
 
-    // Then each ready is answered with version 1 and my round, each time to the root origin
-    expect(window.posted).toEqual([createHelloPost('round-1'), createHelloPost('round-1')]);
+    // Then the ready is answered with version 1 and my round, to the root origin
+    expect(window.posted).toEqual([createHelloPost('round-1')]);
   });
 
   it('As a user signing out on a dot.li page while a sign-in round is open, I sign out and that round ends first', async () => {
@@ -449,22 +399,6 @@ describe('session handoff, opener side', () => {
     expect(window.closedByPage).toBe(1);
     expect(page.metrics.counted('session_window.signin')).toEqual([{ outcome: 'opened', reason: 'signin' }]);
     expect(page.metrics.counted('session_window.round')).toEqual([{ outcome: 'signed_in', reason: 'store' }]);
-  });
-
-  it('As a user signing in on a dot.li page, I sign in again once the last round ended and a new round starts', async () => {
-    // Given a round the page cancelled
-    const page = createPage();
-    const first = page.handoff.signIn('signin');
-    page.handoff.cancel('page');
-    await first;
-
-    // When the user signs in again and the new window says ready
-    void page.handoff.signIn('signin');
-    page.post({ data: READY, origin: ROOT, source: page.windows[1] });
-
-    // Then a second window opened in the call and heard the new round
-    expect(page.opened).toHaveLength(2);
-    expect(page.windows[1]?.posted).toEqual([createHelloPost('round-2')]);
   });
 
   it('As a user signing out on a dot.li page, I sign out and the sign-out window opens inside the call', () => {
@@ -644,7 +578,7 @@ describe('session handoff, opener side', () => {
     expect(read).toBe(true);
   });
 
-  it('As a user signing out on a dot.li page whose browser blocks the window, I sign out and the read settles at once with no window to wait on', async () => {
+  it('As a user signing out on a dot.li page whose browser blocks the window, I sign out, the flag goes and the read settles at once with no window to wait on', async () => {
     // Given a browser that blocks the window
     const page = createPage({ blocked: true });
 
@@ -652,37 +586,12 @@ describe('session handoff, opener side', () => {
     page.handoff.signOut({ notified: false });
     const read = page.handoff.signOutRead();
 
-    // Then no window will read anything, so nothing waits on one
+    // Then the flag went all the same, and no window will read anything, so nothing waits on one
     await expect(read).resolves.toBeUndefined();
+    expect(page.presence.calls).toEqual(['clear']);
     expect(page.countListeners()).toBe(0);
     expect(page.opened[0]?.params).not.toHaveProperty('notified');
     expect(page.metrics.counted('session_window.signout')).toEqual([{ outcome: 'blocked', reason: 'unnotified' }]);
-  });
-
-  it('As a signed-in user, I sign out and the flag drops in the same turn the window opens', () => {
-    // Given a page with no window open
-    const page = createPage();
-
-    // When the user signs out
-    page.handoff.signOut({ notified: true });
-
-    // Then the window opened and the flag went before the call returned
-    expect(page.windows).toHaveLength(1);
-    expect(page.presence.calls).toEqual(['clear']);
-  });
-
-  it('As a signed-in user whose sign-out window is blocked, I sign out and its read is settled at once', async () => {
-    // Given a browser that blocks the window
-    const page = createPage({ blocked: true });
-
-    // When the user signs out and the page asks for the read
-    page.handoff.signOut({ notified: true });
-    const read = page.handoff.signOutRead();
-
-    // Then the flag went all the same, and nothing is left to wait for
-    expect(page.presence.calls).toEqual(['clear']);
-    expect(page.countListeners()).toBe(0);
-    await expect(read).resolves.toBeUndefined();
   });
 
   it('As a user signing in on a dot.li page with no sign-out window open, I ask for the sign-out read and get a settled one', async () => {

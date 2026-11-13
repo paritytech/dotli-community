@@ -4,10 +4,10 @@
 export { blockCache } from './blockCache.js';
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord } from './chat.js';
 export { chat } from './chat.js';
-export type { CachedManifests } from './cidCache.js';
+export type { CachedCid, CachedManifests } from './cidCache.js';
 export { cidCache } from './cidCache.js';
 export { isExpectedDbError } from './isExpectedDbError.js';
-export type { LocalWallet, LocalWalletIdentity, LocalWalletStore } from './localWallet.js';
+export type { LocalWalletStore } from './localWallet.js';
 export { createLocalWalletStore, localWallet } from './localWallet.js';
 export { LocalWalletUnreadableError } from './localWalletUnreadableError.js';
 export type { ScheduledNotificationRecord } from './scheduledNotifications.js';

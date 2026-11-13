@@ -30,13 +30,10 @@ export type ChatButtonProps = {
 export function ChatButton(props: ChatButtonProps): JSX.Element {
   let button: HTMLButtonElement | undefined;
 
-  let wasOpen = false;
   createEffect(
     () => props.open(),
-    isOpen => {
-      const closed = wasOpen && !isOpen;
-      wasOpen = isOpen;
-      if (!closed) {
+    (isOpen, wasOpen) => {
+      if (isOpen || wasOpen !== true) {
         return;
       }
       if (isFocusLostOrInside(props.panel())) {

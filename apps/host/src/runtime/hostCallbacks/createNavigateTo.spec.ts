@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { withActiveTld } from '@dotli/config';
+import { BASE_DOMAIN, withActiveTld } from '@dotli/config';
 import { createNavigateTo, type NavigationPage } from './createNavigateTo.js';
 
 type Params = {
-  /** The host's local root, `localhost` by default. */
-  localRoot?: string;
+  /** The host's local root, or null on a deployed tab. `localhost` by default. */
+  localRoot?: string | null;
   /** The tab's protocol, `http:` by default. */
   protocol?: string;
 };
 
 type HandOffCase = {
-  /** The host's local root. */
-  localRoot: string;
+  /** The host's local root, or null on a deployed tab. */
+  localRoot: string | null;
   /** The tab's protocol. */
   protocol: string;
   /** The product or localhost app the product opens. */
@@ -48,19 +48,12 @@ describe('OpenUrl host callback', () => {
       url: 'localhost:5199/path?q=1',
       target: `http://localhost:${PORT}/localhost:5199/path?q=1`,
     },
-    // Another dotNS product from local.host, which moves to its local.host subdomain
+    // Another dotNS product from a deployed tab, which moves to its subdomain of the deployed domain
     {
-      localRoot: 'local.host',
+      localRoot: null,
       protocol: 'https:',
       url: `https://${withActiveTld('dim2')}/play`,
-      target: `https://dim2.local.host:${PORT}/play`,
-    },
-    // A localhost product from local.host, which moves into the local.host proxy path
-    {
-      localRoot: 'local.host',
-      protocol: 'https:',
-      url: 'localhost:5199/path',
-      target: `https://local.host:${PORT}/localhost:5199/path`,
+      target: `https://dim2.${BASE_DOMAIN}/play`,
     },
   ])(
     'As a product user under $localRoot, I hand off to $url and the current tab moves to $target',

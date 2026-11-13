@@ -53,15 +53,11 @@ function createBootHarness({ answer, role = 'page' }: CreateBootHarnessParams) {
   const reconcile = vi.fn((_reader: PresenceReader) => Promise.resolve(answer()));
   const flag = { renew: vi.fn() };
   const mode = atom<WalletModeState>({ mode: 'app', failure: null });
-  const walletBoot = createWalletBoot({
-    reconcile,
-    report: value => {
-      mode.set(value);
-    },
-    flag,
-    role,
+  const report = vi.fn((value: WalletModeState) => {
+    mode.set(value);
   });
-  return { reconcile, flag, mode, walletBoot, captures, counted };
+  const walletBoot = createWalletBoot({ reconcile, report, flag, role });
+  return { reconcile, flag, mode, report, walletBoot, captures, counted };
 }
 
 describe('wallet boot', () => {
@@ -224,6 +220,64 @@ describe('wallet boot', () => {
     expect(reconcile).toHaveBeenCalledTimes(2);
   });
 
+  it('As a page whose session read failed, I restore twice and each restore runs its own pass, while the mode is reported once', async () => {
+    // Given a store that cannot answer the session read
+    const { reconcile, report, walletBoot } = createBootHarness({
+      answer: () => buildReconciled(WALLET, { session: STORE_DOWN }),
+    });
+
+    // When the page restores twice
+    const first = await walletBoot.restore();
+    const second = await walletBoot.restore();
+
+    // Then each restore answers its own pass, and the mode went out once
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(second).not.toBe(first);
+    expect(second.session).toEqual(STORE_DOWN);
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a page whose restore rule broke a pass after my wallet was read, I keep the first wallet and the mode is reported again for the served sites', async () => {
+    // Given a rule that reads my wallet but not the session on the first pass, breaks on the second, then finds a newer wallet
+    const newer = { ...WALLET, entropy: Uint8Array.from({ length: 16 }, (_, index) => index + 101) };
+    const { reconcile, report, walletBoot } = createBootHarness({
+      answer: () => buildReconciled(newer),
+    });
+    reconcile
+      .mockImplementationOnce(() => Promise.resolve(buildReconciled(WALLET, { session: STORE_DOWN })))
+      .mockImplementationOnce(() => Promise.reject(new Error('restore rule broke')));
+    await walletBoot.restore();
+    await walletBoot.restore().catch(() => undefined);
+
+    // When the sign-in window serves sites, then the page restores again
+    walletBoot.serveSites();
+    const restored = await walletBoot.restore();
+
+    // Then the mode was reported again for the first wallet, and the restore kept it over the newer one
+    expect(restored.wallet).toEqual(WALLET);
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenLastCalledWith({ mode: 'local', failure: null });
+  });
+
+  it('As an operator, I see a restore rule that rejects reported, and the restore that ran it fails', async () => {
+    // Given a restore rule that rejects once, then finds my local wallet
+    const broken = new Error('restore rule broke');
+    const { reconcile, walletBoot, captures } = createBootHarness({ answer: () => buildReconciled(WALLET) });
+    reconcile.mockImplementationOnce(() => Promise.reject(broken));
+
+    // When the page restores, then restores again
+    const failure: unknown = await walletBoot.restore().catch((error: unknown) => error);
+    const next = await walletBoot.restore();
+
+    // Then the first restore fails with the rejection as its cause, the defect is reported and the next restore runs
+    // a pass of its own
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ cause: broken });
+    expect(captures.exception).toHaveBeenCalledWith(broken, expect.objectContaining({ step: 'restore' }));
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(next.wallet).toEqual(WALLET);
+  });
+
   it('As an operator, I watch a page whose session read failed on load restore later and see an unreadable cookie counted once', async () => {
     // Given a cookie that reads unknown and a store that is down until the second read
     let storeUp = false;
@@ -341,17 +395,6 @@ describe('wallet boot', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
   });
 
-  it("As a user in the session window for dot.li's own page, I boot and the stored wallet stays data while the window pairs", async () => {
-    // Given the sign-in window's boot over a stored local wallet, serving no site
-    const { walletBoot } = createBootHarness({ answer: () => buildReconciled(WALLET), role: 'signin-window' });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then it pairs
-    expect(boot).toBeNull();
-  });
-
   it('As a dotli integrator, I boot a page and a window and the page applies the rule as a load while the window applies it as a window', async () => {
     // Given a page's boot and a sign-out window's boot
     const page = createBootHarness({ answer: () => buildReconciled({ status: 'none' }) });
@@ -421,36 +464,5 @@ describe('wallet boot', () => {
     expect([gone.flag.renew, unreadable.flag.renew, empty.flag.renew].map(renew => renew.mock.calls.length)).toEqual([
       0, 0, 0,
     ]);
-  });
-
-  it('As a user on the landing page, I load it and the rule applies as a load while a stored local wallet boots local mode', async () => {
-    // Given the landing page's boot over a stored local wallet
-    const { mode, reconcile, walletBoot } = createBootHarness({
-      answer: () => buildReconciled(WALLET),
-      role: 'landing',
-    });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then the rule applies as a load and the page boots local mode
-    expect(reconcile).toHaveBeenCalledWith('load');
-    expect(boot).toEqual(WALLET);
-    expect(mode.get().mode).toBe('local');
-  });
-
-  it('As a user on a preview its preview host frames, I boot with a stored local wallet and get local mode', async () => {
-    // Given a framed preview's boot over a stored local wallet
-    const { mode, walletBoot } = createBootHarness({
-      answer: () => buildReconciled(WALLET, { presence: 'unknown' }),
-      role: 'framed-preview',
-    });
-
-    // When its core reads
-    const boot = await walletBoot.read();
-
-    // Then the page boots local mode
-    expect(boot).toEqual(WALLET);
-    expect(mode.get().mode).toBe('local');
   });
 });

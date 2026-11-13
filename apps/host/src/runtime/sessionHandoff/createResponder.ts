@@ -128,10 +128,10 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
   }
 
   function refuseOpener(origin: string, verdict: Exclude<SessionOpenerVerdict, 'allowed'>): void {
-    store.set({ kind: 'refused' });
     // The round, which the opener already knows, and a fixed reason, so a refused page learns nothing about the main
     // store.
     post(createRefusedMessage(round, 'origin_not_allowed'), origin);
+    store.set({ kind: 'refused' });
     // The origin is the opener's to choose, so it goes to the log line and only the verdict to the count.
     log.warn(`[dot.li] Session window refused its opener (${verdict}): ${origin}`);
     sessionWindowRefusedMetric.count({ outcome: 'refused', reason: verdict });

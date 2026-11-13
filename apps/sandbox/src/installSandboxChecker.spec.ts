@@ -31,8 +31,26 @@ class FakeXhr {
   }
 }
 
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  readonly url: string;
+  constructor(url: string) {
+    this.url = url;
+  }
+}
+
 /** A product page on https://app.example with the APIs the checker wraps, and the violations it reported. */
-function createProductPage() {
+function createProductPage({
+  globals = {},
+  lockedGlobals = {},
+  storageDenied = false,
+}: {
+  globals?: Record<string, unknown>;
+  /** Globals an extension defined as non-configurable before the checker ran. */
+  lockedGlobals?: Record<string, unknown>;
+  /** The browser blocks this origin's storage, so reading either storage throws. */
+  storageDenied?: boolean;
+} = {}) {
   const fetched: unknown[] = [];
   const timers: (() => void)[] = [];
   const page = {
@@ -53,7 +71,20 @@ function createProductPage() {
       timers.push(run);
       return 0;
     },
+    ...globals,
   };
+  for (const [name, value] of Object.entries(lockedGlobals)) {
+    Object.defineProperty(page, name, { value, writable: true, configurable: false });
+  }
+  if (storageDenied) {
+    for (const name of ['localStorage', 'sessionStorage']) {
+      Object.defineProperty(page, name, {
+        get: () => {
+          throw new DOMException('The operation is insecure.', 'SecurityError');
+        },
+      });
+    }
+  }
   const violations: Violation[] = [];
   // The checker wraps a whole page, and the fake carries only the globals it reaches.
   installSandboxChecker(page as unknown as CheckedPage, (api, { details } = {}) => {
@@ -62,6 +93,8 @@ function createProductPage() {
   return {
     // The same fake, typed as the page the product sees.
     page: page as unknown as CheckedPage & { document: FakeDocument },
+    // The wallet globals are no members of the page's type, so the product reaches them by name.
+    wallets: page as unknown as Record<string, unknown>,
     fetched,
     violations,
     elapse: () => {
@@ -100,11 +133,46 @@ describe('the sandbox checker', () => {
     expect(violations.map(v => v.api)).toEqual(['createElement(iframe)', 'Direct storage access (cookie)']);
   });
 
+  it('As a product developer, I open a cross-origin request with a method the page cannot post, and it is reported as text', () => {
+    // Given
+    const { page, violations } = createProductPage();
+    const request = new page.XMLHttpRequest();
+
+    // When the method is a function, which a page message cannot carry
+    // The product may pass anything, which the DOM types refuse.
+    Reflect.apply(request.open.bind(request), request, [() => 'GET', 'https://tracker.example/pixel']);
+
+    // Then
+    expect(violations.map(v => typeof v.details?.['method'])).toEqual(['string']);
+  });
+
+  it('As a product developer, I open a socket to another origin and it is reported while it stays a WebSocket', () => {
+    // Given a page with WebSocket
+    const { page, violations } = createProductPage({ globals: { WebSocket: FakeWebSocket } });
+
+    // When
+    const socket = new page.WebSocket('wss://relay.example');
+
+    // Then
+    expect(violations).toEqual([{ api: 'WebSocket', details: { url: 'wss://relay.example' } }]);
+    expect(socket).toBeInstanceOf(page.WebSocket);
+    expect(page.WebSocket.OPEN).toBe(1);
+  });
+
+  it('As a product developer whose browser blocks storage, I write a cookie and it is still reported', () => {
+    // Given a page whose storage the browser blocks
+    const { page, violations } = createProductPage({ storageDenied: true });
+
+    // When
+    page.document.cookie = 'a=1';
+
+    // Then
+    expect(violations.map(v => v.api)).toEqual(['Direct storage access (cookie)']);
+  });
+
   it('As a product developer, I use a wallet extension once it registered and only my use is reported, not its registration', () => {
     // Given an extension that registers while the page loads, and reads it back
-    const { page, violations, elapse } = createProductPage();
-    // The wallet globals are no members of the page's type, so the product reaches them by name.
-    const globals = page as unknown as Record<string, unknown>;
+    const { wallets: globals, violations, elapse } = createProductPage();
     globals['injectedWeb3'] = { wallet: {} };
     const readWhileLoading = globals['injectedWeb3'];
     const reportedWhileLoading = [...violations];
@@ -122,5 +190,56 @@ describe('the sandbox checker', () => {
       { api: 'Direct wallet access (injectedWeb3)', details: { action: 'read' } },
       { api: 'Direct wallet access (injectedWeb3)', details: { action: 'write' } },
     ]);
+  });
+
+  it('As a product developer, I open a page where two extensions register into injectedWeb3 and neither registration is reported', () => {
+    // Given a page whose first extension registered into a fresh injectedWeb3
+    const { wallets: globals, violations } = createProductPage();
+    const register = (name: string): void => {
+      globals['injectedWeb3'] = globals['injectedWeb3'] ?? {};
+      (globals['injectedWeb3'] as Record<string, unknown>)[name] = { enable: true };
+    };
+    register('polkadot-js');
+
+    // When a second extension registers into the same injectedWeb3
+    register('talisman');
+
+    // Then
+    expect(violations).toEqual([]);
+  });
+
+  it('As a product developer, I overwrite a wallet global an extension set before the checker ran and my write is reported', () => {
+    // Given a page whose ethereum an extension set before the checker installed
+    const {
+      wallets: pageGlobals,
+      violations,
+      elapse,
+    } = createProductPage({ globals: { ethereum: { extension: true } } });
+
+    // When the page settles and the product writes ethereum
+    elapse();
+    pageGlobals['ethereum'] = {};
+
+    // Then only the write is reported
+    expect(violations).toEqual([{ api: 'Direct wallet access (ethereum)', details: { action: 'write' } }]);
+  });
+
+  it('As a product developer, I open a page where an extension locked one wallet global and the other wallet globals are still trapped', () => {
+    // Given a page whose injectedWeb3 an extension defined as non-configurable before the checker installed
+    const {
+      wallets: pageGlobals,
+      violations,
+      elapse,
+    } = createProductPage({
+      lockedGlobals: { injectedWeb3: { extension: true } },
+    });
+    pageGlobals['ethereum'] = { extension: true };
+
+    // When the page settles and the product writes ethereum
+    elapse();
+    pageGlobals['ethereum'] = {};
+
+    // Then the write is reported
+    expect(violations).toEqual([{ api: 'Direct wallet access (ethereum)', details: { action: 'write' } }]);
   });
 });

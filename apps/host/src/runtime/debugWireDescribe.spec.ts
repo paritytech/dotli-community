@@ -12,7 +12,6 @@ import {
   type MethodIds,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
-  VersionedRemoteChainHeadHeaderRequest,
   VersionedRemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadUnpinError,
   VersionedHostSignRawRequest,
@@ -116,7 +115,7 @@ function isControlLeg(leg: Leg): leg is 'interrupt' | 'stop' {
 }
 
 describe('describeWireFrame', () => {
-  it("As a dotli integrator, I describe a chain frame and it carries the panel's legacy name and its decoded payload", () => {
+  it("As a dotli integrator, I describe a chain frame and it carries the panel's chain tag and its decoded payload", () => {
     // Given a chain follow start frame
     const bytes = encodePayload(VersionedRemoteChainHeadFollowRequest, {
       tag: 'V1',
@@ -126,7 +125,7 @@ describe('describeWireFrame', () => {
     // When it is described
     const described = describeWireFrame(getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START), bytes);
 
-    // Then it carries the legacy tag and the decoded payload
+    // Then it carries the chain tag and the decoded payload
     expect(described).toEqual({
       tag: 'remote_chain_head_follow_start',
       value: {
@@ -134,21 +133,6 @@ describe('describeWireFrame', () => {
         value: { genesisHash, withRuntime: true },
       },
     });
-  });
-
-  it('As a dotli integrator, I describe a chain request and its payload keeps the correlation fields', () => {
-    // Given a chain header request frame
-    const bytes = encodePayload(VersionedRemoteChainHeadHeaderRequest, {
-      tag: 'V1',
-      value: { genesisHash, followSubscriptionId: 'follow_0', hash: blockHash },
-    });
-
-    // When it is described
-    const described = describeWireFrame(getWireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST), bytes);
-
-    // Then it carries the legacy tag and its follow subscription id
-    expect(described.tag).toBe('remote_chain_head_header_request');
-    expect(described.value).toMatchObject({ value: { followSubscriptionId: 'follow_0' } });
   });
 
   it('As a dotli integrator, I describe a non-chain frame and it is named from the wire table without decoding', () => {
@@ -235,31 +219,10 @@ describe('describeWireFrame', () => {
       // When it is described
       const described = describeWireFrame(getWireFrameId(ids, MESSAGE_TYPE_RESPONSE), bytes);
 
-      // Then it carries the legacy tag and the decoded result
+      // Then it carries the chain tag and the decoded result
       expect(described).toEqual({ tag, value });
     },
   );
-
-  it('As a dotli integrator, I describe chainHead.follow stop and interrupt frames and they land in the chain swimlane with their raw bytes', () => {
-    // Given: control frames with no payload worth decoding.
-    const stopBytes = new Uint8Array([1, 2, 3]);
-    const interruptBytes = new Uint8Array([4, 5, 6]);
-    const stopFrame = getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_STOP);
-    const interruptFrame = getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_INTERRUPT);
-
-    // When both are described
-    const described = [describeWireFrame(stopFrame, stopBytes), describeWireFrame(interruptFrame, interruptBytes)];
-
-    // Then: legacy `remote_chain_*` tags so the swimlane layout keys on them,
-    // raw bytes preserved since there's no codec for these.
-    expect(described).toEqual([
-      { tag: 'remote_chain_head_follow_stop', value: { wireId: getWireFrameKey(stopFrame), bytes: stopBytes } },
-      {
-        tag: 'remote_chain_head_follow_interrupt',
-        value: { wireId: getWireFrameKey(interruptFrame), bytes: interruptBytes },
-      },
-    ]);
-  });
 
   it('As a local wallet user, I watch my wallet receive a signing request and see it decoded', () => {
     // Given a sign raw request frame
@@ -330,7 +293,7 @@ describe('describeWireFrame', () => {
   });
 });
 
-// Chain frames keep the legacy `remote_chain_*` tags the panel's swimlane keys on. These tests fail when the installed
+// Chain frames carry the `remote_chain_*` tags the panel's swimlane keys on. These tests fail when the installed
 // `@parity/truapi` adds, renames or reshapes a chain method the host does not yet describe.
 describe('chain-family drift guard', () => {
   it('As a dotli integrator, I describe every CHAIN_* wire-table frame and each is tagged and decoded', () => {
@@ -353,7 +316,7 @@ describe('chain-family drift guard', () => {
     );
   });
 
-  it("As a dotli integrator, I describe every chain frame and the tags reduce to the exact legacy vocabulary the panel's swimlane keys on", () => {
+  it("As a dotli integrator, I describe every chain frame and the tags reduce to the exact vocabulary the panel's swimlane keys on", () => {
     // Given every leg of every chain method
     const frames = listChainFrames();
 
@@ -364,7 +327,7 @@ describe('chain-family drift guard', () => {
       ),
     );
 
-    // Then: pins the exact current 16-entry legacy vocabulary as a literal snapshot, so it can't drift silently.
+    // Then: pins the exact 16-entry vocabulary as a literal snapshot, so it can't drift silently.
     expect(vocabulary).toEqual(
       new Set([
         'remote_chain_head_follow',

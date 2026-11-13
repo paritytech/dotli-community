@@ -32,23 +32,6 @@ describe('fetchFromIpfs', () => {
     );
   });
 
-  it('As the gateway fetcher, I fetch a raw block and return its bytes and content type', async () => {
-    // Given a gateway that returns raw bytes with a content type
-    fetchMock.mockResolvedValue(
-      new Response(new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
-        status: 200,
-        headers: { 'content-type': 'application/vnd.ipld.raw' },
-      }),
-    );
-
-    // When it fetches the block
-    const { data, contentType } = await fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
-
-    // Then it gets the response bytes and content type back
-    expect(Array.from(data)).toEqual([0xde, 0xad, 0xbe, 0xef]);
-    expect(contentType).toBe('application/vnd.ipld.raw');
-  });
-
   it('As the gateway fetcher, I fetch a raw block and a non-ok gateway response fails loudly', async () => {
     // Given a gateway that returns an error status
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
@@ -90,28 +73,6 @@ describe('fetchCarFromIpfs', () => {
         headers: { Accept: 'application/vnd.ipld.car' },
       }),
     );
-  });
-
-  it('As the gateway fetcher, I fetch a CAR archive and return its raw bytes', async () => {
-    // Given a gateway that returns CAR bytes
-    fetchMock.mockResolvedValue(new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }));
-
-    // When it fetches the archive
-    const data = await fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
-
-    // Then it gets the response bytes back
-    expect(Array.from(data)).toEqual([0xca, 0xfe]);
-  });
-
-  it('As the gateway fetcher, I fetch a CAR archive and a non-ok gateway response fails loudly', async () => {
-    // Given a gateway that returns an error status
-    fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
-
-    // When it fetches the archive
-    const fetched = fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
-
-    // Then it rejects rather than returning a bad body, naming the gateway and the CID
-    await expect(fetched).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 });
 

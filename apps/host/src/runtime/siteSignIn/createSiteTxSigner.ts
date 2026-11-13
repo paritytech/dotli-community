@@ -59,6 +59,7 @@ export function createSiteTxSigner({ acquire }: CoreCallsParams) {
      * {@link SiteTxError}, at once for a fee estimate.
      */
     creator(account: ProductAccountId, { onAsk }: CreatorParams = {}): TxCreator {
+      // eslint-disable-next-line @typescript-eslint/max-params -- papi's `TxCreator` fixes this signature
       return (input, _options, _bindings, mockedSignature) =>
         // A fee estimate would ask the phone to sign, so none is built.
         mockedSignature

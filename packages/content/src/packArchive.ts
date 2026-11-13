@@ -11,7 +11,7 @@ export type PackedArchive = {
 /** One buffer plus an offset index, so the Service Worker receives one transferable instead of one per file. */
 export function packArchive(files: ArchiveFiles): PackedArchive {
   const entries = Object.entries(files);
-  const index: { p: string; o: number; l: number }[] = [];
+  const index: PackedArchive['index'] = [];
   let totalSize = 0;
   for (const [, data] of entries) {
     totalSize += data.byteLength;

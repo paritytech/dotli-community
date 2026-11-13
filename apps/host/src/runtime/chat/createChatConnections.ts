@@ -9,6 +9,10 @@ import type {
   ProductRendererRenderRequest,
 } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
+import { createReporter } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
+
+const report = createReporter({ flow: 'chat' });
 
 /** Live handles for one product's Worker-kind core connection. */
 export type ChatConnection = {
@@ -29,6 +33,7 @@ export type ChatConnections = ReturnType<typeof createChatConnections>;
 export function createChatConnections() {
   // A stack per product, as a render registers before the one on screen goes.
   const connections = new Map<string, ChatConnection[]>();
+  const registrations = createListenerSet<string>({ onListenerError: report.listener('chat_connections.register') });
 
   return {
     /**
@@ -40,6 +45,7 @@ export function createChatConnections() {
       const stack = connections.get(productId) ?? [];
       stack.push(connection);
       connections.set(productId, stack);
+      registrations.emit(productId);
       return unregister;
 
       function unregister(): void {
@@ -54,6 +60,12 @@ export function createChatConnections() {
         }
       }
     },
+
+    /**
+     * Hears the product id of each registration, after the connection became the newest for it, until the returned
+     * unsubscribe. A listener that throws is reported, and the registration and the other listeners go on. Never throws.
+     */
+    onRegister: registrations.subscribe,
 
     /** The newest live connection for `productId`, or undefined while none is registered. Never throws. */
     get(productId: string): ChatConnection | undefined {

@@ -108,8 +108,8 @@ test('As a user whose page asks for the same block from two frames at once, the 
           results[event.data.id] = event.data;
         }
       });
-      window.parent.postMessage({ type: 'dotli:bitswap-get', id: 'held', cid: held }, '*');
-      window.parent.postMessage({ type: 'dotli:bitswap-get', id: 'answered', cid: answered }, '*');
+      window.parent.postMessage({ type: 'dotli:bitswap-get', id: 'held', cid: held, frame: 'e2e' }, '*');
+      window.parent.postMessage({ type: 'dotli:bitswap-get', id: 'answered', cid: answered, frame: 'e2e' }, '*');
     },
     [product.cid, sentinel.cid] as const,
   );

@@ -7,13 +7,14 @@ import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
 import { createCoreStorage, type HostCoreStorage } from './createCoreStorage.js';
 import { createNonOwnerSignInFlag } from './signInFlag.js';
-import { createSessionState, type PairingPresentation, type SessionState } from './createSessionState.js';
+import { createSessionState, type SessionState } from './createSessionState.js';
+import type { PairingPresentation } from './getCoreReport.js';
 import { atom, type WritableAtom } from 'nanostores';
 import { createChanges } from '../../testing/changes.js';
 import { recordNotified } from '../../testing/recordNotified.js';
 import type { LocalWalletBoot } from '../createWalletBoot.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { waitForStatus } from '@dotli/shared';
+import { noop, waitForStatus } from '@dotli/shared';
 import { catchError } from '@dotli/shared/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import type { DotliAuthState, Presence } from './types.js';
@@ -83,7 +84,7 @@ function waitForFailedRead(): Promise<void> {
 
 /** The core reporting a state, as its auth presenter does. */
 function reportFromCore(state: AuthState, pairing: PairingPresentation = PAIRING): void {
-  session.reportCoreAuthState(state, pairing);
+  session.reportCoreAuthState(state, pairing, () => true);
 }
 
 describe('session state', () => {
@@ -199,6 +200,30 @@ describe('session state', () => {
     expect(shared.reads.filter(key => key === SESSION_KEY)).toHaveLength(1);
   });
 
+  it('As a returning user whose restore rule broke on load, I am shown unreachable rather than left restoring', async () => {
+    // Given session state whose restore rejects
+    const broken = createSessionState({
+      store: coreStorage,
+      restore: () => Promise.reject(new Error('restore rule broke')),
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
+      setElsewhere: noop,
+      isLocalWallet: () => false,
+      isResumeOffered: () => isResumeOffered(role),
+    });
+
+    // When it starts
+    onTestFinished(broken.start());
+    await waitForStatus(auth, state => state.tag !== 'Restoring');
+
+    // Then the page leaves Restoring for Unreachable
+    expect(auth.get()).toEqual({ tag: 'Unreachable' });
+  });
+
   it('As a signed-out user, I lose the shared store and am shown unreachable, not signed out', async () => {
     // Given
     onTestFinished(session.start());
@@ -271,10 +296,12 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
-  it('As a signed-in user, I lose the shared store and stay signed in', () => {
-    // Given
+  it('As a signed-in user, I lose the shared store and stay signed in', async () => {
+    // Given a page signed in from its saved copy
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     onTestFinished(session.start());
-    auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    await waitForStatus(auth, state => state.tag === 'Connected');
 
     // When
     shared.setStatus('unavailable');
@@ -356,23 +383,40 @@ describe('session state', () => {
     expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
-  it('As a user with a paired session, I load the page and its cached account is read while the restore still reads the session', async () => {
-    // Given a stored session and its cached account, with every read held
-    await coreStorage.createAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+  it('As a page, I change the copy twice while a read runs and the later read is the last word', async () => {
+    // Given a page whose core reported signed out, each read answering the copy as it was when the read began
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Disconnected');
+    reportFromCore({ tag: 'Disconnected' });
     shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    onTestFinished(() => {
+      gate.resolve();
+    });
     shared.readGate = gate.promise;
-    shared.reads.length = 0;
+    const begun: PromiseWithResolvers<void> = Promise.withResolvers();
+    const read = shared.read.bind(shared);
+    shared.read = async key => {
+      const held = shared.entries.get(key) ?? null;
+      begun.resolve();
+      await read(key);
+      return held;
+    };
+    const states = recordNotified(auth);
+    const countSessionReads = (): number => shared.reads.filter(key => key === SHARED_CORE_SESSION_KEY).length;
+    const readsBefore = countSessionReads();
+    shared.changeFromOtherTab(SESSION_KEY, '0x010203');
+    await begun.promise;
 
-    // When the session state starts
-    onTestFinished(session.start());
-    const readsWhileHeld = [...shared.reads];
+    // When the copy changes twice while that read runs, the last change leaving it empty
+    shared.changeFromOtherTab(SESSION_KEY, '0x040506');
+    shared.changeFromOtherTab(SESSION_KEY, '');
     gate.resolve();
-    await waitForAuth(() => auth.get().tag === 'Connected');
+    await waitForAuth(() => states.length === 2);
 
-    // Then both reads were issued while the gate was held
-    expect(readsWhileHeld).toContain(SESSION_KEY);
-    expect(readsWhileHeld).toContain(UI_STATE_CACHE_KEY);
+    // Then the read that began first showed its sign-in, and one read after both changes withdrew it
+    expect(states).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }, { tag: 'Disconnected' }]);
+    expect(countSessionReads() - readsBefore).toBe(2);
   });
 
   it('As a user whose page refreshes its session after a change, I see the cached account read only after the session', async () => {
@@ -414,40 +458,39 @@ describe('session state', () => {
     expect(metrics.counted('shared_session.ui_cache')).toEqual([]);
   });
 
-  it("As a visitor whose shared store is down, I load the page and the cached account's read failure is counted beside the session's", async () => {
-    // Given a shared store that cannot be read
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    shared.readError = UNREACHABLE;
-
-    // When the session state starts
-    onTestFinished(session.start());
-    await waitForStatus(auth, state => state.tag === 'Unreachable');
-
-    // Then the cached account's failed read is counted
-    // Its own read chain reports it, apart from the session read that showed the store down.
-    await expect.poll(() => metrics.counted('shared_session.ui_cache')).toEqual([{ outcome: 'error', reason: 'read' }]);
-  });
-
   it('As a dotli integrator, I start session state twice and it keeps one subscription to the shared store', () => {
     // Given session state started once
-    const first = session.start();
+    session.start();
     const once = shared.statusListenerCount();
 
     // When it starts again
     const second = session.start();
 
     // Then
-    expect(second).toBe(first);
     expect(shared.statusListenerCount()).toBe(once);
 
-    // When the one stop runs
-    first();
+    // When the second call's stop runs
+    second();
 
-    // Then
+    // Then the follow both calls share has ended
     expect(shared.statusListenerCount()).toBe(0);
   });
 
-  it('As a dotli integrator, I dispose session state and a session read that failed after it leaves a core sign-out a plain logout', async () => {
+  it('As a dotli integrator, I stop session state with the stop of a follow that ended and the follow begun since goes on', () => {
+    // Given session state started and stopped, then started again
+    const ended = session.start();
+    ended();
+    onTestFinished(session.start());
+    const following = shared.statusListenerCount();
+
+    // When the ended follow's stop runs again
+    ended();
+
+    // Then
+    expect(shared.statusListenerCount()).toBe(following);
+  });
+
+  it('As a dotli integrator, I dispose session state and a session read that failed and a core sign-out after it leave the auth state as it was', async () => {
     // Given a disposed session state
     const storage = coreStorage.createAdapters();
     session.dispose();
@@ -457,8 +500,25 @@ describe('session state', () => {
     await storage.readCoreStorage(AUTH_SESSION_KEY);
     reportFromCore({ tag: 'Disconnected' });
 
-    // Then the page shows a plain logout rather than an unreachable store
-    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+    // Then the page still shows the state it had before the dispose
+    expect(auth.get()).toEqual(RESTORING);
+  });
+
+  it('As a page, I dispose the session state while a read runs and the read writes nothing', async () => {
+    // Given a stored session whose read on load is held in flight
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers();
+    shared.readGate = gate.promise;
+    session.start();
+
+    // When the session state is disposed and the read then answers
+    session.dispose();
+    gate.resolve();
+    await session.retryRead();
+
+    // Then the page still shows the state it had before the dispose
+    expect(auth.get()).toEqual(RESTORING);
   });
 
   it('As a dotli integrator, I dispose started session state and it no longer follows the shared store or its stored session', async () => {
@@ -472,6 +532,43 @@ describe('session state', () => {
 
     // Then the page stays signed out and no listener of the store's status or stored-session changes is left
     expect(auth.get()).toEqual({ tag: 'Disconnected' });
+    expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As the host, I start session state disposed before it ever started and it subscribes to nothing', () => {
+    // Given session state disposed before it ever started
+    session.dispose();
+
+    // When it starts
+    session.start();
+
+    // Then no listener of the store's status is left
+    expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As the host, I dispose session state from within its start and it follows nothing', () => {
+    // Given session state whose restore disposes it as the start reads it
+    const reentered = createSessionState({
+      store: coreStorage,
+      restore: () => {
+        reentered.dispose();
+        return new Promise<never>(noop);
+      },
+      auth: {
+        store: auth,
+        set: next => {
+          auth.set(next);
+        },
+      },
+      setElsewhere: noop,
+      isLocalWallet: () => false,
+      isResumeOffered: () => isResumeOffered(role),
+    });
+
+    // When it starts
+    reentered.start();
+
+    // Then no listener of the store's status or stored-session changes is left
     expect(shared.statusListenerCount()).toBe(0);
   });
 
@@ -580,52 +677,6 @@ describe('session state', () => {
     expect(events).toEqual([{ tag: 'Disconnected' }]);
   });
 
-  it('As a dotli integrator, I reload after a login persisted the session and the cached session UI state is rehydrated', async () => {
-    // Given a login that persisted the session, then a reload
-    await coreStorage.createAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    const cached = shared.nextWrite(UI_STATE_CACHE_KEY);
-    reportFromCore({
-      tag: 'Connected',
-      value: buildConnectedSessionUiInfo(),
-    });
-    await cached;
-    reloadPage();
-    const events = recordNotified(auth);
-
-    // When the reloaded page reads it back
-    onTestFinished(session.start());
-    await waitForAuth(() => events.length === 1);
-
-    // Then
-    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
-  });
-
-  it('As a visitor without a saved session, I open the page and am shown signed out', async () => {
-    // Given a page with no saved session
-
-    // When
-    onTestFinished(session.start());
-    await waitForStatus(auth, state => state.tag === 'Disconnected');
-
-    // Then
-    expect(auth.get()).toEqual({ tag: 'Disconnected' });
-  });
-
-  it('As a user pairing when my copy changes, I keep my pairing and the change is left for the core', async () => {
-    // Given a page whose core pairs
-    onTestFinished(session.start());
-    await waitForStatus(auth, state => state.tag === 'Disconnected');
-    reportFromCore({ tag: 'Pairing', value: { deeplink: 'polkadotapp://pair' } }, { label: 'myapp' });
-    const reads = shared.reads.length;
-
-    // When the copy loses what it held
-    shared.changeFromOtherTab(SESSION_KEY, '');
-
-    // Then nothing read the copy for the page, and the pairing stays on show
-    expect(shared.reads).toHaveLength(reads);
-    expect(auth.get().tag).toBe('Pairing');
-  });
-
   it.each<{ label: string; cache: string | null; counted: unknown[] }>([
     { label: 'no cached account', cache: null, counted: [] },
     {
@@ -732,9 +783,11 @@ describe('session state', () => {
   });
 
   it('As a user whose logout found no core, I am shown signed out and my cached account stays for the next boot', async () => {
-    // Given
+    // Given a page signed in from its saved copy
+    shared.entries.set(SESSION_KEY, '0x010203');
     shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
-    auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    onTestFinished(session.start());
+    await waitForStatus(auth, state => state.tag === 'Connected');
 
     // When
     session.reportSignedOut();
@@ -842,7 +895,7 @@ describe('session state', () => {
 
     // When a core reports the session and the page's last core goes after it
     reportFromCore({ tag: 'Connected', value: buildConnectedSessionUiInfo() });
-    const reported = session.coreReport.get();
+    const reported = session.coreReport.get()?.auth;
     session.reportCoresGone();
     const afterTheCores = session.coreReport.get();
 
@@ -852,20 +905,6 @@ describe('session state', () => {
       { tag: 'Connected', session: CONNECTED_DETAIL },
       null,
     ]);
-  });
-
-  it('As a user whose live core signed me out, I get a session stored later and the copy shows it at once', async () => {
-    // Given a page whose live core reported signed out
-    onTestFinished(session.start());
-    await waitForStatus(auth, state => state.tag === 'Disconnected');
-    reportFromCore({ tag: 'Disconnected' });
-
-    // When a sign-in is installed
-    await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
-    await waitForStatus(auth, state => state.tag === 'Connected');
-
-    // Then the page shows the sign-in with its cached account, without waiting for the core
-    expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
   });
 
   it('As a user whose core signed me out, I see a stored sign-in and lose it once the store drops it', async () => {
@@ -941,17 +980,6 @@ describe('session state', () => {
 
     // Then the failed read showed nothing, and the control read showed the session with its cached account
     expect(states).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
-  });
-
-  it('As a signed-in user, I am signed out elsewhere and shown signed out at once', () => {
-    // Given a signed-in page
-    auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
-
-    // When a sign-out elsewhere is reported
-    session.reportSignedOut();
-
-    // Then the page shows signed out
-    expect(auth.get()).toEqual({ tag: 'Disconnected' });
   });
 
   describe('a sign-in made elsewhere', () => {
@@ -1056,9 +1084,11 @@ describe('session state', () => {
       expect(elsewhere).toBe(false);
     });
 
-    it('As a signed-in user, I come back to the page and later sign out and nothing waits at either point', () => {
-      // Given a signed-in page
-      auth.set({ tag: 'Connected', session: CONNECTED_DETAIL });
+    it('As a signed-in user, I come back to the page and later sign out and nothing waits at either point', async () => {
+      // Given a page signed in from its saved copy
+      shared.entries.set(SESSION_KEY, '0x010203');
+      onTestFinished(session.start());
+      await waitForStatus(auth, state => state.tag === 'Connected');
 
       // When a recheck reads the flag present
       session.reportFlag('present');

@@ -3,12 +3,13 @@
 
 import checkerScript from './head/checker.js?inline-script';
 
-/** `html` with the checker first in its `<head>`, or before everything when it has none. Never throws. */
+/**
+ * `html` with the checker first in its `<head>`, else right after a leading doctype, else before everything. Never
+ * throws.
+ */
 export function injectSandboxChecker(html: string): string {
   const tag = `<script>${checkerScript}</script>`;
-  if (html.includes('<head>')) {
-    // A replacer function, so no `$` pattern in the script is read as a replacement pattern.
-    return html.replace('<head>', () => '<head>' + tag);
-  }
-  return tag + html;
+  const at = /<head(?:\s[^>]*)?>/i.exec(html) ?? /^\s*<!doctype[^>]*>/i.exec(html);
+  const end = at === null ? 0 : at.index + at[0].length;
+  return html.slice(0, end) + tag + html.slice(end);
 }

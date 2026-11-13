@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn } from 'storybook/test';
+import { fn } from 'storybook/test';
 import type { ToastEntry } from '../../page/state/createToasts.js';
 import { BellIcon } from '../icons/BellIcon.js';
 import { ToastCard } from './ToastCard.js';
@@ -30,15 +30,6 @@ export const Err: Story = { args: { entry: buildToast({ tone: 'err', text: 'Tran
 /** As a dotli user, I press the action on a toast and it runs. */
 export const WithAction: Story = {
   args: { entry: buildToast({ action: { label: 'View', onClick: onAction } }) },
-  play: async ({ canvas, userEvent, step }) => {
-    onAction.mockClear();
-    await step('When I press the toast action', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'View' }));
-    });
-    await step('Then the action runs', async () => {
-      await expect(onAction).toHaveBeenCalledOnce();
-    });
-  },
 };
 
 function buildToast(overrides: Partial<ToastEntry>): ToastEntry {

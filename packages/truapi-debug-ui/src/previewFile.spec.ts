@@ -28,7 +28,7 @@ describe('archive preview', () => {
     expect(shown).toEqual({ kind: 'text', text: '<h1>hi</h1>' });
   });
 
-  it('As a dotli developer, I preview a binary file and it shows its size instead of its bytes', () => {
+  it('As a dotli developer, I preview a binary file and it reads as binary instead of text', () => {
     // Given
     const bytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0xff]);
 
@@ -45,5 +45,13 @@ describe('archive preview', () => {
 
     // Then
     expect(shown).toEqual({ kind: 'encrypted' });
+  });
+
+  it('As a dotli developer, I preview an image and it shows as an image of the type its extension names', () => {
+    // When
+    const shown = previewFile({ path: 'logo.PNG', bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) });
+
+    // Then
+    expect(shown).toEqual({ kind: 'image', type: 'image/png' });
   });
 });

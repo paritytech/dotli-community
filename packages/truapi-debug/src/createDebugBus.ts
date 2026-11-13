@@ -14,15 +14,23 @@ export type DebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
 export type DebugBus = ReturnType<typeof createDebugBus>;
 
-// Boot events fire while the lazily loaded panel is still loading. They are held until the first
-// subscriber attaches, replayed to it once, and then buffering stops for the session.
+// Boot events fire while the lazily loaded panel is still loading. They are held until the first subscriber attaches,
+// replayed to it once, and then buffering ends for the session, whether or not anything was held.
 const BUFFER_MAX = 512;
+
+/**
+ * Where the bus is in the page's life. `buffering` holds events for the first subscriber, and `replaying` queues the
+ * events emitted while that subscriber hears the held ones, so none overtakes the replay.
+ */
+type Phase =
+  | { kind: 'off' }
+  | { kind: 'buffering'; held: DebugBusEvent[] }
+  | { kind: 'replaying'; queued: DebugBusEvent[] }
+  | { kind: 'live' };
 
 /** Builds a debug bus that shares no state with any other, off until `enableBuffering`. */
 export function createDebugBus() {
-  let enabled = false;
-  let bufferingEnabled = false;
-  let bufferedEvents: DebugBusEvent[] = [];
+  let phase: Phase = { kind: 'off' };
   const listeners = createListenerSet<DebugBusEvent>({ onListenerError: report.listener('debug_bus.live') });
   // Watchers see live events only. They are not listeners, so they neither take the boot replay from the panel nor turn
   // on the emit sites gated by `hasListeners`.
@@ -33,7 +41,7 @@ export function createDebugBus() {
   return {
     /**
      * Turns the bus on and holds events until the first subscriber. Call as soon as the panel is known to mount, before
-     * any emit site runs.
+     * any emit site runs. A repeat does nothing.
      */
     enableBuffering,
     /**
@@ -49,36 +57,57 @@ export function createDebugBus() {
      */
     watch,
     /**
-     * Hears live events, and the held boot events once when it is the first subscriber. On a bus that is off it hears
-     * nothing and returns an unsubscribe that does nothing.
+     * Hears live events. The first subscriber on a buffering bus also gets the held boot events once and ends buffering,
+     * and later subscribers hear live events only. On a bus that is off it hears nothing and returns an unsubscribe that
+     * does nothing.
      */
     subscribe,
   };
 
   function enableBuffering(): void {
-    enabled = true;
-    bufferingEnabled = true;
+    if (phase.kind !== 'off') {
+      return;
+    }
+    phase = { kind: 'buffering', held: [] };
   }
 
   function emit(event: DebugBusEvent): void {
-    if (!enabled) {
+    if (phase.kind === 'off') {
       return;
     }
     watchers.emit(event);
-    if (listeners.size > 0) {
-      listeners.emit(event);
-      return;
-    }
-    if (bufferingEnabled) {
-      bufferedEvents.push(event);
-      if (bufferedEvents.length > BUFFER_MAX) {
-        bufferedEvents.shift();
-      }
+    // A watcher may have subscribed the first panel, so the phase is read again here.
+    routeEvent(event);
+  }
+
+  function routeEvent(event: DebugBusEvent): void {
+    switch (phase.kind) {
+      case 'off':
+        return;
+      case 'buffering':
+        phase.held.push(event);
+        if (phase.held.length > BUFFER_MAX) {
+          phase.held.shift();
+        }
+        return;
+      case 'replaying':
+        phase.queued.push(event);
+        return;
+      case 'live':
+        listeners.emit(event);
+        return;
     }
   }
 
   function hasListeners(): boolean {
-    return enabled && listeners.size > 0;
+    switch (phase.kind) {
+      case 'off':
+      case 'buffering':
+        return false;
+      case 'replaying':
+      case 'live':
+        return listeners.size > 0;
+    }
   }
 
   function watch(callback: (event: DebugBusEvent) => void): () => void {
@@ -86,23 +115,29 @@ export function createDebugBus() {
   }
 
   function subscribe(callback: (event: DebugBusEvent) => void): () => void {
-    if (!enabled) {
-      return noop;
-    }
-    const wasCold = listeners.size === 0;
-    const unsubscribe = listeners.subscribe(callback);
-    if (wasCold && bufferedEvents.length > 0) {
-      replayBufferedEvents(callback);
-    }
-    return unsubscribe;
-  }
-
-  function replayBufferedEvents(callback: (event: DebugBusEvent) => void): void {
-    const replay = bufferedEvents;
-    bufferedEvents = [];
-    bufferingEnabled = false;
-    for (const event of replay) {
-      replays.deliver(callback, event);
+    switch (phase.kind) {
+      case 'off':
+        return noop;
+      case 'buffering': {
+        const { held } = phase;
+        const queued: DebugBusEvent[] = [];
+        phase = { kind: 'replaying', queued };
+        const unsubscribe = listeners.subscribe(callback);
+        for (const event of held) {
+          replays.deliver(callback, event);
+        }
+        // A listener may emit again while it hears a queued event, so the queue is drained until it stays empty.
+        let next = queued.shift();
+        while (next !== undefined) {
+          listeners.emit(next);
+          next = queued.shift();
+        }
+        phase = { kind: 'live' };
+        return unsubscribe;
+      }
+      case 'replaying':
+      case 'live':
+        return listeners.subscribe(callback);
     }
   }
 }

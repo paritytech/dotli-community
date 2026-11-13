@@ -94,7 +94,10 @@ export type ChatConversation = {
   /** True once after a room was picked, which asks the composer to take focus. */
   claimComposerFocus: () => boolean;
   setComposerError: (message: string | null) => void;
-  /** Posts the user's reply to the open room. Rejects when it cannot reach the product, the message kept. */
+  /**
+   * Posts the user's reply to the open room. Rejects with `ChatReplyUndeliveredError` when the reply was kept but
+   * cannot reach the product, and with any other error when it was not kept.
+   */
   send: (roomId: string, text: string) => Promise<void>;
   actions: ChatMessageActions;
 };

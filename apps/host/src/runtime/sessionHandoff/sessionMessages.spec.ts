@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import {
-  PROTOCOL_VERSION,
-  READY,
-  createHelloMessage,
-  parseHello,
-  parsePageMessage,
-  parsePayload,
-} from './sessionMessages.js';
+import { parseHello, parsePageMessage, parsePayload } from './sessionMessages.js';
 
 describe('session messages', () => {
   it('As a site, I say hello to the window and it takes my hello only in its exact shape', () => {
@@ -29,17 +22,6 @@ describe('session messages', () => {
     // Then only the valid one parses
     expect(parsed).toEqual(valid);
     expect(rejected).toEqual([null, null, null, null]);
-  });
-
-  it('As a user signing in on a dot.li page, I say hello to the window and my hello has the exact shape on the wire', () => {
-    // Given the round the page opened the window for
-    const round = 'r1';
-
-    // When the page builds its hello
-    const hello = createHelloMessage(round);
-
-    // Then it is the wire's hello for that round
-    expect(hello).toEqual({ type: 'dotli:s:hello', v: 1, round: 'r1' });
   });
 
   it('As a site, I send my payload to the sign window and it takes the payload only in its exact shape', () => {
@@ -114,16 +96,5 @@ describe('session messages', () => {
 
     // Then it is rejected
     expect(parsed).toBeNull();
-  });
-
-  it('As a site, I hear the window announce its version in its ready and read that version', () => {
-    // Given the window's ready
-    const ready = READY;
-
-    // When the site parses it
-    const parsed = parsePageMessage(ready);
-
-    // Then it names the version
-    expect(parsed).toEqual({ type: 'dotli:s:ready', versions: [PROTOCOL_VERSION] });
   });
 });

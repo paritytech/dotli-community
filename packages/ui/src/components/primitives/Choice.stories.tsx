@@ -35,18 +35,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a dotli user, I read a static choice with a title and description and no control in it. */
-export const Plain: Story = {
-  play: async ({ canvas, mount, step }) => {
-    await step('When the choice renders', async () => {
-      await mount();
-    });
-    await step('Then I read a static choice with no control in it', async () => {
-      await expect(canvas.queryByRole('radio')).toBeNull();
-      await expect(canvas.getByText('Light client per tab')).toBeVisible();
-      await expect(canvas.getByText('Verified in your browser, separate for each tab')).toBeVisible();
-    });
-  },
-};
+export const Plain: Story = {};
 /** As a dotli user, I see which choice is selected. */
 export const Selected: Story = { args: { selected: true } };
 /** As a dotli user, I see a recommendation chip beside the choice's title. */

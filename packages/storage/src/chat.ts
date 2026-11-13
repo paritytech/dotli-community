@@ -4,13 +4,14 @@
 // Local product chat. Records live on the product origin, so the browser isolates each product's rooms.
 
 import { pageIdb, type DotliIdb } from './db.js';
+import {
+  CHAT_BOT_STORE as BOT_STORE,
+  CHAT_MESSAGE_BY_ROOM as BY_ROOM,
+  CHAT_MESSAGE_STORE as MESSAGE_STORE,
+  CHAT_ROOM_STORE as ROOM_STORE,
+} from './schema.js';
 import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
-
-const ROOM_STORE = 'chat_rooms';
-const MESSAGE_STORE = 'chat_messages';
-const BOT_STORE = 'chat_bots';
-const BY_ROOM = 'byRoom';
 
 /** What a room shows below its messages. Matches TrUAPI `ChatRoomFooter`. */
 export type ChatRoomFooter = 'TextInput' | 'Empty';
@@ -73,6 +74,14 @@ type ListMessagesParams = {
  * Chat rooms, bots and messages over `idb`, the page's own by default. Every member rejects when the database fails.
  */
 export function createChatRecords({ idb = pageIdb }: Params = {}) {
+  /**
+   * Every key under the product, in a store keyed by product first. An array sorts above every string, so it bounds
+   * every id the product can pick.
+   */
+  function getProductRange(productId: string): IDBKeyRange {
+    return idb.keyRange().bound([productId, ''], [productId, []]);
+  }
+
   async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
     let status: 'New' | 'Exists' = 'New';
@@ -142,7 +151,7 @@ export function createChatRecords({ idb = pageIdb }: Params = {}) {
   async function listBots(productId: string): Promise<ChatBotRecord[]> {
     const db = await idb.connect();
     const store = db.transaction(BOT_STORE, 'readonly').objectStore(BOT_STORE);
-    const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
+    const range = getProductRange(productId);
     const bots = (await waitForIdbRequest(store.getAll(range))).map(bot => unsafe_readStoredRecord<ChatBotRecord>(bot));
     return bots.sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -150,7 +159,7 @@ export function createChatRecords({ idb = pageIdb }: Params = {}) {
   async function listRooms(productId: string): Promise<ChatRoomRecord[]> {
     const db = await idb.connect();
     const store = db.transaction(ROOM_STORE, 'readonly').objectStore(ROOM_STORE);
-    const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
+    const range = getProductRange(productId);
     const rooms = (await waitForIdbRequest(store.getAll(range))).map(room =>
       unsafe_readStoredRecord<ChatRoomRecord>(room),
     );
@@ -178,7 +187,7 @@ export function createChatRecords({ idb = pageIdb }: Params = {}) {
   async function getLatestMessageTimestamps(productId: string): Promise<Map<string, number>> {
     const db = await idb.connect();
     const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
-    const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
+    const range = getProductRange(productId);
     const all = (await waitForIdbRequest(index.getAll(range))).map(message =>
       unsafe_readStoredRecord<ChatMessageRecord>(message),
     );

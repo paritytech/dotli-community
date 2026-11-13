@@ -16,8 +16,6 @@ export type WindowProviderParams = {
    * bytes from the admitted origin are delivered, so this is the trust boundary of every method served over it.
    */
   origin: string | ((origin: string) => boolean);
-  /** Called for data from the admitted peer that is not an `ArrayBuffer`. */
-  onNotBytes?: () => void;
   /**
    * Called for bytes from any window at an origin this provider does not admit, so a page outside the trust boundary
    * that tries to speak the wire is seen. Other data from such an origin is not the wire and goes unreported.
@@ -29,13 +27,7 @@ export type WindowProviderParams = {
  * Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. Between documents
  * it posts and accepts an `ArrayBuffer`.
  */
-export function createWindowProvider({
-  listen,
-  peer,
-  origin,
-  onNotBytes,
-  onRefusedOrigin,
-}: WindowProviderParams): Provider {
+export function createWindowProvider({ listen, peer, origin, onRefusedOrigin }: WindowProviderParams): Provider {
   const listeners = createListeners();
   let locked: string | null = typeof origin === 'string' ? origin : null;
 
@@ -83,7 +75,6 @@ export function createWindowProvider({
       return;
     }
     if (!(data instanceof ArrayBuffer)) {
-      onNotBytes?.();
       return;
     }
     // Only bytes lock the origin, so an object from an allowed origin leaves the lock to the peer that speaks the wire.

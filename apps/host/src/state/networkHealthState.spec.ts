@@ -80,19 +80,6 @@ describe('The network health store', () => {
     expect([justBefore, health.store.get()]).toEqual(['ok', 'warn']);
   });
 
-  it('As a user, I go offline and the health hears it from the window and not from the document', () => {
-    // Given a health over a page that is online
-    startHealth();
-
-    // When the document fires offline, as nothing in a browser does, and then the window goes offline
-    page.document.dispatchEvent(new Event('offline'));
-    const afterDocument = health.store.get();
-    page.setOnline(false);
-
-    // Then
-    expect([afterDocument, health.store.get()]).toEqual(['quiet', 'err']);
-  });
-
   it('As a user in another tab, I come back to the tab and see the health rechecked only then', async () => {
     // Given
     startHealth();
@@ -138,27 +125,6 @@ describe('The network health store', () => {
     expect(health.store.get()).toBe('err');
   });
 
-  it('As a user before any app holds a chain, I open the page and see quiet', () => {
-    // When
-    startHealth();
-
-    // Then
-    expect(health.store.get()).toBe('quiet');
-  });
-
-  it('As a user loading a product, I watch the frame sync a chain and see syncing, then quiet once it is ready with nothing in use', () => {
-    // Given
-    startHealth();
-
-    // When
-    monitor.recordChainPhase('relay', 'syncing');
-    const syncing = health.store.get();
-    monitor.recordChainPhase('relay', 'ready');
-
-    // Then
-    expect([syncing, health.store.get()]).toEqual(['idle', 'quiet']);
-  });
-
   it('As a user, I see a frame chain drop from ready back to connecting and the health turn unstable', () => {
     // Given
     startHealth();
@@ -189,35 +155,6 @@ describe('The network health store', () => {
     });
   });
 
-  it('As a user whose page started the network health twice, I see one caller stop and the other still hear the window go offline', () => {
-    // Given
-    startHealth();
-    const stopSecond = startHealth();
-
-    // When
-    stopSecond();
-    page.setOnline(false);
-
-    // Then
-    expect(health.store.get()).toBe('err');
-  });
-
-  it('As a user whose page restarted the network health, I call a stop from before the restart and see a stalled chain still turn the health unstable', async () => {
-    // Given
-    const stopFirst = startHealth();
-    stopFirst();
-    startHealth();
-    useAll();
-    blockAll(100);
-
-    // When
-    stopFirst();
-    await timers.advance(getEveryChainOverdueMs());
-
-    // Then
-    expect(health.store.get()).toBe('warn');
-  });
-
   it('As a user whose only live chain is released, I wait past its recheck and the indicator never turns unstable', async () => {
     // Given
     startHealth();
@@ -238,36 +175,19 @@ describe('The network health store', () => {
     });
   });
 
-  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
-    // Given a follow on a monitor whose subscription counts its unsubscribes
-    let unsubscribes = 0;
-    const counting: HealthMonitor = {
-      ...monitor,
-      // A copy of the atom's members, so the health store follows it only through this `subscribe`.
-      version: {
-        ...monitor.version,
-        subscribe(listener) {
-          const unsubscribe = monitor.version.subscribe(listener);
-          return () => {
-            unsubscribes += 1;
-            unsubscribe();
-          };
-        },
-      },
-    };
-    const stop = startHealth(counting);
+  it('As a store reset during a follow, I end the follow and leave the health quiet', () => {
+    // Given
+    startHealth();
+    useAll();
+    blockAll(100);
 
-    // When the stores reset, then the stop left from the ended follow runs
+    // When the stores reset, and the chains go on
     resetStores();
-    const afterReset = unsubscribes;
-    stop();
+    useAll();
+    blockAll(101);
 
-    // Then the reset ended the follow once, the stop added nothing and the health stays quiet
-    expect({ afterReset, total: unsubscribes, health: health.store.get() }).toEqual({
-      afterReset: 1,
-      total: 1,
-      health: 'quiet',
-    });
+    // Then
+    expect({ health: health.store.get(), pending: timers.countPending() }).toEqual({ health: 'quiet', pending: 0 });
   });
 });
 

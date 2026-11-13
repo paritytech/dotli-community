@@ -7,86 +7,87 @@
 import { getErrorMessage } from '@dotli/shared';
 import { createReporter } from '@dotli/metrics';
 import { reportLazyMiss } from '../reportLazyMiss.js';
-import type { AuthModalPort, SignInRoute } from './signInRoute.js';
-import { reportLocalWalletFailure } from './walletFailure.js';
-import type { WalletSwitchOutcome } from './createWalletSwitch.js';
-import type { LoginParams } from './createAuthCommands.js';
+import { showView, type ModalSteps } from './authModalSteps.js';
+import {
+  isLeaseHeld,
+  isPhraseRound,
+  type AuthModalEvent,
+  type InPagePhrase,
+  type LiveModal,
+  type SignInRound,
+  type SignInRoute,
+} from './signInRoute.js';
 
 const report = createReporter({ flow: 'wallet' });
-
-/** The recovery phrase import of a page that pairs in place. */
-export type InPagePhrase = {
-  /** The phrase's entropy, or null for anything that is not a recovery phrase. */
-  toEntropy(phrase: string): Uint8Array | null;
-  /** Uses the wallet in every app on the domain and reloads. A failure is reported there and answered as `failed`. */
-  useLocalWallet(entropy: Uint8Array): Promise<WalletSwitchOutcome>;
-};
 
 type Params = {
   /** Loaded the first time the page asks for a phrase, so a page that never asks loads none of it. */
   inPagePhrase: () => Promise<InPagePhrase>;
-  /** The page's sign-in modal, which this route shows its views on. */
-  modal: AuthModalPort;
-  /** Asks the core to log in. Never throws. */
-  login: (params?: LoginParams) => void;
+  /** The page's sign-in modal, which this route opens. */
+  modal: Pick<ModalSteps, 'open' | 'run'>;
 };
 
 /** Returns the sign-in route of a page with no sign-in window. Never throws. */
-export function createInPageSignIn({ inPagePhrase, modal, login }: Params): SignInRoute {
-  // The phrase import, once loaded for the modal's phrase view, which shows only after it.
-  let loadedPhrase: InPagePhrase | null = null;
-  // Whether Retry imports the phrase again, because a phrase view that failed to load is on show and no pairing.
-  let retryImportsPhrase = false;
-
-  function openPhraseView(): void {
-    if (!modal.open()) {
-      return;
-    }
-    const scope = modal.getLease();
-    void inPagePhrase().then(
-      loaded => {
-        loadedPhrase = loaded;
-        // A modal closed meanwhile stays closed.
-        if (modal.getLease() === scope) {
-          retryImportsPhrase = false;
-          modal.show({ kind: 'phrase' });
-        }
-      },
-      (error: unknown) => {
-        reportLazyMiss({ report, step: 'phrase_import', error });
-        if (modal.getLease() === scope) {
-          retryImportsPhrase = true;
-          modal.showFailure('Other', getErrorMessage(error));
-        }
-      },
-    );
-  }
-
-  return {
-    startLogin({ reason, label } = {}) {
+export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute {
+  const route: SignInRoute = {
+    startLogin(state, { params: { reason, label } }, transition) {
       // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
       // shows none, so its Retry logs in again.
-      if (modal.getLease() !== null && modal.getViewKind() !== 'error') {
+      if (isLeaseHeld(state.lease) && state.view.kind !== 'error') {
         return;
       }
-      if (modal.open({ reason, label })) {
-        login({ reason });
+      const opened = modal.open(state, { reason, label }, transition);
+      if (opened === null) {
+        return;
+      }
+      // A login replaces a phrase round on show, so a Retry after it logs in again.
+      transition.emitState({ ...opened, round: { kind: 'idle' } });
+      modal.run({ step: 'login', params: { reason } }, transition);
+    },
+    importPhrase(state, _event, transition) {
+      const opened = modal.open(state, {}, transition);
+      if (opened === null) {
+        return;
+      }
+      // The phrase view shows only once its check loaded.
+      const round: SignInRound = { kind: 'phraseLoading' };
+      transition.emitState({ ...opened, round });
+      transition.update(
+        inPagePhrase().then(
+          (phrase): AuthModalEvent => ({ kind: 'phraseLoaded', round, phrase }),
+          (error: unknown): AuthModalEvent => {
+            reportLazyMiss({ report, step: 'phrase_import', error });
+            return { kind: 'phraseMissed', round, reason: getErrorMessage(error) };
+          },
+        ),
+      );
+    },
+    // The modal is up on its spinner, which a login started through `startLogin` would leave as it is.
+    resumeAfterReread(state, { asked, reason }, transition) {
+      switch (asked) {
+        case 'login':
+          modal.run({ step: 'login', params: { reason } }, transition);
+          return;
+        case 'phrase':
+          route.importPhrase(state, { kind: 'phraseAsked' }, transition);
+          return;
       }
     },
-    importPhrase() {
-      openPhraseView();
-    },
-    isPhraseRound() {
-      return retryImportsPhrase;
-    },
-    pairing(state) {
-      modal.open({ label: state.hostGlobal === true ? undefined : state.label, dotSuffix: state.dotSuffix });
-      if (state.deeplink) {
-        modal.show({ kind: 'pairing', payload: state.deeplink });
+    pairing(state, pairing, transition) {
+      const opened = modal.open(
+        state,
+        { label: pairing.hostGlobal === true ? undefined : pairing.label, dotSuffix: pairing.dotSuffix },
+        transition,
+      );
+      // A pairing on show replaces a phrase view that failed to load, so Retry logs in again.
+      const next: LiveModal = {
+        ...(opened ?? state),
+        round: isPhraseRound(state.round) ? { kind: 'idle' } : state.round,
+      };
+      transition.emitState(next);
+      if (pairing.deeplink) {
+        showView(next, { kind: 'pairing', payload: pairing.deeplink }, transition);
       }
-    },
-    isWaiting() {
-      return false;
     },
     signOut() {
       // A page with no sign-in window has no sign-out window to open.
@@ -95,26 +96,28 @@ export function createInPageSignIn({ inPagePhrase, modal, login }: Params): Sign
       // A page with no sign-in window has nothing to bring forward.
     },
     end() {
-      retryImportsPhrase = false;
+      // A page with no sign-in window has no round of its own to end.
     },
-    isValidPhrase(phrase) {
-      return (loadedPhrase?.toEntropy(phrase) ?? null) !== null;
-    },
-    async importPhraseInPage(phrase) {
-      const loaded = loadedPhrase;
-      if (loaded === null) {
-        // The phrase view shows only once the module loaded, so this is a fault of the page and not of the input.
-        const error = new Error('The recovery phrase import was not loaded');
-        reportLocalWalletFailure(error, 'phrase-load');
-        throw error;
-      }
-      const entropy = loaded.toEntropy(phrase);
-      if (entropy === null) {
-        throw new Error('Not a valid recovery phrase');
-      }
-      if ((await loaded.useLocalWallet(entropy)) === 'failed') {
-        throw new Error('The recovery phrase wallet could not be saved');
-      }
+    rounds: {
+      idle: null,
+      rereading: null,
+      rereadMissed: null,
+      windowOpen: null,
+      resultWriting: null,
+      windowClosed: null,
+      phraseLoading: {
+        phraseLoaded(_round, { phrase }, { emitState, update }) {
+          emitState({ kind: 'phraseShown', phrase });
+          update({ kind: 'viewAsked', view: { kind: 'phrase' } });
+        },
+        phraseMissed(_round, { reason }, { emitState, update }) {
+          emitState({ kind: 'phraseFailed' });
+          update({ kind: 'failureShown', failure: 'Other', reason });
+        },
+      },
+      phraseShown: null,
+      phraseFailed: null,
     },
   };
+  return route;
 }

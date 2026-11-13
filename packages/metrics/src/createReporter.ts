@@ -1,13 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 
-import { captureException, type CaptureContext } from './captureException.js';
+import { captureException, recordExpected, type CaptureContext } from './captureException.js';
 import type { SpanHandle } from './createSpanHandle.js';
 import { defineCount, type CountMetric } from './defineCount.js';
-import { reportDefect } from './reportDefect.js';
-import { reportExpected } from './reportExpected.js';
+import { m } from './metrics.js';
 
 // A report may leave its outcome out only when its metric declares `error`.
 type OutcomeParams<Outcome extends string> = 'error' extends Outcome ? { outcome?: Outcome } : { outcome: Outcome };
@@ -55,12 +54,9 @@ type Params = {
 };
 
 // A report's outcome is checked against its metric where the report is made, so inside only the metric's name is read.
-type DefectReport = Omit<Parameters<typeof reportDefect>[1], 'flow' | 'metric' | 'logger'> & {
-  metric: Pick<CountMetric, 'name'>;
-};
-type ExpectedReport = Omit<Parameters<typeof reportExpected>[1], 'flow' | 'metric' | 'logger'> & {
-  metric: Pick<CountMetric, 'name'>;
-};
+type MetricName = { metric: Pick<CountMetric, 'name'> };
+type DefectReport = Omit<DefectParams<string>, 'metric'> & MetricName;
+type ExpectedReport = Omit<ExpectedParams<string>, 'metric'> & MetricName;
 
 /**
  * A listener that threw, so it missed that delivery. Tagged `outcome` (error), `reason` (the error's name) and `owner`
@@ -92,13 +88,36 @@ export function createReporter({ flow }: Params) {
   };
 
   function defect<Outcome extends string>(error: unknown, params: DefectParams<Outcome>): void {
-    const { metric, ...rest }: DefectReport = params;
-    reportDefect(error, { ...rest, flow, metric: metric.name, logger: flowLog });
+    const { metric, message, reason, outcome, attributes, ...context }: DefectReport = params;
+    captureException(error, { ...context, flow });
+    flowLog.error(message, error);
+    count(error, { metric, reason, outcome, attributes });
   }
 
   function expected<Outcome extends string>(error: unknown, params: ExpectedParams<Outcome>): void {
-    const { metric, ...rest }: ExpectedReport = params;
-    reportExpected(error, { ...rest, flow, metric: metric.name, logger: flowLog });
+    const { metric, message, reason, outcome, attributes, step }: ExpectedReport = params;
+    if (message !== undefined) {
+      flowLog.warn(message, error);
+    }
+    recordExpected(error, { flow, step });
+    count(error, { metric, reason, outcome, attributes });
+  }
+
+  /** Counts one failure under its metric, outcome `error` unless given, and named after its class unless given. */
+  function count(
+    error: unknown,
+    {
+      metric,
+      reason,
+      outcome = 'error',
+      attributes,
+    }: MetricName & {
+      reason: string | undefined;
+      outcome: string | undefined;
+      attributes: Record<string, string> | undefined;
+    },
+  ): void {
+    m.count(metric.name, { ...attributes, outcome, reason: reason ?? getErrorName(error) ?? 'unknown' });
   }
 
   function capture(error: unknown, context: Omit<CaptureContext, 'flow'>): void {

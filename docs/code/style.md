@@ -118,13 +118,15 @@ const normalize = (item: string) => item.trim().toLowerCase();
 export const parseList = (source: string) => source.split(',').map(normalize);
 ```
 
-### Params object for factories, two positional inputs at most
+### Params object for factories, three parameters at most
 
 - A factory that builds a stateful unit takes its dependencies and options in one destructured object, typed by a local
   `Params`, with defaults in the destructuring.
-- Any other function, including a `createX` that builds a value (`createAccountId(raw)`), takes at most two positional
-  inputs. Optional inputs go in one trailing options object (`withRetry(load, { retries })`). Past two required inputs,
-  everything goes in one object.
+- Any other function, including a `createX` that builds a value (`createAccountId(raw)`), takes at most three
+  parameters, a trailing options object included. Optional inputs go in that options object
+  (`withRetry(load, { retries })`). Past three, everything goes in one object. ESLint's `max-params` checks the count.
+  A function whose signature a third-party interface fixes keeps it, and disables the rule naming that interface. Test
+  code is exempt, since its helpers and table rows take their inputs positionally.
 
 Why: call sites name their arguments, order stops mattering, and adding an option breaks no caller.
 
@@ -159,10 +161,14 @@ Why: the name tells the reader what kind of thing it is before they read the bod
 
 ### One job per function
 
-A function does one job. When a part of its body needs a comment to say what it does, that part is a separate named
-function, and the outer body reads as a list of steps.
+A function's body reads top to bottom as the flow it implements. Extract a step only when another place calls it, or
+when its name tells the reader what a block of several lines does that the code does not show. A step of one or two
+lines stays inline, with a comment when its reason is not obvious.
 
-Why: a reader can follow the outer flow without reading every step.
+A function that only forwards to another, renames a call or passes its arguments through is inlined at its call site.
+So is a helper called once whose body is no harder to read than its call.
+
+Why: a reader follows the flow in one place. Each hop to a helper costs more than the lines it hides.
 
 ## Composition
 
@@ -240,7 +246,7 @@ Use a DI framework (slots, pipelines, feature injection) only when the project h
 layers expose injection points and which inject into them. Then extend only along those paths.
 
 Without such a framework, compose conventionally. The composition root lists the variants and passes them in as params,
-and a closed set that one module owns is a `switch` (see "Branch on a union in its own function"). Never build an ad-hoc
+and a closed set that one module owns is a `switch` (see "Branch on a union with a `switch`"). Never build an ad-hoc
 registry that modules fill as a side effect of being imported.
 
 Why: injection hides who calls whom. A defined architecture makes that hidden link predictable. Without one, explicit
@@ -305,8 +311,8 @@ function isValidAmount(amount: number, { context, allowZero }: { context: Contex
 
 ### Name repeated control flow as a combinator
 
-A control-flow pattern used in two places (first non-empty result, pipe, memo, sequence) becomes a small named
-combinator in a library, and callers compose it.
+A control-flow pattern longer than a few lines and used in three or more places (first non-empty result, pipe, memo,
+sequence) becomes a small named combinator in a library, and callers compose it.
 
 Why: the composed form says what happens. The inline form makes the reader work it out.
 
@@ -389,6 +395,118 @@ function upsert(list: Item[], next: Item) {
 
 Why: ownership of a resource is visible in the code that took it, and nothing leaks when the last user leaves.
 
+### A lifecycle is one state value
+
+A unit runs its lifecycle on `createStateMachine` from `@dotli/shared` when the unit itself runs and waits on the work
+that makes a phase outlive a synchronous call. An await, a remote reply or a timer it set is such work. The number of
+phases does not decide it:
+
+- A unit whose transitions are synchronous calls from outside keeps plain closures, even when a phase spans someone
+  else's wait. So does a synchronous router with latches.
+- A unit whose only async phase a pool or a shared run already owns keeps a closure over that pool or run.
+- A latch that only makes a callback race settle once keeps a plain flag.
+
+The state is a discriminated union with one member per phase, and only the machine's transitions write it. What a phase
+owns lives in its member, such as the timer of a wait or the controller of a request in flight, never in a nullable slot
+or a flag beside it. Facts that are not phases, such as a config or a count of holds, sit beside the state. A unit that
+can be disposed has a disposed state with no handlers, so every later event is ignored.
+
+How a handler moves the machine:
+
+- A handler emits its next state before it calls out, so a collaborator that reads the state during the call sees it
+  moved. A resource whose stop the next state holds, such as a listener or a tick, starts before the state is emitted.
+- A handler sends through its transition's own `update`. No handler refers to the machine, and neither does a callback
+  or a timer it starts.
+- Async work that settles by itself enters the machine as `update(promise)`, a promise that resolves to the event, with
+  its failure mapped to an event too. Only such work does, so `await()` never waits out a timer. A timer, a tick or a
+  listener calls `update(event)` from its callback.
+- A timer or callback that can outlive its state carries that state value, and its handler acts only while the state is
+  still that value.
+- A handler that several states share is a named function typed `HandlerOf<Machine, Kind, EventKind>`, and each state's
+  table lists it by name. A table is never built by spreading a shared object into it.
+- A handler that can stop the work it starts threads an `AbortSignal` into it (see "Thread an `AbortSignal`").
+
+How the unit around the machine is shaped:
+
+- `state`, `update` and `await()` are the machine's whole API. A caller that waits for the machine to settle calls
+  `await()`. It never waits on work kept beside the state, such as a promise or a reply.
+- A unit's params are typed from their owners, as `Pick<Owner, ...>` or `Owner['member']`, grouped by owner.
+- A unit that reports what happens to it emits effects, and one runner turns them into its reports.
+- No function returns a value of two unlike kinds, such as `boolean | Error`. Cases that lead to one value are the
+  default, not a branch each.
+- No module constant, type or function is used in one place only. A `defineCount` metric and a module reporter are
+  exceptions, and so is a name that saves the reader working out a block. A machine's state, event and effect unions
+  are such names, and so are a factory's `Params` type and the options type of one of its methods.
+
+One unit runs one machine, and every lifecycle nested in it is part of that machine's state:
+
+- A run whose steps hide inside one phase is nested. Its steps become states.
+- A sub-phase whose events change what the phase around it does is coupled to it, and is flattened into the kinds
+  around it.
+- A sub-phase that moves on events its phase ignores is independent. It is a field of the phase's member, typed as its
+  own union, and `nest` runs it.
+- A machine per key is a `ReadonlyMap` field of the phase's member, and `nest` runs each value. An event for a key that
+  left, or for a sub-phase that moved on, is ignored with no guard.
+- A keyed value leaves when its handler emits a state that `store` drops, and leaving a phase ends its independent
+  sub-phase.
+- A run that goes on beside other work has its steps as the kinds of its nested value.
+- A nested value never moves its parent. It sends the parent an event, and the parent's own handler moves it.
+- A collaborator from another module keeps its own machine. A parent that waits for it sends
+  `update(collaborator.await().then(...))`, so its own `await()` covers that wait. The phase that owns the collaborator
+  holds it in its member and hears its subscriptions as events of the parent.
+
+Why: one value names every phase, and the machine handles one event at a time. A stale event finds a state with no
+handler for it, so it needs no check.
+
+```ts
+// Do
+type State =
+  | { kind: 'idle' }
+  | { kind: 'fetching' }
+  | { kind: 'fetched'; profile: Profile }
+  | { kind: 'failed'; error: unknown };
+
+type Event =
+  | { kind: 'asked' }
+  | { kind: 'profileFetched'; profile: Profile }
+  | { kind: 'fetchFailed'; error: unknown };
+
+type ProfileMachine = MachineTypes<State, Event>;
+
+const startFetch: HandlerOf<ProfileMachine, 'idle' | 'failed', 'asked'> = (_state, _event, { emitState, update }) => {
+  emitState({ kind: 'fetching' });
+  update(
+    fetchProfile().then(
+      profile => ({ kind: 'profileFetched', profile }),
+      (error: unknown) => ({ kind: 'fetchFailed', error }),
+    ),
+  );
+};
+
+const machine = createStateMachine<ProfileMachine>({
+  initial: { kind: 'idle' },
+  handlers: {
+    idle: { asked: startFetch },
+    fetching: {
+      profileFetched(_state, { profile }, { emitState }) {
+        emitState({ kind: 'fetched', profile });
+      },
+      fetchFailed(_state, { error }, { emitState }) {
+        emitState({ kind: 'failed', error });
+      },
+    },
+    fetched: null,
+    failed: { asked: startFetch },
+  },
+  onError: error => report.defect(error),
+});
+
+// Don't
+let fetching = false;
+let failed = false;
+let profile: Profile | null = null;
+```
+
 ## Control flow
 
 ### Guard first, then the happy path
@@ -426,11 +544,11 @@ Loop with `for...of`. Use `map` and `filter` for pure transforms. Never `forEach
 
 Why: `for...of` supports `break`, `continue`, `return` and `await`, and does not walk prototype keys.
 
-### Branch on a union in its own function
+### Branch on a union with a `switch`
 
-Handle each member of a union in a function that returns from a `switch` over it, one `case` per member. Leave out
-`default`, so a new member fails the type check. A set that other modules extend is composed instead (see "Inject
-through a framework only where the architecture defines it").
+Map a union with a `switch`, one `case` per member, and no `default`, so a new member fails the type check. A mapping
+used in one place stays where it is used. It becomes a named function when a second place needs it. A set that other
+modules extend is composed instead (see "Inject through a framework only where the architecture defines it").
 
 Only the module that owns the union compares its raw tag. A union read outside its owner gets named views or predicates
 exported beside it, and readers outside ask those. A reader that holds facts of its own for every member, such as its own
@@ -535,6 +653,26 @@ enum Status {
   Failed,
 }
 type State = { status: Status; data?: Data; error?: Error };
+```
+
+### `null` for a known empty value
+
+A value the code knows is empty is `null`. That covers a slot with nothing in it yet and a lookup that found nothing.
+It also covers a return with no result. `undefined` means only "not given", such as an optional parameter or property
+left out. Turn an `undefined` from a platform or library API into `null` where it enters the code.
+
+Why: `null` is set on purpose, so a reader tells "known to be empty" apart from "never set".
+
+```ts
+// Do
+function findAccount(id: AccountId): Account | null {
+  return accounts.get(id) ?? null;
+}
+
+// Don't
+function findAccount(id: AccountId): Account | undefined {
+  return accounts.get(id);
+}
 ```
 
 ### Per-member facts in one table
@@ -756,7 +894,8 @@ throw new Error('Unsupported');
 
 An async API that waits on the network, a timer or another context takes an optional `signal` once a caller can stop
 the work, and stops when it fires. With no such caller, leave the `signal` out and add it in the change that brings
-one. On an abort it rejects with `signal.reason`, so a timeout or a caller's own reason reaches the caller.
+one. On an abort it rejects with `signal.reason`, so a timeout or a caller's own reason reaches the caller. A pool whose
+works must never overlap, even across an abort, holds its slots on abort.
 
 Why: the caller that started the work can stop it, without a flag on the side.
 
@@ -832,6 +971,64 @@ export default createLoader;
   show the use, such as a generic helper, a combinator or a multi-step API.
 
 ## Tests
+
+A test documents a behaviour or guards an edge case. Confidence comes from the types and the code flow, so a test that
+only pins the current code goes.
+
+Keep a test that:
+
+- documents a public behaviour of its module that the types do not show, told as what a caller sees
+- guards an edge case: a failure path, a race or overlap, idempotency or dedupe, retry and recovery, a boundary input, a
+  cleanup that releases a resource, a limit that keeps a repeated failure from flooding the log, or Safari's storage
+  partition
+- is the regression test of a real bug: it guards the defect that the commit or issue adding it names. A commit that
+  only creates, moves or renames the spec, or groups review fixes, makes no case a regression test
+
+Cut a test that:
+
+- restates the types: a shape, a field's presence, or a value passed through unchanged
+- pins implementation detail: a call count or argument on an internal fake, internal step order, or a breadcrumb or log
+  line. A count is the contract when the case is about doing the work once
+- repeats a case another kept test asserts. When two layers assert one behaviour, the spec of the module that owns it
+  keeps it, and a caller keeps its copy only as the only test of a parameter it passes on. A case that re-tests a shared
+  helper's contract, such as a listener set that survives a throwing listener, repeats the helper's own spec when its
+  module adds only the wiring
+- tests a getter, a constant, a re-export, a one-line helper its callers' specs cover, or a third-party library's own
+  behaviour
+
+A cut never removes the only test of a failure path, a race or a recovery. A regression test keeps its bug guarded, not
+its case: when a kept test asserts the same failing input and outcome, the regression case goes. A one-line helper keeps
+one case for a boundary input its callers' specs miss. Siblings merge into one `it.each` table only when one assertion,
+with its expected value taken from the row, covers them all. A metric is a contract in a failure-path case, or when
+emitting it is the documented job of the dependency it goes through. In a race case, the absence of a warning is how the
+test shows the late message was expected. A parser or validator whose input the types leave open, such as `unknown`, a
+string or URL params, keeps one case for each shape it accepts in its own spec, even when its callers' specs cover it,
+since the types do not show what passes. A case that checks a type with `@ts-expect-error` guards that type, so it does
+not restate it.
+
+A test never looks like this:
+
+- **The same case over equal inputs.** It runs a case again with another input that takes the same branch, such as a
+  second local root or a second backend. One input per branch.
+- **A wrapper retesting its inner module.** A caller's spec asserts what the module it wraps already asserts in its own
+  spec. The caller tests only what it adds.
+- **A regression test that passes without its fix.** A regression test fails when its fix is reverted. One that still
+  passes guards nothing, so it goes, and the gap is recorded instead.
+- **A regression test bigger than its bug.** One bug gets one case, the smallest that fails without the fix. It has:
+  - no second direction of the same bug
+  - no table rows beyond the one that shows it
+  - no setup the bug does not need
+- **A name that claims more than its Then.** The name states only what `// Then` asserts.
+- **Copy or markup with no behaviour behind it.** It asserts a label's exact text or an `aria-label` string. It asserts
+  the order of elements. Assert the role or state a user acts on instead.
+- **A story play that adds no behaviour.** A play that only checks copy or DOM order goes, and so does one that checks a
+  styling hook. The story stays as a visual doc. A story that shows the same state as another story in its file goes.
+- **A browser case a unit spec covers.** A Playwright or e2e suite keeps one case per host branch that needs a real
+  browser, for its storage, its frames or its network. It never repeats what a unit spec asserts.
+- **A disabled test left in place.** A `test.fixme` or `it.skip` waiting on an upstream fix is switched back on once the
+  fix lands, or deleted. It never stays disabled without a tracking issue.
+
+How a test is written:
 
 - Test through the module's public API. Pass fakes through params, never mock modules.
 - Use a table (`it.each`) when the same behaviour runs over three or more inputs.

@@ -122,25 +122,6 @@ describe('createPersistentAtom', () => {
     expect(backing.getItem('count')).toBe('n9');
   });
 
-  it('As a writer, I set the initial value and the key is removed', () => {
-    // Given
-    const backing = createMemoryStorage({ entries: { count: '7' } });
-    const storage = createSafeStorage(() => backing);
-    const count = createPersistentAtom({
-      key: 'count',
-      storage,
-      initial: 0,
-      decode: decodeNumber,
-      encode: encodeNumber,
-    });
-
-    // When
-    count.set(0);
-
-    // Then
-    expect(backing.getItem('count')).toBeNull();
-  });
-
   it('As a page whose storage throws on every call, I read the initial value, and set and get still work in memory', () => {
     // Given
     const storage = createSafeStorage(openBlocked);

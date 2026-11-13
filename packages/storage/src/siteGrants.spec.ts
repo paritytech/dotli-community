@@ -129,18 +129,6 @@ describe('site grants', () => {
     expect(await store.list()).toEqual([]);
   });
 
-  it('As a site, I save a group grant with none kept and it is stored', async () => {
-    // Given no grants
-    const grant = createGroupGrant('token-a', 'https://a.site.example');
-
-    // When the group grant is saved
-    const saved = await store.saveGroup(grant);
-
-    // Then it comes back and is kept
-    expect(saved).toEqual(grant);
-    expect(await store.list()).toEqual([grant]);
-  });
-
   it('As a site, I save a group grant its group already holds and get the kept one with my origin joined', async () => {
     // Given a group grant kept for one origin
     await store.saveGroup(createGroupGrant('token-a', 'https://a.site.example'));

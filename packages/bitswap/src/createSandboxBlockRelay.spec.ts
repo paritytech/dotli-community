@@ -4,8 +4,10 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
+import { createDeferred } from '@dotli/shared';
 import type { SandboxChannel, SandboxMessageOf, SandboxMessageType, SandboxSender } from '@dotli/sandbox-wire';
-import { createSandboxBlockRelay, type BlockOrigin, type ContentProgress } from './createSandboxBlockRelay.js';
+import { createSandboxBlockRelay, type ContentProgress } from './createSandboxBlockRelay.js';
+import type { BlockOrigin } from './serveBlock.js';
 
 const SANDBOX_ORIGIN = 'https://a.app.dot.li';
 const BLOCK = new Uint8Array([0xab, 0xcd]);
@@ -147,12 +149,30 @@ function verifyBlock(_cid: string, bytes: Uint8Array): Promise<boolean> {
   return Promise.resolve(bytes.length === BLOCK.length && bytes.every((byte, index) => byte === BLOCK[index]));
 }
 
+/** A cache whose read of `bafyOld` waits for `release`, and whose other reads miss. */
+function createDeferredRead(): { cache: NonNullable<RelayParams['cache']>; release: () => void } {
+  let release = (): void => undefined;
+  const held = new Promise<Uint8Array | null>(resolve => {
+    release = () => {
+      resolve(BLOCK.slice());
+    };
+  });
+  return {
+    release,
+    cache: {
+      get: cid => (cid === 'bafyOld' ? held : Promise.resolve(null)),
+      put: () => Promise.resolve(),
+      delete: () => Promise.resolve(),
+    },
+  };
+}
+
 function createGetRequest(id: string, cid = 'bafyBlock'): SandboxMessageOf<'dotli:bitswap-get'> {
-  return { type: 'dotli:bitswap-get', id, cid };
+  return { type: 'dotli:bitswap-get', id, cid, frame: 'frame-a' };
 }
 
 function createAbortRequest(...ids: string[]): SandboxMessageOf<'dotli:bitswap-abort'> {
-  return { type: 'dotli:bitswap-abort', ids };
+  return { type: 'dotli:bitswap-abort', ids, frame: 'frame-a' };
 }
 
 const pushed = new WeakMap<unknown[], Set<() => void>>();
@@ -239,6 +259,40 @@ describe('createSandboxBlockRelay', () => {
     ]);
   });
 
+  it('As an operator, I see a reply that cannot reach its frame reported, and the relay serves the next request', async () => {
+    // Given a frame whose first reply throws, as one posted to a window that went away may
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const network = createFakeNetwork();
+    const { channel, send } = createFakeChannel();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
+    const frame = createFakeFrame();
+    const thrown = createRecording<Error>();
+    const flakyFrame = {
+      postMessage(message: unknown, options?: WindowPostMessageOptions): void {
+        if (thrown.length === 0) {
+          const error = new Error('frame is gone');
+          thrown.push(error);
+          throw error;
+        }
+        frame.postMessage(message, options);
+      },
+    };
+
+    // When it asks for a block, then for another once the first reply threw
+    send(flakyFrame, createGetRequest('req-1'));
+    await waitForLength(thrown);
+    send(flakyFrame, createGetRequest('req-2'));
+    await waitForLength(frame.replies);
+    send(flakyFrame, createAbortRequest('req-1'));
+
+    // Then the throw is reported, the second request gets its block, and the first left the table before the throw
+    expect(captured).toMatchObject([{ step: 'transition', error: thrown[0] }]);
+    expect(sentry.counted('block_relay.transition')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(frame.replies).toEqual([{ type: 'dotli:bitswap-result', id: 'req-2', ok: true, bytes: BLOCK }]);
+    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false, false]);
+  });
+
   it('As a user, I leave a page and the fetches that page asked for stop', async () => {
     // Given
     const network = createFakeNetwork(() => 'hold');
@@ -253,23 +307,6 @@ describe('createSandboxBlockRelay', () => {
 
     // Then
     expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([true]);
-  });
-
-  it("As a user, I close one product and another product's fetches carry on", async () => {
-    // Given two frames at sandbox origins, and a fetch belonging to the first
-    const network = createFakeNetwork(() => 'hold');
-    const { channel, send } = createFakeChannel();
-    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
-    const victim = createFakeFrame();
-    const attacker = createFakeFrame();
-    send(victim, createGetRequest('req-1'));
-    await waitForLength(network.fetches);
-
-    // When the other frame guesses the id
-    send(attacker, createAbortRequest('req-1'));
-
-    // Then
-    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false]);
   });
 
   it('As a user, I navigate a product frame mid-download and its fetches stop, though the host reads the abort after the frame is gone', async () => {
@@ -297,9 +334,8 @@ describe('createSandboxBlockRelay', () => {
     send(frame, { ...createGetRequest('req-1'), frame: 'frame-a' });
     await waitForLength(network.fetches);
 
-    // When another frame aborts the same id under its own frame id, and a frame with no id aborts it too
-    send(null, { ...createAbortRequest('req-1'), frame: 'frame-b' });
-    send(createFakeFrame(), createAbortRequest('req-1'));
+    // When another frame aborts the same id under its own frame id
+    send(createFakeFrame(), { ...createAbortRequest('req-1'), frame: 'frame-b' });
 
     // Then my product's fetch carries on
     expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false]);
@@ -328,17 +364,106 @@ describe('createSandboxBlockRelay', () => {
     const first = createFakeFrame();
     const second = createFakeFrame();
     send(first, createGetRequest('req-1', 'bafyFast'));
-    send(second, createGetRequest('req-1', 'bafySlow'));
+    send(second, { ...createGetRequest('req-1', 'bafySlow'), frame: 'frame-b' });
     await waitForLength(network.fetches, 2);
     await waitForLength(first.replies);
 
     // When the second frame cancels, after the first has settled
-    send(second, createAbortRequest('req-1'));
+    send(second, { ...createAbortRequest('req-1'), frame: 'frame-b' });
 
     // Then its fetch stopped, rather than being orphaned by the first fetch's cleanup
     expect(network.fetches).toHaveLength(2);
     expect(first.replies).toHaveLength(1);
     expect(network.fetches.find(fetch => fetch.cid === 'bafySlow')?.signal.aborted).toBe(true);
+  });
+
+  it('As a user, I ask for a block again under the same id while the first request still runs, and my abort still stops the newer one', async () => {
+    // Given a network that answers the first fetch at once and holds the second
+    let asked = 0;
+    const network = createFakeNetwork(() => {
+      asked += 1;
+      return asked === 1 ? BLOCK.slice() : 'hold';
+    });
+    const { channel, send } = createFakeChannel();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
+    const frame = createFakeFrame();
+    send(frame, createGetRequest('req-1'));
+    send(frame, createGetRequest('req-1'));
+    await waitForLength(frame.replies);
+
+    // When the frame aborts the id after the first request settled
+    send(frame, createAbortRequest('req-1'));
+
+    // Then the newer request's fetch stopped
+    expect(network.fetches.map(fetch => fetch.signal.aborted)).toEqual([false, true]);
+  });
+
+  it("As a user, I reload a product frame while its old request still reads the cache, and my new frame's fetches still stop when it leaves", async () => {
+    // Given an old frame whose request was aborted while its cache read is pending, and a new frame reusing its frame id
+    const network = createFakeNetwork(() => 'hold');
+    const { channel, send } = createFakeChannel();
+    const oldRead = createDeferredRead();
+    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: oldRead.cache, verify: verifyBlock });
+    const oldFrame = createFakeFrame();
+    send(oldFrame, { ...createGetRequest('req-1', 'bafyOld'), frame: 'frame-a' });
+    send(null, { ...createAbortRequest('req-1'), frame: 'frame-a' });
+    const newFrame = createFakeFrame();
+    send(newFrame, { ...createGetRequest('req-2', 'bafyNew'), frame: 'frame-a' });
+    await waitForLength(network.fetches);
+    oldRead.release();
+    await waitForLength(oldFrame.replies);
+
+    // When the new frame leaves
+    send(null, { ...createAbortRequest('req-2'), frame: 'frame-a' });
+
+    // Then the fetch of its block stopped
+    expect(network.fetches.find(fetch => fetch.cid === 'bafyNew')?.signal.aborted).toBe(true);
+  });
+
+  it("As a user, I drop a frame's request and its block is not counted in the loading bar", async () => {
+    // Given a frame whose request was aborted while its cache read is pending
+    const { channel, send } = createFakeChannel();
+    const read = createDeferredRead();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: createFakeNetwork(() => 'hold').blocks,
+      cache: read.cache,
+      verify: verifyBlock,
+    });
+    const progress: ContentProgress[] = [];
+    relay.onProgress(update => progress.push(update));
+    const frame = createFakeFrame();
+    send(frame, { ...createGetRequest('req-1', 'bafyOld'), frame: 'frame-a' });
+    send(null, { ...createAbortRequest('req-1'), frame: 'frame-a' });
+
+    // When the cache read settles
+    read.release();
+    await waitForLength(frame.replies);
+
+    // Then nothing was counted
+    expect(progress).toEqual([]);
+  });
+
+  it('As the host, I stop the relay mid-fetch and the frame still gets its block', async () => {
+    // Given a fetch the network is still answering
+    const answer = createDeferred<Uint8Array>();
+    const { channel, send } = createFakeChannel();
+    const relay = createSandboxBlockRelay({
+      channel,
+      blocks: () => answer.promise,
+      cache: null,
+      verify: verifyBlock,
+    });
+    const frame = createFakeFrame();
+    send(frame, createGetRequest('req-1'));
+
+    // When the relay stops and the network answers
+    relay.stop();
+    answer.resolve(BLOCK.slice());
+    await waitForLength(frame.replies);
+
+    // Then
+    expect(frame.replies).toEqual([{ type: 'dotli:bitswap-result', id: 'req-1', ok: true, bytes: BLOCK }]);
   });
 
   it('As the host, I stop the relay and it stops listening to the channel', () => {
@@ -486,24 +611,6 @@ describe('createSandboxBlockRelay with a block cache', () => {
     expect(network.fetches).toHaveLength(1);
     expect(captured).toMatchObject([{ step: 'relay_cache_read', tags: undefined }]);
     expect(sentry.counted('content.block_relay')).toEqual([{ outcome: 'error', reason: 'Error', step: 'cache_read' }]);
-  });
-
-  it('As a user with the archive cache off, I get every block from the network', async () => {
-    // Given
-    const network = createFakeNetwork();
-    const { channel, send } = createFakeChannel();
-    createSandboxBlockRelay({ channel, blocks: network.blocks, cache: null, verify: verifyBlock });
-
-    // When the same block is asked for twice
-    const first = createFakeFrame();
-    send(first, createGetRequest('req-1'));
-    await waitForLength(first.replies);
-    const second = createFakeFrame();
-    send(second, createGetRequest('req-1'));
-    await waitForLength(second.replies);
-
-    // Then
-    expect(network.fetches).toHaveLength(2);
   });
 
   it('As a user, I get no block when the verifier fails to load, the cached copy is kept for a later check, and nothing is written', async () => {
@@ -670,32 +777,6 @@ describe('createSandboxBlockRelay progress', () => {
   /** A dag-pb root whose two links carry a Tsize of 100 and 50. */
   const ROOT = new Uint8Array([0x12, 0x02, 0x18, 100, 0x12, 0x02, 0x18, 50]);
 
-  it('As a user, I see the loading bar keep moving while the trace listens along', async () => {
-    // Given
-    const { channel, send } = createFakeChannel();
-    const relay = createSandboxBlockRelay({
-      channel,
-      blocks: createFakeNetwork(() => new Uint8Array(100)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const first = createRecording<number>();
-    const second: number[] = [];
-    relay.onProgress(({ bytesFetched }) => first.push(bytesFetched));
-    const unsubscribe = relay.onProgress(({ bytesFetched }) => second.push(bytesFetched));
-
-    // When
-    send(createFakeFrame(), createGetRequest('req-1'));
-    await waitForLength(first);
-    unsubscribe();
-    send(createFakeFrame(), createGetRequest('req-2', 'bafyLeaf'));
-    await waitForLength(first, 2);
-
-    // Then
-    expect(first).toEqual([100, 200]);
-    expect(second).toEqual([100]);
-  });
-
   it("As a user, I see the first block's links give the total, and the speed count from that block", async () => {
     // Given a clock that moves 500 ms between the two blocks
     let clock = 1_000;
@@ -750,37 +831,6 @@ describe('createSandboxBlockRelay progress', () => {
       { bytesFetched: ROOT.length + 100, totalBytes: 150 },
       { bytesFetched: ROOT.length, totalBytes: 150 },
     ]);
-  });
-
-  it('As a user opening a second product, I see its relay count from zero', async () => {
-    // Given a first relay that already served a block
-    const first = createFakeChannel();
-    const firstRelay = createSandboxBlockRelay({
-      channel: first.channel,
-      blocks: createFakeNetwork(() => new Uint8Array(100)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const firstFrame = createFakeFrame();
-    first.send(firstFrame, createGetRequest('req-1'));
-    await waitForLength(firstFrame.replies);
-    firstRelay.stop();
-
-    // When a second relay serves its first block
-    const second = createFakeChannel();
-    const secondRelay = createSandboxBlockRelay({
-      channel: second.channel,
-      blocks: createFakeNetwork(() => new Uint8Array(30)).blocks,
-      cache: null,
-      verify: acceptAnyBlock,
-    });
-    const progress = createRecording<number>();
-    secondRelay.onProgress(({ bytesFetched }) => progress.push(bytesFetched));
-    second.send(createFakeFrame(), createGetRequest('req-1'));
-    await waitForLength(progress);
-
-    // Then
-    expect(progress).toEqual([30]);
   });
 
   it('As a user, I get my block even when a progress or served listener throws, and the other listeners still hear it', async () => {

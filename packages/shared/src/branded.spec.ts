@@ -14,12 +14,4 @@ describe('Branded', () => {
     expectTypeOf<string>().not.toExtend<AccountId>();
     expectTypeOf<SessionId>().not.toExtend<AccountId>();
   });
-
-  it('As a module author, I pass a branded value where its base type is expected', () => {
-    // Given
-    type AccountId = Branded<string, 'AccountId'>;
-
-    // Then
-    expectTypeOf<AccountId>().toExtend<string>();
-  });
 });

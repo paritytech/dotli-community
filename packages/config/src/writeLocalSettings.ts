@@ -3,16 +3,12 @@
 
 import { BACKEND_KEY } from './backend.js';
 import { CACHE_KEY } from './cacheSettings.js';
-import { LEGACY_KEYS } from './getLegacyBackend.js';
 import { NETWORK_KEY } from './networkNames.js';
 import type { Settings } from './resolveSettings.js';
 
-/** Stores `settings` on this origin, where an old build's keys give way to them. */
-export function writeLocalSettings(settings: Settings, local: Pick<Storage, 'setItem' | 'removeItem'>): void {
+/** Stores `settings` on this origin. */
+export function writeLocalSettings(settings: Settings, local: Pick<Storage, 'setItem'>): void {
   local.setItem(NETWORK_KEY, settings.network);
   local.setItem(BACKEND_KEY, settings.backend);
   local.setItem(CACHE_KEY, JSON.stringify(settings.cache));
-  for (const key of LEGACY_KEYS) {
-    local.removeItem(key);
-  }
 }

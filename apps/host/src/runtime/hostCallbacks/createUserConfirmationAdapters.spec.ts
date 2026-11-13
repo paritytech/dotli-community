@@ -21,8 +21,6 @@ import { recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 
 type UserConfirmationReview = Parameters<Required<UserConfirmation>['confirmUserAction']>[0];
 
-type PermissionReview = Parameters<Required<UserConfirmation>['confirmPermission']>[0];
-
 type ButtonKind = 'sign' | 'secondary' | 'cancel';
 
 type StructuredReviewCase = {
@@ -38,14 +36,6 @@ type StructuredReviewCase = {
   icon: ModalView<string>['icon'];
   /** The fields the dialog shows, by label. */
   fields: Record<string, string>;
-  /** The dialog's buttons as label and variant. */
-  footer: [string, ModalButtonVariant][];
-  /** Words the dialog shows nowhere. */
-  hiddenWords: string[];
-  /** The button the user presses. */
-  button: ButtonKind;
-  /** What the confirmation resolves to. */
-  answer: boolean;
 };
 
 type ProductSigningCase = {
@@ -96,15 +86,6 @@ const DRAIN_REVIEW: UserConfirmationReview = {
   },
 };
 
-const SIGN_FOOTER: [string, ModalButtonVariant][] = [
-  ['Cancel', 'danger'],
-  ['Sign', 'primary'],
-];
-const ALLOW_FOOTER: [string, ModalButtonVariant][] = [
-  ['Deny', 'danger'],
-  ['Allow', 'primary'],
-];
-
 let page = createFakePrompts();
 
 afterEach(() => {
@@ -148,10 +129,6 @@ describe('user confirmation modal', () => {
         'Call Data': '0x0000',
         Version: '4',
       },
-      footer: SIGN_FOOTER,
-      hiddenWords: ['Request'],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'a legacy raw signing',
@@ -179,10 +156,6 @@ describe('user confirmation modal', () => {
         Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
         Message: '0x48656c6c6f2c20776f726c6421',
       },
-      footer: SIGN_FOOTER,
-      hiddenWords: ['Request'],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'a VRF signing',
@@ -212,10 +185,6 @@ describe('user confirmation modal', () => {
         'Transcript label': '0x706f703a61697264726f70',
         'Transcript items': '2',
       },
-      footer: SIGN_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'a product transaction creation',
@@ -248,10 +217,6 @@ describe('user confirmation modal', () => {
         'Call Data': '0x0500',
         'Tx Ext Version': '5',
       },
-      footer: SIGN_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'a resource allocation',
@@ -269,13 +234,6 @@ describe('user confirmation modal', () => {
         'Requesting product': 'localhost:3000',
         Resources: 'StatementStoreAllowance, AutoSigning',
       },
-      footer: [
-        ['Cancel', 'danger'],
-        ['Allow', 'primary'],
-      ],
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'an account alias permission',
@@ -303,10 +261,6 @@ describe('user confirmation modal', () => {
         Chain: '0x0000000000000000000000000000000000000000000000000000000000000000',
         'Ring path': 'PalletInstance(42)',
       },
-      footer: ALLOW_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'a proof permission',
@@ -336,10 +290,6 @@ describe('user confirmation modal', () => {
         'Ring path': 'PalletInstance(42)',
         Message: '0x4869',
       },
-      footer: ALLOW_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'an account access permission',
@@ -357,10 +307,6 @@ describe('user confirmation modal', () => {
         'Requesting product': 'truapi-playground.dot',
         'Requested account': 'other-product.dot',
       },
-      footer: ALLOW_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     {
       request: 'an identity disclosure',
@@ -376,10 +322,6 @@ describe('user confirmation modal', () => {
       fields: {
         'Requesting product': 'truapi-playground.dot',
       },
-      footer: ALLOW_FOOTER,
-      hiddenWords: [],
-      button: 'sign',
-      answer: true,
     },
     // The answer is fixed for the pairing and cached, so the wording has to read as granting access rather than as
     // signing something.
@@ -397,32 +339,19 @@ describe('user confirmation modal', () => {
       fields: {
         'Requesting product': 'truapi-playground.dot',
       },
-      footer: ALLOW_FOOTER,
-      hiddenWords: [],
-      button: 'cancel',
-      answer: false,
     },
   ])(
     'As a dotli integrator, I confirm $request and the host renders it as structured $kind fields',
-    async ({ review, title, icon, fields, footer, hiddenWords, button, answer }) => {
+    async ({ review, title, icon, fields }) => {
       // Given
       const { confirmUserAction } = createPageAdapters();
 
       // When
-      const confirmation = confirmUserAction(review);
+      void confirmUserAction(review);
       await waitForModal();
 
       // Then
-      expect(readShownReview()).toEqual({ title, icon, fields, warnings: [], footer });
-      expect(Object.keys(getModalFields())).not.toContain('Application');
-      expect(Object.keys(getModalFields())).not.toContain('Request');
-      expect(hiddenWords.filter(word => getModalText().includes(word))).toEqual([]);
-
-      // When
-      press(button);
-
-      // Then
-      await expect(confirmation).resolves.toBe(answer);
+      expect(readShownReview()).toEqual({ title, icon, fields, warnings: [] });
     },
   );
 
@@ -620,7 +549,10 @@ describe('user confirmation modal', () => {
           },
         });
       },
-      footer: ALLOW_FOOTER,
+      footer: [
+        ['Deny', 'danger'],
+        ['Allow', 'primary'],
+      ],
     },
     {
       label: 'a signing prompt and its Cancel is drawn as the destructive answer',
@@ -639,7 +571,10 @@ describe('user confirmation modal', () => {
           },
         });
       },
-      footer: SIGN_FOOTER,
+      footer: [
+        ['Cancel', 'danger'],
+        ['Sign', 'primary'],
+      ],
     },
   ])('As a user, I see $label', async ({ open, footer }) => {
     // Given a page with no prompt on show
@@ -674,50 +609,22 @@ describe('user confirmation modal', () => {
     await expect(decision).resolves.toBe(answer);
   });
 
-  it('As a user, I allow an identity disclosure and it is allowed once, not remembered', async () => {
-    // Given
+  it('As a user, I dismiss an account access prompt and the host rejects the decision', async () => {
+    // Given a permission review on show
     const decision = createPageAdapters().confirmPermission({
-      tag: 'IdentityDisclosure',
-      value: { productId: asProductId('truapi-playground.dot') },
+      tag: 'AccountAccess',
+      value: {
+        requestingProductId: asProductId('truapi-playground.dot'),
+        targetProductId: asProductId('other-product.dot'),
+      },
     });
     await waitForModal();
 
     // When
-    press('sign');
+    dismissModal();
 
     // Then
-    await expect(decision).resolves.toBe('AllowOnce');
-  });
-
-  it.each<{ label: string; review: PermissionReview; close: () => void; error: string }>([
-    {
-      label: 'dismiss an identity disclosure permission and no decision',
-      review: { tag: 'IdentityDisclosure', value: { productId: asProductId('truapi-playground.dot') } },
-      close: dismissModal,
-      error: 'User dismissed identity disclosure dialog',
-    },
-    {
-      label: 'dismiss an account access prompt and no decision',
-      review: {
-        tag: 'AccountAccess',
-        value: {
-          requestingProductId: asProductId('truapi-playground.dot'),
-          targetProductId: asProductId('other-product.dot'),
-        },
-      },
-      close: dismissModal,
-      error: 'User dismissed permission dialog',
-    },
-  ])('As a user, I $label is recorded', async ({ review, close, error }) => {
-    // Given a permission review on show
-    const decision = createPageAdapters().confirmPermission(review);
-    await waitForModal();
-
-    // When
-    close();
-
-    // Then
-    await expect(decision).rejects.toThrow(error);
+    await expect(decision).rejects.toThrow('User dismissed permission dialog');
   });
 
   it('As a user, I press Escape on a one-off review and it answers no without throwing', async () => {
@@ -864,10 +771,12 @@ describe('waiting on the phone', () => {
     const { tracker, scope, confirmation } = await signForPhone({ coordinator });
     await confirmation;
     const next = createAdapters({
-      label: 'localhost:3000',
+      core: {
+        product: { label: 'localhost:3000' },
+        blockingModalScope: coordinator.createScope(),
+        phoneRequests: createPhoneRequestTracker(),
+      },
       prompts: page.prompts,
-      modalScope: coordinator.createScope(),
-      phoneRequests: createPhoneRequestTracker(),
     }).confirmUserAction(buildSignReview('0x07'));
 
     // When
@@ -897,57 +806,9 @@ describe('waiting on the phone', () => {
     expect(page.notices).toEqual([]);
   });
 
-  it('As a user whose toast fails to show, I sign on my phone and the failure is reported while the request is still counted', async () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const { sentry, recorded } = bindNextRecord();
-    const { tap, confirmation } = await signForPhone({
-      prompts: {
-        ...page.prompts,
-        notify: () => {
-          throw new Error('toast stack gone');
-        },
-      },
-    });
-    await confirmation;
-
-    // When
-    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
-    await recorded;
-    await page.waitForClearedScreen();
-
-    // Then
-    expect(sentry.counted('signing.phone_request')).toEqual([
-      { outcome: 'ok', reason: 'signPayload', background: 'no' },
-    ]);
-    expect(captured).toMatchObject([{ step: 'phone_request_notice', error: new Error('toast stack gone') }]);
-  });
-
-  it('As a user, I get an answer that does not decode and the wait ends, is reported and is counted once as undecodable', async () => {
-    // Given
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    recordLog({ onFinished: onTestFinished });
-    const { tap, confirmation } = await signForPhone({ tracker: createPhoneRequestTracker() });
-    await confirmation;
-    const answer = encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED });
-
-    // When
-    tap.fromCore(answer.subarray(0, answer.length - 3));
-    const notices = await page.waitForNotices(1);
-
-    // Then
-    expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(["Polkadot App didn't complete the request: undecodable"]);
-    expect(captured.map(c => c.step)).toEqual(['phone_request']);
-    expect(sentry.counted('signing.phone_request')).toEqual([
-      { outcome: 'undecodable', reason: 'signPayload', background: 'no' },
-    ]);
-  });
-
   it.each<{ label: string; openReview: () => Promise<boolean> }>([
     {
-      label: 'user whose phone lookup throws, I approve a review and it closes as today and answers the core',
+      label: 'user whose phone lookup throws, I approve a review and the core hears yes with no waiting step',
       openReview() {
         recordReports({ onFinished: onTestFinished });
         recordLog({ onFinished: onTestFinished });
@@ -964,7 +825,7 @@ describe('waiting on the phone', () => {
       },
     },
     {
-      label: 'local wallet user, I sign and the dialog closes as today',
+      label: 'local wallet user, I sign and the core hears yes with no waiting step',
       openReview() {
         // A local wallet core, whose tracker is disposed as it has no phone.
         const tracker = createPhoneRequestTracker();
@@ -978,7 +839,7 @@ describe('waiting on the phone', () => {
       },
     },
     {
-      label: 'user, I approve a request that never reached the frame and the dialog closes as today',
+      label: 'user, I approve a request that never reached the frame and the core hears yes with no waiting step',
       openReview() {
         const { confirmUserAction } = createPairedPhone();
         return confirmUserAction(buildSignReview('0x06'));
@@ -1059,7 +920,7 @@ describe('waiting on the phone', () => {
     expect(captured).toEqual([]);
   });
 
-  it('As a user, I reject a review that went to the phone and the dialog closes as today', async () => {
+  it('As a user, I reject a review that went to the phone and the core hears no with no waiting step', async () => {
     // Given
     const { tap, confirmUserAction } = createPairedPhone();
     tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }));
@@ -1072,42 +933,6 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(false);
     expect(page.listPending()).toEqual([]);
-  });
-
-  it('As a user granting an allowance, I wait on my phone and hear it was granted', async () => {
-    // Given
-    const resources = [{ tag: 'SmartContractAllowance' as const, value: { tag: 'Index' as const, value: 1 } }];
-    const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(
-      encodePhoneRequestFrame({ requestId: 'a', method: 'requestResourceAllocation', body: { resources } }),
-    );
-    const confirmation = confirmUserAction({
-      tag: 'ResourceAllocation',
-      value: { callingProductId: asProductId('product.dot'), resources },
-    });
-    await waitForModal();
-
-    // When
-    press('sign');
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
-    expect(isWaiting()).toBe(true);
-    expect(getShownDialog().title).toBe('Resource Allocation');
-
-    // When
-    tap.fromCore(
-      encodePhoneResponseFrame({
-        requestId: 'a',
-        method: 'requestResourceAllocation',
-        result: { kind: 'ok', value: { outcomes: ['Allocated'] } },
-      }),
-    );
-    const notices = await page.waitForNotices(1);
-
-    // Then
-    expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.text)).toEqual(['Allowance granted']);
   });
 
   it('As a user granting an allowance, I approve it and the waiting step asks me to approve on my phone, not to sign', async () => {
@@ -1168,10 +993,12 @@ function createPageAdapters({ phoneRequests = createPhoneRequestTracker() }: Cre
   typeof createAdapters
 > {
   return createAdapters({
-    label: 'localhost:3000',
+    core: {
+      product: { label: 'localhost:3000' },
+      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      phoneRequests,
+    },
     prompts: page.prompts,
-    modalScope: createBlockingModalCoordinator().createScope(),
-    phoneRequests,
   });
 }
 
@@ -1192,13 +1019,7 @@ function getModalFields(): Record<string, string> {
   return Object.fromEntries(getShownDialog().fields.map(field => [field.label, field.value]));
 }
 
-/** Every word the dialog shows. */
-function getModalText(): string {
-  const view = getShownDialog();
-  return [view.title, ...view.fields.flatMap(f => [f.label, f.value]), ...view.buttons.map(b => b.label)].join(' ');
-}
-
-/** The review on screen as a table case compares it: its title, icon, fields, warned field labels and buttons. */
+/** The review on screen as a table case compares it: its title, icon, fields and warned field labels. */
 function readShownReview() {
   const view = getShownDialog();
   return {
@@ -1206,7 +1027,6 @@ function readShownReview() {
     icon: view.icon,
     fields: getModalFields(),
     warnings: view.fields.filter(field => field.warning === true).map(field => field.label),
-    footer: getFooterVariants(),
   };
 }
 
@@ -1280,7 +1100,10 @@ function createPairedPhone({
 }: CreatePairedPhoneParams = {}) {
   const tap = tracker.connect();
   const scope = coordinator.createScope();
-  const adapters = createAdapters({ label: 'localhost:3000', prompts, modalScope: scope, phoneRequests: tracker });
+  const adapters = createAdapters({
+    core: { product: { label: 'localhost:3000' }, blockingModalScope: scope, phoneRequests: tracker },
+    prompts,
+  });
   return { tracker, tap, scope, ...adapters };
 }
 

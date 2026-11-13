@@ -4,7 +4,7 @@
 // Sharing the Diagnostics tab as a pre-filled GitHub issue, apart from the view so it is tested without a DOM.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import type { DiagnosticsRow, DiagnosticsSource } from './host.js';
+import type { DiagnosticsSnapshot, DiagnosticsSource } from './host.js';
 
 const uiReport = createReporter({ flow: 'ui' });
 
@@ -14,17 +14,14 @@ const uiReport = createReporter({ flow: 'ui' });
  */
 const diagnosticsShareMetric = defineCount<'error' | 'ok'>('diagnostics.share');
 
-/** A closed set, so the metric's `reason` tag stays bounded. */
-type ShareFailureReason = 'report' | 'open';
-
-/** Opens an issue with the report of `rows`, the rows the tab shows. A failure is reported here, never thrown. */
+/** Opens an issue with the report of `snapshot`, the page the tab shows. A failure is reported here, never thrown. */
 export async function shareDiagnostics(
   source: Pick<DiagnosticsSource, 'report' | 'openIssue'>,
-  rows: readonly DiagnosticsRow[],
+  snapshot: DiagnosticsSnapshot,
 ): Promise<void> {
   let report: string;
   try {
-    report = await source.report(rows);
+    report = await source.report(snapshot);
   } catch (error) {
     reportShareFailure(error, 'report');
     return;
@@ -53,7 +50,8 @@ function buildIssueUrl(report: string): string {
   return url.toString();
 }
 
-function reportShareFailure(error: unknown, reason: ShareFailureReason): void {
+/** `reason` is a closed set, so the metric's tag stays bounded. */
+function reportShareFailure(error: unknown, reason: 'report' | 'open'): void {
   uiReport.defect(error, {
     step: 'diagnostics_share',
     tags: { reason },

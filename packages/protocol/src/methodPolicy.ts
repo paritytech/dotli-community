@@ -75,7 +75,7 @@ const POLICIES = {
 export function getPolicy(method: AnyMethod): MethodPolicy {
   const address = protocolSchema.addressOf(method);
   const known = getPolicyAt(address.section, address.method);
-  if (known === undefined) {
+  if (known === null) {
     throw new Error('The method is not one of the protocol');
   }
   return known;
@@ -104,8 +104,8 @@ function isPath(path: string): path is Path {
   return Object.hasOwn(POLICIES, path);
 }
 
-/** The policy of the method at `section` and `method`, or undefined for a place the protocol lacks. */
-function getPolicyAt(section: string, method: string): MethodPolicy | undefined {
+/** The policy of the method at `section` and `method`, or null for a place the protocol lacks. */
+function getPolicyAt(section: string, method: string): MethodPolicy | null {
   const path = `${section}.${method}`;
-  return isPath(path) ? POLICIES[path] : undefined;
+  return isPath(path) ? POLICIES[path] : null;
 }

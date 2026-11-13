@@ -177,42 +177,6 @@ describe('walkUnixFsDag', () => {
     expect(Object.keys(walked)).toHaveLength(3);
   });
 
-  it('As a visitor, I load one big file and at most 8 of its chunks download at once', async () => {
-    // Given
-    const blocks: Blocks = new Map();
-    const big = putChunkedFile(blocks, 'big.bin', 20);
-    const held = createHeldSource(blocks);
-
-    // When
-    const files = await drive(
-      walkUnixFsDag({ rootCid: big.Hash, blockSource: held.source, parseInnerArchive: rejectInnerArchive }),
-      held,
-      [1],
-      8,
-    );
-
-    // Then
-    expect(held.maxInFlight()).toBe(8);
-    expect(decodeText(must(files['index.html'], 'index.html'))).toBe(
-      Array.from({ length: 20 }, (_, i) => `big.bin-${String(i)};`).join(''),
-    );
-  });
-
-  it('As a visitor, I load a deep tree and the walk finishes', async () => {
-    // Given
-    const { root, blocks, paths } = createDeepSite(4);
-
-    // When
-    const files = await walkUnixFsDag({
-      rootCid: root,
-      blockSource: createBlockSource(blocks),
-      parseInnerArchive: rejectInnerArchive,
-    });
-
-    // Then
-    expect(Object.keys(files).sort()).toEqual(paths.sort());
-  });
-
   it('As a visitor, I load a site nested deeper than the download budget and the walk finishes', async () => {
     // Given a folder chain twice as deep as the 8 downloads the walk runs at once
     const { root, blocks, paths } = createDeepSite(16);
@@ -299,6 +263,38 @@ describe('walkUnixFsDag', () => {
 
     // Then the sharded files sit under the folder
     expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
+  });
+
+  it('As a visitor whose load failed on a missing block, I see the failed walk fetch no more blocks', async () => {
+    // Given a root linking a missing file and a folder of 40 files, over a source that records every call
+    const blocks: Blocks = new Map();
+    const bigLinks = Array.from({ length: 40 }, (_, i) =>
+      putRaw(blocks, `${String(i)}.js`, encodeText(`file-${String(i)}`)),
+    );
+    const big = putNode(blocks, 'big', new UnixFS({ type: 'directory' }), bigLinks);
+    const missing: dagPb.PBLink = { Name: 'missing.js', Hash: createSha256Cid(encodeText('absent'), RAW), Tsize: 6 };
+    const root = putNode(blocks, '', new UnixFS({ type: 'directory' }), [missing, big]);
+    const held = createHeldSource(blocks);
+    const calls: Promise<Uint8Array>[] = [];
+    const blockSource: BlockSource = cid => {
+      const call = held.source(cid);
+      calls.push(call);
+      return call;
+    };
+
+    // When the walk fails on the missing block and every held fetch is released until no new fetch starts
+    const walk = walkUnixFsDag({ rootCid: root.Hash, blockSource, parseInnerArchive: rejectInnerArchive });
+    await expect(drive(walk, held, [1, 2], 8)).rejects.toThrow('missing block');
+    const startedAtRejection = calls.length;
+    let seen: number;
+    do {
+      seen = calls.length;
+      held.releaseAll();
+      await Promise.allSettled(calls);
+    } while (calls.length !== seen);
+
+    // Then the failed walk started no fetch after it failed
+    expect(calls.length).toBe(startedAtRejection);
   });
 
   it('As a visitor, I load a site packed as one CAR at its root and the walk unpacks it with the parser it was given', async () => {

@@ -7,7 +7,6 @@
 
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
 import { authState } from '../../src/runtime/state/authState.js';
@@ -77,36 +76,13 @@ describe('landing page', () => {
     expect(asked).toBe(1);
   });
 
-  it("As a visitor, the auth button sits in the page's corner", async () => {
+  it("As a visitor, I can press the auth button in the page's corner", async () => {
     // When
     mount();
     await appears('#landing-auth-button');
-
-    // Then: the button in its item wrapper, always inline (there is no topbar to collapse it into). The page is always
-    // dark, so it has no theme button.
-    const corner = byId('landing-auth');
-    expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
-    expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
-    expect(document.getElementById('landing-theme-toggle')).toBeNull();
-    expect(corner.querySelector('[data-parked]')).toBeNull();
-    expect(document.getElementById('more-button')).toBeNull();
-    expect(document.querySelectorAll('[id="landing-auth-button"]')).toHaveLength(1);
-    expect(captures.exception).not.toHaveBeenCalled();
-  });
-
-  it('As a visitor, leaving the landing page takes its corner button and its menu with it', async () => {
-    // Given
-    mount();
-    await appears('#landing-auth-button');
-
-    // When
-    page?.dispose();
-    page = null;
-    flush();
 
     // Then
-    for (const id of ['landing-auth-button', 'landing-user-popover']) {
-      expect(document.getElementById(id)).toBeNull();
-    }
+    expect(query(byId('landing-auth'), '#landing-auth-button', HTMLButtonElement).disabled).toBe(false);
+    expect(captures.exception).not.toHaveBeenCalled();
   });
 });

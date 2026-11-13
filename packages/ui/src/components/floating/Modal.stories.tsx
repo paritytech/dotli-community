@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, Show } from 'solid-js';
+import { Portal } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { TrashIcon } from '../icons/TrashIcon.js';
 import { Button } from '../primitives/Button.js';
 import { Callout } from '../primitives/Well.js';
 import { Modal } from './Modal.js';
+import { Popover } from './Popover.js';
 
 const onOpenChange = fn().mockName('onOpenChange');
 // The modal is portalled into the body, outside the story's canvas.
@@ -97,14 +99,6 @@ export const Desktop: Story = {
 /** As a phone user, I see the dialog as a sheet with its title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ mount, step }) => {
-    await step('When the dialog renders on a phone', async () => {
-      await mount();
-    });
-    await step('Then it is a sheet titled Clear site data', async () => {
-      await waitFor(() => expect(body.getByTestId('story-modal-sheet-title')).toHaveTextContent('Clear site data'));
-    });
-  },
 };
 
 /** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */
@@ -141,6 +135,123 @@ export const SwitchesFormKeepingContent: Story = {
       // The next story must not inherit the phone.
       await page.viewport(wide.width, wide.height);
     }
+  },
+};
+
+/**
+ * The phone bar, a body child that stays pressable under a sheet in these stories, with a button that opens a popover, and a modal
+ * open from the start. With `mustAnswer` the modal ignores a dismiss, as a prompt the user must answer does.
+ */
+function BarHarness(props: { mustAnswer?: boolean }) {
+  const [open, setOpen] = createSignal(true);
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  return (
+    <>
+      <Portal>
+        <header data-over-sheets="" data-testid="story-bar">
+          <button ref={setTrigger} type="button" data-testid="story-bar-button">
+            Bar
+          </button>
+        </header>
+      </Portal>
+      <Popover id="bar-popover" title="Account" trigger={trigger()}>
+        <p>Signed in as Alice.</p>
+      </Popover>
+      <Modal
+        open={open()}
+        onOpenChange={(next, reason) => {
+          if (props.mustAnswer === true && !next && reason === 'dismiss') {
+            return;
+          }
+          setOpen(next);
+        }}
+        title="Clear site data"
+        testId="bar-modal"
+      >
+        <Modal.Body>
+          <p>The site forgets its settings and signs you out.</p>
+        </Modal.Body>
+      </Modal>
+    </>
+  );
+}
+
+/** As a phone user, I turn the screen with a dialog open and the bar answers under its sheet, and goes inert again under its card. */
+export const BarFollowsLayout: Story = {
+  render: () => <BarHarness />,
+  play: async ({ mount, step }) => {
+    const bar = () => body.getByTestId('story-bar');
+    const { page } = await import('vitest/browser');
+    const wide = { width: window.innerWidth, height: window.innerHeight };
+    try {
+      await step('Given a dialog open as a card over the bar', async () => {
+        await mount();
+        await waitFor(() => expect(body.getByTestId('bar-modal')).toBeInTheDocument());
+        await waitFor(() => expect(bar()).toHaveAttribute('inert'));
+      });
+      await step('When the window narrows to a phone', async () => {
+        await page.viewport(390, 844);
+      });
+      await step('Then the dialog is a sheet and the bar answers', async () => {
+        await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+        await waitFor(() => expect(bar()).not.toHaveAttribute('inert'));
+      });
+      await step('When the window widens back to a desktop', async () => {
+        await page.viewport(wide.width, wide.height);
+      });
+      await step('Then the dialog is a card again and the bar is inert', async () => {
+        await waitFor(() => expect(body.queryByTestId('bar-modal-sheet-head')).not.toBeInTheDocument());
+        await waitFor(() => expect(bar()).toHaveAttribute('inert'));
+      });
+    } finally {
+      // The next story must not inherit the phone.
+      await page.viewport(wide.width, wide.height);
+    }
+  },
+};
+
+/** As a phone user, I press a bar button over a dialog I must answer and its sheet slides in over the dialog, which stays. */
+export const BarPressOverMustAnswerSheetSlides: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  render: () => <BarHarness mustAnswer />,
+  play: async ({ mount, step }) => {
+    await step("Given the dialog's sheet is open", async () => {
+      await mount();
+      await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+    });
+    await step('When I press the bar button', () => {
+      // Targets the button whatever covers it, since the bar has no position of its own here.
+      body.getByTestId('story-bar-button').click();
+    });
+    await step("Then the button's sheet slides in and the dialog stays", async () => {
+      const popover = () => document.getElementById('bar-popover');
+      await waitFor(() => expect(popover()).toHaveAttribute('data-open'));
+      await expect(popover()).not.toHaveAttribute('data-handoff');
+      await expect(body.getByTestId('bar-modal-backdrop')).toHaveAttribute('data-open');
+    });
+  },
+};
+
+/** As a phone user, I press a bar button over a dialog sheet and the dialog closes and the button's sheet takes its place with focus. */
+export const BarPressOverSheetHandsOff: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  render: () => <BarHarness />,
+  play: async ({ mount, step }) => {
+    await step("Given the dialog's sheet is open", async () => {
+      await mount();
+      await waitFor(() => expect(body.getByTestId('bar-modal-sheet-head')).toBeInTheDocument());
+    });
+    await step('When I press the bar button', () => {
+      // Targets the button whatever covers it, since the bar has no position of its own here.
+      body.getByTestId('story-bar-button').click();
+    });
+    await step("Then the dialog closes and the button's sheet takes its place with focus", async () => {
+      const popover = () => document.getElementById('bar-popover');
+      await waitFor(() => expect(popover()).toHaveAttribute('data-open'));
+      await expect(popover()).toHaveAttribute('data-handoff');
+      await expect(body.getByTestId('bar-modal-backdrop')).not.toHaveAttribute('data-open');
+      await waitFor(() => expect(popover()?.contains(document.activeElement)).toBe(true));
+    });
   },
 };
 

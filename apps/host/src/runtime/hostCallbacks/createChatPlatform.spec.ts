@@ -4,7 +4,6 @@
 import { asProductId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
-import { createAsyncTaskPool, type AsyncTaskPool } from '@dotli/shared';
 import { createChatPlatform } from './createChatPlatform.js';
 import { createChatConnections } from '../chat/createChatConnections.js';
 import { createChatStore } from '../chat/createChatStore.js';
@@ -100,33 +99,51 @@ describe('chat platform', () => {
   });
 
   it('As a product developer, I stop listening to my rooms and a read queued behind a running one is not made', async () => {
-    // Given a read that waits for the test, and a change that queues another behind it, on a read pool the test keeps
+    // Given a read that waits for the test, and a change that queues another behind it
     const repo = createMemoryChatRepo();
     repo.reads.hold.rooms = true;
     const chat = createChatStore({ repo, connections: createChatConnections() });
-    const pools: AsyncTaskPool[] = [];
-    const platform = createChatPlatform({
-      chat,
-      createReadPool() {
-        const pool = createAsyncTaskPool({ poolSize: 1 });
-        pools.push(pool);
-        return pool;
-      },
-    });
+    const platform = createChatPlatform({ chat });
     const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
     await repo.reads.holding(1);
     await platform.createChatRoom(PRODUCT, buildRoom('a'));
 
-    // When the product stops listening, then the running read lands and the read pool settles, with any later read let
-    // through at once
+    // When the product stops listening, then the running read lands, with any later read let through at once, and a
+    // second subscription's first list arrives after that landing was handled
     await stream.return?.();
     repo.reads.hold.rooms = false;
     const landed = repo.reads.waitForLanded(1);
     repo.reads.releaseOne();
     await landed;
-    await pools[0]?.settle();
+    const second = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
+    onTestFinished(async () => {
+      await second.return?.();
+    });
+    await second.next();
+
+    // Then one read for each subscription
+    expect(repo.reads.count.rooms).toBe(2);
+  });
+
+  it('As a product developer whose room list cannot be read, I follow my rooms and my stream ends on the error with no read after', async () => {
+    // Given a repo whose room reads fail
+    const repo = createMemoryChatRepo();
+    repo.reads.error.rooms = new Error('rooms unreadable');
+    const chat = createChatStore({ repo, connections: createChatConnections() });
+    const platform = createChatPlatform({ chat });
+    const stream = platform.subscribeChatRooms(PRODUCT)[Symbol.asyncIterator]();
+    onTestFinished(async () => {
+      await stream.return?.();
+    });
+
+    // When the first read fails, then a room is created
+    const failed = await stream.next();
+    const end = await stream.next();
+    await platform.createChatRoom(PRODUCT, buildRoom('a'));
 
     // Then
+    expect(yielded(failed)._unsafeUnwrapErr()).toEqual({ reason: 'rooms unreadable' });
+    expect(end.done).toBe(true);
     expect(repo.reads.count.rooms).toBe(1);
   });
 

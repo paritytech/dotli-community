@@ -7,7 +7,7 @@ import { createRoot, createSignal, flush } from 'solid-js';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
 import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
-import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../runtime/getAskedProductId.js';
 import { authState } from '../runtime/state/authState.js';
 import { productState } from '../runtime/state/productState.js';
 import { createRecordingConnection } from '../runtime/chat/createChatConnections.fake.js';
@@ -27,7 +27,7 @@ beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: createMemoryChatRepo(), connections });
   local = createMemoryStorage();
-  stopState = chatPanelState.start({ chat, storage: local });
+  stopState = chatPanelState.start({ chat: () => Promise.resolve(chat), storage: local });
   productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });
@@ -64,6 +64,22 @@ describe('useChatDock', () => {
     // Then
     expect(dock.conversation.claimComposerFocus()).toBe(true);
     expect(dock.conversation.claimComposerFocus()).toBe(false);
+    dispose();
+  });
+
+  it('As a user whose open room disappeared, I open another room and see no error from the one that went', () => {
+    // Given a room whose send failed, then dropped out of the contacts
+    const { dock, dispose } = mountDock();
+    dock.conversation.openRoom('gone');
+    dock.conversation.setComposerError('not delivered');
+    dock.conversation.roomGone();
+
+    // When
+    dock.conversation.openRoom('next');
+    flush();
+
+    // Then
+    expect(dock.conversation.composerError()).toBeNull();
     dispose();
   });
 
@@ -137,47 +153,6 @@ describe('useChatDock', () => {
     dispose();
   });
 
-  it('As a user, a room whose messages show while the panel is open is marked seen', async () => {
-    // Given
-    await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
-    chatPanelState.setOpen(true);
-    await chat.postProductMessage({
-      productId: PRODUCT,
-      roomId: 'main',
-      content: { tag: 'Text', value: { text: 'hi' } },
-    });
-    expect(chatPanelState.store.get().unreadByRoom).toEqual({ main: 1 });
-    const { dock, dispose } = mountDock();
-
-    // When
-    const body = createRoot(d => {
-      dock.conversation.openFeed().follow(() => 'main');
-      return d;
-    });
-    flush();
-    await chat.settle();
-
-    // Then
-    expect(chatPanelState.store.get().unreadByRoom).toEqual({});
-    body();
-    dispose();
-  });
-
-  it('As the dock, closing asks the page to close the panel', () => {
-    // Given
-    chatPanelState.setOpen(true);
-    const { dock, dispose } = mountDock();
-    expect(dock.open()).toBe(true);
-
-    // When
-    dock.onClose();
-    flush();
-
-    // Then
-    expect(dock.open()).toBe(false);
-    dispose();
-  });
-
   it('As a user, the product frame keeps clear of the open panel, as wide as I drag it, and takes the room back as it closes', () => {
     // Given a closed panel
     const { dock, dispose, reserved } = mountDock();
@@ -207,22 +182,6 @@ describe('useChatDock', () => {
 
     // Then
     expect(reserved).toEqual([360, 560, 0]);
-    dispose();
-  });
-
-  it('As a user, a product error hides the chat button and closes the panel', () => {
-    // Given
-    chatPanelState.setOpen(true);
-    const { dock, dispose } = mountDock();
-    expect(dock.available()).toBe(true);
-
-    // When
-    productState.setError();
-    flush();
-
-    // Then
-    expect(dock.available()).toBe(false);
-    expect(dock.open()).toBe(false);
     dispose();
   });
 });

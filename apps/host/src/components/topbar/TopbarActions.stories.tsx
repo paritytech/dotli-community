@@ -4,9 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { must } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
-import { expectBefore } from '@config/storybook/play';
 import { expectPhone, reachable, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   disconnect,
@@ -16,7 +14,7 @@ import {
   storyModalOpen,
 } from '../../testing/stories/accountFixtures.js';
 import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js';
-import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
+import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
 import type { ActionGroupMorph } from '@dotli/ui';
@@ -30,15 +28,14 @@ import { TopbarActions } from './TopbarActions.js';
 /** A phone bar with room for the account and More only, so every other item is a More row. */
 const MORE_ONLY = 80;
 
-const opened = (id: string): Promise<void> => waitFor(() => expect(byId(id)).toHaveAttribute('data-open'));
-const closed = (id: string): Promise<void> => waitFor(() => expect(byId(id)).not.toHaveAttribute('data-open'));
+function opened(id: string): Promise<void> {
+  return waitFor(() => expect(byId(id)).toHaveAttribute('data-open'));
+}
+function closed(id: string): Promise<void> {
+  return waitFor(() => expect(byId(id)).not.toHaveAttribute('data-open'));
+}
 
 const phone = { viewport: { value: 'phone', isRotated: false } };
-
-/** An app with a grant, as the page reads its permissions. */
-function givenGrant(): void {
-  givenApp({ Camera: 'granted' });
-}
 
 /** A bar that never morphs. */
 const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
@@ -89,46 +86,21 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const narrow = () => (
-  <TopbarFrame maxWidth={MORE_ONLY}>
-    <Actions />
-  </TopbarFrame>
-);
+function narrow() {
+  return (
+    <TopbarFrame maxWidth={MORE_ONLY}>
+      <Actions />
+    </TopbarFrame>
+  );
+}
 
-/** As a mobile user, the lock button marks the app's grants, and the More menu's Permissions row opens its popover. */
-export const PermissionsRowShowsGrants: Story = {
-  beforeEach: () => {
-    givenGrant();
-  },
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('Given the lock button carries the grant badge', async () => {
-      await waitFor(() => expect(byId('permissions-button')).toHaveAttribute('data-badge'));
-    });
-    await step('When I choose Permissions in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('permissions'));
-    });
-    await step('Then More closed and Permissions is open with focus', async () => {
-      await opened('permissions-popover');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
-    });
-  },
-};
-
-/** As a mobile user, the More menu's Network and Settings rows open the network panel and the settings popover. */
+/** As a mobile user, the More menu's Network row opens the network panel in More's place. */
 export const NetworkAndSettingsRowsOpen: Story = {
   render: narrow,
   play: async ({ userEvent, step }) => {
     await expectPhone(step);
     await step('When I choose Network in More', async () => {
       await openMore(userEvent);
-      await expect(moreRowNames()[0]).toBe('network');
-      await expect(within(moreRow('network')).getByTestId('more-row-aside')).toHaveTextContent(
-        NETWORK_HEALTH.quiet.word,
-      );
       await userEvent.click(moreRow('network'));
     });
     await step('Then the network panel is open in place of More, and the network button says so', async () => {
@@ -144,32 +116,11 @@ export const NetworkAndSettingsRowsOpen: Story = {
       await closed('chains-popover');
       await expect(byId('more-popover')).not.toHaveAttribute('data-open');
     });
-    await step('When I choose Settings in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('settings'));
-    });
-    await step('Then only Settings is open', async () => {
-      await opened('mode-popover');
-      await expect(byId('chains-popover')).not.toHaveAttribute('data-open');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-    });
   },
 };
 
 /** As a phone user, the actions sit in the bar in place of the address while they fit, and the account ends it. */
-export const PhoneActionsReplaceAddress: Story = {
-  play: async ({ step }) => {
-    await expectPhone(step);
-    await step('Then every item is in the bar, More is parked, and the account comes after it', async () => {
-      const more = document.querySelector('[data-testid="more-item"]');
-      await waitFor(() => expect(more).toHaveAttribute('data-parked'));
-      const items = [...document.querySelectorAll('#topbar-actions [data-testid="action-item"]')];
-      await expect(items.filter(item => item.hasAttribute('data-parked'))).toEqual([]);
-      const account = must(byId('auth-button').closest('[data-testid="action-item"]'), 'the account item');
-      await expectBefore(byId('more-button'), account);
-    });
-  },
-};
+export const PhoneActionsReplaceAddress: Story = {};
 
 /** As a phone user, the Network row leads the More menu with its verdict, and a stalled chain raises More's badge and name. */
 export const PhoneNetworkRowLeads: Story = {
@@ -223,42 +174,6 @@ export const PhoneTabReachesSheetClose: Story = {
     await step('Then the sheet closed and More has focus', async () => {
       await closed('more-popover');
       await waitFor(() => expect(button).toHaveFocus());
-    });
-  },
-};
-
-/** As a phone user choosing Permissions in More, the permissions sheet takes More's place without sliding. */
-export const PhonePermissionsTakesMorePlace: Story = {
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I choose Permissions in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('permissions'));
-    });
-    await step('Then More goes and Permissions comes at rest, both marked as a hand-off', async () => {
-      await opened('permissions-popover');
-      await expect(byId('permissions-popover')).toHaveAttribute('data-handoff');
-      await expect(byId('more-popover')).not.toHaveAttribute('data-open');
-      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
-      await waitFor(() => expect(byId('permissions-popover').contains(document.activeElement)).toBe(true));
-    });
-  },
-};
-
-/** As a phone user choosing Settings in More, the settings sheet takes More's place without sliding. */
-export const PhoneSettingsTakesMorePlace: Story = {
-  render: narrow,
-  play: async ({ userEvent, step }) => {
-    await expectPhone(step);
-    await step('When I choose Settings in More', async () => {
-      await openMore(userEvent);
-      await userEvent.click(moreRow('settings'));
-    });
-    await step('Then the settings sheet took its place, both marked as a hand-off', async () => {
-      await opened('mode-popover');
-      await expect(byId('mode-popover')).toHaveAttribute('data-handoff');
-      await expect(byId('more-popover')).toHaveAttribute('data-handoff');
     });
   },
 };

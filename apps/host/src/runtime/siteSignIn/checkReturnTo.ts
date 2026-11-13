@@ -79,7 +79,9 @@ async function readCapped(reader: ReadableStreamDefaultReader<Uint8Array>): Prom
     }
     received += value.length;
     if (received > WELL_KNOWN_MAX_BYTES) {
-      await reader.cancel();
+      await reader.cancel().catch(() => {
+        // The bytes past the cap decided the verdict, and a body that refuses the cancel has nothing left to drop.
+      });
       return 'too_large';
     }
     chunks.push(value);

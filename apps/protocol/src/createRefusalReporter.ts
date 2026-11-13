@@ -7,16 +7,18 @@
 import { defineCount, type CountSink } from '@dotli/metrics';
 
 import { FRAME_LOG_TAG } from './frameLogTag.js';
+import { InvalidInputError } from './invalidInputError.js';
 import type { FrameRefusal } from './withRefusalReports.js';
 
 /**
- * Shared-storage request rejected before touching `localStorage`. Tagged `store` and `reason`, because the failed
- * answer the caller receives is easy to miss.
+ * Shared-storage request refused or failed. Tagged `store`, and `reason`: `validation` for a site or key that does not
+ * check, which never touches `localStorage`, or else the storage error's name. Counted because the failed answer the
+ * caller receives is easy to miss.
  */
 const sharedStorageRejectedMetric = defineCount('shared_storage.rejected');
 
 type Params = {
-  /** Logs a refused or failed call of the wallet or the chains. */
+  /** Logs a store call the browser's storage failed, and every wallet or chain call that failed. */
   warn: (...args: unknown[]) => void;
   /** Counts a refused call of the shared stores. */
   count: CountSink;
@@ -27,16 +29,22 @@ export function createRefusalReporter({ warn, count }: Params): (refusal: FrameR
   return reportRefusal;
 
   function reportRefusal(refusal: FrameRefusal): void {
-    const { route } = refusal;
+    const { route, method, error } = refusal;
     switch (route) {
       case 'auth':
       case 'mode':
-        count(sharedStorageRejectedMetric, { store: route, reason: 'validation' });
+        if (error instanceof InvalidInputError) {
+          count(sharedStorageRejectedMetric, { store: route, reason: 'validation' });
+          return;
+        }
+        // The browser refused the storage, which the caller's input cannot cause, so its error is logged too.
+        warn(`${FRAME_LOG_TAG} ${method} failed`, error);
+        count(sharedStorageRejectedMetric, { store: route, reason: error.name });
         return;
       case 'wallet':
       case 'chain':
         // A log line only. The failure still reaches the host as the call's answer.
-        warn(`${FRAME_LOG_TAG} ${refusal.method} failed`, refusal.error);
+        warn(`${FRAME_LOG_TAG} ${method} failed`, error);
         return;
     }
   }

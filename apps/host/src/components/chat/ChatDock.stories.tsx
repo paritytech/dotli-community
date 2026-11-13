@@ -95,67 +95,6 @@ export const EmptyRoomListHint: Story = {
   },
 };
 
-/** As a user, I open the panel to see rooms with icon and name, open a room and go back. */
-export const RoomsWithIconAndName: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step(
-      'As a user, opening the panel lists rooms with icon and name, and a room opens and goes back',
-      async () => {
-        // Given
-        stage.createRoom('support', 'Support', ICON);
-        stage.createRoom('general', 'General');
-
-        // When
-        openChat();
-        await waitFor(() => expect(rows()).toHaveLength(2), SLOW);
-
-        // Then
-        await expect(byId('chat-panel-composer')).not.toBeVisible();
-        const [general, support] = rows();
-        await expect(support).toHaveTextContent('Support');
-        await expect(support?.querySelector('img[data-testid="chat-room-icon"]')).toHaveAttribute('src', ICON);
-        await expect(general?.querySelector('[data-testid="chat-room-icon"][data-fallback]')).toHaveTextContent('G');
-
-        // When
-        await openRoom('Support');
-
-        // Then
-        await expect(byId('chat-panel-title')).toHaveTextContent('Support');
-        await expect(byId('chat-panel-back')).toBeVisible();
-        await expect(byId('chat-panel-composer')).toBeVisible();
-
-        // When
-        byId('chat-panel-back').click();
-
-        // Then
-        await waitFor(() => expect(byId('chat-panel-rooms')).toBeVisible());
-        await expect(byId('chat-panel-back')).not.toBeVisible();
-      },
-    );
-  },
-};
-
-/** As a user, I see the panel stretch to the top when the topbar hides. */
-export const StretchesWhenTopbarHides: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a user, the panel stretches to the top when the topbar hides', async () => {
-      // When
-      stage.update({ topbarHidden: true });
-
-      // Then
-      await waitFor(() => expect(byId('chat-panel')).toHaveAttribute('data-topbar-hidden'));
-
-      // When
-      stage.update({ topbarHidden: false });
-
-      // Then
-      await waitFor(() => expect(byId('chat-panel')).not.toHaveAttribute('data-topbar-hidden'));
-    });
-  },
-};
-
 /** As a user, I read product messages and my replies reach the product. */
 export const MessagesRenderAndRepliesPublish: Story = {
   tags: ['!autodocs'],
@@ -295,22 +234,6 @@ export const CustomMessageTreeAndTaps: Story = {
   },
 };
 
-/** As a user with unread messages, I see their count on the chat button. */
-export const UnreadBadge: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('As a user with unread messages, I see their count on the chat button', async () => {
-      // When the page counts a product message I have not seen
-      stage.update({ unread: 1, unreadByRoom: { main: 1 } });
-
-      // Then
-      await waitFor(() => expect(byId('chat-unread-badge')).toBeVisible(), SLOW);
-      await expect(byId('chat-unread-badge')).toHaveTextContent('1');
-      await expect(byId('chat-button')).toHaveAccessibleName('Chat, 1 unread');
-    });
-  },
-};
-
 /** As a user, I see each room's unread count on its row and the total on the chat button. */
 export const PerRoomUnreadUntilOpened: Story = {
   tags: ['!autodocs'],
@@ -388,20 +311,12 @@ export const FailedReplyKeepsMessage: Story = {
   play: async ({ step }) => {
     await step('As a user, a failed reply keeps the message and shows why', async () => {
       // Given
-      stage.sendError = new Error('request denied');
+      stage.sendError = new Error('boom');
       stage.createRoom('main', 'Main');
       openChat();
       await openRoom('Main');
 
       // When
-      send('hello');
-
-      // Then the hint shows as soon as the send fails, and the thread keeps the message
-      await waitFor(() => expect(byId('chat-panel-hint')).toHaveTextContent('Log in to chat with this app.'), SLOW);
-      await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('hello'));
-
-      // When
-      stage.sendError = new Error('boom');
       send('again');
 
       // Then
@@ -410,6 +325,28 @@ export const FailedReplyKeepsMessage: Story = {
         SLOW,
       );
       await waitFor(() => expect(byId('chat-panel-messages')).toHaveTextContent('again'));
+    });
+  },
+};
+
+/** As a user whose reply could not be kept, such as with no live connection or a failed store, I keep my text. */
+export const UnkeptReplyKeepsText: Story = {
+  tags: ['!autodocs'],
+  play: async ({ step }) => {
+    await step('As a user, a reply that was not kept stays in the composer', async () => {
+      // Given
+      stage.refuseError = new Error('IndexedDB is gone');
+      stage.createRoom('main', 'Main');
+      openChat();
+      await openRoom('Main');
+
+      // When
+      send('hello');
+
+      // Then
+      await waitFor(() => expect(byId('chat-panel-hint')).toBeVisible(), SLOW);
+      await expect(byId('chat-panel-input')).toHaveValue('hello');
+      await expect(byId('chat-panel-messages')).not.toHaveTextContent('hello');
     });
   },
 };

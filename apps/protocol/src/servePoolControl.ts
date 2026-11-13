@@ -20,6 +20,6 @@ export function servePoolControl({ serving, control }: Params): () => void {
     } else {
       control.resume();
     }
-    return Promise.resolve(ok());
+    return ok();
   });
 }

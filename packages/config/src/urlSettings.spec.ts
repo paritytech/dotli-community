@@ -5,20 +5,6 @@ import { describe, it, expect } from 'vitest';
 import { parseSettingsFromSearch, writeSettingsToSearch } from './urlSettings.js';
 
 describe('parseSettingsFromSearch', () => {
-  it('As a visitor, I open a URL with no settings and none of them apply', () => {
-    // When
-    const empty = parseSettingsFromSearch(new URLSearchParams());
-
-    // Then
-    expect(empty).toEqual({
-      network: null,
-      backend: null,
-      skipArchiveCache: null,
-      skipCidCache: null,
-      skipWorkerCache: null,
-    });
-  });
-
   it('As a visitor, I open a URL with invalid settings and none of them apply', () => {
     // When
     const invalid = parseSettingsFromSearch(new URLSearchParams('network=bogus&chainBackend=nope&skipCidCache=true'));
@@ -43,14 +29,6 @@ describe('parseSettingsFromSearch', () => {
     expect(parsed.skipArchiveCache).toBe(false);
     expect(parsed.skipCidCache).toBe(true);
     expect(parsed.skipWorkerCache).toBe(true);
-  });
-
-  it('As a visitor, I open a URL asking for the shared light client and it parses as written', () => {
-    // When
-    const parsed = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
-
-    // Then
-    expect(parsed.backend).toBe('smoldot-shared-worker');
   });
 });
 

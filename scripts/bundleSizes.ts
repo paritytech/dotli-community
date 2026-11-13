@@ -42,8 +42,11 @@ type Params = {
 
 const EAGER_SUFFIX = '/(eager path)';
 
-/** `assets/fetch-CMRV9u5T.js` becomes `assets/fetch.js`. */
+/** `assets/fetch-CMRV9u5T.js` becomes `assets/fetch.js`. A file outside `assets/` keeps its name. */
 export function stripHash(path: string): string {
+  if (!/(?:^|\/)assets\//.test(path)) {
+    return path;
+  }
   return path.replace(/[.-][A-Za-z0-9_-]{8}\./, '.');
 }
 

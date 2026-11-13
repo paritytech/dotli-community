@@ -65,48 +65,29 @@ export function requestCoreLogin(core: Provider, { reason }: Params = {}): Promi
   return new Promise<LoginResponse>((resolve, reject) => {
     let settled = false;
     let reportedUndecodable = false;
-    let cleanupRequested = false;
-    let unsubscribeMessage: (() => void) | undefined;
-    let unsubscribeClose: (() => void) | undefined;
+    const unsubscribes: (() => void)[] = [];
 
-    function unsubscribeAll(): void {
-      cleanupRequested = true;
-      unsubscribeMessage?.();
-      unsubscribeMessage = undefined;
-      unsubscribeClose?.();
-      unsubscribeClose = undefined;
-    }
-
-    function registerCleanup(
-      unsubscribe: (() => void) | undefined,
-      retain: (value: (() => void) | undefined) => void,
-    ): void {
-      if (cleanupRequested) {
-        unsubscribe?.();
-      } else {
-        retain(unsubscribe);
-      }
-    }
-
-    function rejectRequest(error: Error): void {
-      if (settled) {
+    /** Keeps `unsubscribe` until the request settles, or runs it at once when a subscribe heard the answer already. */
+    function hold(unsubscribe: (() => void) | undefined): void {
+      if (unsubscribe === undefined) {
         return;
       }
-      settled = true;
-      unsubscribeAll();
-      reject(error);
-    }
-
-    function resolveRequest(response: LoginResponse): void {
       if (settled) {
+        unsubscribe();
         return;
       }
-      settled = true;
-      unsubscribeAll();
-      resolve(response);
+      unsubscribes.push(unsubscribe);
     }
 
-    registerCleanup(
+    // The promise settles once by itself, so only the listeners need a latch.
+    function stop(): void {
+      settled = true;
+      for (const unsubscribe of unsubscribes.splice(0)) {
+        unsubscribe();
+      }
+    }
+
+    hold(
       core.subscribe(message => {
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
@@ -132,35 +113,34 @@ export function requestCoreLogin(core: Provider, { reason }: Params = {}): Promi
         ) {
           return;
         }
+        let result: ReturnType<typeof responseCodec.dec>;
         try {
-          const result = responseCodec.dec(payload.value);
-          if (result.success) {
-            resolveRequest(result.value.value);
-          } else {
-            rejectRequest(new LoginRequestError(result.value));
-          }
+          result = responseCodec.dec(payload.value);
         } catch (error) {
-          rejectRequest(new Error('The login answer did not decode', { cause: error }));
+          stop();
+          reject(new Error('The login answer did not decode', { cause: error }));
+          return;
+        }
+        stop();
+        if (result.success) {
+          resolve(result.value.value);
+        } else {
+          reject(new LoginRequestError(result.value));
         }
       }),
-      unsubscribe => {
-        unsubscribeMessage = unsubscribe;
-      },
     );
-
-    registerCleanup(
+    hold(
       core.subscribeClose?.(error => {
-        rejectRequest(error);
+        stop();
+        reject(error);
       }),
-      unsubscribe => {
-        unsubscribeClose = unsubscribe;
-      },
     );
 
     try {
       core.postMessage(frame.value);
     } catch (error) {
-      rejectRequest(toError(error));
+      stop();
+      reject(toError(error));
     }
   });
 }

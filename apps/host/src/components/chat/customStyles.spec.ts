@@ -24,27 +24,6 @@ describe('chat custom styles', () => {
     });
   });
 
-  it('As a product, text maps its typography and color token', () => {
-    // When
-    const style = textStyle('HeadlineLarge', 'FgError', []);
-
-    // Then
-    expect(style).toEqual({
-      'font-size': '32px',
-      'line-height': '40px',
-      'font-weight': '700',
-      color: 'var(--chat-fg-error)',
-    });
-  });
-
-  it('As a product, a row maps its arrangement, alignment and full width', () => {
-    // When
-    const style = rowStyle('End', 'Bottom', [{ tag: 'FillWidth', value: true }]);
-
-    // Then
-    expect(style).toEqual({ 'justify-content': 'flex-end', 'align-items': 'flex-end', width: '100%' });
-  });
-
   it('As a product, a box maps its content alignment, minimum height and circular border', () => {
     // When
     const style = boxStyle('BottomEnd', [

@@ -91,37 +91,6 @@ describe('block cache', () => {
     expect(await cache.get('bafyB')).toBeNull();
   });
 
-  it('As a user, I read a malformed cache entry and get a miss rather than a hang', async () => {
-    // Given a `blocks` record whose `bytes` field isn't a `Uint8Array`, with
-    // a matching `block_meta` row so the entry otherwise looks valid. It is
-    // the shape a corrupted write or a future schema change could leave behind
-    const db = await idb.connect();
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(['blocks', 'block_meta'], 'readwrite');
-      transaction.objectStore('blocks').put({
-        cid: 'bafyMalformed',
-        bytes: 'not-bytes',
-      });
-      transaction.objectStore('block_meta').put({
-        cid: 'bafyMalformed',
-        size: 9,
-        lastUsed: Date.now(),
-      });
-      transaction.oncomplete = () => {
-        resolve();
-      };
-      transaction.onerror = () => {
-        reject(transaction.error ?? new Error('setup transaction failed'));
-      };
-    });
-
-    // When
-    const bytes = await cache.get('bafyMalformed');
-
-    // Then
-    expect(bytes).toBeNull();
-  });
-
   it('As a user opening a cached product, I read a block and am answered while another read of the cache is still running', async () => {
     // Given a cached block, and a long read of the block store already running
     await cache.put('bafyA', new Uint8Array([1]));

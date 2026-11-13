@@ -5,41 +5,36 @@
 // only writer of chat data, so every write is announced through `subscribe` and shown through `view`. User replies and
 // custom-message taps reach the product through its live connection.
 
-import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
-import type { RenderSink } from '@parity/truapi-host';
+import type { ChatMessageContent, HostRendererActionSubscribeItem } from '@parity/truapi';
 import { createReporter, defineCount } from '@dotli/metrics';
-import {
-  createAsyncTaskPool,
-  createListenerSet,
-  createRandomId,
-  isShallowEqual,
-  realTimers,
-  registerAtomReset,
-  type Timers,
-} from '@dotli/shared';
+import { createListenerSet, createRandomId, realTimers, type Timers } from '@dotli/shared';
 import {
   chat,
-  isExpectedDbError,
   type ChatBotRecord,
   type ChatMessageRecord,
   type ChatRoomFooter,
   type ChatRoomRecord,
 } from '@dotli/storage';
-import { atom, type ReadableAtom } from 'nanostores';
+import { ChatReplyUndeliveredError } from './chatReplyUndeliveredError.js';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
+import { createChatView, type ChatChange, type ChatViewRepo } from './createChatView.js';
+import { reportFailedChatStorage } from './reportFailedChatStorage.js';
+import { NOT_CONNECTED, startCustomRender, type RenderCustomMessageParams } from './startCustomRender.js';
 
 const report = createReporter({ flow: 'chat' });
 
 /**
- * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, or
- * a product's room list, which then rejects to its caller. Tagged `outcome` (error) and `reason` (the error's name).
+ * A user's reply, tap or gesture that could not reach the product, for want of a live connection or as its publish
+ * failed. Tagged `outcome` (error) and `reason` (`not_connected`, else the error's name).
  */
-const chatReadMetric = defineCount<'error'>('chat.read');
+const chatPublishMetric = defineCount<'error'>('chat.publish');
+
+type PublishStep = 'chat_reply_publish' | 'chat_action_publish' | 'chat_renderer_action_publish';
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
 /** Where chat data lives. IndexedDB in the page. Every member rejects when the store fails. */
-export type ChatRepo = {
+export type ChatRepo = ChatViewRepo & {
   /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon and keeps the footer. */
   createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
   /** Resolves false, writing nothing, when the product has no room with this id. */
@@ -48,47 +43,6 @@ export type ChatRepo = {
   registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
   /** Resolves the message's `seq` once it is stored. */
   appendMessage(message: Omit<ChatMessageRecord, 'seq'>): Promise<number>;
-  /** The product's rooms, in creation order. */
-  listRooms(productId: string): Promise<ChatRoomRecord[]>;
-  /** The product's bots, in registration order. */
-  listBots(productId: string): Promise<ChatBotRecord[]>;
-  /** The time of the latest message in each of the product's rooms that has one, by room id. */
-  readLatestMessageTimestamps(productId: string): Promise<Map<string, number>>;
-  /** The room's messages, in insertion order. */
-  listMessages(productId: string, roomId: string): Promise<ChatMessageRecord[]>;
-};
-
-/** One write the store made. */
-export type ChatChange =
-  | { kind: 'rooms'; productId: string }
-  | { kind: 'bots'; productId: string }
-  | { kind: 'message'; productId: string; roomId: string; author: 'product' | 'user' };
-
-/** What the open panel shows. */
-export type ChatFollow = {
-  productId: string;
-  /** The open conversation, or null for the room list. */
-  roomId: string | null;
-  /** A reload of the same product reads the room list again, as another tab of it may have written meanwhile. */
-  loadId: number;
-};
-
-export type ChatContacts = {
-  rooms: readonly ChatRoomRecord[];
-  bots: readonly ChatBotRecord[];
-  lastMessageTimes: ReadonlyMap<string, number>;
-};
-
-export type ChatView = {
-  productId: string | null;
-  /** Null until the product's first room list read lands. */
-  contacts: ChatContacts | null;
-  /** The last room list read failed. The rooms read before it stay. */
-  contactsFailed: boolean;
-  roomId: string | null;
-  /** Null until the room's first read lands. */
-  messages: readonly ChatMessageRecord[] | null;
-  messagesFailed: boolean;
 };
 
 export type ChatStore = ReturnType<typeof createChatStore>;
@@ -138,26 +92,6 @@ type TriggerActionParams = {
   trigger: { messageId: string; actionId: string; payload?: `0x${string}` };
 };
 
-type RenderCustomMessageParams = {
-  /** The product that renders the message. */
-  productId: string;
-  /** The custom message to render. */
-  request: ProductRendererRenderRequest;
-  /** Where the trees stream. */
-  sink: RenderSink;
-};
-
-const NOT_CONNECTED = 'Chat is not connected for this product';
-
-const NO_VIEW: ChatView = {
-  productId: null,
-  contacts: null,
-  contactsFailed: false,
-  roomId: null,
-  messages: null,
-  messagesFailed: false,
-};
-
 /**
  * Builds a chat store over `repo` that announces each write it makes and shows the followed view. Building one reads
  * nothing and never throws.
@@ -165,170 +99,44 @@ const NO_VIEW: ChatView = {
 export function createChatStore({ repo, connections, timers = realTimers }: Params) {
   // A broken subscriber must not fail the product's call that made the write.
   const listeners = createListenerSet<ChatChange>({ onListenerError: report.listener('chat_store.change') });
-  const viewChange = atom<ChatView>(NO_VIEW);
-  viewChange.eq = isShallowEqual;
-  registerAtomReset(viewChange);
-  const view: ReadableAtom<ChatView> = viewChange;
-  let target: ChatFollow | null = null;
-  // One read of each kind at a time, so results land in the order they were read. A change marks its read stale, and
-  // a queued read that finds it fresh does nothing, so a burst of changes costs one more read.
-  const reads = createAsyncTaskPool({ poolSize: 1 });
-  let contactsStale = false;
-  let messagesStale = false;
-  // Messages reorder the list, which is re-read for them only while it shows, and once on return if any arrived.
-  let listMissedMessages = false;
-
-  function patch(next: Partial<ChatView>): void {
-    viewChange.set({ ...viewChange.get(), ...next });
-  }
-
-  function reportFailedRead(
-    error: unknown,
-    step: 'chat_contacts_read' | 'chat_messages_read' | 'chat_rooms_read',
-  ): void {
-    if (isExpectedDbError(error)) {
-      report.expected(error, { step, metric: chatReadMetric });
-      return;
-    }
-    report.defect(error, {
-      step,
-      metric: chatReadMetric,
-      message: `[dot.li chat] ${step} failed:`,
-      tags: { kind: 'chat_panel_read_error' },
-    });
-  }
-
-  // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.
-  async function readContacts(): Promise<void> {
-    if (!contactsStale || target === null) {
-      return;
-    }
-    contactsStale = false;
-    const { productId } = target;
-    const isCurrent = (): boolean => target?.productId === productId;
-    try {
-      const [rooms, bots, lastMessageTimes] = await Promise.all([
-        repo.listRooms(productId),
-        repo.listBots(productId),
-        repo.readLatestMessageTimestamps(productId),
-      ]);
-      if (isCurrent()) {
-        patch({ contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false });
-      }
-    } catch (error) {
-      reportFailedRead(error, 'chat_contacts_read');
-      if (isCurrent()) {
-        patch({ contactsFailed: true });
-      }
-    }
-  }
-
-  async function readMessages(): Promise<void> {
-    const following = target;
-    const roomId = following?.roomId ?? null;
-    if (!messagesStale || following === null || roomId === null) {
-      return;
-    }
-    messagesStale = false;
-    const { productId } = following;
-    const isCurrent = (): boolean => target?.productId === productId && target.roomId === roomId;
-    try {
-      const messages = await repo.listMessages(productId, roomId);
-      if (isCurrent()) {
-        patch({ messages, messagesFailed: false });
-      }
-    } catch (error) {
-      reportFailedRead(error, 'chat_messages_read');
-      if (isCurrent()) {
-        patch({ messagesFailed: true });
-      }
-    }
-  }
-
-  function refreshContacts(): void {
-    contactsStale = true;
-    void reads.call(readContacts, { pool: 'contacts' });
-  }
-
-  function refreshMessages(): void {
-    messagesStale = true;
-    void reads.call(readMessages, { pool: 'messages' });
-  }
-
-  function followChange(change: ChatChange): void {
-    if (target?.productId !== change.productId) {
-      return;
-    }
-    if (change.kind !== 'message' || target.roomId === null) {
-      refreshContacts();
-      return;
-    }
-    listMissedMessages = true;
-    if (change.roomId === target.roomId) {
-      refreshMessages();
-    }
-  }
+  const chatView = createChatView({ repo });
 
   function notify(change: ChatChange): void {
-    followChange(change);
+    chatView.noteChange(change);
     listeners.emit(change);
   }
 
-  function requireConnection(productId: string): ChatConnection {
+  /** The product's live connection. Throws an `Error`, reported, when it has none. */
+  function requireConnection(productId: string, step: PublishStep): ChatConnection {
     const connection = connections.get(productId);
     if (connection === undefined) {
-      throw new Error(NOT_CONNECTED);
+      const error = new Error(NOT_CONNECTED);
+      report.expected(error, { step, metric: chatPublishMetric, reason: 'not_connected' });
+      throw error;
     }
     return connection;
   }
 
+  /** Waits for `published`. Rejects with its failure, reported as the transport's. */
+  async function publish(step: PublishStep, published: Promise<void>): Promise<void> {
+    try {
+      await published;
+    } catch (error) {
+      report.expected(error, { step, metric: chatPublishMetric });
+      throw error;
+    }
+  }
+
   return {
     /** The followed product's rooms and the open room's messages, kept current with every write. */
-    view,
-
+    view: chatView.view,
     /**
-     * Points the view at `next`, or at nothing for null, which drops reads still in flight. Idempotent. Never throws: a
-     * read that fails shows in the view's failed flags.
+     * Points the view at `next`, or at nothing for null, after which a read still running reaches no view and none due
+     * after it runs. Idempotent. Never throws: a read that fails shows in the view's failed flags.
      */
-    follow(next: ChatFollow | null): void {
-      const previous = target;
-      if (next === null) {
-        target = null;
-        contactsStale = false;
-        messagesStale = false;
-        listMissedMessages = false;
-        viewChange.set(NO_VIEW);
-        return;
-      }
-      const sameProduct = previous !== null && previous.productId === next.productId;
-      const sameRoom = sameProduct && previous.roomId === next.roomId;
-      const reloaded = !sameProduct || previous.loadId !== next.loadId;
-      if (sameRoom && !reloaded) {
-        return;
-      }
-      target = next;
-      const shown = viewChange.get();
-      viewChange.set({
-        productId: next.productId,
-        contacts: sameProduct ? shown.contacts : null,
-        contactsFailed: sameProduct && shown.contactsFailed,
-        roomId: next.roomId,
-        messages: sameRoom ? shown.messages : null,
-        messagesFailed: sameRoom && shown.messagesFailed,
-      });
-      if (reloaded || (next.roomId === null && listMissedMessages)) {
-        listMissedMessages = false;
-        refreshContacts();
-      }
-      if (!sameRoom && next.roomId !== null) {
-        refreshMessages();
-      }
-    },
-
+    follow: chatView.follow,
     /** Resolves once no view read is queued or running. Never rejects, as a failed read is reported and shown. */
-    async settle(): Promise<void> {
-      await Promise.all([reads.settle('contacts'), reads.settle('messages')]);
-    },
+    settle: chatView.settle,
 
     /**
      * Hears every write, after it is stored, until the returned function unsubscribes. A listener that throws is
@@ -386,57 +194,70 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
     },
 
     /**
-     * Requires a live connection up front, so a message that cannot reach the product is never stored looking
-     * sent. A later publish failure surfaces without losing the stored message. Rejects without a live connection,
-     * when the repo fails, and when the publish fails.
+     * Requires a live connection up front, so a reply that cannot reach the product is never stored looking sent.
+     * Rejects, with nothing stored, without a live connection and when the repo fails. Rejects with
+     * `ChatReplyUndeliveredError` when the stored reply cannot be published. Every failure is reported.
      */
     async postUserMessage({ productId, roomId, text }: PostUserMessageParams): Promise<void> {
-      const connection = requireConnection(productId);
+      const connection = requireConnection(productId, 'chat_reply_publish');
       const content: ChatMessageContent = { tag: 'Text', value: { text } };
-      await repo.appendMessage({
-        productId,
-        roomId,
-        messageId: createRandomId(),
-        author: 'user',
-        content,
-        timestamp: timers.now(),
-      });
+      try {
+        await repo.appendMessage({
+          productId,
+          roomId,
+          messageId: createRandomId(),
+          author: 'user',
+          content,
+          timestamp: timers.now(),
+        });
+      } catch (error) {
+        reportFailedChatStorage(error, 'chat_reply_store');
+        throw error;
+      }
       notify({ kind: 'message', productId, roomId, author: 'user' });
-      await connection.publish({
-        roomId,
-        peer: 'user',
-        payload: { tag: 'MessagePosted', value: content },
-      });
+      try {
+        await publish(
+          'chat_reply_publish',
+          connection.publish({ roomId, peer: 'user', payload: { tag: 'MessagePosted', value: content } }),
+        );
+      } catch (error) {
+        throw new ChatReplyUndeliveredError(roomId, error);
+      }
     },
 
-    /** Hands the user's tap on a message action to the product. Rejects without a live connection or when it fails. */
+    /**
+     * Hands the user's tap on a message action to the product. Rejects without a live connection or when it fails,
+     * reported.
+     */
     async triggerAction({ productId, roomId, trigger }: TriggerActionParams): Promise<void> {
-      await requireConnection(productId).publish({
-        roomId,
-        peer: 'user',
-        payload: { tag: 'ActionTriggered', value: trigger },
-      });
+      await publish(
+        'chat_action_publish',
+        requireConnection(productId, 'chat_action_publish').publish({
+          roomId,
+          peer: 'user',
+          payload: { tag: 'ActionTriggered', value: trigger },
+        }),
+      );
     },
 
     /**
      * Hands a gesture inside a custom message's tree to the product. Rejects without a live connection or when it
-     * fails.
+     * fails, reported.
      */
     async triggerRendererAction(productId: string, item: HostRendererActionSubscribeItem): Promise<void> {
-      await requireConnection(productId).publishRendererAction(item);
+      await publish(
+        'chat_renderer_action_publish',
+        requireConnection(productId, 'chat_renderer_action_publish').publishRendererAction(item),
+      );
     },
 
     /**
-     * Streams replacement trees into `sink` until disposed. Without a live connection the sink fails at once, and
-     * the stored message stays for a later render. Never throws.
+     * Streams trees into `sink` until disposed, on the product's newest connection. A render its connection fails tells
+     * the sink, then goes on at once on a newer connection, or on the next one that registers for the product. Without a
+     * connection the sink fails at once and the render waits the same way. A completed render is final. Never throws.
      */
     renderCustomMessage({ productId, request, sink }: RenderCustomMessageParams): () => void {
-      const connection = connections.get(productId);
-      if (connection === undefined) {
-        sink.onError?.(new Error(NOT_CONNECTED));
-        return (): void => undefined;
-      }
-      return connection.render(request, sink);
+      return startCustomRender({ connections, productId, request, sink });
     },
 
     /**
@@ -447,7 +268,7 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       try {
         return await repo.listRooms(productId);
       } catch (error) {
-        reportFailedRead(error, 'chat_rooms_read');
+        reportFailedChatStorage(error, 'chat_rooms_read');
         throw error;
       }
     },
@@ -464,7 +285,7 @@ export const chatStore = createChatStore({
     listRooms: chat.listRooms,
     listBots: chat.listBots,
     readLatestMessageTimestamps: chat.getLatestMessageTimestamps,
-    listMessages: (productId, roomId) => chat.listMessages(productId, roomId),
+    listMessages: chat.listMessages,
   },
   connections: chatConnections,
 });

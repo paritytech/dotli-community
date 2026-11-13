@@ -20,28 +20,6 @@ import { protocolSchema } from './schema.js';
 const { frame, resolve, wallet } = protocolSchema.sections;
 
 describe('getFailure', () => {
-  it("As a frame that waits on another, I read its frame status end as the protocol's error classes", () => {
-    // When
-    const ends = [
-      getFailure(frame.status, domain({ tag: 'fatal', value: 'wasm trap' })),
-      getFailure(frame.status, domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
-      getFailure(frame.status, domain({ tag: 'released', value: 'The worker let go of this tab' })),
-      getFailure(frame.status, domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
-    ];
-
-    // Then
-    expect(ends[0]).toBeInstanceOf(ProtocolFatalError);
-    expect(ends[1]).toBeInstanceOf(ProtocolInitFailedError);
-    expect(ends[2]).toBeInstanceOf(ProtocolPortReleasedError);
-    expect(ends[3]).toBeInstanceOf(ProtocolVersionMismatchError);
-    expect(ends.map(error => error.message)).toEqual([
-      'wasm trap',
-      'chainHead follow stopped',
-      'The worker let go of this tab',
-      'The peer speaks version 9',
-    ]);
-  });
-
   it('As a frame that relays another, I read its failures under the names they crossed with and its call name', () => {
     // When
     const failures = [

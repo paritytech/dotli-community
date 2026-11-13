@@ -56,7 +56,7 @@ export const PRESETS = [RESTRICTED, SECURE, TRUSTED, UNLIMITED] as const;
 const RANK: Readonly<Record<PermissionStatus, number>> = { denied: 0, ask: 1, granted: 2 };
 
 /** The steps from `statuses`, in menu order, to `preset`. */
-export function distance(statuses: readonly PermissionStatus[], preset: Preset): number {
+function distance(statuses: readonly PermissionStatus[], preset: Preset): number {
   return ALL_PERMISSIONS.reduce(
     (sum, { name }, i) => sum + Math.abs(RANK[statuses[i] ?? 'ask'] - RANK[preset.statuses[name]]),
     0,

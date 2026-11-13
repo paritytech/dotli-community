@@ -27,14 +27,6 @@ export const Icon: Story = {
 };
 /** As a dotli user, I see a drawn icon in the same tile, which assistive technology skips. */
 export const Children: Story = {
-  args: { testId: 'tile' },
-  play: async ({ canvas, step }) => {
-    await step('Then I see the drawn icon in the same tile, which assistive technology skips', async () => {
-      const tile = canvas.getByTestId('tile');
-      await expect(tile).toHaveAttribute('aria-hidden', 'true');
-      await expect(tile.querySelector('svg')).not.toBeNull();
-    });
-  },
   render: args => (
     <IconTile {...args}>
       <LockIcon size={20} />

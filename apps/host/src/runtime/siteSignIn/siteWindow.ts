@@ -14,7 +14,7 @@ import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindowSt
 import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { WindowFlow, WindowFlowParams } from '../sessionHandoff/createWindowFlow.js';
 import { refuseRound } from '../sessionHandoff/roundAnswer.js';
-import type { MainAccount } from './createMainAccountSource.js';
+import type { MainAccount } from './mainAccount.js';
 import type { SiteChain } from './createSiteChain.js';
 import type { SiteGroups } from './createSiteGroups.js';
 import type { SiteRequest } from './parseSiteRequest.js';
@@ -121,34 +121,41 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
   // The window flow's screen, while a flow the site started has not stored its sign-in.
   const flowScreen = atom<SignInScreen | null>(null);
   const stops: (() => void)[] = [];
-  // Aborts on dispose, after which the round starts no flow, as nothing would release it.
-  const lifetime = new AbortController();
-  const site = createRound((stored, close) => {
-    if (lifetime.signal.aborted) {
+  // Set on dispose, after which the round starts no flow, as nothing would release it.
+  let disposed = false;
+  const site = createRound((stored, close, failed) => {
+    if (disposed) {
       return;
     }
     // A round whose stored session is gone starts a flow again on Try again. The flow before it is left until the
     // window is disposed, since closing the window twice is harmless.
     let stopFollowing = (): void => undefined;
-    const flow = createWindowFlow({
-      responder,
-      intent: 'resume',
-      // A site is named by its full origin, so two sites on one host never read the same.
-      pageLabel: pageOrigin => pageOrigin,
-      // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
-      // here, so nothing of the session reaches the round.
-      deliver() {
-        stopFollowing();
-        flowScreen.set(null);
-        stored();
-      },
-      close,
+    let flow: WindowFlow;
+    try {
+      flow = createWindowFlow({
+        responder,
+        intent: 'resume',
+        // A site is named by its full origin, so two sites on one host never read the same.
+        pageLabel: pageOrigin => pageOrigin,
+        // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
+        // here, so nothing of the session reaches the round.
+        deliver() {
+          stopFollowing();
+          flowScreen.set(null);
+          stored();
+        },
+        close,
+      });
+    } catch (error) {
+      failed(error);
+      return;
+    }
+    stopFollowing = flow.screen.subscribe(next => {
+      flowScreen.set(next);
     });
-    flowScreen.set(flow.screen.get());
-    stopFollowing = flow.screen.listen(() => {
-      flowScreen.set(flow.screen.get());
+    stops.push(stopFollowing, () => {
+      flow.dispose();
     });
-    stops.push(stopFollowing, flow.dispose);
   });
 
   const screen = atom<SignInScreen | SiteWindowScreen>({ view: 'site-signing', origin, route });
@@ -167,7 +174,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
   showCurrent();
 
   function dispose(): void {
-    lifetime.abort();
+    disposed = true;
     for (const stop of stops.splice(0)) {
       stop();
     }
@@ -181,8 +188,9 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     screen: shownScreen,
     /**
      * Stops showing the site's round, disposes every window flow it started and starts none after it, never disposes
-     * the responder, which is its caller's, is safe to call twice and never throws, and leaves the site's round open,
-     * where a Try again then starts no flow and nothing more of it shows.
+     * the responder, which is its caller's, is safe to call twice, and leaves the site's round open, where a Try again
+     * then starts no flow and nothing more of it shows. Throws what a window flow's `dispose` throws, and then disposes
+     * no flow after it.
      */
     dispose,
   };

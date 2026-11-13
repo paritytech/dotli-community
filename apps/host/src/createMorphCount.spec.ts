@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createMorphCount } from './createMorphCount.js';
 
 describe('createMorphCount', () => {
-  it('As a user opening a menu from the pill, I wait out two overlapping bar morphs and the menu waits for the last to end', () => {
+  it('As a user opening a menu from the pill, I wait out two overlapping bar morphs and the menu waits for the last to end, and an end with none running ends nothing', () => {
     // Given two overlapping morphs
     const morphs = createMorphCount({ areTransitionsRunning: () => true });
     morphs.start();
@@ -36,9 +36,22 @@ describe('createMorphCount', () => {
     morphs.start();
 
     // When
-    const answers = { running: morphs.isRunning(), end: morphs.end() };
+    const running = morphs.isRunning();
 
     // Then
-    expect(answers).toEqual({ running: false, end: false });
+    expect(running).toBe(false);
+  });
+
+  it('As a user opening a menu from the pill, I lose the end event of one morph and the next morph still ends the wait', () => {
+    // Given a fold dropped without its end event, then a reveal, with no read of the count between them
+    const morphs = createMorphCount({ areTransitionsRunning: () => false });
+    morphs.start();
+    morphs.start();
+
+    // When the reveal ends
+    const ended = morphs.end();
+
+    // Then
+    expect(ended).toBe(true);
   });
 });

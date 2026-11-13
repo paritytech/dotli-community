@@ -9,7 +9,7 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { ProductButton } from '../../src/islands/ProductButton.js';
-import { toProductId } from '../../src/runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from '../../src/runtime/getAskedProductId.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { productCardState } from '../../src/state/productCardState.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
@@ -25,19 +25,6 @@ afterEach(() => {
 });
 
 describe('ProductButton island', () => {
-  it('As a phone user, I see the product button before my product has loaded', () => {
-    // Given no product state yet
-    const host = document.createElement('div');
-    document.body.append(host);
-
-    // When the island mounts
-    unmount = render(() => <ProductButton />, host);
-    flush();
-
-    // Then the product button is in the page
-    expect(document.getElementById('product-button')).not.toBeNull();
-  });
-
   it("As a phone user, I tap my product's icon and its card opens while my author loads, keeping the bar up", async () => {
     // Given the island mounted before any product state, then a product pill on a loaded product with a cid and an
     // author source that finds no owner

@@ -6,35 +6,43 @@
 import { pageScreen } from '@dotli/ui';
 import type { ProductFrameView } from './runtime/createProductFrame.js';
 import { loadViolationPanelMount } from './lazy.js';
-import { pageLoading } from './createLoadingController.js';
-import { productFrameLayout } from './createProductFrameLayout.js';
-import { showProductTitle } from './showProductTitle.js';
+import { pageLoading, type LoadingController } from './createLoadingController.js';
+import { productFrameLayout, type ProductFrameLayout } from './createProductFrameLayout.js';
+import { getProductTitle } from './getProductTitle.js';
 
 /** The parts of the page the product frame shares. */
 type Params = {
+  /** Where the frame is laid out. */
+  layout: Pick<ProductFrameLayout, 'attach'>;
   body: () => Pick<HTMLElement, 'style'>;
   /** Where the product frame mounts. */
   container: () => Pick<HTMLElement, 'dataset' | 'replaceChildren'>;
   /** Takes the full-page screen over the frame down. */
-  clearScreen: () => void;
+  clearScreen: (typeof pageScreen)['clear'];
   /** Ends the loading screen. */
-  hideLoading: () => void;
+  hideLoading: LoadingController['hideLoading'];
+  /** Writes the tab title. */
+  setTitle: (title: string) => void;
 };
 
-/**
- * Returns the frame's surroundings: the layout, the tab title, the screens over it and, in checker builds, the panel.
- * Never throws.
- */
-export function createProductFrameView({ body, container, clearScreen, hideLoading }: Params): ProductFrameView {
+/** Returns the frame's surroundings: the layout, the tab title, the screens over it and, in checker builds, the panel. */
+export function createProductFrameView({
+  layout,
+  body,
+  container,
+  clearScreen,
+  hideLoading,
+  setTitle,
+}: Params): ProductFrameView {
   return {
     attachFrame(iframe) {
-      productFrameLayout.attach(iframe);
+      layout.attach(iframe);
       const { style } = body();
       style.margin = '0';
       style.overflow = 'hidden';
     },
     showTitle(product) {
-      showProductTitle(product);
+      setTitle(getProductTitle(product));
     },
     clearScreens({ loading }) {
       clearScreen();
@@ -52,10 +60,7 @@ export function createProductFrameView({ body, container, clearScreen, hideLoadi
     loadCheckerPanel:
       import.meta.env.VITE_SANDBOX_CHECKER !== 'true'
         ? undefined
-        : async () => {
-            const { mountViolationPanel } = await loadViolationPanelMount();
-            return iframe => mountViolationPanel(iframe);
-          },
+        : async () => (await loadViolationPanelMount()).mountViolationPanel,
   };
 }
 
@@ -64,10 +69,14 @@ export function getProductFrameContainer(): HTMLElement {
   return document.getElementById('app') ?? document.body;
 }
 
-/** The page's frame view, over its body, screens and loading screen. */
+/** The page's frame view, over its frame layout, body, screens, loading screen and document title. */
 export const productFrameView: ProductFrameView = createProductFrameView({
+  layout: productFrameLayout,
   body: () => document.body,
   container: getProductFrameContainer,
   clearScreen: pageScreen.clear,
   hideLoading: pageLoading.hideLoading,
+  setTitle: title => {
+    document.title = title;
+  },
 });

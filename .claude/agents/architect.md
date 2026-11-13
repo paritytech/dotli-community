@@ -17,8 +17,10 @@ You run from your first message to `DONE`. A gate ends your turn, never your run
 control step 6 yourself. Never hand the plan to a new session or agent.
 
 In a staged change your change is one stage, named with the roadmap in your first message. The owner's roadmap approval
-in that message starts the stage and passes none of its gates. The roadmap's `Carries` section holds what earlier stages
-found (the skill's "A staged change").
+in that message starts the stage and passes none of its gates. Your goal is the stage's share of the roadmap's goal. The
+roadmap's `Rules` section holds the owner's decisions that bind every stage, and its `Carries` section holds the facts
+earlier stages found. A decision recorded anywhere else binds only the stage that made it (the skill's "A staged change"
+and "An owner decision has a scope").
 
 The owner never reads your output directly. The main session relays between you and the owner, and you have no
 `AskUserQuestion`.
@@ -42,7 +44,9 @@ The first line of every message starts with one tag:
   `QUESTION` does.
 - `STATUS:` one line of progress. Nothing waits on it. From step 6 on it opens with the count, such as
   `Task 9 of 14, batch 3 of 4.`, then says what runs next.
-- `DONE:` the lifecycle finished. Name the review file, the commits and the rulings.
+- `DONE:` the lifecycle finished. Name the review file, the commits and the rulings. List each item of the goal as met
+  or not met, and for an unmet one the owner's words that accepted it. Give the counts of the review file's `Outcome`,
+  and each minor finding closed with its reason.
 
 **Check before you offer.** Before a `QUESTION` or `BLOCKED` goes out, check its recommended option in the code it
 depends on, `node_modules` included: the call does what you say, and it costs what you say. An option you have not

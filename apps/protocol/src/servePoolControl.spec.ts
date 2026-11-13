@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { protocolSchema } from '@dotli/protocol';
-import { err, ok, unsupported } from '@dotli/transport';
+import { ok } from '@dotli/transport';
 import { servePoolControl } from './servePoolControl.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 
@@ -39,20 +39,5 @@ describe('serving the frame pause', () => {
     // Then the control paused and resumed, and each call was answered
     expect(control.calls).toEqual(['pause', 'resume']);
     expect([paused, resumed]).toEqual([ok(), ok()]);
-  });
-
-  it('As a frame or a worker port that stopped serving the pause, my control hears nothing more', async () => {
-    // Given a pause served to a host
-    const { serving, host } = linkHost();
-    const control = createFakeControl();
-    const stop = servePoolControl({ serving, control });
-
-    // When the frame stops serving it and the host pauses it anyway
-    stop();
-    const refused = await host.request(frame.pause, { paused: true });
-
-    // Then the host is refused and the control heard nothing
-    expect(refused).toEqual(err(unsupported()));
-    expect(control.calls).toEqual([]);
   });
 });

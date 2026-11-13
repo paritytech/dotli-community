@@ -386,6 +386,21 @@ describe('session lease', () => {
     expect(page.captures.exception).not.toHaveBeenCalled();
   });
 
+  it('As an operator, I see a copy read that breaks its contract reported once', async () => {
+    // Given a copy whose read rejects, as the restore on load does only when it breaks its contract
+    const page = createLeaseHarness({ blob: 'b1' });
+    const read = page.holdRead();
+
+    // When the landing page starts the lease and the read rejects
+    page.lease.start();
+    read.reject(new Error('restore broke its contract'));
+    await page.changes.until(() => page.metrics.counted('wallet.session_lease').length === 1);
+
+    // Then the failure is counted and captured once
+    expect(page.metrics.counted('wallet.session_lease')).toEqual([{ outcome: 'error', reason: 'read' }]);
+    expect(page.captures.exception).toHaveBeenCalledTimes(1);
+  });
+
   it('As a dotli integrator, I start the lease twice and it runs once', async () => {
     // Given a copy with a paired session
     const page = createLeaseHarness({ blob: 'b1' });

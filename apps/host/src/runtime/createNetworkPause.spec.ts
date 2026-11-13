@@ -3,7 +3,8 @@
 
 import type { ChainPoolControl } from '@dotli/chains';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { createFakePage, createManualTimers, recordLog, type FakePage, type ManualTimers } from '@dotli/shared/testing';
+import { recordReports } from '@dotli/metrics/testing';
+import { createFakePage, createManualTimers, type FakePage, type ManualTimers } from '@dotli/shared/testing';
 import { createNetworkPause, NETWORK_PAUSE_GRACE_MS, type NetworkPause } from './createNetworkPause.js';
 import { createManualPoll } from '../testing/createManualPoll.js';
 
@@ -29,7 +30,7 @@ beforeEach(() => {
 describe('The network pause', () => {
   it('As a hidden page, my network pauses once the grace has passed', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -43,7 +44,7 @@ describe('The network pause', () => {
 
   it('As a page shown within the grace, nothing pauses and the monitor starts over', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(30_000);
 
@@ -57,7 +58,7 @@ describe('The network pause', () => {
 
   it('As a page shown after a pause, my network resumes and the monitor starts over', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
@@ -70,7 +71,7 @@ describe('The network pause', () => {
 
   it('As a page that loads while hidden, my network stays awake until the load ends, then the grace starts', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     const release = pause.hold();
     page.setVisibility('hidden');
     await timers.advance(120_000);
@@ -88,7 +89,7 @@ describe('The network pause', () => {
 
   it('As a paused page that starts loading, my network resumes', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
@@ -103,7 +104,7 @@ describe('The network pause', () => {
     // Given a page whose visibility moves without an event, as a frozen page's does
     const visibility: { visibilityState: DocumentVisibilityState } = { visibilityState: 'hidden' };
     const frozen = Object.assign(new EventTarget(), visibility);
-    pause.start({ visibility: frozen });
+    pause.start(frozen);
     frozen.visibilityState = 'visible';
 
     // When the grace ends, and then the page's late event arrives
@@ -116,7 +117,7 @@ describe('The network pause', () => {
 
   it('As a page that slept while visible, the monitor starts over on wake', async () => {
     // Given a page whose ticks come 10 000 ms apart
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     await timers.advance(10_000);
     await timers.advance(10_000);
     const beforeSleep = returns;
@@ -131,7 +132,7 @@ describe('The network pause', () => {
 
   it('As a page that was hidden for long, its first tick after the return is no sleep', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(300_000);
 
@@ -145,7 +146,7 @@ describe('The network pause', () => {
 
   it('As a pause target added late, I hear the current state at once', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
     const late: string[] = [];
@@ -165,7 +166,7 @@ describe('The network pause', () => {
     page.setVisibility('hidden');
 
     // When
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
     // Then
@@ -174,7 +175,7 @@ describe('The network pause', () => {
 
   it('As a page that loads while visible, releasing its hold starts no grace', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     pause.hold()();
     await timers.advance(30_000);
     page.setVisibility('hidden');
@@ -190,7 +191,7 @@ describe('The network pause', () => {
 
   it('As a page that stops following visibility while paused, my network resumes', async () => {
     // Given
-    const stop = pause.start({ visibility: page.document });
+    const stop = pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
@@ -205,7 +206,7 @@ describe('The network pause', () => {
     // Given
     page.setVisibility('hidden');
     const release = pause.hold();
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     await timers.advance(NETWORK_PAUSE_GRACE_MS * 2);
     const whileHeld = [...calls];
 
@@ -221,7 +222,7 @@ describe('The network pause', () => {
 
   it('As a hidden page whose load starts during the grace, the grace starts over when the load ends', async () => {
     // Given
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS - 1);
 
@@ -238,12 +239,29 @@ describe('The network pause', () => {
     expect([whileHeld, duringGrace, calls]).toEqual([[], [], ['pause']]);
   });
 
+  it('As a page hidden again within its grace, my network pauses one grace after the second hide', async () => {
+    // Given
+    pause.start(page.document);
+    page.setVisibility('hidden');
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+    page.setVisibility('visible');
+    page.setVisibility('hidden');
+
+    // When the first grace's timer fires during the second grace, and then the second's
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+    const afterFirstGrace = [...calls];
+    await timers.advance(NETWORK_PAUSE_GRACE_MS / 2);
+
+    // Then
+    expect([afterFirstGrace, calls]).toEqual([[], ['pause']]);
+  });
+
   it('As a page that removes a target and a return listener, neither hears the network again', async () => {
     // Given
     const removed: string[] = [];
     const removeTarget = pause.addTarget({ pause: () => removed.push('pause'), resume: () => removed.push('resume') });
     const removeReturn = pause.onReturn(() => removed.push('return'));
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     removeTarget();
     removeReturn();
 
@@ -264,7 +282,7 @@ describe('The network pause', () => {
       },
       resume: () => undefined,
     });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -282,7 +300,7 @@ describe('The network pause', () => {
       },
       resume: () => undefined,
     });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -290,25 +308,6 @@ describe('The network pause', () => {
 
     // Then
     expect(calls).toEqual(['pause']);
-  });
-
-  it('As a page whose target stops following visibility while it pauses, my network resumes', async () => {
-    // Given
-    let stop = (): void => undefined;
-    pause.addTarget({
-      pause: () => {
-        stop();
-      },
-      resume: () => undefined,
-    });
-    stop = pause.start({ visibility: page.document });
-    page.setVisibility('hidden');
-
-    // When
-    await timers.advance(NETWORK_PAUSE_GRACE_MS);
-
-    // Then
-    expect(calls).toEqual(['pause', 'resume']);
   });
 
   it('As a page shown while a target pauses, my network resumes and the monitor starts over', async () => {
@@ -319,7 +318,7 @@ describe('The network pause', () => {
       },
       resume: () => undefined,
     });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -338,7 +337,7 @@ describe('The network pause', () => {
       },
       resume: () => undefined,
     });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -359,7 +358,7 @@ describe('The network pause', () => {
       resume: () => undefined,
     });
     removeTarget = pause.addTarget({ pause: () => removed.push('pause'), resume: () => removed.push('resume') });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
 
     // When
@@ -378,7 +377,7 @@ describe('The network pause', () => {
         pause.addTarget({ pause: () => late.push('pause'), resume: () => late.push('resume') });
       },
     });
-    pause.start({ visibility: page.document });
+    pause.start(page.document);
     page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
 
@@ -389,18 +388,24 @@ describe('The network pause', () => {
     expect([calls, late]).toEqual([['pause', 'resume'], []]);
   });
 
-  it('As a dotli maintainer, I see a breadcrumb when the network pauses and resumes', async () => {
-    // Given
-    const lines = recordLog({ onFinished: onTestFinished, level: 'info' });
-    pause.start({ visibility: page.document });
-    page.setVisibility('hidden');
+  it('As an operator, I see a pause target that throws reported, and the page keeps serving the network', async () => {
+    // Given a target whose pause throws, told after the recording one
+    pause.addTarget({
+      pause: () => {
+        throw new Error('pause failed');
+      },
+      resume: () => undefined,
+    });
+    const reports = recordReports({ onFinished: onTestFinished });
+    pause.start(page.document);
 
     // When
+    page.setVisibility('hidden');
     await timers.advance(NETWORK_PAUSE_GRACE_MS);
     page.setVisibility('visible');
 
     // Then
-    expect(lines).toMatchObject([{ message: 'Network paused' }, { message: 'Network resumed' }]);
+    expect([reports.exceptions, calls]).toMatchObject([[{ step: 'transition' }], ['pause', 'resume']]);
   });
 });
 

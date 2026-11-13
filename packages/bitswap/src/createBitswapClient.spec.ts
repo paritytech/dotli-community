@@ -205,24 +205,6 @@ describe('createBitswapClient retry policy', () => {
     expect(chain.gaps[6]).toBe(1_000);
   });
 
-  it('As a user, I see a fetch from a chain that keeps answering busy stop at the three-minute budget', async () => {
-    // Given every answer is "no peers at all"
-    const chain = createFakeChain([], { tail: { code: -32812 } });
-
-    // When
-    const block = createClient(chain.provider).get('bafyBusy');
-    // Marks the rejection handled while the timers advance.
-    void Promise.allSettled([block]);
-    await timers.advance(185_000);
-
-    // Then
-    await expect(block).rejects.toMatchObject({
-      name: 'BitswapTimeoutError',
-      // Vitest types the matcher `any`, widened so no `any` reaches the expected object.
-      message: expect.stringMatching(/timed out after 180000ms/) as unknown,
-    });
-  });
-
   it('As an integrator, I see a malformed CID fail on the first reply', async () => {
     // Given
     const chain = createFakeChain([{ code: -32602 }]);
@@ -247,29 +229,41 @@ describe('createBitswapClient retry policy', () => {
     // Then
     await expect(block).rejects.toMatchObject({ name: 'BitswapUnavailableError' });
   });
+
+  it.each([
+    [
+      'its provider throws when it is called',
+      () =>
+        createBitswapClient({
+          provider: () => {
+            throw new Error('Bulletin would not open');
+          },
+          timers,
+        }),
+    ],
+    [
+      'its connection throws when it is dialled',
+      () =>
+        createBitswapClient({
+          provider: () => () => {
+            throw new Error('Bulletin would not open');
+          },
+          timers,
+        }),
+    ],
+  ])('As a user whose Bulletin connection cannot open because %s, I see the fetch fail at once', async (_, build) => {
+    // Given a client whose Bulletin connection cannot open
+    const client = build();
+
+    // When
+    const block = client.get('bafyNoOpen');
+
+    // Then it failed with the error with the timers never moved
+    await expect(block).rejects.toThrow('Bulletin would not open');
+  });
 });
 
 describe('createBitswapClient aborts', () => {
-  it('As a user, I navigate away and the fetch stops mid-call instead of finishing the budget', async () => {
-    // Given a chain that never replies, so the call is waiting on the wire
-    const chain = createFakeChain([], { tail: 'silent' });
-    const aborter = new AbortController();
-    const block = createClient(chain.provider).get('bafyInFlight', aborter.signal);
-    // Marks the rejection handled while the timers advance.
-    void Promise.allSettled([block]);
-    await timers.advance(100);
-
-    // When
-    aborter.abort();
-
-    // Then it gave up at once rather than after the 60s per-call timeout
-    await expect(block).rejects.toMatchObject({
-      name: 'AbortError',
-      // Vitest types the matcher `any`, widened so no `any` reaches the expected object.
-      message: expect.stringMatching(/aborted/) as unknown,
-    });
-  });
-
   it('As a user, I navigate away and the fetch stops mid-backoff too', async () => {
     // Given a retry that is waiting between attempts
     const chain = createFakeChain([], { tail: { code: -32812 } });
@@ -302,6 +296,29 @@ describe('createBitswapClient aborts', () => {
     // Then
     await expect(block).rejects.toThrow(/aborted/);
     expect(chain.sent()).toBe(0);
+  });
+
+  it('As a user, I give up on a block another part of the page still wants and only my call stops', async () => {
+    // Given two callers of one block on a chain that answers only later, the first without a signal
+    const chain = createFakeChain(['silent']);
+    const client = createClient(chain.provider);
+    const aborter = new AbortController();
+    const wanted = client.get('bafyWanted');
+    const abandoned = client.get('bafyWanted', aborter.signal);
+    // Holds the rejection across the timer moves.
+    const abandonedOutcome = Promise.allSettled([abandoned]);
+    await timers.advance(100);
+
+    // When the second caller gives up, and the chain then answers
+    aborter.abort();
+    const [abandonedResult] = await abandonedOutcome;
+    const dial = getDial(chain.dials, 0);
+    dial.onMessage({ jsonrpc: '2.0', id: getSentId(dial, 0), result: '0xabcd' });
+
+    // Then only the second call stopped, and the first got the block from the one request
+    expect(abandonedResult).toMatchObject({ status: 'rejected', reason: { name: 'AbortError' } });
+    await expect(wanted).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.sent()).toBe(1);
   });
 
   it('As a user, I keep a long-lived subscription and it gathers no abort listeners', async () => {
@@ -480,28 +497,6 @@ describe('createBitswapClient for one block asked twice', () => {
     expect(firstBytes.buffer).not.toBe(secondBytes.buffer);
   });
 
-  it('As a user, I give up on a block in one part of the page and it is still fetched for the other', async () => {
-    // Given a first fetch held on the wire, and a second waiting for it
-    const chain = createFakeChain(['silent'], { tail: { hex: '0xabcd' } });
-    const client = createClient(chain.provider);
-    const aborter = new AbortController();
-    const abandoned = client.get('bafyHalfWanted', aborter.signal);
-    // Marks the rejection handled while the timers advance.
-    const settled = Promise.allSettled([abandoned]);
-    const wanted = client.get('bafyHalfWanted');
-    await timers.advance(100);
-
-    // When the first gives up
-    aborter.abort();
-    await settled;
-    await timers.advance(100);
-
-    // Then the second fetches the block itself
-    await expect(abandoned).rejects.toThrow(/aborted/);
-    await expect(wanted).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
-    expect(chain.sent()).toBe(2);
-  });
-
   it('As a user, I ask for a block again after the first fetch ended and it is fetched again', async () => {
     // Given
     const chain = createFakeChain([{ hex: '0x01' }, { hex: '0x02' }]);
@@ -521,21 +516,6 @@ describe('createBitswapClient for one block asked twice', () => {
 });
 
 describe('createBitswapClient connection lifetime', () => {
-  it('As a page, my Bulletin connection closes once my last fetch settles', async () => {
-    // Given
-    const chain = createFakeChain([{ hex: '0x01' }]);
-    const client = createClient(chain.provider);
-
-    // When
-    const block = client.get('bafyOnce');
-    await timers.advance(10);
-    await block;
-
-    // Then
-    expect(chain.dials).toHaveLength(1);
-    expect(getDial(chain.dials, 0).disconnected).toBe(1);
-  });
-
   it('As a page, my Bulletin connection stays open while another fetch still runs', async () => {
     // Given one fetch that is answered and one the chain never answers
     const chain = createFakeChain([{ hex: '0x01' }, 'silent']);

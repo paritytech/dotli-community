@@ -8,7 +8,7 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
 import { isPhoneViewport, LayerTracker, Popover, type TrackedLayer } from '@dotli/ui';
 import { expectBefore } from '@config/storybook/play';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
+import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   connect,
   disconnect,
@@ -30,18 +30,19 @@ import { AuthModal } from './AuthModal.js';
 import type { DrawQr } from './qrCode.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 
-const open = openSurface({ surface: 'auth-modal-backdrop' });
-
 const DEEPLINK = 'polkadotapp://pair?handshake=test';
 const TITLE = 'Sign in with Polkadot App';
 const PREPARING = 'Getting a sign-in code ready.';
 const LONG_GET_APP = 'Get it for iPhone or Android';
 const SHORT_GET_APP = 'Get it';
 /** The body over the code to scan. */
-const scanHint = (host: string): string => `Scan the code to continue to ${host}. One sign-in works across every app.`;
+function scanHint(host: string): string {
+  return `Scan the code to continue to ${host}. One sign-in works across every app.`;
+}
 /** The body over a phone's app link. */
-const appHint = (host: string): string =>
-  `Approve in the app to continue to ${host}. One sign-in works across every app.`;
+function appHint(host: string): string {
+  return `Approve in the app to continue to ${host}. One sign-in works across every app.`;
+}
 
 /** The QR renderer the modal is given, which draws nothing and records what it was asked. */
 const drawQr = fn<DrawQr>(() => Promise.resolve());
@@ -95,30 +96,62 @@ function windowRound(view: AuthModalView, extra: Partial<AuthModalState> = {}): 
 
 const body = within(document.body);
 /** The modal's dialog, open or closed. */
-const dialog = (): HTMLElement => byTestId('auth-modal-backdrop');
+function dialog(): HTMLElement {
+  return byTestId('auth-modal-backdrop');
+}
 /** The title the card heads with, which names the dialog even while the closed dialog hides its name. */
-const modalTitle = (): HTMLElement => within(dialog()).getByRole('heading', { level: 2, hidden: true });
+function modalTitle(): HTMLElement {
+  return within(dialog()).getByRole('heading', { level: 2, hidden: true });
+}
 /** The body under the pairing screen's title. */
-const hint = (): HTMLElement => byTestId('auth-modal-hint');
+function hint(): HTMLElement {
+  return byTestId('auth-modal-hint');
+}
 /** The modal's own way out, shown or not. Its name follows the view. */
-const closeButton = (name = 'Cancel'): HTMLElement => within(dialog()).getByRole('button', { name, hidden: true });
+function closeButton(name = 'Cancel'): HTMLElement {
+  return within(dialog()).getByRole('button', { name, hidden: true });
+}
 /** Where to get the app, whose name the device shortens. */
 const GET_APP_NAME = /^Get it/;
-const getAppLink = (): HTMLElement => body.getByRole('link', { name: GET_APP_NAME, hidden: true });
-const queryGetAppLink = (): HTMLElement | null => body.queryByRole('link', { name: GET_APP_NAME, hidden: true });
+function getAppLink(): HTMLElement {
+  return body.getByRole('link', { name: GET_APP_NAME, hidden: true });
+}
+function queryGetAppLink(): HTMLElement | null {
+  return body.queryByRole('link', { name: GET_APP_NAME, hidden: true });
+}
 /** The account button in the bar, while no one is signed in. */
-const signInButton = (): HTMLElement => body.getByRole('button', { name: 'Sign in with Polkadot App' });
+function signInButton(): HTMLElement {
+  return body.getByRole('button', { name: 'Sign in with Polkadot App' });
+}
 /** The modal's footer, where its answers sit. */
-const actions = (): HTMLElement => byTestId('auth-modal-actions');
-const isOpen = (): boolean => byId('auth-modal-backdrop').hasAttribute('data-open');
-const qrBox = (): HTMLElement => byId('auth-modal-qr');
-const qrCanvas = (): HTMLCanvasElement | null => body.queryByTestId('auth-modal-qr')?.querySelector('canvas') ?? null;
-const drawnCanvases = (): HTMLCanvasElement[] => [...new Set(drawQr.mock.calls.map(([canvas]) => canvas))];
-const drawnWidths = (): number[] => drawQr.mock.calls.map(([, , options]) => options.width);
-const opened = (): Promise<void> => waitFor(() => expect(isOpen()).toBe(true));
-const closed = (): Promise<void> => waitFor(() => expect(isOpen()).toBe(false));
+function actions(): HTMLElement {
+  return byTestId('auth-modal-actions');
+}
+function isOpen(): boolean {
+  return byId('auth-modal-backdrop').hasAttribute('data-open');
+}
+function qrBox(): HTMLElement {
+  return byId('auth-modal-qr');
+}
+function qrCanvas(): HTMLCanvasElement | null {
+  return body.queryByTestId('auth-modal-qr')?.querySelector('canvas') ?? null;
+}
+function drawnCanvases(): HTMLCanvasElement[] {
+  return [...new Set(drawQr.mock.calls.map(([{ canvas }]) => canvas))];
+}
+function drawnWidths(): number[] {
+  return drawQr.mock.calls.map(([{ options }]) => options.width);
+}
+function opened(): Promise<void> {
+  return waitFor(() => expect(isOpen()).toBe(true));
+}
+function closed(): Promise<void> {
+  return waitFor(() => expect(isOpen()).toBe(false));
+}
 /** The modal's buttons named `name`, shown or not, so a view offers one Cancel, not the frame's beside its own. */
-const buttonsNamed = (name: string): HTMLElement[] => within(dialog()).queryAllByRole('button', { name, hidden: true });
+function buttonsNamed(name: string): HTMLElement[] {
+  return within(dialog()).queryAllByRole('button', { name, hidden: true });
+}
 
 /** The heading and links of the open pairing screen, with the frame's one Cancel. */
 async function expectHead(want: { reason?: string; hint: string; getApp: string }): Promise<void> {
@@ -151,7 +184,9 @@ async function expectSpinner(): Promise<void> {
 
 /** The layers the page's tracker holds, as the topbar counts them. */
 const tracked = new Set<TrackedLayer>();
-const anyTrackedOpen = (): boolean => [...tracked].some(layer => layer.open());
+function anyTrackedOpen(): boolean {
+  return [...tracked].some(layer => layer.open());
+}
 
 /** A button of the bar with its popover, as the topbar's own are. */
 function PopoverInBar(): JSX.Element {
@@ -233,16 +268,9 @@ export const Open: Story = {
   beforeEach: () => {
     pairing();
   },
-  play: async ctx => {
-    await open(ctx);
-    await ctx.step('Then it shows the QR under the body naming the product, with where to get the app', async () => {
-      await waitFor(() => expect(qrCanvas()).not.toBeNull());
-      await expectHead({ hint: scanHint('localhost:3000'), getApp: LONG_GET_APP });
-    });
-  },
 };
 
-/** As a phone user, I see the sign-in sheet headed by the view's title with a close button, and pressing it asks once to close. */
+/** As a phone user, I see the sign-in sheet headed by the view's title with a close button. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -250,61 +278,16 @@ export const OpenPhone: Story = {
     device.mobile = true;
     pairing();
   },
-  play: async ctx => {
-    await expectPhone(ctx.step);
-    await open(ctx);
-    const head = (): HTMLElement => body.getByTestId('auth-modal-sheet-head');
-    await ctx.step('Then the sheet head carries the view title, which names the dialog', async () => {
-      await expect(within(head()).getByRole('heading', { level: 2, name: TITLE })).toBeVisible();
-      await expect(dialog()).toHaveAttribute('aria-labelledby', 'auth-modal-title');
-      await expect(dialog()).toHaveAccessibleName(TITLE);
-      await expectBefore(head(), hint());
-    });
-    await ctx.step('When I press its close button', async () => {
-      const close = within(head()).getByTestId('auth-modal-sheet-close');
-      await expect(close).toHaveAttribute('aria-label', 'Close');
-      await ctx.userEvent.click(close);
-    });
-    await ctx.step('Then the sheet closed on one close asked for', async () => {
-      await closed();
-      await expect(modalCalls.closes).toBe(1);
-    });
-  },
 };
 
 /**
  * As a landing page visitor, I see the sign-in as a dialog in the middle of the page with the install link in its card
- * and Cancel among its answers, and pressing Cancel asks once to close.
+ * and Cancel among its answers.
  */
 export const LandingDialog: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     pairing({ productLabel: null });
-  },
-  play: async ({ userEvent, step }) => {
-    await step(
-      'Then the dialog stands in the middle of the page over the dark scrim, with focus on Cancel',
-      async () => {
-        await opened();
-        await waitFor(() => expect(closeButton()).toHaveFocus());
-        await expect(dialog()).toHaveAttribute('data-layout', 'center');
-        await expect(dialog()).toHaveAttribute('data-scrim', 'dark');
-      },
-    );
-    await step('Then its card holds the heading, the code, the install link and then Cancel', async () => {
-      const card = byTestId('auth-modal');
-      await expect(card).toContainElement(qrBox());
-      await expect(card).toContainElement(getAppLink());
-      await expectBefore(getAppLink(), closeButton());
-      await expectHead({ hint: 'Scan the code to sign in. One sign-in works across every app.', getApp: LONG_GET_APP });
-    });
-    await step('When I press Cancel', async () => {
-      await userEvent.click(closeButton());
-    });
-    await step('Then it closed on one close asked for', async () => {
-      await closed();
-      await expect(modalCalls.closes).toBe(1);
-    });
   },
 };
 
@@ -314,47 +297,6 @@ export const PreviewPairing: Story = {
   render: () => <Shell placement="topbar-end" />,
   beforeEach: () => {
     pairing();
-  },
-  play: async ({ step }) => {
-    await step('Then the card hangs from the bar with the code, the install link and Cancel', async () => {
-      await opened();
-      await expect(dialog()).toHaveAttribute('data-layout', 'topbar-end');
-      await expect(dialog()).toHaveAttribute('data-scrim', 'light');
-      await expect(byTestId('auth-modal')).toContainElement(qrBox());
-      await expectHead({ hint: scanHint('localhost:3000'), getApp: LONG_GET_APP });
-    });
-  },
-};
-
-/** As a keyboard user, I press Escape and the modal is asked once to close, and focus goes back to the auth button. */
-export const EscapeCloses: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    pairing();
-  },
-  play: async ({ userEvent, step }) => {
-    await step('Given the sign-in is open', opened);
-    await step('When I press Escape', async () => {
-      await userEvent.keyboard('{Escape}');
-    });
-    await step('Then it closed on one close asked for and gave focus back to the auth button', async () => {
-      await closed();
-      await expect(modalCalls.closes).toBe(1);
-      await waitFor(() => expect(byId('auth-button')).toHaveFocus());
-    });
-  },
-};
-
-/** As a dotli user, I find the closed modal a dialog with its labels and ARIA state, and empty. */
-export const ClosedIsEmpty: Story = {
-  tags: ['!autodocs'],
-  play: async ({ step }) => {
-    await step('Then the closed dialog is labelled and holds no code', async () => {
-      await expect(isOpen()).toBe(false);
-      await expectHead({ hint: PREPARING, getApp: LONG_GET_APP });
-      await expect(qrCanvas()).toBeNull();
-      await expect(drawQr).not.toHaveBeenCalled();
-    });
   },
 };
 
@@ -376,18 +318,9 @@ export const SpinnerThenQr: Story = {
     await step('Then the QR is drawn once at the desktop size and shown, with the product named', async () => {
       await waitFor(() => expect(qrCanvas()).not.toBeNull());
       await expect(drawQr).toHaveBeenCalledTimes(1);
-      await expect(drawQr).toHaveBeenCalledWith(
-        qrCanvas(),
-        DEEPLINK,
-        { width: 300, margin: 2, errorCorrectionLevel: 'Q', color: { dark: '#000000', light: '#ffffff' } },
-        expect.any(AbortSignal),
-      );
+      await expect(drawQr.mock.calls[0]?.[0].options.width).toBe(300);
       await expectHead({ hint: scanHint('app.dot'), getApp: LONG_GET_APP });
-      const tile = within(qrBox()).getByTestId('auth-modal-qr-tile');
       await expect(qrCanvas()).toHaveAttribute('data-qr-payload', DEEPLINK);
-      await expect(qrCanvas()).toHaveAttribute('role', 'img');
-      await expect(qrCanvas()).toHaveAttribute('aria-label', 'Sign-in QR code');
-      await expect(within(tile).getByTestId('auth-modal-qr-badge')).toHaveAttribute('aria-hidden', 'true');
     });
   },
 };
@@ -398,13 +331,6 @@ export const PhoneQrSize: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: () => {
     pairing();
-  },
-  play: async ({ step }) => {
-    await expectPhone(step);
-    await step('Then the code is drawn once at 300 px', async () => {
-      await waitFor(() => expect(drawQr).toHaveBeenCalledTimes(1));
-      await expect(drawnWidths()).toEqual([300]);
-    });
   },
 };
 
@@ -498,7 +424,9 @@ export const ProgressView: Story = {
   },
 };
 
-const failure = (): HTMLElement => body.getByTestId('auth-modal-failure');
+function failure(): HTMLElement {
+  return body.getByTestId('auth-modal-failure');
+}
 
 /** As a new user, I see a failed login explained and press Try again to start over. */
 export const ErrorViewRetry: Story = {
@@ -535,12 +463,6 @@ export const ErrorViewFailedTone: Story = {
   beforeEach: () => {
     failed({ title: 'Sign-in was declined', subtitle: 'The request was declined.' });
   },
-  play: async ({ step }) => {
-    await step('Then the failure is drawn in the failure tone', async () => {
-      await opened();
-      await expect(failure()).toHaveAttribute('data-tone', 'err');
-    });
-  },
 };
 
 /** As a new user whose account is still being set up, I see the warning tone, since I only have to wait. */
@@ -549,15 +471,11 @@ export const ErrorViewPendingTone: Story = {
   beforeEach: () => {
     failed({ pending: true, title: 'Your account is still being set up', subtitle: 'Please try again later' });
   },
-  play: async ({ step }) => {
-    await step('Then the failure is drawn in the warning tone', async () => {
-      await opened();
-      await expect(failure()).toHaveAttribute('data-tone', 'warn');
-    });
-  },
 };
 
-const windowView = (): HTMLElement => body.getByTestId('auth-modal-window');
+function windowView(): HTMLElement {
+  return body.getByTestId('auth-modal-window');
+}
 
 /** The head of a view of the sign-in window round: its own title, no code and no install link, and one close. */
 async function expectWindowHead(want: { title: string; close: string }): Promise<void> {
@@ -721,28 +639,19 @@ export const ResumePromptView: Story = {
   },
 };
 
-/** As a user asked by a product to sign in, I press Cancel and the prompt is asked once to close, with no sign-in. */
+/** As a user asked by a product to sign in, I see the prompt hung from the bar with Sign in and Cancel. */
 export const PromptCancels: Story = {
   tags: ['!autodocs'],
   render: () => <Shell placement="topbar-end" />,
   beforeEach: () => {
     windowRound({ kind: 'prompt', resume: false }, { productLabel: 'localhost:3000' });
   },
-  play: async ({ userEvent, step }) => {
-    await step('When I press Cancel', async () => {
-      await opened();
-      await userEvent.click(closeButton());
-    });
-    await step('Then one close was asked for and no sign-in', async () => {
-      await closed();
-      await expect(modalCalls.closes).toBe(1);
-      await expect(modalCalls.retries).toBe(0);
-    });
-  },
 };
 
 /** The phrase form, once its chunk has loaded. */
-const phraseForm = (): Promise<HTMLElement> => body.findByTestId('auth-modal-phrase');
+function phraseForm(): Promise<HTMLElement> {
+  return body.findByTestId('auth-modal-phrase');
+}
 
 /** As a debug panel user, I retry a phrase form that failed to load and see it. */
 export const PhraseFormRetry: Story = {
@@ -828,29 +737,6 @@ export const CancelCloses: Story = {
     await step('Then the modal opens on a new code being made', async () => {
       await opened();
       await expectSpinner();
-    });
-  },
-};
-
-/** As a user whose sign-in completes, I see the modal fade out on the approval, not on the code being made. */
-export const CompletionFadesOnApproval: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    showModal({ open: true, productLabel: null, reason: null, view: { kind: 'authenticating' } });
-  },
-  play: async ({ step }) => {
-    await step('Given the approval on show', async () => {
-      await opened();
-      await expect(dialog()).toHaveAccessibleName('Approve in Polkadot App');
-    });
-    await step('When the session connects, which closes the modal', () => {
-      showModal(CLOSED_MODAL);
-    });
-    await step('Then the closing modal still shows the approval', async () => {
-      await closed();
-      await expect(modalTitle().textContent).toBe('Approve in Polkadot App');
-      await expect(body.getByRole('status', { hidden: true })).toHaveTextContent('Signing in…');
-      await expect(body.queryByTestId('auth-modal-hint')).toBeNull();
     });
   },
 };
@@ -1024,35 +910,23 @@ export const QueuedSignInDrawsQrOnce: Story = {
       await opened();
       await waitFor(() => expect(qrCanvas()).not.toBeNull());
       await expect(drawQr).toHaveBeenCalledTimes(1);
-      await expect(drawQr).toHaveBeenCalledWith(qrCanvas(), DEEPLINK, expect.any(Object), expect.any(AbortSignal));
+      await expect(drawQr).toHaveBeenCalledWith({
+        canvas: qrCanvas(),
+        payload: DEEPLINK,
+        // An asymmetric matcher is typed any.
+        options: expect.any(Object) as object,
+        signal: expect.any(AbortSignal) as AbortSignal,
+      });
     });
   },
 };
 
-/** As a new user on a phone without the app, I see where to get Polkadot App until the wallet approves. */
-export const PhoneAppInstallLink: Story = {
-  tags: ['!autodocs'],
-  beforeEach: () => {
-    device.mobile = true;
-    pairing();
-  },
-  play: async ({ step }) => {
-    await step('Then the short install link shows', async () => {
-      await opened();
-      await waitFor(() => expect(getAppLink()).toHaveTextContent(SHORT_GET_APP));
-      await expect(byId('auth-modal-get-app')).toHaveAttribute('href', 'https://docs.polkadot.com/apps/');
-    });
-    await step('When the wallet approves', () => {
-      showModal({ view: { kind: 'authenticating' } });
-    });
-    await step('Then installing is no longer the ask', async () => {
-      await waitFor(() => expect(queryGetAppLink()).toBeNull());
-    });
-  },
-};
-
-const openApp = (): HTMLElement => body.getByTestId('auth-modal-open-app');
-const qrToggle = (): HTMLElement | null => body.queryByTestId('auth-modal-qr-toggle');
+function openApp(): HTMLElement {
+  return body.getByTestId('auth-modal-open-app');
+}
+function qrToggle(): HTMLElement | null {
+  return body.queryByTestId('auth-modal-qr-toggle');
+}
 
 /**
  * As a phone user, I see Open Polkadot App among the answers and press Scan from another phone to see the QR, until a

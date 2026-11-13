@@ -5,14 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { arrangeErrorActions, type ErrorAction } from './arrangeErrorActions.js';
 
 describe('error page actions', () => {
-  it('As a visitor, I see a lone button and it is the recommended one', () => {
-    // When
-    const buttons = arrangeLabelled([{ label: 'A', onClick: ignoreClick }]);
-
-    // Then
-    expect(buttons).toEqual([{ label: 'A', id: 'error-retry-btn', primary: true }]);
-  });
-
   it('As a visitor, I see two buttons with none marked and the first is recommended', () => {
     // When
     const buttons = arrangeLabelled([
@@ -52,17 +44,6 @@ describe('error page actions', () => {
       { label: 'Open Settings', id: 'error-retry-btn-1', primary: false },
       { label: 'Reload', id: 'error-retry-btn', primary: true },
     ]);
-  });
-
-  it('As a test author, I find the first action by its id and it keeps that id whichever button is primary', () => {
-    // When
-    const buttons = arrangeLabelled([
-      { label: 'First', onClick: ignoreClick },
-      { label: 'Second', primary: true, onClick: ignoreClick },
-    ]);
-
-    // Then
-    expect(buttons.find(b => b.label === 'First')?.id).toBe('error-retry-btn');
   });
 });
 

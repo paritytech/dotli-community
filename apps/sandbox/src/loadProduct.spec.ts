@@ -4,12 +4,17 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 
 import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
-import { setErrorName } from '@dotli/shared';
-import { recordLog } from '@dotli/shared/testing';
+import { bindLogSink, setErrorName } from '@dotli/shared';
 
+import type { HostMessages } from './createHostMessages.js';
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
 
 type FetchArchive = LoadProductDeps['fetchArchive'];
+
+/** Deps a case replaces. A host message it replaces leaves the others recording. */
+type Overrides = Partial<Omit<LoadProductDeps, 'hostMessages'>> & {
+  hostMessages?: Partial<LoadProductDeps['hostMessages']>;
+};
 
 type Harness = {
   deps: LoadProductDeps;
@@ -20,11 +25,13 @@ type Harness = {
   workers: { waitForFreshController: boolean }[];
   written: string[];
   stored: ArchiveFiles[];
-  reports: Parameters<LoadProductDeps['report']>[0][];
+  reports: Parameters<HostMessages['reportDebug']>[0][];
 };
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
-const BLOCK_SOURCE = (): Promise<Uint8Array> => Promise.resolve(new Uint8Array());
+function BLOCK_SOURCE(): Promise<Uint8Array> {
+  return Promise.resolve(new Uint8Array());
+}
 
 function createParams(overrides: Partial<SandboxParams> = {}): SandboxParams {
   return {
@@ -42,16 +49,26 @@ function encode(text: string): Uint8Array {
 }
 
 /** A sandbox page whose network, worker and window are fakes. `fetched` is what the fetch gives back or throws. */
-function createHarness(fetched: FetchResult | Error, overrides: Partial<LoadProductDeps> = {}): Harness {
+function createHarness(fetched: FetchResult | Error, overrides: Overrides = {}): Harness {
   const events: string[] = [];
   const fetches: Parameters<FetchArchive>[1][] = [];
   const workers: { waitForFreshController: boolean }[] = [];
   const written: string[] = [];
   const stored: ArchiveFiles[] = [];
   const reports: Harness['reports'] = [];
+  const { hostMessages, ...depOverrides } = overrides;
   const deps: LoadProductDeps = {
-    showStatus: message => {
-      events.push(`status: ${message}`);
+    hostMessages: {
+      showStatus: message => {
+        events.push(`status: ${message}`);
+      },
+      reportDebug: report => {
+        reports.push(report);
+      },
+      notifyLoadingDone: ({ outcome }) => {
+        events.push(outcome);
+      },
+      ...hostMessages,
     },
     purge() {
       events.push('purge');
@@ -60,11 +77,10 @@ function createHarness(fetched: FetchResult | Error, overrides: Partial<LoadProd
     registerWorker(options) {
       events.push('worker');
       workers.push(options);
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
-    isControlled: () => true,
     fetchArchive(_cid, params) {
-      const { onStatus: _onStatus, ...options } = params ?? {};
+      const { onStatus: _onStatus, ...options } = params;
       fetches.push(options);
       return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
     },
@@ -76,18 +92,12 @@ function createHarness(fetched: FetchResult | Error, overrides: Partial<LoadProd
       return Promise.resolve();
     },
     prepareHtml: html => Promise.resolve(html),
-    report: report => {
-      reports.push(report);
-    },
-    notifyLoaded: () => {
-      events.push('loaded');
-    },
     write(html) {
       events.push('write');
       written.push(html);
     },
     measureSinceStart: () => 42,
-    ...overrides,
+    ...depOverrides,
   };
   return { deps, events, fetches, workers, written, stored, reports };
 }
@@ -102,7 +112,7 @@ describe('loadProduct', () => {
 
     // Then the page is written after the host hears it loaded, and the write is reported
     expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(page.fetches).toEqual([{ useGateway: true }]);
+    expect(page.fetches).toEqual([{ bitswapBlockSource: null }]);
     expect(page.written).toEqual(['<h1>hi</h1>']);
     expect(page.events.slice(-2)).toEqual(['loaded', 'write']);
     expect(page.reports).toEqual([
@@ -120,6 +130,32 @@ describe('loadProduct', () => {
     // Then the fetch reads its blocks from the relay
     expect(outcome).toEqual({ outcome: 'loaded' });
     expect(page.fetches).toEqual([{ bitswapBlockSource: BLOCK_SOURCE }]);
+  });
+
+  it('As an operator, I read the log of a load and see it start before its fetch, and the fetch end before the write', async () => {
+    // Given a gateway that serves a single page, and a log that records each line
+    const page = createHarness({ type: 'single', content: encode('<h1>hi</h1>') });
+    const lines: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: entry => {
+          lines.push(entry.message);
+        },
+      }),
+    );
+
+    // When the first attempt loads it
+    await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the lines come in the order the load ran its steps
+    expect(lines).toEqual([
+      'Sandbox load started',
+      `Fetching ${CID} via IPFS gateway`,
+      'Service worker ready',
+      'Content fetched via gateway',
+      'Writing content into the window',
+      'Content rendered',
+    ]);
   });
 
   it('As a visitor, I open an archive and it is handed to the service worker before its index is written', async () => {
@@ -193,31 +229,6 @@ describe('loadProduct', () => {
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: unreachable });
   });
 
-  it('As a visitor, I open a product and its content is fetched while the service worker still registers', async () => {
-    // Given a registration that settles a turn after it starts, and a fetch that records when it runs
-    const order: string[] = [];
-    const fetched: FetchResult = { type: 'single', content: encode('<h1>hi</h1>') };
-    const page = createHarness(fetched, {
-      registerWorker() {
-        order.push('worker started');
-        return Promise.resolve().then(() => {
-          order.push('worker settled');
-        });
-      },
-      fetchArchive() {
-        order.push('fetch');
-        return Promise.resolve(fetched);
-      },
-    });
-
-    // When the first attempt loads it
-    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
-
-    // Then the fetch started before the registration settled
-    expect(outcome).toEqual({ outcome: 'loaded' });
-    expect(order).toEqual(['worker started', 'fetch', 'worker settled']);
-  });
-
   it.each<[string, FetchResult | Error]>([
     [
       'cannot reach the gateway',
@@ -243,7 +254,7 @@ describe('loadProduct', () => {
     },
   );
 
-  it.each<[string, (broken: Error) => Partial<LoadProductDeps>, FetchResult]>([
+  it.each<[string, (broken: Error) => Overrides, FetchResult]>([
     ['decrypt', broken => ({ decrypt: () => Promise.reject(broken) }), { type: 'single', content: encode('sealed') }],
     [
       'sw_store',
@@ -271,6 +282,63 @@ describe('loadProduct', () => {
     },
   );
 
+  it("As an operator, I break the host's notice of the written page and see the failure reported at the render step", async () => {
+    // Given an archive with an index and a host notice that throws
+    const broken = new Error('notifyLoadingDone broke');
+    const page = createHarness(
+      { type: 'archive', files: { 'index.html': encode('<main>app</main>') } },
+      {
+        hostMessages: {
+          notifyLoadingDone: () => {
+            throw broken;
+          },
+        },
+      },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the failure names the render, and nothing is written
+    expect(outcome).toEqual({ outcome: 'failed', step: 'render', error: broken });
+    expect(page.written).toEqual([]);
+  });
+
+  it('As an operator, I break the write of the page into the window and see the failure reported at the render step', async () => {
+    // Given an archive with an index and a write that throws
+    const broken = new Error('write broke');
+    const page = createHarness(
+      { type: 'archive', files: { 'index.html': encode('<main>app</main>') } },
+      {
+        write: () => {
+          throw broken;
+        },
+      },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the failure names the render
+    expect(outcome).toEqual({ outcome: 'failed', step: 'render', error: broken });
+  });
+
+  it('As an operator asking for a full reset, I break the purge and see the failure reported at the init step', async () => {
+    // Given a full reset whose purge rejects
+    const broken = new Error('purge broke');
+    const page = createHarness(
+      { type: 'single', content: encode('<main>app</main>') },
+      { purge: () => Promise.reject(broken) },
+    );
+
+    // When the first attempt loads it
+    const outcome = await loadProduct({ params: createParams({ fullReset: true }), attempt: 1 }, page.deps);
+
+    // Then the failure names the init step, and no worker registered
+    expect(outcome).toEqual({ outcome: 'failed', step: 'init', error: broken });
+    expect(page.workers).toEqual([]);
+  });
+
   it('As a visitor, I leave mid-load and the fetch the frame tore down ends the load quietly', async () => {
     // Given a relay fetch aborted by the frame's teardown
     const page = createHarness(new DOMException('The sandbox frame was torn down', 'AbortError'));
@@ -293,24 +361,6 @@ describe('loadProduct', () => {
     // Then the load fails at the content fetch with that error
     expect(outcome).toEqual({ outcome: 'failed', step: 'content_fetch', error: broken });
   });
-
-  it.each([true, false])(
-    "As an operator, I read the service worker's ready line and see whether a worker controls the page (%s)",
-    async controlled => {
-      // Given a page whose control the worker reports
-      const logs = recordLog({ onFinished: onTestFinished });
-      const page = createHarness(
-        { type: 'single', content: encode('<h1>hi</h1>') },
-        { isControlled: () => controlled },
-      );
-
-      // When the first attempt loads it
-      await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
-
-      // Then the ready line carries it
-      expect(logs.find(line => line.message === 'Service worker ready')?.attrs).toMatchObject({ controlled });
-    },
-  );
 
   it('As a visitor asking for a full reset, I get the origin wiped and a fresh worker awaited on the first attempt only', async () => {
     // Given a full reset whose fetch fails

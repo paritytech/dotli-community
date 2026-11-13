@@ -18,14 +18,31 @@ describe('injectSandboxChecker', () => {
     expect(first?.[1]).not.toMatch(/\bimport\b|\bexport\b/);
   });
 
-  it('As a product developer, I ship a page with no head and the checker still comes first', () => {
-    // Given
-    const html = '<p>hello</p>';
+  it.each([
+    { page: 'no head', html: '<p>hello</p>', checked: /^<script>[\s\S]*<\/script><p>hello<\/p>$/ },
+    {
+      page: 'a doctype and a head with attributes and capitals',
+      html: '<!DOCTYPE html><html><HEAD lang="en"><script src="app.js"></script></HEAD></html>',
+      checked: /^<!DOCTYPE html><html><HEAD lang="en"><script>[\s\S]*?<\/script><script src="app.js">/,
+    },
+    {
+      page: 'a doctype and no head',
+      html: '<!doctype html><p>hello</p>',
+      checked: /^<!doctype html><script>[\s\S]*<\/script><p>hello<\/p>$/,
+    },
+    {
+      page: 'a header before its head',
+      html: '<header>x</header><head></head>',
+      checked: /^<header>x<\/header><head><script>/,
+    },
+  ])(
+    'As a product developer, I ship a page with $page and the checker lands where it runs first',
+    ({ html, checked }) => {
+      // When
+      const injected = injectSandboxChecker(html);
 
-    // When
-    const checked = injectSandboxChecker(html);
-
-    // Then
-    expect(checked).toMatch(/^<script>[\s\S]*<\/script><p>hello<\/p>$/);
-  });
+      // Then
+      expect(injected).toMatch(checked);
+    },
+  );
 });

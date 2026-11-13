@@ -7,7 +7,7 @@ import { startDrag, type StartDragParams } from './startDrag.js';
 
 const report = createReporter({ flow: 'ui' });
 
-/** The drags one component runs. Its cleanup calls `stopAll`, so no hold outlives it. */
+/** The drag one component runs. Its cleanup calls `stopAll`, so no hold outlives it. */
 export type Drags = ReturnType<typeof createDrags>;
 
 type Params = {
@@ -15,53 +15,65 @@ type Params = {
   selection?: SelectionLock | undefined;
 };
 
+type State = { kind: 'idle' } | { kind: 'held'; stop: () => void };
+
 const reportDragEnd = report.listener('drag.end');
 
 /**
- * One owner for a component's drags. A handle that leaves the page under a held pointer loses its capture, so its
- * pointerup never comes, and only its owner can end that drag.
+ * One owner for a component's drag. It holds at most one drag, so a second pointer, such as a second finger, is
+ * refused while one is held. A handle that leaves the page under a held pointer loses its capture, so its pointerup
+ * never comes, and only its owner can end that drag.
  *
  * @example
  * const drags = createDrags(); // onCleanup(drags.stopAll)
  * drags.start({ target: handle, down: event, handlers: { move: onMove, end: onEnd } });
  */
 export function createDrags({ selection = bodySelection }: Params = {}) {
-  const live = new Set<() => void>();
+  let state: State = { kind: 'idle' };
 
-  function start({ target, down, handlers }: Omit<StartDragParams, 'selection'>): void {
+  function start({ target, down, handlers }: Omit<StartDragParams, 'selection'>): boolean {
+    if (state.kind === 'held') {
+      return false;
+    }
     const stop = startDrag({
       target,
       down,
       handlers: {
         move: handlers.move,
         end(released) {
-          live.delete(stop);
+          if (state.kind === 'held' && state.stop === stop) {
+            state = { kind: 'idle' };
+          }
           handlers.end?.(released);
         },
       },
       selection,
     });
-    live.add(stop);
+    state = { kind: 'held', stop };
+    return true;
   }
 
   function stopAll(): void {
-    for (const stop of [...live]) {
-      // A throwing `end` has already given its hold back, and must not keep the later drags holding theirs.
-      try {
-        stop();
-      } catch (error: unknown) {
-        reportDragEnd(error);
+    const previous = state;
+    state = { kind: 'idle' };
+    // A throwing `end` has already given its hold back.
+    try {
+      if (previous.kind === 'held') {
+        previous.stop();
       }
+    } catch (error: unknown) {
+      reportDragEnd(error);
     }
   }
 
   return {
     /**
-     * Starts a drag that ends on its own pointer's release, or is cancelled by `stopAll`. Throws only what the
-     * selection lock's `apply` throws.
+     * Starts a drag that ends on its own pointer's release, or is cancelled by `stopAll`. Returns `true` when it took
+     * the pointer, and `false`, doing nothing, while a drag is held. Throws only what the selection lock's `apply`
+     * throws.
      */
     start,
-    /** Cancels every drag still going. Safe to call twice, and never throws: a throwing `end` is reported. */
+    /** Cancels the held drag. Safe to call twice, and never throws: a throwing `end` is reported. */
     stopAll,
   };
 }

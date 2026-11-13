@@ -178,18 +178,6 @@ describe('getFallbackAction', () => {
     ]);
   });
 
-  it('As a user on local.host, I open /s/auth on the bare local.host and get the session window', () => {
-    // Given a server for both local roots and a page load of the session window on the bare local.host
-    const { getRoute } = createLocalServing(ROOTS);
-    const request = createPageLoad('/s/auth?debug=1', { hostname: 'local.host' });
-
-    // When the fallback decides
-    const action = getFallbackAction({ request, pages: PAGES, isPublicFile: createPublicDir().isPublicFile, getRoute });
-
-    // Then it rewrites to the session window
-    expect(action).toEqual({ kind: 'rewrite', url: '/session?debug=1' });
-  });
-
   it('As a visitor on local.host, I open a product subdomain of it and get the shell, not the landing page', () => {
     // Given a server for both local roots and a page load of a product subdomain of local.host
     const { getRoute } = createLocalServing(ROOTS);

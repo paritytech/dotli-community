@@ -10,7 +10,6 @@ import { LANE_GAP, LANE_GUTTER, LANE_WIDTH, MARGIN_WIDTH, RAIL_COLUMN_WIDTH, ROW
 import { partitionIntoSwimlanes } from './partitionIntoSwimlanes.js';
 
 export type TimelineRail = {
-  key: EventSeq;
   seq: EventSeq;
   x: number;
   y1: number;
@@ -21,16 +20,13 @@ export type TimelineRail = {
 };
 
 export type TimelineTick = {
-  key: EventSeq;
   seq: EventSeq;
-  cx: number;
   cy: number;
   color: string;
   tooltip: string;
 };
 
 export type TimelineBox = {
-  key: EventSeq;
   seq: EventSeq;
   /** Selecting any of them selects the box. */
   memberSeqs: readonly EventSeq[];
@@ -51,7 +47,6 @@ export type TimelineLane = {
   color: string;
   width: number;
   height: number;
-  marginX: number;
   railsEndX: number | null;
   rails: TimelineRail[];
   ticks: TimelineTick[];
@@ -63,50 +58,27 @@ export function buildTimeline(events: readonly StoredEvent[]): TimelineLane[] {
   const positions = computeGlobalYPositions(events);
   return partitionIntoSwimlanes(events).map(swimlane => {
     const layout = computeLayout(swimlane.events, positions);
-    const railsEndX = MARGIN_WIDTH + layout.railCount * RAIL_COLUMN_WIDTH;
+    const railsEndX = MARGIN_WIDTH + layout.rails.length * RAIL_COLUMN_WIDTH;
     const lanesStartX = railsEndX + LANE_GUTTER;
-    const lane: TimelineLane = {
+    return {
       key: swimlane.key,
       header: swimlane.header,
       color: swimlane.color,
       width: lanesStartX + layout.laneCount * (LANE_WIDTH + LANE_GAP) + LANE_GAP,
-      height: Math.max(ROW_HEIGHT, layout.totalHeight),
-      marginX: MARGIN_WIDTH,
-      railsEndX: layout.railCount > 0 ? railsEndX : null,
-      rails: [],
-      ticks: [],
-      boxes: [],
+      height: positions.totalHeight,
+      railsEndX: layout.rails.length > 0 ? railsEndX : null,
+      rails: layout.rails.map(rail => ({
+        seq: rail.seqAnchor,
+        x: getRailCenterX(rail.railIndex),
+        y1: rail.topY + 2,
+        y2: rail.bottomY - 2,
+        color: rail.color,
+        pending: rail.pending,
+        tooltip: `follow · ${rail.label}${rail.pending ? ' (pending)' : ''}`,
+      })),
+      ticks: layout.ticks.map(tick => ({ seq: tick.seq, cy: tick.y, color: tick.color, tooltip: tick.variant })),
+      boxes: layout.segments.map(segment => toTimelineBox(segment, lanesStartX)),
     };
-    for (const entry of layout.entries) {
-      switch (entry.kind) {
-        case 'rail':
-          lane.rails.push({
-            key: entry.seqAnchor,
-            seq: entry.seqAnchor,
-            x: getRailCenterX(entry.railIndex),
-            y1: entry.topY + 2,
-            y2: entry.bottomY - 2,
-            color: entry.color,
-            pending: entry.pending,
-            tooltip: `follow · ${entry.label}${entry.pending ? ' (pending)' : ''}`,
-          });
-          break;
-        case 'tick':
-          lane.ticks.push({
-            key: entry.seq,
-            seq: entry.seq,
-            cx: MARGIN_WIDTH / 2,
-            cy: entry.y,
-            color: entry.color,
-            tooltip: entry.variant,
-          });
-          break;
-        case 'segment':
-          lane.boxes.push(toTimelineBox(entry, lanesStartX));
-          break;
-      }
-    }
-    return lane;
   });
 }
 
@@ -114,12 +86,7 @@ function toTimelineBox(segment: SegmentEntry, lanesStartX: number): TimelineBox 
   const x = lanesStartX + segment.lane * (LANE_WIDTH + LANE_GAP);
   const y = segment.topY + 1;
   const height = Math.max(ROW_HEIGHT - 2, segment.bottomY - segment.topY - 2);
-  let connector: TimelineBox['connector'] = null;
-  if (segment.linkedRailIndex !== undefined) {
-    connector = { x1: getRailCenterX(segment.linkedRailIndex) + RAIL_COLUMN_WIDTH / 2, x2: x, y: y + height / 2 };
-  }
   return {
-    key: segment.seqAnchor,
     seq: segment.seqAnchor,
     memberSeqs: segment.memberSeqs,
     x,
@@ -129,7 +96,10 @@ function toTimelineBox(segment: SegmentEntry, lanesStartX: number): TimelineBox 
     color: segment.color,
     pending: segment.pending,
     tooltip: formatSegmentTooltip(segment),
-    connector,
+    connector:
+      segment.linkedRailIndex === undefined
+        ? null
+        : { x1: getRailCenterX(segment.linkedRailIndex) + RAIL_COLUMN_WIDTH / 2, x2: x, y: y + height / 2 },
     pendingEdge: segment.pending ? { x1: x + 1, x2: x + LANE_WIDTH - 1, y: y + height } : null,
   };
 }

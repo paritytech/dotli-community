@@ -3,7 +3,6 @@
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
-import { isRemoteChainConnectable } from '@dotli/protocol';
 import { requireBrokerLocalProvider, type ChainPool } from '@dotli/chains';
 import { hostChainPool } from './createHostChainPool.js';
 
@@ -14,15 +13,12 @@ type Params = {
 
 /**
  * Leases the chain from the pool, on the connection the products share. Its connections heal after a halt. Returns null
- * for a chain the protocol frame does not serve or the pool has no transport for.
+ * for a chain the pool has no transport for, as for one the backend in force does not serve.
  */
 export function getHostChainProvider(
   genesisHash: string,
   { pool = hostChainPool }: Params = {},
 ): JsonRpcProvider | null {
-  if (!isRemoteChainConnectable(genesisHash)) {
-    return null;
-  }
   return pool.getLocalProvider(genesisHash, { holder: 'host' });
 }
 

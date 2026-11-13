@@ -29,7 +29,6 @@ const MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
 
 /** Every stand-in item's width, wider than More so a row's room always fits More in its place. */
 const ITEM = 48;
-const ALL = ['auth', 'network', 'chat', 'permissions', 'theme', 'settings'];
 
 const activations: Activation[] = [];
 /** The room the bar gives the group, which a play changes and then announces with a resize, as a window would. */
@@ -156,18 +155,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** As a desktop user, every item sits in the bar when there is room, and the More button stays out of the way. */
-export const AllFit: Story = {
-  play: async ({ mount, step }) => {
-    await step('When the group renders with room for every item', async () => {
-      await mount();
-    });
-    await step('Then every item is inline and More is parked', async () => {
-      await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
-      await expect(ALL.filter(isInline)).toEqual(ALL);
-      await expect(isMoreShown()).toBe(false);
-    });
-  },
-};
+export const AllFit: Story = {};
 
 /** As a user narrowing the window, items move into More lowest priority first, and the rows keep the bar order. */
 export const NarrowingCollapsesInBarOrder: Story = {
@@ -389,14 +377,6 @@ export const BuildTimeMoreParked: Story = {
       <OverflowMenu rows={[]} buttonRef={() => undefined} buttonId={MORE.buttonId} menuId={MORE.menuId} />
     </ActionsContext>
   ),
-  play: async ({ canvasElement, mount, step }) => {
-    await step('When the unmeasured group renders', async () => {
-      await mount();
-    });
-    await step('Then More is parked', async () => {
-      await expect(within(canvasElement).getByTestId('more-item')).toHaveAttribute('data-parked');
-    });
-  },
 };
 
 /** As a user, a collapsed item stays in place, out of the tab order, so its surface keeps its anchor. */

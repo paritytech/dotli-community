@@ -105,14 +105,4 @@ describe('product card store', () => {
     // Then the store does not notify
     expect(notified).toEqual([]);
   });
-
-  it("As a page, I show the product's icon in the card", () => {
-    // Given a card with no icon yet
-
-    // When the page sets the icon
-    productCardState.setIcon('blob:x');
-
-    // Then the card shows it and the author stays idle
-    expect(productCardState.store.get()).toEqual({ icon: 'blob:x', author: { status: 'idle' } });
-  });
 });

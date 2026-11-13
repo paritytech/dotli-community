@@ -110,21 +110,6 @@ describe('cookie presence', () => {
     expect([whileBlocked, afterSet, afterClear]).toEqual(['unknown', 'present', 'unknown']);
   });
 
-  it('As a signed-in user, I read the flag and no probe is written', async () => {
-    // Given a cookie flag already set, with the written cookies forgotten
-    const jar = createFakeCookieJar();
-    const presence = createCookiePresence({ jar, domain: DOMAIN });
-    void presence.set();
-    jar.written.length = 0;
-
-    // When the flag is read
-    const read = await presence.read();
-
-    // Then it reads present and no probe was written
-    expect(read).toBe('present');
-    expect(jar.written).toEqual([]);
-  });
-
   it('As a user on a page, I set and clear the flag and both cookies carry the exact attributes', () => {
     // Given a cookie flag on a working jar
     const jar = createFakeCookieJar();

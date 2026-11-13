@@ -37,8 +37,12 @@ if (button === null || output === null) {
 }
 
 // WebCrypto takes bytes only over a plain ArrayBuffer, which a copy and TextEncoder give.
-const bytes = (value: string): Uint8Array<ArrayBuffer> => Uint8Array.from(base64urlnopad.decode(value));
-const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
+function bytes(value: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(base64urlnopad.decode(value));
+}
+function text(value: string): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(value);
+}
 
 /** Opens the window's answer with the round's private key, as the client library does. */
 async function openAnswer(kept: KeptRound, envelope: Envelope): Promise<Record<string, unknown>> {

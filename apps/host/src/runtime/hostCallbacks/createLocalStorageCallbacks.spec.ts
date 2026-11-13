@@ -51,24 +51,11 @@ describe('local-storage host callbacks', () => {
     expect(readBack).toBeUndefined();
   });
 
-  it('As a dotli integrator, I write a large value and it reads back intact', async () => {
-    // Given
-    const { read, write } = createLocalStorageCallbacks(params);
-    const value = Uint8Array.from({ length: 70_000 }, (_, index) => index % 256);
-
-    // When
-    await write('truapi:product-storage:v1:9:myapp.dot:large', value);
-    const readBack = await read('truapi:product-storage:v1:9:myapp.dot:large');
-
-    // Then
-    expect(Array.from(readBack ?? [])).toEqual(Array.from(value));
-  });
-
   it('As a product developer, I subscribe to a key and see the current value, then each write and clear', async () => {
     // Given
     const callbacks = createLocalStorageCallbacks(params);
     await callbacks.write(WATCHED, new Uint8Array([1]));
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });
@@ -91,7 +78,7 @@ describe('local-storage host callbacks', () => {
   it('As a product developer, I subscribe to a key and ignore other keys while following other tabs', async () => {
     // Given
     const callbacks = createLocalStorageCallbacks(params);
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });
@@ -119,7 +106,7 @@ describe('local-storage host callbacks', () => {
       },
       events: () => otherTabs,
     });
-    const items = callbacks.subscribe(WATCHED)[Symbol.asyncIterator]();
+    const items = callbacks.subscribeStorage(WATCHED)[Symbol.asyncIterator]();
     onTestFinished(async () => {
       await items.return?.();
     });

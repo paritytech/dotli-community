@@ -9,7 +9,7 @@ import { storeArchiveInServiceWorker } from './storeArchiveInServiceWorker.js';
 describe('storeArchiveInServiceWorker', () => {
   it('As a visitor whose service worker could not start, I open the product and the load fails instead of writing a page with no files', async () => {
     // Given a page no service worker controls
-    const container = { controller: null, addEventListener: () => undefined, removeEventListener: () => undefined };
+    const container = { controller: null };
     const files = { 'index.html': new Uint8Array([60]), 'app.js': new Uint8Array([59]) };
 
     // When

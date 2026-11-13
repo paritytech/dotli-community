@@ -14,7 +14,6 @@ export { createMemoryStorage } from './createMemoryStorage.js';
 export { must } from './must.js';
 export { nth } from './nth.js';
 export { readOutcome } from './readOutcome.js';
-export type { LogLine } from './recordLog.js';
 export { recordLog } from './recordLog.js';
 // Functional tests wait on the page through it. It reads the DOM, so only they call it.
 export { waitForDom } from './waitForDom.dom.js';

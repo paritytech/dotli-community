@@ -1,20 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { hashBlake2b, createDeferred, fromHex, toHex } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
 import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
-import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
-import type { DotliAuthState } from '../session/types.js';
-import {
-  createMainAccountSource,
-  getMainAccount,
-  MainAccountError,
-  type MainAccount,
-  type MainAccountSource,
-} from './createMainAccountSource.js';
+import type { CoreReport, DotliAuthState } from '../session/types.js';
+import { createMainAccountSource, type MainAccountSource } from './createMainAccountSource.js';
+import { MainAccountError } from './mainAccount.js';
 
 /** One lease the fake core handed out, which the test takes down. */
 type FakeLease = {
@@ -30,9 +25,14 @@ type Params = {
   acquireFailures?: (Error | undefined)[];
   /** Holds every lease that is taken until it resolves, as a core still booting does. */
   booted?: Promise<unknown>;
+  /** How many of the first leases are on a core already down, which calls a down listener as it is added. */
+  deadCores?: number;
+  /** What every lease's release throws once it counted the release. */
+  releaseFailure?: Error;
 };
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
+const OTHER_KEY = `0x${'b'.repeat(64)}`;
 const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 
 const CONNECTED: DotliAuthState = {
@@ -41,16 +41,29 @@ const CONNECTED: DotliAuthState = {
 };
 
 /** A main-account source over a core whose leases the test counts and takes down, and a core report the test sets. */
-function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve() }: Params = {}) {
+function createSourceOverCore({
+  acquireFailures = [],
+  booted = Promise.resolve(),
+  deadCores = 0,
+  releaseFailure,
+}: Params = {}) {
   const changes = createChanges();
-  const report = atom<DotliAuthState | null>(null);
-  let waits = 0;
-  const coreReport: Pick<ReadableAtom<DotliAuthState | null>, 'get' | 'listen'> = {
-    get: () => report.get(),
+  const reports = atom<CoreReport | null>(null);
+  /** The core that reports now, which goes out of service when it goes down. */
+  let reporter = { inService: true };
+  /** The reporting core goes out of service, and its replacement reports from then on. */
+  function retireReporter(): void {
+    reporter.inService = false;
+    reporter = { inService: true };
+  }
+  /** The report listeners the source added, counted by the lease taken when each was added. */
+  const waitsByLease = new Map<number, number>();
+  const coreReport: Pick<ReadableAtom<CoreReport | null>, 'get' | 'listen'> = {
+    get: () => reports.get(),
     listen(listener) {
-      waits += 1;
+      waitsByLease.set(leases.length, (waitsByLease.get(leases.length) ?? 0) + 1);
       changes.notify();
-      return report.listen(listener);
+      return reports.listen(listener);
     },
   };
   const failures = [...acquireFailures];
@@ -64,10 +77,15 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
         return Promise.reject(failure);
       }
       const listeners = new Set<() => void>();
+      const dead = leases.length < deadCores;
+      if (dead) {
+        retireReporter();
+      }
       const lease: FakeLease = {
         released: 0,
         countListeners: () => listeners.size,
         goDown() {
+          retireReporter();
           for (const listener of [...listeners]) {
             listener();
           }
@@ -78,6 +96,9 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
       return booted.then(() => ({
         subscribeDown(listener: () => void) {
           listeners.add(listener);
+          if (dead) {
+            listener();
+          }
           return () => {
             listeners.delete(listener);
           };
@@ -85,6 +106,9 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
         release() {
           lease.released += 1;
           changes.notify();
+          if (releaseFailure !== undefined) {
+            throw releaseFailure;
+          }
         },
       }));
     },
@@ -92,11 +116,18 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
   });
   return {
     source,
-    report,
+    /** What the core in service reports. */
+    report: {
+      set(auth: DotliAuthState): void {
+        const from = reporter;
+        reports.set({ auth, isInService: () => from.inService });
+      },
+    },
+    retireReporter,
     countAcquires: () => acquires,
     leases,
-    /** Resolves once a read waits on the core's report. */
-    waitUntilReadWaits: () => changes.until(() => waits > 0),
+    /** Resolves once a read waits on the core's report through the `nth` lease taken. */
+    waitUntilReadWaits: (nth = 1) => changes.until(() => (waitsByLease.get(nth) ?? 0) >= 1),
     /** Resolves once the source took `count` leases. */
     waitForLeases: (count: number) => changes.until(() => leases.length >= count),
     /** Resolves once the source let go of a lease. */
@@ -110,52 +141,6 @@ function createLiveSignal(): AbortSignal {
 }
 
 describe('main account', () => {
-  it.each<{ name: string; session: TruapiSessionUiState; username: MainAccount['username'] }>([
-    {
-      name: 'a full username',
-      session: { connected: true, publicKey: MAIN_KEY, fullUsername: 'alice.dot', liteUsername: 'alice.01' },
-      username: { name: 'alice.dot', kind: 'full' },
-    },
-    {
-      name: 'a lite username alone, its full one empty,',
-      session: { connected: true, publicKey: MAIN_KEY, fullUsername: '', liteUsername: 'alice.01' },
-      username: { name: 'alice.01', kind: 'lite' },
-    },
-    { name: 'no username', session: { connected: true, publicKey: MAIN_KEY }, username: null },
-  ])('As a site, I sign in for a main account with $name and get that username', ({ session, username }) => {
-    // Given a session with that username
-    const stored = session;
-
-    // When the window reads the session's main account
-    const main = getMainAccount(stored);
-
-    // Then it carries that username
-    expect(main).toEqual({ owner: OWNER, username });
-  });
-
-  it('As a site, I sign in for a main account whose session has no readable key and get none', () => {
-    // Given sessions with no key, and with a key that is not hex
-    const keyless = { connected: true, liteUsername: 'alice.01' };
-    const unreadable = { connected: true, publicKey: 'not hex' };
-
-    // When the window reads each session's main account
-    const read = [getMainAccount(keyless), getMainAccount(unreadable)];
-
-    // Then neither has one
-    expect(read).toEqual([null, null]);
-  });
-
-  it("As a site, I sign in for a main account and its owner is the blake2b-256 hex of the account's key", () => {
-    // Given a session with a key
-    const session = { connected: true, publicKey: MAIN_KEY };
-
-    // When the window reads the session's main account
-    const main = getMainAccount(session);
-
-    // Then its owner is the hash of the key
-    expect(main?.owner).toBe(toHex(hashBlake2b(fromHex(MAIN_KEY), 32)));
-  });
-
   it("As a user, I start a site's round and the main account read waits for the core's own report, never the saved copy", async () => {
     // Given a source whose core has not reported yet
     const core = createSourceOverCore();
@@ -201,6 +186,28 @@ describe('main account', () => {
     // Then the first read failed as unavailable with the boot's error, and the second took a lease and read the account
     expect(failed).toBeInstanceOf(MainAccountError);
     expect(failed).toMatchObject({ kind: 'unavailable', cause: boot });
+    expect(main.owner).toBe(OWNER);
+    expect(core.countAcquires()).toBe(2);
+  });
+
+  it('As a user whose core cannot boot, I have two reads of the main account open and both fail, and the next read takes a new lease', async () => {
+    // Given a core that cannot boot once, whose failure lands after both reads are open, and reports a session after
+    const boot = new Error('The wallet core could not boot');
+    const core = createSourceOverCore({ acquireFailures: [boot] });
+    core.report.set(CONNECTED);
+
+    // When two reads run together, and a third runs after them
+    const failed = await Promise.all([
+      core.source.read(createLiveSignal()).catch((error: unknown) => error),
+      core.source.read(createLiveSignal()).catch((error: unknown) => error),
+    ]);
+    const main = await core.source.read(createLiveSignal());
+
+    // Then both reads failed as unavailable with the boot's error, and the third took a second lease and read the account
+    expect(failed).toMatchObject([
+      { name: 'MainAccountError', kind: 'unavailable', cause: boot },
+      { name: 'MainAccountError', kind: 'unavailable', cause: boot },
+    ]);
     expect(main.owner).toBe(OWNER);
     expect(core.countAcquires()).toBe(2);
   });
@@ -265,13 +272,38 @@ describe('main account', () => {
     core.report.set(CONNECTED);
     await core.source.read(createLiveSignal());
 
-    // When that core goes down, and the round reads again
+    // When that core goes down, the round reads again, and the replacement reports a session
     must(core.leases[0], 'a held lease').goDown();
-    await core.source.read(createLiveSignal());
+    const reading = core.source.read(createLiveSignal());
+    await core.waitForLeases(2);
+    core.report.set({ ...CONNECTED });
+    await reading;
 
     // Then the lease on the core that went down was released, and the next read took a lease on the replacement
     expect(core.leases.map(lease => lease.released)).toEqual([1, 0]);
     expect(core.countAcquires()).toBe(2);
+  });
+
+  it("As a user whose core went down after a site's round read the main account, I try again and the read waits for the replacement's own report", async () => {
+    // Given a read that settled on a core's report, and that core going down
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal());
+    must(core.leases[0], 'a held lease').goDown();
+
+    // When the round reads again, and the replacement reports another account
+    let settled = false;
+    const reading = core.source.read(createLiveSignal()).finally(() => {
+      settled = true;
+    });
+    await core.waitForLeases(2);
+    await core.waitUntilReadWaits();
+    const pendingBeforeReport = !settled;
+    core.report.set({ tag: 'Connected', session: { connected: true, publicKey: OTHER_KEY } });
+
+    // Then the read waited past the dead core's report and resolves with the replacement's account
+    expect(pendingBeforeReport).toBe(true);
+    expect((await reading).owner).toBe(toHex(hashBlake2b(fromHex(OTHER_KEY), 32)));
   });
 
   it("As a user whose core goes down while a site's round waits on the main account, I go on and the read takes the replacement's report", async () => {
@@ -309,6 +341,47 @@ describe('main account', () => {
     expect(core.countAcquires()).toBe(2);
   });
 
+  it("As a user whose core went down before the source listened, I start a site's round and the read waits for the replacement's report", async () => {
+    // Given a first lease on a core already down, and a core report that shows a signed-in session
+    const core = createSourceOverCore({ deadCores: 1 });
+    core.report.set(CONNECTED);
+
+    // When the round reads, and the replacement reports anew once the read waits on it
+    let settled = false;
+    const reading = core.source.read(createLiveSignal()).finally(() => {
+      settled = true;
+    });
+    await core.waitForLeases(2);
+    await core.waitUntilReadWaits(2);
+    const pendingBeforeReport = !settled;
+    core.report.set({ ...CONNECTED });
+
+    // Then a second lease was taken, and the read waited for the replacement's report before it resolved
+    expect(core.countAcquires()).toBe(2);
+    expect(pendingBeforeReport).toBe(true);
+    expect((await reading).owner).toBe(OWNER);
+  });
+
+  it("As a user whose core went down before any site's round, I start one and the read waits for the replacement's report", async () => {
+    // Given a core that reported a session and went down before the source took a lease
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    core.retireReporter();
+
+    // When the round reads, and the replacement reports another account once the read waits on it
+    let settled = false;
+    const reading = core.source.read(createLiveSignal()).finally(() => {
+      settled = true;
+    });
+    await core.waitUntilReadWaits();
+    const pendingBeforeReport = !settled;
+    core.report.set({ tag: 'Connected', session: { connected: true, publicKey: OTHER_KEY } });
+
+    // Then the read waited past the dead core's report and resolves with the replacement's account
+    expect(pendingBeforeReport).toBe(true);
+    expect((await reading).owner).toBe(toHex(hashBlake2b(fromHex(OTHER_KEY), 32)));
+  });
+
   it('As a dotli integrator, I dispose the main account source and it lets go of its lease and hears no more of its core', async () => {
     // Given a source that holds a lease on a core that reported a session
     const core = createSourceOverCore();
@@ -323,23 +396,6 @@ describe('main account', () => {
     // Then the lease was let go once, and the source keeps no down listener on it
     expect(lease.released).toBe(1);
     expect(lease.countListeners()).toBe(0);
-  });
-
-  it('As a dotli integrator, I dispose the main account source after its core could not boot and see no error', async () => {
-    // Given a source whose read failed because its core could not boot
-    const boot = new Error('The wallet core could not boot');
-    const core = createSourceOverCore({ acquireFailures: [boot] });
-    core.report.set(CONNECTED);
-    await core.source.read(createLiveSignal()).catch((error: unknown) => error);
-
-    // When the source is disposed
-    const thrown = catchError(() => {
-      core.source.dispose();
-    });
-
-    // Then nothing threw, and no lease was taken
-    expect(thrown).toBeUndefined();
-    expect(core.leases).toEqual([]);
   });
 
   it('As a dotli integrator, I dispose the main account source twice and see no error, and its lease is let go once', async () => {
@@ -379,6 +435,28 @@ describe('main account', () => {
     expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
   });
 
+  it("As a user who ends a site's round while its read takes a lease, I read again and the source holds one lease, which dispose lets go", async () => {
+    // Given a read whose lease is still being taken, and whose round then ends
+    const boot = createDeferred<undefined>();
+    const core = createSourceOverCore({ booted: boot.promise });
+    core.report.set(CONNECTED);
+    const ended = new AbortController();
+    const aborted = core.source.read(ended.signal).catch((error: unknown) => error);
+    await core.waitForLeases(1);
+    ended.abort(new Error('The round ended'));
+    await aborted;
+
+    // When a read on another signal runs, the lease lands, and the source is disposed
+    const reading = core.source.read(createLiveSignal());
+    boot.resolve(undefined);
+    await reading;
+    core.source.dispose();
+
+    // Then one lease was taken, and dispose let it go
+    expect(core.countAcquires()).toBe(1);
+    expect(core.leases.map(lease => lease.released)).toEqual([1]);
+  });
+
   it('As a dotli integrator, I dispose the main account source while a read waits and the read fails as unavailable, with no new lease taken', async () => {
     // Given a read that waits on the report of a core
     const core = createSourceOverCore();
@@ -407,5 +485,19 @@ describe('main account', () => {
     // Then the read failed as unavailable, and no lease was taken
     expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
     expect(core.countAcquires()).toBe(0);
+  });
+
+  it('As an operator, I see a main account source whose lease release throws reported as a defect', async () => {
+    // Given a source that holds a lease whose release throws
+    const core = createSourceOverCore({ releaseFailure: new Error('The lease could not be released') });
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal());
+    const reports = recordReports({ onFinished: onTestFinished });
+
+    // When the source is disposed
+    core.source.dispose();
+
+    // Then the throw was reported as a transition defect
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
   });
 });

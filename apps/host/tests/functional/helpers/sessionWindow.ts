@@ -102,17 +102,12 @@ export function openerOutcome(page: Page): Locator {
 
 /**
  * Serves the site fixture page at the root of `origin`, a third-party https origin unless the test picks another, and
- * returns its URL, which names the window's origin and the `route` it opens. `account: 'none'` makes the page leave the
- * account out of a transaction request. The page opens the window from its button as a site does and marks the window's
- * last reply on its output.
+ * returns its URL, which names the window's origin and the `route` it opens. The page opens the window from its button
+ * as a site does and marks the window's last reply on its output.
  */
 export async function serveSiteOpener(
   page: Page,
-  {
-    origin = SITE_ORIGIN,
-    route: windowRoute = 'auth',
-    account,
-  }: { origin?: string; route?: 'auth' | 'sign'; account?: 'none' } = {},
+  { origin = SITE_ORIGIN, route: windowRoute = 'auth' }: { origin?: string; route?: 'auth' | 'sign' } = {},
 ): Promise<string> {
   await page.route(`${origin}/**`, async route => {
     const { pathname } = new URL(route.request().url());
@@ -125,19 +120,16 @@ export async function serveSiteOpener(
     }
   });
   const query = new URLSearchParams({ window: ROOT_ORIGIN, net: NETWORK, route: windowRoute });
-  if (account !== undefined) {
-    query.set('account', account);
-  }
   return `${origin}/?${query.toString()}`;
 }
 
 /**
  * Serves the redirect fixture page at the root of the third-party site and at its return address, with the site's
- * well-known file, which lists the return address unless `listed` is false, and returns the page's URL. The page goes
+ * well-known file, which lists the return address, and returns the page's URL. The page goes
  * to the sign-in window by redirect from its button, and back on the return address marks the window's sealed answer
  * on its output.
  */
-export async function serveSiteRedirect(page: Page, { listed = true }: { listed?: boolean } = {}): Promise<string> {
+export async function serveSiteRedirect(page: Page): Promise<string> {
   await page.route(`${SITE_ORIGIN}/**`, async route => {
     const { pathname } = new URL(route.request().url());
     if (pathname === '/' || pathname === new URL(SITE_RETURN_URL).pathname) {
@@ -147,7 +139,7 @@ export async function serveSiteRedirect(page: Page, { listed = true }: { listed?
     } else if (pathname === WELL_KNOWN_PATH) {
       // The window reads the file from its own origin, so the site allows the read.
       await route.fulfill({
-        json: { return_to: [listed ? SITE_RETURN_URL : `${SITE_ORIGIN}/elsewhere`] },
+        json: { return_to: [SITE_RETURN_URL] },
         headers: { 'Access-Control-Allow-Origin': '*' },
       });
     } else {

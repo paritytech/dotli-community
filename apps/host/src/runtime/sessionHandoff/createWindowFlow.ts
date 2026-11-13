@@ -10,31 +10,39 @@
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { atom, type ReadableAtom } from 'nanostores';
-import { createAsyncTaskPool, isShallowEqual } from '@dotli/shared';
+import { computed, type ReadableAtom } from 'nanostores';
+import {
+  createStateMachine,
+  isShallowEqual,
+  nest,
+  noop,
+  type HandlerOf,
+  type MachineTypes,
+  type Transition,
+} from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
-import type {
-  ContinueOffer,
-  OfferedAccount,
-  SignInScreen,
-  WindowFailure,
-  WindowIntents,
-  WindowView,
-} from '../../state/sessionWindowState.js';
-import type { AuthCommands } from '../createAuthCommands.js';
-import type { LogoutOutcome } from '../createPageSignOut.js';
+import type { SignInScreen, WindowIntents } from '../../state/sessionWindowState.js';
+import type { AuthCommands } from '../runAuthCommand.js';
+import type { LogoutOutcome, PageSignOut, UntoldLogout } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
-import { getLoginFailureView } from '../getLoginFailureView.js';
-import { authViews } from '../session/authViews.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SignInFlag } from '../session/signInFlag.js';
-import { getLocalSessionUiState } from '../session/getLocalSessionUiState.js';
-import { parseUiStateCache, type TruapiSessionUiState } from '../session/parseUiStateCache.js';
+import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 import type { SignInIntent } from './parseWindowRequest.js';
 import type { Responder, ResponderState } from './createResponder.js';
 import type { SessionResult } from './parseSessionResult.js';
+import { createMainStoreReads } from './createMainStoreReads.js';
+import {
+  getEndedLoginView,
+  getOffered,
+  getPairingView,
+  getSignInScreen,
+  getStopScreen,
+  SPINNER,
+  type Shown,
+} from './windowScreen.js';
 
 const report = createReporter({ flow: 'wallet' });
 
@@ -44,6 +52,9 @@ const report = createReporter({ flow: 'wallet' });
  * `pairing` and `finish`.
  */
 const sessionWindowFlowMetric = defineCount<'error'>('session_window.flow');
+
+/** Count. A transition of the sign-in window's flow threw, a bug. Tagged `outcome` (error) and `reason`. */
+const sessionWindowFlowTransitionMetric = defineCount<'error'>('session_window.flow_transition');
 
 export type WindowFlow = ReturnType<typeof createWindowFlow>;
 
@@ -59,7 +70,10 @@ export type WindowFlowParams = {
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
   signIns: SignInFlag;
   auth: ReadableAtom<DotliAuthState>;
-  commands: AuthCommands;
+  /** The window's login on its core. */
+  commands: Pick<AuthCommands, 'login'>;
+  /** The window's own sign-out, which Use another account runs, and its retry for a phone that missed it. */
+  signOut: Pick<PageSignOut, 'signOut' | 'tellAgain'>;
   store: Pick<HostCoreStorage, 'readSession' | 'readUiCache' | 'writeUiCache'>;
   wallet: {
     /** Reads the main store's local wallet. Rejects when it could not be read. */
@@ -79,649 +93,779 @@ export type WindowFlowParams = {
   intent: SignInIntent;
   /** How the views name the page the window signs in for, from its vetted origin. */
   pageLabel: (origin: string) => string;
-  /** Takes what the store holds once the flow ended its round with a vetted opener. */
+  /** Takes what the store holds once the flow ended its round with a vetted opener. Must not throw. */
   deliver: (result: SessionResult) => void;
   /** Closes the window. */
   close: () => void;
 };
 
-type GetResponderScreenParams = {
-  /** The pairing the screen carries, a spinner by default. */
-  pairing?: PairingView;
-};
-
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing' | 'finish';
 
+/** What a round keeps from its opening, with how far its pairing got, which every view carries. */
+type Round = {
+  intent: SignInIntent;
+  /** The page the window signs in for, null until the opener is known and when no page opened the window. */
+  page: string | null;
+  pairing: PairingView;
+};
+
+/** Every step of the round, with the view it shows. A step that waits on work keeps the view it was asked on. */
+type Step = { round: Round; shown: Shown };
+
+/** A step of Continue's view. */
+type Continued = { round: Round; shown: Extract<Shown, { view: 'continue' }> };
+
 /**
- * What a failed step leaves on show: the failed view, for a step whose view cannot go on, or a failure on its view.
+ * The round's flow, from the hello it waits for to the end of its round. Each step that waits on work is a kind of its
+ * own. `loggingIn`, `loginFailing` and `loggingInThenRetry` run the window's login, which waits on the phone and so
+ * answers outside `await()`: `loginFailing` shows how the pairing failed while the login still runs, and
+ * `loggingInThenRetry` is a Retry pressed then, which decides once the login answered.
  */
-type StepFailure = 'view' | 'step';
+type Flow =
+  | (Step & { kind: 'waiting' })
+  | (Step & { kind: 'loadingPhrase' })
+  | (Step & { kind: 'readingToOffer' })
+  | (Step & { kind: 'readingToSend' })
+  | (Step & { kind: 'clearingFlag' })
+  | (Step & { kind: 'storingFlag'; stored: SessionResult })
+  | (Continued & { kind: 'continue' })
+  | (Continued & { kind: 'phoneUntold'; untold: UntoldLogout })
+  | (Continued & { kind: 'readingForContinue' })
+  | (Continued & { kind: 'loggingOut' })
+  | (Continued & { kind: 'checkingSignedOut' })
+  | (Continued & { kind: 'forgettingWallet' })
+  | (Continued & { kind: 'readingAfterForget' })
+  | (Step & { kind: 'phrase'; check: PhraseCheck })
+  | (Step & { kind: 'phraseRejected'; check: PhraseCheck; asker: symbol; error: Error })
+  | (Step & { kind: 'goingBack' })
+  | (Step & { kind: 'savingPhrase'; check: PhraseCheck; asker: symbol; entropy: Uint8Array })
+  | (Step & { kind: 'readingAfterPhrase'; entropy: Uint8Array })
+  | (Step & { kind: 'loggingIn' })
+  | (Step & { kind: 'loginFailing' })
+  | (Step & { kind: 'loggingInThenRetry' })
+  | (Step & { kind: 'pairingIdle' })
+  | (Step & { kind: 'finishing'; account: TruapiSessionUiState })
+  | (Step & { kind: 'cachingAccount'; result: SessionResult })
+  | (Step & { kind: 'forgetFailed'; continued: Continued['shown'] })
+  | (Step & { kind: 'failed' });
+
+/** The window: its flow while it runs, then the screen it stopped on. */
+type State =
+  | { kind: 'live'; flow: Flow }
+  | { kind: 'refused'; screen: SignInScreen }
+  | { kind: 'ended'; screen: SignInScreen }
+  | { kind: 'disposed'; screen: SignInScreen };
+
+type Event =
+  | { kind: 'responderMoved'; state: ResponderState }
+  // `origin` is the vetted opener's, and null for a window with no opener.
+  | { kind: 'openerKnown'; origin: string | null }
+  | { kind: 'authChanged'; auth: DotliAuthState }
+  | { kind: 'disposed' }
+  | { kind: 'cancelAsked' }
+  | { kind: 'continueAsked' }
+  | { kind: 'anotherAsked' }
+  | { kind: 'goOnAsked' }
+  | { kind: 'importAsked'; phrase: string; asker: symbol }
+  | { kind: 'closePhraseAsked' }
+  | { kind: 'retryAsked' }
+  | { kind: 'phraseLoaded'; check: PhraseCheck }
+  | { kind: 'storedRead'; stored: SessionResult }
+  | { kind: 'flagLanded' }
+  | { kind: 'loggedOut'; outcome: LogoutOutcome }
+  | { kind: 'sessionHeld' }
+  | { kind: 'sessionGone' }
+  | { kind: 'walletForgotten' }
+  | { kind: 'phraseSaved' }
+  | { kind: 'sessionRead'; session: SessionResult['session'] }
+  | { kind: 'loginPaired'; account: TruapiSessionUiState }
+  | { kind: 'loginEnded'; how: 'failed' | 'cancelled' }
+  | { kind: 'pairedRead'; blob: string; localWallet: SessionResult['localWallet'] }
+  | { kind: 'accountCached' }
+  | { kind: 'workFailed'; error: unknown }
+  | { kind: 'roundEnded'; result: SessionResult };
+
+type Effect =
+  | { kind: 'stepFailed'; name: StepName; error: unknown }
+  | { kind: 'walletFailed'; error: Error; action: 'save' | 'forget' }
+  | { kind: 'phraseMissed'; error: unknown }
+  | { kind: 'logged'; line: string }
+  | { kind: 'delivered'; result: SessionResult }
+  | { kind: 'closed' };
+
+type WindowMachine = MachineTypes<State, Event, Effect>;
+
+type FlowMachine = MachineTypes<Flow, Event, Effect>;
+
+/** The events the flow hears. The window's own handle the round's end and the window's life. */
+type FlowEventKind = Exclude<Event['kind'], 'responderMoved' | 'disposed' | 'cancelAsked' | 'roundEnded'>;
 
 /**
- * The flow's phase in its round: `waiting` for a vetted hello, `open` once the flow decided with its intent, and
- * `ended` once it delivered, after which nothing may change the store.
+ * The steps whose failure leaves the failed view, since their view cannot go on, with the step each reports its failure
+ * under.
  */
-type Phase = { kind: 'waiting' } | { kind: 'open'; intent: SignInIntent } | { kind: 'ended' };
+const FAILED_STEP = {
+  readingToOffer: 'decide',
+  readingToSend: 'decide',
+  goingBack: 'back',
+  readingForContinue: 'continue',
+  readingAfterPhrase: 'phrase',
+  loggingIn: 'pairing',
+  loginFailing: 'pairing',
+  loggingInThenRetry: 'pairing',
+  finishing: 'finish',
+  cachingAccount: 'finish',
+} satisfies Partial<Record<Flow['kind'], StepName>>;
 
-/** A view to show with what is its own, which only Continue has. */
-type NextView = { view: 'continue'; offer: ContinueOffer } | { view: Exclude<SignInScreen['view'], 'continue'> };
+type FailingKind = keyof typeof FAILED_STEP;
 
-/** What every sign-in view carries over to the next. */
-type Carried = Pick<SignInScreen, 'pageHost' | 'failure' | 'pairing'>;
-
-type GetNextScreenParams = {
-  /** The screen on show, whose carried fields go over. */
-  shown: SignInScreen;
-  next: NextView;
-  /** The carried fields that change. */
-  change: Partial<Carried>;
-};
-
-type RunStepParams = {
-  name: StepName;
-  /** The step's work. Rejects when the step failed. */
-  run: () => Promise<void>;
-  /** What a failure leaves on show. */
-  failure: StepFailure;
-};
-
-type RunOnViewParams = RunStepParams & {
-  /** The view the user asked on. */
-  view: WindowView;
-};
-
-const STEPS = 'session_window';
-
-/** The window's own logins, apart from the steps, since a login waits on the phone and must not hold up a step. */
-const LOGINS = 'session_window_login';
-
-const SPINNER: PairingView = { kind: 'spinner' };
-
-/** What a login the core ended says, when the core said nothing of its own about it. */
-const LOGIN_ENDED: Record<'failed' | 'cancelled', PairingView> = {
-  failed: getLoginFailureView('Other', 'The sign-in did not complete'),
-  cancelled: getLoginFailureView('Other', 'The sign-in was cancelled'),
-};
-
-/** The sign-in window's flow over `responder`, which starts deciding once the responder knows its opener. */
+/**
+ * The sign-in window's flow over `responder`, which starts deciding once the responder knows its opener. An intent
+ * pressed while a step runs is ignored and resolves once the flow settled, except Retry over a failed pairing whose
+ * login still runs.
+ */
 export function createWindowFlow({
   responder,
   signIns,
   auth,
   commands,
+  signOut,
   store,
   wallet,
   loadPhrase,
-  intent: requestIntent,
+  intent,
   pageLabel,
   deliver,
   close,
 }: WindowFlowParams) {
-  const initial = getResponderScreen(responder.state.get(), { pairing: getPairingView(SPINNER, auth.get()) });
-  const screen = atom<SignInScreen>(initial);
-  screen.eq = isShallowEqual;
-  // One step at a time, so a second press waits for the first and finds the view it left.
-  const steps = createAsyncTaskPool({ poolSize: 1 });
-  let phase: Phase = { kind: 'waiting' };
-  // What the Continue on show offers, as the store held it.
-  let offered: SessionResult | null = null;
-  // The retry of a sign-out the phone did not hear of, held only while that failure is on show.
-  let tellAgain: (() => Promise<LogoutOutcome>) | null = null;
-  // The phrase check, loaded before the phrase view shows. A debug-only feature, so no other view waits on it.
-  let phraseCheck: PhraseCheck | null = null;
+  const reads = createMainStoreReads({ store, wallet });
 
-  function show(next: NextView): void {
-    tellAgain = null;
-    screen.set(getNextScreen({ shown: screen.get(), next, change: { failure: null } }));
-  }
-
-  /** Changes what the view on show carries, which keeps its own fields. */
-  function change(fields: Partial<Carried>): void {
-    const shown = screen.get();
-    screen.set(getNextScreen({ shown, next: shown, change: fields }));
-  }
-
-  function fail(failure: WindowFailure): void {
-    tellAgain = null;
-    change({ failure });
-  }
-
-  /** A step whose view cannot go on, so the window says so and offers Retry. */
-  function showFailed(): void {
-    if (phase.kind !== 'ended') {
-      show({ view: 'failed' });
+  // Every state hears Cancel, so a step under way never holds the window open. A pairing given up stored nothing and so
+  // raised no flag.
+  const closeWindow: HandlerOf<WindowMachine, 'live' | 'refused' | 'ended', 'cancelAsked'> = (
+    _state,
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'closed' });
+  };
+  const closeOnAnswer: HandlerOf<WindowMachine, 'refused' | 'ended', 'responderMoved'> = (
+    _state,
+    event,
+    { emitSideEffect },
+  ) => {
+    if (event.state.kind === 'answered') {
+      emitSideEffect({ kind: 'closed' });
     }
-  }
-
-  function showStepFailure(failure: StepFailure): void {
-    switch (failure) {
-      case 'view':
-        showFailed();
-        return;
-      case 'step':
-        fail('step');
-        return;
-    }
-  }
-
-  /** Never rejects: a failure is reported, and shown as `failure` says. */
-  function runStep({ name, run, failure }: RunStepParams): Promise<void> {
-    return steps.call(run, { pool: STEPS }).catch((error: unknown) => {
-      reportStepFailure(error, name);
-      showStepFailure(failure);
-    });
-  }
-
-  /** Whether a step the user asked for on `view` still applies, as the window may have left that view or ended. */
-  function isStillOn(view: WindowView): boolean {
-    return phase.kind !== 'ended' && screen.get().view === view;
-  }
-
-  /** The phrase view's check while that view is on show, which it never is before the check loaded. */
-  function getPhraseOnShow(): PhraseCheck | null {
-    return isStillOn('phrase') ? phraseCheck : null;
-  }
-
-  /** A step the user asked for on `view`, which does nothing once the window left that view or ended. */
-  function runOnView({ name, view, run, failure }: RunOnViewParams): Promise<void> {
-    async function runWhileOnView(): Promise<void> {
-      if (isStillOn(view)) {
-        await run();
-      }
-    }
-    return runStep({ name, run: runWhileOnView, failure });
-  }
-
-  /** The stored session blob. A store that cannot be read may still hold one, so the read fails the step. */
-  async function readBlob(): Promise<string | null> {
-    const read = await store.readSession();
-    if (read.status === 'failed') {
-      throw new Error('The main store could not be read', { cause: read.error });
-    }
-    return read.blob;
-  }
-
-  async function readSession(): Promise<SessionResult['session']> {
-    // The cache read never rejects, so only a failed blob read fails the step.
-    const [blob, uiState] = await Promise.all([readBlob(), store.readUiCache()]);
-    return blob === null ? null : { blob, uiState };
-  }
-
-  /** A wallet that cannot be read is reported and taken as none, so the window still offers a session or pairs. */
-  async function readWallet(): Promise<SessionResult['localWallet']> {
-    try {
-      const read = await wallet.read();
-      return read.status === 'ok' ? { entropy: read.entropy, identity: read.identity } : null;
-    } catch (error) {
-      reportLocalWalletFailure(error, 'read');
-      return null;
-    }
-  }
-
-  /** What the main store holds, as the result carries it. */
-  async function readStored(): Promise<SessionResult> {
-    const [session, localWallet] = await Promise.all([readSession(), readWallet()]);
-    return { session, localWallet };
-  }
-
-  /**
-   * What the main store holds now, for Continue. A sign-out on another page clears the session and the wallet, so those
-   * are read again. The cached account goes with the session it was read for.
-   */
-  async function readStoredForContinue(): Promise<SessionResult> {
-    const [blob, localWallet] = await Promise.all([readBlob(), readWallet()]);
-    if (blob === null) {
-      return { session: null, localWallet };
-    }
-    const uiState = blob === offered?.session?.blob ? offered.session.uiState : await store.readUiCache();
-    return { session: { blob, uiState }, localWallet };
-  }
-
-  /** Ends the round with what the store holds: handed to `deliver`, or said as done when no page opened the window. */
-  function endRound(result: SessionResult): void {
-    phase = { kind: 'ended' };
-    if (responder.state.get().kind === 'no-opener') {
-      report.log.event('sign-in window signed in with no opener');
-      show({ view: 'done-no-opener' });
+  };
+  const disposeWindow: HandlerOf<WindowMachine, 'live' | 'refused' | 'ended', 'disposed'> = (
+    state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'disposed', screen: getScreen(state) });
+  };
+  const failStep: HandlerOf<FlowMachine, FailingKind, 'workFailed'> = (
+    state,
+    { error },
+    { emitState, emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'stepFailed', name: FAILED_STEP[state.kind], error });
+    emitState({ kind: 'failed', round: state.round, shown: { view: 'failed' } });
+  };
+  /** Use another account failed, so Continue offers what it offered with the failure on show. */
+  const failAnother: HandlerOf<FlowMachine, 'loggingOut' | 'checkingSignedOut' | 'readingAfterForget', 'workFailed'> = (
+    { round, shown },
+    { error },
+    { emitState, emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'stepFailed', name: 'another', error });
+    emitState({ kind: 'continue', round, shown: { ...shown, failure: 'step' } });
+  };
+  // Only a running login is followed, so a failure a login left stays on show whatever the auth state does. The login's
+  // answer, not the auth state, decides how a pairing ends.
+  const followLogin: HandlerOf<FlowMachine, 'loggingIn' | 'loginFailing', 'authChanged'> = (
+    { round, shown },
+    { auth: changed },
+    { emitState },
+  ) => {
+    const next = { ...round, pairing: getPairingView(round.pairing, changed) };
+    emitState({ kind: next.pairing.kind === 'error' ? 'loginFailing' : 'loggingIn', round: next, shown });
+  };
+  /** A login whose retry is asked, or that already paired, only shows how far the core got. */
+  const followAuth: HandlerOf<FlowMachine, 'loggingInThenRetry' | 'finishing' | 'cachingAccount', 'authChanged'> = (
+    state,
+    { auth: changed },
+    { emitState },
+  ) => {
+    emitState({ ...state, round: { ...state.round, pairing: getPairingView(state.round.pairing, changed) } });
+  };
+  /** Sends what the login paired, which the command answered only once the main store held it. */
+  const finishPairing: HandlerOf<FlowMachine, 'loggingIn' | 'loginFailing' | 'loggingInThenRetry', 'loginPaired'> = (
+    { round, shown },
+    { account },
+    { emitState, update },
+  ) => {
+    emitState({ kind: 'finishing', round, shown, account });
+    update(reads.readPaired().then(paired => ({ kind: 'pairedRead', ...paired }), mapWorkFailure));
+  };
+  const importPhrase: HandlerOf<FlowMachine, 'phrase' | 'phraseRejected', 'importAsked'> = (
+    { round, shown, check },
+    { phrase, asker },
+    { emitState, emitSideEffect, update },
+  ) => {
+    const entropy = check.toEntropy(phrase);
+    if (entropy === null) {
+      const error = new Error('Not a valid recovery phrase');
+      emitSideEffect({ kind: 'stepFailed', name: 'phrase', error });
+      emitState({ kind: 'phraseRejected', round, shown, check, asker, error });
       return;
     }
-    report.log.event('sign-in window sends its result');
-    deliver(result);
-  }
-
-  /** Sends what the login paired, which the command answered only once the main store held it. */
-  function finishPairing(account: TruapiSessionUiState): Promise<void> {
-    return steps.call(
-      async () => {
-        if (phase.kind === 'ended') {
-          return;
-        }
-        const [blob, localWallet] = await Promise.all([readBlob(), readWallet()]);
-        if (blob === null) {
-          throw new Error('The paired session is no longer stored');
-        }
-        // From the account the login answered with. The window runs no session state to cache it, so it caches it here,
-        // for a page that shows the main store without a core of its own and for a later Continue.
-        const uiState = JSON.stringify(account);
-        await store.writeUiCache(uiState);
-        endRound({ session: { blob, uiState }, localWallet });
-      },
-      { pool: STEPS },
-    );
-  }
-
-  /**
-   * Asks the core to log in and handles its answer. A login that ends without a sign-in leaves a failure on show for
-   * Retry, the core's own or one that says how it ended, so no dead code stays up. Never rejects.
-   */
-  async function runLogin(): Promise<void> {
-    change({ pairing: SPINNER });
-    try {
-      const outcome = await commands.login();
-      if (outcome.kind === 'paired') {
-        await finishPairing(outcome.account).catch((error: unknown) => {
-          reportStepFailure(error, 'finish');
-          showFailed();
-        });
-        return;
-      }
-      if (screen.get().pairing.kind !== 'error') {
-        change({ pairing: LOGIN_ENDED[outcome.kind] });
-      }
-    } catch (error) {
-      reportStepFailure(error, 'pairing');
-      showFailed();
-    }
-  }
-
-  /**
-   * Where the pairing on show stands while the window is open: failed while it shows how the pairing failed, otherwise
-   * waiting on a login, and null off the pairing view. Every login's answer leaves the window no longer waiting, ended,
-   * failed or showing how the pairing failed, so a sign-in the core picks up from elsewhere sends nothing by itself.
-   */
-  function getPairingOnShow(): 'waiting' | 'failed' | null {
-    if (phase.kind !== 'open' || screen.get().view !== 'pairing') {
-      return null;
-    }
-    if (screen.get().pairing.kind === 'error') {
-      return 'failed';
-    }
-    return 'waiting';
-  }
-
-  /**
-   * Shows the pairing and logs in, one login at a time. A pairing asked for while a login runs finds the window no
-   * longer waiting once that login answered, so it joins it. Outside the steps, so Cancel or an import never waits on
-   * it.
-   */
-  function pair(): void {
-    show({ view: 'pairing' });
-    void steps.call(
-      async () => {
-        if (getPairingOnShow() === 'waiting') {
-          await runLogin();
-        }
-      },
-      { pool: LOGINS },
-    );
-  }
-
-  /**
-   * Retry asks for a fresh login over a failure, so the failure gives way to the spinner first. A code a login under
-   * way shows stays.
-   */
-  function clearPairingFailure(): void {
-    if (screen.get().pairing.kind === 'error') {
-      change({ pairing: SPINNER });
-    }
-  }
-
+    emitState({ kind: 'savingPhrase', round, shown, check, asker, entropy });
+    // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
+    update(signIns.store(() => wallet.save(entropy, null)).then(() => ({ kind: 'phraseSaved' }), mapWorkFailure));
+  };
+  const goBack: HandlerOf<FlowMachine, 'phrase' | 'phraseRejected', 'closePhraseAsked'> = (
+    { round, shown },
+    _event,
+    { emitState, update },
+  ) => {
+    emitState({ kind: 'goingBack', round, shown });
+    update(toStoredRead(reads.readStored()));
+  };
   /**
    * Offers what the store holds, else pairs. With nothing stored, a flag left set claims a sign-in that is gone, and
    * the keeper drops it only while the store is still empty, so a pairing under way that stores meanwhile keeps it.
    */
-  async function offerOrPair(stored: SessionResult): Promise<void> {
-    const offer = getContinueOffer(stored);
-    if (offer !== null) {
-      offered = stored;
-      show({ view: 'continue', offer });
+  const offerOrPair: HandlerOf<
+    FlowMachine,
+    'readingToOffer' | 'goingBack' | 'readingToSend' | 'readingForContinue',
+    'storedRead'
+  > = ({ round, shown }, { stored }, { emitState, update }) => {
+    const offered = getOffered(stored);
+    if (offered !== null) {
+      emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: null } });
       return;
     }
-    await signIns.clear();
-    pair();
-  }
-
-  /** The rest of Use another account once the paired session ended: forget the wallet and pair. */
-  async function leaveForAnother(): Promise<void> {
-    tellAgain = null;
-    // A store that cannot be read may still hold the session, so the window does not go on over it.
-    const read = await store.readSession();
-    if (read.status === 'failed' || read.blob !== null) {
-      fail('sign-out');
-      return;
-    }
-    try {
-      await signIns.clear({
-        drop: async () => {
-          await wallet.forget();
-          return true;
-        },
-      });
-    } catch (error) {
-      // The wallet is still stored, so the flag stays up for it.
-      reportLocalWalletFailure(new Error('Local wallet could not be forgotten', { cause: error }), 'forget');
-      await offerOrPair(await readStored());
-      fail('sign-out');
-      return;
-    }
-    pair();
-  }
-
+    emitState({ kind: 'clearingFlag', round, shown });
+    // Never rejects, since no drop runs.
+    update(signIns.clear().then(() => ({ kind: 'flagLanded' })));
+  };
   /**
-   * Sends what the store holds, with the flag landed first. A store with nothing to send, such as a flag left set over
-   * an empty store, drops the flag and pairs.
+   * Sends what the store holds, with the flag landed first, since the page reads it as it takes the result. A store
+   * with nothing to send, such as a flag left set over an empty store, drops the flag and pairs.
    */
-  async function sendStored(stored: SessionResult): Promise<void> {
-    if (getContinueOffer(stored) === null) {
-      await offerOrPair(stored);
+  const send: HandlerOf<FlowMachine, 'readingToSend' | 'readingForContinue', 'storedRead'> = (
+    state,
+    event,
+    transition,
+  ) => {
+    if (getOffered(event.stored) === null) {
+      offerOrPair(state, event, transition);
       return;
     }
-    // The flag lands before the page gets the result, since the page reads it as it takes the result.
-    await signIns.store(() => {
-      endRound(stored);
-    });
+    transition.emitState({ kind: 'storingFlag', round: state.round, shown: state.shown, stored: event.stored });
+    // Never rejects, since the write does nothing.
+    transition.update(signIns.store(noop).then(() => ({ kind: 'flagLanded' })));
+  };
+
+  const followFlow = nest<WindowMachine, 'live', FlowMachine, FlowEventKind>({
+    find: ({ flow }) => flow,
+    store: (state, _event, flow) => ({ ...state, flow }),
+    handlers: {
+      waiting: {
+        openerKnown({ round, shown }, { origin }, transition) {
+          const known: Round =
+            origin === null
+              ? { ...round, intent: round.intent === 'phrase' ? 'phrase' : 'signin' }
+              : { ...round, page: pageLabel(origin) };
+          decide({ round: known, shown }, transition);
+        },
+      },
+      loadingPhrase: {
+        phraseLoaded({ round }, { check }, { emitState }) {
+          emitState({ kind: 'phrase', round, shown: { view: 'phrase' }, check });
+        },
+        // A module that could not load is a missed chunk, so the step itself ends without failing.
+        workFailed({ round }, { error }, { emitState, emitSideEffect }) {
+          emitSideEffect({ kind: 'phraseMissed', error });
+          emitState({ kind: 'failed', round, shown: { view: 'failed' } });
+        },
+      },
+      readingToOffer: {
+        storedRead: offerOrPair,
+        workFailed: failStep,
+      },
+      readingToSend: {
+        storedRead: send,
+        workFailed: failStep,
+      },
+      clearingFlag: {
+        flagLanded({ round }, _event, transition) {
+          pair(round, transition);
+        },
+      },
+      storingFlag: {
+        flagLanded({ stored }, _event, { update }) {
+          update({ kind: 'roundEnded', result: stored });
+        },
+      },
+      continue: {
+        continueAsked({ round, shown }, _event, { emitState, update }) {
+          emitState({ kind: 'readingForContinue', round, shown });
+          update(toStoredRead(reads.readStoredForContinue(shown.offered.stored)));
+        },
+        anotherAsked(state, _event, transition) {
+          logOut(state, () => signOut.signOut(), transition);
+        },
+      },
+      phoneUntold: {
+        // Try again on that failure tells the phone once more from what the sign-out left.
+        anotherAsked(state, _event, transition) {
+          logOut(state, () => signOut.tellAgain(state.untold), transition);
+        },
+        goOnAsked(state, _event, transition) {
+          transition.emitSideEffect({ kind: 'logged', line: 'sign-in window goes on with the phone not told' });
+          leaveForAnother(state, transition);
+        },
+      },
+      readingForContinue: {
+        storedRead: send,
+        workFailed: failStep,
+      },
+      loggingOut: {
+        loggedOut({ round, shown }, { outcome }, transition) {
+          switch (outcome.phone) {
+            case 'untold':
+              transition.emitState({
+                kind: 'phoneUntold',
+                round,
+                shown: { ...shown, failure: 'phone' },
+                untold: outcome,
+              });
+              return;
+            case 'told':
+              leaveForAnother({ round, shown }, transition);
+              return;
+          }
+        },
+        workFailed: failAnother,
+      },
+      checkingSignedOut: {
+        sessionHeld({ round, shown }, _event, { emitState }) {
+          emitState({ kind: 'continue', round, shown: { ...shown, failure: 'sign-out' } });
+        },
+        sessionGone(state, _event, transition) {
+          forgetWallet(state, transition);
+        },
+        workFailed: failAnother,
+      },
+      forgettingWallet: {
+        walletForgotten({ round }, _event, transition) {
+          pair(round, transition);
+        },
+        // The wallet is still stored, so the flag stays up for it.
+        workFailed({ round, shown }, { error }, { emitState, emitSideEffect, update }) {
+          const failure = new Error('Local wallet could not be forgotten', { cause: error });
+          emitSideEffect({ kind: 'walletFailed', error: failure, action: 'forget' });
+          emitState({ kind: 'readingAfterForget', round, shown });
+          update(toStoredRead(reads.readStored()));
+        },
+      },
+      readingAfterForget: {
+        storedRead({ round, shown }, { stored }, { emitState }) {
+          const offered = getOffered(stored);
+          // A wallet that cannot be read may still be stored, so the window starts no pairing over it, and Retry
+          // forgets it again first.
+          if (offered === null) {
+            emitState({ kind: 'forgetFailed', round, shown: { view: 'failed' }, continued: shown });
+            return;
+          }
+          emitState({ kind: 'continue', round, shown: { view: 'continue', offered, failure: 'sign-out' } });
+        },
+        workFailed: failAnother,
+      },
+      phrase: {
+        importAsked: importPhrase,
+        closePhraseAsked: goBack,
+      },
+      phraseRejected: {
+        importAsked: importPhrase,
+        closePhraseAsked: goBack,
+      },
+      goingBack: {
+        storedRead: offerOrPair,
+        workFailed: failStep,
+      },
+      savingPhrase: {
+        phraseSaved({ round, shown, entropy }, _event, { emitState, emitSideEffect, update }) {
+          emitSideEffect({ kind: 'logged', line: 'sign-in window saved a recovery phrase wallet' });
+          emitState({ kind: 'readingAfterPhrase', round, shown, entropy });
+          // A paired session stays, so the user can switch back to it. A session that cannot be read now fails the
+          // step on the failed view, since the form saying the save failed would be wrong.
+          update(readSessionAfterSave(reads.readSession()));
+        },
+        // The form shows the failure from the import's rejection, which is reported before it rejects.
+        workFailed({ round, shown, check, asker }, { error: cause }, { emitState, emitSideEffect }) {
+          const error = new Error('The recovery phrase wallet could not be saved', { cause });
+          emitSideEffect({ kind: 'walletFailed', error, action: 'save' });
+          emitState({ kind: 'phraseRejected', round, shown, check, asker, error });
+        },
+      },
+      readingAfterPhrase: {
+        sessionRead({ entropy }, { session }, { update }) {
+          update({ kind: 'roundEnded', result: { session, localWallet: { entropy, identity: null } } });
+        },
+        workFailed: failStep,
+      },
+      loggingIn: {
+        // A login that ends without a sign-in leaves a failure on show for Retry, one that says how it ended, so no
+        // dead code stays up.
+        loginEnded({ round, shown }, { how }, { emitState }) {
+          emitState({ kind: 'pairingIdle', round: { ...round, pairing: getEndedLoginView(how) }, shown });
+        },
+        loginPaired: finishPairing,
+        workFailed: failStep,
+        authChanged: followLogin,
+      },
+      loginFailing: {
+        // The core's own failure stays on show for Retry.
+        loginEnded({ round, shown }, _event, { emitState }) {
+          emitState({ kind: 'pairingIdle', round, shown });
+        },
+        // Retry decides only once the login under way answered, so it never lands in the round of the failed one.
+        retryAsked({ round, shown }, _event, { emitState }) {
+          emitState({ kind: 'loggingInThenRetry', round, shown });
+        },
+        loginPaired: finishPairing,
+        workFailed: failStep,
+        authChanged: followLogin,
+      },
+      loggingInThenRetry: {
+        loginEnded({ round }, _event, transition) {
+          retryPairing(round, transition);
+        },
+        loginPaired: finishPairing,
+        workFailed: failStep,
+        authChanged: followAuth,
+      },
+      pairingIdle: {
+        retryAsked({ round }, _event, transition) {
+          retryPairing(round, transition);
+        },
+      },
+      finishing: {
+        pairedRead({ round, shown, account }, { blob, localWallet }, { emitState, update }) {
+          // From the account the login answered with. The window runs no session state to cache it, so it caches it
+          // here, for a page that shows the main store without a core of its own and for a later Continue.
+          const uiState = JSON.stringify(account);
+          emitState({ kind: 'cachingAccount', round, shown, result: { session: { blob, uiState }, localWallet } });
+          update(store.writeUiCache(uiState).then(() => ({ kind: 'accountCached' }), mapWorkFailure));
+        },
+        workFailed: failStep,
+        authChanged: followAuth,
+      },
+      cachingAccount: {
+        accountCached({ result }, _event, { update }) {
+          update({ kind: 'roundEnded', result });
+        },
+        workFailed: failStep,
+        authChanged: followAuth,
+      },
+      forgetFailed: {
+        retryAsked({ round, continued }, _event, transition) {
+          forgetWallet({ round, shown: continued }, transition);
+        },
+      },
+      failed: {
+        // No login runs here, so whatever pairing is on show was left by one that ended, and gives way to the spinner.
+        retryAsked({ round, shown }, _event, transition) {
+          decide({ round: { ...round, pairing: SPINNER }, shown }, transition);
+        },
+      },
+    },
+  });
+
+  const machine = createStateMachine<WindowMachine>({
+    initial: {
+      kind: 'live',
+      flow: {
+        kind: 'waiting',
+        round: { intent, page: null, pairing: getPairingView(SPINNER, auth.get()) },
+        shown: { view: 'connecting' },
+      },
+    },
+    handlers: {
+      live: {
+        responderMoved(state, event, transition) {
+          switch (event.state.kind) {
+            case 'refused':
+              transition.emitState({ kind: 'refused', screen: getStopScreen(state.flow, 'refused') });
+              return;
+            case 'answered':
+              transition.emitSideEffect({ kind: 'closed' });
+              return;
+            case 'vetted':
+              transition.update({ kind: 'openerKnown', origin: event.state.origin });
+              return;
+            case 'no-opener':
+              transition.update({ kind: 'openerKnown', origin: null });
+              return;
+            case 'connecting':
+              return;
+          }
+        },
+        // The round's result goes to the page that opened the window, or is said as done when no page did.
+        roundEnded({ flow }, { result }, { emitState, emitSideEffect }) {
+          if (flow.round.page === null) {
+            emitState({ kind: 'ended', screen: getStopScreen(flow, 'done-no-opener') });
+            emitSideEffect({ kind: 'logged', line: 'sign-in window signed in with no opener' });
+            return;
+          }
+          emitState({ kind: 'ended', screen: getSignInScreen(flow) });
+          emitSideEffect({ kind: 'logged', line: 'sign-in window sends its result' });
+          emitSideEffect({ kind: 'delivered', result });
+        },
+        cancelAsked: closeWindow,
+        disposed: disposeWindow,
+        openerKnown: followFlow,
+        authChanged: followFlow,
+        continueAsked: followFlow,
+        anotherAsked: followFlow,
+        goOnAsked: followFlow,
+        importAsked: followFlow,
+        closePhraseAsked: followFlow,
+        retryAsked: followFlow,
+        phraseLoaded: followFlow,
+        storedRead: followFlow,
+        flagLanded: followFlow,
+        loggedOut: followFlow,
+        sessionHeld: followFlow,
+        sessionGone: followFlow,
+        walletForgotten: followFlow,
+        phraseSaved: followFlow,
+        sessionRead: followFlow,
+        loginPaired: followFlow,
+        loginEnded: followFlow,
+        pairedRead: followFlow,
+        accountCached: followFlow,
+        workFailed: followFlow,
+      },
+      refused: {
+        responderMoved: closeOnAnswer,
+        cancelAsked: closeWindow,
+        disposed: disposeWindow,
+      },
+      ended: {
+        responderMoved: closeOnAnswer,
+        cancelAsked: closeWindow,
+        disposed: disposeWindow,
+      },
+      disposed: null,
+    },
+    onEffect: effect => {
+      switch (effect.kind) {
+        case 'stepFailed':
+          reportWalletFailure(effect.error, {
+            what: `session window ${effect.name}`,
+            step: 'session_window',
+            reason: effect.name,
+            metric: sessionWindowFlowMetric,
+          });
+          return;
+        case 'walletFailed':
+          reportLocalWalletFailure(effect.error, effect.action);
+          return;
+        case 'phraseMissed':
+          reportLazyMiss({ report, step: 'phrase_import', error: effect.error });
+          return;
+        case 'logged':
+          report.log.event(effect.line);
+          return;
+        case 'delivered':
+          deliver(effect.result);
+          return;
+        case 'closed':
+          close();
+          return;
+      }
+    },
+    onError: error => {
+      report.defect(error, {
+        step: 'flow_transition',
+        metric: sessionWindowFlowTransitionMetric,
+        message: '[dot.li] A sign-in window flow transition threw',
+      });
+    },
+  });
+  const screen: ReadableAtom<SignInScreen> = computed(machine.state, getScreen);
+  // A screen derived again with the same fields keeps the one on show, so the window renders only what changed.
+  screen.eq = isShallowEqual;
+
+  const stopFollowingResponder = responder.state.subscribe(state => {
+    machine.update({ kind: 'responderMoved', state });
+  });
+  // Read at delivery, so a listener heard before this one that moved the auth state on shows its step, not the one
+  // it moved past.
+  const stopFollowingAuth = auth.listen(() => {
+    machine.update({ kind: 'authChanged', auth: auth.get() });
+  });
+
+  /** Sends `event`, and resolves once the flow's work it started settled. */
+  function ask(event: Event): Promise<void> {
+    machine.update(event);
+    return machine.await();
   }
+
+  const intents: WindowIntents = {
+    continueWithStored: () => ask({ kind: 'continueAsked' }),
+    useAnotherAccount: () => ask({ kind: 'anotherAsked' }),
+    goOnWithoutPhone: () => ask({ kind: 'goOnAsked' }),
+    isValidPhrase(phrase) {
+      // Only the phrase view's steps hold the check, so any other state has left that view or not shown it yet.
+      const state = machine.state.get();
+      return state.kind === 'live' && 'check' in state.flow && state.flow.check.toEntropy(phrase) !== null;
+    },
+    async importPhrase(phrase) {
+      const asker = Symbol('asker');
+      await ask({ kind: 'importAsked', phrase, asker });
+      const settled = machine.state.get();
+      if (settled.kind === 'live' && settled.flow.kind === 'phraseRejected' && settled.flow.asker === asker) {
+        throw settled.flow.error;
+      }
+    },
+    closePhrase: () => ask({ kind: 'closePhraseAsked' }),
+    retry: () => ask({ kind: 'retryAsked' }),
+    cancel() {
+      machine.update({ kind: 'cancelAsked' });
+    },
+  };
+
+  return {
+    /** What the window shows, which is always a view of a sign-in. */
+    screen,
+    /**
+     * Resolves once the flow's own work settled, every step it started included. Never waits on the user or the phone,
+     * so a login under way does not hold it.
+     */
+    await: () => machine.await(),
+    ...intents,
+    /**
+     * Stops watching the responder and the auth state, and never disposes the responder, which is its caller's. After
+     * it, a step that lands changes nothing, every intent does nothing, and `cancel()` no longer closes the window. Safe
+     * to call twice.
+     */
+    dispose(): void {
+      stopFollowingResponder();
+      stopFollowingAuth();
+      machine.update({ kind: 'disposed' });
+    },
+  };
 
   /**
    * The first view once the opener is known, and Retry's after a step that failed. A page that knows a sign-in exists
    * elsewhere asked to take it, so the window sends it without offering Continue first.
    */
-  async function decide(intent: SignInIntent): Promise<void> {
-    switch (intent) {
+  function decide(step: Step, transition: Transition<FlowMachine>): void {
+    const { round, shown } = step;
+    switch (round.intent) {
       case 'phrase':
-        // A module that could not load is a missed chunk, reported here once, so the step itself ends without failing.
-        try {
-          phraseCheck = await loadPhrase();
-        } catch (error) {
-          reportLazyMiss({ report, step: 'phrase_import', error });
-          showFailed();
-          return;
-        }
-        show({ view: 'phrase' });
+        transition.emitState({ kind: 'loadingPhrase', round, shown });
+        transition.update(loadPhrase().then(check => ({ kind: 'phraseLoaded', check }), mapWorkFailure));
         return;
       case 'resume':
-        report.log.event('sign-in window resumes the stored sign-in');
-        await sendStored(await readStored());
+        transition.emitSideEffect({ kind: 'logged', line: 'sign-in window resumes the stored sign-in' });
+        transition.emitState({ kind: 'readingToSend', round, shown });
+        transition.update(toStoredRead(reads.readStored()));
         return;
       case 'signin':
-        await offerOrPair(await readStored());
+        readToOffer(step, transition);
         return;
     }
+  }
+
+  function readToOffer({ round, shown }: Step, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'readingToOffer', round, shown });
+    update(toStoredRead(reads.readStored()));
+  }
+
+  /** Retry over a failed pairing shows the spinner while the store decides again what to offer. */
+  function retryPairing(round: Round, transition: Transition<FlowMachine>): void {
+    readToOffer({ round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } }, transition);
+  }
+
+  /** Shows the pairing and logs in. The login waits on the phone, so it answers outside `await()`. */
+  function pair(round: Round, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'loggingIn', round: { ...round, pairing: SPINNER }, shown: { view: 'pairing' } });
+    void commands
+      .login()
+      .then(
+        (outcome): Event =>
+          outcome.kind === 'paired'
+            ? { kind: 'loginPaired', account: outcome.account }
+            : { kind: 'loginEnded', how: outcome.kind },
+        mapWorkFailure,
+      )
+      .then(update);
   }
 
   /**
-   * Saves the wallet of `phrase` while the phrase view is on show and ends the round with it. Rejects when the phrase is
-   * not valid or the wallet was not saved, each reported before it rejects. A session that cannot be read once the
-   * wallet saved shows the failed view instead, since the form saying the save failed would be wrong.
+   * Starts a sign-out that tells the phone, or tells it again, once the step shows it, and waits on it. A failure is
+   * reported by the sign-out itself. The phone keeps this browser listed until it is told, so the window goes on only
+   * once it was, or the user chooses to.
    */
-  async function savePhraseWallet(phrase: string): Promise<void> {
-    const check = getPhraseOnShow();
-    if (check === null) {
-      return;
-    }
-    const entropy = check.toEntropy(phrase);
-    if (entropy === null) {
-      const error = new Error('Not a valid recovery phrase');
-      reportStepFailure(error, 'phrase');
-      throw error;
-    }
-    try {
-      // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
-      await signIns.store(() => wallet.save(entropy, null));
-    } catch (error) {
-      const failure = new Error('The recovery phrase wallet could not be saved', { cause: error });
-      reportLocalWalletFailure(failure, 'save');
-      throw failure;
-    }
-    report.log.event('sign-in window saved a recovery phrase wallet');
-    // A paired session stays, so the user can switch back to it.
-    let session: SessionResult['session'];
-    try {
-      session = await readSession();
-    } catch (error) {
-      const failure = new Error('The paired session could not be read after the wallet saved', { cause: error });
-      reportStepFailure(failure, 'phrase');
-      showFailed();
-      return;
-    }
-    endRound({ session, localWallet: { entropy, identity: null } });
+  function logOut(
+    { round, shown }: Continued,
+    startSignOut: () => Promise<LogoutOutcome>,
+    { emitState, emitSideEffect, update }: Transition<FlowMachine>,
+  ): void {
+    emitSideEffect({ kind: 'logged', line: 'sign-in window uses another account' });
+    emitState({ kind: 'loggingOut', round, shown });
+    update(startSignOut().then(told => ({ kind: 'loggedOut', outcome: told }), mapWorkFailure));
   }
 
-  function handleResponderState(state: ResponderState): void {
-    switch (state.kind) {
-      case 'refused':
-        show({ view: 'refused' });
-        return;
-      case 'answered':
-        close();
-        return;
-      case 'connecting':
-        return;
-      case 'vetted':
-        // Only the first vetting opens the phase. A window restored from the back-forward cache is vetted again with
-        // its own request's round, which changes nothing.
-        if (phase.kind !== 'waiting') {
-          return;
-        }
-        phase = { kind: 'open', intent: requestIntent };
-        change({ pageHost: pageLabel(state.origin) });
-        break;
-      case 'no-opener':
-        phase = { kind: 'open', intent: getNoOpenerIntent(requestIntent) };
-        break;
-    }
-    const { intent } = phase;
-    void runStep({ name: 'decide', run: () => decide(intent), failure: 'view' });
-  }
-  const stops = [responder.state.subscribe(handleResponderState)];
-
-  // Shown only: the login's answer, not the auth state, decides how a pairing ends.
-  stops.push(
-    auth.listen(() => {
-      change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
-    }),
-  );
-
-  function dispose(): void {
-    for (const stop of stops.splice(0)) {
-      stop();
-    }
+  /** Forgets the wallet through the flag keeper, which drops the flag once the store holds no sign-in. */
+  function forgetWallet({ round, shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'forgettingWallet', round, shown });
+    update(
+      signIns
+        .clear({ drop: () => wallet.forget().then(() => true) })
+        .then(() => ({ kind: 'walletForgotten' }), mapWorkFailure),
+    );
   }
 
-  const intents: WindowIntents = {
-    continueWithStored: () =>
-      runOnView({
-        name: 'continue',
-        view: 'continue',
-        async run() {
-          await sendStored(await readStoredForContinue());
-        },
-        failure: 'view',
-      }),
-    useAnotherAccount: () =>
-      runOnView({
-        name: 'another',
-        view: 'continue',
-        async run() {
-          report.log.event('sign-in window uses another account');
-          // Tells the phone and clears the paired session. A failure is reported by the logout itself. The phone keeps
-          // this browser listed until it is told, so the window goes on only once it was, or the user chooses to. Try
-          // again on that failure tells the same session once more.
-          const again = screen.get().failure === 'phone' ? tellAgain : null;
-          const outcome = await (again === null ? commands.logout() : again());
-          if (outcome.phone === 'untold') {
-            fail('phone');
-            tellAgain = outcome.tellAgain;
-            return;
-          }
-          await leaveForAnother();
-        },
-        failure: 'step',
-      }),
-    goOnWithoutPhone: () =>
-      runOnView({
-        name: 'another',
-        view: 'continue',
-        async run() {
-          if (screen.get().failure !== 'phone') {
-            return;
-          }
-          report.log.event('sign-in window goes on with the phone not told');
-          await leaveForAnother();
-        },
-        failure: 'step',
-      }),
-    isValidPhrase: phrase => phraseCheck !== null && phraseCheck.toEntropy(phrase) !== null,
-    // Outside `runStep`, since the form shows the failure from the rejection, which is reported before it rejects. Only
-    // a phrase that is not valid or a wallet that was not saved rejects to the form.
-    importPhrase: phrase => steps.call(() => savePhraseWallet(phrase), { pool: STEPS }),
-    closePhrase: () =>
-      runOnView({
-        name: 'back',
-        view: 'phrase',
-        run: async () => offerOrPair(await readStored()),
-        failure: 'view',
-      }),
-    async retry() {
-      if (getPairingOnShow() === 'failed') {
-        // A new login only once the one under way answered, so Retry never lands in the round of the failed one.
-        await steps.settle(LOGINS);
-        if (getPairingOnShow() === 'failed') {
-          clearPairingFailure();
-          pair();
-        }
-        return;
-      }
-      await runOnView({
-        name: 'decide',
-        view: 'failed',
-        async run() {
-          if (phase.kind === 'open') {
-            // A login failure left from before cannot hold up the one decided, and a code a login under way shows
-            // stays.
-            clearPairingFailure();
-            await decide(phase.intent);
-          }
-        },
-        failure: 'view',
-      });
-    },
-    // Outside the steps, so a wait for the core's write never holds the window open. A pairing given up stored
-    // nothing and so raised no flag.
-    cancel() {
-      close();
-    },
-  };
-  const shownScreen: ReadableAtom<SignInScreen> = screen;
-
-  return {
-    /** What the window shows, which is always a view of a sign-in. */
-    screen: shownScreen,
-    /** Resolves once no step is queued or running. Never rejects. */
-    settled: () => steps.settle(STEPS),
-    ...intents,
-    /**
-     * Stops watching the responder and the auth state, never disposes the responder, which is its caller's, is safe to
-     * call twice and never throws, and lets a step or login already under way run to its end.
-     */
-    dispose,
-  };
+  /** The rest of Use another account once the paired session ended: forget the wallet and pair. */
+  function leaveForAnother({ round, shown }: Continued, { emitState, update }: Transition<FlowMachine>): void {
+    emitState({ kind: 'checkingSignedOut', round, shown });
+    // A store that cannot be read may still hold the session, so the window does not go on over it.
+    update(reads.isSessionGone().then(gone => ({ kind: gone ? 'sessionGone' : 'sessionHeld' }), mapWorkFailure));
+  }
 }
 
-/** What the window shows before its flow decides anything: it waits on its opener, or turned it away. */
-export function getResponderScreen(
-  state: ResponderState,
-  { pairing = SPINNER }: GetResponderScreenParams = {},
-): SignInScreen {
-  return { view: getResponderView(state), pageHost: null, failure: null, pairing };
-}
-
-function getResponderView(state: ResponderState): 'refused' | 'connecting' {
+function getScreen(state: State): SignInScreen {
   switch (state.kind) {
+    case 'live':
+      return getSignInScreen(state.flow);
     case 'refused':
-      return 'refused';
-    case 'connecting':
-    case 'vetted':
-    case 'no-opener':
-    case 'answered':
-      return 'connecting';
+    case 'ended':
+    case 'disposed':
+      return state.screen;
   }
 }
 
-/** The intent a window with no opener starts with: the phrase view, or else a sign-in, since nobody waits to resume. */
-function getNoOpenerIntent(intent: SignInIntent): SignInIntent {
-  switch (intent) {
-    case 'phrase':
-      return 'phrase';
-    case 'signin':
-    case 'resume':
-      return 'signin';
-  }
+function toStoredRead(read: Promise<SessionResult>): Promise<Event> {
+  return read.then(stored => ({ kind: 'storedRead', stored }), mapWorkFailure);
 }
 
-/**
- * The screen for `next`, which carries over what `shown` carries, each field as `change` gives it. A view takes only
- * its own fields from `next`, so an offer never outlives Continue.
- */
-function getNextScreen({ shown, next, change }: GetNextScreenParams): SignInScreen {
-  const carried: Carried = { pageHost: shown.pageHost, failure: shown.failure, pairing: shown.pairing, ...change };
-  if (next.view === 'continue') {
-    return { view: next.view, offer: next.offer, ...carried };
-  }
-  return { view: next.view, ...carried };
+function readSessionAfterSave(read: Promise<SessionResult['session']>): Promise<Event> {
+  return read.then(
+    session => ({ kind: 'sessionRead', session }),
+    (error: unknown) =>
+      mapWorkFailure(new Error('The paired session could not be read after the wallet saved', { cause: error })),
+  );
 }
 
-/** How far the core's pairing got. A disconnect leaves what is on show, so a failure stays up for Retry. */
-function getPairingView(shown: PairingView, state: DotliAuthState): PairingView {
-  const step = authViews.getLoginStep(state);
-  switch (step?.step) {
-    case 'pairing':
-      return step.pairing.deeplink ? { kind: 'pairing', payload: step.pairing.deeplink } : SPINNER;
-    case 'authenticating':
-      return { kind: 'authenticating' };
-    case 'failed':
-      return getLoginFailureView(step.kind, step.reason);
-    case undefined:
-      return authViews.getSignedInSession(state) === null ? shown : SPINNER;
-  }
-}
-
-function getOfferedAccount(uiState: TruapiSessionUiState | null): OfferedAccount | null {
-  if (uiState === null) {
-    return null;
-  }
-  const { connected, ...account } = uiState;
-  return connected ? account : null;
-}
-
-function getContinueOffer(stored: SessionResult): ContinueOffer | null {
-  if (stored.localWallet !== null) {
-    const identity = stored.localWallet.identity;
-    return { wallet: 'local', account: identity === null ? null : getOfferedAccount(getLocalSessionUiState(identity)) };
-  }
-  if (stored.session !== null) {
-    const uiState = stored.session.uiState;
-    return { wallet: 'paired', account: uiState === null ? null : getOfferedAccount(parseUiStateCache(uiState)) };
-  }
-  return null;
-}
-
-function reportStepFailure(error: unknown, name: StepName): void {
-  reportWalletFailure(error, {
-    what: `session window ${name}`,
-    step: STEPS,
-    reason: name,
-    metric: sessionWindowFlowMetric,
-  });
+function mapWorkFailure(error: unknown): Extract<Event, { kind: 'workFailed' }> {
+  return { kind: 'workFailed', error };
 }

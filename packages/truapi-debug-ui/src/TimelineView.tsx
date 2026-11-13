@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import { createMemo, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { EventSeq, StoredEvent } from './model/storedEvent.js';
 import type { TimelineLane } from './model/buildTimeline.js';
@@ -19,19 +19,10 @@ export function TimelineView(props: {
   panel: () => HTMLElement | undefined;
   onSelect: (seq: EventSeq) => void;
 }): JSX.Element {
-  const [lanes, setLanes] = createSignal<readonly TimelineLane[]>([], {
-    // Written from the redraw effect below.
-    ownedWrite: true,
-  });
-
   const { buildTimeline } = usePanelWork();
-  createEffect(
-    () => (props.active ? props.events : null),
-    events => {
-      if (events !== null) {
-        setLanes(buildTimeline(events));
-      }
-    },
+  // A hidden timeline keeps its last lanes and lays out nothing.
+  const lanes = createMemo<readonly TimelineLane[]>(last =>
+    props.active ? buildTimeline(props.events) : (last ?? []),
   );
 
   let container: HTMLDivElement | undefined;

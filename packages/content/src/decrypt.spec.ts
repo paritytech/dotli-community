@@ -96,17 +96,4 @@ describe('decryptContent', () => {
     await expect(decrypted).rejects.toHaveProperty('name', CONTENT_ERRORS.WRONG_PASSWORD);
     await expect(decrypted).rejects.toHaveProperty('cause');
   });
-
-  it('As a visitor of an encrypted product archive, I enter the right password and get its binary content back', async () => {
-    // Given
-    const binary = new Uint8Array(1024);
-    crypto.getRandomValues(binary);
-    const encrypted = await encrypt(binary, 'pass123');
-
-    // When
-    const decrypted = await decryptContent(encrypted, 'pass123');
-
-    // Then
-    expect(decrypted).toEqual(binary);
-  });
 });

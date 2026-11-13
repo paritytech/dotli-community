@@ -29,8 +29,6 @@ export type WindowWaitPartsProps = {
   /** Brings the sign-in window to the front. */
   onFocusWindow: () => void;
   level?: HeadingLevel | undefined;
-  /** Takes focus before a pressed control is replaced, so it never drops to the page. */
-  holdFocus?: (() => void) | undefined;
 };
 
 function windowCopy(view: WindowWaitView, host: string | null): { title: string; body: string } {
@@ -64,7 +62,10 @@ function windowCopy(view: WindowWaitView, host: string | null): { title: string;
   }
 }
 
-function windowActions(view: WindowWaitView, props: WindowWaitPartsProps, retry: () => void): SignInAction[] {
+function windowActions(view: WindowWaitView, props: WindowWaitPartsProps): SignInAction[] {
+  const retry = (): void => {
+    props.onRetry();
+  };
   const close = (label: string): SignInAction => ({
     label,
     onPress: () => {
@@ -108,11 +109,6 @@ function windowActions(view: WindowWaitView, props: WindowWaitPartsProps, retry:
 
 /** The screen for a view that waits on the sign-in window. Each call builds the screen anew. */
 export function windowWaitParts(view: WindowWaitView, props: WindowWaitPartsProps): SignInParts {
-  const retry = (): void => {
-    // The retry replaces the pressed button.
-    props.holdFocus?.();
-    props.onRetry();
-  };
   const parts = StatusScreen({
     get title() {
       return windowCopy(view, props.host).title;
@@ -120,7 +116,7 @@ export function windowWaitParts(view: WindowWaitView, props: WindowWaitPartsProp
     get body() {
       return windowCopy(view, props.host).body;
     },
-    actions: windowActions(view, props, retry),
+    actions: windowActions(view, props),
     level: props.level,
     titleId: 'auth-modal-title',
   });

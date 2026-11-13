@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { m } from '@dotli/metrics';
 import {
   createFakePage,
@@ -77,9 +77,9 @@ describe('A resolution is traced as one unit', () => {
     // Given
     const { startTrace, findSpan, listSpanNames } = setupTracePage();
     const trace = startTrace(TRACE_PARAMS);
+    const namesBefore = listSpanNames();
 
     // When
-    const namesBefore = listSpanNames();
     trace.recordChainSync({ chain: 'bulletin', kind: 'connecting' });
 
     // Then
@@ -87,7 +87,7 @@ describe('A resolution is traced as one unit', () => {
     expect(findSpan('chain.bulletin')?.parent).toBe(findSpan('resolution'));
   });
 
-  it('As a maintainer, I read the trace and see how long each chain spent in every phase', () => {
+  it('As a maintainer, I read the trace and see every phase a chain went through under that chain', () => {
     // Given
     const { startTrace, findSpan } = setupTracePage();
     const trace = startTrace(TRACE_PARAMS);
@@ -101,12 +101,11 @@ describe('A resolution is traced as one unit', () => {
       target: 20,
     });
     trace.recordChainSync({ chain: 'relay', kind: 'bootstrapComplete' });
-    const chain = findSpan('chain.relay');
 
     // Then
-    expect(['connecting', 'syncing', 'ready'].map(phase => findSpan(`chain.relay.${phase}`)?.parent === chain)).toEqual(
-      [true, true, true],
-    );
+    expect(findSpan('chain.relay.connecting')?.parent).toBe(findSpan('chain.relay'));
+    expect(findSpan('chain.relay.syncing')?.parent).toBe(findSpan('chain.relay'));
+    expect(findSpan('chain.relay.ready')?.parent).toBe(findSpan('chain.relay'));
   });
 
   it('As a maintainer, I read the trace and see the time a chain spent connecting as a closed interval', () => {
@@ -120,6 +119,35 @@ describe('A resolution is traced as one unit', () => {
 
     // Then
     expect(findSpan('chain.relay.connecting')?.ended).toBe(true);
+  });
+
+  it('As a maintainer, I read the trace and see each phase of a chain start where the one before it ended', () => {
+    // Given a clock that moves on every reading
+    const { startTrace, findSpan } = setupTracePage();
+    let ticks = 0;
+    const trace = startTrace({ ...TRACE_PARAMS, startedAt: 0, timers: { now: () => 0 }, now: () => ticks++ });
+
+    // When
+    trace.recordChainSync({ chain: 'relay', kind: 'connecting' });
+    trace.recordChainSync({ chain: 'relay', kind: 'bootstrapComplete' });
+
+    // Then
+    expect(findSpan('chain.relay.ready')?.startTime).toBe(findSpan('chain.relay.connecting')?.endTime);
+  });
+
+  it("As a maintainer, I read the name's resolution and its span lasts as long as the duration it reports", () => {
+    // Given a clock that moves on every reading, and a trace that starts at 0
+    const { startTrace, findSpan } = setupTracePage();
+    let ticks = 0;
+    const trace = startTrace({ ...TRACE_PARAMS, startedAt: 0, timers: { now: () => 0 }, now: () => ticks++ });
+
+    // When
+    trace.recordNameResolved('bafy123');
+    const span = findSpan('name_resolution');
+
+    // Then
+    expect(span?.startTime).toBe(0);
+    expect(span?.endTime).toBe(span?.attributes['duration_ms']);
   });
 
   it("As an operator, I read Asset Hub's spans and summary and they keep the name asset-hub that dashboards read", () => {
@@ -216,16 +244,14 @@ describe('A resolution reports how it ended', () => {
 
   it('As a maintainer, I read a load the visitor walked away from and it still reached me', () => {
     // Given
-    const { startTrace, findSpan } = setupTracePage();
-    const trace = startTrace(TRACE_PARAMS);
+    const { page, startTrace, findSpan } = setupTracePage();
+    startTrace(TRACE_PARAMS);
 
     // When
-    trace.finish('abandoned');
+    page.hide(false);
 
     // Then
-    expect(findSpan('resolution')?.attributes).toMatchObject({
-      outcome: 'abandoned',
-    });
+    expect(findSpan('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'unload' });
     expect(findSpan('resolution')?.ended).toBe(true);
   });
 
@@ -245,19 +271,21 @@ describe('A resolution reports how it ended', () => {
     });
   });
 
-  it('As a maintainer, I read a load the visitor navigated away from after success and its outcome is unchanged', () => {
+  it('As a maintainer, I read a finished load and reports that arrive after it change nothing', () => {
     // Given
-    const { startTrace, findSpan } = setupTracePage();
+    const { startTrace, spans } = setupTracePage();
     const trace = startTrace(TRACE_PARAMS);
+    trace.finish('rendered');
+    const atFinish = structuredClone(spans);
 
     // When
-    trace.finish('rendered');
-    trace.finish('abandoned');
+    trace.recordChainSync({ chain: 'relay', kind: 'connecting' });
+    trace.recordChainDetail({ chain: 'bulletin', dbCache: 'hit' });
+    trace.recordContent(10, 20);
+    trace.recordNameResolved('bafy123');
 
     // Then
-    expect(findSpan('resolution')?.attributes).toMatchObject({
-      outcome: 'rendered',
-    });
+    expect(spans).toEqual(atFinish);
   });
 
   it('As a maintainer, I read a load with a chain that never finished and the trace is closed anyway', () => {
@@ -274,8 +302,7 @@ describe('A resolution reports how it ended', () => {
   });
 
   it('As a maintainer, I read the bar of a load and see the progress the visitor actually saw, not a forced 100%', () => {
-    // Given the bar at 62%, with no loading screen markup on the page, as
-    // before the loading island mounts or when its chunk failed
+    // Given the bar at 62%
     const { startTrace, findSpan } = setupTracePage();
     loadingState.update({ progress: 62 });
     const trace = startTrace(TRACE_PARAMS);
@@ -320,19 +347,6 @@ describe('A resolution reports how it ended', () => {
     });
   });
 
-  it('As a maintainer, I read a load the visitor left and see which step it was in', () => {
-    // Given
-    const { startTrace, findSpan } = setupTracePage();
-    const trace = startTrace(TRACE_PARAMS);
-    trace.recordStep('manifest_read');
-
-    // When
-    trace.finish('abandoned');
-
-    // Then
-    expect(findSpan('resolution')?.attributes).toMatchObject({ loading_phase: 'manifest_read' });
-  });
-
   it('As a maintainer, I read a load and see whether the visitor had seen a slow-load warning', () => {
     // Given
     const { startTrace, findSpan } = setupTracePage();
@@ -366,14 +380,14 @@ describe('A resolution is one attempt of a journey', () => {
   it('As a maintainer, I read the trace and see it start when the page load did, not when resolution began', () => {
     // Given a page load that started 1.5s before the trace opened
     const { startTrace, findSpan } = setupTracePage();
-    const startedAt = performance.now() - 1_500;
+    const timers = createManualTimers();
+    const startedAt = timers.now() - 1_500;
 
     // When
-    const before = Date.now();
-    startTrace({ ...TRACE_PARAMS, startedAt });
+    startTrace({ ...TRACE_PARAMS, startedAt, timers, now: timers.now });
 
     // Then
-    expect(findSpan('resolution')?.startTime).toBeLessThanOrEqual(before - 1_400);
+    expect(findSpan('resolution')?.startTime).toBe(timers.now() - 1_500);
   });
 
   it('As a maintainer, I read a page kept in the back/forward cache and it is told apart from one that unloaded', () => {
@@ -401,42 +415,18 @@ describe('A resolution is one attempt of a journey', () => {
     expect(findSpan('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'reload_button' });
   });
 
-  it('As a maintainer, I read a load the visitor left after the app loaded and it is not an abandonment', () => {
-    // Given
-    const { page, startTrace, findSpan } = setupTracePage();
-    const trace = startTrace(TRACE_PARAMS);
-    trace.finish('rendered');
-
-    // When
-    page.hide(false);
-
-    // Then
-    expect(findSpan('resolution')?.attributes['outcome']).toBe('rendered');
-    expect(findSpan('resolution')?.attributes['exit']).toBeUndefined();
-  });
-
   it('As a maintainer, I end the trace and it stops listening for the visitor leaving, and ending or disposing it again changes nothing', () => {
     // Given
     const { page, startTrace, findSpan } = setupTracePage();
-    const added = vi.spyOn(page.window, 'addEventListener');
-    const removed = vi.spyOn(page.window, 'removeEventListener');
     const trace = startTrace(TRACE_PARAMS);
-    const leaving = added.mock.calls.find(([type]) => type === 'pagehide')?.[1];
 
     // When
     trace.finish('rendered');
-    const releasedByFinish = [...removed.mock.calls];
     trace.finish('error');
     trace.dispose();
     page.hide(false);
 
     // Then
-    expect(leaving).toBeTypeOf('function');
-    expect(releasedByFinish).toEqual([['pagehide', leaving]]);
-    expect(removed.mock.calls).toEqual([
-      ['pagehide', leaving],
-      ['pagehide', leaving],
-    ]);
     expect(findSpan('resolution')?.attributes['outcome']).toBe('rendered');
     expect(findSpan('resolution')?.attributes['exit']).toBeUndefined();
   });

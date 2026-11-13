@@ -20,29 +20,10 @@ resolution, with no servers in the loop.
 
 ---
 
-## How to access apps
+## How it works
 
-dotli resolves apps by **subdomain**. The `.dot` name is the host:
-
-| Format        | Example                            |
-| ------------- | ---------------------------------- |
-| **Subdomain** | `https://host-playground.paseo.li` |
-
-### Landing page
-
-When visiting the root (`paseo.li`), a landing page is shown with:
-
-- A **search bar** where users type an app name (a `.dot` suffix label is shown next to the input) and navigate
-- **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
-- A **login** button in the top-right corner
-
-It is its own page (`landing.html`), with no topbar. The topbar belongs to the app pages (`index.html`) on each app's
-subdomain.
-
-## Architecture
-
-dotli uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the
-app content layer:
+The `.dot` name is the subdomain: `host-playground.paseo.li` opens `host-playground.dot`. The root `paseo.li` is a
+landing page with search and recent apps. You also log in there.
 
 ```mermaid
 flowchart LR
@@ -53,23 +34,12 @@ flowchart LR
   app -- fetches --> content
 ```
 
-| URL                            | Role         | What happens                                                                            |
-| ------------------------------ | ------------ | --------------------------------------------------------------------------------------- |
-| `host-playground.paseo.li`     | Host shell   | Resolves `host-playground` via dotns, iframes `host-playground.app.paseo.li?cid=bafy..` |
-| `host-playground.app.paseo.li` | App content  | Reads CID from URL contract, fetches content, renders                                   |
-| `paseo.li`                     | Landing page | Search bar, recent apps                                                                 |
-
-Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
-products stay isolated for SW/storage/security purposes.
-
-### What it does
-
-1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected
-   to Asset Hub Paseo, querying dotNS contracts.
-2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot
-   `bitswap_v1_get` JSON-RPC or an IPFS gateway.
-3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request
-   accounts, sign transactions, connect to chains, and use scoped storage.
+1. **Resolve:** an in-browser [smoldot](https://github.com/paritytech/smoldot) light client reads the name's CID from
+   the dotNS contracts on Asset Hub Paseo.
+2. **Fetch:** the app origin loads the content from the
+   [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) by bitswap or an IPFS gateway.
+3. **Render:** the app runs in a sandboxed iframe. The TrUAPI bridge gives it accounts and signing. It also gives it
+   chain connections and scoped storage.
 
 ```mermaid
 sequenceDiagram
@@ -81,116 +51,57 @@ sequenceDiagram
   App->>App: renders the dApp in a sandboxed iframe with the container bridge
 ```
 
-Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served
-through a Service Worker that acts as a virtual file system.
+Key decisions:
 
-### What it doesn't do
+- **One origin per product** (`<label>.app.paseo.li`), so products are isolated from each other.
+- **Multi-file apps** are CAR archives, served by a Service Worker as a virtual file system.
+- **One TrUAPI bridge per product frame.** The app context replaces its own document with the dApp, so there is no extra
+  iframe level. Iframes the dApp nests are opaque to the host and share the product's core.
+- **Repeat visits** render from the IndexedDB cache and re-resolve in the background. A changed CID shows **New version
+  available**, never a silent swap.
+- **The topbar shield** is green when the light client verified the page, orange when an RPC provider or gateway served
+  it.
 
-- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is
-  delegated to the connected Polkadot App session.
-- It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
-  dotNS records are read directly from the contract storage.
-- It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally
-  per session.
-- It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
+What it is not:
 
-## How resolution works
+- **Not a wallet.** Per-app keys are derived on demand. Polkadot App signs.
+- **No backends.** No RPC servers. No pinning or hosting.
+- **Not production-hardened.** See [Security](#security).
 
-1. Parse the label from the subdomain (`host-playground.paseo.li` -> `host-playground`)
-2. Compute the ENS-style namehash (`node`) of the name. The resolver tries `app.<label>.dot` first and falls back to
-   `<label>.dot`
-3. Read the `contenthash` bytes for `node` directly from the dotNS ContentResolver contract storage
-4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
-5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
+More:
 
-All chain access is read-only storage reads through the smoldot light client, so no RPC server is needed. (An optional
-gateway backend reads the same storage over a public RPC node instead.)
-
-## How multi-file SPAs work
-
-When a CID points to an IPFS directory (not a single file):
-
-1. The gateway returns a CAR (Content-Addressable aRchive) containing all files
-2. `archive.ts` parses the CAR using `@ipld/car` + `@ipld/dag-pb` + `ipfs-unixfs` to extract a file map
-3. The file map is sent to the app Service Worker via `postMessage`
-4. The sandbox writes the product's `index.html` into its own window, and the Service Worker serves every other file
-   from the in-memory archive
-5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) resolve from the archive root, deep links
-   included
-
-## Caching and verification
-
-dotli uses a two-layer cache for fast repeat visits:
-
-1. **CID cache** (IndexedDB): maps `.dot` labels to their last-known CID
-2. **Block cache** (host IndexedDB): keeps the content blocks the host relays to the sandbox, hash-checked against their
-   CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is credentialless, so
-   its storage is dropped on reload
-
-On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield
-shows how the current page was loaded:
-
-| Shield           | Meaning                                                                       |
-| ---------------- | ----------------------------------------------------------------------------- |
-| Green (Verified) | Checked by your in-browser light client (the default smoldot backend)         |
-| Orange (Trusted) | Served by an external RPC provider or IPFS gateway, not light-client verified |
-
-If a background re-resolution finds the CID on the network has changed, dotli shows a **New version available**
-notification with a **Reload** action rather than swapping content silently.
+- [resolution design](docs/resolution-design.md)
+- [chain connections](docs/chain-connections.md)
+- the README in each app and package
 
 ## TrUAPI bridge
 
-Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
+Apps talk to dotli over postMessage. Handlers:
 
-| Handler                        | What it does                                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                                 |
-| `getLegacyAccounts`            | Returns non-derived (imported) accounts. Always empty on the web host                 |
-| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
-| `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
-| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
-| `navigateTo`                   | Moves the current tab to another dotNS product; external URLs open in a new tab       |
-| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
-| `connectionStatus`             | Streams auth state changes to the SPA                                                 |
-| `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
+- `accountGet`
+- `getLegacyAccounts`
+- `signPayload`
+- `signRaw`
+- `chainConnection`
+- `localStorageRead/Write/Clear`
+- `navigateTo`
+- `featureSupported`
+- `connectionStatus`
+- `chat.*`
 
-### Product chat
-
-Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
-execution and a chat button in the topbar. The product drives the conversation over the core's chat surface
-(`chat.create_room`, `chat.register_bot`, `chat.post_message`, `chat.list_subscribe`, `chat.action_subscribe`); the user
-replies from the docked chat panel, and each reply reaches the product as a `MessagePosted` action. Rooms and messages
-persist in IndexedDB on the product origin and never leave the device. The core denies chat calls without an active
-session, so chat requires being logged in. The localhost debug paths enable chat unconditionally so local products can
-be tested without publishing a manifest.
-
-Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
-the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
-the streamed tree with the host's own design system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
-layouts and design tokens, so a product can never inject markup, styles, or URLs. Button taps and text-field edits
-inside a rendered tree flow back on `renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
-`ActionTriggered` chat actions.
-
-### App iframe model
-
-The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must
-use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
-
-The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
-replaces its own document with the dApp content so the dApp occupies the iframe directly.
+**Product chat:** a product that declares `includes.chat` in its `worker.<label>.<tld>` manifest gets a chat panel in
+the topbar. Chat needs a login. Messages stay on the device.
 
 ## Development
 
 ### Prerequisites
 
-- Node 26 (see `.nvmrc`) and npm 12+ to build locally.
-- **No funded account is required** to browse and resolve `.dot` names - resolution is trustless, client-side, and
-  read-only.
-- The Polkadot App is only needed to log in and sign transactions inside a loaded dApp.
-- The app targets **Paseo testnet** out of the box (see [Network configuration](#network-configuration)); point it at
-  another chain by editing `packages/config`.
+- **Node 26** (see `.nvmrc`) and **npm 12+**.
+- **No funded account** is needed to browse. Polkadot App is needed only to log in and sign.
+- **Network:** Paseo testnet by default. Edit `packages/config` for another chain.
+- **Tooling:** npm workspaces and [Turborepo](https://turbo.build).
 
-The project uses npm workspaces and [Turborepo](https://turbo.build).
+### Run it
 
 ```bash
 nvm use                  # or any Node 26 install
@@ -202,158 +113,86 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 ```
 
-`npm run dev` starts one dev server per origin: the shell on 4001, the sandbox (`*.app.localhost`) on 4002 and the
-protocol iframe on 4003, which the shell's dev server proxies at `/p/`. Use `npm run preview` for anything that depends
-on the production build.
+| Port | Server (`npm run dev`)                         |
+| ---- | ---------------------------------------------- |
+| 4001 | Shell                                          |
+| 4002 | Sandbox (`*.app.localhost`)                    |
+| 4003 | Protocol iframe, proxied by the shell at `/p/` |
 
-The dev servers serve https with a locally trusted certificate from [mkcert](https://github.com/FiloSottile/mkcert),
-which the first `npm run dev` downloads and installs into the system trust store, asking for your password once. It
-covers `*.localhost` and `*.local.host`, since Safari keeps `Secure` cookies and the sign-in window off plain http on
-any host but localhost. The preview stays on http.
+- **Local apps:** `host-playground.localhost:4001` (dev) or `:5173` (preview) opens `host-playground.dot`.
+- **Production behaviour:** test it with `npm run preview`.
+- **HTTPS:** the first `npm run dev` installs an [mkcert](https://github.com/FiloSottile/mkcert) certificate for
+  `*.localhost` and `*.local.host`. It asks for your password once. Preview stays on http.
+- **Safari sign-in:** use `https://browse.local.host:4001`. Safari needs https for it. Only dev builds trust
+  `local.host`.
 
-`https://browse.local.host:4001` works like `browse.localhost`, for testing the sign-in flow in Safari. Only a
-development build trusts `local.host`, as it is a public name, so a production build served there acts as on any other
-domain.
+### Scripts
 
-The TrUAPI packages are installed from their published `@parity` packages. To iterate against a local truapi checkout
-instead, run:
+| Command                                  | Purpose                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| `npm run link:truapi`                    | Use a local truapi checkout (set `TRUAPI_REPO` if not under `truapi/hosts/dotli`) |
+| `npm run unlink:truapi`                  | Back to the versions in `package-lock.json`                                       |
+| `npm run preview:debug`                  | Preview with `VITE_APP_DEBUG=true`                                                |
+| `npm run build:prod`                     | Production build of both apps                                                     |
+| `node scripts/updatePublicSuffixList.ts` | Refresh the Public Suffix List shipped with each release                          |
 
-```bash
-npm run link:truapi
-```
+### Host-playground E2E
 
-When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
+`npm run test:e2e:local` runs the CI host-product suite against a local product checkout. It pairs a headless signer
+that auto-signs.
 
-```bash
-TRUAPI_REPO=/path/to/truapi npm run link:truapi
-```
-
-Return to the package versions recorded in `package-lock.json` with:
-
-```bash
-npm run unlink:truapi
-```
-
-Refresh the Public Suffix List the session window ships with each release. The script refuses a download without the
-list's ICANN and private sections whole:
-
-```bash
-node scripts/updatePublicSuffixList.ts
-```
-
-Local development uses wildcard subdomains:
-
-- `host-playground.localhost:4001` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
-  via the host
-
-### Running the host-playground E2E locally
-
-The product E2E suite can load the source checkout directly through dotli's localhost proxy instead of resolving the
-published `host-playground.dot` CID. By default it expects the product at `../host-playground`, beside this repository
-(checked out inside the truapi repository, set `E2E_PRODUCT_REPO`), and the `truapi-host` CLI from
+It needs the product at `../host-playground` and the `truapi-host` CLI from
 [host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
 ```
 
-```bash
-npm run test:e2e:local
-```
+| Env var                | Purpose                                                   |
+| ---------------------- | --------------------------------------------------------- |
+| `E2E_PRODUCT_REPO`     | Product checkout path                                     |
+| `E2E_PRODUCT_URL`      | Product server URL (default `http://localhost:5199`)      |
+| `E2E_CHAIN_BACKEND`    | Chain backend (default `rpc-gateway`)                     |
+| `SIGNING_HOST_BIN`     | A local `truapi-host` binary instead of the installed one |
+| `SIGNING_HOST_NETWORK` | A non-default network                                     |
 
-Override either checkout or server when needed:
+The first run registers a test account on the network and can take a few minutes. Later runs reuse it from
+`apps/host/tests/e2e/.auth/signing-host`.
 
-```bash
-E2E_PRODUCT_REPO=/path/to/host-playground \
-E2E_PRODUCT_URL=http://localhost:5199 \
-npm run test:e2e:local
-```
+### Releases
 
-The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same flow through either light-client backend:
+- **Deploy:** pushing a `vX.Y.Z` tag deploys to `paseo.li` and `testnet.li`. The GitHub Release is published once both
+  succeed.
+- **Verify:** check out the tag from the [Releases page](https://github.com/paritytech/dotli-community/releases), then
+  run `npm ci && npm run build:prod`.
 
-```bash
-E2E_CHAIN_BACKEND=smoldot-shared-worker npm run test:e2e:local
-```
+## Debug tools
 
-Set `SIGNING_HOST_BIN` to a locally built binary (e.g. `../host-rust-core/target/debug/truapi-host`) instead of
-installing, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
-`apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the first run registers a fresh lite
-username on the network and can take a few minutes.
+| Tool                | Turn on                                                             | Shows                                 |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------- |
+| TrUAPI debug panel  | `?debug=true` or Settings menu. On in `VITE_APP_DEBUG=true` builds. | Host events and host-product messages |
+| Sandbox API checker | `VITE_SANDBOX_CHECKER=true` at build time                           | Web APIs a dApp calls past the bridge |
 
-The command builds dotli with its debug-only localhost proxy enabled, starts both preview servers through Playwright,
-extracts the login QR deeplink, pairs a headless `truapi-host signing-host` process that auto-signs for the rest of the
-run, and runs the same host-product suite used in CI.
-
-### Running an approved build
-
-Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment
-runs). Pushing a `vX.Y.Z` tag deploys it to `paseo.li` and `testnet.li`, and the release is published with generated
-notes only after both deploys succeed. To reproduce a specific approved version from a fresh checkout:
-
-```bash
-git checkout v0.5.0       # any published release tag
-npm ci
-npm run build:prod        # production build of both apps
-```
-
-The published tag on the [Releases page](https://github.com/paritytech/dotli/releases) is the source of truth for what
-is deployed; rebuild from that tag to verify a deployment.
-
-## Debug panel
-
-dot.li ships a TrUAPI debug panel that shows the host's boot, resolve, render and bridge events and the messages between
-host and product in one time-aligned inspector. Its chunk loads only in debug mode, so users who never open it pay no
-download cost.
-
-In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
-`paseoli.dev`) the panel auto-mounts collapsed. Elsewhere it's off until you click **Open in debug mode** in the host
-Settings menu, or append `?debug=true` to any URL. The choice is scoped to the tab's session, so closing the tab clears
-it. Use `?debug=off` to leave debug mode within the same session.
-
-See [packages/truapi-debug-ui/README.md](packages/truapi-debug-ui/README.md) for how to read the panel and add a host
-event.
-
-## Sandbox API Checker
-
-dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage),
-not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
-
-The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. Otherwise the gated import is statically
-eliminated, so the checker is tree-shaken out of production builds entirely.
-
-### Monitored APIs
-
-| Category | APIs                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------- |
-| Network  | `fetch`, `XMLHttpRequest`, `WebSocket`, `RTCPeerConnection`, `EventSource`, `sendBeacon` |
-| Workers  | `Worker`, `SharedWorker`, `ServiceWorker.register`                                       |
-| Storage  | `localStorage`, `sessionStorage`, `IndexedDB`, `CacheStorage`, `document.cookie`         |
-| DOM      | `document.createElement('iframe')`                                                       |
-| Wallet   | `window.injectedWeb3`, `window.polkadot`, `window.ethereum`                              |
-
-Same-origin requests (static dApp files served by the Service Worker) are excluded from reporting for `fetch` and
-`XMLHttpRequest`. Violations are logged, but calls still proceed (log-and-forward pattern).
-
-The violation panel appears at the bottom of the viewport when the first violation is detected, showing the API name,
-details, and timestamp for each call.
+- **Debug panel:** auto-mounts collapsed on `paseoli.dev` and `npm run preview:debug`. The choice lasts for the tab.
+  `?debug=off` ends it. See [the panel's README](packages/truapi-debug-ui/README.md).
+- **Sandbox checker:** logs network, worker, storage, iframe and wallet API calls, and lets them through. It is not in
+  production builds.
 
 ## Network configuration
 
-A build offers the networks listed in the required `VITE_NETWORKS` env var, set at deploy time (see
-`packages/config/src/getEnabledNetworks.ts`). The first entry is the default returned by `getDefaultNetwork()`.
+`VITE_NETWORKS` (required, set at deploy time) lists the networks a build offers. The first is the default. All
+addresses and endpoints live in `packages/config/src/networkServices.ts`.
 
-- **dotNS Registry**: `0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc`
-- **dotNS ContentResolver**: `0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64`
-- **Bulletin Chain RPC**: `wss://paseo-bulletin-next-rpc.polkadot.io` (WebSocket)
-- **IPFS gateway**: `https://paseo-bulletin-next-ipfs.polkadot.io`
-
-All addresses, endpoints, and selector labels live in `packages/config/src/networkServices.ts`
-(`NETWORK_NAME_TO_SERVICES_CONFIG`).
+| Service               | Value                                          |
+| --------------------- | ---------------------------------------------- |
+| dotNS Registry        | `0xf34054fd76BbF85f216cf9908226D5f0A72E50CA`   |
+| dotNS ContentResolver | `0x7F74D7CD50f5a834270E2ad395a01b01891AB37d`   |
+| Bulletin Chain RPC    | `wss://paseo-bulletin-next-rpc.polkadot.io`    |
+| IPFS gateway          | `https://paseo-bulletin-next-ipfs.polkadot.io` |
 
 ### Prebuilt bundles
 
-Each release also publishes two prebuilt artifacts, so a forked dev chain can be browsed without building anything. Both
-take the same network override at **run time**, so one artifact works against any chain:
+Each release ships a container and a tarball. Both take `DOTLI_NETWORK` at run time to point at any chain:
 
 ```bash
 # container
@@ -363,30 +202,25 @@ docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-commun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only: `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
-contract addresses stay fixed at build time, because they are the trust root for name resolution. See
+The override changes endpoints only. Genesis hashes and contract addresses stay fixed, as the trust root. See
 [docs/docker.md](docs/docker.md).
 
 ## Security
 
-Before deploying it for real use cases, **you are responsible** for:
+Before you deploy it for real use, **you are responsible** for:
 
-- **Reviewing** the code yourself, we publish a reference, not a hardened production build
-- **Checking** that the dependencies are up to date and free of known vulnerabilities
-- **Securing** your own fork or deployment environment (keys, secrets, network configuration)
-- **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might
-  apply)
+- **Reviewing** the code. This is a reference, not a hardened build.
+- **Checking** dependencies for known vulnerabilities.
+- **Securing** your fork or deployment:
+  - keys
+  - secrets
+  - network configuration
+- **Tracking** the latest release for security fixes. Older releases get no backports.
 
-For Parity's security disclosure process, and **Bug Bounty** program, feel free to visit: https://parity.io/bug-bounty
-
-### Reporting a vulnerability
-
-This repository inherits the organization-wide security policy. **Do not** open a public issue for security reports.
-Follow the Parity security policy at [SECURITY](./SECURITY.md).
+See Parity's [Bug Bounty](https://parity.io/bug-bounty). **Do not** open a public issue for a security report. Follow
+[SECURITY](./SECURITY.md).
 
 ## License
 
-dotli is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](./LICENSE).
-
-Third-party dependencies are distributed under their own licenses; see
+**AGPL-3.0-only.** See [LICENSE](./LICENSE). Third-party licenses are in
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

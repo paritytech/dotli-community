@@ -7,14 +7,14 @@
 // admitted reach this side, once the handshake told who the peer is.
 
 import { toError } from '@dotli/shared';
-import type { Codec, ResultPayload } from 'scale-ts';
+import type { ResultPayload } from 'scale-ts';
 import type { CallError } from './callError.js';
 import type { Connection } from './createConnection.js';
 import type { IssueReport } from './createIssueReport.js';
 import { decodeOr } from './decodeOr.js';
 import { isSameMethod, type Address, type Schema, type Sections } from './defineSchema.js';
 import { hostFailure, malformedFrame, unsupported, type Failure } from './failure.js';
-import { encodeCall, encodeFrame, type Call, type Frame } from './frame.js';
+import { encodeCall, encodeFrame, type Call, type EncodeCallParams } from './frame.js';
 import type { FrameBytes } from './frameBytes.js';
 import type { MessageBytes } from './messageBytes.js';
 import type { AnyMethod, Request, Subscription } from './method.js';
@@ -75,13 +75,6 @@ type AnswerMalformedParams = {
   address: Address;
 };
 
-type ReplyParams<Message> = {
-  method: { readonly frame: Codec<Frame<Message>> };
-  address: Address;
-  id: number;
-  message: Message;
-};
-
 type StartParams<Start, Hello> = {
   id: number;
   start: Start;
@@ -93,9 +86,6 @@ type HearParams<Hello> = {
   call: Call<MessageBytes>;
   context: CallContext<Hello>;
 };
-
-// What a call of the peer's that came before the handshake was over is answered with.
-const HANDSHAKE_NOT_OVER = 'The handshake is not over';
 
 /** The calls this side serves: one handler per method, the requests in flight and the subscriptions running. */
 export function createServedCalls<Hello>({ schema, connection, issues }: Params) {
@@ -160,12 +150,6 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
     function startSubscription({ id, start, context }: StartParams<Start, Hello>): void {
       let stop: (() => void) | null = null;
 
-      function runStop(): void {
-        if (stop !== null) {
-          issues.runListener(stop);
-        }
-      }
-
       /**
        * Ends the subscription once: `send`, if any, tells the peer, then the stop function runs. The peer hears it
        * first, so a stop function that disposes the transport cannot keep it from the peer.
@@ -175,7 +159,9 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
           return;
         }
         send?.();
-        runStop();
+        if (stop !== null) {
+          issues.runListener(stop);
+        }
       }
 
       /** Ends it with a failure the peer hears. */
@@ -230,18 +216,15 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
           });
         },
       };
-      let stopIt: () => void;
       try {
-        stopIt = handler(start, context, sink);
+        stop = handler(start, context, sink);
       } catch (error) {
         failWith(hostFailure(toError(error)));
         return;
       }
-      if (running.get(id) === entry) {
-        stop = stopIt;
-      } else {
+      if (running.get(id) !== entry) {
         // Ended while the handler ran, before it could say how to stop.
-        issues.runListener(stopIt);
+        issues.runListener(stop);
       }
     }
 
@@ -288,7 +271,7 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
   }
 
   /** Sends `message` on call `id`, or answers `HostFailure` for one the wire cannot carry. Never throws. */
-  function reply<Message>({ method, address, id, message }: ReplyParams<Message>): void {
+  function reply<Message>({ method, address, id, message }: EncodeCallParams<Message>): void {
     let data: FrameBytes;
     try {
       data = encodeCall({ method, address, id, message });
@@ -301,30 +284,38 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
 
   function hear({ id, call, context }: HearParams<Hello>): void {
     const entry = running.get(id);
-    const leg = readLeg(call);
-    if (entry !== undefined && leg === 'start') {
-      // A start on a running id subscribes anew, as truapi does: the running one stops with nothing sent.
-      entry.drop();
-    } else if (entry !== undefined) {
+    const method = schema.methodAt(call.sectionId, call.methodId);
+    const leg = readLeg(method, call.message);
+    if (entry !== undefined && leg !== 'start') {
       if (!isSameMethod(entry.address, call)) {
         issues.refuse('invalid', new Error(`A message for subscription ${String(id)} names another method`));
         return;
       }
       entry.hear(call.message);
       return;
+    }
+    if (inFlight.has(id)) {
+      // As truapi refuses a reused id, the request in flight keeps it, and its one answer.
+      issues.refuse('invalid', new Error(`A ${leg ?? 'message'} names call ${String(id)}, which is still in flight`));
+      return;
+    }
+    if (entry !== undefined) {
+      // A start on a running id subscribes anew, as truapi does: the running one stops with nothing sent.
+      entry.drop();
     } else if (leg === 'stop') {
       // A stop for a subscription that is not running stops nothing, such as one that crossed this side's end.
       return;
     }
-    if (isOpeningLeg(leg) && inFlight.has(id)) {
-      // As truapi refuses a reused id, the request in flight keeps it, and its one answer.
-      issues.refuse('invalid', new Error(`A ${leg ?? 'message'} reuses call ${String(id)}, which is still in flight`));
+    if (!isOpeningLeg(leg)) {
+      issues.refuse(
+        'invalid',
+        new Error(`A ${leg ?? 'message'} names call ${String(id)}, which the peer never opened`),
+      );
       return;
     }
-    const method = schema.methodAt(call.sectionId, call.methodId);
     const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
-      postFailed({ id, failure: unsupported() });
+      postFailed({ id, failure: unsupported(), address: method === undefined ? undefined : schema.addressOf(method) });
       return;
     }
     served({ id, message: call.message, context });
@@ -332,8 +323,8 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
 
   function answerEarly(id: number, call: Call<MessageBytes>): void {
     issues.refuse('invalid', new Error('A call came before the handshake'));
-    if (isOpeningLeg(readLeg(call))) {
-      postFailed({ id, failure: hostFailure(HANDSHAKE_NOT_OVER) });
+    if (isOpeningLeg(readLeg(schema.methodAt(call.sectionId, call.methodId), call.message))) {
+      postFailed({ id, failure: hostFailure('The handshake is not over') });
     }
   }
 
@@ -366,18 +357,6 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
     }
     running.delete(id);
     return true;
-  }
-
-  /**
-   * The leg a message of the peer's reads as, or undefined when its method is not this schema's or it reads as none.
-   */
-  function readLeg(call: Call<MessageBytes>): string | undefined {
-    const method = schema.methodAt(call.sectionId, call.methodId);
-    if (method === undefined) {
-      return undefined;
-    }
-    // A message whose leg does not read has none.
-    return decodeOr({ decoder: method.leg, data: call.message, onError: () => undefined })?.tag;
   }
 
   return {
@@ -420,4 +399,13 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
 /** Whether a message opens a call this side answers. One whose leg does not read is answered too, as malformed. */
 function isOpeningLeg(leg: string | undefined): boolean {
   return leg === undefined || leg === 'request' || leg === 'start';
+}
+
+/** The leg a message of `method` reads as, or undefined when the schema has no such method or it reads as none. */
+function readLeg(method: AnyMethod | undefined, message: MessageBytes): string | undefined {
+  if (method === undefined) {
+    return undefined;
+  }
+  // A message whose leg does not read has none.
+  return decodeOr({ decoder: method.leg, data: message, onError: () => undefined })?.tag;
 }

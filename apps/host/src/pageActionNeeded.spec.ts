@@ -7,7 +7,7 @@ import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testi
 import { createChatConnections } from './runtime/chat/createChatConnections.js';
 import { createChatStore } from './runtime/chat/createChatStore.js';
 import { createMemoryChatRepo } from './runtime/chat/createChatStore.fake.js';
-import { toProductId } from './runtime/createTruapiRuntimeConfig.js';
+import { toProductId } from './runtime/getAskedProductId.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { chatPanelState } from './state/chatPanelState.js';
@@ -21,7 +21,7 @@ describe('pageActionNeeded', () => {
   it('As a user with the chat panel closed, I get a product message and the capsule leads with the action dot', async () => {
     // Given a loaded chat product, logged in, with the panel closed
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
-    onTestFinished(chatPanelState.start({ chat, storage: createMemoryStorage() }));
+    onTestFinished(chatPanelState.start({ chat: () => Promise.resolve(chat), storage: createMemoryStorage() }));
     const product = asProductId(toProductId('chatty'));
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });

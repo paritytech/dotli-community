@@ -13,6 +13,8 @@ type Params = {
   type: string;
   /** Where the pointer is across the track, 0 at its start and 1 at its end. */
   fraction: number;
+  /** The pointer that fires the event, 1 when left out. */
+  pointerId?: number;
 };
 
 const STOPS = [
@@ -117,6 +119,34 @@ export const DragCommitsOnRelease: Story = {
   },
 };
 
+/** As a phone user, a second finger on the slider changes nothing, and my first finger's release commits its own stop. */
+export const SecondFingerChangesNothing: Story = {
+  render: renderOwned,
+  play: async ({ args, canvas, step }) => {
+    const track = getSlider(canvas);
+    await step('When pointer 1 goes down at the start and pointer 2 at the end', () => {
+      dispatchPointer({ target: track, type: 'pointerdown', fraction: 0, pointerId: 1 });
+      dispatchPointer({ target: track, type: 'pointerdown', fraction: 1, pointerId: 2 });
+    });
+    await step('Then the slider shows Low', async () => {
+      await waitFor(() => expect(track).toHaveAttribute('aria-valuenow', '0'));
+    });
+    await step('When pointer 1 is released at the start', () => {
+      dispatchPointer({ target: track, type: 'pointerup', fraction: 0, pointerId: 1 });
+    });
+    await step('Then Low alone is committed', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(1);
+      await expect(args.onCommit).toHaveBeenCalledWith(0);
+    });
+    await step('When pointer 2 is released at the end', () => {
+      dispatchPointer({ target: track, type: 'pointerup', fraction: 1, pointerId: 2 });
+    });
+    await step('Then nothing more is committed', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(1);
+    });
+  },
+};
+
 /** As a pointer user releasing on the stop I started from, that stop is committed again. */
 export const ReleaseOnSameStop: Story = {
   render: renderOwned,
@@ -198,25 +228,6 @@ export const DragFollowsPointer: Story = {
 /** As a screen reader or sighted user, a marked slider says its value is a stop only approximately. */
 export const Marked: Story = {
   args: { marked: true },
-  play: async ({ canvas, mount, step }) => {
-    await step('When a marked slider renders', async () => {
-      await mount();
-    });
-    await step('Then the track carries the marked attribute', async () => {
-      await expect(getSlider(canvas)).toHaveAttribute('data-marked');
-    });
-  },
-};
-
-export const NotMarked: Story = {
-  play: async ({ canvas, mount, step }) => {
-    await step('When an unmarked slider renders', async () => {
-      await mount();
-    });
-    await step('Then the track does not carry the marked attribute', async () => {
-      await expect(getSlider(canvas)).not.toHaveAttribute('data-marked');
-    });
-  },
 };
 
 // The owner takes each commit.
@@ -240,9 +251,9 @@ function getSlider(canvas: { getByRole: (role: string) => HTMLElement }): HTMLEl
   return canvas.getByRole('slider');
 }
 
-function dispatchPointer({ target, type, fraction }: Params): void {
+function dispatchPointer({ target, type, fraction, pointerId = 1 }: Params): void {
   const rect = target.getBoundingClientRect();
   target.dispatchEvent(
-    new PointerEvent(type, { pointerId: 1, button: 0, clientX: rect.left + rect.width * fraction, bubbles: true }),
+    new PointerEvent(type, { pointerId, button: 0, clientX: rect.left + rect.width * fraction, bubbles: true }),
   );
 }

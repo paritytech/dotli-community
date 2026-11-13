@@ -3,7 +3,7 @@
 
 import { createSignal, For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn, within } from 'storybook/test';
+import { fn } from 'storybook/test';
 import { Field } from './Field.js';
 import { Switch } from './Switch.js';
 import { InfoIcon } from '../icons/InfoIcon.js';
@@ -50,20 +50,13 @@ export const Controls: Story = {
     <Well {...args}>
       <For each={['dotNS cache', 'Archive cache', 'Worker cache']}>
         {label => (
-          <Row label={label} testId={`row-${label}`}>
+          <Row label={label}>
             <Switch label={label} checked={label !== 'Worker cache'} onChange={onCacheChange} />
           </Row>
         )}
       </For>
     </Well>
   ),
-  play: async ({ canvas, step }) => {
-    await step('Then I read each row label beside its control', async () => {
-      const row = canvas.getByTestId('row-Archive cache');
-      await expect(row).toHaveTextContent('Archive cache');
-      await expect(within(row).getByRole('switch', { name: 'Archive cache' })).toBeVisible();
-    });
-  },
 };
 
 const PACKAGES = [

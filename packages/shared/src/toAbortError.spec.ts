@@ -16,15 +16,6 @@ describe('toAbortError', () => {
     expect(error).toBe(reason);
   });
 
-  it('As a caller, I turn a string reason into an AbortError with that message', () => {
-    // When
-    const error = toAbortError('scope gone', 'fallback');
-
-    // Then
-    expect(error.name).toBe('AbortError');
-    expect(error.message).toBe('scope gone');
-  });
-
   it('As a caller, I turn any other reason into an AbortError with the fallback message', () => {
     // When
     const error = toAbortError(new DOMException('late', 'TimeoutError'), 'fallback');

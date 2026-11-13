@@ -9,8 +9,8 @@ export function hostResolveStarted(page: Page): Promise<boolean> {
 }
 
 /** Shared by `page.evaluate` and `page.waitForFunction` below, so the two IDB queries cannot drift. */
-const cachedCidExists = (label: string): Promise<boolean> =>
-  new Promise<boolean>(resolve => {
+function cachedCidExists(label: string): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
     const open = indexedDB.open('dotli');
     open.onsuccess = () => {
       try {
@@ -30,6 +30,7 @@ const cachedCidExists = (label: string): Promise<boolean> =>
       resolve(false);
     };
   });
+}
 
 export function hasCachedCid(page: Page, label: string): Promise<boolean> {
   return page.evaluate(cachedCidExists, label);

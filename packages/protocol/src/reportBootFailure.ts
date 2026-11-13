@@ -10,6 +10,16 @@ export const protocolIframeReadyMetric = defineCount<'error'>('protocol.iframe_r
 /** The frame's step that failed, so a failure is counted where it happened. */
 export type BootPhase = 'load' | 'listen' | 'ready';
 
+/** What a boot that failed at each phase leaves in the trail and the log. */
+const BOOT_FAILURE_TEXTS = {
+  load: { breadcrumb: 'protocol iframe load failed', log: '[dot.li protocol] Host iframe load failed:' },
+  listen: {
+    breadcrumb: 'protocol iframe handshake failed',
+    log: '[dot.li protocol] Handshake with the iframe failed:',
+  },
+  ready: { breadcrumb: 'protocol iframe ready wait failed', log: '[dot.li protocol] Ready wait failed:' },
+} satisfies Record<BootPhase, { breadcrumb: string; log: string }>;
+
 type Params = {
   phase: BootPhase;
   error: Error;
@@ -20,18 +30,8 @@ type Params = {
 
 /** Counts, breadcrumbs and logs a boot that failed at `phase`. */
 export function reportBootFailure({ phase, error, name, count }: Params): void {
-  const texts = getBootFailureTexts(phase);
+  const texts = BOOT_FAILURE_TEXTS[phase];
   count(protocolIframeReadyMetric, { outcome: 'error', phase, reason: name });
   m.breadcrumb(texts.breadcrumb, { reason: serializeError(error) });
   log.error(texts.log, error);
-}
-
-function getBootFailureTexts(phase: BootPhase): { breadcrumb: string; log: string } {
-  switch (phase) {
-    case 'load':
-    case 'listen':
-      return { breadcrumb: 'protocol iframe load failed', log: '[dot.li protocol] Host iframe load failed:' };
-    case 'ready':
-      return { breadcrumb: 'protocol iframe ready wait failed', log: '[dot.li protocol] Ready wait failed:' };
-  }
 }

@@ -201,6 +201,42 @@ export const Sheet: Story = {
   },
 };
 
+/** As a phone user, I turn the screen with the menu open and it stays open, as a sheet on the phone and anchored when wide again. */
+export const FollowsTheViewportWhileOpen: Story = {
+  play: async ({ step }) => {
+    const { page } = await import('vitest/browser');
+    const wide = { width: window.innerWidth, height: window.innerHeight };
+    const isShown = () => getMenu().matches(':popover-open');
+    try {
+      await step('Given the menu is open and anchored on a wide screen', async () => {
+        await (await trustedInput()).click(body.getByTestId('story-more'));
+        await waitFor(() => expect(isShown()).toBe(true));
+      });
+      await step('When the screen narrows to a phone', async () => {
+        await page.viewport(390, 844);
+      });
+      await step('Then the menu is still open, as a sheet with focus inside', async () => {
+        await waitFor(() => expect(body.getByTestId('menu-sheet-title')).toHaveTextContent('More'));
+        await expect(getMenu()).toHaveAttribute('data-open');
+        await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'true');
+        await waitFor(() => expect(getMenu().contains(document.activeElement)).toBe(true));
+      });
+      await step('When the screen widens again', async () => {
+        await page.viewport(wide.width, wide.height);
+      });
+      await step('Then the menu is still open, anchored again with focus inside', async () => {
+        await waitFor(() => expect(body.queryByTestId('menu-sheet-title')).toBeNull());
+        await waitFor(() => expect(isShown()).toBe(true));
+        await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'true');
+        await waitFor(() => expect(getMenu().contains(document.activeElement)).toBe(true));
+      });
+    } finally {
+      // The next story must not inherit the phone.
+      await page.viewport(wide.width, wide.height);
+    }
+  },
+};
+
 /** As a phone user, I tap a row that opens a sheet and it takes More's place, and Escape gives focus back to More. */
 export const SheetRowHandsOff: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },

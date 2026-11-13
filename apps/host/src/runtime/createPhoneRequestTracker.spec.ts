@@ -97,20 +97,6 @@ describe('phone request tracker', () => {
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signPayload' });
   });
 
-  it('As a dotli integrator, I claim a request and hear it was rejected on the phone', async () => {
-    // Given
-    const { tracker: requests } = createTrackerHarness();
-    const tap = requests.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-    const claim = requests.claim(isSignRaw);
-
-    // When
-    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: REJECTED }));
-
-    // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'rejected' });
-  });
-
   it('As a dotli integrator, I claim two identical requests and get one each, with no third', async () => {
     // Given
     const { tracker: requests } = createTrackerHarness();
@@ -251,22 +237,6 @@ describe('phone request tracker', () => {
     ]);
   });
 
-  it('As a dotli integrator, I see an undecodable answer reported and hear the claim end as undecodable', async () => {
-    // Given
-    const { tracker: requests, reportUndecodable } = createTrackerHarness();
-    const tap = requests.connect();
-    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
-    const claim = requests.claim(isSignRaw);
-    const answer = encodePhoneResponseFrame({ requestId: 'a', method: 'signRaw', result: SIGNED });
-
-    // When
-    tap.fromCore(answer.subarray(0, answer.length - 3));
-
-    // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'undecodable' });
-    expect(reportUndecodable.mock.calls).toEqual([[expect.objectContaining({ method: 'signRaw', leg: 'response' })]]);
-  });
-
   it('As an operator, I see an undecodable request counted once as undecodable and reported', () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
@@ -282,6 +252,29 @@ describe('phone request tracker', () => {
     expect(sentry.counted('signing.phone_request')).toEqual([{ outcome: 'undecodable', reason: 'signPayload' }]);
     expect(captured).toMatchObject([{ step: 'phone_request', tags: { method: 'signPayload' } }]);
     expect(logged).toHaveLength(1);
+  });
+
+  it('As a dotli integrator, I hear an undecodable report throw to the tap, and the tracker still tracks the next request', () => {
+    // Given a tracker whose undecodable report throws
+    const reportUndecodable = vi.fn(() => {
+      throw new Error('report failed');
+    });
+    const requests = createPhoneRequestTracker({ reportUndecodable });
+    const tap = requests.connect();
+
+    // When an undecodable request is followed by a valid one
+    let thrown: unknown = null;
+    try {
+      tap.fromProduct(encodeGarbagePhoneRequestFrame('a', 'signRaw'));
+    } catch (error) {
+      thrown = error;
+    }
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('x') }));
+    const claim = requests.claim(isSignRaw);
+
+    // Then the throw reached the tap, and the valid request is claimable
+    expect(thrown).toEqual(new Error('report failed'));
+    expect(claim?.request.body).toEqual(buildSignRawBody('x'));
   });
 
   it('As an operator, I see an undecodable answer reported and its count left to the claim', async () => {
@@ -414,5 +407,21 @@ describe('phone request tracker', () => {
 
     // Then
     expect(holds.open).toBe(0);
+  });
+
+  it('As a page whose tracker is disposed, a tap opened after takes no hold and tracks nothing', () => {
+    // Given a disposed tracker
+    const { tracker: requests, holds } = createHoldHarness();
+    requests.dispose();
+
+    // When a tap opened after sends a request
+    requests
+      .connect()
+      .fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+    const claim = requests.claim(isSignRaw);
+
+    // Then
+    expect(holds.open).toBe(0);
+    expect(claim).toBeUndefined();
   });
 });

@@ -2,40 +2,37 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createDeferred } from '@dotli/shared';
+import { recordReports } from '@dotli/metrics/testing';
 import { catchError } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ResponderState } from '../sessionHandoff/createResponder.js';
-import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './createRedirectResponder.js';
-import type { sealRedirect } from './siteSeal.js';
-
-type SealCall = Parameters<typeof sealRedirect>[0];
+import { createRedirectResponder, type RedirectResponder } from './createRedirectResponder.js';
+import type { PageMessage } from '../sessionHandoff/sessionMessages.js';
 
 const ORIGIN = 'https://site.example';
 const RETURN_TO = 'https://site.example/back';
-const SITE_PUBLIC_KEY = new Uint8Array(32).fill(5);
 const ROUND = 'r1';
 const SEALED = `${RETURN_TO}#dotli-s=sealed`;
 
 /**
- * A redirect responder whose seal answers with `sealed`, and which records each seal, the forgetting of the kept
- * request and each navigation, in the order they came.
+ * A redirect responder whose seal answers with `sealed`, and which records each message it seals, and each navigation
+ * and failure, in the order they came.
  */
 function openRedirectResponder(sealed: () => Promise<string> = () => Promise.resolve(SEALED)) {
-  const seals: SealCall[] = [];
+  const seals: PageMessage[] = [];
   const events: string[] = [];
   const navigated = createDeferred<string>();
-  const failure = createDeferred<{ error: unknown; siteToken: string | undefined; delivery: RedirectDelivery }>();
+  const failure = createDeferred<{
+    error: unknown;
+    siteToken: string | undefined;
+    delivery: ReturnType<RedirectResponder['delivery']>;
+  }>();
   const responder = createRedirectResponder({
     origin: ORIGIN,
-    returnTo: RETURN_TO,
-    sitePublicKey: SITE_PUBLIC_KEY,
     round: ROUND,
-    seal(call) {
-      seals.push(call);
+    seal(message) {
+      seals.push(message);
       return sealed();
-    },
-    forgetRequest() {
-      events.push('forget');
     },
     navigate(url) {
       events.push(`navigate ${url}`);
@@ -59,7 +56,7 @@ describe('redirect responder', () => {
 
     // Then it starts vetted for the return address's origin, with no answer on its way
     expect(responder.state.get()).toEqual({ kind: 'vetted', origin: ORIGIN, party: 'third' });
-    expect(responder.delivery()).toBe('none');
+    expect(responder.delivery()).toBe('waiting');
   });
 
   it.each<{ name: string; end: (responder: RedirectResponder) => void }>([
@@ -95,7 +92,7 @@ describe('redirect responder', () => {
       await navigated;
 
       // Then the answer was pending while it sealed, and is sent once the window navigated
-      expect(whileSealing).toBe('pending');
+      expect(whileSealing).toBe('sealing');
       expect(responder.delivery()).toBe('sent');
     },
   );
@@ -138,24 +135,21 @@ describe('redirect responder', () => {
       state: { kind: 'answered' },
       message: { type: 'dotli:s:cancelled', round: ROUND },
     },
-  ])(
-    'As a site, I get $name sealed to my key and the window forgets its request, then navigates once',
-    async ({ end, state, message }) => {
-      // Given a redirect responder
-      const { responder, seals, events, navigated } = openRedirectResponder();
+  ])('As a site, I get $name sealed to my key and the window navigates once', async ({ end, state, message }) => {
+    // Given a redirect responder
+    const { responder, seals, events, navigated } = openRedirectResponder();
 
-      // When the round ends, and the window navigates
-      end(responder);
-      const stateAtOnce = responder.state.get();
-      const url = await navigated;
+    // When the round ends, and the window navigates
+    end(responder);
+    const stateAtOnce = responder.state.get();
+    const url = await navigated;
 
-      // Then the state was set at once, the message is sealed, and the window navigates once after forgetting
-      expect(stateAtOnce).toEqual(state);
-      expect(seals).toEqual([{ returnTo: RETURN_TO, sitePublicKey: SITE_PUBLIC_KEY, round: ROUND, message }]);
-      expect(url).toBe(SEALED);
-      expect(events).toEqual(['forget', `navigate ${SEALED}`]);
-    },
-  );
+    // Then the state was set at once, the message is sealed, and the window navigates once
+    expect(stateAtOnce).toEqual(state);
+    expect(seals).toEqual([message]);
+    expect(url).toBe(SEALED);
+    expect(events).toEqual([`navigate ${SEALED}`]);
+  });
 
   it('As a site, I get one answer per round, and later calls neither seal nor navigate again', async () => {
     // Given a redirect responder that answered the round
@@ -170,7 +164,7 @@ describe('redirect responder', () => {
 
     // Then nothing more was sealed or sent, and the state stays answered
     expect(seals).toHaveLength(1);
-    expect(events).toEqual(['forget', `navigate ${SEALED}`]);
+    expect(events).toEqual([`navigate ${SEALED}`]);
     expect(responder.state.get()).toEqual({ kind: 'answered' });
   });
 
@@ -234,27 +228,8 @@ describe('redirect responder', () => {
     await navigated;
 
     // Then only the first answer was sealed, and one navigation followed
-    expect(seals.map(call => call.message)).toEqual([
-      { type: 'dotli:s:result', round: ROUND, result: { account: 'a' } },
-    ]);
-    expect(events).toEqual(['forget', `navigate ${SEALED}`]);
-  });
-
-  it('As a site, I am refused and every watcher of the round is told of the state the refusal sets', () => {
-    // Given a redirect responder with a follower
-    const { responder } = openRedirectResponder();
-    const seen: string[] = [];
-    onTestFinished(
-      responder.state.listen(state => {
-        seen.push(state.kind);
-      }),
-    );
-
-    // When the round refuses the site
-    responder.refuse('declined');
-
-    // Then the follower saw the refusal
-    expect(seen).toEqual(['refused']);
+    expect(seals).toEqual([{ type: 'dotli:s:result', round: ROUND, result: { account: 'a' } }]);
+    expect(events).toEqual([`navigate ${SEALED}`]);
   });
 
   it('As a site whose answer is still sealing when the responder is disposed, I still get that answer', async () => {
@@ -268,25 +243,9 @@ describe('redirect responder', () => {
     seal.resolve(SEALED);
     await navigated;
 
-    // Then the window forgot its request and navigated with the answer
-    expect(events).toEqual(['forget', `navigate ${SEALED}`]);
+    // Then the window navigated with the answer
+    expect(events).toEqual([`navigate ${SEALED}`]);
     expect(responder.delivery()).toBe('sent');
-  });
-
-  it('As a dotli integrator, I dispose a redirect responder whose seal failed and see no error', async () => {
-    // Given a redirect responder whose seal failed
-    const { responder, failure } = openRedirectResponder(() => Promise.reject(new Error('seal failed')));
-    responder.send({ account: 'a' });
-    await failure;
-
-    // When it is disposed
-    const thrown = catchError(() => {
-      responder.dispose();
-    });
-
-    // Then nothing threw, and the delivery stays failed
-    expect(thrown).toBeUndefined();
-    expect(responder.delivery()).toBe('failed');
   });
 
   it('As a dotli integrator, I dispose a redirect responder twice and see no error', () => {
@@ -301,5 +260,31 @@ describe('redirect responder', () => {
 
     // Then nothing threw
     expect(thrown).toBeUndefined();
+  });
+
+  it('As an operator, I see a redirect responder whose navigation throws reported as a defect', async () => {
+    // Given a responder whose navigation throws, once its seal resolves
+    const reports = recordReports({ onFinished: onTestFinished });
+    const sealed = createDeferred<string>();
+    const navigating = createDeferred<undefined>();
+    const responder = createRedirectResponder({
+      origin: ORIGIN,
+      round: ROUND,
+      seal: () => sealed.promise,
+      navigate() {
+        navigating.resolve(undefined);
+        throw new Error('navigate failed');
+      },
+      failed: () => undefined,
+    });
+
+    // When it sends a result and the seal resolves
+    responder.send({ account: 'a' });
+    sealed.resolve(SEALED);
+    await navigating.promise;
+
+    // Then the throw is reported as a defect and the delivery is sent
+    expect(reports.exceptions).toMatchObject([{ step: 'transition' }]);
+    expect(responder.delivery()).toBe('sent');
   });
 });

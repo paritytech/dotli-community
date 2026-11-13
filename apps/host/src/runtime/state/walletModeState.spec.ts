@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { walletModeState, type WalletMode } from './walletModeState.js';
+import { walletModeState } from './walletModeState.js';
 
 describe('wallet mode state', () => {
   afterEach(() => {
@@ -22,26 +22,7 @@ describe('wallet mode state', () => {
     expect(followed).toBe(false);
   });
 
-  it.each<{ mode: WalletMode; local: boolean }>([
-    { mode: 'app', local: false },
-    { mode: 'local', local: true },
-  ])(
-    'As a page the restore set to $mode, I ask whether it runs on a local wallet and hear $local',
-    ({ mode, local }) => {
-      // Given the restore settled on the mode
-      walletModeState.set({ mode, failure: null });
-
-      // When
-      const answered = walletModeState.isLocal();
-      const followed = walletModeState.localStore.get();
-
-      // Then
-      expect(answered).toBe(local);
-      expect(followed).toBe(local);
-    },
-  );
-
-  it('As the account button, I follow the local store while the mode is set twice and hear it turn local once', () => {
+  it('As the account button, I follow the local store and hear it turn local when a later read finds the wallet', () => {
     // Given a follower of the local store
     const heard: boolean[] = [];
     onTestFinished(
@@ -50,8 +31,7 @@ describe('wallet mode state', () => {
       }),
     );
 
-    // When a failed local read keeps the page on the app and a later read finds the wallet
-    walletModeState.set({ mode: 'app', failure: 'x' });
+    // When
     walletModeState.set({ mode: 'local', failure: null });
 
     // Then

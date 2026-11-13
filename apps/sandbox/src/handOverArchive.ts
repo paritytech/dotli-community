@@ -35,8 +35,6 @@ type Params = {
   archive: PackedArchive;
   /** The path the product's page is written at. */
   pagePath: string;
-  /** The page-wide channel a worker from the previous release answers on, since it ignores the port. */
-  legacyReplies: Pick<ServiceWorkerContainer, 'addEventListener' | 'removeEventListener'> | null;
   /** How long the worker has to answer. */
   timeoutMs?: number;
   /** The timers the wait for the answer runs on. */
@@ -51,12 +49,10 @@ export function handOverArchive({
   worker,
   archive: { packed, index },
   pagePath,
-  legacyReplies,
   timeoutMs = SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK,
   timers = realTimers,
 }: Params): Promise<void> {
   const channel = new MessageChannel();
-  let onLegacyReply = (_event: MessageEvent<unknown>): void => undefined;
   const answered = new Promise<void>((resolve, reject) => {
     function onReply(data: unknown): void {
       if (!isArchiveReply(data)) {
@@ -74,13 +70,9 @@ export function handOverArchive({
         }
       }
     }
-    onLegacyReply = event => {
-      onReply(event.data);
-    };
     channel.port1.onmessage = (event: MessageEvent<unknown>) => {
       onReply(event.data);
     };
-    legacyReplies?.addEventListener('message', onLegacyReply);
     const message: SetArchiveMessage = {
       type: APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE,
       packed,
@@ -93,7 +85,7 @@ export function handOverArchive({
       reject(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_SENT, { cause }));
     }
   });
-  // Every exit closes the port and drops the page-wide listener, so a late answer finds nothing to settle.
+  // Every exit closes the port, so a late answer finds nothing to settle.
   return withTimeout({
     work: answered,
     ms: timeoutMs,
@@ -101,7 +93,6 @@ export function handOverArchive({
     timeoutError: () => new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED),
   }).finally(() => {
     channel.port1.close();
-    legacyReplies?.removeEventListener('message', onLegacyReply);
   });
 }
 

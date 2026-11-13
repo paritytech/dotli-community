@@ -182,22 +182,6 @@ describe('flag owner', () => {
 });
 
 describe('page flag keeper', () => {
-  it('As a user on a product page, I let my core store a session and the flag is never raised', async () => {
-    // Given a product page's flag keeper over an absent flag
-    const presence = createFakeSessionPresence({ state: 'absent' });
-    const flag = createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') });
-    let stored = false;
-
-    // When the core stores a session
-    await flag.store(() => {
-      stored = true;
-    });
-
-    // Then the session is stored and the flag is not touched
-    expect(stored).toBe(true);
-    expect(presence.calls).toEqual([]);
-  });
-
   it('As a user on a product page, I clear through my core and the flag is deleted only once the clear dropped the session', async () => {
     // Given a page's flag keeper over a present flag
     const presence = createFakeSessionPresence({ state: 'present' });

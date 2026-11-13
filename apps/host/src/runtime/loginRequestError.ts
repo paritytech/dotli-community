@@ -19,7 +19,7 @@ export class LoginRequestError extends Error {
 function formatLoginRequestError(error: LoginRequestFailure): string {
   switch (error.tag) {
     case 'Domain':
-      return formatDomainLoginError(error.value);
+      return error.value.value.value.reason;
     case 'Denied':
       return 'Login request denied';
     case 'Unsupported':
@@ -30,8 +30,4 @@ function formatLoginRequestError(error: LoginRequestFailure): string {
     case 'HostFailure':
       return error.value.reason;
   }
-}
-
-function formatDomainLoginError(error: VersionedHostRequestLoginError): string {
-  return error.value.value.reason;
 }

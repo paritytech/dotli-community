@@ -26,8 +26,6 @@ type Params = {
   loadVerify?: typeof loadContentVerify;
 };
 
-type CreatePreimageLookupSubscribeParams = Required<Params>;
-
 const POLL_INTERVAL_MS = 10_000;
 const INITIAL_POLL_DELAY_MS = 1000;
 const preimageCache = new Map<string, Uint8Array>();
@@ -41,23 +39,6 @@ export function createPreimageAdapters(
   label: string,
   { fetchBlock = fetchContentBlock, loadVerify = loadContentVerify }: Params = {},
 ): Required<PreimageHost> {
-  return {
-    lookupPreimage: createPreimageLookupSubscribe(label, { fetchBlock, loadVerify }),
-  };
-}
-
-/** The backend answered with the wrong bytes, which another attempt would not change. */
-class PreimageMismatch extends Error {}
-
-/** Not found yet, so the poll goes on. */
-class PreimageMiss extends Error {}
-
-function createPreimageLookupSubscribe(
-  label: string,
-  { fetchBlock, loadVerify }: CreatePreimageLookupSubscribeParams,
-): Required<PreimageHost>['lookupPreimage'] {
-  // One attempt per key at a time, since a bitswap lookup can outlive the poll interval and a second subscription to
-  // the key would open another retry budget for the same block.
   // The chunk loads on first use, so the bridge chunk carries no hashing code. A failed load is retried with the poll,
   // and the first miss is reported since the poll itself acts on mismatches only.
   const verify = createLazyLoad({
@@ -66,6 +47,8 @@ function createPreimageLookupSubscribe(
       reportLazyMiss({ report, step: 'preimage_verify_load', error });
     },
   });
+  // One attempt per key at a time, since a bitswap lookup can outlive the poll interval and a second subscription to
+  // the key would open another retry budget for the same block.
   const polls = createAsyncTaskPool({
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
@@ -92,6 +75,7 @@ function createPreimageLookupSubscribe(
       // per lookup.
       let failureRecorded = false;
       async function attempt(): Promise<Uint8Array> {
+        // A lookup of the same key queued behind another in the key's pool of one finds what the first one cached.
         const hit = preimageCache.get(key);
         if (hit) {
           return hit;
@@ -153,5 +137,11 @@ function createPreimageLookupSubscribe(
     });
   }
 
-  return lookupPreimage;
+  return { lookupPreimage };
 }
+
+/** The backend answered with the wrong bytes, which another attempt would not change. */
+class PreimageMismatch extends Error {}
+
+/** Not found yet, so the poll goes on. */
+class PreimageMiss extends Error {}

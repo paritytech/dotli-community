@@ -49,6 +49,23 @@ describe('listenForArchiveFailures', () => {
     expect(steps).toEqual(['sw_restore']);
   });
 
+  it('As a sandbox page, I hear the worker fail to serve a fetch and capture it as a serving step', () => {
+    // Given a page listening to its service worker
+    const steps = recordCapturedSteps();
+    const container = createCountingEventTarget({ type: 'message' });
+    listenForArchiveFailures(container);
+
+    // When the worker reports a failure to serve
+    container.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_FAILURE, stage: 'serve', name: 'InvalidStateError' },
+      }),
+    );
+
+    // Then
+    expect(steps).toEqual(['sw_serve']);
+  });
+
   it('As a sandbox page that stopped listening, I hear a failure the worker reports and capture nothing', () => {
     // Given a page that listened to its service worker and stopped
     const steps = recordCapturedSteps();

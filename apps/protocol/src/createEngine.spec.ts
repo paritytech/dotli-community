@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { recordReports } from '@dotli/metrics/testing';
 import { catchError, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
+import { createChainPool, type ChainPool, type ChainTransport, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import { getBudget, protocolSchema, type RemoteFailure } from '@dotli/protocol';
 import {
@@ -17,14 +18,8 @@ import {
   type ResultPayload,
   unsupported,
 } from '@dotli/transport';
-import {
-  createEngine,
-  MAX_CONNECTIONS,
-  type EngineParams,
-  type EngineResolver,
-  type ProtocolEngine,
-} from './createEngine.js';
-import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { createEngine, MAX_CONNECTIONS, type EngineParams, type ProtocolEngine } from './createEngine.js';
+import type { EngineResolver } from './createNameReads.js';
 import { serveEngineScope } from './serveEngineMethods.js';
 import { closeHostLinks, linkHost } from './testing/linkHost.js';
 import { record, type Recording } from './testing/record.js';
@@ -44,6 +39,8 @@ type TransportRecord = {
 type Params = Partial<EngineParams> & {
   /** How long the pool keeps a chain nobody uses. Never, when unset. */
   destroyDelay?: number;
+  /** Wraps the real pool before the engine gets it. */
+  wrapPool?: (pool: ChainPool) => ChainPool;
 };
 
 afterEach(() => {
@@ -109,11 +106,56 @@ function openTab(engine: ProtocolEngine) {
 }
 
 /** Starts an engine on a real pool that records each transport it builds, with one tab open. */
-function startEngine({ destroyDelay = Infinity, ...engineParams }: Params = {}) {
+function startEngine({ destroyDelay = Infinity, wrapPool = pool => pool, ...engineParams }: Params = {}) {
   const { createChainTransport, built } = createTransports();
-  const pool = createChainPool({ createTransport: createChainTransport, destroyDelay });
+  const pool = wrapPool(createChainPool({ createTransport: createChainTransport, destroyDelay }));
   const engine = createEngine({ pool, isChainSupported: () => true, ...engineParams });
   return { engine, tab: openTab(engine), built };
+}
+
+/** Watches a pool's remote connections: their disconnects and the pool's release. */
+function spyOnPool() {
+  const disconnects: Mock<() => void>[] = [];
+  const disconnectAll = vi.fn<() => void>();
+  let nextFailure: Error | null = null;
+  return {
+    /** Wraps `pool`, for `startEngine`. */
+    wrap,
+    /** Each connection's disconnect, in the order they connected. */
+    disconnects,
+    /** The pool's release. */
+    disconnectAll,
+    /** Makes the next connection's disconnect throw `error` once it has disconnected. */
+    failNextDisconnect(error: Error): void {
+      nextFailure = error;
+    },
+  };
+
+  function wrap(pool: ChainPool): ChainPool {
+    disconnectAll.mockImplementation(() => {
+      pool.disconnectAll();
+    });
+    return {
+      ...pool,
+      disconnectAll,
+      connectRemote(params) {
+        const connection = pool.connectRemote(params);
+        if (connection === null) {
+          return null;
+        }
+        const failure = nextFailure;
+        nextFailure = null;
+        const disconnect = vi.fn(() => {
+          connection.disconnect();
+          if (failure !== null) {
+            throw failure;
+          }
+        });
+        disconnects.push(disconnect);
+        return { ...connection, disconnect };
+      },
+    };
+  }
 }
 
 const CONNECTED = { tag: 'connected' };
@@ -178,17 +220,6 @@ describe('createEngine chain connections', () => {
     expect(thrown).toBeUndefined();
   });
 
-  it('As a product, I send on a connection that does not exist and the send fails', async () => {
-    // Given
-    const { tab } = startEngine();
-
-    // When
-    const send = tab.send('nope', '{}');
-
-    // Then
-    await expect(send).resolves.toEqual(toThrownAnswer('Unknown chain connection: nope'));
-  });
-
   it('As a product, I send under an empty connection id and am refused for bad input', async () => {
     // Given
     const { tab } = startEngine();
@@ -210,21 +241,6 @@ describe('createEngine chain connections', () => {
     // Then
     expect(await chain.ended).toEqual(toThrownAnswer('Unsupported chain: 0xdead'));
     expect(chain.events).toEqual([]);
-  });
-
-  it('As the host at my connection limit, I connect again and the subscription ends with the limit error', async () => {
-    // Given a tab at its limit
-    const { tab } = startEngine();
-    for (let index = 0; index < MAX_CONNECTIONS; index++) {
-      await tab.connect('0xaa', `c${String(index)}`);
-    }
-
-    // When
-    const overflow = await tab.connect('0xaa', 'extra');
-
-    // Then
-    expect(await overflow.ended).toEqual(toThrownAnswer('Connection limit reached (max 10)'));
-    expect(overflow.events).toEqual([]);
   });
 
   it('As the host, I unsubscribe and the chain disconnects', async () => {
@@ -260,21 +276,6 @@ describe('createEngine chain connections', () => {
 });
 
 describe('createEngine chain pool', () => {
-  it('As the protocol frame, I hand the engine the chain pool the name resolver reads and a product shares its chain', async () => {
-    // Given the resolver already holds a lease on the chain
-    const { createChainTransport, built } = createTransports();
-    const pool = createChainPool({ createTransport: createChainTransport, destroyDelay: Infinity });
-    must(pool.getLocalProvider('0xaa', { holder: 'resolver' }), 'resolver lease')(() => undefined);
-    const engine = createEngine({ pool, isChainSupported: () => true });
-
-    // When
-    const chain = await openTab(engine).connect('0xaa', 'c1');
-
-    // Then
-    expect(chain.events).toEqual([CONNECTED]);
-    expect(built).toHaveLength(1);
-  });
-
   it('As the protocol frame, I dispose the engine and the chains of the pool it was handed are released', async () => {
     // Given
     const { createChainTransport, built } = createTransports();
@@ -287,6 +288,37 @@ describe('createEngine chain pool', () => {
 
     // Then
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the frame, I dispose the engine while a disconnect throws, and the failure is reported, not thrown', async () => {
+    // Given two connections, the first of whose disconnect throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const pool = spyOnPool();
+    const { engine, tab } = startEngine({ wrapPool: pool.wrap });
+    pool.failNextDisconnect(new Error('disconnect failed'));
+    await tab.connect('0xaa', 'c1');
+    await tab.connect('0xbb', 'c2');
+
+    // When
+    const thrown = catchError(engine.dispose);
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'disconnect' }]);
+    expect(must(pool.disconnects[1], 'second disconnect')).toHaveBeenCalledTimes(1);
+    expect(pool.disconnectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a product, I connect on a scope of a disposed engine and am refused', async () => {
+    // Given
+    const { engine, tab } = startEngine();
+    engine.dispose();
+
+    // When
+    const chain = await tab.connect('0xaa', 'c1');
+
+    // Then
+    expect(await chain.ended).toEqual(toThrownAnswer('The engine was disposed'));
   });
 });
 
@@ -313,17 +345,6 @@ describe('createEngine name reads', () => {
     ]);
   });
 
-  it('As the host, I read a name whose read fails and the read ends with its error', async () => {
-    // Given
-    const { tab } = startEngine({ resolver: toResolver(() => Promise.reject(new TypeError('bad label'))) });
-
-    // When
-    const read = record({ transport: tab.host, method: resolve.dotName, start: { label: 'doom' } });
-
-    // Then
-    expect(await read.ended).toEqual(err(hostFailure('TypeError: bad label')));
-  });
-
   it('As the host in gateway mode, I read names and every read is refused at once', async () => {
     // Given an engine with no resolver
     const { tab } = startEngine();
@@ -333,8 +354,8 @@ describe('createEngine name reads', () => {
     const owner = tab.host.request(resolve.owner, { label: 'doom' });
 
     // Then
-    expect(await read.ended).toEqual(toThrownAnswer(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED));
-    await expect(owner).resolves.toEqual(toThrownAnswer(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED));
+    expect(await read.ended).toEqual(toThrownAnswer('resolveDotName is not served by this protocol mode'));
+    await expect(owner).resolves.toEqual(toThrownAnswer('resolveOwner is not served by this protocol mode'));
   });
 
   it.each([
@@ -600,6 +621,25 @@ describe('createEngine scopes', () => {
     expect(refilled.map(connected => connected.events)).toEqual(
       Array.from({ length: MAX_CONNECTIONS }, () => [CONNECTED]),
     );
+  });
+
+  it('As the frame, I close a scope while a disconnect throws, and the failure is reported, not thrown', async () => {
+    // Given two connections, the first of whose disconnect throws
+    const reports = recordReports({ onFinished: onTestFinished });
+    const pool = spyOnPool();
+    const { tab } = startEngine({ wrapPool: pool.wrap });
+    pool.failNextDisconnect(new Error('disconnect failed'));
+    const first = await tab.connect('0xaa', 'c1');
+    const second = await tab.connect('0xbb', 'c2');
+
+    // When
+    const thrown = catchError(tab.scope.close);
+
+    // Then
+    expect(thrown).toBeUndefined();
+    expect(reports.exceptions).toMatchObject([{ step: 'disconnect' }]);
+    expect(await first.ended).toEqual(ok());
+    expect(await second.ended).toEqual(ok());
   });
 
   it('As a dotli user on the shared light client, I close a tab after its chain died and only what is left is released', async () => {

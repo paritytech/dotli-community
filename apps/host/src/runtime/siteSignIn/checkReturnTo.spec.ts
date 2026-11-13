@@ -147,8 +147,8 @@ describe('site return address', () => {
     expect(verdict).toEqual({ ok: false, reason: 'well_known_unreachable' });
   });
 
-  it('As a site, I stream a well-known file past 64 KiB and the window stops reading and reads it as not listing the address', async () => {
-    // Given a body that never ends and records when the reader cancels it
+  it('As a site, I stream a well-known file past 64 KiB and the window stops reading and reads it as not listing the address, even when my stream refuses the cancel', async () => {
+    // Given a body that never ends and records when the reader cancels it, then refuses the cancel
     let cancelled = false;
     const chunk = new TextEncoder().encode('x'.repeat(16 * 1024));
     const body = new ReadableStream<Uint8Array>({
@@ -157,6 +157,7 @@ describe('site return address', () => {
       },
       cancel() {
         cancelled = true;
+        throw new TypeError('stream refuses the cancel');
       },
     });
     const { fetch } = createFakeFetch(() => Promise.resolve(new Response(body)));

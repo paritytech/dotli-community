@@ -84,6 +84,12 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
   const nextBackend = BACKEND_FACTS[backend].failover;
   // A failed provider will fail again, while a failed light client is usually a transient peer problem.
   const failoverIsPrimary = !hasLightClient(backend);
+  // Dropping to a trusted provider gives up verification, so the visitor confirms it on a warning where staying put is
+  // primary.
+  const failoverUnverified = !isVerifiedSession(nextBackend);
+  // A first sighting points at Settings rather than offering a one-click drop to a trusted provider. A repeat of the
+  // same failure earns the shortcut.
+  const gateFailover = failoverUnverified && !params.sightings.hasSeen(error.kind);
   // The reload comes up on a fresh light client instead of the one that lost its subscription.
   function reloadForRecovery(): void {
     if (error.resetProtocol === true) {
@@ -106,7 +112,6 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
     });
     params.switchBackend(nextBackend);
   }
-  // Dropping to a trusted provider gives up verification, so the user confirms it and staying put is primary.
   function showFailoverWarning(): void {
     params.showErrorPage({
       glyph: 'warning',
@@ -118,12 +123,9 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
       ],
     });
   }
-  // A first sighting points at Settings rather than offering a one-click drop to a trusted provider. A repeat of the
-  // same failure earns the shortcut.
-  const gateFailover = !isVerifiedSession(nextBackend) && !params.sightings.hasSeen(error.kind);
   function showResolutionError(): void {
     // Only the gated direction records a sighting. `unknown` never does, since two unrelated failures share it.
-    if (!isVerifiedSession(nextBackend) && error.kind !== 'unknown') {
+    if (failoverUnverified && error.kind !== 'unknown') {
       params.sightings.remember(error.kind);
     }
     params.showErrorPage({
@@ -137,18 +139,10 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
           : {
               label: FAILOVER_BTN_LABELS[nextBackend],
               primary: failoverIsPrimary,
-              onClick: getFailoverStep(),
+              onClick: failoverUnverified ? showFailoverWarning : commitFailover,
             },
       ],
     });
-  }
-  function getFailoverStep(): () => void {
-    switch (nextBackend) {
-      case 'rpc-gateway':
-        return showFailoverWarning;
-      case 'smoldot-shared-worker':
-        return commitFailover;
-    }
   }
   showResolutionError();
 }

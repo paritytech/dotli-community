@@ -99,13 +99,6 @@ function emitToSink(entry: LogEntry): void {
 }
 
 function stringifyArgs(args: unknown[]): string {
-  if (args.length === 0) {
-    return '';
-  }
-  if (args.length === 1) {
-    const first = args[0];
-    return typeof first === 'string' ? first : stringifyValue(first);
-  }
   return args.map(a => (typeof a === 'string' ? a : stringifyValue(a))).join(' ');
 }
 
@@ -136,10 +129,7 @@ function stringifyValue(value: unknown): string {
   if (typeof value === 'function') {
     return value.name ? `[function ${value.name}]` : '[function]';
   }
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return value.toString();
   }
   return Object.prototype.toString.call(value);

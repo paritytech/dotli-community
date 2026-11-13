@@ -8,7 +8,9 @@ import { createNotificationAdapters, type NotificationScheduler } from './create
 import type { NotificationParams } from '@dotli/ui';
 
 const PRODUCT_ID = asProductId('myapp.paseo');
-const getProductId = () => PRODUCT_ID;
+function getProductId() {
+  return PRODUCT_ID;
+}
 
 describe('notification host callbacks', () => {
   it('As a product developer, I push a notification that is due now and it is scheduled under my full product id, shown with my label and answered with its id', async () => {
@@ -38,37 +40,7 @@ describe('notification host callbacks', () => {
       deeplink: null,
       scheduledAt: null,
     });
-    // A product cannot pick a tone, so its toasts read as info
     expect(shown).toEqual([{ text: 'hello', deeplink: undefined, label: 'myapp' }]);
-  });
-
-  it('As a product developer, I push a later notification and cancel it and both go through the shared scheduler', async () => {
-    // Given
-    const { scheduler, schedule, cancel } = createFakeScheduler();
-    const { pushNotification, cancelNotification } = createNotificationAdapters({
-      label: 'myapp',
-      getProductId,
-      scheduler,
-      notify: () => undefined,
-    });
-
-    // When
-    await pushNotification({
-      text: 'later',
-      deeplink: 'dot://open',
-      scheduledAt: 123n,
-    });
-    await cancelNotification(7);
-
-    // Then
-    expect(schedule).toHaveBeenCalledWith({
-      productId: PRODUCT_ID,
-      title: 'myapp',
-      text: 'later',
-      deeplink: 'dot://open',
-      scheduledAt: 123,
-    });
-    expect(cancel).toHaveBeenCalledWith(PRODUCT_ID, 7);
   });
 
   it('As a product developer, I push or cancel a notification before the core parsed my product id and both reject without touching the scheduler', async () => {

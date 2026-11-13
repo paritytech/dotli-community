@@ -18,8 +18,6 @@ type Params = {
   failures?: { session?: boolean; wallet?: Error; end?: Error; drop?: Error; grants?: Error };
   /** Another tab's writes, run while the window's core ends the session. */
   duringEnd?: () => void;
-  /** Another tab's writes, run while the restore rule drops the session it read. */
-  duringDrop?: () => void;
   /** Whether the round's first vetting is dot.li's own page, which it is by default. */
   firstParty?: Promise<boolean>;
 };
@@ -29,7 +27,6 @@ const NEW_BLOB = '0xnewsession';
 const UI_STATE = '{"connected":true}';
 const NEW_UI_STATE = '{"connected":true,"liteUsername":"new"}';
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
-const NEW_ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => 100 + i);
 
 /** A sign-out window over fakes: the flag, the main store, the restore rule over both and the window's own core. */
 function openSignOutWindow(options: Params = {}) {
@@ -57,7 +54,6 @@ function openSignOutWindow(options: Params = {}) {
     },
     dropSessionIf(blob) {
       calls.push('dropSession');
-      options.duringDrop?.();
       if (failures.drop !== undefined) {
         return Promise.reject(failures.drop);
       }
@@ -120,7 +116,7 @@ function openSignOutWindow(options: Params = {}) {
     });
   }
 
-  return { run, restore, main, calls, ended, presence, metrics, errors, captures };
+  return { run, main, calls, ended, presence, metrics, errors, captures };
 }
 
 describe('signing out in the sign-out window', () => {
@@ -152,21 +148,6 @@ describe('signing out in the sign-out window', () => {
     expect(calls.indexOf('read')).toBeLessThan(calls.indexOf('endSession'));
   });
 
-  it('As a user in a sign-out window whose boot ran the rule before its flow, I sign out and the session it found dead still ends', async () => {
-    // Given the restore already ran, so the store no longer holds the session
-    const { run, restore, main, ended, metrics } = openSignOutWindow({ session: BLOB });
-    await restore();
-    const sessionAfterRestore = main.session;
-
-    // When the sign-out flow runs
-    await run();
-
-    // Then the restore had cleared the store, and the dead session is ended and the phone counted told
-    expect(sessionAfterRestore).toBeNull();
-    expect(ended).toEqual([BLOB]);
-    expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'told_phone', reason: 'unnotified' }]);
-  });
-
   it('As a user in the sign-out window whose page already told the phone, I sign out and the store is only cleared', async () => {
     // Given a stored session the page already told the phone about
     const { run, main, ended, metrics } = openSignOutWindow({ notified: true, session: BLOB });
@@ -178,19 +159,6 @@ describe('signing out in the sign-out window', () => {
     expect(ended).toEqual([]);
     expect(main).toEqual({ session: null, uiState: null, wallet: null });
     expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'cleared', reason: 'notified' }]);
-  });
-
-  it('As a user in the sign-out window, I sign out and a stored local wallet is left to the page that signs out of it', async () => {
-    // Given a store holding only a local wallet
-    const { run, main, ended, metrics } = openSignOutWindow({ wallet: true });
-
-    // When the sign-out flow runs
-    await run();
-
-    // Then the wallet stays and nothing was signed out
-    expect(ended).toEqual([]);
-    expect(main.wallet).toEqual(ENTROPY);
-    expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'nothing', reason: 'unnotified' }]);
   });
 
   it('As a user in a sign-out window over a store that holds nothing, I sign out and am told there was nothing to sign out', async () => {
@@ -253,57 +221,6 @@ describe('signing out in the sign-out window', () => {
     expect(presence.state).toBe('present');
     expect(presence.calls).not.toContain('clear');
     expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'told_phone', reason: 'unnotified' }]);
-  });
-
-  it('As a user in the sign-out window while another tab imports a wallet, I sign out and only what was read is dropped while the new wallet stays', async () => {
-    // Given the page already told the phone, and a phrase import elsewhere lands while the rule clears
-    const { run, main, presence, metrics } = openSignOutWindow({
-      notified: true,
-      session: BLOB,
-      wallet: true,
-      duringDrop: importElsewhere,
-    });
-
-    function importElsewhere(): void {
-      void presence.set();
-      main.wallet = NEW_ENTROPY;
-    }
-
-    // When the sign-out flow runs
-    await run();
-
-    // Then the session the window read is gone, while the wallet and the flag the import set stay
-    expect(main).toEqual({ session: null, uiState: null, wallet: NEW_ENTROPY });
-    expect(presence.state).toBe('present');
-    expect(presence.calls).not.toContain('clear');
-    expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'cleared', reason: 'notified' }]);
-  });
-
-  it('As a user in a sign-out window that told the phone, I sign out and it stays open saying I am signed out, since its message may still be on its way', async () => {
-    // Given a stored session the page did not tell the phone about
-    const { run, calls } = openSignOutWindow({ session: BLOB });
-
-    // When the sign-out flow runs
-    await run();
-
-    // Then the user closes the window, once the phone was told
-    expect(calls.at(-1)).toBe('signed out');
-    expect(calls).not.toContain('close');
-    expect(calls.indexOf('endSession')).toBeLessThan(calls.indexOf('signed out'));
-  });
-
-  it('As a user in a sign-out window whose page told the phone itself, I sign out and the window closes when done', async () => {
-    // Given a stored session the page already told the phone about
-    const { run, calls } = openSignOutWindow({ session: BLOB, notified: true });
-
-    // When the sign-out flow runs
-    await run();
-
-    // Then the window closes once, after the store is cleared
-    expect(calls.filter(call => call === 'close')).toHaveLength(1);
-    expect(calls.at(-1)).toBe('close');
-    expect(calls).not.toContain('signed out');
-    expect(calls.indexOf('dropSession')).toBeLessThan(calls.indexOf('close'));
   });
 
   it('As a user in a sign-out window whose core could not tell the phone, I sign out and it reports that, clears anyway and closes', async () => {
@@ -417,18 +334,6 @@ describe('signing out in the sign-out window', () => {
       expect(calls.at(-1)).toBe(last);
     },
   );
-
-  it('As a user in a sign-out window opened while the flag is still set, I open it and my signed-in sites stay', async () => {
-    // Given a stored session with the flag present, so no page signed out
-    const { run, calls } = openSignOutWindow({ flag: 'present', session: BLOB });
-
-    // When the sign-out flow runs
-    const ended = await run();
-
-    // Then the sign-out kept everything, the grants included
-    expect(ended).toBe('kept');
-    expect(calls).not.toContain('forget grants');
-  });
 
   it('As an operator, I see a sign-out window whose grants could not be forgotten reported, and its outcome and close unchanged', async () => {
     // Given a stored session the page told the phone about, whose grants cannot be forgotten

@@ -4,11 +4,11 @@
 import { vi } from 'vitest';
 import { asProductId, type ProductId } from '@parity/truapi';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
+import { createDeferred, noop } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { createPageCore, type CoreContext } from './createPageCore.js';
-import { toProductId } from './createTruapiRuntimeConfig.js';
+import { getAskedProductId } from './getAskedProductId.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -42,10 +42,15 @@ type CreateFakeRuntimeParams = {
 type CreateFakePageCoreParams = {
   /** How a core parses the id it is asked for. As asked by default. */
   parseProductId?: (asked: string) => ProductId;
+  /**
+   * Whether a core nobody holds outlives its last lease for good, as within the page's destroy delay. By default it
+   * goes at once.
+   */
+  linger?: boolean;
 };
 
 /** The real page core over fake Polkadot App runtimes. A redial gets one attempt, so a failed one fails at once. */
-export function createFakePageCore({ parseProductId = asProductId }: CreateFakePageCoreParams = {}) {
+export function createFakePageCore({ parseProductId = asProductId, linger = false }: CreateFakePageCoreParams = {}) {
   const runtimes: FakeCoreRuntime[] = [];
   const connections: ReturnType<typeof createDeferred<FakeCoreProvider>>[] = [];
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
@@ -71,8 +76,10 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
       };
     },
     coordinator: createBlockingModalCoordinator(),
-    redials: createAsyncTaskPool({ poolSize: 1 }),
-    destroyDelay: 0,
+    redialRetryDelays: [],
+    // A core that lingers does so for good, as the test never lets the destroy delay end.
+    destroyDelay: linger ? 1 : 0,
+    timers: { setTimeout: () => undefined, clearTimeout: noop },
   });
 
   function boot({ product }: CoreContext): Promise<BootedCoreRuntime> {
@@ -87,7 +94,7 @@ export function createFakePageCore({ parseProductId = asProductId }: CreateFakeP
     return Promise.resolve({
       // The fake has the members the page core calls, not the full runtime interface.
       runtime: runtime as unknown as WorkerPairingHostRuntime,
-      productId: parseProductId(product.productId ?? toProductId(product.label)),
+      productId: parseProductId(getAskedProductId(product)),
       local,
       isStale: () => Promise.resolve(!local && walletFound),
     });

@@ -1,19 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Serves the archive the page hands it. The iframe is credentialless, so this origin's storage lasts only as long as
-// the host page.
+// Serves each page the archive it hands over. The iframe is credentialless, so this origin's storage lasts only as long
+// as the host page.
 
 /// <reference lib="webworker" />
 
-import { createLazyLoad, isRecord } from '@dotli/shared';
+import { createAsyncTaskPool, createStateMachine, type HandlerOf, type MachineTypes } from '@dotli/shared';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
-import { loadPersistedArchive, persistArchive } from './archiveDb.js';
-import { getArchivePath, hasExtension } from './getArchivePath.js';
-import { getMimeType } from './getMimeType.js';
-import type { SetArchiveMessage } from './handOverArchive.js';
-import { reportArchiveFailure } from './reportArchiveFailure.js';
+import {
+  type IsClosedClientParams,
+  isClosedClient,
+  loadPersistedArchives,
+  type PersistedArchive,
+  type PersistedArchives,
+  persistPageArchive,
+  persistWorkerPage,
+} from './archiveDb.js';
+import { lookupServedFile, type ServedArchive } from './lookupServedFile.js';
+import { getSender, hasArchivePayload, isPageMessage, replyToPage, type SetArchiveRequest } from './pageMessages.js';
+import { reportArchiveFailure, type ArchiveStage } from './reportArchiveFailure.js';
 import { unpackArchive } from './unpackArchive.js';
 
 /** What the worker needs from its global scope. */
@@ -28,46 +35,111 @@ export type StartAppServiceWorkerParams = {
   devServer: boolean;
 };
 
-/** The archive's files and the directory of the path its page is written at, replaced together by each handoff. */
-type ServedArchive = {
-  files: Record<string, ArrayBuffer>;
-  directory: string;
+/** The archives the worker serves, by the client each belongs to. */
+type Archives = {
+  /** Each page's own archive, by the id of the page's client. */
+  byClient: ReadonlyMap<string, ServedArchive>;
+  /** A worker a page started, by the worker client's id, to the id of that page's client. */
+  workerPages: ReadonlyMap<string, string>;
+  /** The archive handed last, for a client the worker cannot place. */
+  newest: ServedArchive | null;
 };
 
-/** A handoff as the worker reads it. Each field stays unchecked until it is read. */
-type SetArchiveRequest = {
-  type: typeof APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE;
-  packed?: unknown;
-  index?: unknown;
-  directory?: unknown;
-};
+/**
+ * A sweep of the clients that closed. While it lists the open clients, the ids handed over or linked since are `spared`,
+ * since the listing may have been taken before they opened.
+ */
+type Sweep = { kind: 'idle' } | { kind: 'listing'; spared: ReadonlySet<string> };
 
-/** The types of a page's message the worker acts on. */
-type PageMessageType =
-  | typeof APP_SERVICE_WORKER_MESSAGES.CLAIM
-  | typeof APP_SERVICE_WORKER_MESSAGES.GET_VERSION
-  | typeof APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE;
+/**
+ * The archives in memory, and whether the worker has read the store back since it started. `reading` has the read in
+ * flight, and `missedBefore` says whether a read failed before, since only the first failure is reported to the pages.
+ */
+type WorkerState =
+  | { kind: 'unread'; archives: Archives; sweep: Sweep; missedBefore: boolean }
+  | { kind: 'reading'; archives: Archives; sweep: Sweep; missedBefore: boolean }
+  | { kind: 'read'; archives: Archives; sweep: Sweep };
 
-/** A page's message the worker acts on. */
-type PageMessage = { type: Exclude<PageMessageType, SetArchiveRequest['type']> } | SetArchiveRequest;
+type WorkerEvent =
+  | { kind: 'requested'; event: FetchEvent; pathname: string }
+  | { kind: 'archiveHanded'; clientId: string; archive: ServedArchive }
+  | { kind: 'workerLinked'; workerId: string; pageId: string }
+  | { kind: 'sweepStarted' }
+  | { kind: 'clientsClosed'; closed: IsClosedClientParams }
+  | { kind: 'archivesRestored'; restored: Archives }
+  | { kind: 'restoreMissed'; error: unknown };
 
-/** The worker's answer to a page's message. */
-type WorkerReply =
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.VERSION; version: string }
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_READY }
-  | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR; reason: string };
+type WorkerEffect =
+  /** A fetch answered from `archive` when it holds the path. */
+  | { kind: 'serve'; event: FetchEvent; archive: ServedArchive; pathname: string }
+  /** A fetch answered once the read-back in flight ends. */
+  | { kind: 'respondAfterRead'; event: FetchEvent; pathname: string }
+  /** A read-back that failed, for the worker's log, and for the pages when it is the `first` to fail. */
+  | { kind: 'restoreMissed'; error: unknown; first: boolean };
 
-const PAGE_MESSAGE_TYPES: readonly PageMessageType[] = [
-  APP_SERVICE_WORKER_MESSAGES.CLAIM,
-  APP_SERVICE_WORKER_MESSAGES.GET_VERSION,
-  APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE,
-];
+type WorkerMachine = MachineTypes<WorkerState, WorkerEvent, WorkerEffect>;
+
+/** The stage a throw of each effect is a failure of. */
+const EFFECT_STAGES = {
+  serve: 'serve',
+  respondAfterRead: 'serve',
+  restoreMissed: 'restore',
+} satisfies Record<WorkerEffect['kind'], ArchiveStage>;
 
 // The build the worker names when a page asks for its version. A build inlines it as a literal, so the worker's bytes
 // change between releases and the browser never skips the update as byte-identical.
 const WORKER_VERSION = import.meta.env.VITE_COMMIT_SHA ?? 'dev';
 
-/** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. Never throws. */
+/** A handed archive serves its page, and is the newest. */
+const handArchive: HandlerOf<WorkerMachine, WorkerState['kind'], 'archiveHanded'> = (
+  state,
+  { clientId, archive },
+  { emitState },
+) => {
+  const byClient = new Map(state.archives.byClient).set(clientId, archive);
+  emitState({
+    ...state,
+    archives: { ...state.archives, byClient, newest: archive },
+    sweep: spare(state.sweep, clientId),
+  });
+};
+
+/** A worker a page started is served that page's archive. */
+const linkWorker: HandlerOf<WorkerMachine, WorkerState['kind'], 'workerLinked'> = (
+  state,
+  { workerId, pageId },
+  { emitState },
+) => {
+  const workerPages = new Map(state.archives.workerPages).set(workerId, pageId);
+  emitState({ ...state, archives: { ...state.archives, workerPages }, sweep: spare(state.sweep, workerId) });
+};
+
+/** Starts a sweep, which spares from now on what is handed over or linked until the open clients are listed. */
+const startSweep: HandlerOf<WorkerMachine, WorkerState['kind'], 'sweepStarted'> = (state, _event, { emitState }) => {
+  emitState({ ...state, sweep: { kind: 'listing', spared: new Set() } });
+};
+
+/**
+ * Ends the sweep: drops the archives and links of clients that are not open, except the sender's, which was open to
+ * send, and those the sweep spares.
+ */
+const dropClosed: HandlerOf<WorkerMachine, WorkerState['kind'], 'clientsClosed'> = (
+  state,
+  { closed },
+  { emitState },
+) => {
+  const { archives, sweep } = state;
+  const spared = sweep.kind === 'listing' ? sweep.spared : new Set<string>();
+  const isDropped = (id: string) => isClosedClient(id, closed) && !spared.has(id);
+  const byClient = new Map([...archives.byClient].filter(([clientId]) => !isDropped(clientId)));
+  const workerPages = new Map([...archives.workerPages].filter(([workerId]) => !isDropped(workerId)));
+  emitState({ ...state, archives: { ...archives, byClient, workerPages }, sweep: { kind: 'idle' } });
+};
+
+/**
+ * Serves each page the archive it hands over, from this scope's events. Each call is a fresh worker start. Never
+ * throws.
+ */
 export function startAppServiceWorker({
   scope,
   indexedDB,
@@ -76,46 +148,97 @@ export function startAppServiceWorker({
 }: StartAppServiceWorkerParams): void {
   const basePath = scope.location.pathname.replace(new RegExp(`(?:src/)?${APP_SERVICE_WORKER_NAME}\\.[jt]s$`), '');
 
-  let served: ServedArchive | null = null;
+  // One write at a time, so the store's newest archive is the last one handed over, whatever order the reads finish in.
+  const persists = createAsyncTaskPool({ poolSize: 1 });
 
-  /** The read-back found nothing, so the page has not sent an archive yet. */
-  let nothingPersisted = false;
-
-  /**
-   * The archive kept for restarts, read back by the first fetch that finds none in memory. A failed read is not kept,
-   * so the next fetch reads it again, while only the first failure is reported to the page.
-   */
-  const restoreArchive = createLazyLoad({
-    load: async (): Promise<void> => {
-      const archive = await loadPersistedArchive(indexedDB);
-      if (archive === null) {
-        nothingPersisted = true;
-        return;
-      }
-      // A SET_ARCHIVE that landed during the read is newer. The loader keeps nothing, so a later one frees the buffers.
-      served ??= { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? basePath };
+  // The archives kept for restarts are read back by the first fetch whose client has none in memory, and the fetches
+  // that arrive during the read wait for it. A failed read is not kept, so the next such fetch reads them again, while
+  // only the first failure is reported to the pages. A read that succeeded is merged and kept by nothing else.
+  const worker = createStateMachine<WorkerMachine>({
+    initial: {
+      kind: 'unread',
+      archives: { byClient: new Map(), workerPages: new Map(), newest: null },
+      sweep: { kind: 'idle' },
+      missedBefore: false,
     },
-    onFirstMiss: error => {
-      // Not awaited: the fetch waiting on this read-back must not wait on the report too.
-      void scope.clients
-        .matchAll({ type: 'window' })
-        .then(clients => {
-          reportArchiveFailure({ clients, stage: 'restore', error });
-        })
-        .catch((reportError: unknown) => {
-          // eslint-disable-next-line no-console -- the worker has no logger, and this failure cannot reach a page
-          console.error('Failed to report the archive restore failure to the pages:', reportError);
-        });
+    handlers: {
+      unread: {
+        requested(state, { event, pathname }, { emitState, emitSideEffect, update }) {
+          const own = getClientArchive(state.archives, event.clientId);
+          if (own !== null) {
+            emitSideEffect({ kind: 'serve', event, archive: own, pathname });
+            return;
+          }
+          // A restarted worker reads the archives back first, since nginx answers every path with the shell as
+          // `text/html`.
+          emitState({ ...state, kind: 'reading' });
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname });
+          update(
+            loadPersistedArchives(indexedDB)
+              .then(unpackRestored)
+              .then(
+                restored => ({ kind: 'archivesRestored', restored }),
+                (error: unknown) => ({ kind: 'restoreMissed', error }),
+              ),
+          );
+        },
+        archiveHanded: handArchive,
+        workerLinked: linkWorker,
+        sweepStarted: startSweep,
+        clientsClosed: dropClosed,
+      },
+      reading: {
+        requested({ archives }, { event, pathname }, { emitSideEffect }) {
+          const own = getClientArchive(archives, event.clientId);
+          if (own !== null) {
+            emitSideEffect({ kind: 'serve', event, archive: own, pathname });
+            return;
+          }
+          emitSideEffect({ kind: 'respondAfterRead', event, pathname });
+        },
+        archivesRestored({ archives, sweep }, { restored }, { emitState }) {
+          // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
+          const merged: Archives = {
+            byClient: new Map([...restored.byClient, ...archives.byClient]),
+            workerPages: new Map([...restored.workerPages, ...archives.workerPages]),
+            newest: archives.newest ?? restored.newest,
+          };
+          emitState({ kind: 'read', archives: merged, sweep });
+        },
+        restoreMissed(state, { error }, { emitState, emitSideEffect }) {
+          emitState({ ...state, kind: 'unread', missedBefore: true });
+          emitSideEffect({ kind: 'restoreMissed', error, first: !state.missedBefore });
+        },
+        archiveHanded: handArchive,
+        workerLinked: linkWorker,
+        sweepStarted: startSweep,
+        clientsClosed: dropClosed,
+      },
+      read: {
+        requested({ archives }, { event, pathname }, { emitSideEffect }) {
+          const archive = getClientArchive(archives, event.clientId) ?? archives.newest;
+          if (archive !== null) {
+            emitSideEffect({ kind: 'serve', event, archive, pathname });
+          }
+        },
+        archiveHanded: handArchive,
+        workerLinked: linkWorker,
+        sweepStarted: startSweep,
+        clientsClosed: dropClosed,
+      },
+    },
+    onEffect: effect => {
+      try {
+        runEffect(effect);
+      } catch (error) {
+        reportDefect(error, EFFECT_STAGES[effect.kind]);
+      }
+    },
+    // Each effect reports its own throw, so only a handler's lands here.
+    onError: error => {
+      reportDefect(error, 'transition');
     },
   });
-
-  function hasArchive(): boolean {
-    return served !== null;
-  }
-
-  function getFile(path: string): ArrayBuffer | undefined {
-    return served !== null && Object.hasOwn(served.files, path) ? served.files[path] : undefined;
-  }
 
   scope.addEventListener('install', () => {
     void scope.skipWaiting();
@@ -128,6 +251,37 @@ export function startAppServiceWorker({
   scope.addEventListener('message', handleMessage);
 
   scope.addEventListener('fetch', handleFetch);
+
+  function runEffect(effect: WorkerEffect): void {
+    switch (effect.kind) {
+      case 'serve': {
+        // A path the archive does not hold is left to the network.
+        const found = lookupServedFile(effect.archive, effect.pathname, basePath);
+        if (found !== null) {
+          effect.event.respondWith(found);
+        }
+        return;
+      }
+      case 'respondAfterRead':
+        effect.event.respondWith(answerAfterRead(effect));
+        return;
+      case 'restoreMissed':
+        // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+        console.error('Failed to restore the archives after a worker restart:', effect.error);
+        if (effect.first) {
+          // Not awaited: the fetches this read-back held must not wait on the report too.
+          void reportToPages({ stage: 'restore', error: effect.error });
+        }
+        return;
+    }
+  }
+
+  /** Logs a defect of the worker at `stage` and tells the pages. */
+  function reportDefect(error: unknown, stage: ArchiveStage): void {
+    // eslint-disable-next-line no-console -- the worker has no logger, and it reports the defect to its pages
+    console.error(`The archive worker failed at ${stage}:`, error);
+    void reportToPages({ stage, error });
+  }
 
   /** Acts on a page's message by its type, and ignores a message of any other type. */
   function handleMessage(event: ExtendableMessageEvent): void {
@@ -149,8 +303,8 @@ export function startAppServiceWorker({
   }
 
   /**
-   * Answers a request of this origin from the archive, after reading the archive back when a restart left none in
-   * memory, and leaves any other request to the network.
+   * Answers a request of this origin from its client's archive, after reading the archives back when a restart may have
+   * left that archive in the store only, and leaves any other request to the network.
    */
   function handleFetch(event: FetchEvent): void {
     const { request } = event;
@@ -158,35 +312,61 @@ export function startAppServiceWorker({
     if (url.origin !== scope.location.origin || isServedByNetwork(url, request)) {
       return;
     }
+    linkWorkerPage(event);
+    worker.update({ kind: 'requested', event, pathname: url.pathname });
+  }
 
-    if (hasArchive()) {
-      const found = lookupServedFile(url.pathname);
-      if (found !== null) {
-        event.respondWith(found);
-      }
+  /**
+   * Answers a fetch once the read-back ends, from its client's archive or the newest, and else from the network. Rejects
+   * as the network's fetch does, or with what the lookup throws.
+   */
+  function answerAfterRead({
+    event: { request, clientId },
+    pathname,
+  }: Extract<WorkerEffect, { kind: 'respondAfterRead' }>): Promise<Response> {
+    return worker.await().then(() => {
+      const { archives } = worker.state.get();
+      const archive = getClientArchive(archives, clientId) ?? archives.newest;
+      return (archive === null ? null : lookupServedFile(archive, pathname, basePath)) ?? fetchFromNetwork(request);
+    });
+  }
+
+  /**
+   * Records the page that starts a product's worker, so the worker's requests are answered from that page's archive.
+   * The browser names the worker's client on its script request only.
+   */
+  function linkWorkerPage(event: FetchEvent): void {
+    const { request, clientId: pageId, resultingClientId: workerId } = event;
+    if (!isWorkerScript(request) || pageId === '' || workerId === '') {
       return;
     }
-
-    if (nothingPersisted) {
-      return;
-    }
-
-    // A restarted worker reads the archive back first, since nginx answers every path with the shell as `text/html`.
-    event.respondWith(
-      restoreArchive().then(
-        () => {
-          if (!hasArchive()) {
-            return fetchFromNetwork(request);
-          }
-          return lookupServedFile(url.pathname) ?? fetchFromNetwork(request);
-        },
-        (error: unknown) => {
+    worker.update({ kind: 'workerLinked', workerId, pageId });
+    // In the same queue as the archive writes, so a write that lists the open clients first never drops this link.
+    event.waitUntil(
+      persists
+        .call(() => persistWorkerPage(indexedDB, { workerId, pageId }))
+        .catch((error: unknown) => {
           // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-          console.error('Failed to restore the archive after a worker restart:', error);
-          return fetchFromNetwork(request);
-        },
-      ),
+          console.error(
+            "Failed to persist a worker's page; a restarted worker will serve it the newest archive:",
+            error,
+          );
+          return reportToPages({ stage: 'persist', error });
+        }),
     );
+  }
+
+  /** Tells every page of a failure no single page caused. Never rejects: a report that fails is logged. */
+  function reportToPages({ stage, error }: Omit<Parameters<typeof reportArchiveFailure>[0], 'clients'>): Promise<void> {
+    return scope.clients
+      .matchAll({ type: 'window' })
+      .then(clients => {
+        reportArchiveFailure({ clients, stage, error });
+      })
+      .catch((reportError: unknown) => {
+        // eslint-disable-next-line no-console -- the worker has no logger, and this failure cannot reach a page
+        console.error('Failed to report the archive failure to the pages:', reportError);
+      });
   }
 
   /**
@@ -206,133 +386,81 @@ export function startAppServiceWorker({
     );
   }
 
-  /** Serves the handed archive at once and keeps it for a restart, answering the handoff either way. */
+  /** Serves the handed archive to its page at once and keeps it for a restart, answering the handoff either way. */
   function storeArchive(event: ExtendableMessageEvent, data: SetArchiveRequest): void {
     // An ACK without a payload would leave the sender looping forever against an empty SW.
     if (!hasArchivePayload(data)) {
       replyToPage(event, {
         type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR,
-        reason: 'SET_ARCHIVE missing packed/index payload',
+        reason: 'SET_ARCHIVE missing packed/index/directory payload',
       });
       return;
     }
-    const { packed, index, directory: sent } = data;
-
-    // A page from the previous release names no directory, and its page needs no remap.
-    const directory = typeof sent === 'string' ? sent : basePath;
-    served = { files: unpackArchive(packed, index), directory };
+    // The archive is kept under its page's client, so a handoff from no page has nowhere to go.
+    const sender = getSender(event);
+    if (sender === null) {
+      replyToPage(event, { type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR, reason: 'SET_ARCHIVE from no page' });
+      return;
+    }
+    const { packed, index, directory } = data;
+    worker.update({
+      kind: 'archiveHanded',
+      clientId: sender.id,
+      archive: { files: unpackArchive(packed, index), directory },
+    });
     // The write matters only to the next instance, so it does not hold up the ACK. `waitUntil` keeps this one alive.
     event.waitUntil(
-      persistArchive(indexedDB, { packed, index, directory }).catch((error: unknown) => {
-        // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-        console.error('Failed to persist the archive; a restarted worker will not serve it:', error);
-        const sender = getSender(event);
-        if (sender !== null) {
+      persists
+        .call(() => keepPageArchive(sender.id, { packed, index, directory }))
+        .catch((error: unknown) => {
+          // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+          console.error('Failed to persist the archive; a restarted worker will not serve it:', error);
           reportArchiveFailure({ clients: [sender], stage: 'persist', error });
-        }
-      }),
+        }),
     );
     replyToPage(event, { type: APP_SERVICE_WORKER_MESSAGES.ARCHIVE_READY });
   }
 
-  /** The archive's answer to `pathname` at its own path, or else under the page's directory. `null` when neither. */
-  function lookupServedFile(pathname: string): Response | null {
-    return lookupArchive(pathname) ?? lookupUnderPageDirectory(pathname);
-  }
-
-  /**
-   * The archive file a request means once the page's directory is read as the archive root.
-   *
-   * The page is written at the URL the visitor opened, so below the root a relative URL resolves under the page's
-   * directory, while the archive holds every file from its root. The directory is the one the page was written at, not
-   * the requester's current URL: a product's router moves its page elsewhere, and a product's worker is open at its own
-   * script's path, yet both still ask for files under the written directory.
-   */
-  function lookupUnderPageDirectory(pathname: string): Response | null {
-    const directory = served?.directory ?? basePath;
-    if (directory.length <= basePath.length || !directory.startsWith(basePath) || !pathname.startsWith(directory)) {
-      return null;
-    }
-    return lookupArchive(basePath + pathname.slice(directory.length));
-  }
-
-  /**
-   * `null` means the path is not the archive's and must reach the network: the origin also serves the shell's own
-   * assets, and a 404 for them strands a refresh on the loader.
-   */
-  function lookupArchive(pathname: string): Response | null {
-    const decoded = getArchivePath(pathname, basePath);
-    if (decoded === null) {
-      return null;
-    }
-    for (const filePath of listCandidatePaths(decoded)) {
-      const content = getFile(filePath);
-      if (content !== undefined) {
-        return new Response(content, createArchiveResponseInit(getMimeType(filePath)));
-      }
-    }
-    return null;
+  /** Forgets the clients no longer open and keeps a page's archive for a restart. Rejects as the store does. */
+  async function keepPageArchive(clientId: string, archive: PersistedArchive): Promise<void> {
+    worker.update({ kind: 'sweepStarted' });
+    const clients = await scope.clients.matchAll({ includeUncontrolled: true, type: 'all' });
+    const liveClientIds = new Set(clients.map(client => client.id));
+    worker.update({ kind: 'clientsClosed', closed: { clientId, liveClientIds } });
+    await persistPageArchive(indexedDB, { clientId, archive, liveClientIds });
   }
 }
 
-/** Whether a page's message has a type the worker acts on. */
-function isPageMessage(data: unknown): data is PageMessage {
-  return isRecord(data) && PAGE_MESSAGE_TYPES.some(type => type === data['type']);
-}
-
-/**
- * Answers a page's message on the port it sent, so a late answer cannot settle a later request and no global listener
- * is needed. A page from the previous release sends no port and hears the answer as a message to its page. Throws what
- * posting throws.
- */
-function replyToPage(event: ExtendableMessageEvent, message: WorkerReply): void {
-  const [port] = event.ports;
-  if (port !== undefined) {
-    port.postMessage(message);
-    return;
+/** `sweep` with `id` spared when it is listing. */
+function spare(sweep: Sweep, id: string): Sweep {
+  switch (sweep.kind) {
+    case 'idle':
+      return sweep;
+    case 'listing':
+      return { kind: 'listing', spared: new Set(sweep.spared).add(id) };
   }
-  getSender(event)?.postMessage(message);
 }
 
-/** The page that sent a message, or `null` when no page did. */
-function getSender(event: ExtendableMessageEvent): Client | null {
-  // A page the worker controls sends as a `Client`. No `instanceof` check, since Node has no `Client` global.
-  return event.source as Client | null;
-}
-
-/** Whether a `SET_ARCHIVE` message carries the packed archive and its index. */
-function hasArchivePayload(
-  data: SetArchiveRequest,
-): data is SetArchiveRequest & Pick<SetArchiveMessage, 'packed' | 'index'> {
-  return data.packed instanceof ArrayBuffer && Array.isArray(data.index);
-}
-
-/**
- * The archive paths a request for `decoded` may mean, in the order they are tried: the path itself, then, without an
- * extension, its `index.html` below it and beside it, then the root `index.html` for the root itself.
- */
-function listCandidatePaths(decoded: string): string[] {
-  const candidates = [decoded];
-  if (!hasExtension(decoded)) {
-    candidates.push(decoded === '' ? 'index.html' : `${decoded}/index.html`);
-    if (decoded !== '') {
-      candidates.push(`${decoded}index.html`);
-    }
+/** The client's own archive, else the archive of the page that started it. `null` when memory holds neither. */
+function getClientArchive({ byClient, workerPages }: Archives, clientId: string): ServedArchive | null {
+  const own = byClient.get(clientId);
+  if (own !== undefined) {
+    return own;
   }
-  if (decoded === '' || decoded === '/') {
-    candidates.push('index.html');
-  }
-  return candidates;
+  const pageId = workerPages.get(clientId);
+  return pageId === undefined ? null : (byClient.get(pageId) ?? null);
 }
 
-/** One source, so a new header lands on every served body. */
-function createArchiveResponseInit(mime: string): ResponseInit {
-  return {
-    status: 200,
-    headers: {
-      'Content-Type': mime,
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'no-cache',
-    },
-  };
+/** The store's records with each page's archive unpacked. */
+function unpackRestored({ pages, workerPages, newest }: PersistedArchives): Archives {
+  const byClient = new Map<string, ServedArchive>();
+  for (const [clientId, { packed, index, directory }] of pages) {
+    byClient.set(clientId, { files: unpackArchive(packed, index), directory });
+  }
+  return { byClient, workerPages, newest: newest === null ? null : (byClient.get(newest) ?? null) };
+}
+
+/** Whether a request fetches the script of a product's worker. */
+function isWorkerScript(request: Request): boolean {
+  return request.destination === 'worker' || request.destination === 'sharedworker';
 }

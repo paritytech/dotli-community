@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { Plugin } from 'vite';
 import type { LocalServing } from './createLocalServing.ts';
 import { getRequestHostname } from './getRequestHostname.ts';
-import { isProtocolPath, isSessionPath } from './siteRoutes.ts';
+import { isSessionPath } from './siteRoutes.ts';
 
 /** The pages the bare host answers with other than the shell, by their Astro routes. */
 export type FallbackPages = {
@@ -98,7 +98,7 @@ export function getFallbackAction({ request, pages, isPublicFile, getRoute }: Pa
   const appendQuery = (page: string): string => (query === undefined ? page : `${page}?${query}`);
   const route = getRoute(request.hostname, path);
   // A protocol frame load is not this server's page to answer.
-  if (isProtocolPath(path) && route.site === 'protocol') {
+  if (route.site === 'protocol') {
     return { kind: 'pass' };
   }
   if (path === '/') {

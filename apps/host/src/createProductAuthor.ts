@@ -51,40 +51,31 @@ export function createProductAuthor({ readOwner, readAccount, readUsernames, rep
   const reads = createAsyncTaskPool({ poolSize: 1 });
   const account = createHeldRead({ read: readAccount, step: 'account', report });
   const usernames = createHeldRead({ read: readUsernames, step: 'username', report });
-  // The last answer, so a load that finds every slot as it was returns the same object.
-  let last: { slots: unknown[]; result: ProductAuthorResult } | undefined;
+  // The last answer and what it was built from, so a load that finds each part as it was returns the same object.
+  let last:
+    | {
+        owner: H160Address | null;
+        mapped: PolkadotAccount | null | undefined;
+        usernames: PeopleUsernames | null | undefined;
+        result: ProductAuthorResult;
+      }
+    | undefined;
 
   async function readAuthor(): Promise<ProductAuthorResult> {
-    const ownerAddress = readOwner();
-    if (ownerAddress !== null) {
-      await account.load(ownerAddress);
+    const owner = readOwner();
+    if (owner !== null) {
+      await account.load(owner);
     }
     const mapped = account.get();
     if (typeof mapped === 'string') {
       await usernames.load(mapped);
     }
-    return getResult(ownerAddress);
-  }
-
-  function getResult(ownerAddress: H160Address | null): ProductAuthorResult {
-    const slots = [ownerAddress, account.get(), usernames.get()];
-    if (last !== undefined && slots.every((slot, index) => slot === last?.slots[index])) {
-      return last.result;
+    const held = usernames.get();
+    // The owner is never undefined, so the first load, which has no last answer, builds one.
+    if (last?.owner !== owner || last.mapped !== mapped || last.usernames !== held) {
+      last = { owner, mapped, usernames: held, result: buildResult(owner, mapped, held) };
     }
-    const result = buildResult(ownerAddress);
-    last = { slots, result };
-    return result;
-  }
-
-  function buildResult(ownerAddress: H160Address | null): ProductAuthorResult {
-    if (ownerAddress === null) {
-      return { kind: 'none' };
-    }
-    const mapped = account.get();
-    if (typeof mapped !== 'string') {
-      return { kind: 'found', author: { address: ownerAddress, username: null } };
-    }
-    return { kind: 'found', author: { address: mapped, username: getUsername(usernames.get()) } };
+    return last.result;
   }
 
   return {
@@ -121,6 +112,21 @@ function createHeldRead<Input, Value>({ read, step, report }: CreateHeldReadPara
       }
     },
   };
+}
+
+/** Builds the author from what the held reads answered, undefined for a read that has not. */
+function buildResult(
+  owner: H160Address | null,
+  mapped: PolkadotAccount | null | undefined,
+  usernames: PeopleUsernames | null | undefined,
+): ProductAuthorResult {
+  if (owner === null) {
+    return { kind: 'none' };
+  }
+  if (typeof mapped !== 'string') {
+    return { kind: 'found', author: { address: owner, username: null } };
+  }
+  return { kind: 'found', author: { address: mapped, username: getUsername(usernames) } };
 }
 
 function getUsername(usernames: PeopleUsernames | null | undefined): AuthorUsername | null {

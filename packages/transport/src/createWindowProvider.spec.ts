@@ -90,16 +90,14 @@ describe('createWindowProvider', () => {
     expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://a.peer.example']);
   });
 
-  it('As an embedded page, I hear an object from an allowed origin and stay unlocked to that origin', () => {
+  it('As an embedded page, I drop an object from an allowed origin and stay unlocked to that origin', () => {
     // Given
     const listen = createTarget();
     const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
     const provider = createWindowProvider({
       listen,
       peer: () => parent,
       origin: origin => origin.endsWith('.peer.example'),
-      onNotBytes,
     });
     const heard = vi.fn();
     provider.subscribe(heard);
@@ -112,7 +110,7 @@ describe('createWindowProvider', () => {
     });
 
     // Then
-    expect(onNotBytes).toHaveBeenCalledOnce();
+    expect(heard).not.toHaveBeenCalled();
     expect(thrown).toEqual(matchInstance(Error));
 
     // When
@@ -138,36 +136,20 @@ describe('createWindowProvider', () => {
     expect(thrown).toEqual(matchInstance(Error));
   });
 
-  it('As an embedded page, I count objects from my parent and drop them', () => {
+  it("As an embedded page, I answer my parent's first bytes from inside my listener and the answer goes to its origin", () => {
     // Given
     const listen = createTarget();
     const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
-    const provider = createWindowProvider({ listen, peer: () => parent, origin: () => true, onNotBytes });
-    const heard = vi.fn();
-    provider.subscribe(heard);
+    const provider = createWindowProvider({ listen, peer: () => parent, origin: () => true });
+    provider.subscribe(() => {
+      provider.postMessage(new Uint8Array(1));
+    });
 
     // When
-    listen.dispatchEvent(messageFrom(parent, 'https://a.peer.example', { type: 'hello' }));
-    listen.dispatchEvent(messageFrom(createFakeWindow(), 'https://a.peer.example', { type: 'stranger' }));
+    listen.dispatchEvent(messageFrom(parent, 'https://parent.example', new ArrayBuffer(1)));
 
     // Then
-    expect(onNotBytes).toHaveBeenCalledTimes(1);
-    expect(heard).not.toHaveBeenCalled();
-  });
-
-  it('As an embedded page, I hear an object from an origin my predicate rejects and do not count it', () => {
-    // Given
-    const listen = createTarget();
-    const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
-    createWindowProvider({ listen, peer: () => parent, origin: () => false, onNotBytes });
-
-    // When
-    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', {}));
-
-    // Then
-    expect(onNotBytes).not.toHaveBeenCalled();
+    expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://parent.example']);
   });
 
   it('As an embedded page, I hear bytes from an origin my predicate refuses and never deliver them, before or after my lock', () => {
@@ -340,57 +322,5 @@ describe('createWindowProvider', () => {
     // Then
     expect(heard).not.toHaveBeenCalled();
     expect(thrown).toEqual(matchInstance(Error));
-  });
-
-  it('As either side, I am disposed by a listener and the message stops reaching the others', () => {
-    // Given
-    const listen = createTarget();
-    const frame = createFakeWindow();
-    const provider = createWindowProvider({ listen, peer: () => frame, origin: 'https://peer.example' });
-    const disposing = vi.fn(() => {
-      provider.dispose();
-    });
-    const sibling = vi.fn();
-    provider.subscribe(disposing);
-    provider.subscribe(sibling);
-
-    // When
-    listen.dispatchEvent(messageFrom(frame, 'https://peer.example', new ArrayBuffer(1)));
-
-    // Then
-    expect(disposing).toHaveBeenCalledOnce();
-    expect(sibling).not.toHaveBeenCalled();
-  });
-
-  it('As either side, I add a listener after I dispose and it hears nothing', () => {
-    // Given
-    const listen = createTarget();
-    const frame = createFakeWindow();
-    const provider = createWindowProvider({ listen, peer: () => frame, origin: 'https://peer.example' });
-    provider.dispose();
-    const heard = vi.fn();
-
-    // When
-    provider.subscribe(heard);
-    listen.dispatchEvent(messageFrom(frame, 'https://peer.example', new ArrayBuffer(1)));
-
-    // Then
-    expect(heard).not.toHaveBeenCalled();
-  });
-
-  it('As either side, I unsubscribe and stop hearing', () => {
-    // Given
-    const listen = createTarget();
-    const frame = createFakeWindow();
-    const provider = createWindowProvider({ listen, peer: () => frame, origin: 'https://peer.example' });
-    const heard = vi.fn();
-    const unsubscribe = provider.subscribe(heard);
-
-    // When
-    unsubscribe();
-    listen.dispatchEvent(messageFrom(frame, 'https://peer.example', new ArrayBuffer(1)));
-
-    // Then
-    expect(heard).not.toHaveBeenCalled();
   });
 });

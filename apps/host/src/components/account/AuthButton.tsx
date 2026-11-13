@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, createSignal, lazy, onSettled, Show, untrack, type Accessor } from 'solid-js';
+import { createMemo, createSignal, lazy, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
 import { AlertTriangleIcon } from '@dotli/ui/icons';
@@ -91,71 +91,31 @@ function getAuthTitle(state: AuthButtonState, label: string): string {
   }
 }
 
-type ButtonAppearance = {
+type ButtonLook = {
   variant: 'primary' | 'secondary';
   class: string;
 };
 
-/** How a face looks: the button's variant and class, and what the button shows. */
-type FaceLook = ButtonAppearance & {
-  /** The session the face shows as its avatar, or undefined when it shows an icon. */
-  avatar: AccountSession | undefined;
-  /** The name beside the avatar, on a page that shows names. */
-  name: string | undefined;
-  /** Whether the alert icon stands in place of the user icon and the prompt's text. */
-  alert: boolean;
-  /** The prompt's text beside the user icon. */
-  text: string;
-  /** Whether the prompt continues a sign-in made elsewhere, which `data-session` says. */
-  resumes: boolean;
-};
-
-/** An icon chip: the button shows an icon, not an avatar. */
-const ICON_CHIP_LOOK: FaceLook = {
-  variant: 'secondary',
-  class: [s['chip'], s['avatarOnly']].join(' '),
-  avatar: undefined,
-  name: undefined,
-  alert: false,
-  text: 'Sign in',
-  resumes: false,
-};
-
-/** The look of `face`: a chip for the account and the alert, else the sign-in pill. */
-function getFaceLook(face: AuthButtonFace, showName: boolean): FaceLook {
-  switch (face.kind) {
-    case 'account':
-      return getAccountLook(face.session, showName);
-    case 'prompt':
-      return {
-        variant: 'primary',
-        class: s['signIn'] ?? '',
-        avatar: undefined,
-        name: undefined,
-        alert: false,
-        text: face.resumes ? 'Continue session' : 'Sign in',
-        resumes: face.resumes,
-      };
-    case 'alert':
-      return { ...ICON_CHIP_LOOK, alert: true };
-  }
+/** The name beside the account's avatar, on a page that shows names. */
+function getShownName(session: AccountSession, showName: boolean): string | undefined {
+  return showName ? sessionDisplayName(session) : undefined;
 }
 
-/** The account's chip: its avatar and, on a page that shows names, its name. With no session to show, an icon chip. */
-function getAccountLook(session: AccountSession | undefined, showName: boolean): FaceLook {
-  if (session === undefined) {
-    return ICON_CHIP_LOOK;
+/** A chip, as wide as its avatar or icon unless it shows a name. */
+function chipLook(named: boolean): ButtonLook {
+  return { variant: 'secondary', class: [s['chip'], named ? undefined : s['avatarOnly']].join(' ').trim() };
+}
+
+/** The look of `face`: a chip for the account and the alert, else the sign-in pill. */
+function getButtonLook(face: AuthButtonFace, showName: boolean): ButtonLook {
+  switch (face.kind) {
+    case 'account':
+      return chipLook(getShownName(face.session, showName) !== undefined);
+    case 'prompt':
+      return { variant: 'primary', class: s['signIn'] ?? '' };
+    case 'alert':
+      return chipLook(false);
   }
-  const name = showName ? sessionDisplayName(session) : undefined;
-  return {
-    variant: 'secondary',
-    class: [s['chip'], name === undefined ? s['avatarOnly'] : undefined].join(' ').trim(),
-    avatar: session,
-    name,
-    alert: false,
-    text: 'Sign in',
-    resumes: false,
-  };
 }
 
 /**
@@ -169,17 +129,59 @@ function getAccountLook(session: AccountSession | undefined, showName: boolean):
 export function AuthButton(props: AuthButtonProps): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-  const account = (): Account => props.account;
-  const opensPopover = (): boolean => account().connected();
-  const state = createMemo(() => getAuthButtonState(account()));
-  const look = createMemo(() => getFaceLook(state().face, props.showName === true));
-  const label = (): string => getAuthLabel(state(), account().local());
+  const opensPopover = (): boolean => props.account.connected();
+  const state = createMemo(() => getAuthButtonState(props.account));
+  const look = createMemo(() => getButtonLook(state().face, props.showName === true));
+  const label = (): string => getAuthLabel(state(), props.account.local());
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
-    const avatar = look().avatar;
-    const initials = avatar === undefined ? undefined : sessionInitials(avatar);
-    const visible = [initials, look().name].filter(part => part !== undefined).join(' ');
-    return visible === '' ? label() : `${visible}, ${getAccountKind(account().local()).toLowerCase()}`;
+    const face = state().face;
+    switch (face.kind) {
+      case 'account': {
+        const visible = [sessionInitials(face.session), getShownName(face.session, props.showName === true)]
+          .filter(part => part !== undefined)
+          .join(' ');
+        return visible === '' ? label() : `${visible}, ${getAccountKind(props.account.local()).toLowerCase()}`;
+      }
+      case 'prompt':
+      case 'alert':
+        return label();
+    }
+  };
+  const faceContent = (): JSX.Element => {
+    const face = state().face;
+    switch (face.kind) {
+      case 'account': {
+        const name = getShownName(face.session, props.showName === true);
+        return (
+          <>
+            <AccountAvatar session={face.session} size="sm" local={props.account.local()} testId="user-badge" />
+            {/* The space keeps the initials and the name apart in the visible text, as in the button's name. */}
+            {name === undefined ? null : (
+              <>
+                {' '}
+                <span class={s['name']}>{name}</span>
+              </>
+            )}
+          </>
+        );
+      }
+      case 'prompt':
+        return (
+          <>
+            <UserIcon class={s['signInIcon']} />
+            <span
+              class={s['label']}
+              data-testid="auth-button-label"
+              data-session={face.resumes ? 'elsewhere' : undefined}
+            >
+              {face.resumes ? 'Continue session' : 'Sign in'}
+            </span>
+          </>
+        );
+      case 'alert':
+        return <AlertTriangleIcon class={s['signInIcon']} />;
+    }
   };
   onSettled(() => {
     const el = untrack(button);
@@ -187,7 +189,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
   });
   // While connected the Popover's own trigger listener takes the click.
   const onClick = (): void => {
-    if (!account().connected()) {
+    if (!props.account.connected()) {
       props.onSignIn();
     }
   };
@@ -212,36 +214,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         variant={look().variant}
         class={look().class}
       >
-        <Show
-          when={look().avatar}
-          fallback={
-            <Show when={!look().alert} fallback={<AlertTriangleIcon class={s['signInIcon']} />}>
-              <UserIcon class={s['signInIcon']} />
-              <span
-                class={s['label']}
-                data-testid="auth-button-label"
-                data-session={look().resumes ? 'elsewhere' : undefined}
-              >
-                {look().text}
-              </span>
-            </Show>
-          }
-        >
-          {session => (
-            <>
-              <AccountAvatar session={session()} size="sm" local={account().local()} testId="user-badge" />
-              <Show when={look().name}>
-                {name => (
-                  // The space keeps the initials and the name apart in the visible text, as in the button's name.
-                  <>
-                    {' '}
-                    <span class={s['name']}>{name()}</span>
-                  </>
-                )}
-              </Show>
-            </>
-          )}
-        </Show>
+        {faceContent()}
       </Button>
       <Popover
         id={id('user-popover')}

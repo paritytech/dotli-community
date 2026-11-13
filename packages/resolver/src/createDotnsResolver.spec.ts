@@ -11,8 +11,9 @@ import { atom } from 'nanostores';
 import { getActiveServicesConfig } from '@dotli/config';
 import { bindLogSink } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
-import { createDotnsResolver, type ChainClient, type DotnsResolver } from './createDotnsResolver.js';
+import { createDotnsResolver, type DotnsResolver } from './createDotnsResolver.js';
 import type { Api } from './createRawApi.js';
+import type { ChainClient } from './createSyncedClient.js';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 /** A chain client whose follow can be stopped from the test. */
@@ -31,6 +32,8 @@ type ApiShape = {
   readFails?: Error;
   /** The chain halts under the read, in the pool's order: the read is answered first, then the follow stops. */
   haltsOnRead?: boolean;
+  /** The follow stops as it reaches its first block: `whenReady` stops it, then resolves. */
+  stopsAsReady?: boolean;
 };
 
 /** Hands out clients in order, each shaped by the next entry, and plain ones once the list runs out. */
@@ -44,16 +47,29 @@ function createFakeClients(shapes: ApiShape[] = []): {
     // Connected as papi's client would, so the test sees each lease taken and released.
     const connection = provider(() => undefined);
     const stops: (() => void)[] = [];
+    let stopped = false;
     function stop(): void {
+      stopped = true;
       for (const callback of stops.splice(0)) {
         callback();
       }
     }
     const api: Api = {
-      whenReady: shape.whenReady ?? (() => Promise.resolve()),
-      withBestBlock: <T>(read: (hash: string) => Promise<T>) => read('0x01'),
+      whenReady:
+        shape.whenReady ??
+        (() => {
+          if (shape.stopsAsReady === true) {
+            stop();
+          }
+          return Promise.resolve();
+        }),
+      withBestBlock: <T>(read: (hash: string) => Promise<T>) =>
+        stopped ? Promise.reject(new ApiStoppedError()) : read('0x01'),
       resolveTrieId: () => Promise.resolve(null),
       readSlot: () => {
+        if (stopped) {
+          return Promise.reject(new ApiStoppedError());
+        }
         const answer = shape.readFails === undefined ? Promise.resolve(null) : Promise.reject(shape.readFails);
         if (shape.haltsOnRead === true) {
           stop();
@@ -61,6 +77,10 @@ function createFakeClients(shapes: ApiShape[] = []): {
         return answer;
       },
       onStop: (callback: () => void) => {
+        if (stopped) {
+          callback();
+          return () => undefined;
+        }
         stops.push(callback);
         return () => undefined;
       },
@@ -140,6 +160,34 @@ describe('createDotnsResolver', () => {
     expect(leasesBeforeStop).toBe(1);
     expect(assetHub).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("As an operator, I see Asset Hub's follow that stopped under a ready client reported and counted as an expected failure", async () => {
+    // Given a ready Asset Hub client
+    const reports = recordReports({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dotns, opened } = createResolver();
+    await dotns.resolveOwner('alice');
+
+    // When its follow stops
+    must(opened[0], 'first client').stop();
+
+    // Then the stop was reported and counted under its own step
+    expect(reports.expected).toMatchObject([{ step: 'follow_stop' }]);
+    expect(metrics.counted('resolve.follow_stop')).toEqual([{ outcome: 'error', reason: 'ApiStoppedError' }]);
+  });
+
+  it("As a dotli user on a light client, I resolve a name on a rebuilt client when Asset Hub's follow stops just as it syncs", async () => {
+    // Given a first client whose follow stops as it reaches its first block
+    const { dotns, opened } = createResolver([{ stopsAsReady: true }]);
+
+    // When
+    const owner = await dotns.resolveOwner('alice');
+
+    // Then
+    expect(owner).toBeNull();
+    expect(assetHub).toHaveBeenCalledTimes(2);
+    expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
   });
 
   it('As the host on a cold start, I make three concurrent reads and they share one Asset Hub client', async () => {
@@ -412,31 +460,30 @@ describe('createDotnsResolver', () => {
     expect(phases).toEqual(['asset-hub-syncing', 'asset-hub-syncing', 'asset-hub-ready', 'resolving-content']);
   });
 
-  it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {
-    // Given
-    const { dotns } = createResolver([{ whenReady: () => Promise.reject(new Error('no peers')) }]);
+  it('As the host whose store listener throws as Asset Hub turns ready, I get my answer, the client stays, and the throw is reported', async () => {
+    // Given a store the phase callback writes, whose listener throws on asset-hub-ready
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const { dotns, opened } = createResolver();
+    const phase = atom<string | null>(null);
+    onTestFinished(
+      phase.listen(next => {
+        if (next === 'asset-hub-ready') {
+          throw new Error('listener broke');
+        }
+      }),
+    );
 
     // When
-    const presync = await dotns.waitForAssetHubFinalized().catch((error: unknown) => error);
-    const owner = await dotns.resolveOwner('alice');
+    const owner = await dotns.resolveOwner('alice', {
+      onPhase: next => {
+        phase.set(next);
+      },
+    });
 
     // Then
-    expect(presync).toEqual(new Error('no peers'));
     expect(owner).toBeNull();
-    expect(assetHub).toHaveBeenCalledTimes(2);
-  });
-
-  it('As a second product resolving after Asset Hub synced, I hear asset-hub-ready before my name resolves', async () => {
-    // Given
-    const { dotns } = createResolver();
-    await dotns.resolveDotName('alice');
-    const phases: string[] = [];
-
-    // When
-    await dotns.resolveDotName('alice', { onPhase: phase => phases.push(phase) });
-
-    // Then
-    expect(phases).toEqual(['asset-hub-ready', 'resolving-content']);
+    expect(must(opened[0], 'first client').destroy).not.toHaveBeenCalled();
+    expect(captured).toMatchObject([{ step: 'synced_client_transition' }]);
   });
 
   it("As the host waiting on a name, I hear the client's phases while it is built, then the content read", async () => {
@@ -476,26 +523,6 @@ describe('createDotnsResolver', () => {
     expect(metrics.measurements).toEqual([]);
   });
 
-  it('As a visitor on a gateway, I still resolve a name when the host pool halts the Asset Hub connection under the read', async () => {
-    // Given
-    const { dotns: gateway } = createResolver(
-      [
-        {
-          readFails: new RpcError({ code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' }),
-          haltsOnRead: true,
-        },
-      ],
-      'rpc-gateway',
-    );
-
-    // When
-    const owner = await gateway.resolveOwner('alice');
-
-    // Then
-    expect(owner).toBeNull();
-    expect(assetHub).toHaveBeenCalledTimes(2);
-  });
-
   it('As the protocol frame, I warm People twice and open one People client, and a resolver with no People connection skips it', async () => {
     // Given
     const people = vi.fn<() => JsonRpcProvider>(() => () => ({ send: () => undefined, disconnect: () => undefined }));
@@ -512,4 +539,83 @@ describe('createDotnsResolver', () => {
     expect(people).toHaveBeenCalledTimes(1);
     expect(fake.opened).toHaveLength(1);
   });
+
+  it('As the protocol frame, I see my People warm fail as stopped when its follow stops just as it syncs, and the next warm opens a new client', async () => {
+    // Given a People client whose follow stops as it reaches its first block
+    const people = vi.fn<() => JsonRpcProvider>(() => () => ({ send: () => undefined, disconnect: () => undefined }));
+    const { open } = createFakeClients([{ stopsAsReady: true }]);
+    const dotns = createDotnsResolver({
+      assetHub,
+      people,
+      dotns: getActiveServicesConfig().dotns,
+      source: 'light-client',
+      open,
+    });
+
+    // When
+    const first = await dotns.waitForPeopleFinalized().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await dotns.waitForPeopleFinalized();
+
+    // Then
+    expect(first).toBeInstanceOf(ApiStoppedError);
+    expect(people).toHaveBeenCalledTimes(2);
+  });
+
+  it('As the host whose Asset Hub connection cannot open, I see my read fail with that error, and the next read opens one', async () => {
+    // Given
+    assetHub.mockImplementationOnce(() => {
+      throw new Error('no connection');
+    });
+    const { dotns } = createResolver();
+
+    // When
+    const failure = await dotns.resolveOwner('alice').then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const owner = await dotns.resolveOwner('alice');
+
+    // Then
+    expect(failure).toEqual(new Error('no connection'));
+    expect(owner).toBeNull();
+    expect(assetHub).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['a light client that ended', 'AlreadyDestroyedError', 'expected'],
+    ['a bug', 'TypeError', 'exceptions'],
+  ] as const)(
+    'As an operator, I see a chain client whose teardown throws for %s reported and counted under its own step',
+    async (_case, name, kind) => {
+      // Given an Asset Hub connection that refuses the follow, and whose disconnect throws
+      const reports = recordReports({ onFinished: onTestFinished });
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      const refusing: JsonRpcProvider = onMessage => ({
+        send: request => {
+          queueMicrotask(() => {
+            onMessage({ jsonrpc: '2.0', id: request.id ?? null, error: { code: -32_000, message: 'refused' } });
+          });
+        },
+        disconnect: () => {
+          const error = new Error('light client gone');
+          error.name = name;
+          throw error;
+        },
+      });
+      const dotns = createDotnsResolver({
+        assetHub: () => refusing,
+        dotns: getActiveServicesConfig().dotns,
+        source: 'rpc-gateway',
+      });
+
+      // When the build fails and its client is torn down
+      await dotns.waitForAssetHubFinalized().catch(() => undefined);
+
+      // Then
+      expect(reports[kind]).toMatchObject([{ step: 'client_destroy' }]);
+      expect(metrics.counted('resolve.client_destroy')).toEqual([{ outcome: 'error', reason: name }]);
+    },
+  );
 });

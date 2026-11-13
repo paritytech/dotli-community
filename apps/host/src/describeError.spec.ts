@@ -42,8 +42,8 @@ describe('host error classification', () => {
     });
   });
 
-  it('As a dotli user beside an older protocol frame, I see a halted read that crossed by its text alone described as an unknown failure', () => {
-    // Given a halted read that crossed from a frame that predates the typed halt
+  it('As a dotli user, I see a read that crossed with only the halted text, and no typed halt, described as an unknown failure', () => {
+    // Given a gateway read that says it halted but carries no typed halt
     const failure = createCrossedError('Chain transport halted', 'RpcError');
 
     // When

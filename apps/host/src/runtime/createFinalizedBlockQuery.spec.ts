@@ -83,7 +83,7 @@ describe('queryFinalizedBlock', () => {
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
-  it('As a dotli maintainer, I see a client that throws as it closes after answering counted once and as an error', async () => {
+  it('As a dotli maintainer, I see a client that throws as it closes after answering counted once as an error, and its height still shown', async () => {
     // Given a chain that answers, on a client whose close throws
     const { captures, counted } = bindReports();
     const client = createReadingClient(Promise.resolve({ number: 42 }));
@@ -96,9 +96,10 @@ describe('queryFinalizedBlock', () => {
     });
 
     // When the block is queried
-    await queryFinalizedBlock(PEOPLE_GENESIS);
+    const height = await queryFinalizedBlock(PEOPLE_GENESIS);
 
-    // Then the query is counted once, for the close that failed
+    // Then the height the chain gave comes back and the query is counted once, for the close that failed
+    expect(height).toBe(42);
     expect(counted('diagnostics.finalized_block')).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(captures.exception).toHaveBeenCalledTimes(1);
   });

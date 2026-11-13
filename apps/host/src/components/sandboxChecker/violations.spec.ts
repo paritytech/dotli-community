@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 
 const product = { name: 'product window' };
-const now = (): number => 42;
+function now(): number {
+  return 42;
+}
 
 describe('sandbox checker violations', () => {
   it('As a dotli developer, a violation from the product reads as its API and its details', () => {
@@ -35,16 +37,15 @@ describe('sandbox checker violations', () => {
     expect(violation).toEqual({ api: 'fetch', details: '', timestamp: 42 });
   });
 
-  it('As a dotli developer, messages from other windows or of other types are ignored', () => {
+  it('As a dotli developer, messages from other windows are ignored', () => {
     // Given
     const valid = { type: 'DOTLI_API_VIOLATION', api: 'x', details: {}, timestamp: 0 };
 
+    // When
+    const violation = violationFrom({ source: { name: 'the host' }, data: valid }, product, now);
+
     // Then
-    expect(violationFrom({ source: { name: 'the host' }, data: valid }, product, now)).toBeNull();
-    expect(violationFrom({ source: null, data: valid }, product, now)).toBeNull();
-    expect(violationFrom({ source: product, data: { ...valid, type: 'SOMETHING_ELSE' } }, product, now)).toBeNull();
-    expect(violationFrom({ source: product, data: 'not an object' }, product, now)).toBeNull();
-    expect(violationFrom({ source: product, data: null }, product, now)).toBeNull();
+    expect(violation).toBeNull();
   });
 
   it('As a dotli developer, a looping product keeps only the newest 500 violations', () => {

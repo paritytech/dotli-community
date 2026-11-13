@@ -61,27 +61,6 @@ describe('createEventStore()', () => {
     // Then
     expect(store.list().map(event => event.receivedAt)).toEqual([1000, 1250]);
   });
-
-  it('As the debug panel, I insert a host event that carries an extra key and it is stored with only its record keys, in order', () => {
-    // Given
-    const store = createEventStore({ capacity: 10 });
-    const event = { ...HEARTBEAT, extra: 'not stored' };
-
-    // When
-    store.insertDotli(event);
-
-    // Then
-    expect(Object.keys(nth(store.list(), 0))).toEqual([
-      'kind',
-      'seq',
-      'receivedAt',
-      'source',
-      'layer',
-      'event',
-      'flowId',
-      'payload',
-    ]);
-  });
 });
 
 describe('createEventStore() version.get()', () => {

@@ -101,40 +101,6 @@ describe('resolveSettings', () => {
     expect(settings.network).toBe('paseo-next-v2');
   });
 
-  it('As a visitor from an old build, I return and get the backend my old mode key names', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { 'dotli:mode': 'gateway' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.backend).toBe('rpc-gateway');
-  });
-
-  it('As a visitor whose browser lacks SharedWorker, I follow a link naming the shared light client and run per tab', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'rpc-gateway' } });
-    const url = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, url, sharedWorkerAvailable: false });
-
-    // Then
-    expect(settings.backend).toBe('smoldot-direct');
-  });
-
-  it('As a visitor whose stored cache settings are malformed, I return and every cache is on', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [CACHE_KEY]: '{"skipCidCache":' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.cache).toEqual(DEFAULT_CACHE);
-  });
-
   it('As a first-time visitor on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
     const { settings } = resolveSettings({
@@ -181,17 +147,6 @@ describe('resolveSettings', () => {
     // Then
     expect(url.network).toBeNull();
     expect(settings.network).toBe('previewnet');
-  });
-
-  it('As a visitor with a valid backend and a stale old mode key, I return and the backend I chose wins', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.backend).toBe('smoldot-direct');
   });
 
   it('As a visitor whose browser lacks SharedWorker, I am told only when the shared light client was my choice', () => {

@@ -8,13 +8,8 @@ export function waitForIdbRequest<T>(request: IDBRequest<T>): Promise<T> {
       resolve(request.result);
     };
     request.onerror = () => {
-      reject(request.error ?? new Error(describeFailure(request)));
+      // A failed request carries its error. The fallback only keeps the rejection an Error for the types.
+      reject(request.error ?? new Error('IndexedDB request failed'));
     };
   });
-}
-
-function describeFailure(request: IDBRequest): string {
-  // An open or delete request has a transaction only while it upgrades, so any other has no database to name.
-  const name = request.transaction?.db.name;
-  return name === undefined ? 'IndexedDB request failed' : `IndexedDB request failed in ${name} DB`;
 }

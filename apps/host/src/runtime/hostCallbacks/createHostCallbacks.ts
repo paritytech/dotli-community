@@ -12,8 +12,8 @@ import { localStorageCallbacks } from './createLocalStorageCallbacks.js';
 import { createProductOperations } from './createProductOperations.js';
 import { createPreimageAdapters } from './createPreimageAdapters.js';
 import { createChainConnect } from './createChainConnect.js';
-import { createFeatureSupported } from './createFeatureSupported.js';
-import { createSupportedChains } from './createSupportedChains.js';
+import { getFeatureSupport } from './getFeatureSupport.js';
+import { listSupportedChains } from './listSupportedChains.js';
 import { createThemeSubscribe } from './createThemeSubscribe.js';
 import { createLocaleSubscribe } from './createLocaleSubscribe.js';
 import { createAuthStateChanged } from '../session/createAuthStateChanged.js';
@@ -75,18 +75,13 @@ export function createHostCallbacks({
     }),
     permissions,
     features: {
-      featureSupported: createFeatureSupported(),
-      supportedChains: createSupportedChains(),
+      featureSupported: getFeatureSupport,
+      supportedChains: listSupportedChains,
     },
     // Every chain builds as V4. The V5-only extrinsics (allowances, PGAS claims, dotNS registrations) are built by
     // native cores alone, and Bulletin preimages, the browser core's own, are V4 on every host.
     extrinsicVersion: { transactionExtensionVersions: () => Promise.resolve({ chains: [] }) },
-    productStorage: {
-      read: localStorageCallbacks.read,
-      write: localStorageCallbacks.write,
-      clear: localStorageCallbacks.clear,
-      subscribeStorage: localStorageCallbacks.subscribe,
-    },
+    productStorage: localStorageCallbacks,
     productOperations: createProductOperations(),
     coreStorage: coreStorage.createAdapters({ sessionInMemory }),
     auth: {

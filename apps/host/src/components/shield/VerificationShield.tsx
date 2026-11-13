@@ -7,7 +7,6 @@ import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
 import type { ShieldState } from '../../state/urlPillState.js';
 import { CONNECTION_LABELS } from './connectionLabels.js';
-import { VERIFICATION_SHIELD_ID } from './verificationShieldIds.js';
 import s from './VerificationShield.module.css';
 
 export type VerificationShieldProps = {
@@ -31,7 +30,6 @@ export function VerificationShield(props: VerificationShieldProps): JSX.Element 
 
   return (
     <span
-      id={VERIFICATION_SHIELD_ID}
       class={s['shield']}
       data-testid="verification-shield"
       data-state={props.state() ?? undefined}

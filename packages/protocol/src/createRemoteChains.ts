@@ -5,7 +5,17 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
+import {
+  createRandomId,
+  createStateMachine,
+  nest,
+  noop,
+  serializeError,
+  setErrorName,
+  toError,
+  type HandlerOf,
+  type MachineTypes,
+} from '@dotli/shared';
 import { createChainHaltedError, createJsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { FrameRpc } from './createFrameRpc.js';
 import { isRemoteChainConnectable } from './isRemoteChainConnectable.js';
@@ -21,6 +31,20 @@ const report = createReporter({ flow: 'protocol' });
 const protocolChainMessageMetric = defineCount<'error'>('protocol.chain_message');
 
 /**
+ * A remote chains transition that threw. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+const remoteChainsTransitionMetric = defineCount<'error'>('protocol.remote_chains_transition');
+
+/**
+ * A chain connect that failed: the frame refused it, its budget ran out, or the frame went down. Tagged `outcome`
+ * (error) and `reason` (the error's name).
+ */
+const remoteChainConnectMetric = defineCount<'error'>('protocol.remote_chain_connect');
+
+/** A request the frame refused to send on a live chain connection. Tagged `outcome` (error) and `reason` (the error's name). */
+const remoteChainSendMetric = defineCount<'error'>('protocol.remote_chain_send');
+
+/**
  * A remote chain provider whose connections may hear `onHalt` once:
  *
  * - `'chain'`: the chain halted and is rebuilt on the next connect. Every request in flight or unsent
@@ -28,8 +52,8 @@ const protocolChainMessageMetric = defineCount<'error'>('protocol.chain_message'
  * - `'frame'`: the frame died, never came up or refused the connection. Only unsent requests are
  *   answered, so a consumer without `onHalt` may wait on the rest forever.
  *
- * Later sends fail with `Chain connection is closed`. A message already on its way may still arrive
- * after `onHalt` and should be ignored.
+ * Later sends fail with `Chain connection is closed`. A chain message that arrives after the halt or the disconnect is
+ * dropped.
  */
 export type RemoteChainProvider = (
   onMessage: (message: JsonRpcMessage) => void,
@@ -40,76 +64,309 @@ type Params = {
   rpc: FrameRpc;
 };
 
-type RemoteChainConnection = {
+/** The side of a connection that hears it. */
+type Consumer = {
   onMessage: (message: JsonRpcMessage) => void;
   /** Told once when the chain behind this connection halts. */
-  onHalt: ((reason: RemoteChainHalt) => void) | null;
-  /** What the consumer sent before the frame accepted the connection, in order. */
-  pendingMessages: JsonRpcRequest[];
-  connected: boolean;
+  onHalt: (reason: RemoteChainHalt) => void;
 };
 
-/** One connection of the consumer's, under its id. */
-type ConnectionParams = {
-  connectionId: string;
-  connection: RemoteChainConnection;
-};
+/** What a request that never got its own answer is answered with. */
+type RequestError = string | ReturnType<typeof createChainHaltedError>;
+
+/**
+ * One connection. `pending` is what the consumer sent before the frame accepted the connection, in order. `leave`
+ * ends the connect, and the subscription once it is up. A closed connection leaves the table.
+ */
+type Connection =
+  | { kind: 'connecting'; consumer: Consumer; pending: readonly JsonRpcRequest[]; leave: AbortController }
+  | { kind: 'connected'; consumer: Consumer; leave: AbortController }
+  | { kind: 'closed' };
+
+type ChainsState = { kind: 'open'; connections: ReadonlyMap<string, Connection> };
+
+type ChainsEvent =
+  | { kind: 'opened'; connectionId: string; genesisHash: string; consumer: Consumer }
+  | { kind: 'chainConnected'; connectionId: string }
+  | { kind: 'chainMessage'; connectionId: string; message: string }
+  | { kind: 'chainEnded'; connectionId: string; error: Error | null }
+  | { kind: 'consumerSent'; connectionId: string; request: JsonRpcRequest; consumer: Consumer }
+  // No state handles it: a send the frame took changes nothing, but its work still has to end in an event.
+  | { kind: 'sendAnswered'; connectionId: string }
+  | { kind: 'sendFailed'; connectionId: string; request: JsonRpcRequest; error: unknown }
+  | { kind: 'disconnected'; connectionId: string };
+
+type ChainsEffect =
+  | { kind: 'connect'; connectionId: string; genesisHash: string; signal: AbortSignal }
+  | { kind: 'send'; connectionId: string; request: JsonRpcRequest }
+  | { kind: 'leave'; leave: AbortController }
+  | { kind: 'deliver'; consumer: Consumer; message: JsonRpcMessage }
+  | { kind: 'answer'; consumer: Consumer; request: JsonRpcRequest; error: RequestError }
+  | { kind: 'halt'; consumer: Consumer; reason: RemoteChainHalt }
+  | { kind: 'messageUnparsed'; connectionId: string; error: unknown }
+  | { kind: 'connectErrored'; error: unknown }
+  | { kind: 'sendErrored'; error: unknown };
+
+type ChainsMachine = MachineTypes<ChainsState, ChainsEvent, ChainsEffect>;
+
+type ConnectionMachine = MachineTypes<Connection, ChainsEvent, ChainsEffect>;
 
 const { chain } = protocolSchema.sections;
 
 /** Connections to the frame's chains, each request on `rpc`. */
 export function createRemoteChains({ rpc }: Params) {
-  const chainConnections = new Map<string, RemoteChainConnection>();
-
-  /** Hands one chain message to its connection. One that is not JSON is reported and dropped. */
-  function deliver({ connectionId, connection, message }: ConnectionParams & { message: string }): void {
+  /** Hands one chain message to its consumer. One that is not JSON is reported and dropped. */
+  const deliverMessage: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'chainMessage'> = (
+    { consumer },
+    { connectionId, message },
+    { emitSideEffect },
+  ) => {
     let parsed: JsonRpcMessage;
     try {
       // The frame relays the chain's JSON-RPC text as it is, and the consumer reads it as a JSON-RPC message.
       parsed = JSON.parse(message) as JsonRpcMessage;
     } catch (error: unknown) {
-      report.defect(error, {
-        step: 'chain_message_parse',
-        metric: protocolChainMessageMetric,
-        message: `[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`,
-      });
+      emitSideEffect({ kind: 'messageUnparsed', connectionId, error });
       return;
     }
-    guardConsumer('message', () => {
-      connection.onMessage(parsed);
-    });
+    emitSideEffect({ kind: 'deliver', consumer, message: parsed });
+  };
+
+  // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget or never found the frame
+  // up, or a frame that went down, and halts like a dead frame so a caching consumer drops it. The halt drops
+  // the connection, so a send made from the halt listener is answered as closed.
+  const endChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'chainEnded'> = (
+    connection,
+    { error },
+    { emitState, emitSideEffect },
+  ) => {
+    emitState({ kind: 'closed' });
+    const { consumer } = connection;
+    const reason: RemoteChainHalt = error === null ? 'chain' : 'frame';
+    if (connection.kind === 'connecting') {
+      if (error !== null) {
+        emitSideEffect({ kind: 'connectErrored', error });
+      }
+      // A chain halt is retryable, unlike the dead frame's plain close.
+      const answer = reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed';
+      for (const request of connection.pending) {
+        emitSideEffect({ kind: 'answer', consumer, request, error: answer });
+      }
+    }
+    emitSideEffect({ kind: 'halt', consumer, reason });
+  };
+
+  // Leaving aborts the connect, or the subscription once it is up, as a disconnect, so its trail still ends. A connect
+  // still queued is never sent, one the frame has is closed there, and one the frame is not up for never goes out.
+  const leaveChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'disconnected'> = (
+    { leave },
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
+    emitState({ kind: 'closed' });
+    emitSideEffect({ kind: 'leave', leave });
+  };
+
+  const handleConnection = nest<
+    ChainsMachine,
+    'open',
+    ConnectionMachine,
+    'chainConnected' | 'chainMessage' | 'chainEnded' | 'consumerSent' | 'sendFailed' | 'disconnected'
+  >({
+    find: ({ connections }, { connectionId }) => connections.get(connectionId) ?? null,
+    store(state, { connectionId }, next) {
+      const connections = new Map(state.connections);
+      switch (next.kind) {
+        case 'connecting':
+        case 'connected':
+          connections.set(connectionId, next);
+          break;
+        case 'closed':
+          connections.delete(connectionId);
+          break;
+      }
+      return { ...state, connections };
+    },
+    handlers: {
+      connecting: {
+        chainConnected({ consumer, pending, leave }, { connectionId }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'connected', consumer, leave });
+          for (const request of pending) {
+            emitSideEffect({ kind: 'send', connectionId, request });
+          }
+        },
+        chainMessage: deliverMessage,
+        chainEnded: endChain,
+        consumerSent(connection, { request }, { emitState }) {
+          emitState({ ...connection, pending: [...connection.pending, request] });
+        },
+        disconnected: leaveChain,
+      },
+      connected: {
+        chainMessage: deliverMessage,
+        chainEnded: endChain,
+        consumerSent(_connection, { connectionId, request }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'send', connectionId, request });
+        },
+        // A refusal reaches the consumer as the answer to its request.
+        sendFailed({ consumer }, { request, error }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'sendErrored', error });
+          emitSideEffect({ kind: 'answer', consumer, request, error: serializeError(error) });
+        },
+        disconnected: leaveChain,
+      },
+      closed: null,
+    },
+  });
+
+  const chains = createStateMachine<ChainsMachine>({
+    initial: { kind: 'open', connections: new Map() },
+    handlers: {
+      open: {
+        opened(state, { connectionId, genesisHash, consumer }, { emitState, emitSideEffect }) {
+          const leave = new AbortController();
+          const connecting: Connection = { kind: 'connecting', consumer, pending: [], leave };
+          emitState({ ...state, connections: new Map(state.connections).set(connectionId, connecting) });
+          emitSideEffect({ kind: 'connect', connectionId, genesisHash, signal: leave.signal });
+        },
+        chainConnected: handleConnection,
+        chainMessage: handleConnection,
+        chainEnded: handleConnection,
+        consumerSent(state, event, transition) {
+          if (!state.connections.has(event.connectionId)) {
+            const { consumer, request } = event;
+            transition.emitSideEffect({ kind: 'answer', consumer, request, error: 'Chain connection is closed' });
+            return;
+          }
+          handleConnection(state, event, transition);
+        },
+        sendFailed: handleConnection,
+        disconnected: handleConnection,
+      },
+    },
+    onEffect: runEffect,
+    onError: error => {
+      report.defect(error, {
+        step: 'remote_chains_transition',
+        metric: remoteChainsTransitionMetric,
+        message: '[dot.li protocol] A remote chains transition threw',
+      });
+    },
+  });
+
+  function createProvider(genesisHash: string): RemoteChainProvider | null {
+    if (!isRemoteChainConnectable(genesisHash)) {
+      return null;
+    }
+
+    return (onMessage, onHalt) => {
+      const connectionId = createRandomId();
+      const consumer: Consumer = { onMessage, onHalt: onHalt ?? noop };
+      chains.update({ kind: 'opened', connectionId, genesisHash, consumer });
+
+      return {
+        send(request) {
+          chains.update({ kind: 'consumerSent', connectionId, request, consumer });
+        },
+        disconnect() {
+          chains.update({ kind: 'disconnected', connectionId });
+        },
+      };
+    };
   }
 
-  /** Not yet halted or disconnected. Whoever removes it tells the consumer. */
-  function isOpen({ connectionId, connection }: ConnectionParams): boolean {
-    return chainConnections.get(connectionId) === connection;
-  }
+  return {
+    /**
+     * A provider of connections to the chain of `genesisHash` in the frame, or null when the frame cannot connect this
+     * chain.
+     */
+    createProvider,
+  };
 
-  /** Sends one message once the frame accepted the connection. A refusal reaches the consumer as its answer. */
-  function send({ connectionId, connection, message }: ConnectionParams & { message: JsonRpcRequest }): void {
-    void rpc.request(chain.send, { connectionId, message: JSON.stringify(message) }).catch((error: unknown) => {
-      // A papi client re-follows on the `stop` that comes before the halt, and the frame refuses that send for a
-      // connection it has already forgotten.
-      if (!isOpen({ connectionId, connection })) {
+  function runEffect(effect: ChainsEffect): void {
+    switch (effect.kind) {
+      case 'connect':
+        connectChain(effect);
+        return;
+      case 'send': {
+        const { connectionId, request } = effect;
+        chains.update(
+          rpc.request(chain.send, { connectionId, message: JSON.stringify(request) }).then(
+            (): ChainsEvent => ({ kind: 'sendAnswered', connectionId }),
+            (error: unknown): ChainsEvent => ({ kind: 'sendFailed', connectionId, request, error }),
+          ),
+        );
         return;
       }
-      log.error('[dot.li protocol] Remote chain send failed:', error);
-      const errorResponse = buildJsonRpcError(message, serializeError(error));
-      if (errorResponse !== null) {
-        connection.onMessage(errorResponse);
+      case 'leave':
+        effect.leave.abort(setErrorName(new Error('Chain disconnected'), 'ChainDisconnectedError'));
+        return;
+      case 'deliver': {
+        const { consumer, message } = effect;
+        guardConsumer('message', () => {
+          consumer.onMessage(message);
+        });
+        return;
       }
-    });
+      case 'answer': {
+        const { consumer, request, error } = effect;
+        // A notification has no `id` to answer.
+        if (request.id === undefined || request.id === null) {
+          return;
+        }
+        const message = createJsonRpcError(request.id, error);
+        guardConsumer('message', () => {
+          consumer.onMessage(message);
+        });
+        return;
+      }
+      case 'halt': {
+        const { consumer, reason } = effect;
+        guardConsumer('halt', () => {
+          consumer.onHalt(reason);
+        });
+        return;
+      }
+      case 'messageUnparsed':
+        report.defect(effect.error, {
+          step: 'chain_message_parse',
+          metric: protocolChainMessageMetric,
+          message: `[dot.li protocol] chain-message JSON parse failed (conn=${effect.connectionId.slice(-8)}):`,
+        });
+        return;
+      case 'connectErrored':
+        report.expected(effect.error, {
+          step: 'remote_chain_connect',
+          metric: remoteChainConnectMetric,
+          message: '[dot.li protocol] Failed to connect remote chain:',
+        });
+        return;
+      case 'sendErrored':
+        report.expected(effect.error, {
+          step: 'remote_chain_send',
+          metric: remoteChainSendMetric,
+          message: '[dot.li protocol] Remote chain send failed:',
+        });
+        return;
+    }
   }
 
   /**
-   * Subscribes the chain once the frame is ready. Sends wait for `connected`. The connect has its own budget, and
-   * running out of it unsubscribes, which disconnects a connection a busy frame may still accept. Returns the
-   * consumer's disconnect.
+   * Subscribes the chain once the frame is ready, and tells its messages and its end as events. The connect has its own
+   * budget, and running out of it unsubscribes, which disconnects a connection a busy frame may still accept.
    */
-  function open({ genesisHash, connectionId, connection }: ConnectionParams & { genesisHash: string }): () => void {
-    const leave = new AbortController();
+  function connectChain({ connectionId, genesisHash, signal }: Extract<ChainsEffect, { kind: 'connect' }>): void {
+    chains.update(
+      rpc.call(chain.connect, subscribeChain, { signal }).then(
+        (): ChainsEvent => ({ kind: 'chainConnected', connectionId }),
+        (error: unknown): ChainsEvent => ({ kind: 'chainEnded', connectionId, error: toError(error) }),
+      ),
+    );
 
-    function subscribeChain(transport: ProtocolTransport, signal: AbortSignal): Promise<void> {
+    // Resolves once the frame accepts the connection. A second resolve or reject does nothing, so no listener reads the
+    // connection's phase. An end before the connect is told by the `end` listener first, and the connect it rejects
+    // then finds the connection closed.
+    function subscribeChain(transport: ProtocolTransport, budget: AbortSignal): Promise<void> {
       return new Promise((resolve, reject) => {
         subscribe({
           transport,
@@ -118,157 +375,28 @@ export function createRemoteChains({ rpc }: Params) {
           listeners: {
             receive: event => {
               if (event.tag === 'message') {
-                deliver({ connectionId, connection, message: event.value });
+                chains.update({ kind: 'chainMessage', connectionId, message: event.value });
                 return;
               }
-              if (connection.connected || !isOpen({ connectionId, connection })) {
-                return;
-              }
-              connection.connected = true;
               resolve();
-              for (const message of connection.pendingMessages.splice(0)) {
-                send({ connectionId, connection, message });
-              }
             },
-            // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame
-            // that went down, and halts like a dead frame so a caching consumer drops it.
             end: error => {
-              if (!connection.connected) {
-                reject(error ?? new Error('Chain halted before it connected'));
-              }
-              if (!isOpen({ connectionId, connection })) {
-                return;
-              }
-              // Removed first, so a send made during the halt is answered at once, not queued and lost.
-              chainConnections.delete(connectionId);
-              if (error !== null && !connection.connected) {
-                log.error('[dot.li protocol] Failed to connect remote chain:', error);
-              }
-              haltRemote(connection, error === null ? 'chain' : 'frame');
+              reject(error ?? new Error('Chain halted before it connected'));
+              chains.update({ kind: 'chainEnded', connectionId, error });
             },
           },
-          signal,
+          signal: budget,
         });
       });
     }
-
-    void rpc.call(chain.connect, subscribeChain, { signal: leave.signal }).catch((error: unknown) => {
-      // Counted on the call's trail. A connection still open never subscribed, since the frame did not come up, and
-      // halts like a dead frame. Otherwise the subscription's end, or the consumer's disconnect, already acted on it.
-      if (!isOpen({ connectionId, connection })) {
-        return;
-      }
-      log.error('[dot.li protocol] Failed to connect remote chain:', error);
-      chainConnections.delete(connectionId);
-      haltRemote(connection, 'frame');
-    });
-    // A consumer that leaves before `connected` ends the connect as a disconnect, so its trail still ends. A connect
-    // still queued is never sent, one the frame has is closed there, and one the frame is not up for never goes out.
-    return () => {
-      leave.abort(createDisconnectedError());
-    };
   }
-
-  function createProvider(genesisHash: string): RemoteChainProvider | null {
-    if (!isRemoteChainConnectable(genesisHash)) {
-      return null;
-    }
-
-    function connectChain(
-      onMessage: (message: JsonRpcMessage) => void,
-      onHalt?: (reason: RemoteChainHalt) => void,
-    ): JsonRpcConnection {
-      const connectionId = createRandomId();
-      const connection: RemoteChainConnection = {
-        onMessage,
-        onHalt: onHalt ?? null,
-        pendingMessages: [],
-        connected: false,
-      };
-      chainConnections.set(connectionId, connection);
-      const disconnect = open({ genesisHash, connectionId, connection });
-
-      return {
-        send(message) {
-          if (!isOpen({ connectionId, connection })) {
-            const errorResponse = buildJsonRpcError(message, 'Chain connection is closed');
-            if (errorResponse !== null) {
-              onMessage(errorResponse);
-            }
-            return;
-          }
-          if (!connection.connected) {
-            connection.pendingMessages.push(message);
-            return;
-          }
-          send({ connectionId, connection, message });
-        },
-        disconnect() {
-          if (!isOpen({ connectionId, connection })) {
-            return;
-          }
-          chainConnections.delete(connectionId);
-          disconnect();
-        },
-      };
-    }
-
-    return connectChain;
-  }
-
-  return {
-    /**
-     * A provider of connections to the chain of `genesisHash` in the frame, or null when the frame cannot connect this
-     * chain. Never throws.
-     */
-    createProvider,
-  };
 }
 
-/** `null` for a notification, which has no `id` to answer. */
-function buildJsonRpcError(
-  request: JsonRpcRequest,
-  error: string | ReturnType<typeof createChainHaltedError>,
-): JsonRpcMessage | null {
-  return request.id === undefined || request.id === null ? null : createJsonRpcError(request.id, error);
-}
-
-/** A consumer callback that throws is reported, not propagated, so the other consumers still hear the halt. */
+/** A consumer callback that throws is reported as its listener's fault, not as an effect of the machine that failed. */
 function guardConsumer(label: 'halt' | 'message', call: () => void): void {
   try {
     call();
   } catch (error: unknown) {
     report.listener(`remote_chain.${label}`)(error);
   }
-}
-
-/** What a connect that the consumer left before it connected settles with. */
-function createDisconnectedError(): Error {
-  return setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError');
-}
-
-/** What an unsent message is answered with: the retryable halt error on a chain halt, a plain close on a dead frame. */
-function getHaltAnswer(reason: RemoteChainHalt): string | ReturnType<typeof createChainHaltedError> {
-  switch (reason) {
-    case 'chain':
-      return createChainHaltedError();
-    case 'frame':
-      return 'Chain connection is closed';
-  }
-}
-
-/** Answers every unsent message as `reason` says, then tells the consumer of the halt. */
-function haltRemote(connection: RemoteChainConnection, reason: RemoteChainHalt): void {
-  for (const message of connection.pendingMessages) {
-    const errorResponse = buildJsonRpcError(message, getHaltAnswer(reason));
-    if (errorResponse !== null) {
-      guardConsumer('message', () => {
-        connection.onMessage(errorResponse);
-      });
-    }
-  }
-  connection.pendingMessages = [];
-  guardConsumer('halt', () => {
-    connection.onHalt?.(reason);
-  });
 }

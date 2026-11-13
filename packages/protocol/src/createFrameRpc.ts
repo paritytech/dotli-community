@@ -8,23 +8,21 @@ import { getErrorName, realTimers, toError, withTimeout, type Timers } from '@do
 import { getFailureReason, type AnyMethod, type Request } from '@dotli/transport';
 import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
 import type { ProtocolFrame } from './frameTypes.js';
-import { getCallName, getPolicy, type CallName, type MethodPolicy } from './methodPolicy.js';
+import { getCallName, getPolicy, type MethodPolicy } from './methodPolicy.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
 
 const report = createReporter({ flow: 'protocol' });
 
 const protocolRequestMetric = defineCount<'error' | 'timeout'>('protocol.request');
 
-export type CallOutcome = 'ok' | 'error' | 'timeout';
-
-/** What requests need of the frame. */
-export type RpcFrame = Pick<ProtocolFrame, 'waitUntilReady' | 'getTransport' | 'checkAlive'>;
+type CallOutcome = 'ok' | 'error' | 'timeout';
 
 /** Requests to the frame, each on its own budget. */
 export type FrameRpc = ReturnType<typeof createFrameRpc>;
 
 type Params = {
-  frame: RpcFrame;
+  /** What requests need of the frame. */
+  frame: Pick<ProtocolFrame, 'waitUntilReady' | 'getTransport' | 'checkAlive'>;
   /** The clock the budgets run on. */
   timers?: Timers;
   /** A monotonic clock the call trails are measured on, which a spec may set to its own timers. */
@@ -57,46 +55,47 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
     // Ends the call on its budget. The transport drops it, and a late answer is ignored.
     const { signal, withBudget, isOwnTimeout } = startBudget({ policy, timers, signal: options.signal });
     // Set once the call is handed to a connected transport, which the frame wait may never reach.
-    const sent: { trail: CallTrail | null; transport: ProtocolTransport | null } = { trail: null, transport: null };
+    const sent: { call: { trail: CallTrail; transport: ProtocolTransport } | null } = { call: null };
 
     function send(transport: ProtocolTransport): Promise<V> {
       // The budget ran out, or the caller left, while the frame was asked for, so nothing goes out.
       if (signal.aborted) {
         throw toError(signal.reason);
       }
-      sent.trail = startCallTrail(policy, now);
-      sent.transport = transport;
+      sent.call = { trail: startCallTrail(policy, now), transport };
       return run(transport, signal);
     }
 
     try {
       let value: V;
       if (policy.whenListening) {
-        // The transport queues a call until its handshake, and the wait for it is the boot's, not the call's.
-        value = await withBudget(
-          frame.getTransport().then(async transport => {
-            await transport.whenConnected();
-            return send(transport);
-          }),
-        );
+        // Sent only once connected, so its trail and timer measure the call, not the boot. The caller may leave first.
+        const connected = frame.getTransport().then(async transport => {
+          await transport.whenConnected();
+          return transport;
+        });
+        value = await withBudget(Promise.race([connected, whenAborted(signal)]).then(send));
       } else {
-        const transport = await frame.waitUntilReady();
+        // The budget runs from ready, but the caller may leave while the frame boots.
+        const transport = await Promise.race([frame.waitUntilReady(), whenAborted(signal)]);
         value = await withBudget(send(transport));
       }
-      sent.trail?.settle('ok');
+      sent.call?.trail.settle('ok');
       return value;
     } catch (reason: unknown) {
       const error = createCallError(reason);
       const outcome: CallOutcome = isOwnTimeout(reason) ? 'timeout' : 'error';
-      if (sent.trail !== null) {
-        sent.trail.settle(outcome, error);
-      } else if (outcome === 'timeout') {
-        // Never sent, since the frame did not come up within the budget.
-        protocolRequestMetric.count({ outcome, method: policy.name, reason: getErrorName(error) ?? 'unknown' });
+      if (sent.call === null) {
+        if (outcome === 'timeout') {
+          // Never sent, since the frame did not come up within the budget.
+          protocolRequestMetric.count({ outcome, method: policy.name, reason: error.name });
+        }
+        throw error;
       }
-      if (policy.whenListening && sent.transport !== null && outcome === 'timeout') {
+      sent.call.trail.settle(outcome, error);
+      if (policy.whenListening && outcome === 'timeout') {
         // A shared store call waits on no light client, so one the frame let run out may mean the frame stopped.
-        frame.checkAlive(sent.transport);
+        frame.checkAlive(sent.call.transport);
       }
       throw error;
     }
@@ -145,15 +144,6 @@ export function createFrameRpc({ frame, timers = realTimers, now = () => perform
   };
 }
 
-/** The error a call that outlived its budget fails with. */
-function createCallTimeoutError(method: CallName, budgetMs: number): ProtocolRequestError {
-  return new ProtocolRequestError(
-    `Protocol request "${method}" timed out after ${String(budgetMs)}ms`,
-    'ProtocolTimeoutError',
-    method,
-  );
-}
-
 /**
  * A call's failure as callers see it, under the protocol's class for a transport that closed. A bare `"Error"` from the
  * frame carries nothing, and would cost the "crossed the protocol boundary" signal dashboards filter on.
@@ -163,6 +153,23 @@ function createCallError(reason: unknown): Error {
   return error instanceof ProtocolRequestError && error.name === 'Error'
     ? new ProtocolRequestError(error.message, 'ProtocolResponseError', error.method)
     : error;
+}
+
+/** Rejects with the reason `signal` aborts with, at once when it already has. Never settles otherwise. */
+function whenAborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    if (signal.aborted) {
+      reject(toError(signal.reason));
+      return;
+    }
+    signal.addEventListener(
+      'abort',
+      () => {
+        reject(toError(signal.reason));
+      },
+      { once: true },
+    );
+  });
 }
 
 /** The word a call's trail settles with. */
@@ -185,14 +192,9 @@ function startCallTrail(policy: MethodPolicy, now: () => number) {
   if (trailed) {
     report.log.event(`${method} sent`, budgetMs === null ? {} : { timeout_ms: budgetMs });
   }
-  let done = false;
   return {
-    /** Stops the timer, counts a failure and ends the trail, the first time only. Never throws. */
+    /** Stops the timer, counts a failure and ends the trail. Never throws. */
     settle(outcome: CallOutcome, error?: Error): void {
-      if (done) {
-        return;
-      }
-      done = true;
       stop();
       if (outcome !== 'ok') {
         protocolRequestMetric.count({ outcome, method, reason: getErrorName(error) ?? 'unknown' });
@@ -213,24 +215,31 @@ function startCallTrail(policy: MethodPolicy, now: () => number) {
  */
 function startBudget({ policy, timers, signal }: StartBudgetParams) {
   const { name, budgetMs } = policy;
+  // Aborted only by the budget running out, with the timeout error as its reason.
   const giveUp = new AbortController();
-  let timeout: Error | undefined;
-
-  function createTimeout(limitMs: number): Error {
-    timeout = createCallTimeoutError(name, limitMs);
-    giveUp.abort(timeout);
-    return timeout;
-  }
 
   function withBudget<V>(work: Promise<V>): Promise<V> {
     if (budgetMs === null) {
       return work;
     }
-    return withTimeout({ work, ms: budgetMs, timeoutError: () => createTimeout(budgetMs), timers });
+    return withTimeout({
+      work,
+      ms: budgetMs,
+      timeoutError: () => {
+        const timeout = new ProtocolRequestError(
+          `Protocol request "${name}" timed out after ${String(budgetMs)}ms`,
+          'ProtocolTimeoutError',
+          name,
+        );
+        giveUp.abort(timeout);
+        return timeout;
+      },
+      timers,
+    });
   }
 
   function isOwnTimeout(reason: unknown): boolean {
-    return timeout !== undefined && reason === timeout;
+    return giveUp.signal.aborted && reason === giveUp.signal.reason;
   }
 
   return {

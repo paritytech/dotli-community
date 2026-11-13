@@ -12,7 +12,9 @@ const [shield, setShieldSignal] = createSignal<ShieldState | null | undefined>(u
 export const storyShield = shield;
 
 /** The shield as its view reads it once a product's pill shows. */
-export const storyShieldState = (): ShieldState | null => shield() ?? null;
+export function storyShieldState(): ShieldState | null {
+  return shield() ?? null;
+}
 
 /** No product's pill: none yet, or a localhost proxy. */
 export function noProductPill(): void {

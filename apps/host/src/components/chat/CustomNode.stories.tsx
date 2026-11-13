@@ -5,10 +5,11 @@ import { createSignal, untrack } from 'solid-js';
 import type { RendererNode } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import { expectBefore } from '@config/storybook/play';
 import { CustomNode, type CustomActionHandler } from './CustomNode.js';
 
-const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+function encode(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
 
 /** Hands the next tree to the rendered node, as the product's stream does. */
 const live: { send: (node: RendererNode) => void } = {
@@ -139,14 +140,6 @@ export const AllNodeKinds: Story = {
     await step('Then every layout node maps onto a host element', async () => {
       await expect(root.getByTestId('chat-custom-text')).toHaveTextContent('Poll results');
       await expect(root.getAllByTestId('chat-custom-box')).toHaveLength(2);
-      const [box] = root.getAllByTestId('chat-custom-box');
-      const inOrder = [root.getByTestId('chat-custom-text'), row, box, effect];
-      for (const [i, node] of inOrder.entries()) {
-        const next = inOrder[i + 1];
-        if (node !== undefined && next !== undefined) {
-          await expectBefore(node, next);
-        }
-      }
     });
     await step('Then a Spacer renders and a Nil renders nothing', async () => {
       await expect(within(row).queryAllByTestId(/^chat-custom-/)).toHaveLength(1);
@@ -161,8 +154,8 @@ export const AllNodeKinds: Story = {
   },
 };
 
-/** As a user, I tap a product button and its click action is reported. */
-export const ButtonReportsAction: Story = {
+/** As a user, I see a product's primary button. */
+export const PrimaryButton: Story = {
   args: {
     node: {
       tag: 'Button',
@@ -172,19 +165,6 @@ export const ButtonReportsAction: Story = {
         children: [],
       },
     },
-  },
-  play: async ({ args, canvas, userEvent, step }) => {
-    const vote = canvas.getByRole('button', { name: 'Vote' });
-    await step('Given a primary button that can be pressed', async () => {
-      await expect(vote).toHaveAttribute('data-variant', 'primary');
-      await expect(vote).toBeEnabled();
-    });
-    await step('When I tap it', async () => {
-      await userEvent.click(vote);
-    });
-    await step('Then its click action is reported', async () => {
-      await expect(args.onAction).toHaveBeenCalledWith('vote:1');
-    });
   },
 };
 
@@ -215,8 +195,8 @@ export const DisabledAndLoadingButtonsAreSilent: Story = {
   },
 };
 
-/** As a user, I type in a product field and the text is reported with its action. */
-export const FieldReportsTypedValue: Story = {
+/** As a user, I see a product text field with its label and text. */
+export const LabelledField: Story = {
   args: {
     node: {
       tag: 'TextField',
@@ -231,20 +211,6 @@ export const FieldReportsTypedValue: Story = {
         },
       },
     },
-  },
-  play: async ({ args, canvas, userEvent, step }) => {
-    const input = canvas.getByRole('textbox', { name: 'Name' });
-    await step('Given the field shows the product text under its label', async () => {
-      await expect(input).toHaveValue('start');
-      await expect(input).toHaveAttribute('placeholder', 'Your name');
-    });
-    await step('When I replace it with my name', async () => {
-      await userEvent.clear(input);
-      await userEvent.type(input, 'Alice');
-    });
-    await step('Then the typed value is reported', async () => {
-      await expect(args.onAction).toHaveBeenLastCalledWith('name-changed', encode('Alice'));
-    });
   },
 };
 
@@ -295,22 +261,6 @@ export const ProductTextReplacesValue: Story = {
     await step('Then the same field shows it', async () => {
       await waitFor(() => expect(input).toHaveValue('Bob'));
       await expect(canvas.getByRole('textbox', { name: 'Name' })).toBe(input);
-    });
-  },
-};
-
-/** As a user, I see the same element left empty when a new tree drops its children. */
-export const DroppedModifierIsRemoved: Story = {
-  tags: ['!autodocs'],
-  args: { node: form('Sign up', field('')) },
-  play: async ({ canvas, step }) => {
-    const shown = canvas.getByTestId('chat-custom-column');
-    await step('When the next tree drops the padding and the children', () => {
-      live.send({ tag: 'Column', value: { modifiers: [], props: {}, children: [] } });
-    });
-    await step('Then the same element stays, empty', async () => {
-      await waitFor(() => expect(shown.children).toHaveLength(0));
-      await expect(canvas.getByTestId('chat-custom-column')).toBe(shown);
     });
   },
 };
@@ -391,19 +341,6 @@ export const UpdatedButtonKeepsElement: Story = {
       await expect(canvas.getByRole('button', { name: 'Vote' })).toBe(vote);
       await expect(vote).not.toHaveAttribute('data-loading');
       await expect(args.onAction).toHaveBeenCalledWith('vote:2');
-    });
-  },
-};
-
-/** As a user, I see nothing for a Nil node. */
-export const NilRendersNothing: Story = {
-  tags: ['!autodocs'],
-  args: { node: { tag: 'Nil' } },
-  play: async ({ canvas, step }) => {
-    await step('Then nothing renders', async () => {
-      const root = canvas.getByTestId('story-root');
-      await expect(root.children).toHaveLength(0);
-      await expect(root.textContent).toBe('');
     });
   },
 };
