@@ -346,7 +346,7 @@ describe('wallet boot', () => {
     // Then the window still has the blob to end and counts it as cleared
     expect(reconcile).toHaveBeenCalledTimes(2);
     expect(kept.dead).toEqual({ blob: deadBlob, cleared: 'dropped' });
-    expect(again).toBe(kept);
+    expect(again).toEqual(kept);
   });
 
   it('As a user in the sign-in window with a stored local wallet, I boot the pairing host and keep the wallet', async () => {
@@ -375,6 +375,19 @@ describe('wallet boot', () => {
     // Then it boots the wallet and the mode reads local
     expect(boot).toEqual(WALLET);
     expect(mode.get()).toEqual({ mode: 'local', failure: null });
+  });
+
+  it('As a user in the session window serving a site, my saved session is read again after it serves and shows the stored local wallet I boot on', async () => {
+    // Given the sign-in window's boot over a stored local wallet, whose load already read it as data
+    const { walletBoot } = createBootHarness({ answer: () => buildReconciled(WALLET), role: 'signin-window' });
+    await walletBoot.restore();
+
+    // When the window serves a site and the session state reads the restore again
+    walletBoot.serveSites();
+    const { local } = await walletBoot.restore();
+
+    // Then the restore names the wallet the page now boots on
+    expect(local).toEqual(WALLET);
   });
 
   it('As a user in the session window serving a site over a wallet that no longer decrypts, I boot and am told why, with the failure reported once', async () => {

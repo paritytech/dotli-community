@@ -60,8 +60,8 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   let wallet: AnsweredWallet | null = null;
   // The first dead session a pass found, since a later pass finds the store already empty.
   let dead: Reconciled['dead'] = null;
-  // The answer for the page, once a pass kept one.
-  let kept: Restored | null = null;
+  // What the rule left for the page, once a pass kept it.
+  let kept: Reconciled | null = null;
 
   return {
     /**
@@ -72,8 +72,10 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
      * a pass waits for it, and takes its answer once it is kept. Rejects only when the restore rule breaks its contract
      * and rejects, with that rejection as the cause.
      */
-    restore(): Promise<Restored> {
-      return passes.call(pass);
+    async restore(): Promise<Restored> {
+      const reconciled = await passes.call(pass);
+      // Worked out on each answer, since a window that serves a site from then on boots on the stored wallet.
+      return { ...reconciled, local: getLocalWallet(reconciled.wallet, bootsOnStored) };
     },
     /**
      * Null boots the pairing host. A failed read cannot tell the mode, so it falls back to Polkadot App. On a page that
@@ -101,7 +103,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
    * Answers with the kept answer, or applies the restore rule over what the passes so far found and keeps what it left
    * once the frame answered both reads. Rejects when the restore rule rejects, with that rejection as the cause.
    */
-  async function pass(): Promise<Restored> {
+  async function pass(): Promise<Reconciled> {
     if (kept !== null) {
       return kept;
     }
@@ -119,12 +121,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
     const firstAnswer = wallet === null;
     const passWallet = wallet ?? reconciled.wallet;
     dead ??= reconciled.dead;
-    const restored: Restored = {
-      ...reconciled,
-      wallet: passWallet,
-      dead,
-      local: getLocalWallet(passWallet, bootsOnStored),
-    };
+    const restored: Reconciled = { ...reconciled, wallet: passWallet, dead };
     // What the pass found is written before anything is reported, so a listener that calls back in sees it whole.
     if (passWallet.status !== 'failed') {
       wallet = passWallet;
@@ -156,7 +153,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
       sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
     }
-    if (passWallet.status === 'ok' && restored.local === null) {
+    if (passWallet.status === 'ok' && !bootsOnStored) {
       walletReport.log.event('local wallet kept as data, page pairs');
     }
     // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
