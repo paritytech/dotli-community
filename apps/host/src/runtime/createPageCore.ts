@@ -135,7 +135,8 @@ type ConnectParams = {
 
 export type PageCore = ReturnType<typeof createPageCore>;
 
-type LeaseReply = { resolve: (lease: CoreLease) => void; reject: (error: unknown) => void };
+/** Settles one `acquire`, with the live core its lease is on. */
+type LeaseReply = { resolve: (core: LiveCore) => void; reject: (error: unknown) => void };
 
 type CoreParts = {
   id: symbol;
@@ -195,7 +196,7 @@ type PageCoreEvent =
   | { kind: 'pairingCancelled' };
 
 type PageCoreEffect =
-  | { kind: 'leaseGranted'; reply: LeaseReply; core: LiveCore; leaseId: symbol }
+  | { kind: 'leaseGranted'; reply: LeaseReply; core: LiveCore }
   | { kind: 'leaseRefused'; reply: LeaseReply; error: unknown }
   | { kind: 'dialed'; product: PageProduct; redial: CoreDownReason | undefined }
   | { kind: 'redialed'; outcome: 'ok' | 'aborted'; reason: CoreDownReason }
@@ -270,14 +271,14 @@ export function createPageCore({
             case 'live': {
               const live: LiveCore = { ...core, leases: new Set([...core.leases, leaseId]) };
               transition.emitState(withCore(state, live));
-              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live });
               return;
             }
             case 'lingering': {
               const live: LiveCore = { ...getBootedParts(core), kind: 'live', leases: new Set([leaseId]) };
               transition.emitState(withCore(state, live));
               transition.emitSideEffect({ kind: 'lingerCancelled', timer: core.timer });
-              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+              transition.emitSideEffect({ kind: 'leaseGranted', reply, core: live });
               return;
             }
           }
@@ -314,8 +315,8 @@ export function createPageCore({
               emitSideEffect({ kind: 'runtimePairingCancelled', runtime: booted.runtime });
             }
           }
-          for (const [leaseId, reply] of core.waiting) {
-            emitSideEffect({ kind: 'leaseGranted', reply, core: live, leaseId });
+          for (const reply of core.waiting.values()) {
+            emitSideEffect({ kind: 'leaseGranted', reply, core: live });
           }
           if (core.redial !== undefined) {
             emitSideEffect({ kind: 'redialed', outcome: 'ok', reason: core.redial });
@@ -396,7 +397,7 @@ export function createPageCore({
     onEffect: effect => {
       switch (effect.kind) {
         case 'leaseGranted':
-          effect.reply.resolve(createLease(effect.core, effect.leaseId));
+          effect.reply.resolve(effect.core);
           return;
         case 'leaseRefused':
           effect.reply.reject(effect.error);
@@ -481,10 +482,12 @@ export function createPageCore({
      * Resolves with a lease on the page's core, dialing one when none serves the page's product. A request made while
      * the core redials waits for the replacement. Rejects when the core fails to boot.
      */
-    acquire(): Promise<CoreLease> {
-      return new Promise((resolve, reject) => {
-        machine.update({ kind: 'leaseAsked', leaseId: Symbol('lease'), reply: { resolve, reject } });
+    async acquire(): Promise<CoreLease> {
+      const leaseId = Symbol('lease');
+      const core = await new Promise<LiveCore>((resolve, reject) => {
+        machine.update({ kind: 'leaseAsked', leaseId, reply: { resolve, reject } });
       });
+      return createLease(core, leaseId);
     },
 
     /** Cancels the pairing of every pairing core dialed, at once or, for one still booting, once it boots. Never throws. */
