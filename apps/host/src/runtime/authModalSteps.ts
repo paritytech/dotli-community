@@ -12,17 +12,30 @@ import { getLoginFailureView } from './getLoginFailureView.js';
 import {
   isLeaseDisabled,
   isLeaseHeld,
+  type AuthCommand,
   type AuthModalEvent,
   type AuthModalMachine,
   type LiveModal,
   type OpenAuthModalParams,
 } from './signInRoute.js';
 
+type Params = {
+  /** Where the modal's leases come from. */
+  coordinator: BlockingModalCoordinator;
+  /** Runs a sign-in command on the core, and answers its end as an event. Never rejects. */
+  runCommand: (command: AuthCommand) => Promise<AuthModalEvent>;
+};
+
 /** The modal's steps, as their factory builds them. */
 export type ModalSteps = ReturnType<typeof createModalSteps>;
 
 /** Builds the steps that open the modal, which take their leases from `coordinator`. */
-export function createModalSteps(coordinator: BlockingModalCoordinator) {
+export function createModalSteps({ coordinator, runCommand }: Params) {
+  /** Runs `command` on the core, whose end comes back to the machine. */
+  function run(command: AuthCommand, transition: Transition<AuthModalMachine>): void {
+    transition.update(runCommand(command));
+  }
+
   /**
    * Opens the modal on its spinner and returns the state it leaves, queued for the screen in a scope of its own when it
    * was closed. Returns null when the modal is disabled, having cancelled the core's login.
@@ -33,7 +46,7 @@ export function createModalSteps(coordinator: BlockingModalCoordinator) {
     transition: Transition<AuthModalMachine>,
   ): LiveModal | null {
     if (isLeaseDisabled(state.lease)) {
-      transition.emitSideEffect({ kind: 'commandRun', command: { step: 'cancel_login' } });
+      run({ step: 'cancel_login' }, transition);
       return null;
     }
     // A "localhost:<port>" label is a local dev server in localhost-proxy mode, shown as-is.
@@ -71,7 +84,7 @@ export function createModalSteps(coordinator: BlockingModalCoordinator) {
     showView(opened, getLoginFailureView(failure, reason), transition);
   }
 
-  return { open, showFailure };
+  return { run, open, showFailure };
 }
 
 /** Moves `state` to show `view` in the modal. */

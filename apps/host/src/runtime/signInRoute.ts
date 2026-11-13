@@ -121,7 +121,6 @@ export type AuthModalEffect =
   | { kind: 'leaseQueued'; scope: BlockingModalScope }
   | { kind: 'leaseReleased'; lease: ModalLease }
   | { kind: 'leaseRefused'; release: () => void }
-  | { kind: 'commandRun'; command: AuthCommand }
   | { kind: 'rereadLogged'; error: unknown }
   | { kind: 'roundEnded'; reason: PageCancelReason }
   | { kind: 'stepsUnfollowed' }

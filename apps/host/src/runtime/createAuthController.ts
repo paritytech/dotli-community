@@ -108,7 +108,10 @@ export function createAuthController({
   loadRecoveryPhrase,
   elsewhere,
 }: Params) {
-  const modalSteps = createModalSteps(coordinator);
+  const modalSteps = createModalSteps({
+    coordinator,
+    runCommand: command => runAuthCommand(command, async () => (await bridge()).authCommands),
+  });
 
   /** Loads the phrase check and the bridge together. Rejects when either fails to load. */
   async function loadInPagePhrase(): Promise<InPagePhrase> {
@@ -216,10 +219,7 @@ export function createAuthController({
           }
           switch (asked) {
             case 'login':
-              transition.emitSideEffect({
-                kind: 'commandRun',
-                command: { step: 'login', params: { reason: round.reason } },
-              });
+              modalSteps.run({ step: 'login', params: { reason: round.reason } }, transition);
               return;
             case 'phrase':
               route.importPhrase(next, { kind: 'phraseAsked' }, transition);
@@ -237,7 +237,8 @@ export function createAuthController({
         closeAsked(state, { params }, transition) {
           close(state, params, transition);
         },
-        disableAsked(state, _event, { emitState, emitSideEffect }) {
+        disableAsked(state, _event, transition) {
+          const { emitState, emitSideEffect } = transition;
           if (!isLeaseHeld(state.lease)) {
             emitState({ ...state, lease: { kind: 'disabled' } });
             return;
@@ -251,7 +252,7 @@ export function createAuthController({
           emitState({ ...state, lease: { kind: 'disabled' }, round: { kind: 'idle' }, view: { kind: 'spinner' } });
           emitSideEffect({ kind: 'roundEnded', reason: 'page' });
           emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
-          emitSideEffect({ kind: 'commandRun', command: { step: 'cancel_login' } });
+          modalSteps.run({ step: 'cancel_login' }, transition);
         },
         disposeAsked(state, _event, { emitState, emitSideEffect }) {
           emitState({ kind: 'disposed' });
@@ -259,13 +260,13 @@ export function createAuthController({
           emitSideEffect({ kind: 'roundEnded', reason: 'page' });
           emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
         },
-        logoutAsked(_state, _event, { emitSideEffect }) {
+        logoutAsked(_state, _event, transition) {
           // The route's sign-out window opens first, before any wait, since a browser opens a window only in the
           // click's own turn. The signed-in flag is not the controller's to write.
-          emitSideEffect({ kind: 'signOutOpened' });
+          transition.emitSideEffect({ kind: 'signOutOpened' });
           // With the bridge loaded, as on any signed-in page, this runs in the click's continuation, so a paired page
           // reads its copy before the window's document loads.
-          emitSideEffect({ kind: 'commandRun', command: { step: 'logout' } });
+          modalSteps.run({ step: 'logout' }, transition);
         },
         focusAsked(_state, _event, { emitSideEffect }) {
           emitSideEffect({ kind: 'windowFocused' });
@@ -362,9 +363,6 @@ export function createAuthController({
         case 'leaseRefused':
           effect.release();
           return;
-        case 'commandRun':
-          machine.update(runAuthCommand(effect.command, async () => (await bridge()).authCommands));
-          return;
         case 'rereadLogged':
           log.error('[dot.li auth] saved session re-read failed:', effect.error);
           return;
@@ -399,16 +397,16 @@ export function createAuthController({
   function close(
     state: LiveModal,
     { skipTruapiCancel, cancel = 'page' }: CloseAuthModalParams,
-    { emitState, emitSideEffect }: Transition<AuthModalMachine>,
+    transition: Transition<AuthModalMachine>,
   ): void {
     // A disabled lease stays disabled, so a close never brings back a broken modal island.
     const lease: ModalLease = isLeaseDisabled(state.lease) ? state.lease : { kind: 'closed' };
-    emitState({ ...state, lease, round: { kind: 'idle' }, view: { kind: 'spinner' } });
-    emitSideEffect({ kind: 'roundEnded', reason: cancel });
-    emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
+    transition.emitState({ ...state, lease, round: { kind: 'idle' }, view: { kind: 'spinner' } });
+    transition.emitSideEffect({ kind: 'roundEnded', reason: cancel });
+    transition.emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
     if (skipTruapiCancel !== true) {
       // A user close stops the core's pairing poll, which then resolves as Rejected.
-      emitSideEffect({ kind: 'commandRun', command: { step: 'cancel_login' } });
+      modalSteps.run({ step: 'cancel_login' }, transition);
     }
   }
 

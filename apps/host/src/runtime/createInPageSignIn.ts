@@ -24,7 +24,7 @@ type Params = {
   /** Loaded the first time the page asks for a phrase, so a page that never asks loads none of it. */
   inPagePhrase: () => Promise<InPagePhrase>;
   /** The page's sign-in modal, which this route opens. */
-  modal: Pick<ModalSteps, 'open'>;
+  modal: Pick<ModalSteps, 'open' | 'run'>;
 };
 
 /** Returns the sign-in route of a page with no sign-in window. Never throws. */
@@ -42,7 +42,7 @@ export function createInPageSignIn({ inPagePhrase, modal }: Params): SignInRoute
       }
       // A login replaces a phrase round on show, so a Retry after it logs in again.
       transition.emitState({ ...opened, round: { kind: 'idle' } });
-      transition.emitSideEffect({ kind: 'commandRun', command: { step: 'login', params: { reason } } });
+      modal.run({ step: 'login', params: { reason } }, transition);
     },
     importPhrase(state, _event, transition) {
       const opened = modal.open(state, {}, transition);
