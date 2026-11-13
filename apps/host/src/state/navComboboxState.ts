@@ -5,8 +5,8 @@ import { atom, type ReadableAtom } from 'nanostores';
 
 export type NavKey = 'ArrowDown' | 'ArrowUp' | 'Enter' | 'Escape';
 
-/** The suggestions the input controls: the listbox's id and its active option's id. */
-export type ListboxView = { id: string; activeId: string | null };
+/** The suggestions the input controls while they show: the label the arrow keys point at, or null. */
+export type ListboxView = { active: string | null };
 
 export type NavComboboxState = ReturnType<typeof createNavComboboxState>;
 

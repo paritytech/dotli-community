@@ -4,7 +4,6 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { createNavComboboxState, type NavKey } from '../state/navComboboxState.js';
-import { getSuggestionId, SUGGESTIONS_ID } from '../components/landing/suggestionIds.js';
 import { useSuggestions } from './useSuggestions.js';
 
 const LABELS = ['ant', 'apple', 'avocado', 'banana'];
@@ -76,7 +75,7 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.suggestions.active()).toBe('ant');
-    expect(view.listbox()).toEqual({ id: SUGGESTIONS_ID, activeId: getSuggestionId('ant') });
+    expect(view.listbox()).toEqual({ active: 'ant' });
   });
 
   it('As a visitor, I press ArrowUp on the first label and the active option wraps to the last', () => {
@@ -203,6 +202,6 @@ describe('useSuggestions', () => {
 
     // Then
     expect(view.suggestions.active()).toBeNull();
-    expect(view.listbox()).toEqual({ id: SUGGESTIONS_ID, activeId: null });
+    expect(view.listbox()).toEqual({ active: null });
   });
 });

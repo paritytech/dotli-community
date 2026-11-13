@@ -5,22 +5,31 @@ import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
-import { NAME_ERROR_COPY, NavForm, type NavCombobox } from './NavForm.js';
+import { createNavComboboxState, type NavKey } from '../../state/navComboboxState.js';
+import { NAME_ERROR_COPY, NavForm } from './NavForm.js';
 
 const SUFFIX = '.dot';
 
-/** The form as the page hydrates it: no TLD until the browser knows the visitor's network. */
-function Hydrated(props: { combobox?: NavCombobox }): JSX.Element {
+type HydratedProps = {
+  /** The suggestions' answer to a key the input offers them. */
+  onKey: (key: NavKey) => boolean;
+};
+
+/** The form as the page hydrates it: no TLD until the browser knows the visitor's network, and no suggestions shown. */
+function Hydrated(props: HydratedProps): JSX.Element {
   const [suffix, setSuffix] = createSignal<string | null>(null);
+  const combobox = createNavComboboxState();
   onSettled(() => {
     setSuffix(SUFFIX);
   });
-  return <NavForm suffix={suffix} combobox={props.combobox} />;
+  onSettled(() => combobox.handleKeys(props.onKey));
+  return <NavForm suffix={suffix} listbox={() => null} combobox={combobox} />;
 }
 
 const meta = {
   title: 'Host/Landing/NavForm',
   component: Hydrated,
+  args: { onKey: fn(() => false) },
   // Its ids are the page's, so each story keeps its own frame.
   tags: ['!autodocs'],
 } satisfies Meta<typeof Hydrated>;
@@ -32,7 +41,7 @@ type Story = StoryObj<typeof meta>;
 export const NothingFocusedOnLoad: Story = {
   play: async ({ canvas, step }) => {
     await step('Then nothing has focus, so a screen reader starts at the top and no keyboard pops up', async () => {
-      await waitFor(() => expect(canvas.getByRole('textbox')).toBeEnabled());
+      await waitFor(() => expect(canvas.getByRole('combobox')).toBeEnabled());
       await expect(document.activeElement).toBe(document.body);
     });
   },
@@ -41,7 +50,7 @@ export const NothingFocusedOnLoad: Story = {
 /** As a visitor, I am told inline why a name is not valid, and the error clears when I type again. */
 export const InvalidNameInline: Story = {
   play: async ({ canvas, userEvent, step }) => {
-    const field = canvas.getByRole('textbox');
+    const field = canvas.getByRole('combobox');
     const href = window.location.href;
     await step('When I submit a name that is not valid', async () => {
       await waitFor(() => expect(field).toBeEnabled());
@@ -69,19 +78,8 @@ export const InvalidNameInline: Story = {
   },
 };
 
-/** The suggestions as the form drives them, with a key handler that answers `taken`. */
-function createCombobox(taken: boolean): NavCombobox {
-  return {
-    listbox: () => null,
-    onText: fn(),
-    onFocus: fn(),
-    onKey: fn(() => taken),
-  };
-}
-
 /** As a visitor pressing Enter on an empty name while the suggestions leave the key to the form, I see the form's own error. */
 export const EnterLeftToTheForm: Story = {
-  args: { combobox: createCombobox(false) },
   play: async ({ args, canvas, userEvent, step }) => {
     const field = canvas.getByRole('combobox');
     await step('When I focus the name input', async () => {
@@ -95,7 +93,7 @@ export const EnterLeftToTheForm: Story = {
       await userEvent.keyboard('{Enter}');
     });
     await step("Then the suggestions were offered the key, and I see the form's own error", async () => {
-      await expect(args.combobox?.onKey).toHaveBeenCalledWith('Enter');
+      await expect(args.onKey).toHaveBeenCalledWith('Enter');
       await expect(canvas.getByRole('alert')).toHaveTextContent(NAME_ERROR_COPY.empty);
     });
   },
@@ -103,7 +101,7 @@ export const EnterLeftToTheForm: Story = {
 
 /** As a visitor pressing Enter on a name while the suggestions take the key, the form does not submit it as well. */
 export const EnterTakenBySuggestions: Story = {
-  args: { combobox: createCombobox(true) },
+  args: { onKey: fn(() => true) },
   play: async ({ args, canvas, userEvent, step }) => {
     const field = canvas.getByRole('combobox');
     await step('When I press Enter on a name the form would reject', async () => {
@@ -111,7 +109,7 @@ export const EnterTakenBySuggestions: Story = {
       await userEvent.type(field, 'Bad Name{Enter}');
     });
     await step('Then the suggestions took the key, and the form did not submit, so it shows no error', async () => {
-      await expect(args.combobox?.onKey).toHaveBeenCalledWith('Enter');
+      await expect(args.onKey).toHaveBeenCalledWith('Enter');
       await expect(canvas.queryByRole('alert')).toBeNull();
     });
   },
@@ -119,7 +117,7 @@ export const EnterTakenBySuggestions: Story = {
 
 /** As a visitor composing text with an IME, my keys go to the IME and the suggestions never see them. */
 export const KeysDuringCompositionLeftToTheIme: Story = {
-  args: { combobox: createCombobox(true) },
+  args: { onKey: fn(() => true) },
   play: async ({ args, canvas, step }) => {
     const field = canvas.getByRole('combobox');
     await step('When I press Enter while composing', async () => {
@@ -127,7 +125,7 @@ export const KeysDuringCompositionLeftToTheIme: Story = {
       field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
     });
     await step('Then the suggestions were not offered the key', async () => {
-      await expect(args.combobox?.onKey).not.toHaveBeenCalled();
+      await expect(args.onKey).not.toHaveBeenCalled();
     });
   },
 };

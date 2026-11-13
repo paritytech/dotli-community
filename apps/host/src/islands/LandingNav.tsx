@@ -23,19 +23,5 @@ export function LandingNav(): JSX.Element {
 function BoundNavForm(): JSX.Element {
   const suffix = useActiveTld();
   const listbox = useStore(navComboboxState.listbox);
-  return (
-    <NavForm
-      suffix={suffix}
-      combobox={{
-        listbox,
-        onText: text => {
-          navComboboxState.setText(text);
-        },
-        onFocus: focused => {
-          navComboboxState.setFocused(focused);
-        },
-        onKey: key => navComboboxState.press(key),
-      }}
-    />
-  );
+  return <NavForm suffix={suffix} listbox={listbox} combobox={navComboboxState} />;
 }

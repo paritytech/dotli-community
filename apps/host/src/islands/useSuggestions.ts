@@ -6,7 +6,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
 import type { NavComboboxState, NavKey } from '../state/navComboboxState.js';
 import { matchLabels } from '../components/landing/matchLabels.js';
-import { getSuggestionId, SUGGESTIONS_ID } from '../components/landing/suggestionIds.js';
 
 type Params = {
   /** What the visitor typed. */
@@ -48,13 +47,7 @@ export function useSuggestions({ text, focused, labels, suffix, combobox, open }
   });
 
   createEffect(
-    () => {
-      if (shown().length === 0) {
-        return null;
-      }
-      const label = active();
-      return { id: SUGGESTIONS_ID, activeId: label === null ? null : getSuggestionId(label) };
-    },
+    () => (shown().length === 0 ? null : { active: active() }),
     view => {
       combobox.showListbox(view);
     },

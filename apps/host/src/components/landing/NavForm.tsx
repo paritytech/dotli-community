@@ -6,9 +6,10 @@ import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
 import { prefersReducedMotion } from '@dotli/ui';
 import { ArrowRightIcon } from '@dotli/ui/icons';
-import type { ListboxView, NavKey } from '../../state/navComboboxState.js';
+import type { ListboxView, NavComboboxState } from '../../state/navComboboxState.js';
 import { dotUrl, typedName } from './dotUrl.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
+import { getSuggestionId, SUGGESTIONS_ID } from './suggestionIds.js';
 import s from './NavForm.module.css';
 
 export const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
@@ -31,17 +32,10 @@ export type NavFormProps = {
    * name lost.
    */
   suffix: Accessor<string | null>;
-  /** The suggestions the input drives as a combobox. Without it the input is a plain text box. */
-  combobox?: NavCombobox | undefined;
-};
-
-export type NavCombobox = {
   /** The suggestions the input controls, null while none show. */
   listbox: Accessor<ListboxView | null>;
-  onText: (text: string) => void;
-  onFocus: (focused: boolean) => void;
-  /** Whether the suggestions took the key, so the form prevents its default only then. */
-  onKey: (key: NavKey) => boolean;
+  /** Where the input sends its text, its focus and the keys the suggestions may take. */
+  combobox: Pick<NavComboboxState, 'setText' | 'setFocused' | 'press'>;
 };
 
 /**
@@ -52,7 +46,6 @@ export type NavCombobox = {
 export function NavForm(props: NavFormProps): JSX.Element {
   let input: HTMLInputElement | undefined;
   const [error, setError] = createSignal<string | null>(null);
-  const listbox = (): ListboxView | null => props.combobox?.listbox() ?? null;
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
@@ -63,6 +56,11 @@ export function NavForm(props: NavFormProps): JSX.Element {
   onCleanup(() => {
     placeholder?.stop();
   });
+
+  const activeId = (): string | undefined => {
+    const label = props.listbox()?.active ?? null;
+    return label === null ? undefined : getSuggestionId(label);
+  };
 
   const onSubmit = (e: Event): void => {
     e.preventDefault();
@@ -91,7 +89,7 @@ export function NavForm(props: NavFormProps): JSX.Element {
       case 'ArrowUp':
       case 'Enter':
       case 'Escape':
-        if (props.combobox?.onKey(e.key) === true) {
+        if (props.combobox.press(e.key)) {
           e.preventDefault();
         }
         return;
@@ -110,20 +108,20 @@ export function NavForm(props: NavFormProps): JSX.Element {
           onInput={e => {
             setError(null);
             placeholder?.resume();
-            props.combobox?.onText(e.currentTarget.value);
+            props.combobox.setText(e.currentTarget.value);
           }}
           onFocus={() => {
-            props.combobox?.onFocus(true);
+            props.combobox.setFocused(true);
           }}
           onBlur={() => {
-            props.combobox?.onFocus(false);
+            props.combobox.setFocused(false);
           }}
           onKeyDown={onKeyDown}
-          role={props.combobox === undefined ? undefined : 'combobox'}
-          aria-autocomplete={props.combobox === undefined ? undefined : 'list'}
-          aria-expanded={props.combobox === undefined ? undefined : listbox() === null ? 'false' : 'true'}
-          aria-controls={listbox()?.id}
-          aria-activedescendant={listbox()?.activeId ?? undefined}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={props.listbox() === null ? 'false' : 'true'}
+          aria-controls={props.listbox() === null ? undefined : SUGGESTIONS_ID}
+          aria-activedescendant={activeId()}
           id="dotli-nav-input"
           class={s['input']}
           type="text"

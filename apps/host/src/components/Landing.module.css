@@ -60,11 +60,8 @@
 /* The input and, under it, its suggestions. */
 .nav {
   position: relative;
-  box-sizing: border-box;
   width: 100%;
   max-width: var(--w-landing);
-  margin: 0;
-  padding: 0;
 }
 
 /* Holds only the wordmark and its tag, so no line box adds space under it. */
