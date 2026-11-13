@@ -2,15 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { DiagnosticsRow } from './host.js';
 import { shareDiagnostics } from './shareDiagnostics.js';
-import { fakeDiagnosticsSource } from './testing/fakeDiagnosticsSource.js';
+import { DIAGNOSTICS_SNAPSHOT as SNAPSHOT, fakeDiagnosticsSource } from './testing/fakeDiagnosticsSource.js';
 import { recordShareReports } from './testing/recordShareReports.js';
-
-const ROWS: DiagnosticsRow[] = [
-  ['Site', 'app.dot.li'],
-  ['Build', '1.4.0 (abc1234)'],
-];
 
 describe('sharing diagnostics', () => {
   it('As a dotli developer, I share diagnostics and a GitHub issue opens prefilled with the report of the rows I see', async () => {
@@ -19,10 +13,10 @@ describe('sharing diagnostics', () => {
     const source = fakeDiagnosticsSource();
 
     // When
-    await shareDiagnostics(source, ROWS);
+    await shareDiagnostics(source, SNAPSHOT);
 
     // Then
-    expect(source.report).toHaveBeenCalledWith(ROWS);
+    expect(source.report).toHaveBeenCalledWith(SNAPSHOT);
     const url = new URL(source.openIssue.mock.calls[0]?.[0] ?? '');
     expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli/issues/new');
     expect(url.searchParams.get('body')).toBe(
@@ -49,7 +43,7 @@ describe('sharing diagnostics', () => {
     const source = fakeDiagnosticsSource({ report: () => Promise.reject(failure) });
 
     // When
-    await shareDiagnostics(source, ROWS);
+    await shareDiagnostics(source, SNAPSHOT);
 
     // Then one log, one capture and one count
     expect(reports.captured).toMatchObject([
@@ -70,7 +64,7 @@ describe('sharing diagnostics', () => {
     });
 
     // When
-    await shareDiagnostics(source, ROWS);
+    await shareDiagnostics(source, SNAPSHOT);
 
     // Then reported as an open failure, and never counted as shared
     expect(reports.captured).toMatchObject([

@@ -35,6 +35,11 @@ export type ChainKind =
   | 'tx-stop-request'
   | 'tx-stop-response';
 
+/** Whether a message of `kind` starts an operation whose result streams through the follow subscription. */
+export function isOperationStarter(kind: ChainKind): boolean {
+  return kind === 'head-body-request' || kind === 'head-storage-request' || kind === 'head-call-request';
+}
+
 /** Undefined on request, start and receive messages. */
 export type ChainOutcome =
   | 'ok'

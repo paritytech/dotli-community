@@ -4,11 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { createDeferred } from '@dotli/shared';
 import { createDiagnosticsSharer } from './createDiagnosticsSharer.js';
-import type { DiagnosticsRow } from './host.js';
-import { fakeDiagnosticsSource } from './testing/fakeDiagnosticsSource.js';
+import { DIAGNOSTICS_SNAPSHOT as SNAPSHOT, fakeDiagnosticsSource } from './testing/fakeDiagnosticsSource.js';
 import { recordShareReports } from './testing/recordShareReports.js';
-
-const ROWS: DiagnosticsRow[] = [['Site', 'app.dot.li']];
 
 describe('the Share diagnostic button', () => {
   it('As a dotli developer, I click Share diagnostic again while the report builds and one issue opens with the button busy until then', async () => {
@@ -17,11 +14,12 @@ describe('the Share diagnostic button', () => {
     const built = createDeferred<string>();
     const source = fakeDiagnosticsSource({ report: () => built.promise });
     const busy: boolean[] = [];
-    const sharer = createDiagnosticsSharer({ source, onBusy: value => busy.push(value) });
+    const sharer = createDiagnosticsSharer({ source });
+    sharer.busy.listen(value => busy.push(value));
 
     // When
-    const first = sharer.share(ROWS);
-    const second = sharer.share(ROWS);
+    const first = sharer.share(SNAPSHOT);
+    const second = sharer.share(SNAPSHOT);
 
     // Then
     expect(busy).toEqual([true]);
@@ -41,11 +39,11 @@ describe('the Share diagnostic button', () => {
     recordShareReports();
     const source = fakeDiagnosticsSource();
     source.report.mockRejectedValueOnce(new Error('permissions read failed'));
-    const sharer = createDiagnosticsSharer({ source, onBusy: () => undefined });
-    await sharer.share(ROWS);
+    const sharer = createDiagnosticsSharer({ source });
+    await sharer.share(SNAPSHOT);
 
     // When
-    await sharer.share(ROWS);
+    await sharer.share(SNAPSHOT);
 
     // Then
     expect(source.report).toHaveBeenCalledTimes(2);

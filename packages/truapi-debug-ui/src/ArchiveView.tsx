@@ -7,12 +7,10 @@ import { formatSize } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
 import { createArchiveReader } from './createArchiveReader.js';
-import { getImageType } from './getImageType.js';
 import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
 import { formatArchiveSummary } from './formatArchiveSummary.js';
 import type { LoadedArchive } from './toLoadedArchive.js';
-import type { ArchiveLoader } from './host.js';
-import type { HostProduct } from './host.js';
+import type { ArchiveLoader, HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
 import { CodeBlock } from './shared/CodeBlock.js';
 import { EmptyState } from './shared/EmptyState.js';
@@ -66,14 +64,17 @@ export function ArchiveView(props: {
   });
 
   createEffect(
-    () => (shown()?.kind === 'image' ? selected() : undefined),
-    file => {
-      const type = file === undefined ? undefined : getImageType(file.path);
-      if (file === undefined || type === undefined) {
+    () => {
+      const preview = shown();
+      const file = selected();
+      return preview?.kind === 'image' && file !== undefined ? { bytes: file.bytes, type: preview.type } : null;
+    },
+    image => {
+      if (image === null) {
         setImageUrl(null);
         return;
       }
-      const url = objectUrls.createObjectURL(new Blob([file.bytes.slice()], { type }));
+      const url = objectUrls.createObjectURL(new Blob([image.bytes.slice()], { type: image.type }));
       setImageUrl(url);
       return () => {
         objectUrls.revokeObjectURL(url);

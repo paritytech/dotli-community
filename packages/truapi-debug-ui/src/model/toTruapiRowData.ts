@@ -13,28 +13,20 @@ import { getTagKind, type TagKind } from './getTagKind.js';
 import type { StoredTruapiEvent } from './storedEvent.js';
 
 export type TruapiRowData = {
-  direction: StoredTruapiEvent['direction'];
-  productId: string | undefined;
-  requestId: string;
   tagKind: TagKind;
   displayTag: string;
   summary: string;
-  pendingKey: string | null;
 };
 
-/** What a TrUAPI message's row shows, a chain message by its decoded label and keys. Never throws. */
-export function toTruapiRowData(event: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
+/** What a TrUAPI message's row shows, a chain message by its decoded label and keys. */
+export function toTruapiRowData(event: StoredTruapiEvent): TruapiRowData {
   const chain = decodeChainAnnotations(event.tag, event.payload);
   const displayTag = chain === null ? event.tag : formatChainLabel(chain);
   const summary = chain === null ? formatPayloadSummary(event.payload) : formatChainSummary(chain);
   return {
-    direction: event.direction,
-    productId: event.productId,
-    requestId: event.requestId,
     tagKind: getTagKind(event.tag),
     displayTag,
     summary,
-    pendingKey,
   };
 }
 

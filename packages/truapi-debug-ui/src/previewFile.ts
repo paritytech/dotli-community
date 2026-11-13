@@ -11,15 +11,18 @@ export type ArchiveFile = {
   bytes: Uint8Array;
 };
 
-export type Preview = { kind: 'encrypted' } | { kind: 'image' } | { kind: 'text'; text: string } | { kind: 'binary' };
+/** An image carries the media type its extension names. */
+export type Preview =
+  { kind: 'encrypted' } | { kind: 'image'; type: string } | { kind: 'text'; text: string } | { kind: 'binary' };
 
-/** How the Archive tab shows `file`: encrypted, an image, its text, or binary. Never throws. */
+/** How the Archive tab shows `file`: encrypted, an image, its text, or binary. */
 export function previewFile(file: ArchiveFile): Preview {
   if (isEncrypted(file.bytes)) {
     return { kind: 'encrypted' };
   }
-  if (getImageType(file.path) !== undefined) {
-    return { kind: 'image' };
+  const type = getImageType(file.path);
+  if (type !== undefined) {
+    return { kind: 'image', type };
   }
   const text = decodeText(file.bytes);
   return text === null ? { kind: 'binary' } : { kind: 'text', text };
@@ -32,6 +35,7 @@ function decodeText(bytes: Uint8Array): string | null {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
+    // Bytes that are not valid UTF-8 are binary, which is the answer.
     return null;
   }
 }

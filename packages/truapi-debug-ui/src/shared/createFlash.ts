@@ -19,8 +19,8 @@ type Params<T> = {
 
 /** Shows each value for `durationMs`, then reports `null`. */
 export function createFlash<T>({ durationMs, onChange, timers = realTimers }: Params<T>) {
-  let handle: unknown;
-  let waiting = false;
+  // The timer of the value showing, or null when none shows.
+  let handle: unknown = null;
   let disposed = false;
 
   return {
@@ -36,9 +36,8 @@ export function createFlash<T>({ durationMs, onChange, timers = realTimers }: Pa
     }
     cancel();
     onChange(value);
-    waiting = true;
     handle = timers.setTimeout(() => {
-      waiting = false;
+      handle = null;
       onChange(null);
     }, durationMs);
   }
@@ -49,9 +48,9 @@ export function createFlash<T>({ durationMs, onChange, timers = realTimers }: Pa
   }
 
   function cancel(): void {
-    if (waiting) {
+    if (handle !== null) {
       timers.clearTimeout(handle);
-      waiting = false;
+      handle = null;
     }
   }
 }

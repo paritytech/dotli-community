@@ -37,11 +37,11 @@ The host passes them through `DebugPanelHost`.
 
 ## Public API
 
-| Entry                            | Export                                                                    | What it does                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `@dotli/truapi-debug-ui`         | `loadTruapiDebugMount`, `TruapiDebugMountModule`                          | Lazy loader. Its `setupTruapiDebugPanel` installs the panel and returns a dispose. |
-| `@dotli/truapi-debug-ui`         | `DebugPanelHost`, `DiagnosticsSource`, `DiagnosticsRow`, `PackageVersion` | The port the host implements, and its diagnostics types.                           |
-| `@dotli/truapi-debug-ui/testing` | `fakeDebugPanelHost`, `FakeDebugPanelHost`                                | A host port for specs and stories.                                                 |
+| Entry                            | Export                                                                                           | What it does                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `@dotli/truapi-debug-ui`         | `loadTruapiDebugMount`, `TruapiDebugMountModule`                                                 | Lazy loader. Its `setupTruapiDebugPanel` installs the panel and returns a dispose. |
+| `@dotli/truapi-debug-ui`         | `DebugPanelHost`, `DiagnosticsSource`, `DiagnosticsSnapshot`, `DiagnosticsRow`, `PackageVersion` | The port the host implements, and its diagnostics types.                           |
+| `@dotli/truapi-debug-ui/testing` | `fakeDebugPanelHost`, `FakeDebugPanelHost`                                                       | A host port for specs and stories.                                                 |
 
 ## Using the panel
 

@@ -19,10 +19,11 @@ export type ResolutionRow = {
   role: ChainRole;
   label: string;
   blocks: ResolutionBlock[];
+  /**
+   * The most peers the chain had in the load. Peers often arrive a beat after `ready`, and a chain that dropped them
+   * later was not a zero-peer chain for this load.
+   */
   peers: number | null;
-  peersAtReady: number | null;
-  /** For a chain that never reported `ready`. */
-  peersMax: number | null;
   warpAt: number | null;
   warpTarget: number | null;
   dbCache: Exclude<CacheResult, 'skipped'>;
@@ -63,26 +64,6 @@ type BuildRowsParams = {
   endedAt: number;
 };
 
-type GetPeerFieldsParams = {
-  row: ResolutionRow;
-  /** The reported peer count, or `null` when the event carries none. */
-  peers: number | null;
-  /** The phase the chain is in. */
-  phase: string;
-};
-
-type GetProgressFieldsParams = {
-  row: ResolutionRow;
-  /** The phase event's payload. */
-  payload: Record<string, unknown>;
-  /** The phase the chain is in. */
-  phase: string;
-};
-
-type PeerFields = Pick<ResolutionRow, 'peers' | 'peersMax' | 'peersAtReady'>;
-
-type ProgressFields = PeerFields & Pick<ResolutionRow, 'warpAt' | 'warpTarget'>;
-
 /** A running byte count at a moment, in ms. */
 type ByteCount = {
   at: number;
@@ -93,7 +74,7 @@ const LOAD_END_GRACE_MS = 30_000;
 
 /**
  * The newest load in `events` as of `now`. Anchored on the newest `boot:started`, not one `flowId`, because boot,
- * resolve and render each mint their own flow. Never throws.
+ * resolve and render each mint their own flow.
  */
 export function buildResolution(events: readonly DotliDebugEvent[], now: number): ResolutionModel {
   let bootAt = -1;
@@ -119,52 +100,27 @@ export function buildResolution(events: readonly DotliDebugEvent[], now: number)
   const endedAt = findLoadEnd(load, now);
   // Chains keep reporting after the app is on screen, so bound the window at the load's end.
   const mine = load.filter(e => e.timestamp <= endedAt);
-  const summary = buildSummary(mine, startedAt);
-  // A cached resolution emits no `resolve:completed`, so the product being on screen ends the load.
-  if (summary.outcome === 'running' && isFinished(mine)) {
-    summary.outcome = summary.cid === null ? 'empty' : 'resolved';
-  }
-
   return {
     flowId: first.flowId,
     startedAt,
     elapsedMs: Math.max(0, endedAt - startedAt),
-    rows: applyLatestPeers(buildRows({ events: mine, startedAt, endedAt }), mine),
-    summary,
+    rows: buildRows({ events: mine, startedAt, endedAt }),
+    summary: buildSummary(mine, startedAt),
   };
 }
 
-/** Peers arrive a beat after the phases, so any peer event inside the window counts. */
-function applyLatestPeers(rows: ResolutionRow[], load: readonly DotliDebugEvent[]): ResolutionRow[] {
-  const best = new Map<string, number>();
-  for (const event of load) {
-    if (event.layer !== 'chain' || event.event !== 'peers') {
-      continue;
-    }
-    const payload: Record<string, unknown> = event.payload;
-    const chain = readString(payload['chain']);
-    const peers = readNumber(payload['peers']);
-    if (chain === null || peers === null) {
-      continue;
-    }
-    best.set(chain, Math.max(best.get(chain) ?? 0, peers));
-  }
-  return rows.map(row => {
-    const seen = best.get(row.role);
-    return seen === undefined ? row : { ...row, peers: Math.max(row.peers ?? 0, seen) };
-  });
-}
-
-function isFinished(mine: readonly DotliDebugEvent[]): boolean {
-  return mine.some(isLoadEndEvent);
-}
-
 function isLoadEndEvent(event: DotliDebugEvent): boolean {
-  return (
-    (event.layer === 'render' && event.event === 'iframe_ready') ||
-    (event.layer === 'boot' && (event.event === 'ready' || event.event === 'failed')) ||
-    (event.layer === 'resolve' && (event.event === 'completed' || event.event === 'failed'))
-  );
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- only these events end a load, every other one goes on
+  switch (getSystemEventKey(event)) {
+    case 'render:iframe_ready':
+    case 'boot:ready':
+    case 'boot:failed':
+    case 'resolve:completed':
+    case 'resolve:failed':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function findLoadEnd(load: readonly DotliDebugEvent[], now: number): number {
@@ -192,15 +148,14 @@ function findLoadEnd(load: readonly DotliDebugEvent[], now: number): number {
 }
 
 function buildRows({ events, startedAt, endedAt }: BuildRowsParams): ResolutionRow[] {
-  const byRole = new Map<ChainRole, ResolutionRow>();
+  // Keyed by the chain name a payload carries, which may name no role.
+  const byChain = new Map<string, ResolutionRow>();
   for (const role of CHAIN_ROLES) {
-    byRole.set(role, {
+    byChain.set(role, {
       role,
       label: CHAIN_ROLE_LABELS[role],
       blocks: [],
       peers: null,
-      peersAtReady: null,
-      peersMax: null,
       warpAt: null,
       warpTarget: null,
       dbCache: null,
@@ -211,37 +166,41 @@ function buildRows({ events, startedAt, endedAt }: BuildRowsParams): ResolutionR
     if (event.layer !== 'chain') {
       continue;
     }
-    if (event.event !== 'phase' && event.event !== 'peers' && event.event !== 'dbcache') {
-      continue;
-    }
     const payload: Record<string, unknown> = event.payload;
-    const role = CHAIN_ROLES.find(r => r === readString(payload['chain']));
-    const row = role === undefined ? undefined : byRole.get(role);
+    const row = byChain.get(readString(payload['chain']) ?? '');
     if (row === undefined) {
       continue;
     }
-    if (event.event === 'dbcache') {
-      const cache = readString(payload['dbCache']);
-      if (cache === 'hit' || cache === 'miss') {
-        // First answer wins, so a later report cannot change the load's cache result.
-        row.dbCache ??= cache;
-      }
-      continue;
+    const peers = readNumber(payload['peers']);
+    if (peers !== null) {
+      row.peers = Math.max(row.peers ?? 0, peers);
     }
-    if (event.event === 'peers') {
-      // A peer change never opens a block of its own.
-      const open = row.blocks.at(-1);
-      Object.assign(row, getPeerFields({ row, peers: readNumber(payload['peers']), phase: open?.phase ?? 'unknown' }));
-      continue;
+    switch (event.event) {
+      case 'bytes':
+        // A byte count belongs to the whole load, not to a chain's row.
+        continue;
+      case 'dbcache': {
+        const cache = readString(payload['dbCache']);
+        if (cache === 'hit' || cache === 'miss') {
+          // First answer wins, so a later report cannot change the load's cache result.
+          row.dbCache ??= cache;
+        }
+        continue;
+      }
+      case 'peers':
+        // A peer change never opens a block of its own.
+        continue;
+      case 'phase':
+        break;
     }
     const phase = readString(payload['phase']) ?? 'unknown';
     const at = Math.max(0, event.timestamp - startedAt);
     const previous = row.blocks.at(-1);
-    if (previous !== undefined) {
-      // A warp update within the same phase keeps the block running instead of splitting it.
-      previous.endMs = previous.phase === phase ? null : at;
-    }
+    // A warp update within the same phase keeps the block running instead of splitting it.
     if (previous?.phase !== phase) {
+      if (previous !== undefined) {
+        previous.endMs = at;
+      }
       row.blocks.push({
         phase,
         startMs: at,
@@ -249,45 +208,19 @@ function buildRows({ events, startedAt, endedAt }: BuildRowsParams): ResolutionR
         reason: readString(payload['reason']),
       });
     }
-    Object.assign(row, getProgressFields({ row, payload, phase }));
-  }
-
-  for (const row of byRole.values()) {
-    // A chain that went ready with peers and later dropped them was not a zero-peer chain for this load.
-    row.peers = row.peersAtReady ?? row.peersMax ?? row.peers;
+    row.warpAt = readNumber(payload['warpAt']) ?? row.warpAt;
+    row.warpTarget = readNumber(payload['warpTarget']) ?? row.warpTarget;
   }
 
   const span = Math.max(0, endedAt - startedAt);
-  for (const row of byRole.values()) {
+  for (const row of byChain.values()) {
     const last = row.blocks.at(-1);
-    if (last === undefined) {
-      continue;
+    if (last !== undefined) {
+      last.endMs ??= Math.max(last.startMs, span);
     }
-    last.endMs ??= Math.max(last.startMs, span);
   }
-  return CHAIN_ROLES.map(role => byRole.get(role)).filter((row): row is ResolutionRow => row !== undefined);
-}
-
-/** The row's peer counts once `peers` is taken in, or its current counts when `peers` is `null`. Never throws. */
-function getPeerFields({ row, peers, phase }: GetPeerFieldsParams): PeerFields {
-  if (peers === null) {
-    return { peers: row.peers, peersMax: row.peersMax, peersAtReady: row.peersAtReady };
-  }
-  return {
-    peers,
-    peersMax: Math.max(row.peersMax ?? 0, peers),
-    // Best seen, not newest: a chain reports `ready` with no peers and gains them a moment later.
-    peersAtReady: phase === 'ready' ? Math.max(row.peersAtReady ?? 0, peers) : row.peersAtReady,
-  };
-}
-
-/** The row's peer and warp fields once a phase event's `payload` is taken in. Never throws. */
-function getProgressFields({ row, payload, phase }: GetProgressFieldsParams): ProgressFields {
-  return {
-    ...getPeerFields({ row, peers: readNumber(payload['peers']), phase }),
-    warpAt: readNumber(payload['warpAt']) ?? row.warpAt,
-    warpTarget: readNumber(payload['warpTarget']) ?? row.warpTarget,
-  };
+  // Filled in role order, so the rows come out in that order.
+  return [...byChain.values()];
 }
 
 function createEmptySummary(): ResolutionSummary {
@@ -409,6 +342,10 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
     }
   }
 
+  // A cached resolution emits no `resolve:completed`, so the product being on screen ends the load.
+  if (summary.outcome === 'running' && mine.some(isLoadEndEvent)) {
+    summary.outcome = summary.cid === null ? 'empty' : 'resolved';
+  }
   summary.renderedMs = paintedMs ?? summary.renderedMs;
   if (previousBytes !== null) {
     summary.averageBytesPerSecond = getByteRate({ at: startedAt, total: 0 }, previousBytes);
@@ -416,7 +353,7 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
   return summary;
 }
 
-/** Bytes per second between two counts, or `null` when no time passed between them. Never throws. */
+/** Bytes per second between two counts, or `null` when no time passed between them. */
 function getByteRate(from: ByteCount, to: ByteCount): number | null {
   const seconds = (to.at - from.at) / 1000;
   return seconds > 0 ? (to.total - from.total) / seconds : null;
@@ -426,7 +363,7 @@ function toChainBackend(value: unknown): ResolutionSummary['backend'] {
   return value === 'smoldot' || value === 'rpc-gateway' ? value : null;
 }
 
-/** The summary's transport for a failover target, or `null` for a backend this build does not know. Never throws. */
+/** The summary's transport for a failover target, or `null` for a backend this build does not know. */
 function readFailoverBackend(value: unknown): ResolutionSummary['backend'] {
   const backend = parseBackend(readString(value));
   if (backend === null) {

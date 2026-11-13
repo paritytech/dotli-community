@@ -116,8 +116,6 @@ export function EventList(props: {
   // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge. Coming
   // back reads the clock, since the snapshot time and the last tick can be as old as the moment the list was hidden.
   const waiting = work.createKeyedSignals<string, number>();
-  let clockAt = 0;
-  let wasLive = false;
   createEffect(
     () =>
       props.active && !props.collapsed
@@ -127,17 +125,15 @@ export function EventList(props: {
             now: Math.max(props.refreshedAt, tickedAt()),
           }
         : null,
-    input => {
+    (input, previous = null) => {
       if (input === null) {
-        wasLive = false;
         return;
       }
       tracker.update(input.events);
       const open = tracker.open();
-      if (!wasLive || input.tick !== clockAt) {
-        const now = wasLive ? input.now : Date.now();
-        wasLive = true;
-        clockAt = input.tick;
+      // `previous` is null when the list was off screen.
+      if (input.tick !== previous?.tick) {
+        const now = previous === null ? Date.now() : input.now;
         for (const key of [...waiting.keys()]) {
           if (!open.has(key)) {
             waiting.write(key, undefined);
@@ -162,9 +158,6 @@ export function EventList(props: {
     const selected = props.selection;
     return selected !== null && props.events.some(e => e.seq === selected.seq) ? getRowId(selected.seq) : undefined;
   });
-
-  const findRow = (seq: EventSeq): HTMLElement | null =>
-    list?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`) ?? null;
 
   return (
     <div
@@ -214,7 +207,7 @@ export function EventList(props: {
           return;
         }
         props.onSelect(nextSeq);
-        findRow(nextSeq)?.scrollIntoView({ block: 'nearest' });
+        list?.querySelector(`[data-seq="${String(nextSeq)}"]`)?.scrollIntoView({ block: 'nearest' });
       }}
     >
       <For
@@ -292,23 +285,22 @@ function renderCells({ event, latency, context }: RenderCellsParams): JSX.Elemen
 function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; context: RowContext }): JSX.Element {
   const event = untrack(() => props.event);
   const context = untrack(() => props.context);
-  const data = toTruapiRowData(event, getPendingKey(event));
-  const pendingKey = data.pendingKey;
+  const data = toTruapiRowData(event);
+  const pendingKey = getPendingKey(event);
   const waiting = (): number | undefined => (pendingKey === null ? undefined : context.waiting.read(pendingKey));
 
   return (
     <>
-      <DirectionArrow direction={data.direction} />
-      {data.productId === undefined ? (
-        <span class={s['product']} data-testid="td-product" data-anon="">
-          {formatProductId(undefined)}
-        </span>
-      ) : (
-        <span class={s['product']} data-testid="td-product" title={data.productId}>
-          {data.productId}
-        </span>
-      )}
-      <IdBadge id={data.requestId} testId="td-rid" title={`requestId: ${data.requestId}`} />
+      <DirectionArrow direction={event.direction} />
+      <span
+        class={s['product']}
+        data-testid="td-product"
+        data-anon={event.productId === undefined ? '' : undefined}
+        title={event.productId}
+      >
+        {formatProductId(event.productId)}
+      </span>
+      <IdBadge id={event.requestId} testId="td-rid" title={`requestId: ${event.requestId}`} />
       <span class={s['tagAndSummary']}>
         <MethodTag kind={data.tagKind}>{data.displayTag}</MethodTag>
         <Latency text={untrack(() => props.latency)} />

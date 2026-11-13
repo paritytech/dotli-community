@@ -1,46 +1,47 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { atom, type ReadableAtom } from 'nanostores';
 import { createAsyncTaskPool } from '@dotli/shared';
-import type { DiagnosticsRow, DiagnosticsSource } from './host.js';
+import type { DiagnosticsSnapshot, DiagnosticsSource } from './host.js';
 import { shareDiagnostics } from './shareDiagnostics.js';
 
 type Params = {
   /** Builds the report and opens the issue. */
   source: Pick<DiagnosticsSource, 'report' | 'openIssue'>;
-  /** Told when a share starts and ends, so the button can read busy. */
-  onBusy: (busy: boolean) => void;
 };
 
-const SHARE_POOL = 'diagnostics_share';
+/** The Share diagnostic button's command, as its factory builds it. */
+export type DiagnosticsSharer = ReturnType<typeof createDiagnosticsSharer>;
 
 /** The Share diagnostic button's command. Opening a tab is not idempotent, so overlapping clicks share once. */
-export function createDiagnosticsSharer({ source, onBusy }: Params) {
+export function createDiagnosticsSharer({ source }: Params) {
   const shares = createAsyncTaskPool({ poolSize: 1 });
-  // A share answers every click made in its round. The round ends with the share, so a later click shares again.
-  let round = {};
+  const busy = atom(false);
+  const busyStore: ReadableAtom<boolean> = busy;
   return {
+    /** Whether a share runs, so the button reads busy. */
+    busy: busyStore,
     /**
-     * Shares the report of `rows`. A click in a running share's round belongs to that round,
-     * whatever rows it passes, so it settles with the share and opens no second issue. A failed share is reported
-     * here, not rejected.
+     * Shares the report of `snapshot`. A click while a share runs, whatever snapshot it passes, settles with that share
+     * and opens no second issue. A failed share is reported here, not rejected.
      */
-    share(rows: readonly DiagnosticsRow[]): Promise<void> {
-      const asked = round;
+    share(snapshot: DiagnosticsSnapshot): Promise<void> {
+      // The pool starts an idle share at once, so a share that runs is already busy here.
+      const joining = busy.get();
       return shares.call(
         async () => {
-          if (asked !== round) {
+          if (joining) {
             return;
           }
-          onBusy(true);
+          busy.set(true);
           try {
-            await shareDiagnostics(source, rows);
+            await shareDiagnostics(source, snapshot);
           } finally {
-            round = {};
-            onBusy(false);
+            busy.set(false);
           }
         },
-        { pool: SHARE_POOL },
+        { pool: 'diagnostics_share' },
       );
     },
   };

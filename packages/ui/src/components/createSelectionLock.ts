@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSharedRun } from '@dotli/shared';
+
 /** Holds the page's text selection off while anything holds it. */
 export type SelectionLock = ReturnType<typeof createSelectionLock>;
 
@@ -9,34 +11,20 @@ type Params = {
   apply: (locked: boolean) => void;
 };
 
-/** A lock over `apply`, locked by the first hold and unlocked by the last release. Building it never throws. */
+/** A lock over `apply`, locked by the first hold and unlocked by the last release. */
 export function createSelectionLock({ apply }: Params) {
-  let holders = 0;
+  const run = createSharedRun({ begin: lock });
 
-  function hold(): () => void {
-    holders += 1;
-    if (holders === 1) {
-      apply(true);
-    }
-    let released = false;
-
-    function release(): void {
-      if (released) {
-        return;
-      }
-      released = true;
-      holders -= 1;
-      if (holders === 0) {
-        apply(false);
-      }
-    }
-
-    return release;
+  function lock(): () => void {
+    apply(true);
+    return () => {
+      apply(false);
+    };
   }
 
   return {
-    /** Locks until the returned release, which is safe to call twice. Never throws unless `apply` does. */
-    hold,
+    /** Locks until the returned release, which is safe to call twice. Throws what `apply` throws. */
+    hold: run.join,
   };
 }
 

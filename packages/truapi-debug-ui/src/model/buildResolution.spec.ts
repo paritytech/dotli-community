@@ -73,3 +73,45 @@ describe('resolution summary: backend', () => {
     },
   );
 });
+
+describe('resolution rows: peers', () => {
+  it.each<{ story: string; atReady: number; later: number; expected: number }>([
+    { story: 'gains peers a moment after it goes ready', atReady: 0, later: 5, expected: 5 },
+    { story: 'loses peers after it goes ready', atReady: 4, later: 1, expected: 4 },
+  ])(
+    'As a developer, I watch a chain that $story and its row counts the most peers it had',
+    ({ atReady, later, expected }) => {
+      // Given a load whose relay chain goes ready with some peers and then reports another count
+      const events = [
+        buildSystemEvent({ ...BOOT_STARTED, flowId: 'boot-1' }),
+        buildSystemEvent({
+          layer: 'chain',
+          event: 'phase',
+          flowId: 'chain-1',
+          timestamp: 10,
+          payload: { chain: 'relay', phase: 'ready', peers: atReady },
+        }),
+        buildSystemEvent({
+          layer: 'chain',
+          event: 'peers',
+          flowId: 'chain-1',
+          timestamp: 20,
+          payload: { chain: 'relay', peers: later },
+        }),
+        buildSystemEvent({
+          layer: 'boot',
+          event: 'ready',
+          flowId: 'boot-1',
+          timestamp: 30,
+          payload: { label: 'app', totalMs: 30, path: 'slow' },
+        }),
+      ];
+
+      // When the resolution is built
+      const model = buildResolution(events, 100);
+
+      // Then the relay row counts the most peers it had
+      expect(model.rows.find(row => row.role === 'relay')?.peers).toBe(expected);
+    },
+  );
+});

@@ -472,6 +472,32 @@ export const ScrolledUpKeepsRows: Story = {
   },
 };
 
+/** As a developer using the debug panel, I pause while the list follows streaming traffic and it stays on the newest row. */
+export const PauseKeepsBottom: Story = {
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      getDebugPanel().mount();
+      for (let index = 0; index < 50; index++) {
+        emitMessage('x_receive', `r${String(index)}`);
+      }
+      clock.passFrame();
+      const list = getPart('td-list');
+      await step('Given the list follows the newest row and more events arrive within the frame', async () => {
+        await expect(list.scrollHeight - list.clientHeight - list.scrollTop).toBeLessThan(4);
+        for (let index = 0; index < 5; index++) {
+          emitMessage('x_receive', `n${String(index)}`);
+        }
+      });
+      await step('When I pause', () => {
+        getPart('td-pause').click();
+      });
+      await step('Then the list still shows the newest row', async () => {
+        await expect(listRows()).toHaveLength(55);
+        await expect(list.scrollHeight - list.clientHeight - list.scrollTop).toBeLessThan(4);
+      });
+    }),
+};
+
 /** As a developer using the debug panel, I drag the edge with several moves in one frame and the host hears the last move once when the frame passes. */
 export const EdgeDragRefitsOncePerFrame: Story = {
   play: async ({ step }) =>

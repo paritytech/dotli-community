@@ -51,10 +51,18 @@ import s from './Panel.module.css';
 type Snapshot = {
   events: readonly StoredEvent[];
   dropped: number;
+  paused: boolean;
   /** Sorted, `undefined` last. */
   products: readonly (string | undefined)[];
   version: number;
   takenAt: number;
+};
+
+/** The events the filters let through, with the snapshot and filters they were taken from. */
+type Filtered = {
+  shown: readonly StoredEvent[];
+  events: readonly StoredEvent[];
+  filters: FilterState;
 };
 
 type FormatCountsParams = {
@@ -105,9 +113,8 @@ export function Panel(props: {
 }): JSX.Element {
   const store = untrack(() => props.store);
   const recorder = untrack(() => props.resolution);
-  const work = usePanelWork();
   const host = untrack(() => props.host);
-  const { matchesFilters } = work;
+  const { matchesFilters } = usePanelWork();
 
   let panelElement: HTMLDivElement | undefined;
   let listElement: HTMLDivElement | undefined;
@@ -118,6 +125,7 @@ export function Panel(props: {
     // A snapshot holds still while traffic keeps arriving.
     events: store.list().slice(),
     dropped: store.dropped(),
+    paused: store.isPaused(),
     products: sortProducts(store.productIds()),
     version: store.version.get(),
     takenAt: Date.now(),
@@ -137,23 +145,26 @@ export function Panel(props: {
   const [narrow, setNarrow] = createSignal(narrowViewport.matches);
   const placement = createMemo<DockPosition>(() => (narrow() ? 'bottom' : dock()));
   const stacked = createMemo(() => placement() === 'right' || narrow());
-  const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
 
-  let filtered: {
-    events: readonly StoredEvent[];
-    filters: FilterState;
-  } | null = null;
-  const visible = createMemo<readonly StoredEvent[]>(previous => {
+  // Under the same filters, a new snapshot only appends to the last result, so the list keeps its unchanged rows.
+  const filtered = createMemo<Filtered>(last => {
     const events = snapshot().events;
     const current = filters();
-    const last = filtered;
-    filtered = { events, filters: current };
-    if (previous === undefined || last?.filters !== current) {
-      return events.filter(e => matchesFilters(e, current));
+    if (last?.filters !== current) {
+      return { shown: events.filter(e => matchesFilters(e, current)), events, filters: current };
     }
-    return appendVisible({ previous, lastEvents: last.events, events, filters: current, matches: matchesFilters });
+    const shown = appendVisible({
+      previous: last.shown,
+      lastEvents: last.events,
+      events,
+      filters: current,
+      matches: matchesFilters,
+    });
+    return { shown, events, filters: current };
   });
+  // A memo, so a frame that shows nothing new keeps the same list and redraws nothing.
+  const visible = createMemo(() => filtered().shown);
   // Keyed on the recorder, not the store, so TrUAPI traffic does not redraw the Resolution view.
   const resolutionVersion = createMemo(() => {
     snapshot();
@@ -354,18 +365,16 @@ export function Panel(props: {
 
   /** Exports carry the filtered view, what the user currently sees. */
   function exportJson(): string {
-    const all = store.list();
-    const current = filters();
-    const events = all.filter(e => matchesFilters(e, current));
+    const events = visible();
     const meta: ExportMeta = {
       exportedAt: new Date().toISOString(),
       url: window.location.href,
       userAgent: navigator.userAgent,
       capacity: store.capacity,
-      droppedCount: store.dropped(),
-      totalEvents: all.length,
+      droppedCount: snapshot().dropped,
+      totalEvents: snapshot().events.length,
       exportedEvents: events.length,
-      filters: current,
+      filters: filters(),
     };
     return buildExport(events, meta);
   }
@@ -420,12 +429,11 @@ export function Panel(props: {
           controls={
             <EventControls
               counts={counts()}
-              paused={paused()}
+              paused={snapshot().paused}
               exportJson={exportJson}
               onTogglePause={() => {
-                const next = !store.isPaused();
-                store.setPaused(next);
-                flush(() => setPaused(next));
+                store.setPaused(!store.isPaused());
+                commit(refreshSnapshot);
               }}
               onClear={() => {
                 store.clear();
@@ -546,7 +554,7 @@ function appendVisible({
   if (dropped === 0 && added.length === 0) {
     return previous;
   }
-  return dropped === 0 ? [...previous, ...added] : [...previous.slice(dropped), ...added];
+  return [...previous.slice(dropped), ...added];
 }
 
 /** The first row still in view at `scrollTop`, by bisection over offsets relative to the first row. */

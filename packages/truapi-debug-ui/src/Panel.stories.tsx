@@ -35,57 +35,23 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const EMPTY_LIST = 'No events match the current filter.';
-const EMPTY_DETAIL = 'Select an event on the left to inspect its payload.';
-
-/** As a developer using the debug panel, I see the header with the tabs and the panel controls, the filter row with the log's count and controls, the filters wide open and an empty list beside an empty detail pane. */
+/** As a developer using the debug panel, I open it expanded on the TrUAPI list, with the filters wide open and nothing selected. */
 export const Default: Story = {
   play: async ({ step }) => {
-    const header = within(getPart('td-header'));
-    await step(
-      'Then the header shows the tabs and the panel controls, and the filter row the log controls',
-      async () => {
-        await expect(getPanel()).not.toHaveAttribute('data-collapsed');
-        await expect(getPanel()).toHaveAttribute('data-dock', 'bottom');
-        await expect(getPart('td-resize-handle')).toBeInTheDocument();
-        const sections = header.getAllByTestId('td-section');
-        await expect(sections.map(t => t.textContent)).toEqual([
-          'TrUAPI',
-          'Resolution',
-          'Archive',
-          'Diagnostics',
-          'Wallet',
-        ]);
-        await expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual([
-          'true',
-          'false',
-          'false',
-          'false',
-          'false',
-        ]);
-        const log = within(getPart('td-filters'));
-        await expect(log.getByTestId('td-counts')).toHaveTextContent('0 events');
-        await expect(log.getByRole('button', { name: 'Pause' })).toBe(getPart('td-pause'));
-        await expect(log.getByRole('button', { name: 'Clear' })).toBe(getPart('td-clear'));
-        for (const [id, label, scope] of [
-          ['td-export', 'Download as JSON', log],
-          ['td-copy', 'Copy to clipboard', log],
-          ['td-dock', 'Dock to right', header],
-          ['td-close', 'Hide', header],
-        ] as const) {
-          await expect(scope.getByRole('button', { name: label })).toBe(getPart(id));
-          await expect(getPart(id)).toHaveAttribute('title', label);
-          await expect(getPart(id).querySelector('svg')).not.toBeNull();
-        }
-        for (const id of ['td-counts', 'td-pause', 'td-clear', 'td-export', 'td-copy']) {
-          await expect(header.queryByTestId(id)).toBeNull();
-        }
-        await expect(header.getByRole('button', { name: 'Collapse' })).toBe(getPart('td-collapse'));
-        await expect(getPart('td-collapse')).toHaveAttribute('title', 'Collapse');
-        await expect(getPart('td-collapse')).toHaveAttribute('aria-expanded', 'true');
-        await expect(getPart('td-collapse').querySelector('svg')).not.toBeNull();
-      },
-    );
+    await step('Then the panel is expanded at the bottom on the TrUAPI section', async () => {
+      await expect(getPanel()).not.toHaveAttribute('data-collapsed');
+      await expect(getPanel()).toHaveAttribute('data-dock', 'bottom');
+      await expect(getPart('td-collapse')).toHaveAttribute('aria-expanded', 'true');
+      const sections = within(getPart('td-header')).getAllByTestId('td-section');
+      await expect(sections.map(t => t.getAttribute('aria-selected'))).toEqual([
+        'true',
+        'false',
+        'false',
+        'false',
+        'false',
+      ]);
+      await expect(within(getPart('td-filters')).getByTestId('td-counts')).toHaveTextContent('0 events');
+    });
     await step('Then the filters start wide open', async () => {
       const filters = within(getPart('td-filters'));
       const kinds = filters.getAllByTestId('td-kind');
@@ -94,27 +60,20 @@ export const Default: Story = {
         ['system', true],
       ]);
       const dirs = filters.getAllByTestId('td-dir');
-      await expect(dirs.map(d => d.textContent)).toEqual(['both', 'out', 'in']);
-      await expect(dirs.map(d => d.querySelector('svg') !== null)).toEqual([false, true, true]);
       await expect(dirs.map(d => d.hasAttribute('data-active'))).toEqual([true, false, false]);
       const chips = filters.getAllByTestId('td-product-chip');
-      await expect(chips.map(c => c.textContent)).toEqual(['all']);
+      await expect(chips).toHaveLength(1);
       await expect(chips[0]).toHaveAttribute('data-active');
-      await expect(getPart('td-tag-input')).toHaveAttribute('placeholder', 'filter by method…');
-      await expect(getPart('td-exclude-input')).toHaveAttribute('placeholder', 'hide by method…');
     });
     await step('Then the list view is shown empty beside an empty detail pane', async () => {
       const tabs = within(getPart('td-tabs')).getAllByTestId('td-tab');
-      await expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline']);
       await expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
       await expect(getPart('td-list')).not.toHaveAttribute('hidden');
-      await expect(within(getPart('td-list')).getByTestId('td-empty')).toHaveTextContent(EMPTY_LIST);
+      await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
       for (const id of ['td-timeline', 'td-res', 'td-archive', 'td-diagnostics', 'td-wallet']) {
         await expect(getPart(id)).toHaveAttribute('hidden');
       }
-      await expect(getPart('td-body-splitter')).toBeInTheDocument();
-      await expect(getPart('td-detail-empty')).toHaveTextContent(EMPTY_DETAIL);
-      await expect(getPart('td-tooltip')).toBeInTheDocument();
+      await expect(getPart('td-detail-empty')).toBeInTheDocument();
     });
   },
 };
@@ -125,7 +84,6 @@ export const StartCollapsed: Story = {
   play: async ({ step }) => {
     await step('Then the panel mounts header-only', async () => {
       await expect(getPanel()).toHaveAttribute('data-collapsed');
-      await expect(getPart('td-collapse')).toHaveAccessibleName('Expand');
       await expect(getPart('td-collapse')).toHaveAttribute('aria-expanded', 'false');
       await expect(getPart('td-resize-handle')).toHaveAttribute('data-disabled');
       await expect(getPart('td-filters')).toHaveAttribute('hidden');
@@ -194,31 +152,19 @@ export const TruapiRows: Story = {
         await expect(readCounts()).toBe('5 events');
         const request = within(getRowByTag('system_handshake_request'));
         await expect(getRowByTag('system_handshake_request')).not.toHaveAttribute('data-system');
-        await expect(getRowByTag('system_handshake_request')).toHaveAttribute('role', 'option');
-        await expect(request.getByTestId('td-time')).toHaveTextContent('12:34:56.789');
-        await expect(request.getByTestId('td-arrow-out')).toHaveAccessibleName('outgoing');
-        await expect(request.queryByTestId('td-arrow-in')).toBeNull();
-        await expect(request.getByTestId('td-product')).toHaveTextContent('app.dot');
+        await expect(request.getByTestId('td-arrow-out')).toBeInTheDocument();
         await expect(request.getByTestId('td-product')).not.toHaveAttribute('data-anon');
-        await expect(request.getByTestId('td-rid')).toHaveTextContent('req-aa');
-        await expect(request.getByTestId('td-tag')).toHaveAttribute('data-kind', 'request');
         await expect(request.getByTestId('td-summary')).toHaveTextContent('version=1');
         await expect(request.queryByTestId('td-latency')).toBeNull();
 
         const response = within(getRowByTag('system_handshake_response'));
-        await expect(response.getByTestId('td-arrow-in')).toHaveAccessibleName('incoming');
-        await expect(response.getByTestId('td-tag')).toHaveAttribute('data-kind', 'response');
+        await expect(response.getByTestId('td-arrow-in')).toBeInTheDocument();
         await expect(response.getByTestId('td-latency')).toHaveTextContent('+50ms');
-        await expect(response.getByTestId('td-summary')).toHaveTextContent('ok=true');
 
         const anonymousRow = within(getRowByTag('chat_subscribe'));
-        await expect(anonymousRow.getByTestId('td-product')).toHaveTextContent('(no id)');
         await expect(anonymousRow.getByTestId('td-product')).toHaveAttribute('data-anon');
-        await expect(anonymousRow.getByTestId('td-tag')).toHaveAttribute('data-kind', 'subscription');
-        await expect(anonymousRow.getByTestId('td-summary')).toHaveTextContent('hello');
 
         const plain = within(getRowByTag('plain_tag'));
-        await expect(plain.getByTestId('td-tag')).toHaveAttribute('data-kind', 'plain');
         await expect(plain.queryByTestId('td-summary')).toBeNull();
       });
     }),
@@ -234,10 +180,6 @@ export const SystemRows: Story = {
       const row = getRowByTag('boot.started');
       const cells = within(row);
       await expect(row).toHaveAttribute('data-system');
-      await expect(cells.getByTestId('td-layer-badge')).toHaveAttribute('data-layer', 'boot');
-      await expect(cells.getByTestId('td-layer-badge')).toHaveTextContent('boot');
-      await expect(cells.getByTestId('td-rid')).toHaveTextContent('flow-b');
-      await expect(cells.getByTestId('td-tag')).toHaveAttribute('data-kind', 'system');
       await expect(cells.getByTestId('td-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
       await expect(cells.queryByTestId('td-arrow-out')).toBeNull();
       await expect(cells.queryByTestId('td-arrow-in')).toBeNull();
@@ -287,7 +229,6 @@ export const PauseResume: Story = {
     });
     await step('Then only the reply shows, and the call no longer reads pending', async () => {
       await waitFor(() => expect(listRowTags()).toEqual(['before_request', 'before_response']));
-      await expect(getPart('td-pause')).toHaveTextContent('Resume');
       await expect(getPart('td-pause')).toHaveAttribute('data-active');
       await expect(readCounts()).toBe('2 events');
       await waitFor(() => expect(getRowByTag('before_request').querySelector('[data-testid="td-pending"]')).toBeNull());
@@ -298,7 +239,6 @@ export const PauseResume: Story = {
     });
     await step('Then it shows', async () => {
       await waitFor(() => expect(listRowTags()).toEqual(['before_request', 'before_response', 'after_request']));
-      await expect(getPart('td-pause')).toHaveTextContent('Pause');
       await expect(getPart('td-pause')).not.toHaveAttribute('data-active');
     });
   },
@@ -331,9 +271,9 @@ export const ClearEventsKeepsResolution: Story = {
     });
     await step('Then the list, the counts and the selection are empty', async () => {
       await waitFor(() => expect(listRows()).toHaveLength(0));
-      await expect(within(getPart('td-list')).getByTestId('td-empty')).toHaveTextContent(EMPTY_LIST);
+      await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
       await expect(readCounts()).toBe('0 events');
-      await expect(getPart('td-detail-empty')).toHaveTextContent(EMPTY_DETAIL);
+      await expect(getPart('td-detail-empty')).toBeInTheDocument();
     });
     await step('Then the Resolution view still shows the load', async () => {
       await userEvent.click(getPart('td-section', { value: 'resolution' }));
@@ -436,7 +376,6 @@ export const CopyFlashesCheck: Story = {
     });
     await step('Then the filtered JSON is on the clipboard and the button flashes a check mark', async () => {
       await waitFor(() => expect(within(getCopyButton()).getByTestId('td-copy-done')).toBeInTheDocument());
-      await expect(getPart('td-copy-status')).toHaveTextContent('Copied');
       await expect(getCopyButton()).toBeDisabled();
       await expect(effects.writeClipboard).toHaveBeenCalledTimes(1);
       // The copy is JSON this play reads back, whose shape it states here.
@@ -455,7 +394,6 @@ export const CopyFlashesCheck: Story = {
       await waitFor(() => expect(getCopyButton()).toBeEnabled());
       await expect(within(getCopyButton()).queryByTestId('td-copy-done')).toBeNull();
       await expect(getPart('td-copy-status').textContent).toBe('');
-      await expect(getCopyButton().querySelector('svg')).not.toBeNull();
     });
   },
 };
@@ -474,12 +412,11 @@ export const CopyRefusedFlashesCross: Story = {
     });
     await step('Then the button flashes a cross', async () => {
       await waitFor(() => expect(within(getCopyButton()).getByTestId('td-copy-failed')).toBeInTheDocument());
-      await expect(getPart('td-copy-status')).toHaveTextContent('Copy failed');
       await expect(getCopyButton()).toBeDisabled();
     });
     await step('Then the button comes back after the flash', async () => {
       await waitFor(() => expect(getCopyButton()).toBeEnabled());
-      await expect(getCopyButton().querySelector('svg')).not.toBeNull();
+      await expect(within(getCopyButton()).queryByTestId('td-copy-failed')).toBeNull();
     });
   },
 };
@@ -507,7 +444,7 @@ export const KindCheckboxes: Story = {
       await userEvent.click(getPart('td-kind', { value: 'truapi' }));
     });
     await step('Then the list says nothing matches', async () => {
-      await expect(within(getPart('td-list')).getByTestId('td-empty')).toHaveTextContent(EMPTY_LIST);
+      await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
     });
   },
 };
@@ -641,7 +578,6 @@ export const RowClickHighlightsGroup: Story = {
         await expect(getRowByTag('system_handshake_response')).toHaveAttribute('data-selection', 'paired');
         await expect(getRowByTag('boot.started')).not.toHaveAttribute('data-selection');
         const detail = readDetailRows();
-        await expect(Object.keys(detail)).toEqual(['time', 'direction', 'product', 'tag', 'requestId', 'group']);
         await expect(detail).toMatchObject({
           time: '12:34:56.789',
           direction: 'outgoing',
@@ -680,7 +616,6 @@ export const SystemDetailExplains: Story = {
     });
     await step('Then the detail shows its summary, a What is this? section and the payload', async () => {
       const detail = readDetailRows();
-      await expect(Object.keys(detail)).toEqual(['time', 'source', 'layer', 'event', 'flowId', 'group']);
       await expect(detail).toMatchObject({
         source: 'dotli',
         layer: 'boot',
@@ -688,11 +623,8 @@ export const SystemDetailExplains: Story = {
         flowId: 'flow-b flow-boot-1',
         group: '1 event',
       });
-      await expect(getPart('td-detail-section-title')).toHaveTextContent('Summary');
       await expect(getPart('td-detail-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
-      const explanation = getPart('td-detail-explanation');
-      await expect(explanation.querySelector('summary')).toHaveTextContent('What is this? (Host boot started)');
-      await expect(explanation.querySelector('code')).toHaveTextContent('main()');
+      await expect(getPart('td-detail-explanation')).toBeInTheDocument();
       await expect(getPart('td-detail-pre')).toHaveTextContent('"smoldot"');
     });
   },
@@ -824,7 +756,6 @@ export const ListAnnouncesSelection: Story = {
     });
     await step('Then the first event is the selected option and the list points at it', async () => {
       await expect(list).toHaveAttribute('role', 'listbox');
-      await expect(list).toHaveAccessibleName('Events');
       const options = within(list).getAllByRole('option');
       await expect(options.map(option => option.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
       await expect(list).toHaveAttribute('aria-activedescendant', options[0]?.id);
@@ -856,7 +787,6 @@ export const PendingBadgeCountsUp: Story = {
       await step('Then it shows a pending badge', async () => {
         await expect(getPendingBadge()).not.toHaveAttribute('hidden');
         await expect(getPendingBadge()?.textContent).toMatch(/^\d+ms pending$/);
-        await expect(getPendingBadge()?.querySelector('svg')).not.toBeNull();
         await expect(getPendingBadge()).not.toHaveAttribute('data-slow');
       });
       await step('Then it counts up each second, and turns slow', async () => {

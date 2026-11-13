@@ -10,7 +10,6 @@ import { formatEventCount } from '../model/formatEventCount.js';
 import { formatGroupDuration } from '../model/formatGroupDuration.js';
 import { formatMemberDelta } from '../model/formatMemberDelta.js';
 import { formatProductId } from '../model/formatProductId.js';
-import { getCorrelationKey } from '../model/getCorrelationKey.js';
 import type { StoredEvent, StoredSystemEvent, StoredTruapiEvent } from '../model/storedEvent.js';
 import { summariseSystemEvent } from '../model/summariseSystemEvent.js';
 import { getTagKind } from '../model/getTagKind.js';
@@ -52,7 +51,7 @@ function renderHeadFields(event: StoredEvent): JSX.Element {
       return (
         <>
           <KeyValue name="requestId">
-            <IdValue id={getCorrelationKey(event)} />
+            <IdValue id={event.requestId} />
           </KeyValue>
           <KeyValue name="product">{formatProductId(event.productId)}</KeyValue>
         </>
@@ -61,7 +60,7 @@ function renderHeadFields(event: StoredEvent): JSX.Element {
       return (
         <>
           <KeyValue name="flowId">
-            <IdValue id={getCorrelationKey(event)} />
+            <IdValue id={event.flowId} />
           </KeyValue>
           <KeyValue name="source">{event.source}</KeyValue>
           <KeyValue name="layer">{event.layer}</KeyValue>

@@ -41,14 +41,23 @@ export type PackageVersion = {
   version: string;
 };
 
+/** The page as the tab read it. The product travels with the rows, so a report never pairs two products. */
+export type DiagnosticsSnapshot = {
+  rows: readonly DiagnosticsRow[];
+  /** The label of the product the rows describe, or null with none loaded. */
+  productLabel: string | null;
+  lightClientVersion: string;
+  /** The `polkadot-api` packages, the unscoped one among them. */
+  polkadotApi: readonly PackageVersion[];
+  parityTruapi: readonly PackageVersion[];
+};
+
 /** What the Diagnostics tab shows and shares. */
 export type DiagnosticsSource = {
-  /** The page rows, read each time the tab opens. */
-  rows: () => DiagnosticsRow[];
-  lightClientVersion: () => string;
-  packages: () => { polkadotApi: PackageVersion[]; parityTruapi: PackageVersion[] };
-  /** The shared report of `rows`. */
-  report: (rows: readonly DiagnosticsRow[]) => Promise<string>;
+  /** The page now, read each time the tab opens. */
+  snapshot: () => DiagnosticsSnapshot;
+  /** The shared report of `snapshot`. */
+  report: (snapshot: DiagnosticsSnapshot) => Promise<string>;
   /** Opens the pre-filled issue in a new tab. */
   openIssue: (url: string) => void;
 };

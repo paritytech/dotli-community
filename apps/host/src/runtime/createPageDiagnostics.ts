@@ -16,14 +16,14 @@ import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   getActiveServicesConfig,
 } from '@dotli/config';
-import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
+import type { DiagnosticsRow, DiagnosticsSnapshot, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
 import { queryFinalizedBlock } from './createFinalizedBlockQuery.js';
 import { pagePermissions } from './pagePermissions.js';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import { ALL_PERMISSIONS, type PermissionStatus } from './permissionPolicy.js';
 import { getDotliVersion } from './getDotliVersion.js';
 import { getOperatingSystem } from './getOperatingSystem.js';
-import { productState } from './state/productState.js';
+import { productState, type ProductState } from './state/productState.js';
 
 // Defined in the host's Astro config, so undefined in tests and other bundles.
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
@@ -60,7 +60,8 @@ type FormatDiagnosticsReportParams = {
   /** The loaded product's status of each permission, in menu order, or null while no product is loaded. */
   statuses: readonly PermissionStatus[] | null;
   lightClientVersion: string;
-  packages: ReturnType<typeof getPackageVersions>;
+  polkadotApi: readonly PackageVersion[];
+  parityTruapi: readonly PackageVersion[];
   /** Null on trusted providers, which run no light client to ask. */
   blocks: FinalizedBlocks | null;
 };
@@ -77,29 +78,32 @@ export function createPageDiagnostics({
   permissionStatuses,
 }: PageDiagnosticsParams): DiagnosticsSource {
   return {
-    rows(): DiagnosticsRow[] {
-      return buildBaseDiagnosticsRows(page(), connectedAssetHubNode);
-    },
-    lightClientVersion: buildLightClientVersionLabel,
-    packages: getPackageVersions,
-    async report(rows): Promise<string> {
-      // Read before any wait, so a product switch while the chains answer does not change whose permissions are read.
+    snapshot(): DiagnosticsSnapshot {
       const product = productState.store.get();
+      return {
+        rows: buildBaseDiagnosticsRows(page(), product, connectedAssetHubNode),
+        productLabel: product.status === 'loaded' ? product.label : null,
+        lightClientVersion: buildLightClientVersionLabel(),
+        ...getPackageVersions(),
+      };
+    },
+    async report({ rows, productLabel, lightClientVersion, polkadotApi, parityTruapi }): Promise<string> {
       const [blocks, statuses] = await Promise.all([
         readFinalizedBlocks(finalizedBlock),
-        product.status === 'loaded'
-          ? permissionStatuses(
-              product.label,
+        productLabel === null
+          ? null
+          : permissionStatuses(
+              productLabel,
               ALL_PERMISSIONS.map(({ name }) => name),
-            )
-          : null,
+            ),
       ]);
       return formatDiagnosticsReport({
         base: rows,
         cache: getCacheSettings(),
         statuses,
-        lightClientVersion: buildLightClientVersionLabel(),
-        packages: getPackageVersions(),
+        lightClientVersion,
+        polkadotApi,
+        parityTruapi,
         blocks,
       });
     },
@@ -124,7 +128,8 @@ function formatDiagnosticsReport({
   cache,
   statuses,
   lightClientVersion,
-  packages,
+  polkadotApi,
+  parityTruapi,
   blocks,
 }: FormatDiagnosticsReportParams): string {
   const lines: string[] = [];
@@ -149,7 +154,7 @@ function formatDiagnosticsReport({
 
   // smoldot leads because most issues are ultimately about it.
   lines.push('', 'Packages:', `  smoldot: ${lightClientVersion}`);
-  for (const { name, version } of [...packages.polkadotApi, ...packages.parityTruapi]) {
+  for (const { name, version } of [...polkadotApi, ...parityTruapi]) {
     lines.push(`  ${name}: ${version}`);
   }
   if (blocks !== null) {
@@ -175,6 +180,7 @@ function toCopyableRow(label: string, value: string): DiagnosticsRow {
 
 function buildBaseDiagnosticsRows(
   page: DiagnosticsPage,
+  product: ProductState,
   connectedAssetHubNode: PageDiagnosticsParams['connectedAssetHubNode'],
 ): DiagnosticsRow[] {
   const sha = (import.meta.env.VITE_COMMIT_SHA ?? 'dev').slice(0, 7);
@@ -188,7 +194,6 @@ function buildBaseDiagnosticsRows(
     ...buildTransportRows(backend, sha, connectedAssetHubNode),
   ];
 
-  const product = productState.store.get();
   if (product.status === 'loaded') {
     const { manifestVersion, appVersion } = product.facts;
     if (manifestVersion !== undefined) {

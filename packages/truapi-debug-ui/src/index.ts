@@ -5,4 +5,4 @@
 
 export type { TruapiDebugMountModule } from './lazy.js';
 export { loadTruapiDebugMount } from './lazy.js';
-export type { DebugPanelHost, DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';
+export type { DebugPanelHost, DiagnosticsRow, DiagnosticsSnapshot, DiagnosticsSource, PackageVersion } from './host.js';

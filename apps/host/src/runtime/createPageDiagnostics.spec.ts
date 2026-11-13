@@ -4,7 +4,6 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
-import { createDeferred } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createPageDiagnostics, type PageDiagnosticsParams } from './createPageDiagnostics.js';
 import { productState } from './state/productState.js';
@@ -39,7 +38,7 @@ describe('createPageDiagnostics', () => {
     const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 
     // When the rows are read
-    const rows = diagnostics.rows();
+    const { rows } = diagnostics.snapshot();
 
     // Then the AssetHub row names that node and is worth copying
     expect(rows.find(([label]) => label === 'AssetHub node')).toEqual(['AssetHub node', 'wss://live.example', true]);
@@ -51,7 +50,7 @@ describe('createPageDiagnostics', () => {
     const { diagnostics } = createDiagnosticsHarness({ node: null });
 
     // When the rows are read
-    const rows = diagnostics.rows();
+    const { rows } = diagnostics.snapshot();
 
     // Then the AssetHub row names the first configured node
     expect(rows.find(([label]) => label === 'AssetHub node')).toEqual([
@@ -67,7 +66,7 @@ describe('createPageDiagnostics', () => {
     const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 
     // When the rows are read
-    const rows = diagnostics.rows();
+    const { rows } = diagnostics.snapshot();
 
     // Then only the site and node rows are marked
     expect(rows.filter(row => row[2] === true).map(([label]) => label)).toEqual([
@@ -86,7 +85,7 @@ describe('createPageDiagnostics', () => {
       const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example', site });
 
       // When the rows are read
-      const rows = diagnostics.rows();
+      const { rows } = diagnostics.snapshot();
 
       // Then the site row carries no copy mark
       expect(rows.find(([label]) => label === 'Site')).toStrictEqual(['Site', site]);
@@ -99,7 +98,7 @@ describe('createPageDiagnostics', () => {
     const { params, diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 
     // When the rows are read
-    const rows = diagnostics.rows();
+    const { rows } = diagnostics.snapshot();
 
     // Then no AssetHub node row is shown and no provider was asked
     expect(rows.map(([label]) => label)).not.toContain('AssetHub node');
@@ -118,7 +117,7 @@ describe('createPageDiagnostics', () => {
     const { diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 
     // When the rows are read
-    const rows = diagnostics.rows();
+    const { rows } = diagnostics.snapshot();
 
     // Then both versions are shown
     expect(rows).toContainEqual(['Manifest', 'v1']);
@@ -130,11 +129,11 @@ describe('createPageDiagnostics', () => {
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
     const servicesConfig = getActiveServicesConfig();
     const { params, diagnostics } = createDiagnosticsHarness({ node: null, block: 1234 });
-    const rows = diagnostics.rows();
-    const readRow = (label: string): string => rows.find(([name]) => name === label)?.[1] ?? '';
+    const snapshot = diagnostics.snapshot();
+    const readRow = (label: string): string => snapshot.rows.find(([name]) => name === label)?.[1] ?? '';
 
     // When the report is built
-    const report = await diagnostics.report(rows);
+    const report = await diagnostics.report(snapshot);
 
     // Then it lists every section and asked each chain once
     expect(report).toBe(
@@ -166,22 +165,19 @@ describe('createPageDiagnostics', () => {
     ]);
   });
 
-  it('As a dotli developer on the light client, I copy the report while the chains answer and switch product, and its permissions stay those of the product I copied', async () => {
-    // Given product `doom` loaded and chains that answer only once released
+  it('As a dotli developer who switched products after opening the tab, I share the report and it lists the permissions of the product the tab shows', async () => {
+    // Given the tab read while one product was loaded, then another product loaded
     onTestFinished(resetAllStoresForTests);
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
-    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot'), details: { chat: false } });
+    productState.setLoaded({ label: 'doom', productId: asProductId('doom.dot') });
     const { params, diagnostics } = createDiagnosticsHarness({ node: null });
-    const blocks = createDeferred<number | null>();
-    params.finalizedBlock.mockReturnValue(blocks.promise);
+    const snapshot = diagnostics.snapshot();
+    productState.setLoaded({ label: 'chess', productId: asProductId('chess.dot') });
 
-    // When the report is copied, and the user switches to `quake` before the chains answer
-    const report = diagnostics.report(diagnostics.rows());
-    productState.setLoaded({ label: 'quake', productId: asProductId('quake.dot'), details: { chat: false } });
-    blocks.resolve(1);
-    await report;
+    // When the report is built
+    await diagnostics.report(snapshot);
 
-    // Then the permissions read were `doom`'s
+    // Then the permissions are those of the product the tab read
     expect(params.permissionStatuses.mock.calls.map(([label]) => label)).toEqual(['doom']);
   });
 
@@ -191,7 +187,7 @@ describe('createPageDiagnostics', () => {
     const { params, diagnostics } = createDiagnosticsHarness({ node: 'wss://live.example' });
 
     // When the report is built
-    const report = await diagnostics.report(diagnostics.rows());
+    const report = await diagnostics.report(diagnostics.snapshot());
 
     // Then it names the node and has no finalized heights
     expect(report).toContain('AssetHub node: wss://live.example');

@@ -61,7 +61,7 @@ type FireBrowserNotificationParams = {
   notifications: SystemNotifications;
   /** The notification's body. */
   text: string;
-  /** Opened in a new tab when the notification is clicked, none when undefined or empty. */
+  /** Opened in a new tab when the notification is clicked, none when undefined. */
   deeplink: string | undefined;
   /** The notification's title. */
   label: string;
@@ -84,7 +84,7 @@ const SYSTEM_NOTIFICATION_MS = 5000;
 
 /**
  * Builds a notifier that shows each notification through `toasts`, and through `system` too while `attended` says
- * no one is looking. Returns the notify function and never throws.
+ * no one is looking. Returns the notify function.
  */
 export function createNotifier({ toasts, attended, system, timers = realTimers }: Params) {
   /**
@@ -146,7 +146,7 @@ function sanitizeText(raw: string): string {
 }
 
 function validateDeeplink(deeplink: string | undefined): string | undefined {
-  if (deeplink === undefined || deeplink === '') {
+  if (deeplink === undefined) {
     return undefined;
   }
   try {
@@ -169,7 +169,7 @@ function fireBrowserNotification({
     const notification = new SystemNotification(label, { body: text });
     notification.onclick = () => {
       window.focus();
-      if (deeplink !== undefined && deeplink !== '') {
+      if (deeplink !== undefined) {
         window.open(deeplink, '_blank');
       }
     };

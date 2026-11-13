@@ -40,10 +40,14 @@ export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDeb
     walletMode,
     walletSwitch: { importPhrase: () => undefined, usePolkadotApp: () => undefined },
     diagnostics: {
-      rows: () => ROWS.map((row): DiagnosticsRow => [...row]),
-      lightClientVersion: () => '0.3.1',
-      packages: () => ({ polkadotApi: [], parityTruapi: [] }),
-      report: rows => Promise.resolve(rows.map(([label, value]) => `${label}: ${value}`).join('\n')),
+      snapshot: () => ({
+        rows: ROWS.map((row): DiagnosticsRow => [...row]),
+        productLabel: null,
+        lightClientVersion: '0.3.1',
+        polkadotApi: [],
+        parityTruapi: [],
+      }),
+      report: ({ rows }) => Promise.resolve(rows.map(([label, value]) => `${label}: ${value}`).join('\n')),
       openIssue: () => undefined,
     },
     archive: () => Promise.resolve({}),
