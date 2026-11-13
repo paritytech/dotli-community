@@ -40,7 +40,7 @@ type LoadingFrames = {
   request: (step: (now: number) => void) => number;
   /** Drops the frame `handle` names, if it is still due. Never throws. */
   cancel: (handle: number) => void;
-  /** Returns the frame clock's time in milliseconds. Never throws. */
+  /** Returns the milliseconds since the page started, on the frame clock. Never throws. */
   now: () => number;
 };
 
