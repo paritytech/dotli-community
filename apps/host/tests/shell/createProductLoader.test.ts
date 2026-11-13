@@ -662,6 +662,21 @@ describe('createProductLoader', () => {
     expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-base'));
   });
 
+  it('As an operator, I see a load with the CID cache turned off whose name fails to resolve reported with the cache skipped', async () => {
+    // Given
+    const { loader, captured, readResolution } = setupLoader({
+      skipCidCache: true,
+      resolveError: new Error('Asset Hub went quiet'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(captured[0]?.tags).toMatchObject({ cid_cache: 'skipped' });
+    expect(readResolution()).toMatchObject({ cid_cache: 'skipped' });
+  });
+
   it('As a visitor, I load the same name twice at once and the second load waits for the first and loads nothing more', async () => {
     // Given
     const { loader, names, ports } = setupLoader({ published: { doom: 'bafy-base' } });
@@ -798,7 +813,6 @@ function setupLoader(params: Params = {}) {
     skipCidCache: params.skipCidCache ?? false,
     report: createLoadTelemetry({
       backend: params.backend ?? 'smoldot-direct',
-      skipCidCache: params.skipCidCache ?? false,
       flowId: 'boot-1',
       startedAt: 0,
       blockRelay: ports.content,

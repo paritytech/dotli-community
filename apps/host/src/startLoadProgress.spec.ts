@@ -452,6 +452,28 @@ describe('startLoadProgress', () => {
     );
   });
 
+  it('As a visitor on a slow connection whose download speeds up but stays slow, I see the line follow the rate', async () => {
+    // Given the slow line shown while 2 kB arrive every second
+    const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
+    for (let tick = 1; tick <= 20; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_024 });
+    }
+
+    // When 8 kB arrive every second
+    for (let tick = 1; tick <= 8; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: 20 * 1_024 + tick * 4_096 });
+    }
+
+    // Then
+    expect(loadingState.get().warning).toBe(
+      'Still downloading at 8 kB/s. That is slower than this app usually needs, so give it a moment.',
+    );
+  });
+
   it('As a visitor whose protocol frame restarts mid-download, I see the rate it last measured, never a negative one', async () => {
     // Given 2 MB arrive every second
     const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });

@@ -31,12 +31,19 @@ const report = createReporter({ flow: 'chain' });
 /** The report of each chain's phase and peers, and of the load's byte totals, as its factory builds it. */
 export type ChainReporter = ReturnType<typeof createChainReporter>;
 
+/** What the reports last said of one chain. */
+type Reported = {
+  peers: number | null;
+  /** The phase its last phase event carried. */
+  phase: ChainPhase | null;
+  /** The warp block its last phase event carried, and when that event went out. */
+  warpAt: number | null;
+  warpEmittedAt: number;
+};
+
 /** Builds the report of each chain's phase and peers, and of the load's byte totals. */
 export function createChainReporter({ flowId, timers, debugBus }: Params) {
-  const emittedPhase = new Map<ChainRole, ChainPhase>();
-  const emittedWarpAt = new Map<ChainRole, number>();
-  const lastWarpEmit = new Map<ChainRole, number>();
-  const peersByRole = new Map<ChainRole, number>();
+  const reported = new Map<ChainRole, Reported>();
   const trackPhase = createChainPhaseTracker();
 
   return {
@@ -69,10 +76,20 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
     },
   };
 
+  function getReported(role: ChainRole): Reported {
+    let chain = reported.get(role);
+    if (chain === undefined) {
+      chain = { peers: null, phase: null, warpAt: null, warpEmittedAt: 0 };
+      reported.set(role, chain);
+    }
+    return chain;
+  }
+
   function recordPeers(role: ChainRole, peers: number): void {
     // Independent of the phase, since the relay usually finds its peers after its last transition.
-    const changed = peersByRole.get(role) !== peers;
-    peersByRole.set(role, peers);
+    const chain = getReported(role);
+    const changed = chain.peers !== peers;
+    chain.peers = peers;
     if (changed) {
       debugBus.emit({
         layer: 'chain',
@@ -89,25 +106,26 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
   function recordPhase(event: ChainSyncEvent, phase: ChainPhase): void {
     const role = event.chain;
     networkMonitorState.recordChainPhase(role, phase);
+    const chain = getReported(role);
     const now = timers.now();
     const warpMoved =
       phase === 'syncing' &&
       event.at !== undefined &&
-      emittedWarpAt.get(role) !== event.at &&
-      now - (lastWarpEmit.get(role) ?? 0) >= CHAIN_WARP_DEBUG_MS;
-    const phaseChanged = emittedPhase.get(role) !== phase;
+      chain.warpAt !== event.at &&
+      now - chain.warpEmittedAt >= CHAIN_WARP_DEBUG_MS;
+    const phaseChanged = chain.phase !== phase;
     if (!phaseChanged && !warpMoved) {
       return;
     }
-    emittedPhase.set(role, phase);
+    chain.phase = phase;
     if (event.at !== undefined) {
-      emittedWarpAt.set(role, event.at);
-      lastWarpEmit.set(role, now);
+      chain.warpAt = event.at;
+      chain.warpEmittedAt = now;
     }
-    const peers = peersByRole.get(role);
+    const { peers } = chain;
     if (phaseChanged) {
       report.log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
-        ...(peers === undefined ? {} : { peers }),
+        ...(peers === null ? {} : { peers }),
         ...(event.reason === undefined ? {} : { reason: event.reason }),
       });
     }
@@ -119,7 +137,7 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
       payload: {
         chain: role,
         phase,
-        ...(peers === undefined ? {} : { peers }),
+        ...(peers === null ? {} : { peers }),
         ...(event.at === undefined ? {} : { warpAt: event.at }),
         ...(event.target === undefined ? {} : { warpTarget: event.target }),
         ...(event.reason === undefined ? {} : { reason: event.reason }),

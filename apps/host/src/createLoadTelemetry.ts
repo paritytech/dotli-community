@@ -34,12 +34,6 @@ const bootReport = createReporter({ flow: 'boot' });
 const resolveReport = createReporter({ flow: 'resolve' });
 const contentReport = createReporter({ flow: 'content' });
 
-/**
- * Count. The failure screen of a load whose product was already on screen threw. Tagged `outcome` (error) and
- * `reason` (the error's name).
- */
-const resolveFailureScreenMetric = defineCount<'error'>('resolve.failure_screen');
-
 /** Count. A transition of a load's reports threw, a bug. Tagged `outcome` (error) and `reason` (the error's name). */
 const loadTelemetryTransitionMetric = defineCount<'error'>('load_telemetry.transition');
 
@@ -47,15 +41,19 @@ const loadTelemetryTransitionMetric = defineCount<'error'>('load_telemetry.trans
 export type LoadEffect =
   | { kind: 'started'; label: string }
   | { kind: 'setUp' }
-  | { kind: 'cacheChecked'; cid: string | null }
+  | {
+      kind: 'cacheChecked';
+      /** The CID the cache held, or why there is none: a miss, or settings that skip the cache. */
+      read: { kind: 'hit'; cid: string } | { kind: 'miss' | 'skipped' };
+    }
   | { kind: 'namePhase'; phase: ResolvePhase }
   | { kind: 'nameResolved'; cid: string }
   | { kind: 'manifestsRead'; manifests: ProductManifests }
+  /** The render's step, which begins with the wait for the product's core. */
   | { kind: 'rendering' }
   | { kind: 'handedOff' }
   | { kind: 'noContent' }
   | { kind: 'failed'; error: unknown; description: ErrorDescription }
-  | { kind: 'screenFailed'; error: unknown; failure: string }
   | { kind: 'contentSettled'; report: SandboxLoadReport };
 
 /** What the protocol frame reports about its light client, as far as a load reads it. */
@@ -64,8 +62,8 @@ type LoaderTelemetry = LoadTelemetrySources & Pick<ProtocolClient['telemetry'], 
 /** A load from the CID cache. */
 type FastPath = { kind: 'fast' };
 
-/** A load that missed the CID cache, so it goes through the name from `coldStart` on. */
-type SlowPath = { kind: 'slow'; coldStart: number };
+/** A load that missed or skipped the CID cache, so it goes through the name from `coldStart` on. */
+type SlowPath = { kind: 'slow'; coldStart: number; cidCache: 'miss' | 'skipped' };
 
 /** What a traced load holds. Its trace and its progress are collaborators with their own machines. */
 type Traced = { label: string; trace: ResolutionTrace; progress: LoadProgress };
@@ -103,8 +101,6 @@ type TelemetryMachine = MachineTypes<TelemetryState, LoadEffect>;
 /** The kinds of a load whose trace is open. */
 type TracedKind = Exclude<TelemetryState['kind'], 'waiting' | 'begun' | 'ended'>;
 
-type TracedState = Extract<TelemetryState, { kind: TracedKind }>;
-
 /** The runner of a load's reports, as its factory builds it. */
 export type LoadTelemetry = ReturnType<typeof createLoadTelemetry>;
 
@@ -112,8 +108,6 @@ export type LoadTelemetry = ReturnType<typeof createLoadTelemetry>;
 export type LoadTelemetryParams = {
   /** How the page reaches the chains, which decides how the content is checked. */
   backend: Backend;
-  /** True when the settings skip the CID cache, so a load neither reads nor writes it. */
-  skipCidCache: boolean;
   /** The debug panel's flow for this page load. */
   flowId: string;
   /** `now` at page load. */
@@ -133,7 +127,6 @@ export type LoadTelemetryParams = {
 /** Builds the runner that makes one load's reports. Never throws. */
 export function createLoadTelemetry({
   backend,
-  skipCidCache,
   flowId,
   startedAt,
   blockRelay,
@@ -145,7 +138,6 @@ export function createLoadTelemetry({
   const lightClient = hasLightClient(backend);
   const resolveSource = lightClient ? 'smoldot' : 'rpc-gateway';
   const dependency = lightClient ? 'smoldot' : 'asset-hub-rpc';
-  const cidCacheMiss = skipCidCache ? 'skipped' : 'miss';
   /** Reports the load's failure and finishes the trace. */
   const fail: HandlerOf<TelemetryMachine, TracedKind, 'failed'> = (state, { error, description }, { emitState }) => {
     emitState({ kind: 'ended' });
@@ -154,7 +146,8 @@ export function createLoadTelemetry({
     if (state.kind !== 'content') {
       performance.mark('dotli:main:end');
     }
-    const cidCache = state.kind === 'cid_cache_read' ? 'unknown' : state.path.kind === 'fast' ? 'hit' : cidCacheMiss;
+    const cidCache =
+      state.kind === 'cid_cache_read' ? 'unknown' : state.path.kind === 'fast' ? 'hit' : state.path.cidCache;
     // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
     const readSmoldotDb = (chain: Parameters<LoaderTelemetry['getSmoldotDbOutcome']>[0]) =>
       cidCache === 'hit' || !lightClient ? 'n/a' : telemetry.getSmoldotDbOutcome(chain);
@@ -181,25 +174,6 @@ export function createLoadTelemetry({
       timestamp: timers.now(),
       payload: { label, reason: getErrorMessage(error), dependency },
     });
-  };
-  /** Fails the load, and ends the name's resolve flow in the debug panel with it. */
-  const failResolve: HandlerOf<TelemetryMachine, 'name_resolve', 'failed'> = (state, event, transition) => {
-    fail(state, event, transition);
-    debugBus.emit({
-      layer: 'resolve',
-      event: 'failed',
-      flowId: state.resolveFlowId,
-      timestamp: timers.now(),
-      payload: { label: state.traced.label, source: resolveSource, reason: getErrorMessage(event.error) },
-    });
-  };
-  /** Fails the load, and ends the fast path's end-to-end span as an error on a load from the CID cache. */
-  const failRender: HandlerOf<TelemetryMachine, 'render_handoff', 'failed'> = (state, event, transition) => {
-    fail(state, event, transition);
-    if (state.path.kind === 'fast') {
-      state.path.span.setAttributes({ outcome: 'error' });
-      state.path.span.end();
-    }
   };
   /** Opens the render's step, and the fast path's end-to-end span on a load from the CID cache. */
   const render: HandlerOf<TelemetryMachine, 'cached_launch_gate' | 'launch_gate', 'rendering'> = (
@@ -259,16 +233,17 @@ export function createLoadTelemetry({
         },
       },
       cid_cache_read: {
-        cacheChecked({ traced }, { cid }, { emitState }) {
+        cacheChecked({ traced }, { read }, { emitState }) {
           const { label, trace } = traced;
           debugBus.emit({
             layer: 'boot',
             event: 'cid_cache_checked',
             flowId,
             timestamp: timers.now(),
-            payload: { label, hit: cid !== null, ...(cid !== null ? { cid } : {}) },
+            payload: { label, hit: read.kind === 'hit', ...(read.kind === 'hit' ? { cid: read.cid } : {}) },
           });
-          if (cid !== null) {
+          if (read.kind === 'hit') {
+            const { cid } = read;
             enterStep({ kind: 'cached_launch_gate', traced, path: { kind: 'fast' } }, emitState);
             trace.recordCidCache('hit');
             cacheReadMetric.count({ outcome: 'hit', surface: 'cid_cache' });
@@ -279,9 +254,12 @@ export function createLoadTelemetry({
           // On the page's monotonic clock, since a span detaches across the smoldot path's postMessage awaits.
           const coldStart = readClock();
           const resolveFlowId = createRandomId();
-          enterStep({ kind: 'name_resolve', traced, path: { kind: 'slow', coldStart }, resolveFlowId }, emitState);
-          trace.recordCidCache(cidCacheMiss);
-          if (skipCidCache) {
+          enterStep(
+            { kind: 'name_resolve', traced, path: { kind: 'slow', coldStart, cidCache: read.kind }, resolveFlowId },
+            emitState,
+          );
+          trace.recordCidCache(read.kind);
+          if (read.kind === 'skipped') {
             resolveReport.log.event('CID cache skipped by settings');
           } else {
             cacheReadMetric.count({ outcome: 'miss', surface: 'cid_cache' });
@@ -324,7 +302,16 @@ export function createLoadTelemetry({
           state.traced.trace.finish('no_content');
           performance.mark('dotli:main:end');
         },
-        failed: failResolve,
+        failed(state, event, transition) {
+          fail(state, event, transition);
+          debugBus.emit({
+            layer: 'resolve',
+            event: 'failed',
+            flowId: state.resolveFlowId,
+            timestamp: timers.now(),
+            payload: { label: state.traced.label, source: resolveSource, reason: getErrorMessage(event.error) },
+          });
+        },
       },
       manifest_read: {
         manifestsRead({ traced, path }, { manifests }, { emitState }) {
@@ -365,7 +352,13 @@ export function createLoadTelemetry({
             payload: { label, totalMs, path: path.kind },
           });
         },
-        failed: failRender,
+        failed(state, event, transition) {
+          fail(state, event, transition);
+          if (state.path.kind === 'fast') {
+            state.path.span.setAttributes({ outcome: 'error' });
+            state.path.span.end();
+          }
+        },
       },
       content: {
         failed: fail,
@@ -378,18 +371,10 @@ export function createLoadTelemetry({
             return;
           }
           contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
-          trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+          trace.finish('content_error', { failedStep });
         },
       },
-      ended: {
-        screenFailed(_state, { error, failure }) {
-          resolveReport.defect(error, {
-            step: 'failure_screen',
-            metric: resolveFailureScreenMetric,
-            message: `[dot.li] The failure screen for ${failure} failed:`,
-          });
-        },
-      },
+      ended: null,
     },
     onError: error => {
       resolveReport.defect(error, {
@@ -435,7 +420,10 @@ export function createLoadTelemetry({
 }
 
 /** Moves a traced load to the step `next` names, and records that step on its trace. */
-function enterStep(next: TracedState, emitState: Transition<TelemetryMachine>['emitState']): void {
+function enterStep(
+  next: Extract<TelemetryState, { kind: TracedKind }>,
+  emitState: Transition<TelemetryMachine>['emitState'],
+): void {
   emitState(next);
   next.traced.trace.recordStep(next.kind);
 }

@@ -49,11 +49,8 @@ export function startSandboxContent({
   const stopCounting = relay.onServed(from => {
     blocksServed[from] += 1;
   });
-  const subscription: { heard: boolean; stop?: () => void } = { heard: false };
+  const subscription: { heard: boolean; stop: (() => void) | null } = { heard: false, stop: null };
   subscription.stop = subscribeOutcomes(() => {
-    if (subscription.heard) {
-      return;
-    }
     subscription.heard = true;
     stopCounting();
     // An outcome heard at once comes before the subscribe returns, so the check below stops it.

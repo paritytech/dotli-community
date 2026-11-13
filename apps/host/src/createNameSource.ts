@@ -72,37 +72,34 @@ export function createNameSource({ backend, remote, loadRpc, report = reportOwne
     return owner === undefined ? { root, app } : { root, app, owner };
   }
 
+  /** The resolver of a label's records, which both backends read alike. Only the name's lookup differs. */
+  async function getRecordResolver(): Promise<
+    Pick<RemoteResolver, 'resolveOwner' | 'resolveRootManifest' | 'resolveExecutableManifest'>
+  > {
+    return gateway ? rpcResolver() : remote;
+  }
+
   async function readRootAndAppManifests(label: string): Promise<Pick<ProductManifests, 'root' | 'app'>> {
-    if (gateway) {
-      const resolver = await rpcResolver();
-      const [root, app] = await Promise.all([
-        resolver.resolveRootManifest(label),
-        resolver.resolveExecutableManifest(label, 'app'),
-      ]);
-      return { root, app };
-    }
+    const resolver = await getRecordResolver();
     const [root, app] = await Promise.all([
-      remote.resolveRootManifest(label),
-      remote.resolveExecutableManifest(label, 'app'),
+      resolver.resolveRootManifest(label),
+      resolver.resolveExecutableManifest(label, 'app'),
     ]);
     return { root, app };
   }
 
   async function readWorkerManifest(label: string): Promise<ManifestResult<ExecutableManifest>> {
-    return gateway
-      ? (await rpcResolver()).resolveExecutableManifest(label, 'worker')
-      : remote.resolveExecutableManifest(label, 'worker');
+    return (await getRecordResolver()).resolveExecutableManifest(label, 'worker');
   }
 
-  async function resolveOwner(label: string): Promise<H160Address | null> {
-    const owner = gateway ? await (await rpcResolver()).resolveOwner(label) : await remote.resolveOwner(label);
-    return owner === null ? null : parseH160Address(owner);
-  }
-
-  /** Resolves undefined when the owner read fails, which goes to `report`, since the author never fails the load. */
+  /**
+   * Resolves undefined when the owner read fails or answers with something that is not a 20-byte hex address, which
+   * goes to `report`, since the author never fails the load.
+   */
   async function readOwnerIfKnown(label: string): Promise<H160Address | null | undefined> {
     try {
-      return await resolveOwner(label);
+      const owner = await (await getRecordResolver()).resolveOwner(label);
+      return owner === null ? null : parseH160Address(owner);
     } catch (error) {
       report(error);
       return undefined;

@@ -50,24 +50,24 @@ export async function applyProductBranding({
   if (rootResult.kind !== 'ok') {
     return;
   }
-  // Cosmetic, so a short budget: a missing icon must not hold smoldot request slots the content needs.
   const format: string = rootResult.value.icon.format;
   // Any other format keeps the default icon, never sniffed or corrected, and the product stays launchable.
   if (format !== 'jpeg' && format !== 'png') {
     return;
   }
+  // Cosmetic, so a short budget: a missing icon must not hold smoldot request slots the content needs.
   const iconAborter = new AbortController();
   const iconDeadline = timers.setTimeout(() => {
     iconAborter.abort();
   }, ICON_FETCH_BUDGET_MS);
   try {
     const bytes = await fetchBlock(rootResult.value.icon.cid, iconAborter.signal);
+    // A Blob takes only bytes backed by an ArrayBuffer, which the copy guarantees.
     const blob = new Blob([new Uint8Array(bytes)], { type: `image/${format}` });
     const href = URL.createObjectURL(blob);
     setFavicon(href, format);
     showIcon(href);
   } catch (error: unknown) {
-    // Cosmetic: a failure must not affect the app, so the tab keeps its icon.
     report.expected(error, {
       step: 'product_icon',
       metric: productIconMetric,

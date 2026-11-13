@@ -67,19 +67,10 @@ type DescribeErrorParams = {
   readBackend?: (() => Backend) | undefined;
 };
 
-type ClassifyErrorParams = {
-  readBackend: () => Backend;
-};
-
 // Annotated, so renaming the resolver's error fails to compile here. Only the name survives postMessage.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
 
 const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
-
-const BITSWAP_TIPS = ['Waiting a moment as the app may still be spreading across the network.'] as const;
-
-// A failed shared light client stays dead while another tab keeps it open, so a reload alone rejoins it.
-const SHARED_WORKER_TIPS = ['Closing other dot.li tabs, then reloading.', ...CONNECTIVITY_TIPS] as const;
 
 // Deterministic on every reload and transport.
 const MAINTAINER_TIPS = ['Contacting the app maintainer.'] as const;
@@ -92,7 +83,7 @@ export function describeError(
   error: unknown,
   { readBackend = getBackend }: DescribeErrorParams = {},
 ): ErrorDescription {
-  const described = classifyError(error, { readBackend });
+  const described = classifyError(error, readBackend());
   return {
     ...described,
     title: described.title ?? ERROR_TITLES.DOMAIN_UNREACHABLE,
@@ -105,15 +96,15 @@ export function getTrustedProviderHosts(): string[] {
   return [...new Set([getAssethubHost(), getIpfsGatewayHost()].filter((host): host is string => host !== undefined))];
 }
 
+// The return type makes a branch that forgets its `kind` a compile error rather than an unkeyed error page.
 function classifyError(
   error: unknown,
-  { readBackend }: ClassifyErrorParams,
+  backend: Backend,
 ): Omit<ErrorDescription, 'tips' | 'title'> & {
   tips?: readonly string[];
   title?: string;
 } {
-  const isP2p = hasLightClient(readBackend());
-  // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
+  const isP2p = hasLightClient(backend);
   const message = getErrorMessage(error);
 
   // The app's origin never answered, which a blocker or a filtered network causes, not the network the app is on.
@@ -189,8 +180,8 @@ function classifyError(
       resetProtocol: true,
     };
   }
-  // The four content-failure branches below cannot fire yet: the sandbox raises and renders archive failures itself.
-  // They live here for when the sandbox reuses this classifier.
+  // No failure of the host's own load matches the four content-failure branches below, since the sandbox fetches the
+  // archive and classifies its failures itself.
   //
   // No connected peer serves the blocks. Only more peers picking the content up changes that.
   if (message.includes('No connected peers have the CID') || message.includes('code=-32810')) {
@@ -199,7 +190,7 @@ function classifyError(
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
       message: HOST_ERRORS.BITSWAP_NO_PEERS,
       recovery: 'switch-backend',
-      tips: BITSWAP_TIPS,
+      tips: ['Waiting a moment as the app may still be spreading across the network.'],
     };
   }
   // The gateway copy and its `switch-backend` recovery advise the gateway backend, where content comes over HTTPS.
@@ -209,7 +200,8 @@ function classifyError(
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
       message: describeGatewayUnreachable(getIpfsGatewayHost()),
       recovery: 'switch-backend',
-      tips: getGatewayTips(readBackend()),
+      // A failing provider is more often its own problem than the visitor's connection, so switching comes first.
+      tips: [getSwitchTransportTip(backend), ...CONNECTIVITY_TIPS],
     };
   }
   // The CAR body was cut short in transit, a download failure rather than a reachability one.
@@ -219,7 +211,9 @@ function classifyError(
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
       message: HOST_ERRORS.ARCHIVE_TRUNCATED,
       recovery: 'switch-backend',
-      tips: getTruncatedTips(readBackend()),
+      // A short body is rarely a flaky link. The repeatable cause is an incompletely pinned archive only the publisher
+      // fixes.
+      tips: [getSwitchTransportTip(backend), 'Contacting the app maintainer if this keeps happening.'],
     };
   }
   // Fresh fetch and cache hit are one fault, since purging the cache would re-fetch the same archive.
@@ -269,7 +263,10 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
-      ...(hasSharedWorker(readBackend()) ? { tips: SHARED_WORKER_TIPS } : {}),
+      // A failed shared light client stays dead while another tab keeps it open, so a reload alone rejoins it.
+      ...(hasSharedWorker(backend)
+        ? { tips: ['Closing other dot.li tabs, then reloading.', ...CONNECTIVITY_TIPS] }
+        : {}),
     };
   }
   if (message.includes('timed out') || message.includes('Timed out')) {
@@ -304,14 +301,4 @@ function getIpfsGatewayHost(): string | undefined {
 // Quotes the Settings label verbatim, and names the backend this one fails over to.
 function getSwitchTransportTip(backend: Backend): string {
   return `Switching Network transport to "${BACKEND_FACTS[BACKEND_FACTS[backend].failover].label}" in Settings.`;
-}
-
-// A failing provider is more often its own problem than the visitor's connection, so switching comes first.
-function getGatewayTips(backend: Backend): readonly string[] {
-  return [getSwitchTransportTip(backend), 'Checking your internet connection.'];
-}
-
-// A short body is rarely a flaky link. The repeatable cause is an incompletely pinned archive only the publisher fixes.
-function getTruncatedTips(backend: Backend): readonly string[] {
-  return [getSwitchTransportTip(backend), 'Contacting the app maintainer if this keeps happening.'];
 }

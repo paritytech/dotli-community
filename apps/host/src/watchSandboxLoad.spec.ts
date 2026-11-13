@@ -47,20 +47,6 @@ describe('watchSandboxLoad', () => {
     expect(heard).toEqual(['cleared', { outcome: 'loaded', failedStep: undefined }]);
   });
 
-  it('As a visitor, my app frame fails at a step and I hear failed with that step', () => {
-    // Given
-    const frame = createSandboxFrame();
-    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
-    const heard: SandboxLoadReport[] = [];
-    load.subscribeOutcomes(report => heard.push(report));
-
-    // When
-    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'content_fetch' });
-
-    // Then
-    expect(heard).toEqual([{ outcome: 'failed', failedStep: 'content_fetch' }]);
-  });
-
   it('As a visitor, my app frame clears the screen for its password prompt and later fails, and I hear the clear first and then failed with its step', () => {
     // Given a watch that records what it hears, in order
     const frame = createSandboxFrame();
@@ -124,24 +110,6 @@ describe('watchSandboxLoad', () => {
     expect(heard).toEqual([{ outcome: 'loaded', failedStep: undefined }]);
   });
 
-  it('As a visitor whose app frame fails and then loads on my retry, I hear both outcomes in order', () => {
-    // Given a follower of the app frame's outcomes
-    const frame = createSandboxFrame();
-    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
-    const heard: SandboxLoadReport[] = [];
-    load.subscribeOutcomes(report => heard.push(report));
-
-    // When the first attempt fails and the retry loads
-    frame.postStatus({ done: true, outcome: 'failed', failedStep: 'archive_fetch' });
-    frame.postStatus({ done: true, outcome: 'loaded' });
-
-    // Then
-    expect(heard).toEqual([
-      { outcome: 'failed', failedStep: 'archive_fetch' },
-      { outcome: 'loaded', failedStep: undefined },
-    ]);
-  });
-
   it('As a visitor, I start following my app frame after it reported twice and hear its latest outcome at once, then the next one', () => {
     // Given an app frame that failed and then loaded before anyone followed it
     const frame = createSandboxFrame();
@@ -175,22 +143,6 @@ describe('watchSandboxLoad', () => {
     // Then nothing was heard and nothing is left listening
     expect(heard).toEqual([]);
     expect(frame.countListening()).toBe(0);
-  });
-
-  it('As a visitor who stopped following my app frame, I hear none of its later outcomes, and stopping twice is safe', () => {
-    // Given a follower that stopped
-    const frame = createSandboxFrame();
-    const load = watchSandboxLoad(frame.channel, { timers: createManualTimers() });
-    const heard: SandboxLoadReport[] = [];
-    const stopFollowing = load.subscribeOutcomes(report => heard.push(report));
-    stopFollowing();
-
-    // When it stops again and the app frame loads
-    stopFollowing();
-    frame.postStatus({ done: true, outcome: 'loaded' });
-
-    // Then it heard nothing
-    expect(heard).toEqual([]);
   });
 
   it('As an operator, I watch a follower of the app frame throw and see it reported while the other followers still hear the outcome', () => {

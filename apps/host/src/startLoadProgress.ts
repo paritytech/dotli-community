@@ -66,12 +66,6 @@ export type LoadingScreen = Pick<
   | 'stopStatusTick'
 >;
 
-/** The part of the resolution trace that hears the load's reports. */
-type LoadTrace = Pick<
-  ResolutionTrace,
-  'recordChainSync' | 'recordChainDetail' | 'recordBytes' | 'recordContent' | 'markWarningShown'
->;
-
 export type LoadProgress = ReturnType<typeof startLoadProgress>;
 
 type Params = {
@@ -81,13 +75,17 @@ type Params = {
   telemetry: LoadTelemetrySources;
   /** The content's blocks as they pass through this window. */
   blockRelay: Pick<SandboxBlockRelay, 'onProgress'>;
-  trace: LoadTrace;
+  /** The part of the resolution trace that hears the load's reports. */
+  trace: Pick<
+    ResolutionTrace,
+    'recordChainSync' | 'recordChainDetail' | 'recordBytes' | 'recordContent' | 'markWarningShown'
+  >;
   /** Where the load's chain events and byte totals go. */
   chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes'>;
-  loading?: LoadingScreen | undefined;
+  loading?: LoadingScreen;
   /** The timers the warnings wait on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout'>;
-  /** The monotonic clock the load's age and download rate are measured on, in milliseconds. The page's by default. */
+  /** The monotonic clock byte totals are stamped on, for the rate and the debug samples, in milliseconds. */
   now?: () => number;
 };
 
@@ -102,14 +100,12 @@ type WarningLine = { message: string; chain: CriticalChain | null };
 type Warning =
   { kind: 'early'; parked: WarningLine | null } | { kind: 'hidden' } | { kind: 'shown'; line: WarningLine };
 
-/** What a critical chain's stall message reads, kept across its watches. */
-type WatchFacts = Pick<StallFacts, 'peers' | 'reason'>;
-
 /**
- * One critical chain's stall watch. Every lifecycle event re-arms it, so a chain warns only when it sits in one state
- * past the threshold. A stall timer warns only while it is still the timer of the chain's watch.
+ * One critical chain's stall watch, with what its stall message reads, kept across its watches. Every lifecycle event
+ * re-arms it, so a chain warns only when it sits in one state past the threshold. A stall timer warns only while it is
+ * still the timer of the chain's watch.
  */
-type StallWatch = ({ kind: 'quiet' } & WatchFacts) | ({ kind: 'watching'; timer: unknown } & WatchFacts);
+type StallWatch = ({ kind: 'quiet' } | { kind: 'watching'; timer: unknown }) & Pick<StallFacts, 'peers' | 'reason'>;
 
 /** A byte total and when it was taken, on the load's clock. */
 type ByteSample = { at: number; total: number };
@@ -194,8 +190,8 @@ const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined };
 
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
- * resolved. Never throws: a throw of the loading screen or of a subscription in `telemetry` or `blockRelay` is
- * reported. A load whose subscription threw opens its bar and moves it no further.
+ * resolved. A throw of the loading screen or of a subscription in `telemetry` or `blockRelay` is reported, and a load
+ * whose subscription threw opens its bar and moves it no further.
  */
 export function startLoadProgress({
   label,
@@ -294,7 +290,7 @@ export function startLoadProgress({
           // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
           if (sync.kind === 'peers') {
             if (sync.peers !== undefined) {
-              rewordOnPeers(withWatch(state, chain, { ...watch, peers: sync.peers }), chain, transition);
+              rewordWarning(withWatch(state, chain, { ...watch, peers: sync.peers }), transition);
             }
             return;
           }
@@ -321,11 +317,12 @@ export function startLoadProgress({
           raiseWarning(watched, getGeneralLine(watched), transition);
         },
         chainDetailed: recordDetail,
-        netBytes(state, { received, at }, { emitState, emitSideEffect }) {
+        netBytes(state, { received, at }, transition) {
+          const { emitSideEffect } = transition;
           emitSideEffect({ kind: 'bytesRecorded', received });
           const throughput = measureThroughput(state.throughput, received, at);
           const sampled = sampleByteTotal(state.byteTotals, received, at);
-          emitState({ ...state, received, throughput, byteTotals: sampled ?? state.byteTotals });
+          rewordWarning({ ...state, received, throughput, byteTotals: sampled ?? state.byteTotals }, transition);
           if (sampled !== null) {
             emitSideEffect({ kind: 'byteTotalSampled', received });
           }
@@ -370,23 +367,21 @@ export function startLoadProgress({
           }
           const { peers, reason } = watch;
           const quieted = withWatch(state, chain, { kind: 'quiet', peers, reason });
-          const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
-          if (message === null) {
+          const line = getChainLine(quieted, chain);
+          if (line === null) {
             transition.emitState(quieted);
             return;
           }
-          raiseWarning(quieted, { message, chain }, transition);
+          raiseWarning(quieted, line, transition);
         },
         slowMarkReached(state, _event, transition) {
-          // Only the early warning waits on the mark, and the mark is reached once.
-          if (state.warning.kind !== 'early') {
-            return;
-          }
-          if (state.warning.parked === null) {
+          // The mark comes once, while the warning is still early, so its line is the parked one.
+          const parked = getWarningLine(state.warning);
+          if (parked === null) {
             transition.emitState({ ...state, warning: { kind: 'hidden' } });
             return;
           }
-          revealWarning(state, state.warning.parked, transition);
+          revealWarning(state, parked, transition);
         },
         disposed: stop,
       },
@@ -455,16 +450,16 @@ export function startLoadProgress({
   return {
     /**
      * Moves the bar to a resolver milestone's band. One the bar has no band for leaves it where it is. Ignored once
-     * disposed. Never throws.
+     * disposed.
      */
     resolvePhase,
-    /** Holds the bar until the download starts, as the name is resolved. Ignored once disposed. Never throws. */
+    /** Holds the bar until the download starts, as the name is resolved. Ignored once disposed. */
     markNameResolved,
-    /** Enters the last band, just before the sandbox takes over. Ignored once disposed. Never throws. */
+    /** Enters the last band, just before the sandbox takes over. Ignored once disposed. */
     enterContentFetch,
     /**
      * Stops hearing the load's reports, the product store and the loading screen's stalls, so no warning shows after.
-     * Repeating it does nothing. Never throws: a throw of an unsubscribe in `telemetry` or `blockRelay` is reported.
+     * Repeating it does nothing. A throw of an unsubscribe in `telemetry` or `blockRelay` is reported.
      */
     dispose,
   };
@@ -540,25 +535,29 @@ function revealWarning(
 }
 
 /**
- * Moves to `state`, whose watch of `chain` holds a new peer count. A line that names `chain` is worded again from it,
- * since a count that changed makes it read stale, and gives way to the general line once the chain's facts explain no
- * stall. A line that reads the same is left alone, as a sample arrives every second.
+ * Moves to `state` with the warning's line worded again from it, since a peer count or a rate that changed makes the
+ * line read stale. A chain's line gives way to the general line once the chain's facts explain no stall. A line that
+ * reads the same is left alone, as the samples that reword it arrive several times a second.
  */
-function rewordOnPeers(state: LightClientState, chain: CriticalChain, transition: Transition<ProgressMachine>): void {
+function rewordWarning(state: LightClientState, transition: Transition<ProgressMachine>): void {
   const line = getWarningLine(state.warning);
-  const watch = state.watches.get(chain) ?? UNWATCHED;
-  if (line?.chain !== chain) {
+  if (line === null) {
     transition.emitState(state);
     return;
   }
-  const { peers, reason } = watch;
-  const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
-  const next = message === null ? getGeneralLine(state) : { message, chain };
+  const next = (line.chain === null ? null : getChainLine(state, line.chain)) ?? getGeneralLine(state);
   if (next.message === line.message && next.chain === line.chain) {
     transition.emitState(state);
     return;
   }
   raiseWarning(state, next, transition);
+}
+
+/** `chain`'s stall line, worded from its watch and the load's rate, or `null` when they explain no stall. */
+function getChainLine(state: LightClientState, chain: CriticalChain): WarningLine | null {
+  const { peers, reason } = state.watches.get(chain) ?? UNWATCHED;
+  const message = describeStall({ chain, bytesPerSecond: state.throughput.bytesPerSecond, peers, reason });
+  return message === null ? null : { message, chain };
 }
 
 /** The general slow-load line, worded from the load's current rate. */

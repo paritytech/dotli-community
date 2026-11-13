@@ -49,6 +49,12 @@ const resolveReport = createReporter({ flow: 'resolve' });
 /** Count. A transition of the page's load threw, a bug. Tagged `outcome` (error) and `reason` (the error's name). */
 const loadTransitionMetric = defineCount<'error'>('resolve.load_transition');
 
+/**
+ * Count. The failure screen of a load whose product was already on screen threw. Tagged `outcome` (error) and
+ * `reason` (the error's name).
+ */
+const resolveFailureScreenMetric = defineCount<'error'>('resolve.failure_screen');
+
 type LoadRun = ReturnType<typeof startLoadRun>;
 
 /** How the product reaches the screen: from the CID cache, or through the name. */
@@ -89,7 +95,7 @@ type LoadState =
 type LoadEvent =
   | { kind: 'load'; label: string }
   | { kind: 'start' }
-  | { kind: 'cacheRead'; cached: CachedCid | null }
+  | { kind: 'cacheRead'; read: CacheRead }
   | { kind: 'namePhase'; phase: ResolvePhase }
   | { kind: 'nameResolved'; cid: string | null }
   | { kind: 'manifestsRead'; manifests: ProductManifests }
@@ -100,6 +106,9 @@ type LoadEvent =
   | { kind: 'productFailed'; error: unknown; failure: string }
   | { kind: 'contentOutcome'; report: SandboxLoadReport }
   | { kind: 'showFailure' };
+
+/** What the CID cache held for the label, or why it held nothing: a miss, or settings that skip the cache. */
+type CacheRead = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' | 'skipped' };
 
 /** The load's reports, and the side work it leaves behind as it moves. */
 type LoaderEffect =
@@ -193,20 +202,25 @@ export function createProductLoader(params: Params) {
           emitState({ kind: 'readingCache', run });
           emitSideEffect({ kind: 'setUp' });
           update(
-            runStep(
-              () => (params.skipCidCache ? null : params.cidCache.get(label)),
-              cached => ({ kind: 'cacheRead', cached }),
+            runStep<CacheRead>(
+              () =>
+                params.skipCidCache
+                  ? { kind: 'skipped' }
+                  : params.cidCache
+                      .get(label)
+                      .then(cached => (cached === null ? { kind: 'miss' } : { kind: 'hit', ...cached })),
+              read => ({ kind: 'cacheRead', read }),
             ),
           );
         },
       },
       readingCache: {
         stepFailed: failLoad,
-        cacheRead(state, { cached }, transition) {
+        cacheRead(state, { read }, transition) {
           const { run } = state;
           const { label } = run;
-          transition.emitSideEffect({ kind: 'cacheChecked', cid: cached?.cid ?? null });
-          if (cached === null) {
+          transition.emitSideEffect({ kind: 'cacheChecked', read });
+          if (read.kind !== 'hit') {
             // In parallel with the CID, and awaited before anything renders, so a refused product is never
             // downloaded. A CID failure first leaves its failure to the load's outcome.
             const manifestsRead = markHandled(params.names.readManifests(label));
@@ -223,18 +237,18 @@ export function createProductLoader(params: Params) {
             return;
           }
           // A copy that no longer passes is refused but kept: only a cleanup or a redeploy drops cached manifests.
-          const manifests = fromCachedManifest(cached.manifests);
+          const manifests = fromCachedManifest(read.manifests);
           try {
             assertLaunchable(manifests.root, manifests.app);
           } catch (error) {
             transition.emitSideEffect({
               kind: 'cidRevalidated',
-              copy: { label, servedCid: cached.cid, onScreen: false },
+              copy: { label, servedCid: read.cid, onScreen: false },
             });
             transition.update({ kind: 'stepFailed', error });
             return;
           }
-          holdCore({ kind: 'holdingCore', run, path: 'fast', cid: cached.cid, manifests }, transition);
+          holdCore({ kind: 'holdingCore', run, path: 'fast', cid: read.cid, manifests }, transition);
         },
       },
       resolvingName: {
@@ -424,7 +438,11 @@ export function createProductLoader(params: Params) {
           try {
             showFailureScreen(label, error, description);
           } catch (screenError) {
-            params.report({ kind: 'screenFailed', error: screenError, failure });
+            resolveReport.defect(screenError, {
+              step: 'failure_screen',
+              metric: resolveFailureScreenMetric,
+              message: `[dot.li] The failure screen for ${failure} failed:`,
+            });
           }
           return;
         }

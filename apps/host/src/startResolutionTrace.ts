@@ -12,6 +12,7 @@ import { continuation, type Continuation } from './createContinuation.js';
 import { PHASE_BY_MILESTONE } from './phaseByMilestone.js';
 import { getChainTelemetryName } from './getChainTelemetryName.js';
 import { loadingState } from './state/loadingState.js';
+import type { ChainPhase } from './state/networkMonitorState.js';
 import type { Attempt } from './journey.js';
 import { readPageClock } from './readPageClock.js';
 
@@ -28,28 +29,28 @@ export type CidCacheResult = CacheResult | 'skipped';
 
 export type FinishDetails = {
   /** For reading, never grouped on. */
-  reason?: string;
+  reason?: string | undefined;
   /** The stable classification the error page was chosen from. */
-  errorKind?: string;
-  failedStep?: string;
+  errorKind?: string | undefined;
+  failedStep?: string | undefined;
 };
 
-type Phase = 'connecting' | 'syncing' | 'ready';
-
 type ChainState = {
+  /** The chain's name in telemetry. */
+  name: string;
   span: SpanHandle | null;
   phaseSpan: SpanHandle | null;
-  phase: Phase | null;
+  phase: Exclude<ChainPhase, 'stalled'> | null;
   firstPeerMs: number | null;
   readyMs: number | null;
   peersMax: number;
   stallCount: number;
   stallReasons: Set<string>;
-  warpFrom: number | null;
-  warpAt: number | null;
+  /** The first and the latest block the warp sync had proven. */
+  warp: { from: number; at: number } | null;
   warpTarget: number | null;
   dbCache: CacheResult | null;
-  peers: ChainPeer[] | null;
+  peers: ChainPeer[];
 };
 
 export type ResolutionTrace = ReturnType<typeof startResolutionTrace>;
@@ -83,18 +84,12 @@ export type ResolutionTraceParams = {
   random?: () => number;
 };
 
-type EnterPhaseParams = {
-  key: ChainRole;
-  state: ChainState;
-  phase: Phase;
-};
-
 /** Share of loads that get child spans. The root always carries every measurement, so nothing is lost. */
 const DEFAULT_SAMPLE_RATE = 0.2;
 
 /**
- * Opens the load's trace and returns its reporter. Safe when metrics are off: every span handle is inert. Throws only
- * as `page.lifecycle.addEventListener` does.
+ * Opens the load's trace and returns its reporter. Every recorder is ignored once the trace finished. Safe when metrics
+ * are off: every span handle is inert. Throws only as `page.lifecycle.addEventListener` does.
  */
 export function startResolutionTrace({
   domain,
@@ -108,9 +103,10 @@ export function startResolutionTrace({
   random = () => Math.random(),
 }: ResolutionTraceParams) {
   // Monotonic deltas from one wall-clock start, so a system clock that steps mid-load cannot reorder the tree.
-  const epochStart = timers.now() - (readClock() - startedAt);
+  const epochStart = timers.now() - readSinceStart();
 
-  const sampled = isSampled(random);
+  // Decided at the start, since Sentry fixes a trace's sampling when its root opens.
+  const sampled = random() < readSampleRate();
 
   const root = m.open('resolution', {
     root: true,
@@ -127,11 +123,11 @@ export function startResolutionTrace({
   });
 
   const chains = new Map<ChainRole, ChainState>();
-  // Taken while the loading screen was still being driven.
+  // The bar's last reading once it moved, so `bar_at_render` shows what the visitor saw, not the 100 a finished load
+  // forces it to.
   let lastBarPercent: number | null = null;
   let bytesTotal = 0;
   let peakBytesPerSecond = 0;
-  let lastBytes = 0;
   let lastBytesAt = startedAt;
   let contentBytes = 0;
   let contentTotal: number | null = null;
@@ -146,7 +142,7 @@ export function startResolutionTrace({
   let finished = false;
 
   function readEpochTime(): number {
-    return epochStart + (readClock() - startedAt);
+    return epochStart + readSinceStart();
   }
 
   function readSinceStart(): number {
@@ -156,12 +152,35 @@ export function startResolutionTrace({
   function getChainState(key: ChainRole): ChainState {
     let state = chains.get(key);
     if (state === undefined) {
-      state = createChainState();
-      // Opens when the chain is first heard from, or Bulletin, created only for content, would look idle, not absent.
-      state.span = sampled ? root.child(`chain.${getChainTelemetryName(key)}`, { startTime: readEpochTime() }) : null;
+      const name = getChainTelemetryName(key);
+      state = {
+        name,
+        // Opens when the chain is first heard from, or Bulletin, created only for content, would look idle, not absent.
+        span: sampled ? root.child(`chain.${name}`, { startTime: readEpochTime() }) : null,
+        phaseSpan: null,
+        phase: null,
+        firstPeerMs: null,
+        readyMs: null,
+        peersMax: 0,
+        stallCount: 0,
+        stallReasons: new Set(),
+        warp: null,
+        warpTarget: null,
+        dbCache: null,
+        peers: [],
+      };
       chains.set(key, state);
     }
     return state;
+  }
+
+  /** Wraps a recorder so it is ignored once the trace finished, when its spans have ended. */
+  function whileOpen<Args extends unknown[]>(record: (...args: Args) => void): (...args: Args) => void {
+    return (...args) => {
+      if (!finished) {
+        record(...args);
+      }
+    };
   }
 
   function sampleBar(): void {
@@ -171,28 +190,17 @@ export function startResolutionTrace({
     }
   }
 
-  function enterPhase({ key, state, phase }: EnterPhaseParams): void {
-    if (state.phase === phase) {
-      return;
-    }
-    state.phaseSpan?.end(readEpochTime());
-    state.phase = phase;
-    // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
-    state.phaseSpan =
-      state.span === null
-        ? null
-        : state.span.child(`chain.${getChainTelemetryName(key)}.${phase}`, { startTime: readEpochTime() });
-  }
-
   function recordChainSync(event: ChainSyncEvent): void {
-    if (finished) {
-      return;
-    }
     const state = getChainState(event.chain);
     const phase = PHASE_BY_MILESTONE[event.kind];
     // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
-    if (phase !== undefined && phase !== 'stalled') {
-      enterPhase({ key: event.chain, state, phase });
+    if (phase !== undefined && phase !== 'stalled' && phase !== state.phase) {
+      // One clock reading, so the next phase starts where this one ended.
+      const switchedAt = readEpochTime();
+      state.phaseSpan?.end(switchedAt);
+      state.phase = phase;
+      // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
+      state.phaseSpan = state.span?.child(`chain.${state.name}.${phase}`, { startTime: switchedAt }) ?? null;
     }
     switch (event.kind) {
       case 'peers':
@@ -214,8 +222,7 @@ export function startResolutionTrace({
         break;
       case 'warpSyncProgress':
         if (typeof event.at === 'number') {
-          state.warpFrom ??= event.at;
-          state.warpAt = event.at;
+          state.warp = { from: state.warp?.from ?? event.at, at: event.at };
         }
         if (typeof event.target === 'number') {
           state.warpTarget = event.target;
@@ -224,15 +231,12 @@ export function startResolutionTrace({
       case 'connecting':
       case 'recovered':
       case 'warpSyncFinished':
-        // The phase mapping above handles these.
+        // Only the phase they name, if any, is recorded.
         break;
     }
   }
 
   function recordChainDetail(event: ChainDetail): void {
-    if (finished) {
-      return;
-    }
     const state = getChainState(event.chain);
     if (event.dbCache !== undefined) {
       // First answer wins: the second Bulletin connection always misses.
@@ -244,26 +248,22 @@ export function startResolutionTrace({
   }
 
   function recordBytes(received: number): void {
-    if (finished || !Number.isFinite(received) || received < lastBytes) {
+    if (!Number.isFinite(received) || received < bytesTotal) {
       return;
     }
-    bytesTotal = received;
     sampleBar();
     const now = readClock();
     const elapsed = now - lastBytesAt;
     // The seed reading is page start with nothing downloaded, so the first report already has a partner.
     if (elapsed > 0) {
-      const rate = ((received - lastBytes) / elapsed) * 1000;
+      const rate = ((received - bytesTotal) / elapsed) * 1000;
       peakBytesPerSecond = Math.max(peakBytesPerSecond, rate);
     }
-    lastBytes = received;
+    bytesTotal = received;
     lastBytesAt = now;
   }
 
   function recordContent(fetched: number, total: number | null): void {
-    if (finished) {
-      return;
-    }
     sampleBar();
     contentSpan ??= sampled ? root.child('content_fetch', { startTime: readEpochTime() }) : null;
     contentBytes = fetched;
@@ -271,16 +271,14 @@ export function startResolutionTrace({
   }
 
   function recordNameResolved(resolved: string | null): void {
-    if (finished) {
-      return;
-    }
     cid = resolved;
     nameResolvedMs ??= readSinceStart();
     nameSpan?.setAttributes({
       cid: resolved ?? 'none',
       duration_ms: nameResolvedMs,
     });
-    nameSpan?.end(readEpochTime());
+    // Ends on the reading the duration came from, so the span and `duration_ms` agree.
+    nameSpan?.end(epochStart + nameResolvedMs);
     nameSpan = null;
   }
 
@@ -306,13 +304,14 @@ export function startResolutionTrace({
     }
     finished = true;
     dispose();
-    const endedAt = readEpochTime();
+    // One clock reading, so the root's length and `total_ms` agree.
     const totalMs = readSinceStart();
+    const endedAt = epochStart + totalMs;
 
     nameSpan?.end(endedAt);
-    for (const [key, state] of chains) {
+    for (const state of chains.values()) {
       state.phaseSpan?.end(endedAt);
-      state.span?.setAttributes(getChainAttributes(key, state));
+      state.span?.setAttributes(getChainAttributes(state));
       state.span?.end(endedAt);
     }
     contentSpan?.setAttributes({
@@ -347,9 +346,6 @@ export function startResolutionTrace({
   // Otherwise a tab closed mid-resolution never sends its root span. A browser reload, a typed URL and a closed tab
   // all read "unload" here, and the next attempt's `entry` tells a reload apart.
   function abandonOnPageHide(event: PageTransitionEvent): void {
-    if (finished) {
-      return;
-    }
     root.setAttributes({ exit: event.persisted ? 'bfcache' : (page.peekContinuation() ?? 'unload') });
     finish('abandoned');
   }
@@ -361,27 +357,27 @@ export function startResolutionTrace({
   page.lifecycle.addEventListener('pagehide', abandonOnPageHide);
 
   return {
-    /** Records a chain's sync milestone. Ignored once the trace finished. */
-    recordChainSync,
-    /** Records a telemetry-only fact about one chain. Ignored once the trace finished. */
-    recordChainDetail,
+    /** Records a chain's sync milestone. */
+    recordChainSync: whileOpen(recordChainSync),
+    /** Records a telemetry-only fact about one chain. */
+    recordChainDetail: whileOpen(recordChainDetail),
     /**
-     * Records the cumulative bytes the light client has pulled off the network. Ignored once the trace finished, or
-     * when the count is not finite or went back.
+     * Records the cumulative bytes the light client has pulled off the network. Ignored when the count is not finite or
+     * went back.
      */
-    recordBytes,
-    /** Records the content fetch's progress. Ignored once the trace finished. */
-    recordContent,
-    /** Records the name's CID, null for none. Ignored once the trace finished. */
-    recordNameResolved,
+    recordBytes: whileOpen(recordBytes),
+    /** Records the content fetch's progress. */
+    recordContent: whileOpen(recordContent),
+    /** Records the name's CID, null for none. */
+    recordNameResolved: whileOpen(recordNameResolved),
     /** Records what the CID cache lookup found. */
-    recordCidCache,
+    recordCidCache: whileOpen(recordCidCache),
     /** Records the load's step, reported as `loading_phase` wherever the load ends. */
-    recordStep,
+    recordStep: whileOpen(recordStep),
     /** Records that the sandbox iframe is mounted and the download is its to run. */
-    markHandedOff,
+    markHandedOff: whileOpen(markHandedOff),
     /** Records that the visitor was shown a slow-load warning. */
-    markWarningShown,
+    markWarningShown: whileOpen(markWarningShown),
     /** The trace's root, for linking this load's errors to it. */
     span: root,
     /**
@@ -397,11 +393,11 @@ export function startResolutionTrace({
   };
 }
 
-/** From the loading store, not the bar's markup, so a load whose loading island never mounted still reports it. */
 function getBrowserPage(): TracedPage {
   return {
     lifecycle: window,
     isVisible: () => document.visibilityState === 'visible',
+    // From the loading store, so a load whose loading island never mounted still reports it.
     readProgress: () => loadingState.get().progress,
     peekContinuation: continuation.peek,
   };
@@ -412,32 +408,9 @@ function readSampleRate(): number {
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_SAMPLE_RATE;
 }
 
-/** Decided at the start, since Sentry fixes a trace's sampling when its root opens. */
-function isSampled(random: () => number): boolean {
-  return random() < readSampleRate();
-}
-
-function createChainState(): ChainState {
-  return {
-    span: null,
-    phaseSpan: null,
-    phase: null,
-    firstPeerMs: null,
-    readyMs: null,
-    peersMax: 0,
-    stallCount: 0,
-    stallReasons: new Set(),
-    warpFrom: null,
-    warpAt: null,
-    warpTarget: null,
-    dbCache: null,
-    peers: null,
-  };
-}
-
-function getChainAttributes(key: ChainRole, state: ChainState): Record<string, SpanValue> {
+function getChainAttributes(state: ChainState): Record<string, SpanValue> {
   const attributes: Record<string, SpanValue> = {
-    chain: getChainTelemetryName(key),
+    chain: state.name,
     peers_max: state.peersMax,
     stall_count: state.stallCount,
   };
@@ -455,15 +428,13 @@ function getChainAttributes(key: ChainRole, state: ChainState): Record<string, S
   }
   if (state.warpTarget !== null) {
     attributes['warp_target'] = state.warpTarget;
-    if (state.warpAt !== null) {
-      attributes['warp_at'] = state.warpAt;
-    }
-    if (state.warpFrom !== null && state.warpAt !== null) {
-      attributes['warp_from'] = state.warpFrom;
-      attributes['warp_blocks'] = state.warpAt - state.warpFrom;
+    if (state.warp !== null) {
+      attributes['warp_at'] = state.warp.at;
+      attributes['warp_from'] = state.warp.from;
+      attributes['warp_blocks'] = state.warp.at - state.warp.from;
     }
   }
-  const peers = state.peers ?? [];
+  const { peers } = state;
   const heights = peers.map(peer => peer.bestNumber).sort((a, b) => a - b);
   const median = heights[Math.floor(heights.length / 2)];
   if (median !== undefined) {
@@ -486,16 +457,15 @@ function getChainAttributes(key: ChainRole, state: ChainState): Record<string, S
 /** Flattened for the root, so an unsampled load still has them. */
 function getChainSummary(chains: ReadonlyMap<ChainRole, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
-  for (const [role, state] of chains) {
-    const key = getChainTelemetryName(role);
+  for (const state of chains.values()) {
     if (state.readyMs !== null) {
-      out[`chain.${key}.ready_ms`] = state.readyMs;
+      out[`chain.${state.name}.ready_ms`] = state.readyMs;
     }
     if (state.dbCache !== null) {
-      out[`chain.${key}.db_cache`] = state.dbCache;
+      out[`chain.${state.name}.db_cache`] = state.dbCache;
     }
     if (state.peersMax > 0) {
-      out[`chain.${key}.peers_max`] = state.peersMax;
+      out[`chain.${state.name}.peers_max`] = state.peersMax;
     }
   }
   return out;

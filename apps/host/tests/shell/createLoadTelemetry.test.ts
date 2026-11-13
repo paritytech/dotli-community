@@ -40,7 +40,7 @@ describe('createLoadTelemetry', () => {
     });
 
     // When
-    telemetry.report({ kind: 'cacheChecked', cid: 'bafy-cached' });
+    telemetry.report({ kind: 'cacheChecked', read: { kind: 'hit', cid: 'bafy-cached' } });
 
     // Then
     expect(captures.exception).toHaveBeenCalledWith(error, expect.objectContaining({ step: 'transition' }));
@@ -52,7 +52,7 @@ describe('createLoadTelemetry', () => {
     const { telemetry, debug } = setupTelemetry();
     telemetry.report({ kind: 'started', label: 'doom' });
     telemetry.report({ kind: 'setUp' });
-    telemetry.report({ kind: 'cacheChecked', cid: null });
+    telemetry.report({ kind: 'cacheChecked', read: { kind: 'miss' } });
     const error = new Error('the name did not resolve');
 
     // When
@@ -68,7 +68,7 @@ describe('createLoadTelemetry', () => {
     const { telemetry, debug } = setupTelemetry();
     telemetry.report({ kind: 'started', label: 'doom' });
     telemetry.report({ kind: 'setUp' });
-    telemetry.report({ kind: 'cacheChecked', cid: null });
+    telemetry.report({ kind: 'cacheChecked', read: { kind: 'miss' } });
 
     // When the name resolves to no content, and the name is opened again
     telemetry.report({ kind: 'noContent' });
@@ -102,7 +102,6 @@ function setupTelemetry() {
   });
   const telemetry = createLoadTelemetry({
     backend: 'smoldot-direct',
-    skipCidCache: false,
     flowId: 'boot-1',
     startedAt: 0,
     blockRelay: { onProgress: () => noop },

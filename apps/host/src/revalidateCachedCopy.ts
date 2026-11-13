@@ -7,9 +7,10 @@
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import type { CachedCid } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
-import { compareCachedCid } from './compareCachedCid.js';
-import { judgeRedeploy } from './judgeRedeploy.js';
+import { assertLaunchable } from './assertLaunchable.js';
+import { toCachedManifest } from './cachedManifest.js';
 import type { NameSource } from './createNameSource.js';
+import { ManifestRejectedError } from './manifestRejectedError.js';
 
 const report = createReporter({ flow: 'resolve' });
 
@@ -73,31 +74,37 @@ export async function revalidateCachedCopy({
     return onScreen;
   }
 
-  /** Resolves to whether it reloaded the page. */
+  /** Caches the redeploy with its manifests, unless this host cannot read them. Resolves to whether it reloaded the page. */
   async function adopt(cid: string): Promise<boolean> {
-    const decision = judgeRedeploy(cid, await params.names.readManifests(label));
-    if (decision.kind === 'evict') {
-      return drop(decision.reason);
+    const manifests = await params.names.readManifests(label);
+    try {
+      assertLaunchable(manifests.root, manifests.app);
+    } catch (error) {
+      if (error instanceof ManifestRejectedError) {
+        return drop('rejected');
+      }
+      throw error;
     }
-    await params.cache.set({ label, cid: decision.cid, manifests: decision.manifests });
+    await params.cache.set({ label, cid, manifests: toCachedManifest(manifests) });
     cacheRevalidateMetric.count({ outcome: 'update' });
     report.log.event('Cached app is outdated', { served: servedCid, latest: cid });
     return false;
   }
 
   try {
-    const found = compareCachedCid(servedCid, await lookUpCid(label, params.names));
-    if (found.kind === 'keep') {
+    // A redeploy moves the contenthash, so the CID alone tells whether the copy is current.
+    const freshCid = await lookUpCid(label, params.names);
+    if (freshCid === servedCid) {
       cacheRevalidateMetric.count({ outcome: 'match' });
       return;
     }
-    if (found.kind === 'evict') {
-      await drop(found.reason);
+    if (freshCid === null) {
+      await drop('cleared');
       return;
     }
     // Offered before the new manifests are read. A Reload pressed meanwhile waits for the new version to be cached, or
     // it would serve the old copy again.
-    const adopted = adopt(found.cid);
+    const adopted = adopt(freshCid);
     params.notify({
       label: 'New version available',
       text: 'This site has been updated. Reload to see the latest version.',

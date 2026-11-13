@@ -71,7 +71,6 @@ export async function openProduct(route: ProductToOpen, shell: Shell): Promise<v
     skipCidCache: settings.cache.skipCidCache,
     report: createLoadTelemetry({
       backend: settings.backend,
-      skipCidCache: settings.cache.skipCidCache,
       flowId: shell.flowId,
       startedAt: PAGE_START,
       blockRelay: relay,

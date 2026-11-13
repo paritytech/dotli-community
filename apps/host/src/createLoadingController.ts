@@ -34,23 +34,20 @@ export type LoadingPhase = {
 
 export type LoadingStage = 'starting' | 'relay' | 'assetHub' | 'resolving' | 'content' | 'preparing';
 
-/** Animation frames for the typed explanation, and their clock. */
-type LoadingFrames = {
-  /** Asks for `step` on the next frame and returns the frame's handle. Never throws. */
-  request: (step: (now: number) => void) => number;
-  /** Drops the frame `handle` names, if it is still due. Never throws. */
-  cancel: (handle: number) => void;
-  /** Returns the milliseconds since the page started, on the frame clock. Never throws. */
-  now: () => number;
-};
-
 export type LoadingController = ReturnType<typeof createLoadingController>;
 
 type Params = {
   /** Returns whether the visitor asked for less motion, which writes the explanation at once. Never throws. */
   prefersReducedMotion: () => boolean;
-  /** The animation frames the explanation is typed on. */
-  frames: LoadingFrames;
+  /** The animation frames the explanation is typed on, and their clock. */
+  frames: {
+    /** Asks for `step` on the next frame and returns the frame's handle. Never throws. */
+    request: (step: (now: number) => void) => number;
+    /** Drops the frame `handle` names, if it is still due. Never throws. */
+    cancel: (handle: number) => void;
+    /** Returns the milliseconds since the page started, on the frame clock. Never throws. */
+    now: () => number;
+  };
   /** What fills the page. A full-page screen takes the loading screen down with the page. */
   pageContent: ReadableAtom<PageContent>;
   /** The clock and timers the stall watch, the stage messages and the fade run on. The page's own by default. */
@@ -62,7 +59,7 @@ type Params = {
 type MoveBarParams = {
   percent: number;
   /** Movement that does not re-arm the stall watch, or the stall warning could never appear. */
-  cosmetic?: boolean | undefined;
+  cosmetic?: boolean;
 };
 
 /** The bar's numbers. */
@@ -99,8 +96,6 @@ type Rotation = { kind: 'still' } | { kind: 'rotating'; explanations: readonly s
 /** The explanation being typed, one animation frame at a time. */
 type Typing =
   { kind: 'still' } | { kind: 'typing'; frame: number; from: string; to: string; startedAt: number; eraseMs: number };
-
-type TypingState = Extract<Typing, { kind: 'typing' }>;
 
 /**
  * A crawl tick, stall, rotation, fade or frame is cleared as its state is left, so none fires for a state that moved
@@ -310,7 +305,7 @@ export function createLoadingController({
               // top.
               crawlStep: ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS),
               creepCeiling,
-              creepStep: (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS),
+              creepStep: (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / CREEP_MS,
               owner: reportsProgress === true && !state.released ? 'count' : 'clock',
               crawl: { kind: 'crawling', stopTick },
             },
@@ -638,7 +633,7 @@ function getLentCeiling(next: LoadingPhase | undefined): number {
 
 /** The part-typed explanation `elapsedMs` into `typing`, and its opacity. */
 function getTypingFrame(
-  { from, to, eraseMs }: TypingState,
+  { from, to, eraseMs }: Extract<Typing, { kind: 'typing' }>,
   elapsedMs: number,
 ): { explanation: string; opacity: number } {
   // The frame clock can start a little before `startedAt`, so a zero-length erase is skipped, not divided by.

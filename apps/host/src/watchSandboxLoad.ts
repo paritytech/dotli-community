@@ -24,7 +24,7 @@ export type SandboxLoad = ReturnType<typeof watchSandboxLoad>;
 
 type Params = {
   /** The deadline's clock, the real one by default. */
-  timers?: Pick<Timers, 'setTimeout'> | undefined;
+  timers?: Pick<Timers, 'setTimeout'>;
 };
 
 /** One call of `expectHeardWithin`. Its identity tells its own deadline from a later one. */
@@ -199,10 +199,10 @@ export function watchSandboxLoad(channel: Pick<SandboxChannel, 'on'>, { timers =
      */
     subscribeCleared,
     /**
-     * Gives the sandbox 30 seconds from the call to speak, and calls `onSilent` with a `SandboxSilentError` when it
-     * stays silent. A later ask replaces this one. Asked once the sandbox spoke, or after `dispose`, it never calls
-     * `onSilent`. The returned stop ends this deadline, is safe to call more than once and does nothing once a later
-     * ask replaced it. Never throws: a throw of `onSilent` is reported.
+     * Gives the sandbox `SANDBOX_SILENCE_MS` from the call to speak, and calls `onSilent` with a `SandboxSilentError`
+     * when it stays silent. A later ask replaces this one. Asked once the sandbox spoke, or after `dispose`, it never
+     * calls `onSilent`. The returned stop ends this deadline, is safe to call more than once and does nothing once a
+     * later ask replaced it. Never throws: a throw of `onSilent` is reported.
      */
     expectHeardWithin,
     /**
