@@ -876,8 +876,6 @@ export function createProtocolFrame<E extends FrameElement>({
         listen: messages,
         peer: () => iframe.contentWindow ?? null,
         origin,
-        // The provider drops what is not bytes before the transport sees it, so this is its only count.
-        onNotBytes: wire.onNotBytes,
       }),
       handshake: 'offer',
       // The frame reads the resolution id from its URL, which it needs before any handshake.

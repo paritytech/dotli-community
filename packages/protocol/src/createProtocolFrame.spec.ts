@@ -196,15 +196,13 @@ describe('createProtocolFrame', () => {
     void frame.getTransport();
     await dom.listen();
 
-    // When the frame sends bytes too short to be a message, and an object as a frame of an earlier release does
+    // When the frame sends bytes too short to be a message
     dom.deliverRaw(new Uint8Array([0xff, 0xff, 0xff]).buffer);
-    dom.deliverRaw({ namespace: 'dotli:protocol', kind: 'ready' });
     await advance();
 
     // Then
     expect(metrics.counted('protocol.wire_refused')).toEqual([
       { outcome: 'refused', reason: 'malformed', side: 'host' },
-      { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
     expect(
       events
@@ -216,7 +214,6 @@ describe('createProtocolFrame', () => {
         // An asymmetric matcher is typed any.
         attrs: { reason: 'malformed', side: 'host', cause: expect.any(String) as string },
       },
-      { message: 'protocol message refused', attrs: { reason: 'not_bytes', side: 'host' } },
     ]);
     expect(frame.status.get()).toBe('listening');
   });
