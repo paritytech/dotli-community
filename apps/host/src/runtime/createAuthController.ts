@@ -7,11 +7,9 @@
 // bridge chunk, reached through its `bridge` port. The route's round is a nested value of the machine's state.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, getErrorMessage, log, nest, type HandlerOf, type Transition } from '@dotli/shared';
+import { createStateMachine, log, nest, type HandlerOf, type Transition } from '@dotli/shared';
 import type { LoginFailureKind } from '@parity/truapi-host';
 import type { ReadableAtom } from 'nanostores';
-import type { LoginOutcome, LoginParams } from './createAuthCommands.js';
-import type { LogoutOutcome } from './createPageSignOut.js';
 import type { HostBridge } from './bridge.js';
 import { createModalSteps, showView } from './authModalSteps.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
@@ -27,7 +25,6 @@ import {
   isPhraseRound,
   isWaiting,
   releaseLeaseHold,
-  type AuthCommand,
   type AuthModalEvent,
   type AuthModalMachine,
   type CloseAuthModalParams,
@@ -44,14 +41,9 @@ import { createWindowSignIn } from './createWindowSignIn.js';
 import { authModalState, type AuthModalView } from '../state/authModalState.js';
 import type { toEntropy } from './recoveryPhrase.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
+import { runAuthCommand } from './runAuthCommand.js';
 
 const report = createReporter({ flow: 'wallet' });
-
-/**
- * Count. A sign-in command threw after the bridge chunk loaded. Tagged `outcome` (error), `reason` (the error's
- * name) and `step` (`login, logout, cancel_login`).
- */
-const authCommandMetric = defineCount<'error'>('auth.command');
 
 /**
  * Count. The sign-in modal's lease failed other than by its own abort. Tagged `outcome` (error) and `reason` (the
@@ -61,26 +53,6 @@ const authModalLeaseMetric = defineCount<'error'>('auth.modal_lease');
 
 /** Count. A transition of the sign-in modal's machine threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const authModalTransitionMetric = defineCount<'error'>('auth_modal.transition');
-
-/** The page's sign-in and sign-out on its core. */
-export type AuthCommands = {
-  /**
-   * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
-   * already signed in. Rejects when the core paired but its session could not be stored or read back. A call queued
-   * behind a login that rejects rejects too, with that failure as its cause.
-   */
-  login(params?: LoginParams): Promise<LoginOutcome>;
-  /**
-   * Settles once the sign-out has ended, with whether the phone heard of every session this page held. A failed
-   * sign-out is reported and never rejects.
-   */
-  logout(): Promise<LogoutOutcome>;
-  /**
-   * Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in.
-   * Never throws.
-   */
-  cancelLogin(): void;
-};
 
 /** What the controller reaches in the bridge chunk. */
 type AuthBridge = Pick<HostBridge, 'authCommands' | 'applyWindowResult' | 'rereadSession'> & {
@@ -391,20 +363,8 @@ export function createAuthController({
           effect.release();
           return;
         case 'commandRun':
-          machine.update(runCommand(effect.command));
+          machine.update(runAuthCommand(effect.command, async () => (await bridge()).authCommands));
           return;
-        case 'rereadStarted': {
-          const { round } = effect;
-          machine.update(
-            bridge()
-              .then(loaded => loaded.rereadSession())
-              .then(
-                (): AuthModalEvent => ({ kind: 'rereadEnded', round }),
-                (error: unknown): AuthModalEvent => ({ kind: 'rereadFailed', round, error }),
-              ),
-          );
-          return;
-        }
         case 'rereadLogged':
           log.error('[dot.li auth] saved session re-read failed:', effect.error);
           return;
@@ -481,38 +441,21 @@ export function createAuthController({
       });
   }
 
-  /**
-   * Runs a sign-in command once the bridge chunk loads, and answers its end as an event. The command reports its own
-   * failure, and a failed login answers as `failureShown`.
-   */
-  async function runCommand(command: AuthCommand): Promise<AuthModalEvent> {
-    const message = `[dot.li auth] ${command.step} failed:`;
-    let commands: AuthCommands;
-    try {
-      ({ authCommands: commands } = await bridge());
-    } catch (error) {
-      // The getter resolves to the chunk boot already awaited, so a failure here is a wiring fault boot reported first.
-      log.error(message, error);
-      return getCommandFailure(command, error);
-    }
-    try {
-      switch (command.step) {
-        case 'login':
-          await commands.login(command.params);
-          break;
-        case 'logout':
-          await commands.logout();
-          break;
-        case 'cancel_login':
-          commands.cancelLogin();
-          break;
-      }
-      return { kind: 'commandEnded' };
-    } catch (error) {
-      const { step } = command;
-      report.defect(error, { step, metric: authCommandMetric, message, attributes: { step } });
-      return getCommandFailure(command, error);
-    }
+  /** Reads the saved session again for a sign-in asked while it could not be reached, the modal on its spinner. */
+  function startReread(
+    opened: LiveModal,
+    round: Extract<SignInRound, { kind: 'rereading' }>,
+    { emitState, update }: Transition<AuthModalMachine>,
+  ): void {
+    emitState({ ...opened, round });
+    update(
+      bridge()
+        .then(loaded => loaded.rereadSession())
+        .then(
+          (): AuthModalEvent => ({ kind: 'rereadEnded', round }),
+          (error: unknown): AuthModalEvent => ({ kind: 'rereadFailed', round, error }),
+        ),
+    );
   }
 
   return {
@@ -613,27 +556,6 @@ export function createAuthController({
       machine.update({ kind: 'disposeAsked' });
     },
   };
-}
-
-/** Reads the saved session again for a sign-in asked while it could not be reached, the modal on its spinner. */
-function startReread(
-  opened: LiveModal,
-  round: Extract<SignInRound, { kind: 'rereading' }>,
-  { emitState, emitSideEffect }: Transition<AuthModalMachine>,
-): void {
-  emitState({ ...opened, round });
-  emitSideEffect({ kind: 'rereadStarted', round });
-}
-
-/** The event a failed command answers with: a failed login opens the modal at the error view. */
-function getCommandFailure(command: AuthCommand, error: unknown): AuthModalEvent {
-  switch (command.step) {
-    case 'login':
-      return { kind: 'failureShown', failure: 'Other', reason: getErrorMessage(error) };
-    case 'logout':
-    case 'cancel_login':
-      return { kind: 'commandEnded' };
-  }
 }
 
 /** The core's failure kind of a login step, or null when the step is not a failure. */

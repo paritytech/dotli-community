@@ -122,7 +122,6 @@ export type AuthModalEffect =
   | { kind: 'leaseReleased'; lease: ModalLease }
   | { kind: 'leaseRefused'; release: () => void }
   | { kind: 'commandRun'; command: AuthCommand }
-  | { kind: 'rereadStarted'; round: SignInRound }
   | { kind: 'rereadLogged'; error: unknown }
   | { kind: 'roundEnded'; reason: PageCancelReason }
   | { kind: 'stepsUnfollowed' }

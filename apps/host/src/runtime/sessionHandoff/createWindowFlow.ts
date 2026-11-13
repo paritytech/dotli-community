@@ -23,7 +23,7 @@ import {
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type { SignInScreen, WindowIntents } from '../../state/sessionWindowState.js';
-import type { AuthCommands } from '../createAuthController.js';
+import type { AuthCommands } from '../runAuthCommand.js';
 import type { LogoutOutcome, PageSignOut, UntoldLogout } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
 import type { DotliAuthState } from '../session/types.js';
