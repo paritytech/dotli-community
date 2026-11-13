@@ -355,7 +355,6 @@ const holdingCore: HandlersOf<LoadMachine, 'holdingCore'> = {
 };
 
 const rendering: HandlersOf<LoadMachine, 'rendering'> = {
-  stepFailed: failLoad,
   renderFailed(state, { error }, transition) {
     failLoad(state, { kind: 'stepFailed', error }, transition);
     // A render that failed after it mounted the product leaves it holding its core under the failure screen.
@@ -366,7 +365,7 @@ const rendering: HandlersOf<LoadMachine, 'rendering'> = {
     try {
       stopListening = listenToProduct({ run: state.run, update });
     } catch (error) {
-      update({ kind: 'stepFailed', error });
+      update({ kind: 'renderFailed', error });
       return;
     }
     releaseCore(state.run);
@@ -413,6 +412,8 @@ const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
   contentOutcome: settleContent,
   handOff({ run, path, cid, manifests, stopListening }, _event, { emitState, emitSideEffect }) {
     const { label, params } = run;
+    emitSideEffect({ kind: 'handedOff' });
+    emitState({ kind: 'onScreen', run, stopListening });
     params.failureScreen.forget();
     void params.recents.record(label);
     void applyProductBranding({ label, manifests, fetchBlock: params.bitswap.get, timers: params.timers });
@@ -424,8 +425,6 @@ const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
       case 'slow':
         break;
     }
-    emitSideEffect({ kind: 'handedOff' });
-    emitState({ kind: 'onScreen', run, stopListening });
   },
 };
 

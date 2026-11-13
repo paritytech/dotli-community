@@ -257,6 +257,20 @@ describe('createProductLoader', () => {
     expect(ports.product.halt).not.toHaveBeenCalled();
   });
 
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and the mounted app frame halts", async () => {
+    // Given
+    const { loader, ports } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: new Error('the sandbox outcomes cannot be followed'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+  });
+
   it("As a visitor whose app's content outcomes cannot be followed, I open a name and see the failure screen, and the operator gets one report naming the step", async () => {
     // Given
     const cause = new Error('the sandbox outcomes cannot be followed');
