@@ -464,7 +464,7 @@ describe('The loading controller drives the loading store', () => {
     vi.advanceTimersByTime(PROGRESS_STALL_MS + 3_000);
 
     // Then
-    expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect(counted('listener.delivery')).toEqual([expect.objectContaining({ outcome: 'error' })]);
     expect(stalledAt).toHaveLength(1);
     expect(readShownPercent()).toBeGreaterThan(nth(stalledAt, 0));
   });
@@ -529,7 +529,7 @@ describe('The loading bar reports when it stops moving', () => {
     expect(stalls).toEqual([]);
   });
 
-  it('As a user whose earlier stall listener was removed, I wait out a parked load and am warned through the one that replaced it', () => {
+  it('As a user whose earlier stall listener was removed, I wait out a parked load and am warned through the one that stays', () => {
     // Given
     const { controller } = setupController();
     const stalls: number[] = [];

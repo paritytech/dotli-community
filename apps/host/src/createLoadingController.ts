@@ -5,6 +5,7 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
+  createListenerSet,
   createStateMachine,
   noop,
   realTimers,
@@ -189,7 +190,7 @@ export function createLoadingController({
   timers = realTimers,
   poll = pagePoll,
 }: Params) {
-  let stallListener: ((percent: number) => void) | null = null;
+  const stalls = createListenerSet<number>({ onListenerError: report.listener('loading_screen.stall') });
   /** Takes the screen down at once, without the fade, for a page that replaces it. */
   const hide: HandlerOf<ScreenMachine, 'active' | 'dismissing', 'hidden'> = (
     state,
@@ -443,7 +444,7 @@ export function createLoadingController({
           loadingState.update(effect.view);
           return;
         case 'stalled':
-          stallListener?.(effect.percent);
+          stalls.emit(effect.percent);
           return;
       }
     },
@@ -459,111 +460,72 @@ export function createLoadingController({
 
   return {
     /**
-     * Sets the listener that hears each time the bar stops afresh, replacing any previous one. Returns the function
-     * that removes it, which does nothing once another listener replaced it. Never throws: a throw of the listener is
-     * reported.
+     * Hears each time the bar stops afresh. Returns the removal, safe to call more than once. Never throws: a throw of
+     * the listener is reported.
      */
-    onProgressStall,
+    onProgressStall: stalls.subscribe,
     /** Stops watching the bar for a stall. Never throws. */
-    stopProgressWatch,
+    stopProgressWatch: (): void => {
+      screen.update({ kind: 'watchStopped' });
+    },
     /** Fills the bar and stops its crawl. Never throws. */
-    completeProgress,
+    completeProgress: (): void => {
+      screen.update({ kind: 'progressCompleted' });
+    },
     /** Starts a load's steps. Call it once before resolution begins. Never throws. */
-    initPhases,
+    initPhases: (phases: LoadingPhase[]): void => {
+      screen.update({ kind: 'phasesSet', phases });
+    },
     /** Sets the name the step lines show. Never throws. */
-    setLoadingDomain,
+    setLoadingDomain: (domain: string): void => {
+      screen.update({ kind: 'domainSet', domain });
+    },
     /** Moves the story to `stage`. Only moves forward, so a late call does nothing. Never throws. */
-    setLoadingStage,
+    setLoadingStage: (stage: LoadingStage): void => {
+      screen.update({ kind: 'stageSet', stage });
+    },
     /** Enters the step at `index`. Does nothing if that step is already active or past. Never throws. */
-    advancePhase,
+    advancePhase: (index: number): void => {
+      screen.update({ kind: 'phaseEntered', index });
+    },
     /**
      * Moves the bar to `fraction` of the running step's band. Monotonic and clamped, and ignored unless `stage` is
      * the running one. Never throws.
      */
-    nudgePhaseProgress,
+    nudgePhaseProgress: (fraction: number, stage: LoadingStage): void => {
+      screen.update({ kind: 'progressNudged', fraction, stage });
+    },
     /**
      * Lets the bar crawl through a `reportsProgress` step that will never report, the running one or one that starts
      * later. A real count still takes the bar back. Never throws.
      */
-    releasePhaseProgress,
+    releasePhaseProgress: (): void => {
+      screen.update({ kind: 'progressReleased' });
+    },
     /** Stops the crawl, the stage messages and the stall watch. Never throws. */
-    stopStatusTick,
+    stopStatusTick: (): void => {
+      screen.update({ kind: 'tickStopped' });
+    },
     /** Takes the screen down at once, without the fade, for a page that replaces it. Never throws. */
-    hideLoading,
+    hideLoading: (): void => {
+      screen.update({ kind: 'hidden' });
+    },
     /** Shows `message` under the bar, or hides the warning for null. Never throws. */
-    setLoadingWarning,
+    setLoadingWarning: (message: string | null): void => {
+      screen.update({ kind: 'warningSet', message });
+    },
     /** Fills the bar and fades the screen out. Never throws. */
-    dismissLoading,
+    dismissLoading: (): void => {
+      screen.update({ kind: 'dismissed' });
+    },
     /**
      * Stops following the page's content, the crawl, the stage messages, the stall watch and the fade, leaving the
      * screen as it is. Never throws: a throw of the unsubscribe `pageContent` returned is reported.
      */
-    dispose,
+    dispose: (): void => {
+      screen.update({ kind: 'disposed' });
+    },
   };
-
-  function onProgressStall(listener: (percent: number) => void): () => void {
-    stallListener = listener;
-    return removeStallListener;
-
-    // A listener that replaced this one stays.
-    function removeStallListener(): void {
-      if (stallListener === listener) {
-        stallListener = null;
-      }
-    }
-  }
-
-  function stopProgressWatch(): void {
-    screen.update({ kind: 'watchStopped' });
-  }
-
-  function completeProgress(): void {
-    screen.update({ kind: 'progressCompleted' });
-  }
-
-  function initPhases(phases: LoadingPhase[]): void {
-    screen.update({ kind: 'phasesSet', phases });
-  }
-
-  function setLoadingDomain(domain: string): void {
-    screen.update({ kind: 'domainSet', domain });
-  }
-
-  function setLoadingStage(stage: LoadingStage): void {
-    screen.update({ kind: 'stageSet', stage });
-  }
-
-  function advancePhase(index: number): void {
-    screen.update({ kind: 'phaseEntered', index });
-  }
-
-  function nudgePhaseProgress(fraction: number, stage: LoadingStage): void {
-    screen.update({ kind: 'progressNudged', fraction, stage });
-  }
-
-  function releasePhaseProgress(): void {
-    screen.update({ kind: 'progressReleased' });
-  }
-
-  function stopStatusTick(): void {
-    screen.update({ kind: 'tickStopped' });
-  }
-
-  function hideLoading(): void {
-    screen.update({ kind: 'hidden' });
-  }
-
-  function setLoadingWarning(message: string | null): void {
-    screen.update({ kind: 'warningSet', message });
-  }
-
-  function dismissLoading(): void {
-    screen.update({ kind: 'dismissed' });
-  }
-
-  function dispose(): void {
-    screen.update({ kind: 'disposed' });
-  }
 
   /** Moves the bar to `percent`, and arms the stall watch afresh when real progress moved the shown number. */
   function moveBar(
