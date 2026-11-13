@@ -8,7 +8,7 @@
 import { DEBUG } from '@dotli/config';
 import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { createReporter } from '@dotli/metrics';
-import { getLandingUrl } from './getLandingUrl.js';
+import { getLandingUrl, type LandingPage } from './getLandingUrl.js';
 import { parseDotLabel } from './parseDotLabel.js';
 
 const report = createReporter({ flow: 'boot' });
@@ -44,11 +44,9 @@ export type ShellRoute =
   | { kind: 'nested' }
   | { kind: 'landing' };
 
-export type LeaveForLandingParams = {
+export type LeaveForLandingParams = LandingPage & {
   /** The page's URL, which the landing page replaces. */
-  location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
-  /** The local root the shell is served under, or `null` when deployed. */
-  localRoot: string | null;
+  location: Pick<Location, 'pathname' | 'search' | 'origin' | 'replace'>;
 };
 
 const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';

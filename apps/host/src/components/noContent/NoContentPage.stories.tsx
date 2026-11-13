@@ -3,7 +3,6 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, userEvent, within } from 'storybook/test';
-import { LANDING_NAME_PARAM } from '../../getLandingUrl.js';
 import { showNoContentError } from '../../showNoContentError.js';
 
 // The page mounts its own root, so each play shows it in the story's `#app` as the host page does.
@@ -44,41 +43,13 @@ export const SearchAgainKeepsName: Story = {
       async () => {
         // Given
         const opened: string[] = [];
-        showNoContentError('nothing', { openUrl: url => opened.push(url) });
+        showNoContentError('nothing', { searchOnLanding: name => opened.push(name) });
 
         // When
         await userEvent.click(canvas.getByRole('button', { name: 'Search again' }));
 
         // Then
-        await expect(opened).toHaveLength(1);
-        const url = new URL(opened[0] ?? '');
-        await expect(url.pathname).toBe('/');
-        await expect(url.searchParams.get(LANDING_NAME_PARAM)).toBe('nothing');
-      },
-    );
-  },
-};
-
-/** As a visitor whose subname resolved to nothing, I press Search again and the landing opens with an empty box. */
-export const SearchAgainDropsSubname: Story = {
-  tags: ['!autodocs'],
-  play: async ({ canvasElement, step }) => {
-    const canvas = within(canvasElement);
-    await step(
-      'As a visitor whose subname resolved to nothing, I press Search again and the landing opens with an empty box',
-      async () => {
-        // Given
-        const opened: string[] = [];
-        showNoContentError('pr16.my-app', { openUrl: url => opened.push(url) });
-
-        // When
-        await userEvent.click(canvas.getByRole('button', { name: 'Search again' }));
-
-        // Then
-        await expect(opened).toHaveLength(1);
-        const url = new URL(opened[0] ?? '');
-        await expect(url.pathname).toBe('/');
-        await expect(url.searchParams.has(LANDING_NAME_PARAM)).toBe(false);
+        await expect(opened).toEqual(['nothing']);
       },
     );
   },

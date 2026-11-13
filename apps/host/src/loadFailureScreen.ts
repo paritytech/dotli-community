@@ -7,7 +7,7 @@ import { getSettings, type Backend } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
-import { getPageLandingUrl } from './getLandingUrl.js';
+import { openLanding } from './getLandingUrl.js';
 import { markAndReload } from './createContinuation.js';
 import { getTrustedProviderHosts } from './describeError.js';
 import { pageSettingsActions } from './createSettingsActions.js';
@@ -31,7 +31,7 @@ export const loadFailureScreen = {
     presentLoadFailure(failure, {
       showErrorPage,
       openSettings: settingsIntent.open,
-      goHome,
+      goHome: openLanding,
       reload: reloadAfterFailure,
       switchBackend: switchBackendAndReload,
       resetProtocolOnReload,
@@ -43,10 +43,6 @@ export const loadFailureScreen = {
   /** Records that the previous attempt's failure is behind the visitor. */
   forget: sessionErrorSightings.forget,
 };
-
-function goHome(): void {
-  window.location.assign(getPageLandingUrl());
-}
 
 function reloadAfterFailure(): void {
   markAndReload('reload_button');

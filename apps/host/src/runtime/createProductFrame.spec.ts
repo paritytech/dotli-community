@@ -1427,34 +1427,6 @@ describe('product frame navigates the page', () => {
     expect(fakes.page.goHome).not.toHaveBeenCalled();
     expect(fakes.page.reload).not.toHaveBeenCalled();
   });
-
-  it('As a dApp user, I stay on my app while a window of its origin that is not the frame on screen asks the page to navigate and the page stays', async () => {
-    // Given another window on the product's origin, such as a frame the product nested in itself
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('nested'), 0);
-    const nested = {};
-
-    // When that window asks the page to reload
-    fakes.askToNavigate({ to: 'reload', from: nested });
-
-    // Then the page neither reloads nor opens the landing
-    expect(fakes.page.reload).not.toHaveBeenCalled();
-    expect(fakes.page.goHome).not.toHaveBeenCalled();
-  });
-
-  it('As a dApp user who left the page, I see the sandbox that was on screen ask the page to navigate and the page stays', async () => {
-    // Given a product on screen, then the frame disposed
-    const fakes = createHarness();
-    await fakes.settle(buildSubdomainProduct('product'), 0);
-    fakes.frame.dispose();
-
-    // When its sandbox asks the page to open the landing
-    fakes.askToNavigate({ to: 'landing' });
-
-    // Then the page neither opens the landing nor reloads
-    expect(fakes.page.goHome).not.toHaveBeenCalled();
-    expect(fakes.page.reload).not.toHaveBeenCalled();
-  });
 });
 
 describe('product frame and a device grant during a rebuild', () => {

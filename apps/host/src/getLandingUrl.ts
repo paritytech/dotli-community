@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN, LOCAL_ROOT } from '@dotli/config';
+import { isValidDotLabel } from '@dotli/resolver';
 
 /** The query param the landing page reads a name to search from. */
-export const LANDING_NAME_PARAM = 'q';
+const LANDING_NAME_PARAM = 'q';
 
 export type LandingPage = {
   /** The page's URL, which gives the scheme and the port of a local root. */
@@ -21,13 +22,22 @@ export function getLandingUrl({ location, localRoot }: LandingPage, name?: strin
   return name === undefined ? url : `${url}?${new URLSearchParams({ [LANDING_NAME_PARAM]: name }).toString()}`;
 }
 
-/** Returns this page's landing address, with `name` as the search the landing page opens on. */
-export function getPageLandingUrl(name?: string): string {
-  return getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }, name);
+/** Moves this page to the landing page. */
+export function openLanding(): void {
+  window.location.assign(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }));
 }
 
-/** Returns the name `search` asks the landing page to open on, or null when it holds none. */
-export function readLandingName(search: string): string | null {
-  const name = new URLSearchParams(search).get(LANDING_NAME_PARAM)?.trim();
-  return name === undefined || name === '' ? null : name;
+/** Moves this page to the landing page, searching `name`. */
+export function searchOnLanding(name: string): void {
+  window.location.assign(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }, name));
+}
+
+/**
+ * Returns the name `search` asks the landing page to open on, or undefined when it holds none the landing's form
+ * accepts,
+ * such as a subname.
+ */
+export function readLandingName(search: string): string | undefined {
+  const name = new URLSearchParams(search).get(LANDING_NAME_PARAM)?.trim() ?? '';
+  return isValidDotLabel(name) ? name : undefined;
 }

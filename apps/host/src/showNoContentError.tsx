@@ -7,32 +7,22 @@
 import { getActiveTldSuffix } from '@dotli/config';
 import { pageScreen } from '@dotli/ui';
 import { NoContentPage } from './components/noContent/NoContentPage.js';
-import { getPageLandingUrl } from './getLandingUrl.js';
+import { searchOnLanding as searchOnLandingPage } from './getLandingUrl.js';
 
 type Params = {
-  /** Opens the landing page. */
-  openUrl?: (url: string) => void;
+  /** Opens the landing page searching `name`. */
+  searchOnLanding?: (name: string) => void;
 };
 
 /** Shows the no-content page for `label` in place of the page's content. */
-export function showNoContentError(
-  label: string,
-  {
-    // Not `window.location.assign` bare, which throws without its `this`.
-    openUrl = url => {
-      window.location.assign(url);
-    },
-  }: Params = {},
-): void {
-  // The landing form rejects a dot, so a subname leaves the box empty.
-  const name = label.includes('.') ? undefined : label;
+export function showNoContentError(label: string, { searchOnLanding = searchOnLandingPage }: Params = {}): void {
   pageScreen.show(standalone => (
     <NoContentPage
       label={label}
       tld={getActiveTldSuffix()}
       standalone={standalone}
       onSearchAgain={() => {
-        openUrl(getPageLandingUrl(name));
+        searchOnLanding(label);
       }}
     />
   ));

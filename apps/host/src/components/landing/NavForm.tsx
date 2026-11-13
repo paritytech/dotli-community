@@ -30,8 +30,8 @@ export type NavFormProps = {
    * name lost.
    */
   suffix: Accessor<string | null>;
-  /** Reads the name the form opens filled with, or null for an empty form. Read once, when the form settles. */
-  readInitialName?: () => string | null;
+  /** Reads the name the form opens filled with, or undefined for an empty form. Read once, when the form settles. */
+  readInitialName?: () => string | undefined;
 };
 
 /**
@@ -46,9 +46,9 @@ export function NavForm(props: NavFormProps): JSX.Element {
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
     if (input !== undefined) {
-      // Filled before the placeholder starts, which pauses while the input has a value.
-      const initial = untrack(() => props.readInitialName?.()) ?? '';
-      if (initial !== '') {
+      // Filled before the placeholder starts.
+      const initial = untrack(() => props.readInitialName?.());
+      if (initial !== undefined) {
         input.value = initial;
       }
       placeholder = animatePlaceholder(input, prefersReducedMotion());

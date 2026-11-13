@@ -35,7 +35,7 @@ import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ProductFacts } from '../getProductFacts.js';
-import { getPageLandingUrl } from '../getLandingUrl.js';
+import { openLanding } from '../getLandingUrl.js';
 
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
@@ -286,9 +286,7 @@ const BROWSER_PAGE: ProductFramePage = {
   reload: () => {
     window.location.reload();
   },
-  goHome: () => {
-    window.location.assign(getPageLandingUrl());
-  },
+  goHome: openLanding,
 };
 
 /** Builds the frame that shows the product. Building it never throws. */
