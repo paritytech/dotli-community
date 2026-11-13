@@ -97,7 +97,7 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
       return `Sandbox ready in ${formatMilliseconds(payload['totalMs'])}: dApp HTML written, product transport will start here.`;
 
     default:
-      // A sandbox release out of step with the host can send an event outside the union, which still shows its key.
+      // Events cross a page boundary untyped, so one outside the union still shows its key.
       return key satisfies never;
   }
 }
