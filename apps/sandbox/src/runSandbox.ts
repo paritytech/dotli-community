@@ -18,6 +18,7 @@ import {
   RECOVERY_LABELS,
   type LoadDependency,
   type SandboxFailure,
+  type SandboxStep,
   type SandboxRecovery,
 } from './describeSandboxFailure.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
@@ -347,7 +348,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
   function buildAction(
     recovery: SandboxRecovery,
     retry: (() => void) | undefined,
-    step: string,
+    step: SandboxStep,
   ): SandboxAction | undefined {
     const recover = getRecover(recovery, retry);
     if (recover === null) {

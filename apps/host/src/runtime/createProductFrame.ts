@@ -132,7 +132,7 @@ export type ProductFramePage = {
   location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
   /** Reloads the host page. Never throws. */
   reload: () => void;
-  /** Opens the landing page. Never throws. */
+  /** Opens the landing page. */
   goHome: () => void;
 };
 
@@ -821,7 +821,7 @@ export function createProductFrame({
     /**
      * Stops hearing permission changes and the sandbox's recover and navigate asks, takes down the product on screen
      * with its core and ends every render and wait in flight, so a render asked from above resolves as superseded and
-     * neither it nor a later render mounts anything. Safe to call twice or after a failed render. Never throws.
+     * neither it nor a later render mounts anything. Safe to call twice or after a failed render.
      */
     dispose,
   };
