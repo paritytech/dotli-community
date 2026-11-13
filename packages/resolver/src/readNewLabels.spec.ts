@@ -131,6 +131,41 @@ describe('readNewLabels', () => {
     });
   });
 
+  it('As the name list, I skip an entry whose labelhash slot is unset', async () => {
+    // Given a store whose first entry has no labelhash, followed by a valid name
+    const unsetSlot = computeArrayElementSlot(LIST_SLOT, 0);
+    const words = Object.fromEntries(
+      Object.entries(createStoreWords([`gone.${TLD}`, `ok.${TLD}`])).filter(([slot]) => slot !== unsetSlot),
+    );
+    const { api } = createFakeApi({ [STORE]: words });
+    const stores = [{ address: STORE, read: 0 }];
+
+    // When the new labels are read
+    const result = await readNewLabels({ api, dotns, stores });
+
+    // Then only the valid label comes back, and the cursor moves past both entries
+    expect(result).toEqual({ stores: [{ address: STORE, read: 2 }], labels: ['ok'] });
+  });
+
+  it('As the name list, I read several stores in one block with one trie id lookup', async () => {
+    // Given two stores
+    const { api, blocks, trieIdLookups } = createFakeApi({
+      [STORE]: createStoreWords([`alice.${TLD}`]),
+      [OTHER_STORE]: createStoreWords([`bob.${TLD}`]),
+    });
+    const stores = [
+      { address: STORE, read: 0 },
+      { address: OTHER_STORE, read: 0 },
+    ];
+
+    // When the new labels are read
+    await readNewLabels({ api, dotns, stores });
+
+    // Then one block was held, and one lookup resolved both stores
+    expect(blocks).toEqual([BLOCK_HASH]);
+    expect(trieIdLookups).toEqual([[STORE, OTHER_STORE]]);
+  });
+
   it("As the name list, I reject with a partial read when a long name's data slot is missing", async () => {
     // Given a store whose only name declares 40 bytes with no data slots written
     const { api } = createFakeApi({ [STORE]: createStoreWords([{ length: 40 }]) });
@@ -193,19 +228,29 @@ function getDataSlot(nameSlot: `0x${string}`): `0x${string}` {
   return toHex(keccak_256(fromHex(nameSlot)));
 }
 
-/** An `Api` that answers slot reads from `storage` at `BLOCK_HASH`. `reads` lists every slot key read. */
-function createFakeApi(storage: Storage): { api: Api; reads: string[] } {
+/**
+ * An `Api` that answers slot reads from `storage` at `BLOCK_HASH`. `reads` lists every slot key read, `blocks` lists
+ * the blocks held and `trieIdLookups` lists the addresses of each batched trie id lookup.
+ */
+function createFakeApi(storage: Storage): { api: Api; reads: string[]; blocks: string[]; trieIdLookups: string[][] } {
   const reads: string[] = [];
+  const trieIdLookups: string[][] = [];
+  const blocks: string[] = [];
   const api: Api = {
     whenReady: () => Promise.resolve(),
-    withBestBlock: read => read(BLOCK_HASH),
+    withBestBlock: read => {
+      blocks.push(BLOCK_HASH);
+      return read(BLOCK_HASH);
+    },
     resolveTrieId: contractAddress => Promise.resolve(contractAddress in storage ? TRIE_ID : null),
     readSlot: (contractAddress, slotKey) => {
       reads.push(slotKey);
       return Promise.resolve(storage[contractAddress]?.[slotKey] ?? null);
     },
-    resolveTrieIds: contractAddresses =>
-      Promise.resolve(new Map(contractAddresses.map(address => [address, address in storage ? TRIE_ID : null]))),
+    resolveTrieIds: contractAddresses => {
+      trieIdLookups.push([...contractAddresses]);
+      return Promise.resolve(new Map(contractAddresses.map(address => [address, address in storage ? TRIE_ID : null])));
+    },
     readSlots: (contractAddress, slotKeys) => {
       reads.push(...slotKeys);
       return Promise.resolve(slotKeys.map(slotKey => storage[contractAddress]?.[slotKey] ?? null));
@@ -213,7 +258,7 @@ function createFakeApi(storage: Storage): { api: Api; reads: string[] } {
     onStop: () => () => undefined,
     destroy: () => undefined,
   };
-  return { api, reads };
+  return { api, reads, blocks, trieIdLookups };
 }
 
 /** A uint256 that fits its last two bytes. */

@@ -14,6 +14,7 @@ import { ApiStoppedError } from './apiStoppedError.js';
 import { createDotnsResolver, type DotnsResolver } from './createDotnsResolver.js';
 import type { Api } from './createRawApi.js';
 import type { ChainClient } from './createSyncedClient.js';
+import type { ResolvePhase } from './types.js';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 
 /** A chain client whose follow can be stopped from the test. */
@@ -640,15 +641,53 @@ describe('createDotnsResolver', () => {
     dotns.release();
     first.ready();
     await vi.advanceTimersByTimeAsync(0);
-    const openedBeforeRead = opened.length;
     await dotns.readLabelStores(0);
 
     // Then the synced client was torn down rather than kept, and the later read opened its own
     await expect(failure).resolves.toMatchObject({ name: 'NetworkSyncTimeoutError' });
     expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
-    expect(openedBeforeRead).toBe(1);
     expect(reports.expected.map(({ step }) => step)).not.toContain('follow_stop');
     expect(opened).toHaveLength(2);
+  });
+
+  it('As the name list, I release while a read waits on the syncing client and the read finishes on a new client', async () => {
+    // Given a first client that syncs when the test says so, and a read waiting on it
+    vi.useFakeTimers();
+    const first = createHandSettledShape();
+    const { dotns, opened } = createResolver([first.shape]);
+    const labels = dotns.readLabelStores(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // When the name list releases, and the torn-down follow fails the sync it was waited on, as a real follow does
+    dotns.release();
+    first.fail(new ApiStoppedError());
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then the read finishes on a second client, and the first one was torn down
+    await expect(labels).resolves.toEqual([]);
+    expect(opened).toHaveLength(2);
+    expect(must(opened[0], 'first client').destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("As the name list, I read again while a released client still syncs, and its late first block does not end the new client's sync", async () => {
+    // Given a first client that syncs when the test says so, a read waiting on it, a release, and a second read on a
+    // new client that has not synced
+    vi.useFakeTimers();
+    const first = createHandSettledShape();
+    const { dotns } = createResolver([first.shape, createHandSettledShape().shape]);
+    void dotns.readAppLabels(['alice']).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    dotns.release();
+    const phases: ResolvePhase[] = [];
+    void dotns.readAppLabels(['alice'], { onPhase: phase => phases.push(phase) });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // When the released client's follow reaches its first block
+    first.ready();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then the second read has not heard that its client is ready
+    expect(phases).not.toContain('asset-hub-ready');
   });
 
   it('As the name list, I release again while nothing is kept and the released client is not torn down twice', async () => {

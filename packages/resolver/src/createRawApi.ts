@@ -71,13 +71,15 @@ export type Api = {
   ): Promise<Uint8Array | null>;
   /**
    * Resolves each contract's `trie_id` at `atHash`, a block a `withBestBlock` read holds, keyed by the address as given.
-   * `null` for an address that is not a contract. Rejects as `resolveTrieId` does.
+   * `null` for an address that is not a contract. Rejects with `ApiStoppedError` once the follow stopped, and otherwise
+   * with the storage error, such as `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
    */
   resolveTrieIds(contractAddresses: readonly string[], atHash: string): Promise<ReadonlyMap<string, Uint8Array | null>>;
   /**
    * Reads many slots of one contract at `atHash`, in the contract's `trieId`, resolved at that block when not given.
    * Resolves the values in the order of `slotKeys`, `null` for an unset slot, and every value `null` when the account
-   * is not a contract. Rejects as `readSlot` does.
+   * is not a contract. Rejects with `ApiStoppedError` once the follow stopped, and otherwise with the storage error, such
+   * as `OperationInaccessibleError` or `OperationLimitError` once the retry window ends.
    */
   readSlots(
     contractAddress: string,

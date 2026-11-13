@@ -24,7 +24,7 @@ type Params = {
   stores: readonly LabelStoreCursor[];
 };
 
-type ReadStoreParams = {
+type ReadStoreNamesParams = {
   api: Api;
   dotns: DotnsContracts;
   store: LabelStoreCursor;
@@ -79,7 +79,7 @@ export function readNewLabels({
 }
 
 /** The names a store added past its cursor, in entry order, with the cursor moved to the store's count. */
-async function readStoreNames({ api, dotns, store, at }: ReadStoreParams): Promise<StoreNames> {
+async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): Promise<StoreNames> {
   const listSlot = dotns.STORAGE_SLOTS.LABEL_STORE_LABEL_LIST;
   const countWord = await api.readSlot(store.address, encodeSlotKey(listSlot), at);
   const count = countWord === null ? 0 : Number(readWordAsBigInt(countWord));

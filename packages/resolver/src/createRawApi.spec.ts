@@ -286,6 +286,7 @@ describe('createRawApi', () => {
 
     it('As the resolver on a server that discards the last two keys of a call, I read three slots and get every value', async () => {
       // Given every slot set, and a server that discards the tail of the first call
+      const keys = [0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)));
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
       follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
@@ -303,7 +304,6 @@ describe('createRawApi', () => {
       const values = await readSlotsUpTo(api, 3);
 
       // Then
-      const keys = [0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)));
       expect(askedKeys(follow)).toEqual([keys, keys.slice(1)]);
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1]), new Uint8Array([1])]);
     });
@@ -379,6 +379,49 @@ describe('createRawApi', () => {
 
       // Then
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
+    });
+
+    it('As the resolver, I read a batch the server refuses for its operation limit and it is retried until it answers', async () => {
+      // Given a server that refuses the first call for its operation limit
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client, now: () => 0 });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storage.mockResolvedValue('0x01');
+      follow.storageSubscription.mockImplementationOnce((_hash, _inputs, _childTrie, _onItems, onError) => {
+        onError(new OperationLimitError());
+        return () => undefined;
+      });
+
+      // When
+      const read = readSlotsUpTo(api, 2);
+      await vi.runAllTimersAsync();
+      const values = await read;
+
+      // Then
+      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
+    });
+
+    it('As the resolver, I wait on an open batch and the read fails as disjoint when the follow stops', async () => {
+      // Given a batch whose subscription the light client holds open
+      const { client, follow } = createFakeSubstrateClient();
+      const api = createRawApi({ client });
+      follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      const subscriptionAsked = createDeferred<(error: Error) => void>();
+      follow.storageSubscription.mockImplementation((_hash, _inputs, _childTrie, _onItems, onError) => {
+        subscriptionAsked.resolve(onError);
+        return () => undefined;
+      });
+      const read = readSlotsUpTo(api, 2).catch((error: unknown) => error);
+      const onError = await subscriptionAsked.promise;
+
+      // When
+      follow.stop();
+      onError(new DisjointError());
+      const error = await read;
+
+      // Then
+      expect(error).toBeInstanceOf(DisjointError);
+      expect(follow.storageSubscription).toHaveBeenCalledTimes(1);
     });
 
     it('As the resolver, I wait on a batch retry and the read fails as stopped when the follow stops', async () => {
