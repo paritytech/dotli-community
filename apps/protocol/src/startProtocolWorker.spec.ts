@@ -482,7 +482,7 @@ async function bootWorker(
       /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
       link() {
         const linked = connectSharedWorker({
-          worker: { port: channel.port2, addEventListener: () => undefined, removeEventListener: () => undefined },
+          worker: Object.assign(new EventTarget(), { port: channel.port2 }),
           page: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
