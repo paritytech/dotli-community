@@ -73,6 +73,8 @@ function createProductPage({
   return {
     // The same fake, typed as the page the product sees.
     page: page as unknown as CheckedPage & { document: FakeDocument },
+    // The wallet globals are no members of the page's type, so the product reaches them by name.
+    wallets: page as unknown as Record<string, unknown>,
     fetched,
     violations,
     elapse: () => {
@@ -113,9 +115,7 @@ describe('the sandbox checker', () => {
 
   it('As a product developer, I use a wallet extension once it registered and only my use is reported, not its registration', () => {
     // Given an extension that registers while the page loads, and reads it back
-    const { page, violations, elapse } = createProductPage();
-    // The wallet globals are no members of the page's type, so the product reaches them by name.
-    const globals = page as unknown as Record<string, unknown>;
+    const { wallets: globals, violations, elapse } = createProductPage();
     globals['injectedWeb3'] = { wallet: {} };
     const readWhileLoading = globals['injectedWeb3'];
     const reportedWhileLoading = [...violations];
@@ -137,9 +137,11 @@ describe('the sandbox checker', () => {
 
   it('As a product developer, I overwrite a wallet global an extension set before the checker ran and my write is reported', () => {
     // Given a page whose ethereum an extension set before the checker installed
-    const { page, violations, elapse } = createProductPage({ globals: { ethereum: { extension: true } } });
-    // The wallet globals are no members of the page's type, so the product reaches them by name.
-    const pageGlobals = page as unknown as Record<string, unknown>;
+    const {
+      wallets: pageGlobals,
+      violations,
+      elapse,
+    } = createProductPage({ globals: { ethereum: { extension: true } } });
 
     // When the page settles and the product writes ethereum
     elapse();
@@ -151,9 +153,13 @@ describe('the sandbox checker', () => {
 
   it('As a product developer, I open a page where an extension locked one wallet global and the other wallet globals are still trapped', () => {
     // Given a page whose injectedWeb3 an extension defined as non-configurable before the checker installed
-    const { page, violations, elapse } = createProductPage({ lockedGlobals: { injectedWeb3: { extension: true } } });
-    // The wallet globals are no members of the page's type, so the product reaches them by name.
-    const pageGlobals = page as unknown as Record<string, unknown>;
+    const {
+      wallets: pageGlobals,
+      violations,
+      elapse,
+    } = createProductPage({
+      lockedGlobals: { injectedWeb3: { extension: true } },
+    });
     pageGlobals['ethereum'] = { extension: true };
 
     // When the page settles and the product writes ethereum
