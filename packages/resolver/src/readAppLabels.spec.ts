@@ -51,17 +51,6 @@ describe('readAppLabels', () => {
       },
     ]);
   });
-
-  it('As the name list, I read no labels and pin no block', async () => {
-    // Given no labels
-    const { api, pins } = createFakeApi({});
-
-    // When no labels are read
-    await readAppLabels({ api, dotns, labels: [] });
-
-    // Then no block was pinned
-    expect(pins).toEqual([]);
-  });
 });
 
 /** The ContentResolver slot that holds the contenthash of `app.<label>.<tld>`. */
@@ -85,14 +74,10 @@ function longBytesWord(length: number): Uint8Array {
 
 /** An `Api` that answers batched reads of the ContentResolver from `storage` at `BLOCK_HASH`. */
 function createFakeApi(storage: Storage) {
-  const pins: string[] = [];
   const batches: { contractAddress: string; slotKeys: readonly `0x${string}`[] }[] = [];
   const api: Api = {
     whenReady: () => Promise.resolve(),
-    withBestBlock: read => {
-      pins.push(BLOCK_HASH);
-      return read(BLOCK_HASH);
-    },
+    withBestBlock: read => read(BLOCK_HASH),
     resolveTrieId: () => Promise.resolve(null),
     readSlot: () => Promise.reject(new Error('The app read read a single slot')),
     resolveTrieIds: () => Promise.resolve(new Map()),
@@ -103,5 +88,5 @@ function createFakeApi(storage: Storage) {
     onStop: () => () => undefined,
     destroy: () => undefined,
   };
-  return { api, pins, batches };
+  return { api, batches };
 }

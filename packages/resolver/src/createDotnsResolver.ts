@@ -266,17 +266,15 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
      * `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error when it fails
      * for any other reason or the chain keeps halting.
      */
-    readNewLabels: (
-      stores: readonly LabelStoreCursor[],
-      options: ResolveOptions = {},
-    ): Promise<{ stores: LabelStoreCursor[]; labels: string[] }> =>
+    readNewLabels: (stores: readonly LabelStoreCursor[], options: ResolveOptions = {}) =>
       read(options, api => readNewLabels({ api, dotns, stores })),
     /**
-     * Reads which of `labels` publish an app. Rejects with `NetworkSyncTimeoutError` when Asset Hub does not sync
-     * within the budget, and the read's own error when it fails for any other reason or the chain keeps halting.
+     * Reads which of `labels` publish an app, and resolves an empty set for no labels without building a client.
+     * Rejects with `NetworkSyncTimeoutError` when Asset Hub does not sync within the budget, and the read's own error
+     * when it fails for any other reason or the chain keeps halting.
      */
     readAppLabels: (labels: readonly string[], options: ResolveOptions = {}): Promise<Set<string>> =>
-      read(options, api => readAppLabels({ api, dotns, labels })),
+      labels.length === 0 ? Promise.resolve(new Set()) : read(options, api => readAppLabels({ api, dotns, labels })),
     /**
      * Ends the Asset Hub client, kept or building, so its lease closes. A read still running retries on a new client,
      * and the next read builds one. Does nothing while no client is kept or building.

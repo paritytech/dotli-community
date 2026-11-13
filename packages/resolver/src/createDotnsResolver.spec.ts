@@ -615,6 +615,18 @@ describe('createDotnsResolver', () => {
     expect(reports.expected.map(({ step }) => step)).not.toContain('follow_stop');
   });
 
+  it('As the name list, I check no labels for an app and no Asset Hub client opens', async () => {
+    // Given
+    const { dotns, opened } = createResolver();
+
+    // When
+    const appLabels = await dotns.readAppLabels([]);
+
+    // Then
+    expect(appLabels).toEqual(new Set());
+    expect(opened).toEqual([]);
+  });
+
   it('As the name list, I read again after a release and a new client is opened', async () => {
     // Given a client released after a read
     const { dotns, opened } = createResolver();

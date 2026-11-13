@@ -47,8 +47,7 @@ export async function syncNameList({ stored, network, reads, save, now = Date.no
     if (!moved && fresh.length === 0) {
       continue;
     }
-    // An empty check would still build a chain client.
-    const withApp = fresh.length === 0 ? new Set<string>() : await reads.readAppLabels(fresh);
+    const withApp = await reads.readAppLabels(fresh);
     const checkedAt = now();
     record = {
       ...record,

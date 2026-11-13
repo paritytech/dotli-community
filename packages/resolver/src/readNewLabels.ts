@@ -6,14 +6,8 @@ import { toHex } from '@dotli/shared';
 import type { Api } from './createRawApi.js';
 import { isValidDotLabel, MAX_LABEL_LENGTH } from './dotLabel.js';
 import { PartialStorageReadError } from './partialStorageReadError.js';
-import {
-  addToSlot,
-  computeArrayElementSlot,
-  computeMappingSlot,
-  decodeBytesSlot,
-  encodeSlotKey,
-  readWordAsBigInt,
-} from './storageSlots.js';
+import { readArrayTail } from './readArrayTail.js';
+import { addToSlot, computeMappingSlot, decodeBytesSlot } from './storageSlots.js';
 
 /** One label store and how many of its entries were read. */
 export type LabelStoreCursor = { address: string; read: number };
@@ -35,7 +29,7 @@ type StoreNames = { cursor: LabelStoreCursor; names: string[] };
 
 /**
  * Each store's new entry count, and the second-level labels under `dotns.TLD` among the entries from each store's
- * `read` up to that count, deduped in first-seen order. Each store is read in one block. Rejects with
+ * `read` up to that count, deduped in first-seen order. All stores are read in one block. Rejects with
  * `PartialStorageReadError` when a long name's data slot is missing, and otherwise with a slot read's error.
  */
 export function readNewLabels({
@@ -69,7 +63,7 @@ export function readNewLabels({
       cursors.push(result.value.cursor);
       for (const name of result.value.names) {
         const head = name.slice(0, -suffix.length);
-        if (name.endsWith(suffix) && !head.includes('.') && isValidDotLabel(head)) {
+        if (name.endsWith(suffix) && isValidDotLabel(head)) {
           labels.add(head);
         }
       }
@@ -80,17 +74,17 @@ export function readNewLabels({
 
 /** The names a store added past its cursor, in entry order, with the cursor moved to the store's count. */
 async function readStoreNames({ api, dotns, store, at }: ReadStoreNamesParams): Promise<StoreNames> {
-  const listSlot = dotns.STORAGE_SLOTS.LABEL_STORE_LABEL_LIST;
-  const countWord = await api.readSlot(store.address, encodeSlotKey(listSlot), at);
-  const count = countWord === null ? 0 : Number(readWordAsBigInt(countWord));
-  if (count <= store.read) {
+  const { count, words: labelhashWords } = await readArrayTail({
+    api,
+    contractAddress: store.address,
+    slot: dotns.STORAGE_SLOTS.LABEL_STORE_LABEL_LIST,
+    from: store.read,
+    at,
+  });
+  if (labelhashWords.length === 0) {
     return { cursor: store, names: [] };
   }
 
-  const entrySlots = Array.from({ length: count - store.read }, (_, offset) =>
-    computeArrayElementSlot(listSlot, store.read + offset),
-  );
-  const labelhashWords = await api.readSlots(store.address, entrySlots, at);
   const entries = labelhashWords.flatMap(word => {
     if (word === null) {
       return [];

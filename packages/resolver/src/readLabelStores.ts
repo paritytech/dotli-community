@@ -3,7 +3,8 @@
 
 import type { DotnsContracts } from '@dotli/config';
 import type { Api } from './createRawApi.js';
-import { computeArrayElementSlot, encodeSlotKey, extractAddress, readWordAsBigInt } from './storageSlots.js';
+import { readArrayTail } from './readArrayTail.js';
+import { extractAddress } from './storageSlots.js';
 
 type Params = {
   api: Api;
@@ -16,7 +17,6 @@ type Params = {
  * slot read's error.
  */
 export function readLabelStores({ api, dotns, known }: Params): Promise<string[]> {
-  const slot = dotns.STORAGE_SLOTS.STORE_FACTORY_LABEL_STORES;
   // One block for the count and the elements, so a store added between the two reads cannot shift them.
   return api.withBestBlock(async hash => {
     // Resolved once, so neither read resolves it again.
@@ -24,16 +24,13 @@ export function readLabelStores({ api, dotns, known }: Params): Promise<string[]
     if (trieId === null) {
       return [];
     }
-    const at = { atHash: hash, trieId };
-    const countWord = await api.readSlot(dotns.STORE_FACTORY, encodeSlotKey(slot), at);
-    const count = countWord === null ? 0 : Number(readWordAsBigInt(countWord));
-    if (count <= known) {
-      return [];
-    }
-    const elementSlots = Array.from({ length: count - known }, (_, offset) =>
-      computeArrayElementSlot(slot, known + offset),
-    );
-    const words = await api.readSlots(dotns.STORE_FACTORY, elementSlots, at);
+    const { words } = await readArrayTail({
+      api,
+      contractAddress: dotns.STORE_FACTORY,
+      slot: dotns.STORAGE_SLOTS.STORE_FACTORY_LABEL_STORES,
+      from: known,
+      at: { atHash: hash, trieId },
+    });
     // An unset element reads as the zero address, so each position keeps its entry.
     return words.map(word => extractAddress(word ?? new Uint8Array(32)));
   });

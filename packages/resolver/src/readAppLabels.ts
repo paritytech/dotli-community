@@ -16,9 +16,6 @@ type Params = {
 
 /** The labels whose `app.<label>.<tld>` has a contenthash, read in one block. Rejects with a slot read's error. */
 export async function readAppLabels({ api, dotns, labels }: Params): Promise<Set<string>> {
-  if (labels.length === 0) {
-    return new Set();
-  }
   const slots = labels.map(label => ({
     label,
     slotKey: computeMappingSlot(computeNamehash(`app.${label}.${dotns.TLD}`), dotns.STORAGE_SLOTS.CONTENTHASH),
