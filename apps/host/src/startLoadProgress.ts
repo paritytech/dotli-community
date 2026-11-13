@@ -354,7 +354,7 @@ export function startLoadProgress({
           if (message === null || getWarnedChain(state.warning) !== null) {
             return;
           }
-          showWarning(state, { message, chain: null }, transition);
+          raiseWarning(state, { message, chain: null }, transition);
         },
         productLoaded(state, _event, { emitState, emitSideEffect }) {
           const { byteTotals } = state;
@@ -362,7 +362,8 @@ export function startLoadProgress({
             return;
           }
           emitState({ ...state, byteTotals: { kind: 'closed' } });
-          if (byteTotals.received !== byteTotals.sampled?.total) {
+          // No report at all leaves nothing unsampled.
+          if (byteTotals.sampled !== null && byteTotals.received !== byteTotals.sampled.total) {
             emitSideEffect({ kind: 'byteTotalSampled', received: byteTotals.received });
           }
         },
@@ -384,7 +385,7 @@ export function startLoadProgress({
             transition.emitState(quieted);
             return;
           }
-          showWarning(quieted, { message, chain }, transition);
+          raiseWarning(quieted, { message, chain }, transition);
         },
         slowMarkReached(state, _event, transition) {
           // Only the early warning waits on the mark, and the mark is reached once.
@@ -527,8 +528,10 @@ export function startLoadProgress({
         ? { kind: 'quiet', peers, reason }
         : { kind: 'watching', timer: startStallTimer(chain, transition), peers, reason },
     );
-    // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
-    if (sync.kind === 'stalled' || sync.kind === 'connecting' || getWarnedChain(state.warning) !== chain) {
+    // Only the named chain moving on takes its line down. One that stalls or reconnects again keeps its line until its
+    // watch words it afresh.
+    const recovered = sync.kind !== 'stalled' && sync.kind !== 'connecting' && getWarnedChain(state.warning) === chain;
+    if (!recovered) {
       transition.emitState(watched);
       return;
     }
@@ -553,7 +556,7 @@ export function startLoadProgress({
 }
 
 /** Shows `line` as the slow-load warning, or parks it in place of any parked line until the load is old enough to be slow. */
-function showWarning(state: LightClientState, line: WarningLine, transition: Transition<ProgressMachine>): void {
+function raiseWarning(state: LightClientState, line: WarningLine, transition: Transition<ProgressMachine>): void {
   if (state.warning.kind === 'early') {
     transition.emitState({ ...state, warning: { kind: 'early', parked: line } });
     return;
