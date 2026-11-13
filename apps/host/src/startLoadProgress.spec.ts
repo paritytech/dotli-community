@@ -3,6 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { asProductId } from '@parity/truapi';
+import type { ContentProgress } from '@dotli/bitswap';
 import type { Backend } from '@dotli/config';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
@@ -13,9 +14,8 @@ import type { PageContent } from '@dotli/ui';
 import { createLoadingController, type LoadingPhase } from './createLoadingController.js';
 import {
   startLoadProgress,
-  type ContentProgressFacts,
-  type LoadEvents,
   type LoadingScreen,
+  type LoadTelemetrySources,
   type LoadProgress,
 } from './startLoadProgress.js';
 import { bindReports } from './testing/bindReports.js';
@@ -39,7 +39,7 @@ type LoadStand = {
   chainSync: ReportSource<ChainSyncEvent>;
   chainDetail: ReportSource<ChainDetail>;
   netBytes: ReportSource<{ received: number }>;
-  content: ReportSource<ContentProgressFacts>;
+  content: ReportSource<ContentProgress>;
   /** Returns the bands the load gave the loading screen. */
   getBands: () => LoadingPhase[];
   trace: {
@@ -58,8 +58,8 @@ type Band = { progress: number; line: string };
 type Params = {
   /** The backend the load runs on. */
   backend: Backend;
-  /** Report sources that stand in for the stand's own. */
-  events?: Partial<LoadEvents>;
+  /** Light client report sources that stand in for the stand's own. */
+  telemetry?: Partial<LoadTelemetrySources>;
 };
 
 /** The debug panel's flow every load reports under. */
@@ -78,7 +78,7 @@ describe('startLoadProgress', () => {
     progress.enterContentFetch();
     await timers.advance(1_000);
     const waiting = readProgress();
-    content.send({ bytesFetched: 50, totalBytes: 100 });
+    content.send({ bytesFetched: 50, totalBytes: 100, bytesPerSecond: 0 });
 
     // Then
     expect(getBands().map(band => band.stage)).toEqual(['starting', 'assetHub', 'resolving', 'content']);
@@ -153,7 +153,7 @@ describe('startLoadProgress', () => {
     chainSync.send({ chain: 'assethub', kind: 'firstPeer' });
     chainDetail.send({ chain: 'assethub', dbCache: 'hit' });
     netBytes.send({ received: 2048 });
-    content.send({ bytesFetched: 10, totalBytes: 100 });
+    content.send({ bytesFetched: 10, totalBytes: 100, bytesPerSecond: 0 });
     const afterReports = readProgress();
     await timers.advance(10_000);
 
@@ -258,14 +258,14 @@ describe('startLoadProgress', () => {
   it('As an operator, I see a report source that throws as the load progress subscribes reported as a defect, while the progress returns and leaves no other source listened to', () => {
     // Given a byte counter that cannot be listened to
     const { counted } = bindReports();
-    const events: Partial<LoadEvents> = {
-      onNetBytes() {
+    const telemetry: Partial<LoadTelemetrySources> = {
+      subscribeNetBytes() {
         throw new Error('the protocol frame is gone');
       },
     };
 
     // When
-    const { chainSync, chainDetail } = setupLoad({ backend: 'smoldot-direct', events });
+    const { chainSync, chainDetail } = setupLoad({ backend: 'smoldot-direct', telemetry });
 
     // Then
     expect(counted('load_progress.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
@@ -275,17 +275,17 @@ describe('startLoadProgress', () => {
   it('As an operator, I see an unsubscribe that throws as a failed start cleans up reported too, while the other sources are still unsubscribed', () => {
     // Given a chain sync source whose unsubscribe throws, and a byte counter that cannot be listened to
     const { counted } = bindReports();
-    const events: Partial<LoadEvents> = {
-      onChainSync: () => () => {
+    const telemetry: Partial<LoadTelemetrySources> = {
+      subscribeChainSync: () => () => {
         throw new Error('the protocol frame is gone');
       },
-      onNetBytes() {
+      subscribeNetBytes() {
         throw new Error('the byte counter is gone');
       },
     };
 
     // When
-    const { chainDetail } = setupLoad({ backend: 'smoldot-direct', events });
+    const { chainDetail } = setupLoad({ backend: 'smoldot-direct', telemetry });
 
     // Then both throws were reported and the chain detail source was unsubscribed
     expect(counted('load_progress.transition')).toHaveLength(2);
@@ -331,7 +331,7 @@ describe('startLoadProgress', () => {
     progress.enterContentFetch();
 
     // When
-    content.send({ bytesFetched: 50, totalBytes: 100 });
+    content.send({ bytesFetched: 50, totalBytes: 100, bytesPerSecond: 0 });
 
     // Then
     expect(barsHeard).toEqual([62]);
@@ -343,10 +343,10 @@ describe('startLoadProgress', () => {
     progress.enterContentFetch();
 
     // When
-    content.send({ bytesFetched: 0, totalBytes: null });
-    content.send({ bytesFetched: 50, totalBytes: 100 });
+    content.send({ bytesFetched: 0, totalBytes: null, bytesPerSecond: 0 });
+    content.send({ bytesFetched: 50, totalBytes: 100, bytesPerSecond: 0 });
     const filling = readBand();
-    content.send({ bytesFetched: 100, totalBytes: 100 });
+    content.send({ bytesFetched: 100, totalBytes: 100, bytesPerSecond: 0 });
 
     // Then
     expect(filling).toEqual({ progress: 78.5, line: 'Downloading the app' });
@@ -364,7 +364,7 @@ describe('startLoadProgress', () => {
     [
       'the download declares no total',
       (load: LoadStand) => {
-        load.content.send({ bytesFetched: 0, totalBytes: null });
+        load.content.send({ bytesFetched: 0, totalBytes: null, bytesPerSecond: 0 });
       },
     ],
   ])(
@@ -387,7 +387,7 @@ describe('startLoadProgress', () => {
     // Given
     const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
     progress.enterContentFetch();
-    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
 
     // When the bar holds for ten seconds while 2 MB arrive every second
     for (let tick = 1; tick <= 20; tick++) {
@@ -403,7 +403,7 @@ describe('startLoadProgress', () => {
     // Given
     const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
     progress.enterContentFetch();
-    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
 
     // When the bar holds for ten seconds while 2 kB arrive every second
     for (let tick = 1; tick <= 20; tick++) {
@@ -421,7 +421,7 @@ describe('startLoadProgress', () => {
     // Given 2 MB arrive every second
     const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
     progress.enterContentFetch();
-    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
     for (let tick = 1; tick <= 6; tick++) {
       await timers.advance(500);
       netBytes.send({ received: tick * 1_000_000 });
@@ -486,12 +486,12 @@ describe('startLoadProgress', () => {
   it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while the sources after it are still unsubscribed', () => {
     // Given a chain detail source whose unsubscribe throws
     const { counted } = bindReports();
-    const events: Partial<LoadEvents> = {
-      onChainDetail: () => () => {
+    const telemetry: Partial<LoadTelemetrySources> = {
+      subscribeChainDetail: () => () => {
         throw new Error('the protocol frame is gone');
       },
     };
-    const { progress, netBytes } = setupLoad({ backend: 'smoldot-direct', events });
+    const { progress, netBytes } = setupLoad({ backend: 'smoldot-direct', telemetry });
 
     // When
     progress.dispose();
@@ -505,7 +505,7 @@ describe('startLoadProgress', () => {
     // Given a download that counts its bytes, parked halfway
     const { progress, content, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
     progress.enterContentFetch();
-    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+    content.send({ bytesFetched: 500, totalBytes: 1_000, bytesPerSecond: 0 });
 
     // When
     progress.dispose();
@@ -518,7 +518,7 @@ describe('startLoadProgress', () => {
 });
 
 /** Starts a load on `backend` over fresh stores, the page's own timers and a loading screen, until the case ends. */
-function setupLoad({ backend, events = {} }: Params): LoadStand {
+function setupLoad({ backend, telemetry = {} }: Params): LoadStand {
   const timers = createManualTimers({ start: PAGE_OPENED_AT });
   resetAllStoresForTests();
   const debugBus = createDebugBus();
@@ -526,7 +526,7 @@ function setupLoad({ backend, events = {} }: Params): LoadStand {
   const chainSync = createReportSource<ChainSyncEvent>();
   const chainDetail = createReportSource<ChainDetail>();
   const netBytes = createReportSource<{ received: number }>();
-  const content = createReportSource<ContentProgressFacts>();
+  const content = createReportSource<ContentProgress>();
   // The page's loading screen, which writes the loading store, with motion off so no typing frame is asked for.
   const controller = createLoadingController({
     prefersReducedMotion: () => true,
@@ -563,13 +563,13 @@ function setupLoad({ backend, events = {} }: Params): LoadStand {
     label: 'doom',
     backend,
     flowId: FLOW_ID,
-    events: {
-      onChainSync: chainSync.on,
-      onChainDetail: chainDetail.on,
-      onNetBytes: netBytes.on,
-      onContentProgress: content.on,
-      ...events,
+    telemetry: {
+      subscribeChainSync: chainSync.on,
+      subscribeChainDetail: chainDetail.on,
+      subscribeNetBytes: netBytes.on,
+      ...telemetry,
     },
+    blockRelay: { onProgress: content.on },
     loading,
     trace,
     timers,

@@ -4,8 +4,10 @@
 // Turns what the light client and the content fetch report into the loading bar, its slow-load warnings, the network
 // monitor and the debug panel's chain events. The reports come from other frames, so they are passed in.
 
+import type { ContentProgress, SandboxBlockRelay } from '@dotli/bitswap';
 import { hasLightClient, type Backend } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
+import type { ProtocolClient } from '@dotli/protocol';
 import type { ResolvePhase } from '@dotli/resolver';
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingController } from './createLoadingController.js';
@@ -42,22 +44,14 @@ import { STILL_WORKING } from './stillWorking.js';
 const report = createReporter({ flow: 'chain' });
 const loadProgressTransitionMetric = defineCount<'error'>('load_progress.transition');
 
-export type ContentProgressFacts = {
-  bytesFetched: number;
-  totalBytes: number | null;
-};
+/** What the bar reads of the content fetch's progress. */
+type ContentFacts = Pick<ContentProgress, 'bytesFetched' | 'totalBytes'>;
 
-/** Where the load's reports come from: the protocol frame and the sandbox's content fetch. Each returns its unsubscribe. */
-export type LoadEvents = {
-  /** Calls `listener` with each chain's lifecycle milestones. Never throws. */
-  onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
-  /** Calls `listener` with each chain's details. Never throws. */
-  onChainDetail: (listener: (event: ChainDetail) => void) => () => void;
-  /** Calls `listener` with the load's byte total so far. Never throws. */
-  onNetBytes: (listener: (event: { received: number }) => void) => () => void;
-  /** Calls `listener` with the content fetch's progress. Never throws. */
-  onContentProgress: (listener: (event: ContentProgressFacts) => void) => () => void;
-};
+/** What the load hears of the protocol frame's light client. */
+export type LoadTelemetrySources = Pick<
+  ProtocolClient['telemetry'],
+  'subscribeChainSync' | 'subscribeChainDetail' | 'subscribeNetBytes'
+>;
 
 /** The loading screen this load drives. The page's, unless a spec passes one, since the page's draws on animation frames. */
 export type LoadingScreen = Pick<
@@ -86,7 +80,10 @@ type Params = {
   backend: Backend;
   /** The debug panel's flow for this page load. */
   flowId: string;
-  events: LoadEvents;
+  /** The protocol frame's reports on its light client. */
+  telemetry: LoadTelemetrySources;
+  /** The content's blocks as they pass through this window. */
+  blockRelay: Pick<SandboxBlockRelay, 'onProgress'>;
   trace: LoadTrace;
   loading?: LoadingScreen | undefined;
   /** The clock the debug events are stamped with, and the timers the warnings wait on. The page's own by default. */
@@ -154,7 +151,7 @@ type ProgressEvent =
   | { kind: 'chainSynced'; sync: ChainSyncEvent }
   | { kind: 'chainDetailed'; detail: ChainDetail }
   | { kind: 'netBytes'; received: number; at: number }
-  | ({ kind: 'contentProgressed' } & ContentProgressFacts)
+  | ({ kind: 'contentProgressed' } & ContentFacts)
   | { kind: 'barStalled' }
   | { kind: 'productLoaded' }
   | { kind: 'phaseResolved'; phase: ResolvePhase }
@@ -173,8 +170,8 @@ type ProgressEffect =
   | { kind: 'bytesRecorded'; received: number }
   | { kind: 'byteTotalSampled'; received: number }
   | { kind: 'rateMeasured'; bytesPerSecond: number }
-  | ({ kind: 'contentRecorded' } & ContentProgressFacts)
-  | ({ kind: 'contentShown' } & ContentProgressFacts)
+  | ({ kind: 'contentRecorded' } & ContentFacts)
+  | ({ kind: 'contentShown' } & ContentFacts)
   | { kind: 'barMovedToPhase'; phase: ResolvePhase }
   | { kind: 'barHeld' }
   | { kind: 'barMovedToDownload' }
@@ -198,14 +195,15 @@ const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined };
 
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
- * resolved. Never throws: a throw of the loading screen or of a subscription in `events` is reported. A load whose
+ * resolved. Never throws: a throw of the loading screen or of a subscription in `telemetry` or `blockRelay` is reported. A load whose
  * subscription threw opens its bar and moves it no further.
  */
 export function startLoadProgress({
   label,
   backend,
   flowId,
-  events,
+  telemetry,
+  blockRelay,
   trace,
   loading = pageLoading,
   timers = realTimers,
@@ -252,20 +250,20 @@ export function startLoadProgress({
           // On every backend: a gateway trace with no chain events is the point, not a gap.
           const reports = [
             () =>
-              events.onChainSync(sync => {
+              telemetry.subscribeChainSync(sync => {
                 update({ kind: 'chainSynced', sync });
               }),
             () =>
-              events.onChainDetail(detail => {
+              telemetry.subscribeChainDetail(detail => {
                 update({ kind: 'chainDetailed', detail });
               }),
             () =>
-              events.onNetBytes(({ received }) => {
+              telemetry.subscribeNetBytes(({ received }) => {
                 update({ kind: 'netBytes', received, at: readClock() });
               }),
             () =>
-              events.onContentProgress(facts => {
-                update({ kind: 'contentProgressed', ...facts });
+              blockRelay.onProgress(({ bytesFetched, totalBytes }) => {
+                update({ kind: 'contentProgressed', bytesFetched, totalBytes });
               }),
           ];
           if (!hasLightClient(backend)) {
@@ -480,7 +478,7 @@ export function startLoadProgress({
     enterContentFetch,
     /**
      * Stops hearing the load's reports, the product store and the loading screen's stalls, so no warning shows after.
-     * Repeating it does nothing. Never throws: a throw of an unsubscribe in `events` is reported.
+     * Repeating it does nothing. Never throws: a throw of an unsubscribe in `telemetry` or `blockRelay` is reported.
      */
     dispose,
   };

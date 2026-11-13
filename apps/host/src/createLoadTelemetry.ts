@@ -74,12 +74,12 @@ type FastPath = { kind: 'fast' };
 type SlowPath = { kind: 'slow'; coldStart: number };
 
 /** What a traced load holds. Its trace and its progress are collaborators with their own machines. */
-type Traced = { label: string; chainTelemetry: LoaderTelemetry; trace: ResolutionTrace; progress: LoadProgress };
+type Traced = { label: string; trace: ResolutionTrace; progress: LoadProgress };
 
 /**
  * Where a load's reports are. The attempt begins at the load's start, and the trace opens at its setup. From there on
  * each kind is named by the trace's step and owns what that step does, until a failure or a name with no content ends
- * the load.
+ * the load. A name with no content is no step of the trace, which keeps the name's resolve as its last.
  */
 type TelemetryState =
   | { kind: 'waiting' }
@@ -93,6 +93,8 @@ type TelemetryState =
       /** The debug panel's flow for the name's resolve. */
       resolveFlowId: string;
     }
+  /** A name that resolved to no content, its resolve flow completed, until the load ends. */
+  | { kind: 'no_content'; traced: Traced; path: SlowPath }
   | { kind: 'manifest_read'; traced: Traced; path: SlowPath }
   | { kind: 'launch_gate'; traced: Traced; path: SlowPath }
   | {
@@ -130,10 +132,7 @@ export type LoadTelemetryParams = {
   timers?: Timers;
   /** The monotonic clock the load is measured on, in milliseconds. Defaults to the page's own. */
   now?: () => number;
-  /**
-   * The protocol frame's reports on its light client. The page's protocol client's by default, read as a load
-   * starts.
-   */
+  /** The protocol frame's reports on its light client. The page's protocol client's by default. */
   telemetry?: LoaderTelemetry;
   /** Where the load's debug events go. The page's bus by default. */
   debugBus?: DebugBus;
@@ -148,17 +147,17 @@ export function createLoadTelemetry({
   blockRelay,
   timers = realTimers,
   now: readClock = readPageClock,
-  telemetry,
+  telemetry = getProtocolClient().telemetry,
   debugBus = pageDebugBus,
 }: LoadTelemetryParams) {
   const lightClient = hasLightClient(backend);
   const resolveSource = lightClient ? 'smoldot' : 'rpc-gateway';
   const dependency = lightClient ? 'smoldot' : 'asset-hub-rpc';
   const cidCacheMiss = skipCidCache ? 'skipped' : 'miss';
-  /** Reports the load's failure, ends a fast path's span with it, and finishes the trace. */
+  /** Reports the load's failure, ends a fast path's span and a running name resolve with it, and finishes the trace. */
   const fail: HandlerOf<TelemetryMachine, TracedKind, 'failed'> = (state, { error, description }, { emitState }) => {
     emitState({ kind: 'ended' });
-    const { label, chainTelemetry, trace } = state.traced;
+    const { label, trace } = state.traced;
     if (state.kind === 'render_handoff' && state.path.kind === 'fast') {
       state.path.span.setAttributes({ outcome: 'error' });
       state.path.span.end();
@@ -171,7 +170,7 @@ export function createLoadTelemetry({
     // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
     const smoldotDbInapplicable = cidCache === 'hit' || !lightClient;
     const readSmoldotDb = (chain: Parameters<LoaderTelemetry['getSmoldotDbOutcome']>[0]) =>
-      smoldotDbInapplicable ? 'n/a' : chainTelemetry.getSmoldotDbOutcome(chain);
+      smoldotDbInapplicable ? 'n/a' : telemetry.getSmoldotDbOutcome(chain);
     // Captured while the trace is still open, so the error lands in it.
     resolveReport.capture(error, {
       step: state.kind,
@@ -189,6 +188,15 @@ export function createLoadTelemetry({
     });
     trace.finish('error', { reason: getErrorMessage(error), errorKind: description.kind });
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(error)}`);
+    if (state.kind === 'name_resolve') {
+      debugBus.emit({
+        layer: 'resolve',
+        event: 'failed',
+        flowId: state.resolveFlowId,
+        timestamp: timers.now(),
+        payload: { label, source: resolveSource, reason: getErrorMessage(error) },
+      });
+    }
     debugBus.emit({
       layer: 'boot',
       event: 'failed',
@@ -231,7 +239,6 @@ export function createLoadTelemetry({
       },
       begun: {
         setUp({ label, attempt }, _event, { emitState }) {
-          const chainTelemetry = telemetry ?? getProtocolClient().telemetry;
           const trace = startResolutionTrace({
             domain: withActiveTld(label),
             network: getNetwork(),
@@ -246,18 +253,14 @@ export function createLoadTelemetry({
             label,
             backend,
             flowId,
-            events: {
-              onChainSync: chainTelemetry.subscribeChainSync,
-              onChainDetail: chainTelemetry.subscribeChainDetail,
-              onNetBytes: chainTelemetry.subscribeNetBytes,
-              onContentProgress: blockRelay.onProgress,
-            },
+            telemetry,
+            blockRelay,
             trace,
             timers,
             now: readClock,
             debugBus,
           });
-          enterStep({ kind: 'cid_cache_read', traced: { label, chainTelemetry, trace, progress } }, emitState);
+          enterStep({ kind: 'cid_cache_read', traced: { label, trace, progress } }, emitState);
         },
       },
       cid_cache_read: {
@@ -311,7 +314,9 @@ export function createLoadTelemetry({
         nameResolved({ traced, path, resolveFlowId }, { cid }, { emitState }) {
           const { label, trace, progress } = traced;
           const { coldStart } = path;
-          if (cid !== null) {
+          if (cid === null) {
+            emitState({ kind: 'no_content', traced, path });
+          } else {
             enterStep({ kind: 'manifest_read', traced, path }, emitState);
           }
           const now = readClock();
@@ -333,6 +338,9 @@ export function createLoadTelemetry({
           });
           trace.recordNameResolved(cid);
         },
+        failed: fail,
+      },
+      no_content: {
         noContent({ traced }, _event, { emitState }) {
           emitState({ kind: 'ended' });
           endJourney();
