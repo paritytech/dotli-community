@@ -1557,8 +1557,8 @@ describe('product frame and the page core', () => {
   });
 
   it('As a dApp user whose core goes down while my product is still being shown, I keep it open and it is rendered again on the replacement core', async () => {
-    // Given a render whose connection is open and whose frame is still being built
-    const fakes = createHarness();
+    // Given a render whose connection is open and whose frame is still being built, on cores that linger as the page's do
+    const fakes = createHarness({ fakes: createFakePageCore({ linger: true }) });
     const release = fakes.holdNextFrame();
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
     const dead = await answerConnection(fakes, 0);
@@ -1601,8 +1601,9 @@ describe('product frame and the page core', () => {
   });
 
   it('As a dApp user whose replacement core turns stale while my product connects to it again, I see it rendered on the next core', async () => {
-    // Given a render whose first core refused its connection, now connecting to the replacement core
-    const fakes = createHarness();
+    // Given a render whose first core refused its connection, now connecting to the replacement core, on cores that
+    // linger as the page's do
+    const fakes = createHarness({ fakes: createFakePageCore({ linger: true }) });
     const rendered = fakes.frame.render(buildSubdomainProduct('product'));
     await fakes.changes.until(() => fakes.connections.length === 1);
     nth(fakes.connections, 0).reject(new Error('runtime disposed'));

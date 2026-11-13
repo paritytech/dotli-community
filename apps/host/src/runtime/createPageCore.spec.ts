@@ -1474,10 +1474,17 @@ describe('page core retirement', () => {
 });
 
 describe('page core with nobody holding it', () => {
-  /** A replacement core nobody took a lease on, since its only holder released the core that went down. */
+  /**
+   * A replacement core nobody took a lease on, since its only holder released the core that went down. It lingers on
+   * timers that never run unless the test advances them.
+   */
   async function createUnheldReplacement() {
     let walletFound = false;
-    const fakes = createReportingHarness({ walletFound: () => walletFound });
+    const fakes = createReportingHarness({
+      walletFound: () => walletFound,
+      destroyDelay: 5000,
+      timers: createManualTimers(),
+    });
     const lease = await fakes.core.acquire();
     await lease.connect();
     nth(fakes.runtimes, 0).providers[0]?.goDown();
@@ -1496,6 +1503,26 @@ describe('page core with nobody holding it', () => {
       setWalletFound: markWalletFound,
     };
   }
+
+  it('As a dotli integrator, I let go of a core that went down and its replacement, booted for nobody, goes once the destroy delay ends', async () => {
+    // Given a core that went down and was let go of, whose replacement booted with nobody waiting for it
+    const timers = createManualTimers();
+    const onCoresGone = vi.fn();
+    const { core, runtimes, counted, changes } = createReportingHarness({ destroyDelay: 5000, timers, onCoresGone });
+    const lease = await core.acquire();
+    await lease.connect();
+    nth(runtimes, 0).providers[0]?.goDown();
+    lease.release();
+    await changes.until(() => counted('wallet.core_redial').length === 1);
+
+    // When the destroy delay ends
+    await timers.advance(5000);
+
+    // Then the replacement is disposed once, no timer is left and the page hears its last core go
+    expect(nth(runtimes, 1).dispose).toHaveBeenCalledTimes(1);
+    expect(timers.countPending()).toBe(0);
+    expect(onCoresGone).toHaveBeenCalledTimes(1);
+  });
 
   it('As a dotli integrator, I let an unheld core die and no replacement is booted until someone asks for one', async () => {
     // Given an unheld replacement

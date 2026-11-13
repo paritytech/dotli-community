@@ -4,7 +4,8 @@
 // The page's one refcounted TrUAPI core, under its product's label. The core outlives its last lease by the destroy
 // delay, so a lease taken soon after keeps it. A faulted one is never handed out again, and one that goes down while it
 // is the page's core is replaced at once when it is held. One nobody holds just goes, and the next request dials. A
-// replacement that fails to boot while nobody holds it goes too.
+// replacement that boots with nobody waiting outlives no lease by more than the destroy delay, and one that fails to
+// boot while nobody holds it goes at once.
 
 import type { ProductId } from '@parity/truapi';
 import type { ExecutableKind, TrUApiProductProvider } from '@parity/truapi-host';
@@ -283,12 +284,16 @@ export function createPageCore({
             }
           }
         },
-        booted(state, { coreId, booted }, { emitState, emitSideEffect, update }) {
+        booted(state, { coreId, booted }, transition) {
+          const { emitState, emitSideEffect, update } = transition;
           const core = state.cores.get(coreId);
           // A core dropped while it booted holds no runtime, so the runtime this event carries goes.
           if (core?.kind !== 'booting') {
             emitSideEffect({ kind: 'orphaned', runtime: booted.runtime });
             return;
+          }
+          if (core.redial !== undefined) {
+            emitSideEffect({ kind: 'redialed', outcome: 'ok', reason: core.redial });
           }
           // A local wallet core holds its session in memory, so the stored one is not its to follow. Other tabs' logins
           // land in the shared session store.
@@ -304,7 +309,12 @@ export function createPageCore({
             stopFollowing,
             leases: new Set(core.waiting.keys()),
           };
-          emitState(withCore(state, live));
+          // A redial boots with nobody waiting, so it goes as a core whose last lease was released does.
+          const next = live.leases.size > 0 ? withCore(state, live) : letGo(state, live, transition);
+          emitState(next);
+          if (!next.cores.has(coreId)) {
+            return;
+          }
           if (booted.local) {
             // Its leases are handed out after this, so no frame is tapped first.
             emitSideEffect({ kind: 'phoneDropped', phoneRequests: core.phoneRequests });
@@ -317,9 +327,6 @@ export function createPageCore({
           }
           for (const reply of core.waiting.values()) {
             emitSideEffect({ kind: 'leaseGranted', reply, core: live });
-          }
-          if (core.redial !== undefined) {
-            emitSideEffect({ kind: 'redialed', outcome: 'ok', reason: core.redial });
           }
         },
         bootFailed(state, { coreId, error }, transition) {
@@ -342,20 +349,9 @@ export function createPageCore({
           }
           const leases = new Set(core.leases);
           leases.delete(leaseId);
-          if (leases.size > 0) {
-            transition.emitState(withCore(state, { ...core, leases }));
-            return;
-          }
-          const lingers =
-            core.kind === 'live' && destroyDelay > 0 && state.current === coreId && servesProduct(core, state.product);
-          if (!lingers) {
-            transition.emitState(leave(state, core, transition));
-            return;
-          }
-          const timer = timers.setTimeout(() => {
-            transition.update({ kind: 'lingerEnded', coreId });
-          }, destroyDelay);
-          transition.emitState(withCore(state, { ...getBootedParts(core), kind: 'lingering', timer }));
+          transition.emitState(
+            leases.size > 0 ? withCore(state, { ...core, leases }) : letGo(state, { ...core, leases }, transition),
+          );
         },
         lingerEnded(state, { coreId }, transition) {
           const core = state.cores.get(coreId);
@@ -590,6 +586,26 @@ export function createPageCore({
       }
       throw error;
     }
+  }
+
+  /**
+   * Returns `state` with `core`, which no lease holds, lingering for the destroy delay when it is the page's core in
+   * service for the page's product, or without it otherwise.
+   */
+  function letGo(
+    state: PageCoreState,
+    core: Extract<Core, { kind: 'live' | 'down' }>,
+    transition: Transition<PageCoreMachine>,
+  ): PageCoreState {
+    const lingers =
+      core.kind === 'live' && destroyDelay > 0 && state.current === core.id && servesProduct(core, state.product);
+    if (!lingers) {
+      return leave(state, core, transition);
+    }
+    const timer = timers.setTimeout(() => {
+      transition.update({ kind: 'lingerEnded', coreId: core.id });
+    }, destroyDelay);
+    return withCore(state, { ...getBootedParts(core), kind: 'lingering', timer });
   }
 
   /** Returns `state` without `core`, whose resources go once the state is emitted. */
