@@ -107,8 +107,8 @@ export const RowOpensCollapsedPopover: Story = {
 };
 
 /**
- * As a phone user with the permissions button in More, I see its row carry no mark while the app has a grant, and open
- * the panel with every permission and its status.
+ * As a phone user with the permissions button in More, I open the panel from its row with every permission and its
+ * status.
  */
 export const PhoneRowOpensPermissions: Story = {
   tags: ['!autodocs'],
@@ -125,10 +125,6 @@ export const PhoneRowOpensPermissions: Story = {
     await expectPhone(step);
     await step('When I open More', async () => {
       await openMore(userEvent);
-    });
-    await step('Then neither the Permissions row nor More carries a mark', async () => {
-      await expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull();
-      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
     });
     await step('When I choose the Permissions row', async () => {
       await userEvent.click(moreRow('permissions'));

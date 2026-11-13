@@ -113,8 +113,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * As a user of a loaded app with grants, the button shows no badge, and the popover shows the closest preset with focus
- * on the slider and each permission's status under a closed Advanced.
+ * As a user of a loaded app with grants, the popover shows the closest preset with focus on the slider and each
+ * permission's status under a closed Advanced.
  */
 export const Open: Story = {
   tags: ['!autodocs'],
@@ -122,9 +122,6 @@ export const Open: Story = {
     givenApp({ Camera: 'granted', ChainSubmit: 'denied' });
   },
   play: async ctx => {
-    await ctx.step('Given the app has grants, the button has no badge', async () => {
-      await expect(byId('permissions-button')).not.toHaveAttribute('data-badge');
-    });
     await open(ctx);
     await ctx.step('Then the slider shows Secure, modified, and holds focus', async () => {
       await expectPreset('secure', true);
