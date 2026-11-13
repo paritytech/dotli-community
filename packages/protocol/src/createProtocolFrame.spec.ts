@@ -298,6 +298,31 @@ describe('createProtocolFrame', () => {
     expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
   });
 
+  it('As the host who listens for a version mismatch after it happened, I hear it at once, and my listener that throws is reported, not thrown back', async () => {
+    // Given a frame that refused the host wire version
+    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
+    const dom = createFrameDom({ timers });
+    const frame = createProtocolFrame(dom.params);
+    frame.configure(FRAME_CONFIG);
+    void frame.waitUntilReady().catch(() => undefined);
+    await advance();
+    dom.serveNewer();
+    await dom.retryHandshake();
+    const heard: Error[] = [];
+
+    // When a late listener subscribes and throws
+    const unsubscribe = frame.onVersionMismatch(error => {
+      heard.push(error);
+      throw new Error('listener broke');
+    });
+
+    // Then
+    expect(unsubscribe).toBeTypeOf('function');
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'protocol.frame_lost' } }]);
+  });
+
   it('As the host with an app open, I hear a version mismatch although a status listener throws on the failed frame, and the throw is reported and no frame is rebuilt', async () => {
     // Given a frame waiting on its handshake, a status listener that throws on failed, and a mismatch listener
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;
