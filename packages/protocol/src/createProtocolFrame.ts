@@ -6,7 +6,7 @@
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
 import { atom, type WritableAtom } from 'nanostores';
-import { countMetric, createReporter, defineCount, getResolutionId, m } from '@dotli/metrics';
+import { countMetric, createReporter, defineCount, m } from '@dotli/metrics';
 import {
   createListenerSet,
   createStateMachine,
@@ -22,6 +22,7 @@ import {
   type Transition,
 } from '@dotli/shared';
 import { createTransport, createWindowProvider } from '@dotli/transport';
+import { createFrameIframe } from './createFrameIframe.js';
 import { createWireReport } from './createWireReport.js';
 import {
   PROTOCOL_ERRORS,
@@ -37,7 +38,6 @@ import type {
   ProtocolFrameTimeouts,
   ProtocolStatus,
 } from './frameTypes.js';
-import { FRAME_MODES } from './getBackendOfFrameMode.js';
 import { protocolIframeReadyMetric, reportBootFailure, type BootPhase } from './reportBootFailure.js';
 import { isFrameReleased, reportFrameLost } from './reportFrameLost.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
@@ -223,7 +223,7 @@ export function createProtocolFrame<E extends FrameElement>({
     const { config, loads, readies, held, incident } = params;
     let iframe: E;
     try {
-      iframe = createIframe(config);
+      iframe = createFrameIframe({ document: frameDocument, origin, config });
     } catch (thrown: unknown) {
       const failure = toFrameFailure(thrown);
       transition.emitSideEffect({ kind: 'bootFailed', phase: 'load', ...failure });
@@ -913,28 +913,6 @@ export function createProtocolFrame<E extends FrameElement>({
       timeoutMs: timeouts.handshakeMs,
       onIssue: wire.onIssue,
     });
-  }
-
-  function createIframe(config: ProtocolFrameConfig): E {
-    const iframe = frameDocument.createElement('iframe');
-    const params = new URLSearchParams();
-    params.set('mode', FRAME_MODES[config.backend]);
-    params.set('network', config.network);
-    if (config.skipWorkerCache) {
-      params.set('skipWorkerCache', '1');
-    }
-    // On the URL, not posted after load, because the iframe's Sentry client emits before any handshake.
-    const resolutionId = getResolutionId();
-    if (resolutionId !== null) {
-      params.set('resolutionId', resolutionId);
-    }
-    const query = params.toString();
-    // The build serves the frame at /p/ on its origin.
-    iframe.src = query.length > 0 ? `${origin}/p/?${query}` : `${origin}/p/`;
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.tabIndex = -1;
-    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
-    return iframe;
   }
 }
 
