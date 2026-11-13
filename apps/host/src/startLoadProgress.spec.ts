@@ -11,6 +11,7 @@ import { createDebugBus } from '@dotli/truapi-debug/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { atom } from 'nanostores';
 import type { PageContent } from '@dotli/ui';
+import { createChainReporter } from './createChainReporter.js';
 import { createLoadingController, type LoadingPhase } from './createLoadingController.js';
 import {
   startLoadProgress,
@@ -582,7 +583,6 @@ function setupLoad({ backend, telemetry = {} }: Params): LoadStand {
   const progress = startLoadProgress({
     label: 'doom',
     backend,
-    flowId: FLOW_ID,
     telemetry: {
       subscribeChainSync: chainSync.on,
       subscribeChainDetail: chainDetail.on,
@@ -592,9 +592,9 @@ function setupLoad({ backend, telemetry = {} }: Params): LoadStand {
     blockRelay: { onProgress: content.on },
     loading,
     trace,
+    chainReporter: createChainReporter({ flowId: FLOW_ID, timers, debugBus }),
     timers,
     now: readPageClock,
-    debugBus,
   });
   onTestFinished(progress.dispose);
   return { progress, timers, chainSync, chainDetail, netBytes, content, getBands: () => given, trace, debug };

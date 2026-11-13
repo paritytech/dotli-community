@@ -22,6 +22,7 @@ import {
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import type { ProductManifests } from './cachedManifest.js';
 import { cacheReadMetric } from './cacheReadMetric.js';
+import { createChainReporter } from './createChainReporter.js';
 import type { ErrorDescription } from './describeError.js';
 import { beginAttempt, endJourney, type Attempt } from './journey.js';
 import { readPageClock } from './readPageClock.js';
@@ -247,13 +248,12 @@ export function createLoadTelemetry({
           const progress = startLoadProgress({
             label,
             backend,
-            flowId,
             telemetry,
             blockRelay,
             trace,
+            chainReporter: createChainReporter({ flowId, timers, debugBus }),
             timers,
             now: readClock,
-            debugBus,
           });
           enterStep({ kind: 'cid_cache_read', traced: { label, trace, progress } }, emitState);
         },
@@ -276,7 +276,7 @@ export function createLoadTelemetry({
             trace.recordNameResolved(cid);
             return;
           }
-          // Wall-clock, since a span detaches across the smoldot path's postMessage awaits.
+          // On the page's monotonic clock, since a span detaches across the smoldot path's postMessage awaits.
           const coldStart = readClock();
           const resolveFlowId = createRandomId();
           enterStep({ kind: 'name_resolve', traced, path: { kind: 'slow', coldStart }, resolveFlowId }, emitState);

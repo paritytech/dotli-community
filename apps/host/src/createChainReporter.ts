@@ -28,6 +28,9 @@ const CHAIN_WARP_DEBUG_MS = 1000;
 
 const report = createReporter({ flow: 'chain' });
 
+/** The report of each chain's phase and peers, and of the load's byte totals, as its factory builds it. */
+export type ChainReporter = ReturnType<typeof createChainReporter>;
+
 /** Builds the report of each chain's phase and peers, and of the load's byte totals. */
 export function createChainReporter({ flowId, timers, debugBus }: Params) {
   const emittedPhase = new Map<ChainRole, ChainPhase>();

@@ -9,7 +9,6 @@ import { hasLightClient, type Backend } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import type { ProtocolClient } from '@dotli/protocol';
 import type { ResolvePhase } from '@dotli/resolver';
-import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingController } from './createLoadingController.js';
 import {
   getLoadingBands,
@@ -30,7 +29,7 @@ import {
 import { createReporter, defineCount } from '@dotli/metrics';
 import { productState } from './runtime/state/productState.js';
 import { networkMonitorState } from './state/networkMonitorState.js';
-import { createChainReporter } from './createChainReporter.js';
+import type { ChainReporter } from './createChainReporter.js';
 import { readPageClock } from './readPageClock.js';
 import {
   describeProgressStall,
@@ -78,20 +77,18 @@ export type LoadProgress = ReturnType<typeof startLoadProgress>;
 type Params = {
   label: string;
   backend: Backend;
-  /** The debug panel's flow for this page load. */
-  flowId: string;
   /** The protocol frame's reports on its light client. */
   telemetry: LoadTelemetrySources;
   /** The content's blocks as they pass through this window. */
   blockRelay: Pick<SandboxBlockRelay, 'onProgress'>;
   trace: LoadTrace;
+  /** Where the load's chain events and byte totals go. */
+  chainReporter: Pick<ChainReporter, 'record' | 'recordDetail' | 'recordBytes'>;
   loading?: LoadingScreen | undefined;
-  /** The clock the debug events are stamped with, and the timers the warnings wait on. The page's own by default. */
-  timers?: Pick<Timers, 'now' | 'setTimeout'>;
+  /** The timers the warnings wait on. The page's own by default. */
+  timers?: Pick<Timers, 'setTimeout'>;
   /** The monotonic clock the load's age and download rate are measured on, in milliseconds. The page's by default. */
   now?: () => number;
-  /** Where the load's chain events go. The page's bus by default. */
-  debugBus?: DebugBus;
 };
 
 /** A slow-load line, and the critical chain whose stall it describes, or `null` for the general line. */
@@ -203,17 +200,15 @@ const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined };
 export function startLoadProgress({
   label,
   backend,
-  flowId,
   telemetry,
   blockRelay,
   trace,
+  chainReporter,
   loading = pageLoading,
   timers = realTimers,
   now: readClock = readPageClock,
-  debugBus = pageDebugBus,
 }: Params) {
   const bands = getLoadingBands(backend);
-  const chainReporter = createChainReporter({ flowId, timers, debugBus });
   const progress = createStateMachine<ProgressMachine>({
     initial: { kind: 'idle' },
     handlers: {
