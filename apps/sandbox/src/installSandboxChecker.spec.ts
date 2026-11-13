@@ -135,6 +135,22 @@ describe('the sandbox checker', () => {
     ]);
   });
 
+  it('As a product developer, I open a page where two extensions register into injectedWeb3 and neither registration is reported', () => {
+    // Given a page whose first extension registered into a fresh injectedWeb3
+    const { wallets: globals, violations } = createProductPage();
+    const register = (name: string): void => {
+      globals['injectedWeb3'] = globals['injectedWeb3'] ?? {};
+      (globals['injectedWeb3'] as Record<string, unknown>)[name] = { enable: true };
+    };
+    register('polkadot-js');
+
+    // When a second extension registers into the same injectedWeb3
+    register('talisman');
+
+    // Then
+    expect(violations).toEqual([]);
+  });
+
   it('As a product developer, I overwrite a wallet global an extension set before the checker ran and my write is reported', () => {
     // Given a page whose ethereum an extension set before the checker installed
     const {

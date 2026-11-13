@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The checker's trap on the wallet globals. Extensions write a wallet global once to register, so only later writes,
-// and reads once the extensions have settled, are reported.
+// The checker's trap on the wallet globals. Extensions write a wallet global once to register, so only later writes
+// that replace its value, and reads once the extensions have settled, are reported.
 
 import { createStateMachine, getKeys, type HandlerOf, type MachineTypes } from '@dotli/shared';
 import type { ReportViolation } from './createParentReporter.js';
@@ -25,14 +25,19 @@ type TrapEffect = { kind: 'accessed'; name: WalletName; action: 'read' | 'write'
 
 type TrapMachine = MachineTypes<TrapState, TrapEvent, TrapEffect>;
 
-/** Stores the written value. The first write registers the wallet, and every later one is reported. */
+/**
+ * Stores the written value. The first write registers the wallet, and every later one that replaces its value is
+ * reported. Extensions share `injectedWeb3` by writing back the object it holds before each adds its own key, so a
+ * write of the value already held replaces nothing.
+ */
 const writeWallet: HandlerOf<TrapMachine, 'settling' | 'ready', 'written'> = (
   state,
   { name, value },
   { emitState, emitSideEffect },
 ) => {
+  const wallet = state.wallets[name];
   emitState({ ...state, wallets: { ...state.wallets, [name]: { kind: 'registered', value } } });
-  if (state.wallets[name].kind === 'registered') {
+  if (wallet.kind === 'registered' && !Object.is(wallet.value, value)) {
     emitSideEffect({ kind: 'accessed', name, action: 'write' });
   }
 };
