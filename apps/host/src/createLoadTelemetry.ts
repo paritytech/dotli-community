@@ -197,21 +197,6 @@ export function createLoadTelemetry({
       payload: { label, reason: getErrorMessage(error), dependency },
     });
   };
-  // Only a product in its frame has content outcomes to settle.
-  const settleContent: HandlerOf<TelemetryMachine, 'render_handoff' | 'content', 'contentSettled'> = (
-    { traced: { trace } },
-    { report: { outcome, failedStep } },
-  ) => {
-    // The content fetch outlives the handoff, so each of its outcomes is heard, while the trace keeps the first.
-    if (isLoadedOutcome(outcome)) {
-      contentReport.log.event('Content loaded');
-      endJourney();
-      trace.finish('rendered');
-      return;
-    }
-    contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
-    trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
-  };
   /** Opens the render's step, and the fast path's end-to-end span on a load from the CID cache. */
   const render: HandlerOf<TelemetryMachine, 'cached_launch_gate' | 'launch_gate', 'rendering'> = (
     { traced, path },
@@ -396,9 +381,21 @@ export function createLoadTelemetry({
           });
         },
         failed: fail,
-        contentSettled: settleContent,
       },
-      content: { failed: fail, contentSettled: settleContent },
+      content: {
+        failed: fail,
+        contentSettled({ traced: { trace } }, { report: { outcome, failedStep } }) {
+          // The content fetch outlives the handoff, so each of its outcomes is heard, while the trace keeps the first.
+          if (isLoadedOutcome(outcome)) {
+            contentReport.log.event('Content loaded');
+            endJourney();
+            trace.finish('rendered');
+            return;
+          }
+          contentReport.log.event('Content failed', { failed_step: failedStep ?? 'unknown' });
+          trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+        },
+      },
       ended: {
         screenFailed(_state, { error, failure }) {
           resolveReport.defect(error, {
