@@ -12,6 +12,7 @@ import {
   nest,
   serializeError,
   setErrorName,
+  toError,
   type HandlerOf,
   type MachineTypes,
   type Transition,
@@ -81,7 +82,6 @@ type ChainsEvent =
   | { kind: 'chainConnected'; connectionId: string }
   | { kind: 'chainMessage'; connectionId: string; message: string }
   | { kind: 'chainEnded'; connectionId: string; error: Error | null }
-  | { kind: 'connectFailed'; connectionId: string; error: unknown }
   | { kind: 'consumerSent'; connectionId: string; request: JsonRpcRequest; consumer: Consumer }
   // No state handles it: a send the frame took changes nothing, and only ends the work `await()` counts.
   | { kind: 'sendAnswered'; connectionId: string }
@@ -124,8 +124,8 @@ export function createRemoteChains({ rpc }: Params) {
     emitSideEffect({ kind: 'deliver', consumer, message: parsed });
   };
 
-  // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that went
-  // down, and halts like a dead frame so a caching consumer drops it.
+  // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget or never found the frame
+  // up, or a frame that went down, and halts like a dead frame so a caching consumer drops it.
   const endChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'chainEnded'> = (
     connection,
     { error },
@@ -137,7 +137,7 @@ export function createRemoteChains({ rpc }: Params) {
     haltConnection(connection, error === null ? 'chain' : 'frame', transition);
   };
 
-  // A consumer that leaves before `connected` ends the connect as a disconnect, so its trail still ends. A connect
+  // Leaving aborts the connect, or the subscription once it is up, as a disconnect, so its trail still ends. A connect
   // still queued is never sent, one the frame has is closed there, and one the frame is not up for never goes out.
   const leaveChain: HandlerOf<ConnectionMachine, 'connecting' | 'connected', 'disconnected'> = (
     { leave },
@@ -152,7 +152,7 @@ export function createRemoteChains({ rpc }: Params) {
     ChainsMachine,
     'open',
     ConnectionMachine,
-    'chainConnected' | 'chainMessage' | 'chainEnded' | 'connectFailed' | 'consumerSent' | 'sendFailed' | 'disconnected'
+    'chainConnected' | 'chainMessage' | 'chainEnded' | 'consumerSent' | 'sendFailed' | 'disconnected'
   >({
     find: ({ connections }, { connectionId }) => connections.get(connectionId) ?? null,
     store(state, { connectionId }, next) {
@@ -178,11 +178,6 @@ export function createRemoteChains({ rpc }: Params) {
         },
         chainMessage: deliverMessage,
         chainEnded: endChain,
-        // The connect never subscribed, since the frame did not come up, and halts like a dead frame.
-        connectFailed(connection, { error }, transition) {
-          transition.emitSideEffect({ kind: 'connectErrored', error });
-          haltConnection(connection, 'frame', transition);
-        },
         consumerSent(connection, { request }, { emitState }) {
           emitState({ ...connection, pending: [...connection.pending, request] });
         },
@@ -218,7 +213,6 @@ export function createRemoteChains({ rpc }: Params) {
         chainConnected: handleConnection,
         chainMessage: handleConnection,
         chainEnded: handleConnection,
-        connectFailed: handleConnection,
         consumerSent(state, event, transition) {
           if (!state.connections.has(event.connectionId)) {
             const { consumer, request } = event;
@@ -286,7 +280,7 @@ export function createRemoteChains({ rpc }: Params) {
         return;
       }
       case 'leave':
-        effect.leave.abort(setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError'));
+        effect.leave.abort(setErrorName(new Error('Chain disconnected'), 'ChainDisconnectedError'));
         return;
       case 'deliver': {
         const { consumer, message } = effect;
@@ -338,7 +332,7 @@ export function createRemoteChains({ rpc }: Params) {
     chains.update(
       rpc.call(chain.connect, subscribeChain, { signal }).then(
         (): ChainsEvent => ({ kind: 'chainConnected', connectionId }),
-        (error: unknown): ChainsEvent => ({ kind: 'connectFailed', connectionId, error }),
+        (error: unknown): ChainsEvent => ({ kind: 'chainEnded', connectionId, error: toError(error) }),
       ),
     );
 
