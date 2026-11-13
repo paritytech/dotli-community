@@ -53,10 +53,7 @@ type HandOffEvent =
   | { kind: 'failed' };
 
 /** One `settle` per closing sheet, so a sheet that throws on hearing it leaves the rest told. */
-type HandOffEffect =
-  | { kind: 'waitForClick'; waiting: AbortController }
-  | { kind: 'stopWaiting'; waiting: AbortController }
-  | { kind: 'settle'; settle: Settle; taken: boolean };
+type HandOffEffect = { kind: 'settle'; settle: Settle; taken: boolean };
 
 type HandOffMachine = MachineTypes<HandOffState, HandOffEvent, HandOffEffect>;
 
@@ -74,10 +71,21 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
         begun(_state, _event, { emitState }) {
           emitState({ kind: 'pending', leaving: [] });
         },
-        pressed(_state, _event, { emitState, emitSideEffect }) {
+        pressed(_state, _event, { emitState, update }) {
+          // A DOM event and a timer fire from the event loop, outside any transition, so each may flush.
+          const endPress = (): void => {
+            update({ kind: 'pressEnded' });
+            flush();
+            update({ kind: 'finished' });
+            flush();
+          };
           const waiting = new AbortController();
+          (target ?? window).addEventListener('click', endPress, { signal: waiting.signal });
+          const timer = timers.setTimeout(endPress, 0);
+          waiting.signal.addEventListener('abort', () => {
+            timers.clearTimeout(timer);
+          });
           emitState({ kind: 'pressed', leaving: [], waiting });
-          emitSideEffect({ kind: 'waitForClick', waiting });
         },
       },
       pressed: {
@@ -110,31 +118,8 @@ export function createSheetHandOff({ flush = flushSolid, target, timers = realTi
         failed: endHandOff,
       },
     },
-    onEffect: effect => {
-      switch (effect.kind) {
-        case 'waitForClick': {
-          // A DOM event and a timer fire from the event loop, outside any transition, so each may flush.
-          const endPress = (): void => {
-            machine.update({ kind: 'pressEnded' });
-            flush();
-            machine.update({ kind: 'finished' });
-            flush();
-          };
-          const { signal } = effect.waiting;
-          (target ?? window).addEventListener('click', endPress, { signal });
-          const timer = timers.setTimeout(endPress, 0);
-          signal.addEventListener('abort', () => {
-            timers.clearTimeout(timer);
-          });
-          return;
-        }
-        case 'stopWaiting':
-          effect.waiting.abort();
-          return;
-        case 'settle':
-          effect.settle(effect.taken);
-          return;
-      }
+    onEffect: ({ settle, taken }) => {
+      settle(taken);
     },
     onError: error => {
       report.defect(error, {
@@ -225,23 +210,23 @@ function addLeaving(
 function endWait(
   { kind, leaving, waiting }: PressState,
   _event: Extract<HandOffEvent, { kind: 'begun' | 'pressEnded' }>,
-  { emitState, emitSideEffect }: Transition<HandOffMachine>,
+  { emitState }: Transition<HandOffMachine>,
 ): void {
   emitState({ kind: kind === 'pressTaken' ? 'taken' : 'pending', leaving });
-  emitSideEffect({ kind: 'stopWaiting', waiting });
+  waiting.abort();
 }
 
 /** Ends a press whose sheet stays on top with none leaving at once. A sheet still leaving keeps it waiting. */
 function cutPress(
   { leaving, waiting }: PressState,
   _event: Extract<HandOffEvent, { kind: 'pressCut' }>,
-  { emitState, emitSideEffect }: Transition<HandOffMachine>,
+  { emitState }: Transition<HandOffMachine>,
 ): void {
   if (leaving.length > 0) {
     return;
   }
   emitState({ kind: 'idle' });
-  emitSideEffect({ kind: 'stopWaiting', waiting });
+  waiting.abort();
 }
 
 /** Ends the hand-off and tells each closing sheet whether a sheet took its place. A failed activation leaves it untaken. */
