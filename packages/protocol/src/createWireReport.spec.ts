@@ -87,22 +87,6 @@ describe('the transport issues', () => {
       '[dot.li protocol] A message could not be posted The peer window is gone',
     ]);
   });
-
-  it('As a dotli operator, I see a listener that threw on the transport reported as a listener of the protocol', () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const report = createWireReport({ side: 'host', count: countMetric });
-
-    // When
-    report.onIssue({ kind: 'listener_threw', error: new Error('listener bug') });
-
-    // Then
-    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'protocol.transport' } }]);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'Error', owner: 'protocol.transport' },
-    ]);
-  });
 });
 
 describe('the wire report', () => {

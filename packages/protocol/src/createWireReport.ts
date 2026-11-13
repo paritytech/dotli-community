@@ -5,7 +5,7 @@
 // logged it.
 
 import { createReporter, defineCount, type CountSink } from '@dotli/metrics';
-import { getErrorName, log } from '@dotli/shared';
+import { log } from '@dotli/shared';
 import { getFailureReason, type TransportIssue } from '@dotli/transport';
 import { getCallNameAt } from './methodPolicy.js';
 
@@ -34,8 +34,6 @@ type Params = {
   warn?: (...args: unknown[]) => void;
 };
 
-type IssueReporterParams = Pick<Params, 'side' | 'count'>;
-
 // A refused message's cause in the log, enough to tell decode failures apart.
 const MAX_CAUSE_CHARS = 200;
 
@@ -50,33 +48,13 @@ const MAX_CAUSE_CHARS = 200;
  * const wire = createWireReport({ side: 'frame', count: countMetric });
  */
 export function createWireReport({ side, count, warn = log.warn }: Params) {
-  const reportIssue = createIssueReporter({ side, count });
+  const reportListenerError = report.listener('protocol.transport');
   const refusedOrigins = new Set<string>();
 
-  function reportRefusedOrigin(origin: string): void {
-    if (refusedOrigins.has(origin)) {
-      return;
-    }
-    refusedOrigins.add(origin);
-    count(protocolWireRefusedMetric, { outcome: 'refused', reason: 'origin', side });
-    warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
-  }
-
-  return {
-    /** The transport's issue hook, which counts and logs each issue. */
-    onIssue: reportIssue,
-    /** Bytes from a page at an origin the provider does not admit. Only the first bytes of each origin are reported. */
-    onRefusedOrigin: reportRefusedOrigin,
-  };
-}
-
-/**
- * Counts and logs each issue of the transport on `side`. A refused message is counted once with its reason, a post the
- * provider threw on is captured, logged and counted, and a listener that threw is reported as a listener.
- */
-function createIssueReporter({ side, count }: IssueReporterParams): (issue: TransportIssue) => void {
-  const reportListenerError = report.listener('protocol.transport');
-
+  /**
+   * A refused message is counted once with its reason, a post the provider threw on is captured, logged and counted,
+   * and a listener that threw is reported as a listener.
+   */
   function reportIssue(issue: TransportIssue): void {
     switch (issue.kind) {
       case 'refused': {
@@ -99,7 +77,7 @@ function createIssueReporter({ side, count }: IssueReporterParams): (issue: Tran
         });
         const what = method === null ? 'A message' : `A ${method} message`;
         log.error(`[dot.li protocol] ${what} could not be posted`, error);
-        count(protocolServePostMetric, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', side });
+        count(protocolServePostMetric, { outcome: 'error', reason: error.name, side });
         return;
       }
       case 'listener_threw':
@@ -108,5 +86,19 @@ function createIssueReporter({ side, count }: IssueReporterParams): (issue: Tran
     }
   }
 
-  return reportIssue;
+  function reportRefusedOrigin(origin: string): void {
+    if (refusedOrigins.has(origin)) {
+      return;
+    }
+    refusedOrigins.add(origin);
+    count(protocolWireRefusedMetric, { outcome: 'refused', reason: 'origin', side });
+    warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
+  }
+
+  return {
+    /** The transport's issue hook, which counts and logs each issue. */
+    onIssue: reportIssue,
+    /** Bytes from a page at an origin the provider does not admit. Only the first bytes of each origin are reported. */
+    onRefusedOrigin: reportRefusedOrigin,
+  };
 }

@@ -171,3 +171,29 @@ export function isFrameDown(status: ProtocolStatus): boolean {
       return true;
   }
 }
+
+/** Whether a frame is booting or up, so it has a transport to hear. */
+export function hasFrame(status: ProtocolStatus): boolean {
+  switch (status) {
+    case 'booting':
+    case 'listening':
+    case 'ready':
+      return true;
+    case 'idle':
+    case 'failed':
+      return false;
+  }
+}
+
+/** Whether the frame may be a new one, which relays nothing to what was held on the one it replaced. */
+export function isFrameStarting(status: ProtocolStatus): boolean {
+  switch (status) {
+    case 'booting':
+    case 'listening':
+      return true;
+    case 'idle':
+    case 'ready':
+    case 'failed':
+      return false;
+  }
+}

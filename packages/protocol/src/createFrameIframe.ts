@@ -26,9 +26,8 @@ export function createFrameIframe<E extends FrameElement>({ document, origin, co
   if (resolutionId !== null) {
     params.set('resolutionId', resolutionId);
   }
-  const query = params.toString();
   // The build serves the frame at /p/ on its origin.
-  iframe.src = query.length > 0 ? `${origin}/p/?${query}` : `${origin}/p/`;
+  iframe.src = `${origin}/p/?${params.toString()}`;
   iframe.setAttribute('aria-hidden', 'true');
   iframe.tabIndex = -1;
   iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';

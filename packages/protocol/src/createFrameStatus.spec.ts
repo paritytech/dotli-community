@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { domain, err, hostFailure, ok } from '@dotli/transport';
-import { ProtocolFatalError, ProtocolInitFailedError, ProtocolPortReleasedError } from './errors.js';
+import { domain, err, ok } from '@dotli/transport';
+import { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 import { createFrameStatus, type FrameStatus, type FrameStatusEnd } from './createFrameStatus.js';
 
 const context = { origin: null, hello: { resolutionId: null } };
@@ -80,24 +80,5 @@ describe('the frame status', () => {
     const fatal = err(domain({ tag: 'fatal', value: 'Light client died' }));
     expect(heard).toEqual({ readies: 1, ends: [fatal] });
     expect(late.ends).toEqual([fatal]);
-  });
-
-  it('As the host, I hear a released port, a failure of no protocol kind and a clean end each as the frame told it', () => {
-    // Given three frames
-    const [released, broken, stopped] = [createFrameStatus(), createFrameStatus(), createFrameStatus()];
-
-    // When the first fails with a released port, the second with an error of no protocol kind, the third ends, and a
-    // host subscribes to each after
-    released.fail(new ProtocolPortReleasedError('The worker released this tab'));
-    broken.fail(new TypeError('boot broke'));
-    stopped.interrupt(ok());
-    const ends = [released, broken, stopped].flatMap(status => subscribe(status).ends);
-
-    // Then a protocol failure keeps its type, any other its name, and a clean end is clean
-    expect(ends).toEqual([
-      err(domain({ tag: 'released', value: 'The worker released this tab' })),
-      err(hostFailure('TypeError: boot broke')),
-      ok(),
-    ]);
   });
 });

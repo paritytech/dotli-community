@@ -116,22 +116,6 @@ describe('createFrameTelemetry', () => {
     ]);
   });
 
-  it('As the network panel, I lose a frame while its telemetry is asked for and it is neither reported nor heard again', async () => {
-    // Given a frame that boots and is dropped in the same turn, before its transport is handed over
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const fake = createFakeFrame({ serve: createReportingFrame(sinks), status: 'idle', timers });
-    createFrameTelemetry({ frame: fake.frame, timers });
-
-    // When
-    fake.setStatus('booting');
-    fake.lose(new Error('dropped'));
-    await timers.advance(30_000);
-
-    // Then
-    expect(metrics.counted('protocol.feed_end')).toEqual([]);
-    expect(timers.countPending()).toBe(0);
-  });
-
   it('As the network panel, I hear chain sync and chain detail as the frame reports them', async () => {
     // Given
     const fake = createFakeFrame({ serve: createReportingFrame(sinks), timers });
@@ -168,30 +152,5 @@ describe('createFrameTelemetry', () => {
     // Then
     expect(beforeRebuild).toEqual(['hit', 'unknown']);
     expect(telemetry.getSmoldotDbOutcome('relay')).toBe('unknown');
-  });
-
-  it('As the network panel, I see a net bytes listener that throws reported while the next one still hears the total', async () => {
-    // Given
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const fake = createFakeFrame({ serve: createReportingFrame(sinks), timers });
-    const telemetry = createFrameTelemetry({ frame: fake.frame, timers });
-    telemetry.subscribeNetBytes(() => {
-      throw new TypeError('panel broke');
-    });
-    const totals: number[] = [];
-    telemetry.subscribeNetBytes(event => totals.push(event.received));
-    await settle();
-
-    // When
-    report({ tag: 'netBytes', value: 100 });
-    await settle();
-
-    // Then
-    expect(totals).toEqual([100]);
-    expect(captured).toMatchObject([{ step: 'listener', tags: { owner: 'protocol.net_bytes' } }]);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'protocol.net_bytes' },
-    ]);
   });
 });

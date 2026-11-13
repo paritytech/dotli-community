@@ -18,7 +18,7 @@ import {
   type Timers,
   type Transition,
 } from '@dotli/shared';
-import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
+import { hasFrame, isFrameStarting, type ProtocolFrame, type ProtocolStatus } from './frameTypes.js';
 import { reportFeedEnd } from './reportFeedEnd.js';
 import type { FrameSubscriber } from './subscribe.js';
 
@@ -90,7 +90,6 @@ type FeedEvent<T> =
   | { kind: 'reopenDue'; holdId: symbol };
 
 type FeedEffect =
-  | { kind: 'ask'; ask: symbol }
   | { kind: 'release'; stop: () => void }
   | { kind: 'reportEnd'; error: Error | null; capture: boolean }
   | { kind: 'reportAskFailure'; error: unknown };
@@ -132,10 +131,15 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
   }
 
   /** Asks for the transport of the frame there is now, keeping `hold` while the ask is out. */
-  function askTransport(hold: Hold<T> | null, { emitState, emitSideEffect }: Transition<FeedMachine<T>>): void {
+  function askTransport(hold: Hold<T> | null, { emitState, update }: Transition<FeedMachine<T>>): void {
     const ask = Symbol(`${feed} ask`);
     emitState(hold === null ? { kind: 'asking', ask } : { kind: 'reasking', hold, ask });
-    emitSideEffect({ kind: 'ask', ask });
+    update(
+      frame.getTransport().then(
+        (transport): FeedEvent<T> => ({ kind: 'transportAnswered', ask, transport }),
+        (error: unknown): FeedEvent<T> => ({ kind: 'askFailed', ask, error }),
+      ),
+    );
   }
 
   // A new frame relays nothing to a feed held on the one it replaces. A frame that starts listening may have replaced a
@@ -145,7 +149,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     { status },
     transition,
   ) => {
-    if (status !== 'booting' && status !== 'listening') {
+    if (!isFrameStarting(status)) {
       return;
     }
     askTransport(state.kind === 'holding' || state.kind === 'reasking' ? state.hold : null, transition);
@@ -309,16 +313,6 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
 
   function runEffect(effect: FeedEffect): void {
     switch (effect.kind) {
-      case 'ask': {
-        const { ask } = effect;
-        keeper.update(
-          frame.getTransport().then(
-            (transport): FeedEvent<T> => ({ kind: 'transportAnswered', ask, transport }),
-            (error: unknown): FeedEvent<T> => ({ kind: 'askFailed', ask, error }),
-          ),
-        );
-        return;
-      }
       case 'release':
         effect.stop();
         return;
@@ -330,18 +324,5 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         report.log.event('protocol feed ask failed', { feed, reason: getErrorName(effect.error) ?? 'unknown' });
         return;
     }
-  }
-}
-
-/** A frame that is booting or up has a transport to hear. */
-function hasFrame(status: ProtocolStatus): boolean {
-  switch (status) {
-    case 'booting':
-    case 'listening':
-    case 'ready':
-      return true;
-    case 'idle':
-    case 'failed':
-      return false;
   }
 }

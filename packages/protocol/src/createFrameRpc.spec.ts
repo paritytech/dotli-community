@@ -69,6 +69,28 @@ describe('createFrameRpc', () => {
     metrics = bindRecordingSentry({ onFinished: onTestFinished });
   });
 
+  it.each([
+    { waits: 'a ready frame', method: resolve.owner },
+    { waits: 'a listening frame', method: storage.authRead },
+  ])(
+    'As a dotli integrator, I abort a call that waits for $waits while the frame boots and it rejects with my reason at once',
+    async ({ method }) => {
+      // Given a call that waits for a frame that still boots
+      const fake = createFakeFrame({ status: 'booting', timers });
+      const rpc = createFrameRpc({ frame: fake.frame, timers });
+      const caller = new AbortController();
+      const reason = new Error('the page left');
+      const called = catchRejection(rpc.call(method, () => Promise.resolve('never'), { signal: caller.signal }));
+
+      // When
+      caller.abort(reason);
+      await settle();
+
+      // Then
+      expect(await called).toBe(reason);
+    },
+  );
+
   it('As a dotli integrator, I make a shared store request and it waits only for a listening frame, while any other waits for a ready one', async () => {
     // Given a frame still booting, with a shared store request and another waiting on it
     const served: string[] = [];

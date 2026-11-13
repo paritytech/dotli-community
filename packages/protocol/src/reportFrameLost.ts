@@ -28,8 +28,8 @@ export function isFrameReleased(error: Error): boolean {
 }
 
 /**
- * Reports a frame lost after it was ready, or a frame held for the shared store that stopped answering, once, and
- * captures it when `capture` says so. A released frame is counted and left in the trail but never captured.
+ * Reports a frame lost after it was ready, or a frame held for the shared store that stopped answering, and captures
+ * it when `capture` says so. A released frame is counted and left in the trail but never captured.
  */
 export function reportFrameLost({ error, count, capture }: Params): void {
   const reason = error.name;

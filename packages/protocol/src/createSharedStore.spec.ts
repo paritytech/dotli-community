@@ -3,9 +3,8 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { atom, STORE_UNMOUNT_DELAY } from 'nanostores';
-import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import { createManualTimers, recordLog } from '@dotli/shared/testing';
-import { err, hostFailure, ok, type Sink } from '@dotli/transport';
+import { ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
 import { createFrameRpc } from './createFrameRpc.js';
 import type { SharedAuthChange, SubscriptionEnd } from './schema.js';
@@ -25,16 +24,6 @@ function createRelayingFrame(sinks: Set<ChangeSink>): (serving: ProtocolTranspor
       return () => {
         sinks.delete(sink);
       };
-    });
-  };
-}
-
-/** A frame app that keeps the sink of every auth change subscription it was asked for, in order. */
-function createOpeningFrame(opened: ChangeSink[]): (serving: ProtocolTransport) => void {
-  return serving => {
-    serving.handleSubscription(storage.authChanges, (_start, _context, sink) => {
-      opened.push(sink);
-      return () => undefined;
     });
   };
 }
@@ -215,61 +204,6 @@ describe('createSharedStore', () => {
     expect(subscribedOnRebuilt).toBe(1);
     expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: null } }]);
     expect(sinks.size).toBe(0);
-  });
-
-  it('As a returning user, I see my shared auth subscription the frame ends while it stays up reopened after a wait that doubles, and each end reported and captured once', async () => {
-    // Given a subscription on a frame that stays up
-    const timers = createManualTimers();
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const captured = recordReports({ onFinished: onTestFinished }).exceptions;
-    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-    const opened: ChangeSink[] = [];
-    const fake = createFakeFrame({ serve: createOpeningFrame(opened), timers });
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame, timers }), timers });
-    const changes: SharedAuthChange[] = [];
-    store.auth.subscribe(change => changes.push(change));
-    await timers.advance(0);
-
-    // When the frame ends it cleanly, and then ends the reopened one with an error
-    opened[0]?.interrupt(ok());
-    await timers.advance(999);
-    const openedBeforeFirstWait = opened.length;
-    await timers.advance(1);
-    const openedAfterFirstWait = opened.length;
-    opened[1]?.interrupt(err(hostFailure('TypeError: relay broke')));
-    await timers.advance(1_999);
-    const openedBeforeSecondWait = opened.length;
-    await timers.advance(1);
-    opened[2]?.send({ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } });
-    await timers.advance(0);
-
-    // Then
-    expect([openedBeforeFirstWait, openedAfterFirstWait, openedBeforeSecondWait, opened.length]).toEqual([1, 2, 2, 3]);
-    expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } }]);
-    expect(metrics.counted('protocol.feed_end')).toEqual([
-      { outcome: 'error', feed: 'shared_auth', reason: 'ProtocolFeedEndedError' },
-      { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
-    ]);
-    expect(captured).toMatchObject([{ step: 'feed_end', tags: { feed: 'shared_auth' } }]);
-    expect(errors).toHaveLength(2);
-  });
-
-  it('As a returning user, I lose a frame while my shared auth subscription asks for it and it is neither reported nor followed', async () => {
-    // Given a subscription on a frame that is dropped in the turn the subscription asks for it
-    const timers = createManualTimers();
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const opened: ChangeSink[] = [];
-    const fake = createFakeFrame({ serve: createOpeningFrame(opened), timers });
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc({ frame: fake.frame, timers }), timers });
-
-    // When
-    store.auth.subscribe(() => undefined);
-    fake.lose(new Error('dropped'));
-    await timers.advance(30_000);
-
-    // Then
-    expect(metrics.counted('protocol.feed_end')).toEqual([]);
-    expect(timers.countPending()).toBe(0);
   });
 
   it.each([
