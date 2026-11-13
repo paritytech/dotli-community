@@ -22,7 +22,7 @@ import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
 import { servedRequests, type ServeRule } from './servedRequests.js';
 import { getLastingStatus, isGranted, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
-import { resolveBrowserBlock } from '../resolveBrowserBlock.js';
+import { isRestricted, resolveBrowserBlock } from '../resolveBrowserBlock.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
@@ -174,14 +174,7 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
     if (!isBrowserBlocked(status)) {
       return false;
     }
-    const resolution = await resolveBrowserBlock({ label, permission: name, signal, prompts, browser });
-    switch (resolution) {
-      case 'restricted':
-        return true;
-      case 'allowed':
-      case 'kept':
-        return false;
-    }
+    return isRestricted(await resolveBrowserBlock({ label, permission: name, signal, prompts, browser }));
   }
 
   return { devicePermission, remotePermission };

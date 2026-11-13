@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { BrowserPermissions, BrowserPermissionStatus } from './createBrowserPermissions.js';
 import { createFakePrompts, type FakePrompt, type FakePrompts } from './hostPrompts.fake.js';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
-import { resolveBrowserBlock, type BrowserBlockResolution } from './resolveBrowserBlock.js';
+import { isRestricted, resolveBrowserBlock, type BrowserBlockResolution } from './resolveBrowserBlock.js';
 
 type FakeBrowser = {
   read: Mock<BrowserPermissions['read']>;
@@ -133,6 +133,26 @@ describe('resolveBrowserBlock', () => {
     // Then
     await expect(resolution).rejects.toMatchObject({ name: 'AbortError' });
   });
+});
+
+describe('isRestricted', () => {
+  it.each<{ resolution: BrowserBlockResolution; restricted: boolean }>([
+    { resolution: 'restricted', restricted: true },
+    { resolution: 'allowed', restricted: false },
+    { resolution: 'kept', restricted: false },
+  ])(
+    'As a dotli user, I settle the blocked dialog as $resolution and isRestricted answers $restricted',
+    ({ resolution, restricted }) => {
+      // Given how the user settled the blocked dialog
+      const settled = resolution;
+
+      // When it is asked whether the user restricted the app
+      const answer = isRestricted(settled);
+
+      // Then only a restriction answers yes
+      expect(answer).toBe(restricted);
+    },
+  );
 });
 
 /** Starts resolving `permission`'s block, and resolves once its dialog is on screen. */

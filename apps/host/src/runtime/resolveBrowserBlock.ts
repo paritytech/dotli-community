@@ -11,6 +11,17 @@ import { throwIfModalAborted } from './throwIfModalAborted.js';
 /** How the user settled a browser block. `kept` leaves the grant as it is. */
 export type BrowserBlockResolution = 'restricted' | 'allowed' | 'kept';
 
+/** True when the user restricted the app rather than keep its grant. */
+export function isRestricted(resolution: BrowserBlockResolution): boolean {
+  switch (resolution) {
+    case 'restricted':
+      return true;
+    case 'allowed':
+    case 'kept':
+      return false;
+  }
+}
+
 type Params = {
   /** The product whose grant the browser blocks. */
   label: string;
