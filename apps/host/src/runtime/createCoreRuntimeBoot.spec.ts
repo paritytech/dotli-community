@@ -16,6 +16,7 @@ import { createPhoneRequestTracker } from './createPhoneRequestTracker.js';
 import type { BootLocalWalletCore } from './localWalletCore.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
 import { ERRORS } from './errors.js';
+import type { BundledStack } from '@dotli/config';
 import { createDeferred } from '@dotli/shared';
 import { catchRejection } from '@dotli/shared/testing';
 
@@ -38,6 +39,12 @@ const context: CoreContext = {
   isLive: () => true,
   isInService: () => true,
   sessionInMemory: false,
+};
+
+const STACK: BundledStack = {
+  pointer: 'polkadotapp://stack?key=0x00',
+  descriptor: Uint8Array.of(1),
+  allowsReservedValues: false,
 };
 
 class FakeHostWorker {
@@ -73,6 +80,7 @@ function createHarness({ reads = [] }: Params = {}) {
         // The boot only constructs the worker and hands it to `create`, so a class with no worker members stands in.
         HostWorker: FakeHostWorker as unknown as new () => Worker,
       }),
+    loadStack: () => Promise.resolve(STACK),
     createCallbacks(options) {
       callbackOptions.push(options);
       // An opaque stand-in the boot only passes through to the runtime factory.
@@ -105,10 +113,11 @@ describe('core runtime boot', () => {
     // When a core boots
     const booted = await boot(context);
 
-    // Then the pairing runtime boots on the host worker with a stored session
+    // Then the pairing runtime boots on the host worker over the network's stack with a stored session
     expect(booted).toMatchObject({ runtime: pairing.runtime, local: false });
     expect(create.mock.calls[0]?.[0]).toBeInstanceOf(FakeHostWorker);
     expect(create.mock.calls[0]?.[2].role).toBeUndefined();
+    expect(create.mock.calls[0]?.[2].hostConfig.stack).toBe(STACK);
     expect(callbackOptions).toEqual([expect.objectContaining({ core: context, sessionInMemory: false })]);
     expect(bootLocalWalletCore).not.toHaveBeenCalled();
   });

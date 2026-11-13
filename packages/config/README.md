@@ -13,6 +13,7 @@ Build-time and runtime configuration:
 ## Responsibilities
 
 - **Owns** the network table (dotNS contracts, chain services, TLD) and the active network.
+- **Owns** each network's signed Trinity stack, which the TrUAPI core boots from.
 - **Owns** the local roots, read by pages and the local servers.
 - **Owns** the backend and cache settings with their storage keys. It also owns the settings' URL form.
 - **Does not own**:
@@ -35,6 +36,7 @@ Build-time and runtime configuration:
 | `getNetwork`, `getEnabledNetworks`, `getDefaultNetwork`, `setActiveNetwork`                    | The active network.           |
 | `getActiveServicesConfig`, `getActiveTldSuffix`, `withActiveTld`                               | Its services and TLD.         |
 | `getActiveSupportedGenesisHashes`, `getActiveGatewaySupportedGenesisHashes`                    | Genesis hashes for products.  |
+| `loadStack`, `BundledStack`                                                                    | A network's signed stack.     |
 | `getActiveCoreGatewayChains`, `getActiveCoreGatewaySupportedGenesisHashes`                     | Core gateway chains.          |
 | `CHAIN_ROLES`, `ChainRole`, `CHAIN_ROLE_LABELS`, `getChainRoleForGenesis`                      | Chain roles.                  |
 | `getActiveChainRoles`, `ActiveChainRole`                                                       | The active network's chains.  |
@@ -82,3 +84,6 @@ The network table for Node tooling. Reads no page state.
 - **Chain roles:** a chain is named by its role (`relay`, `assethub`, `bulletin`, `people`) everywhere.
 - **URL form:** settings travel between origins as URL params. Defaults are stripped, so a clean URL means defaults.
 - **Fixed entry:** a worker never receives the runtime config, so it imports `./fixed`, never the bare entry.
+- **Stacks:** each network's link and signed descriptor are build copies that the `trinity-stack` CLI keeps and
+  verifies. `npm run stacks:update` fetches newer copies, and a chain wipe needs one, since the core dials only the
+  genesis hashes the descriptor names. A page loads one network's copy as served, since the core checks its signature.

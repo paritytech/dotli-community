@@ -130,8 +130,10 @@ function createSignPayloadFields(label: string, review: SignPayloadReview): Moda
         account: request.account,
       });
     }
-    case 'LegacyAccount':
-      return createPayloadFields({ app: label, signer: review.value.signer, payload: review.value.payload });
+    case 'LegacyAccount': {
+      const { request } = review.value;
+      return createPayloadFields({ app: label, signer: request.signer, payload: request.payload });
+    }
   }
 }
 
@@ -204,8 +206,10 @@ function createTransactionFields(label: string, review: CreateTransactionReview)
         account: payload.signer,
       });
     }
-    case 'LegacyAccount':
-      return createTransactionPayloadFields({ app: label, signer: review.value.signer, payload: review.value });
+    case 'LegacyAccount': {
+      const { payload } = review.value;
+      return createTransactionPayloadFields({ app: label, signer: payload.signer, payload });
+    }
   }
 }
 

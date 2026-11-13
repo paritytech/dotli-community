@@ -13,7 +13,6 @@ import { createProductOperations } from './createProductOperations.js';
 import { createPreimageAdapters } from './createPreimageAdapters.js';
 import { createChainConnect } from './createChainConnect.js';
 import { getFeatureSupport } from './getFeatureSupport.js';
-import { listSupportedChains } from './listSupportedChains.js';
 import { createThemeSubscribe } from './createThemeSubscribe.js';
 import { createLocaleSubscribe } from './createLocaleSubscribe.js';
 import { createAuthStateChanged } from '../session/createAuthStateChanged.js';
@@ -74,10 +73,7 @@ export function createHostCallbacks({
       notify: prompts.notify,
     }),
     permissions,
-    features: {
-      featureSupported: getFeatureSupport,
-      supportedChains: listSupportedChains,
-    },
+    features: { featureSupported: getFeatureSupport },
     // Every chain builds as V4. The V5-only extrinsics (allowances, PGAS claims, dotNS registrations) are built by
     // native cores alone, and Bulletin preimages, the browser core's own, are V4 on every host.
     extrinsicVersion: { transactionExtensionVersions: () => Promise.resolve({ chains: [] }) },

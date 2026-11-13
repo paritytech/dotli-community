@@ -122,7 +122,6 @@ describe('local wallet core', () => {
     // Then the signing host is built on the signing worker and activated with the cached name
     expect(create.mock.calls[0]?.[0]).toBeInstanceOf(FakeSigningWorker);
     expect(create.mock.calls[0]?.[2].role).toBe('signing');
-    expect(create.mock.calls[0]?.[2].hostConfig.networkSuffix).toBe('paseo');
     expect(runtimes[0]?.activateLocalSession).toHaveBeenCalledWith(ENTROPY, 'alice.42');
   });
 

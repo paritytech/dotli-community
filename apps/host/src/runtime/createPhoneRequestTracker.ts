@@ -11,10 +11,10 @@ import type { PhoneMethod } from './phoneMethods.js';
 import { decodePhoneOutcome, type PhoneOutcome } from './phoneOutcome.js';
 import { reportUndecodablePhoneFrame } from './phoneReport.js';
 
-/** A phone-bound request in flight, with its V1 request body as `@parity/truapi` decodes it. */
+/** A phone-bound request in flight, with its request body as `@parity/truapi` decodes it. */
 export type PhoneRequest = {
   method: PhoneMethod;
-  /** The unwrapped V1 value of the method's `Versioned...Request` codec. */
+  /** The unwrapped value of the method's `Versioned...Request` codec. */
   body: unknown;
 };
 

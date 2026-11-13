@@ -88,6 +88,54 @@ export const BUILTIN_NETWORK_SERVICES: Record<Network, ServicesConfig> = {
       TLD: 'testnet',
     },
   },
+  'pcf-devnet': {
+    label: 'PCF Devnet',
+    description: 'Polkadot Community Foundation devnet on Paseo',
+    relay: {
+      genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
+      rpcs: [
+        'wss://paseo-rpc.n.dwellir.com',
+        'wss://paseo-v2.rpc.turboflakes.io',
+        'wss://rpc-paseo.stakeworld.io',
+        'wss://rpc.interweb-it.com/paseo',
+      ],
+      blockTimeMs: 6000,
+    },
+    assethub: {
+      genesis: '0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2',
+      rpcs: ['wss://asset-hub-paseo-rpc.n.dwellir.com', 'wss://sys.turboflakes.io/asset-hub-paseo'],
+      blockTimeMs: 2000,
+    },
+    bulletin: {
+      genesis: '0xe101f0fa4627d29a257645e02be86d80378fea1a2bf8fa6a918d150ebc760a59',
+      rpcs: ['wss://bullet.sik.rocks', 'wss://bullet.tunastaking.eu', 'wss://bulletin-paseo.tservices.es:8443'],
+      blockTimeMs: 6000,
+      ipfsGateways: ['https://devnet-ipfs.api.polkadotcommunity.foundation'],
+    },
+    people: {
+      genesis: '0xe6c30d6e148f250b887105237bcaa5cb9f16dd203bf7b5b9d4f1da7387cb86ec',
+      rpcs: [
+        'wss://people-devnet-rpc.api.polkadotcommunity.foundation',
+        'wss://people-paseo.gatotech.network',
+        'wss://people-paseo.rotko.net',
+        'wss://rpc.interweb-it.com/people-paseo',
+      ],
+      blockTimeMs: 2000,
+    },
+    dotns: {
+      DOTNS_REGISTRY: '0xb052E5EfC5ADEff1f21d48DEfb5169Cb394A1a73',
+      DOTNS_CONTENT_RESOLVER: '0x7e75491ecfb04900EB05ee63CABA2B33900aABB5',
+      STORAGE_SLOTS: {
+        REGISTRY_RECORDS: 0,
+        CONTENTHASH: 0,
+        TEXT_RECORDS: 1,
+        REGISTRY_PROTOCOL_REGISTRY: 1,
+        PROTOCOL_REGISTRY_ADDRESSES: 0,
+        REGISTRAR_OWNERS: '0x80bb2b638cc20bc4d0a60d66940f3ab4a00c1d7b313497ca82fb0b4ab0079302',
+      },
+      TLD: 'dot',
+    },
+  },
 };
 
 /** Built-in networks with any runtime endpoint overrides applied. */

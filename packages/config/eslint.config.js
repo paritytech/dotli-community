@@ -7,6 +7,8 @@ import { defineConfig } from 'eslint/config';
 import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
+  // `trinity-stack` writes its own module there, which the stacks are not read through.
+  { ignores: ['.trinity/'] },
   ...config,
   {
     languageOptions: {

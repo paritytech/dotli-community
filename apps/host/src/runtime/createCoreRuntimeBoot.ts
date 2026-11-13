@@ -10,6 +10,7 @@ import type {
   WebWorkerHostCallbacks,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
+import type { BundledStack } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
@@ -42,6 +43,8 @@ export type CoreRuntimeBootParams = {
     createWebWorkerPairingHostRuntime: typeof createWebWorkerPairingHostRuntime;
     HostWorker: new () => Worker;
   }>;
+  /** Loads the active network's signed stack. Rejects when it fails to load. */
+  loadStack: () => Promise<BundledStack>;
   /** Builds the callbacks a core asks the page through. */
   createCallbacks: (params: CoreCallbacksParams) => WebWorkerHostCallbacks;
   /** Loads the local wallet core's chunk. Rejects when it fails to load. */
@@ -54,12 +57,12 @@ export type BootCoreRuntime = ReturnType<typeof createCoreRuntimeBoot>;
 export function createCoreRuntimeBoot({
   readWallet,
   loadHostRuntime,
+  loadStack,
   createCallbacks,
   loadLocalWalletCore,
 }: CoreRuntimeBootParams) {
   /** Resolves with the booted runtime. Rejects when a step of the boot fails. */
   async function bootCoreRuntime(core: CoreContext): Promise<BootedCoreRuntime> {
-    const hostConfig = createTruapiRuntimeConfig();
     // Set once the core parsed it, which needs the booted core, while the callbacks are built before the boot.
     let productId: ProductId | undefined;
     function getProductId(): ProductId {
@@ -70,12 +73,14 @@ export function createCoreRuntimeBoot({
     }
     const createCoreCallbacks = (local: boolean): WebWorkerHostCallbacks =>
       createCallbacks({ core, getProductId, sessionInMemory: local || core.sessionInMemory });
-    // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower. The
-    // worker wrapper fetches its worker script only when constructed, so local mode pays nothing for it.
-    const [wallet, { createWebWorkerPairingHostRuntime, HostWorker }] = await Promise.all([
+    // The wallet read, the host chunk and the stack load in parallel, so a Polkadot App boot waits on whichever is
+    // slowest. The worker wrapper fetches its worker script only when constructed, so local mode pays nothing for it.
+    const [wallet, { createWebWorkerPairingHostRuntime, HostWorker }, stack] = await Promise.all([
       readWallet(),
       loadHostRuntime(),
+      loadStack(),
     ]);
+    const hostConfig = createTruapiRuntimeConfig(stack);
     if (wallet !== null) {
       const { bootLocalWalletCore } = await loadLocalWalletCore();
       const runtime = await bootLocalWalletCore({

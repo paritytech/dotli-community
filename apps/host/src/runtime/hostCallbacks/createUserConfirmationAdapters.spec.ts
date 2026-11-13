@@ -103,19 +103,22 @@ describe('user confirmation modal', () => {
         value: {
           tag: 'LegacyAccount',
           value: {
-            signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
-            payload: {
-              blockHash: '0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2',
-              blockNumber: '0x00000000',
-              era: '0x00',
-              genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
-              method: '0x0000',
-              nonce: '0x00000000',
-              signedExtensions: [],
-              specVersion: '0x00000000',
-              tip: '0x00000000000000000000000000000000',
-              transactionVersion: '0x00000000',
-              version: 4,
+            account: PRODUCT_ACCOUNT,
+            request: {
+              signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
+              payload: {
+                blockHash: '0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2',
+                blockNumber: '0x00000000',
+                era: '0x00',
+                genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+                method: '0x0000',
+                nonce: '0x00000000',
+                signedExtensions: [],
+                specVersion: '0x00000000',
+                tip: '0x00000000000000000000000000000000',
+                transactionVersion: '0x00000000',
+                version: 4,
+              },
             },
           },
         },
@@ -138,6 +141,7 @@ describe('user confirmation modal', () => {
         value: {
           tag: 'LegacyAccount',
           value: {
+            account: { tag: 'Identity' },
             request: {
               signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
               payload: {
@@ -562,6 +566,7 @@ describe('user confirmation modal', () => {
           value: {
             tag: 'LegacyAccount',
             value: {
+              account: { tag: 'Identity' },
               request: {
                 signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
                 payload: { tag: 'Bytes', value: { bytes: '0x48656c6c6f' } },

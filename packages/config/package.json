@@ -15,7 +15,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "stacks:update": "trinity-stack update"
   },
   "dependencies": {
     "@dotli/shared": "*",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "@config/vite": "*"
+    "@config/vite": "*",
+    "@parity/trinity-stack": "0.2.1"
   }
 }

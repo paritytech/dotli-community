@@ -10,7 +10,6 @@ import type {
   WebWorkerHostConfig,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
-import { getActiveServicesConfig } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import { loadSigningWorker } from '../lazy.js';
 import { liteUsernameRefresh } from './createLiteUsernameRefresh.js';
@@ -69,7 +68,7 @@ export function createLocalWalletCoreBoot({
     try {
       const { default: SigningWorker } = await loadSigningWorker();
       runtime = await create(new SigningWorker(), watched.callbacks, {
-        hostConfig: { ...hostConfig, networkSuffix: getActiveServicesConfig().dotns.TLD },
+        hostConfig,
         role: 'signing',
       });
     } catch (error) {

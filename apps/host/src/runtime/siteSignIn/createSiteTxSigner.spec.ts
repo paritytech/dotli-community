@@ -73,8 +73,8 @@ function encodeCreateResponse(answer: CreateAnswer): Uint8Array {
   );
   return codec.enc(
     'ok' in answer
-      ? { success: true, value: { tag: 'V1', value: { transaction: answer.ok } } }
-      : { success: false, value: toVersionedError(answer.error) },
+      ? { success: true, value: { tag: 'V2', value: { transaction: answer.ok } } }
+      : { success: false, value: toVersionedError(answer.error, 'V2') },
   );
 }
 
@@ -151,7 +151,7 @@ describe('site transaction signer', () => {
 
       // Then it rejects as rejected, with the core's error as its cause
       expect(error).toBeInstanceOf(SiteTxError);
-      expect(error).toMatchObject({ kind: 'rejected', cause: toVersionedError(answer.error) });
+      expect(error).toMatchObject({ kind: 'rejected', cause: toVersionedError(answer.error, 'V2') });
     },
   );
 
@@ -178,7 +178,7 @@ describe('site transaction signer', () => {
 
       // Then it rejects as unsupported, with the core's error as its cause, after the one request
       expect(error).toBeInstanceOf(SiteTxError);
-      expect(error).toMatchObject({ kind: 'unsupported', cause: toVersionedError(answer.error) });
+      expect(error).toMatchObject({ kind: 'unsupported', cause: toVersionedError(answer.error, 'V2') });
       expect(core.requests).toHaveLength(1);
     },
   );

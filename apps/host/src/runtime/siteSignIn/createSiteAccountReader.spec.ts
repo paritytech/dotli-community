@@ -38,7 +38,7 @@ function encodeAccountResponse(answer: AccountAnswer): Uint8Array {
   return codec.enc(
     'ok' in answer
       ? { success: true, value: { tag: 'V1', value: { account: { publicKey: toHex(answer.ok) } } } }
-      : { success: false, value: toVersionedError(answer.error) },
+      : { success: false, value: toVersionedError(answer.error, 'V1') },
   );
 }
 

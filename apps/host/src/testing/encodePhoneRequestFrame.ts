@@ -7,12 +7,12 @@ import { encodeRequestFrame } from './encodeRequestFrame.js';
 type Params = {
   requestId: string;
   method: PhoneMethod;
-  /** The method's V1 request value. */
+  /** The method's request value. */
   body: unknown;
 };
 
-/** A request frame carrying `body` as the method's V1 request. Throws when the frame does not encode. */
+/** A request frame carrying `body` as the method's request. Throws when the frame does not encode. */
 export function encodePhoneRequestFrame({ requestId, method, body }: Params): Uint8Array {
-  const { ids, request } = PHONE_METHODS[method];
-  return encodeRequestFrame({ requestId, method: ids, value: request.enc({ tag: 'V1', value: body }) });
+  const { ids, request, version } = PHONE_METHODS[method];
+  return encodeRequestFrame({ requestId, method: ids, value: request.enc({ tag: version, value: body }) });
 }
