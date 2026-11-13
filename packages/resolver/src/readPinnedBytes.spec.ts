@@ -7,12 +7,13 @@ import { OperationInaccessibleError } from '@polkadot-api/substrate-client';
 import { CorruptBytesSlotError } from './corruptBytesSlotError.js';
 import { createRawApi, type Api } from './createRawApi.js';
 import { PartialStorageReadError } from './partialStorageReadError.js';
-import { readMappingBytes } from './readMappingBytes.js';
+import { readPinnedBytes } from './readPinnedBytes.js';
+import { computeMappingSlot } from './storageSlots.js';
 import { CONTRACT_ACCOUNT_INFO, CONTRACT_ADDRESS } from './testing/constants.js';
 import { createFakeSubstrateClient, type FakeFollow } from './testing/createFakeSubstrateClient.js';
 import { createNewBlockEvent } from './testing/createNewBlockEvent.js';
 
-describe('readMappingBytes', () => {
+describe('readPinnedBytes', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -30,11 +31,11 @@ describe('readMappingBytes', () => {
       .mockImplementationOnce(() => Promise.resolve(`0x01${'00'.repeat(30)}02`));
 
     // When
-    const read = readMappingBytes({
+    const read = readPinnedBytes({
       api,
       contractAddress: CONTRACT_ADDRESS,
-      mappingKey: `0x${'00'.repeat(32)}`,
-      mappingSlot: 0,
+      baseSlotKey: computeMappingSlot(`0x${'00'.repeat(32)}`, 0),
+      context: { mappingKind: 'mapping bytes' },
     });
     await vi.runAllTimersAsync();
     const bytes = await read;
@@ -56,11 +57,11 @@ describe('readMappingBytes', () => {
       .mockImplementationOnce(() => Promise.resolve(null));
 
     // When
-    const read = readMappingBytes({
+    const read = readPinnedBytes({
       api,
       contractAddress: CONTRACT_ADDRESS,
-      mappingKey: `0x${'00'.repeat(32)}`,
-      mappingSlot: 0,
+      baseSlotKey: computeMappingSlot(`0x${'00'.repeat(32)}`, 0),
+      context: { mappingKind: 'mapping bytes' },
     });
 
     // Then
@@ -78,11 +79,11 @@ describe('readMappingBytes', () => {
       .mockImplementationOnce(() => Promise.resolve(`0x${'ff'.repeat(32)}`));
 
     // When
-    const read = readMappingBytes({
+    const read = readPinnedBytes({
       api,
       contractAddress: CONTRACT_ADDRESS,
-      mappingKey: `0x${'00'.repeat(32)}`,
-      mappingSlot: 0,
+      baseSlotKey: computeMappingSlot(`0x${'00'.repeat(32)}`, 0),
+      context: { mappingKind: 'mapping bytes' },
     });
 
     // Then
@@ -207,10 +208,10 @@ function answerLongValueBase(follow: FakeFollow): FakeFollow['storage'] {
 }
 
 function readLongValue(api: Api): Promise<Uint8Array | null> {
-  return readMappingBytes({
+  return readPinnedBytes({
     api,
     contractAddress: CONTRACT_ADDRESS,
-    mappingKey: `0x${'00'.repeat(32)}`,
-    mappingSlot: 0,
+    baseSlotKey: computeMappingSlot(`0x${'00'.repeat(32)}`, 0),
+    context: { mappingKind: 'mapping bytes' },
   });
 }

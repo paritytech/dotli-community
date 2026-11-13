@@ -4,10 +4,10 @@
 // Handwritten to avoid a schema library.
 
 import { isRecord } from '@dotli/shared';
-import { checkVersion, isAppVersion, isNonEmptyString, parseManifestJson } from './manifestFieldChecks.js';
-import type { ExecutableManifest, ValidationResult } from './manifestTypes.js';
+import { checkVersion, isNonEmptyString, parseManifestJson } from './manifestFieldChecks.js';
+import type { AppVersion, ExecutableManifest, ValidationResult, WorkerIncludes } from './manifestTypes.js';
 
-const WORKER_SURFACES = ['chat', 'pocket', 'input'] as const;
+const WORKER_SURFACES: readonly (keyof WorkerIncludes)[] = ['chat', 'pocket', 'input'];
 
 /** Checks every field of an executable manifest, collecting each error. A `$v` other than 1 skips the field checks. */
 export function validateExecutableManifest(input: unknown): ValidationResult<ExecutableManifest> {
@@ -23,15 +23,18 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
     errors.push('executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]');
   }
   const kind = input['kind'];
-  const prefix = 'executable manifest ';
-  if (kind === 'app') {
-    // No kind-specific fields.
-  } else if (kind === 'widget') {
-    errors.push(...validateWidgetFields(input, prefix));
-  } else if (kind === 'worker') {
-    errors.push(...validateWorkerFields(input, prefix));
-  } else {
-    errors.push(`${prefix}kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`);
+  switch (kind) {
+    case 'app':
+      // No kind-specific fields.
+      break;
+    case 'widget':
+      errors.push(...validateWidgetFields(input));
+      break;
+    case 'worker':
+      errors.push(...validateWorkerFields(input));
+      break;
+    default:
+      errors.push(`executable manifest kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`);
   }
   // Every field the manifest's kind names was checked above, and extra fields pass through to the caller.
   return errors.length === 0 ? { ok: true, value: input as unknown as ExecutableManifest } : { ok: false, errors };
@@ -43,13 +46,30 @@ export function parseExecutableManifest(json: string): ValidationResult<Executab
   return parsed.ok ? validateExecutableManifest(parsed.value) : parsed;
 }
 
-function validateWidgetFields(input: Record<string, unknown>, prefix: string): string[] {
+/** Narrows a value to an app version: three non-negative safe integers, optionally followed by a string build tag. */
+function isAppVersion(value: unknown): value is AppVersion {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  if (value.length !== 3 && value.length !== 4) {
+    return false;
+  }
+  if (!value.slice(0, 3).every(part => typeof part === 'number' && Number.isSafeInteger(part) && part >= 0)) {
+    return false;
+  }
+  if (value.length === 4 && typeof value[3] !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+function validateWidgetFields(input: Record<string, unknown>): string[] {
   const errors: string[] = [];
-  if ('description' in input && input['description'] !== undefined && typeof input['description'] !== 'string') {
-    errors.push(`${prefix}description must be a string when present`);
+  if (input['description'] !== undefined && typeof input['description'] !== 'string') {
+    errors.push('executable manifest description must be a string when present');
   }
   if (!isRecord(input['dimensions'])) {
-    errors.push(`${prefix}dimensions must be an object`);
+    errors.push('executable manifest dimensions must be an object');
     return errors;
   }
   const dimensions = input['dimensions'];
@@ -58,38 +78,46 @@ function validateWidgetFields(input: Record<string, unknown>, prefix: string): s
     dimensions['height'].length === 0 ||
     !dimensions['height'].every(h => typeof h === 'number' && Number.isInteger(h) && h > 0)
   ) {
-    errors.push(`${prefix}dimensions.height must be a non-empty array of positive integers`);
+    errors.push('executable manifest dimensions.height must be a non-empty array of positive integers');
   }
   if (
-    'width' in dimensions &&
     dimensions['width'] !== undefined &&
     !(typeof dimensions['width'] === 'number' && Number.isInteger(dimensions['width']) && dimensions['width'] > 0)
   ) {
-    errors.push(`${prefix}dimensions.width must be a positive integer when present`);
+    errors.push('executable manifest dimensions.width must be a positive integer when present');
   }
   return errors;
 }
 
 /** Whether a path leaves its directory once a URL resolver reads a backslash as a slash and `%2e` as `.`. */
 function isEscapingPath(path: string): boolean {
-  return /^[/\\]/.test(path) || path.split(/[/\\]/).some(segment => segment.replace(/%2e/gi, '.') === '..');
+  // A URL resolver drops tabs and newlines anywhere, and controls and spaces at either end.
+  // eslint-disable-next-line no-control-regex -- the range is the C0 controls and the space a URL resolver trims.
+  const resolved = path.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '');
+  // A scheme makes the path a URL of its own, and a query or a fragment ends the last segment.
+  const pathname = resolved.split(/[?#]/, 1)[0] ?? '';
+  return (
+    /^[a-z][a-z\d+.-]*:/i.test(resolved) ||
+    /^[/\\]/.test(pathname) ||
+    pathname.split(/[/\\]/).some(segment => segment.replace(/%2e/gi, '.') === '..')
+  );
 }
 
-function validateWorkerFields(input: Record<string, unknown>, prefix: string): string[] {
+function validateWorkerFields(input: Record<string, unknown>): string[] {
   const errors: string[] = [];
   if (!isNonEmptyString(input['entrypoint'])) {
-    errors.push(`${prefix}entrypoint must be a non-empty string`);
+    errors.push('executable manifest entrypoint must be a non-empty string');
   } else if (isEscapingPath(input['entrypoint'])) {
-    errors.push(`${prefix}entrypoint must be a relative path with no '..' segments`);
+    errors.push(`executable manifest entrypoint must be a relative path with no '..' segments`);
   }
   if (!isRecord(input['includes'])) {
-    errors.push(`${prefix}includes must be an object`);
+    errors.push('executable manifest includes must be an object');
     return errors;
   }
   const includes = input['includes'];
   for (const surface of WORKER_SURFACES) {
     if (surface in includes && typeof includes[surface] !== 'boolean') {
-      errors.push(`${prefix}includes.${surface} must be a boolean when present`);
+      errors.push(`executable manifest includes.${surface} must be a boolean when present`);
     }
   }
   return errors;

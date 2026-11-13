@@ -75,7 +75,16 @@ describe('validateExecutableManifest', () => {
     expect(result.ok).toBe(false);
   });
 
-  it.each(['/index.js', '\\x.js', 'a\\..\\..\\x.js', '%2e%2E/x.js'])(
+  it.each([
+    '/index.js',
+    '\\x.js',
+    'a\\..\\..\\x.js',
+    '%2e%2E/x.js',
+    '..?x',
+    '.\t./x.js',
+    ' /x.js',
+    'https://elsewhere.example/x.js',
+  ])(
     'As the host validating an executable manifest, I refuse a worker entrypoint that escapes its directory as %s',
     entrypoint => {
       // When

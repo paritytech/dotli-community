@@ -5,7 +5,6 @@ import { CorruptBytesSlotError } from './corruptBytesSlotError.js';
 import type { Api } from './createRawApi.js';
 import { PartialStorageReadError } from './partialStorageReadError.js';
 import { addToSlot, decodeBytesSlot } from './storageSlots.js';
-import type { PinnedContract } from './withPinnedContract.js';
 
 const MAX_ARRAY_LENGTH = 2 ** 32 - 1;
 
@@ -13,24 +12,31 @@ type Params = {
   api: Api;
   contractAddress: string;
   baseSlotKey: `0x${string}`;
-  pin: PinnedContract;
   /** What the error names when a data slot is missing or the stored length is corrupt. */
   context: PartialStorageReadError['context'];
 };
 
 /**
- * Reads a Solidity `bytes` value at `baseSlotKey` on the pinned block, resolving `null` when it is unset. Rejects with
- * `CorruptBytesSlotError` when the stored length needs more data slots than an array can hold, before any data slot is
- * read. Rejects with `PartialStorageReadError` when a data slot is missing, and otherwise with `Api.readSlot`'s error.
+ * Reads a Solidity `bytes` value at `baseSlotKey`, resolving `null` when it is unset or no contract exists. Rejects
+ * with `CorruptBytesSlotError` when the stored length needs more data slots than an array can hold, before any data
+ * slot is read. Rejects with `PartialStorageReadError` when a data slot is missing, and otherwise with `Api.readSlot`'s
+ * error.
  */
-export async function readPinnedBytes({
-  api,
-  contractAddress,
-  baseSlotKey,
-  pin,
-  context,
-}: Params): Promise<Uint8Array | null> {
-  const baseData = await api.readSlot(contractAddress, baseSlotKey, { atHash: pin.hash, trieId: pin.trieId });
+export function readPinnedBytes(params: Params): Promise<Uint8Array | null> {
+  // One block and the contract's `trie_id` for every slot, so a best-block change mid-read cannot tear the bytes across
+  // two blocks.
+  return params.api.withBestBlock(hash => readBytesAt(params, hash));
+}
+
+async function readBytesAt(
+  { api, contractAddress, baseSlotKey, context }: Params,
+  hash: string,
+): Promise<Uint8Array | null> {
+  const trieId = await api.resolveTrieId(contractAddress, hash);
+  if (trieId === null) {
+    return null;
+  }
+  const baseData = await api.readSlot(contractAddress, baseSlotKey, { atHash: hash, trieId });
   if (baseData === null) {
     return null;
   }
@@ -46,7 +52,7 @@ export async function readPinnedBytes({
     throw new CorruptBytesSlotError({ contractAddress, length: decoded.length, context });
   }
   const reads = Array.from({ length: slotsNeeded }, (_, index) =>
-    api.readSlot(contractAddress, addToSlot(decoded.dataSlot, index), { atHash: pin.hash, trieId: pin.trieId }),
+    api.readSlot(contractAddress, addToSlot(decoded.dataSlot, index), { atHash: hash, trieId }),
   );
   // Every read settles before the walk, so the lowest failing slot decides the error and the pin outlives every read.
   const settled = await Promise.allSettled(reads);

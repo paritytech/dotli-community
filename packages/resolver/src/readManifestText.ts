@@ -6,7 +6,8 @@ import { createReporter, m } from '@dotli/metrics';
 import type { DotnsContracts } from '@dotli/config';
 import type { Api } from './createRawApi.js';
 import type { ManifestRecordResult, ManifestResult } from './manifestTypes.js';
-import { readNestedMappingString } from './readNestedMappingString.js';
+import { readPinnedBytes } from './readPinnedBytes.js';
+import { computeNestedStringMappingSlot } from './storageSlots.js';
 
 const report = createReporter({ flow: 'resolve' });
 
@@ -45,13 +46,13 @@ export async function readManifestText<T>({
   const start = performance.now();
   let raw: string | null;
   try {
-    raw = await readNestedMappingString({
+    const bytes = await readPinnedBytes({
       api,
       contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
-      outerKey: node,
-      innerKey: key,
-      outerSlot: textRecordsSlot,
+      baseSlotKey: computeNestedStringMappingSlot({ outerKey: node, innerKey: key, outerSlot: textRecordsSlot }),
+      context: { mappingKind: 'nested string mapping', innerKey: key },
     });
+    raw = bytes === null ? null : new TextDecoder().decode(bytes);
   } catch (error) {
     const ms = performance.now() - start;
     m.distribution(RESOLVE_MANIFEST_READ, ms, {

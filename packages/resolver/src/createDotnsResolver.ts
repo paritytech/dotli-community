@@ -19,10 +19,10 @@ import { decodeIpfsContenthashResult } from './decodeIpfsContenthashResult.js';
 import type { ExecutableKind } from './manifestTypes.js';
 import { NetworkSyncTimeoutError } from './networkSyncTimeoutError.js';
 import { readExecutableManifest } from './readExecutableManifest.js';
-import { readMappingBytes } from './readMappingBytes.js';
 import { readNameOwner } from './readNameOwner.js';
+import { readPinnedBytes } from './readPinnedBytes.js';
 import { readRootManifest } from './readRootManifest.js';
-import { computeNamehash } from './storageSlots.js';
+import { computeMappingSlot, computeNamehash } from './storageSlots.js';
 import type { PhaseCallback, ResolvePhase } from './types.js';
 import { UnsupportedContenthashCodecError } from './unsupportedContenthashCodecError.js';
 
@@ -187,11 +187,11 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     const contentStart = performance.now();
 
     const readContenthash = () =>
-      readMappingBytes({
+      readPinnedBytes({
         api,
         contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
-        mappingKey: node,
-        mappingSlot: dotns.STORAGE_SLOTS.CONTENTHASH,
+        baseSlotKey: computeMappingSlot(node, dotns.STORAGE_SLOTS.CONTENTHASH),
+        context: { mappingKind: 'mapping bytes' },
       });
     const contenthashBytes = await (timed ? m.span(RESOLVE_STORAGE_READ, readContenthash) : readContenthash());
     const contentMs = performance.now() - contentStart;

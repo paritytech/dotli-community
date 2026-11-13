@@ -17,30 +17,6 @@ type Params = {
 /** Reads one slot of a contract at the block the owner read is pinned to. */
 type ReadSlot = (contractAddress: string, slotKey: `0x${string}`) => Promise<Uint8Array | null>;
 
-type ReadRegistrarParams = {
-  readSlot: ReadSlot;
-  dotns: DotnsContracts;
-};
-
-type ReadRecordParams = {
-  readSlot: ReadSlot;
-  dotns: DotnsContracts;
-  node: `0x${string}`;
-};
-
-type ReadTokenHolderParams = {
-  readSlot: ReadSlot;
-  dotns: DotnsContracts;
-  node: `0x${string}`;
-  registrar: string;
-};
-
-/** What a name's Registry record says about its owner. */
-type NameRecord = {
-  owner: string | null;
-  exists: boolean;
-};
-
 const ZERO_SLOT = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 /** The record's `exists` flag sits in the byte just above the resolver address of its second word. */
@@ -58,22 +34,24 @@ export function readNameOwner({ api, dotns, label }: Params): Promise<string | n
   // One block for every slot, so a transfer between two reads cannot mix two states.
   return api.withBestBlock(async hash => {
     const readSlot: ReadSlot = (contractAddress, slotKey) => api.readSlot(contractAddress, slotKey, { atHash: hash });
-    const record = await readRecord({ readSlot, dotns, node });
+    const record = await readRecord(readSlot, dotns, node);
     if (record.owner !== null) {
       return record.owner;
     }
     if (!record.exists) {
       return null;
     }
-    const registrar = await readRegistrar({ readSlot, dotns });
+    const registrar = await readRegistrar(readSlot, dotns);
     if (registrar === null) {
       return null;
     }
-    return readTokenHolder({ readSlot, dotns, node, registrar });
+    // The token id is the node read as a uint256, which keys the mapping with the same 32 bytes.
+    return toAddress(await readSlot(registrar, computeMappingSlot(node, dotns.STORAGE_SLOTS.REGISTRAR_OWNERS)));
   });
 }
 
-async function readRecord({ readSlot, dotns, node }: ReadRecordParams): Promise<NameRecord> {
+/** What a name's Registry record says about its owner. */
+async function readRecord(readSlot: ReadSlot, dotns: DotnsContracts, node: `0x${string}`) {
   const ownerSlot = computeMappingSlot(node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
   const [ownerWord, flagsWord] = await Promise.all([
     readSlot(dotns.DOTNS_REGISTRY, ownerSlot),
@@ -82,7 +60,7 @@ async function readRecord({ readSlot, dotns, node }: ReadRecordParams): Promise<
   return { owner: toAddress(ownerWord), exists: flagsWord?.[EXISTS_FLAG_BYTE] === 1 };
 }
 
-async function readRegistrar({ readSlot, dotns }: ReadRegistrarParams): Promise<string | null> {
+async function readRegistrar(readSlot: ReadSlot, dotns: DotnsContracts): Promise<string | null> {
   const protocolRegistry = toAddress(
     await readSlot(dotns.DOTNS_REGISTRY, addToSlot(ZERO_SLOT, dotns.STORAGE_SLOTS.REGISTRY_PROTOCOL_REGISTRY)),
   );
@@ -91,12 +69,6 @@ async function readRegistrar({ readSlot, dotns }: ReadRegistrarParams): Promise<
   }
   const registrarSlot = computeMappingSlot(REGISTRAR_KEY, dotns.STORAGE_SLOTS.PROTOCOL_REGISTRY_ADDRESSES);
   return toAddress(await readSlot(protocolRegistry, registrarSlot));
-}
-
-async function readTokenHolder({ readSlot, dotns, node, registrar }: ReadTokenHolderParams): Promise<string | null> {
-  // The token id is the node read as a uint256, which keys the mapping with the same 32 bytes.
-  const holderSlot = computeMappingSlot(node, dotns.STORAGE_SLOTS.REGISTRAR_OWNERS);
-  return toAddress(await readSlot(registrar, holderSlot));
 }
 
 /** An unset word and the zero address both mean no address. */
