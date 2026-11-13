@@ -361,13 +361,10 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   // The responder lives as long as the window's page, so nothing disposes it.
   const responder = createRedirectResponder({
     origin: verdict.origin,
-    fields,
     round: taken.round,
-    seal: sealRedirect,
-    forgetRequest() {
-      forgetWindowRequest(pageSessionStorage);
-    },
+    seal: message => sealRedirect({ ...fields, round: taken.round, message }),
     navigate(url) {
+      forgetWindowRequest(pageSessionStorage);
       location.replace(url);
     },
     failed(error, siteToken) {

@@ -18,19 +18,17 @@ import {
   createResultMessage,
   type PageMessage,
 } from '../sessionHandoff/sessionMessages.js';
-import type { RedirectFields } from './readRedirectFields.js';
-import type { sealRedirect } from './siteSeal.js';
 
 type Params = {
   /** The vetted origin of the return address. */
   origin: string;
-  fields: RedirectFields;
   round: string;
   /** Seals the answer into the return address. Rejects when the answer cannot be sealed. */
-  seal: typeof sealRedirect;
-  /** Forgets the window's kept request, so a step back to the window answers no round. */
-  forgetRequest: () => void;
-  /** Navigates the window's page to `url`, which ends the page. */
+  seal: (message: PageMessage) => Promise<string>;
+  /**
+   * Ends the window's page at `url`. Forgets the window's kept request first, so the page the browser keeps in history
+   * never answers this round again.
+   */
   navigate: (url: string) => void;
   /** Takes a failure to seal the answer, which leaves the site unanswered, and the site token the answer carried. */
   failed: (error: unknown, siteToken: string | undefined) => void;
@@ -63,7 +61,7 @@ const report = createReporter({ flow: 'wallet' });
 const redirectResponderTransitionMetric = defineCount<'error'>('session_pages.redirect_responder_transition');
 
 /** Makes the responder of a redirect sign-in, vetted for `origin` from the start. */
-export function createRedirectResponder({ origin, fields, round, seal, forgetRequest, navigate, failed }: Params) {
+export function createRedirectResponder({ origin, round, seal, navigate, failed }: Params) {
   const machine = createStateMachine<RedirectMachine>({
     initial: { kind: 'waiting' },
     handlers: {
@@ -71,7 +69,7 @@ export function createRedirectResponder({ origin, fields, round, seal, forgetReq
         answered(_state, { answer, message, siteToken }, { emitState, update }) {
           emitState({ kind: 'sealing', answer, siteToken });
           update(
-            seal({ ...fields, round, message }).then(
+            seal(message).then(
               (url): RedirectEvent => ({ kind: 'sealed', url }),
               (error: unknown): RedirectEvent => ({ kind: 'sealFailed', error }),
             ),
@@ -94,8 +92,6 @@ export function createRedirectResponder({ origin, fields, round, seal, forgetReq
     onEffect: effect => {
       switch (effect.kind) {
         case 'sealed':
-          // Forgotten first, so the page the browser keeps in history never answers this round again.
-          forgetRequest();
           navigate(effect.url);
           return;
         case 'sealFailed':
