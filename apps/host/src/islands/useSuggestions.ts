@@ -32,26 +32,20 @@ export function useSuggestions({ text, focused, labels, suffix, combobox, open }
   active: Accessor<string | null>;
 } {
   const matches = createMemo(() => matchLabels(labels(), text(), suffix()));
-  const [escapedAt, setEscapedAt] = createSignal<string | null>(null);
-  const shown = createMemo<readonly string[]>(() => (focused() && text() !== escapedAt() ? matches() : []));
-  // Counts the text's changes, so a label chosen at one text never comes back when the text returns to it.
-  const textRevision = createMemo<{ text: string; revision: number } | undefined>(previous => {
-    const current = text();
-    return {
-      text: current,
-      revision: (previous?.revision ?? 0) + (previous === undefined || current === previous.text ? 0 : 1),
-    };
+  // Escape and a chosen label each last until the text changes, so they read the text only to reset on it.
+  const [escaped, setEscaped] = createSignal(() => {
+    text();
+    return false;
   });
-  const [chosen, setChosen] = createSignal<{ label: string; revision: number } | null>(null);
+  const [chosen, setChosen] = createSignal<string | null>(() => {
+    text();
+    return null;
+  });
+  const shown = createMemo<readonly string[]>(() => (focused() && !escaped() ? matches() : []));
   const active = createMemo(() => {
-    const pick = chosen();
-    return pick !== null && pick.revision === (textRevision()?.revision ?? 0) && shown().includes(pick.label)
-      ? pick.label
-      : null;
+    const label = chosen();
+    return label !== null && shown().includes(label) ? label : null;
   });
-  function choose(label: string | undefined): void {
-    setChosen(label === undefined ? null : { label, revision: textRevision()?.revision ?? 0 });
-  }
 
   createEffect(
     () => {
@@ -78,10 +72,10 @@ export function useSuggestions({ text, focused, labels, suffix, combobox, open }
     const index = label === null ? -1 : list.indexOf(label);
     switch (key) {
       case 'ArrowDown':
-        choose(list[(index + 1) % list.length]);
+        setChosen(list[(index + 1) % list.length] ?? null);
         return true;
       case 'ArrowUp':
-        choose(list[index <= 0 ? list.length - 1 : index - 1]);
+        setChosen(list[index <= 0 ? list.length - 1 : index - 1] ?? null);
         return true;
       case 'Enter':
         if (label === null) {
@@ -90,8 +84,7 @@ export function useSuggestions({ text, focused, labels, suffix, combobox, open }
         open(label);
         return true;
       case 'Escape':
-        setEscapedAt(text());
-        setChosen(null);
+        setEscaped(true);
         return true;
     }
   }

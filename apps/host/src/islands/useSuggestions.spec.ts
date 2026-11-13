@@ -167,7 +167,7 @@ describe('useSuggestions', () => {
     expect(view.suggestions.shown()).toEqual(['apple']);
   });
 
-  it('As a visitor, I press Escape, type a character and delete it, and the list hides again', () => {
+  it('As a visitor, I press Escape, type a character and delete it, and the list stays shown', () => {
     // Given the list hidden by Escape at "a", then shown at "ap"
     const view = mount('a');
     view.press('Escape');
@@ -177,7 +177,7 @@ describe('useSuggestions', () => {
     view.type('a');
 
     // Then
-    expect(view.suggestions.shown()).toEqual([]);
+    expect(view.suggestions.shown()).toEqual(['ant', 'apple', 'avocado']);
   });
 
   it('As a visitor, I type past the active label and back and no label is active', () => {
