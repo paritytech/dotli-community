@@ -6,11 +6,12 @@ import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
 import { prefersReducedMotion } from '@dotli/ui';
 import { ArrowRightIcon } from '@dotli/ui/icons';
+import type { ListboxView, NavKey } from '../../state/navComboboxState.js';
 import { dotUrl, typedName } from './dotUrl.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
 import s from './NavForm.module.css';
 
-const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
+export const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
   empty: 'Enter a name to browse',
   'too-long': 'Names can be at most 63 characters',
   'too-short': 'Names must be at least 2 characters',
@@ -30,6 +31,17 @@ export type NavFormProps = {
    * name lost.
    */
   suffix: Accessor<string | null>;
+  /** The suggestions the input drives as a combobox. Without it the input is a plain text box. */
+  combobox?: NavCombobox | undefined;
+};
+
+export type NavCombobox = {
+  /** The suggestions the input controls, null while none show. */
+  listbox: Accessor<ListboxView | null>;
+  onText: (text: string) => void;
+  onFocus: (focused: boolean) => void;
+  /** Whether the suggestions took the key, so the form prevents its default only then. */
+  onKey: (key: NavKey) => boolean;
 };
 
 /**
@@ -40,6 +52,7 @@ export type NavFormProps = {
 export function NavForm(props: NavFormProps): JSX.Element {
   let input: HTMLInputElement | undefined;
   const [error, setError] = createSignal<string | null>(null);
+  const listbox = (): ListboxView | null => props.combobox?.listbox() ?? null;
 
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
@@ -68,6 +81,21 @@ export function NavForm(props: NavFormProps): JSX.Element {
     window.location.href = dotUrl(name);
   };
 
+  const onKeyDown = (e: KeyboardEvent): void => {
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp':
+      case 'Enter':
+      case 'Escape':
+        if (props.combobox?.onKey(e.key) === true) {
+          e.preventDefault();
+        }
+        return;
+      // Any other key edits the text, which reaches the suggestions through `onInput`.
+      default:
+    }
+  };
+
   return (
     <form onSubmit={onSubmit} id="dotli-nav-form" class={s['form']} autocomplete="off">
       <div class={s['bar']} id="dotli-nav-bar" data-invalid={error() === null ? undefined : ''}>
@@ -75,10 +103,23 @@ export function NavForm(props: NavFormProps): JSX.Element {
           ref={el => {
             input = el;
           }}
-          onInput={() => {
+          onInput={e => {
             setError(null);
             placeholder?.resume();
+            props.combobox?.onText(e.currentTarget.value);
           }}
+          onFocus={() => {
+            props.combobox?.onFocus(true);
+          }}
+          onBlur={() => {
+            props.combobox?.onFocus(false);
+          }}
+          onKeyDown={onKeyDown}
+          role={props.combobox === undefined ? undefined : 'combobox'}
+          aria-autocomplete={props.combobox === undefined ? undefined : 'list'}
+          aria-expanded={props.combobox === undefined ? undefined : listbox() === null ? 'false' : 'true'}
+          aria-controls={listbox()?.id}
+          aria-activedescendant={listbox()?.activeId ?? undefined}
           id="dotli-nav-input"
           class={s['input']}
           type="text"

@@ -4,18 +4,18 @@
 import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, waitFor } from 'storybook/test';
-import { NavForm } from './NavForm.js';
+import { expect, fn, waitFor } from 'storybook/test';
+import { NAME_ERROR_COPY, NavForm, type NavCombobox } from './NavForm.js';
 
 const SUFFIX = '.dot';
 
 /** The form as the page hydrates it: no TLD until the browser knows the visitor's network. */
-function Hydrated(): JSX.Element {
+function Hydrated(props: { combobox?: NavCombobox }): JSX.Element {
   const [suffix, setSuffix] = createSignal<string | null>(null);
   onSettled(() => {
     setSuffix(SUFFIX);
   });
-  return <NavForm suffix={suffix} />;
+  return <NavForm suffix={suffix} combobox={props.combobox} />;
 }
 
 const meta = {
@@ -65,6 +65,36 @@ export const InvalidNameInline: Story = {
       await expect(field).not.toHaveAttribute('aria-describedby');
       await expect(field).toHaveAccessibleDescription('');
       await expect(canvas.getByTestId('story-root').querySelector('[data-invalid]')).toBeNull();
+    });
+  },
+};
+
+/** As a visitor pressing Enter on an empty name while the suggestions leave the key to the form, I see the form's own error. */
+export const EnterLeftToTheForm: Story = {
+  render: () => (
+    <Hydrated
+      combobox={{
+        listbox: () => null,
+        onText: fn(),
+        onFocus: fn(),
+        onKey: fn(() => false),
+      }}
+    />
+  ),
+  play: async ({ canvas, userEvent, step }) => {
+    const field = canvas.getByRole('combobox');
+    await step('When I focus the name input', async () => {
+      await waitFor(() => expect(field).toBeEnabled());
+      await userEvent.click(field);
+    });
+    await step('Then it is a combobox whose suggestions are collapsed', async () => {
+      await expect(field).toHaveAttribute('aria-expanded', 'false');
+    });
+    await step('When I press Enter on the empty name', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step("Then I see the form's own error", async () => {
+      await expect(canvas.getByRole('alert')).toHaveTextContent(NAME_ERROR_COPY.empty);
     });
   },
 };
