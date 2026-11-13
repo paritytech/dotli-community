@@ -27,7 +27,7 @@ const GATEWAY_BANDS: LoadingPhase[] = [
   { label: 'Fetching content', base: 62, target: 95, expectedMs: 10000, stage: 'content' },
 ];
 
-/** The bar's bands on `backend`. The download is always the last. */
+/** The bar's bands on `backend`. */
 export function getLoadingBands(backend: Backend): LoadingPhase[] {
   switch (backend) {
     case 'rpc-gateway':
@@ -38,6 +38,11 @@ export function getLoadingBands(backend: Backend): LoadingPhase[] {
       // Only direct mode relays bitswap through this window, so only it can report a download percentage.
       return getSmoldotBands('Starting', true);
   }
+}
+
+/** Moves the bar to the download's band, which is the last of `bands` on every backend. Never throws. */
+export function moveBarToDownload(bands: readonly LoadingPhase[], bar: Bar): void {
+  bar.advancePhase(bands.length - 1);
 }
 
 /** Moves the light client's bar to a resolver milestone's band. One the bar has no band for leaves it. Never throws. */

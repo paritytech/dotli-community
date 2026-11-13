@@ -14,6 +14,7 @@ import {
   moveBarOnChainSync,
   moveBarOnContentProgress,
   moveBarOnResolvePhase,
+  moveBarToDownload,
 } from './loadingBands.js';
 import type { ResolutionTrace } from './startResolutionTrace.js';
 import {
@@ -110,20 +111,21 @@ type WatchFacts = Pick<StallFacts, 'peers' | 'reason'> & { warned: boolean };
 
 /**
  * One critical chain's stall watch. Every lifecycle event re-arms it, so a chain warns only when it sits in one state
- * past the threshold. A watch's timer warns only while that watch is still the chain's.
+ * past the threshold. A stall timer warns only while it is still the timer of the chain's watch.
  */
 type StallWatch = ({ kind: 'quiet' } & WatchFacts) | ({ kind: 'watching'; timer: unknown } & WatchFacts);
 
+/** A byte total and when it was taken, on the load's clock. */
+type ByteSample = { at: number; total: number };
+
 /**
- * The sampled report of the load's byte totals to the debug panel, on the load's clock. It closes once the product is
- * on screen, or it pushes the load's own events out of the panel's ring buffer.
+ * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
+ * pushes the load's own events out of the panel's ring buffer.
  */
-type ByteTotals =
-  | { kind: 'open'; received: number; sampled: { at: number; total: number } | null; samples: number }
-  | { kind: 'closed' };
+type ByteTotals = { open: boolean; received: number; sampled: ByteSample | null; samples: number };
 
 /** The whole load's throughput over a trailing window. */
-type Throughput = { samples: readonly { at: number; total: number }[]; bytesPerSecond: number | null };
+type Throughput = { samples: readonly ByteSample[]; bytesPerSecond: number | null };
 
 /**
  * A gateway has no chains to follow and leaves the resolver's milestones alone, so only the download moves its bar
@@ -151,7 +153,7 @@ type ProgressEvent =
   | { kind: 'started' }
   | { kind: 'chainSynced'; sync: ChainSyncEvent }
   | { kind: 'chainDetailed'; detail: ChainDetail }
-  | { kind: 'netBytes'; received: number }
+  | { kind: 'netBytes'; received: number; at: number }
   | ({ kind: 'contentProgressed' } & ContentProgressFacts)
   | { kind: 'barStalled' }
   | { kind: 'productLoaded' }
@@ -162,11 +164,24 @@ type ProgressEvent =
   | { kind: 'warningDue'; timer: unknown }
   | { kind: 'disposed' };
 
-/** What the machine decides from its state: a warning to show, a rate it measured, a byte total it sampled. */
+/**
+ * What the load tells its outputs. A `Recorded` effect goes to the resolution trace, and a `Shown` one to the network
+ * monitor, the debug panel and the bar.
+ */
 type ProgressEffect =
-  | { kind: 'warningShown'; message: string }
+  | { kind: 'barOpened' }
+  | { kind: 'chainSyncRecorded'; sync: ChainSyncEvent }
+  | { kind: 'chainSyncShown'; sync: ChainSyncEvent }
+  | { kind: 'chainDetailRecorded'; detail: ChainDetail }
+  | { kind: 'bytesRecorded'; received: number }
+  | { kind: 'byteTotalSampled'; received: number }
   | { kind: 'rateMeasured'; bytesPerSecond: number }
-  | { kind: 'byteTotalSampled'; received: number };
+  | ({ kind: 'contentRecorded' } & ContentProgressFacts)
+  | ({ kind: 'contentShown' } & ContentProgressFacts)
+  | { kind: 'barMovedToPhase'; phase: ResolvePhase }
+  | { kind: 'barHeld' }
+  | { kind: 'barMovedToDownload' }
+  | { kind: 'warningShown'; message: string };
 
 type ProgressMachine = MachineTypes<ProgressState, ProgressEvent, ProgressEffect>;
 
@@ -185,10 +200,12 @@ const STALL_WARNING_MS = 3_000;
  */
 const WARNING_MIN_LOAD_MS = 5_000;
 
+const UNWATCHED: StallWatch = { kind: 'quiet', peers: null, reason: undefined, warned: false };
+
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
- * resolved. Never throws: a throw of the loading screen or of a subscription in `events` is reported, and the load
- * then moves no bar.
+ * resolved. Never throws: a throw of the loading screen or of a subscription in `events` is reported. A load whose
+ * subscription threw opens its bar and moves it no further.
  */
 export function startLoadProgress({
   label,
@@ -201,18 +218,28 @@ export function startLoadProgress({
   now: readClock = readPageClock,
   debugBus = pageDebugBus,
 }: Params) {
-  const phases = getLoadingBands(backend);
+  const bands = getLoadingBands(backend);
   const chainReporter = createChainReporter({ flowId, timers, debugBus });
-  const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (_state, { detail }) => {
-    trace.recordChainDetail(detail);
-    chainReporter.recordDetail(detail);
+  const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (
+    _state,
+    { detail },
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'chainDetailRecorded', detail });
   };
-  const holdBar: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'nameResolved'> = () => {
-    loading.stopStatusTick();
+  const holdBar: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'nameResolved'> = (
+    _state,
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'barHeld' });
   };
-  const enterContentBand: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'contentFetchEntered'> = () => {
-    // The download is always the last band.
-    loading.advancePhase(phases.length - 1);
+  const enterDownload: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'contentFetchEntered'> = (
+    _state,
+    _event,
+    { emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'barMovedToDownload' });
   };
   const stop: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'disposed'> = (
     { stops },
@@ -226,123 +253,95 @@ export function startLoadProgress({
     initial: { kind: 'idle' },
     handlers: {
       idle: {
-        started(_state, _event, { emitState, update }) {
-          loading.initPhases(phases);
-          loading.setLoadingDomain(label);
-          loading.advancePhase(0);
-          const stops: (() => void)[] = [];
-          // A subscription that throws leaves none of the others behind, as the progress then stays idle.
-          try {
-            // Pushed one by one, so each stop is kept before the next subscription can throw. On every backend: a
-            // gateway trace with no chain events is the point, not a gap.
-            stops.push(
+        started(_state, _event, { emitState, emitSideEffect, update }) {
+          emitSideEffect({ kind: 'barOpened' });
+          // On every backend: a gateway trace with no chain events is the point, not a gap.
+          const reports = [
+            () =>
               events.onChainSync(sync => {
                 update({ kind: 'chainSynced', sync });
               }),
-            );
-            stops.push(
+            () =>
               events.onChainDetail(detail => {
                 update({ kind: 'chainDetailed', detail });
               }),
-            );
-            stops.push(
+            () =>
               events.onNetBytes(({ received }) => {
-                update({ kind: 'netBytes', received });
+                update({ kind: 'netBytes', received, at: readClock() });
               }),
-            );
-            stops.push(
+            () =>
               events.onContentProgress(facts => {
                 update({ kind: 'contentProgressed', ...facts });
               }),
-            );
-            if (!hasLightClient(backend)) {
-              emitState({ kind: 'gateway', stops });
-              return;
-            }
-            stops.push(
+          ];
+          if (!hasLightClient(backend)) {
+            emitState({ kind: 'gateway', stops: subscribeEach(reports) });
+            return;
+          }
+          const stops = subscribeEach([
+            ...reports,
+            () =>
               loading.onProgressStall(() => {
                 update({ kind: 'barStalled' });
               }),
-            );
-            stops.push(
+            () =>
               productState.store.listen(product => {
                 if (product.status === 'loaded') {
                   update({ kind: 'productLoaded' });
                 }
               }),
-            );
-          } catch (error) {
-            stopEach(stops);
-            throw error;
-          }
+          ]);
           emitState({
             kind: 'lightClient',
             stops,
             startedAt: readClock(),
             warning: { kind: 'hidden' },
             watches: new Map(),
-            byteTotals: { kind: 'open', received: 0, sampled: null, samples: 0 },
+            byteTotals: { open: true, received: 0, sampled: null, samples: 0 },
             // Seeded with page start, so the first report already has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
         },
       },
       gateway: {
-        chainSynced(_state, { sync }) {
-          trace.recordChainSync(sync);
+        chainSynced(_state, { sync }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'chainSyncRecorded', sync });
         },
         chainDetailed: recordDetail,
-        netBytes(_state, { received }) {
-          trace.recordBytes(received);
+        netBytes(_state, { received }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'bytesRecorded', received });
         },
-        contentProgressed(_state, { bytesFetched, totalBytes }) {
-          trace.recordContent(bytesFetched, totalBytes);
+        contentProgressed(_state, facts, { emitSideEffect }) {
+          emitSideEffect({ ...facts, kind: 'contentRecorded' });
         },
         nameResolved: holdBar,
-        contentFetchEntered: enterContentBand,
+        contentFetchEntered: enterDownload,
         disposed: stop,
       },
       lightClient: {
         chainSynced(state, { sync }, transition) {
-          trace.recordChainSync(sync);
+          // Records before it moves the bar, so the record sees the bar unmoved.
+          transition.emitSideEffect({ kind: 'chainSyncRecorded', sync });
+          transition.emitSideEffect({ kind: 'chainSyncShown', sync });
           watchChain(state, sync, transition);
-          chainReporter.record(sync);
-          moveBarOnChainSync(sync, loading);
         },
         chainDetailed: recordDetail,
-        netBytes(state, { received }, { emitState, emitSideEffect }) {
-          const at = readClock();
+        netBytes(state, { received, at }, { emitState, emitSideEffect }) {
           const throughput = measureThroughput(state.throughput, received, at);
-          const { byteTotals } = state;
-          if (byteTotals.kind === 'closed') {
-            emitState({ ...state, throughput });
-          } else if (
-            byteTotals.samples >= CHAIN_BYTES_DEBUG_MAX ||
-            (byteTotals.sampled !== null &&
-              (received === byteTotals.sampled.total || at - byteTotals.sampled.at < CHAIN_BYTES_DEBUG_MS))
-          ) {
-            emitState({ ...state, throughput, byteTotals: { ...byteTotals, received } });
-          } else {
-            // A new total is sampled a second after the last, up to the cap.
-            const samples = byteTotals.samples + 1;
-            emitState({
-              ...state,
-              throughput,
-              byteTotals: { kind: 'open', received, sampled: { at, total: received }, samples },
-            });
+          const byteTotals = takeByteTotal(state.byteTotals, received, at);
+          emitState({ ...state, throughput, byteTotals });
+          emitSideEffect({ kind: 'bytesRecorded', received });
+          if (byteTotals.sampled !== state.byteTotals.sampled) {
             emitSideEffect({ kind: 'byteTotalSampled', received });
           }
-          trace.recordBytes(received);
           if (throughput.bytesPerSecond !== null) {
             emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
           }
         },
-        contentProgressed(_state, { bytesFetched, totalBytes }) {
+        contentProgressed(_state, facts, { emitSideEffect }) {
           // Records before it moves the bar, so the record sees the bar unmoved.
-          trace.recordContent(bytesFetched, totalBytes);
-          // Every block the sandbox needs passes through this window, measured against the total the DAG root declares.
-          networkMonitorState.recordTransfer({ fetched: bytesFetched, total: totalBytes });
-          moveBarOnContentProgress(bytesFetched, totalBytes, loading);
+          emitSideEffect({ ...facts, kind: 'contentRecorded' });
+          emitSideEffect({ ...facts, kind: 'contentShown' });
         },
         barStalled(state, _event, transition) {
           // A chain whose stall warned names the cause, so a parked bar does not replace its line.
@@ -353,20 +352,20 @@ export function startLoadProgress({
           showWarning(state, message, transition);
         },
         productLoaded(state, _event, { emitState, emitSideEffect }) {
-          const totals = state.byteTotals;
-          if (totals.kind === 'closed') {
+          const { byteTotals } = state;
+          if (!byteTotals.open) {
             return;
           }
-          emitState({ ...state, byteTotals: { kind: 'closed' } });
-          if (totals.received !== totals.sampled?.total) {
-            emitSideEffect({ kind: 'byteTotalSampled', received: totals.received });
+          emitState({ ...state, byteTotals: { ...byteTotals, open: false } });
+          if (byteTotals.received !== byteTotals.sampled?.total) {
+            emitSideEffect({ kind: 'byteTotalSampled', received: byteTotals.received });
           }
         },
-        phaseResolved(_state, { phase }) {
-          moveBarOnResolvePhase(phase, loading);
+        phaseResolved(_state, { phase }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'barMovedToPhase', phase });
         },
         nameResolved: holdBar,
-        contentFetchEntered: enterContentBand,
+        contentFetchEntered: enterDownload,
         stallDue(state, { chain, timer }, transition) {
           const watch = state.watches.get(chain);
           // A timer of a watch since re-armed or quieted warns of nothing.
@@ -394,12 +393,24 @@ export function startLoadProgress({
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'warningShown':
-          trace.markWarningShown();
-          loading.setLoadingWarning(effect.message);
+        case 'barOpened':
+          loading.initPhases(bands);
+          loading.setLoadingDomain(label);
+          loading.advancePhase(0);
           return;
-        case 'rateMeasured':
-          networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
+        case 'chainSyncRecorded':
+          trace.recordChainSync(effect.sync);
+          return;
+        case 'chainSyncShown':
+          chainReporter.record(effect.sync);
+          moveBarOnChainSync(effect.sync, loading);
+          return;
+        case 'chainDetailRecorded':
+          trace.recordChainDetail(effect.detail);
+          chainReporter.recordDetail(effect.detail);
+          return;
+        case 'bytesRecorded':
+          trace.recordBytes(effect.received);
           return;
         case 'byteTotalSampled':
           debugBus.emit({
@@ -409,6 +420,30 @@ export function startLoadProgress({
             timestamp: timers.now(),
             payload: { received: effect.received },
           });
+          return;
+        case 'rateMeasured':
+          networkMonitorState.recordTransfer({ bytesPerSecond: effect.bytesPerSecond });
+          return;
+        case 'contentRecorded':
+          trace.recordContent(effect.bytesFetched, effect.totalBytes);
+          return;
+        case 'contentShown':
+          // Every block the sandbox needs passes through this window, measured against the total the DAG root declares.
+          networkMonitorState.recordTransfer({ fetched: effect.bytesFetched, total: effect.totalBytes });
+          moveBarOnContentProgress(effect.bytesFetched, effect.totalBytes, loading);
+          return;
+        case 'barMovedToPhase':
+          moveBarOnResolvePhase(effect.phase, loading);
+          return;
+        case 'barHeld':
+          loading.stopStatusTick();
+          return;
+        case 'barMovedToDownload':
+          moveBarToDownload(bands, loading);
+          return;
+        case 'warningShown':
+          trace.markWarningShown();
+          loading.setLoadingWarning(effect.message);
           return;
       }
     },
@@ -464,12 +499,7 @@ export function startLoadProgress({
     if (!isCriticalChain(chain)) {
       return;
     }
-    const watch: StallWatch = state.watches.get(chain) ?? {
-      kind: 'quiet',
-      peers: null,
-      reason: undefined,
-      warned: false,
-    };
+    const watch = state.watches.get(chain) ?? UNWATCHED;
     // A health sample arrives every second, so it never re-arms the watch, or a stalled chain would never warn.
     if (sync.kind === 'peers') {
       if (sync.peers !== undefined) {
@@ -483,19 +513,20 @@ export function startLoadProgress({
       // A chain that stalls or reconnects again has not recovered, so its line stays until its watch words it afresh.
       warned: watch.warned && (sync.kind === 'stalled' || sync.kind === 'connecting'),
     };
-    let next: StallWatch = { kind: 'quiet', ...facts };
-    if (sync.kind !== 'bootstrapComplete') {
-      const timer = timers.setTimeout(() => {
-        transition.update({ kind: 'stallDue', chain, timer });
-      }, STALL_WARNING_MS);
-      next = { kind: 'watching', timer, ...facts };
-    }
-    const watched = withWatch(state, chain, next);
-    if (!watch.warned || facts.warned || hasWarnedWatch(watched.watches)) {
+    // A chain whose boot completed has nothing left to stall on.
+    const watched = withWatch(
+      state,
+      chain,
+      sync.kind === 'bootstrapComplete'
+        ? { kind: 'quiet', ...facts }
+        : { kind: 'watching', timer: startStallTimer(chain, transition), ...facts },
+    );
+    const recovered = watch.warned && !facts.warned && !hasWarnedWatch(watched.watches);
+    if (!recovered) {
       transition.emitState(watched);
       return;
     }
-    // Recovered. A parked line was never seen, so it goes.
+    // A parked line was never seen, so it goes.
     if (state.warning.kind === 'pending') {
       transition.emitState({ ...watched, warning: { kind: 'hidden' } });
       return;
@@ -503,6 +534,15 @@ export function startLoadProgress({
     // Hiding the shown row would flash it, so fall back to the general slow-load line. It is past the minimum load age
     // already.
     revealWarning(watched, describeProgressStall(state.throughput.bytesPerSecond) ?? STILL_WORKING, transition);
+  }
+
+  /** Starts `chain`'s stall timer and returns it as the token its watch keeps. */
+  function startStallTimer(chain: CriticalChain, { update }: Transition<ProgressMachine>): unknown {
+    // The token is the timer, not the watch: a peer sample replaces the watch and must keep its timer running.
+    const timer = timers.setTimeout(() => {
+      update({ kind: 'stallDue', chain, timer });
+    }, STALL_WARNING_MS);
+    return timer;
   }
 
   /** Shows `message` as the slow-load warning, or parks it until the load is old enough to be slow. */
@@ -534,6 +574,24 @@ export function startLoadProgress({
   }
 }
 
+/**
+ * Takes each subscription in order and returns their stops.
+ *
+ * @throws What a subscription throws, once the stops of those before it have run.
+ */
+function subscribeEach(subscriptions: readonly (() => () => void)[]): (() => void)[] {
+  const stops: (() => void)[] = [];
+  try {
+    for (const subscribe of subscriptions) {
+      stops.push(subscribe());
+    }
+  } catch (error) {
+    stopEach(stops);
+    throw error;
+  }
+  return stops;
+}
+
 /** Calls every stop, so one that throws is reported and leaves none of the others listening. */
 function stopEach(stops: readonly (() => void)[]): void {
   for (const stopListening of stops) {
@@ -557,6 +615,24 @@ function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWa
 /** Returns whether a critical chain's stall gave the warning. */
 function hasWarnedWatch(watches: LightClientState['watches']): boolean {
   return [...watches.values()].some(watch => watch.warned);
+}
+
+/**
+ * Takes `received`, the load's byte total, at `at` into the sampled report. While the report is open, a new total is
+ * sampled a second after the last one, up to the cap.
+ */
+function takeByteTotal(totals: ByteTotals, received: number, at: number): ByteTotals {
+  if (!totals.open) {
+    return totals;
+  }
+  const { sampled, samples } = totals;
+  const due =
+    samples < CHAIN_BYTES_DEBUG_MAX &&
+    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS));
+  if (!due) {
+    return { ...totals, received };
+  }
+  return { open: true, received, sampled: { at, total: received }, samples: samples + 1 };
 }
 
 /**
