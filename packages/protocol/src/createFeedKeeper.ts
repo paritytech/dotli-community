@@ -91,7 +91,7 @@ type FeedEvent<T> =
 
 type FeedEffect =
   | { kind: 'ask'; ask: symbol }
-  | { kind: 'release'; reopen: Reopen }
+  | { kind: 'release'; stop: () => void }
   | { kind: 'reportEnd'; error: Error | null; capture: boolean }
   | { kind: 'reportAskFailure'; error: unknown };
 
@@ -125,51 +125,30 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     }
   }
 
+  /** Holds the feed on `transport`, on a hold of its own. An opener that throws holds nothing. */
+  function holdTransport(transport: T, update: Transition<FeedMachine<T>>['update']): Hold<T> {
+    const id = Symbol(`${feed} hold`);
+    return { id, transport, reopen: openFeed(id, { open: opener(transport), failures: 0 }, update) };
+  }
+
+  /** Asks for the transport of the frame there is now, keeping `hold` while the ask is out. */
+  function askTransport(hold: Hold<T> | null, { emitState, emitSideEffect }: Transition<FeedMachine<T>>): void {
+    const ask = Symbol(`${feed} ask`);
+    emitState(hold === null ? { kind: 'asking', ask } : { kind: 'reasking', hold, ask });
+    emitSideEffect({ kind: 'ask', ask });
+  }
+
   // A new frame relays nothing to a feed held on the one it replaces. A frame that starts listening may have replaced a
   // held one.
   const followFrame: HandlerOf<FeedMachine<T>, 'waiting' | 'asking' | 'holding' | 'reasking', 'statusChanged'> = (
     state,
     { status },
-    { emitState, emitSideEffect },
+    transition,
   ) => {
     if (status !== 'booting' && status !== 'listening') {
       return;
     }
-    const ask = Symbol(`${feed} ask`);
-    switch (state.kind) {
-      case 'waiting':
-      case 'asking':
-        emitState({ kind: 'asking', ask });
-        break;
-      case 'holding':
-      case 'reasking':
-        emitState({ kind: 'reasking', hold: state.hold, ask });
-        break;
-    }
-    emitSideEffect({ kind: 'ask', ask });
-  };
-
-  // An answer that a later ask overtook finds another token and is dropped. A feed that already holds the transport it
-  // gets is left as it is. An opener that throws leaves the state as it was.
-  const takeTransport: HandlerOf<FeedMachine<T>, 'asking' | 'reasking', 'transportAnswered'> = (
-    state,
-    { ask, transport },
-    { emitState, emitSideEffect, update },
-  ) => {
-    if (ask !== state.ask) {
-      return;
-    }
-    if (state.kind === 'reasking' && state.hold.transport === transport) {
-      emitState({ kind: 'holding', hold: state.hold });
-      return;
-    }
-    const id = Symbol(`${feed} hold`);
-    const reopen = openFeed(id, { open: opener(transport), failures: 0 }, update);
-    emitState({ kind: 'holding', hold: { id, transport, reopen } });
-    // The old hold's late events carry its own id and find nothing, so the brief overlap is safe.
-    if (state.kind === 'reasking') {
-      emitSideEffect({ kind: 'release', reopen: state.hold.reopen });
-    }
+    askTransport('hold' in state ? state.hold : null, transition);
   };
 
   // A failure that a later ask overtook finds another token and is dropped.
@@ -207,7 +186,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'stopped' });
-    emitSideEffect({ kind: 'release', reopen: hold.reopen });
+    emitSideEffect({ kind: 'release', stop: hold.reopen.stop });
   };
 
   const handleReopen = nest<FeedMachine<T>, 'holding' | 'reasking', ReopenMachine<T>, 'feedEnded' | 'reopenDue'>({
@@ -245,14 +224,12 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
     initial: { kind: 'stopped' },
     handlers: {
       stopped: {
-        followed(_state, { status }, { emitState, emitSideEffect }) {
+        followed(_state, { status }, transition) {
           if (!boots && !hasFrame(status)) {
-            emitState({ kind: 'waiting' });
+            transition.emitState({ kind: 'waiting' });
             return;
           }
-          const ask = Symbol(`${feed} ask`);
-          emitState({ kind: 'asking', ask });
-          emitSideEffect({ kind: 'ask', ask });
+          askTransport(null, transition);
         },
       },
       waiting: {
@@ -261,7 +238,14 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
       },
       asking: {
         statusChanged: followFrame,
-        transportAnswered: takeTransport,
+        // An answer that a later ask overtook finds another token and is dropped. An opener that throws leaves the
+        // state as it was.
+        transportAnswered(state, { ask, transport }, { emitState, update }) {
+          if (ask !== state.ask) {
+            return;
+          }
+          emitState({ kind: 'holding', hold: holdTransport(transport, update) });
+        },
         askFailed: failAsk,
         stopped: dropAsk,
       },
@@ -274,7 +258,19 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
       },
       reasking: {
         statusChanged: followFrame,
-        transportAnswered: takeTransport,
+        // A feed that already holds the transport it gets is left as it is.
+        transportAnswered({ ask: current, hold }, { ask, transport }, { emitState, emitSideEffect, update }) {
+          if (ask !== current) {
+            return;
+          }
+          if (hold.transport === transport) {
+            emitState({ kind: 'holding', hold });
+            return;
+          }
+          emitState({ kind: 'holding', hold: holdTransport(transport, update) });
+          // The old hold's late events carry its own id and find nothing, so the brief overlap is safe.
+          emitSideEffect({ kind: 'release', stop: hold.reopen.stop });
+        },
         askFailed: failAsk,
         feedEnded: handleReopen,
         reopenDue: handleReopen,
@@ -324,7 +320,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
         return;
       }
       case 'release':
-        effect.reopen.stop();
+        effect.stop();
         return;
       case 'reportEnd':
         reportFeedEnd({ feed, error: effect.error, capture: effect.capture });

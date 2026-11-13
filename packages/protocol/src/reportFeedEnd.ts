@@ -3,7 +3,6 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import { getErrorName, log, setErrorName } from '@dotli/shared';
-import type { FeedName } from './createFeedKeeper.js';
 
 const report = createReporter({ flow: 'protocol' });
 
@@ -14,7 +13,8 @@ const report = createReporter({ flow: 'protocol' });
 const protocolFeedEndMetric = defineCount<'error'>('protocol.feed_end');
 
 type Params = {
-  feed: FeedName;
+  /** The feed's name, for its tags. */
+  feed: string;
   /** What the frame ended the feed with, or `null` for an end without an error. */
   error: Error | null;
   /** Whether this end may be captured. */
