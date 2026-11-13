@@ -155,7 +155,7 @@ type BootedParts = CoreParts & { booted: BootedCoreRuntime; stopFollowing: () =>
 type Core =
   | (CoreParts & {
       kind: 'booting';
-      /** Aborted as the core leaves before it booted, which cancels the boot and its redial. */
+      /** Aborted as the core leaves before it booted, so its redial starts no further attempt. */
       dropped: AbortController;
       waiting: ReadonlyMap<symbol, Reply<CoreLease>>;
       /** Whether the page cancelled pairing while the core booted, so a pairing core cancels it once booted. */
@@ -272,7 +272,7 @@ export function createPageCore({
         },
         booted(state, { coreId, booted }, { emitState, emitSideEffect, update }) {
           const core = state.cores.get(coreId);
-          // A core dropped after its boot resolved holds no runtime, so the runtime this event carries goes.
+          // A core dropped while it booted holds no runtime, so the runtime this event carries goes.
           if (core?.kind !== 'booting') {
             emitSideEffect({ kind: 'orphaned', runtime: booted.runtime });
             return;
@@ -541,18 +541,22 @@ export function createPageCore({
       isInService: () => (machine.state.get().cores.get(id)?.kind ?? 'down') !== 'down',
       sessionInMemory: false,
     };
+    /**
+     * Resolves with the event that ends the boot. Rejects when the boot fails. A redial dropped before an attempt
+     * starts boots nothing, and an attempt already running ends in its event, which hands its runtime to the machine.
+     */
+    async function boot(): Promise<PageCoreEvent> {
+      if (dropped.signal.aborted) {
+        return { kind: 'bootFailed', coreId: id, error: dropped.signal.reason };
+      }
+      return { kind: 'booted', coreId: id, booted: await bootRuntime(context) };
+    }
     transition.update(
-      new Promise<PageCoreEvent>(resolve => {
-        // A booted runtime is told as the boot ends, since a drop just after rejects the redial pool's call without it.
-        function boot(): Promise<void> {
-          return bootCore(context, dropped.signal).then(booted => {
-            resolve({ kind: 'booted', coreId: id, booted });
-          });
-        }
-        (redial === undefined ? boot() : redials.call(boot, { signal: dropped.signal })).catch((error: unknown) => {
-          resolve({ kind: 'bootFailed', coreId: id, error });
-        });
-      }),
+      (redial === undefined ? boot() : redials.call(boot)).catch((error: unknown): PageCoreEvent => ({
+        kind: 'bootFailed',
+        coreId: id,
+        error,
+      })),
     );
     transition.emitSideEffect({ kind: 'dialed', product, redial });
     const previous = getCurrentCore(state);
@@ -571,20 +575,6 @@ export function createPageCore({
       },
     );
     return previous === null ? next : dropIfUnheld(next, previous, transition);
-  }
-
-  /**
-   * Resolves with the booted runtime. Rejects when the boot fails, or when the core was dropped while it booted, after
-   * disposing the runtime.
-   */
-  async function bootCore(context: CoreContext, dropped: AbortSignal): Promise<BootedCoreRuntime> {
-    const booted = await bootRuntime(context);
-    // A boot that ends after the drop has no core left to take its runtime.
-    if (dropped.aborted) {
-      booted.runtime.dispose();
-      throw dropped.reason;
-    }
-    return booted;
   }
 
   /** Returns `state` without `core` when nothing holds it. A redial dropped before it booted is counted as aborted. */
