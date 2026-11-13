@@ -36,11 +36,21 @@ export function useSuggestions({ input, labels, suffix, combobox, open }: Params
     const { text, focused } = input();
     return focused && text !== escapedAt() ? matches() : [];
   });
-  const [chosen, setChosen] = createSignal<string | null>(null);
-  const active = createMemo(() => {
-    const label = chosen();
-    return label !== null && shown().includes(label) ? label : null;
+  // Counts the text's changes, so a label chosen at one text never comes back when the text returns to it.
+  const textRevision = createMemo<{ text: string; revision: number } | undefined>(previous => {
+    const { text } = input();
+    return { text, revision: (previous?.revision ?? 0) + (previous === undefined || text === previous.text ? 0 : 1) };
   });
+  const [chosen, setChosen] = createSignal<{ label: string; revision: number } | null>(null);
+  const active = createMemo(() => {
+    const pick = chosen();
+    return pick !== null && pick.revision === (textRevision()?.revision ?? 0) && shown().includes(pick.label)
+      ? pick.label
+      : null;
+  });
+  function choose(label: string | undefined): void {
+    setChosen(label === undefined ? null : { label, revision: textRevision()?.revision ?? 0 });
+  }
 
   createEffect(
     () => {
@@ -67,10 +77,10 @@ export function useSuggestions({ input, labels, suffix, combobox, open }: Params
     const index = label === null ? -1 : list.indexOf(label);
     switch (key) {
       case 'ArrowDown':
-        setChosen(list[(index + 1) % list.length] ?? null);
+        choose(list[(index + 1) % list.length]);
         return true;
       case 'ArrowUp':
-        setChosen(list[index <= 0 ? list.length - 1 : index - 1] ?? null);
+        choose(list[index <= 0 ? list.length - 1 : index - 1]);
         return true;
       case 'Enter':
         if (label === null) {
@@ -80,6 +90,7 @@ export function useSuggestions({ input, labels, suffix, combobox, open }: Params
         return true;
       case 'Escape':
         setEscapedAt(input().text);
+        setChosen(null);
         return true;
     }
   }

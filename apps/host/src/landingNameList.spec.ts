@@ -85,10 +85,10 @@ describe('landing name list', () => {
     // Then
     expect(events).toEqual([
       'labels ',
-      'labels alpha',
       'saved alpha',
-      'labels alpha,gamma',
+      'labels alpha',
       'saved alpha,gamma',
+      'labels alpha,gamma',
       'released',
     ]);
   });

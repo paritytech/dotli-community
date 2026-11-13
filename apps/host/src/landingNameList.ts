@@ -97,8 +97,9 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
         reads,
         now,
         save: async record => {
-          labels.set(record.apps);
+          // Saved first, so a `labels` listener that throws never loses the chunk.
           await store.set(record);
+          labels.set(record.apps);
         },
       });
       nameListSyncMetric.count({ outcome: 'ok' });

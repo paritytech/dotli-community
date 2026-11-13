@@ -179,6 +179,19 @@ describe('useSuggestions', () => {
     expect(view.suggestions.shown()).toEqual([]);
   });
 
+  it('As a visitor, I type past the active label and back and no label is active', () => {
+    // Given "apple" active at "ap"
+    const view = mount('ap');
+    view.press('ArrowDown');
+
+    // When the text moves past it and returns
+    view.type('apx');
+    view.type('ap');
+
+    // Then
+    expect(view.suggestions.active()).toBeNull();
+  });
+
   it('As a visitor, I type past the active label and it is dropped', () => {
     // Given "ant" active
     const view = mount('a');
