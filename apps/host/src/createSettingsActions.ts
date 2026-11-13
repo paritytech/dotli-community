@@ -22,7 +22,7 @@ const uiReport = createReporter({ flow: 'ui' });
 /**
  * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
  * screen's backend switch. Tagged `outcome` and, on error, `reason` (the step that failed: `wipe`, `cid_cache`,
- * `block_cache` or `pending_reset`, or the error's name for a step that threw), as the reload follows either way.
+ * `block_cache` or `pending_reset`, or `fault` for a step that threw), as the reload follows either way.
  */
 const settingsApplyMetric = defineCount<'error' | 'ok'>('settings.apply');
 
@@ -91,40 +91,37 @@ export function createSettingsActions({
 
   async function apply({ next, prior, forceFullWipe }: ApplyParams): Promise<void> {
     const failed: ApplyStep[] = [];
-    /** `expected` is the environment failure this step caught, left as a breadcrumb and a warning beside its count. */
-    function fail(step: ApplyStep, expected?: { error: unknown; message: string }): void {
+    /** Counts a step that failed and reported its failure itself. */
+    function countFailure(step: ApplyStep): void {
       failed.push(step);
-      if (expected === undefined) {
-        settingsApplyMetric.count({ outcome: 'error', reason: step });
-        return;
-      }
-      storageReport.expected(expected.error, {
-        step: 'settings_apply',
-        metric: settingsApplyMetric,
-        reason: step,
-        message: expected.message,
-      });
+      settingsApplyMetric.count({ outcome: 'error', reason: step });
     }
 
     if (forceFullWipe) {
       if ((await wipeOrigin()).length > 0) {
-        fail('wipe');
+        countFailure('wipe');
       }
       save(next);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         schedulePendingReset(['protocol', 'sandbox']);
       } catch (error: unknown) {
+        failed.push('pending_reset');
         // No session storage, as in a private window, is the browser's limit rather than a fault.
-        fail('pending_reset', { error, message: '[dot.li settings] purge request not stored:' });
+        storageReport.expected(error, {
+          step: 'settings_apply',
+          metric: settingsApplyMetric,
+          reason: 'pending_reset',
+          message: '[dot.li settings] purge request not stored:',
+        });
       }
     } else {
       save(next);
       if (next.cache.skipCidCache && !prior.cache.skipCidCache && !(await clearCidCache())) {
-        fail('cid_cache');
+        countFailure('cid_cache');
       }
       if (next.cache.skipArchiveCache && !prior.cache.skipArchiveCache && !(await clearBlockCache())) {
-        fail('block_cache');
+        countFailure('block_cache');
       }
     }
 

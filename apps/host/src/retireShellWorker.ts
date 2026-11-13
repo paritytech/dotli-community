@@ -36,18 +36,9 @@ export function retireShellWorker({ scope, caches, logError = logToConsole }: Re
   });
 
   scope.addEventListener('activate', event => {
-    event.waitUntil(retire());
+    // Unregistering first, so a reloaded tab loads from the network with no worker in control.
+    event.waitUntil(Promise.all([deletePrecache(), unregisterWorker().then(reloadTabs)]));
   });
-
-  async function retire(): Promise<void> {
-    await Promise.all([deletePrecache(), unregisterThenReload()]);
-  }
-
-  // Unregistering first, so a reloaded tab loads from the network with no worker in control.
-  async function unregisterThenReload(): Promise<void> {
-    await unregisterWorker();
-    await reloadTabs();
-  }
 
   async function unregisterWorker(): Promise<void> {
     try {

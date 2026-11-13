@@ -3,12 +3,12 @@
 
 import { getSharedChannel, type SharedChannel } from './runtime/sharedMode.js';
 import { createRecentLabels, type RecentLabels } from './createRecentLabels.js';
-import { pageRecentMirror, type RecentMirror } from './createStorageMirror.js';
+import type { RecentMirror } from './createStorageMirror.js';
 
 type Params = {
   /** Returns the store every subdomain shares, read on the first use. */
   channel: () => SharedChannel;
-  /** This origin's copy, the page's local storage by default. */
+  /** This origin's copy, handed to the list. */
   mirror?: RecentMirror | undefined;
 };
 
@@ -16,7 +16,7 @@ type Params = {
  * Returns one list for the page, built on first use, so every change on the page queues behind the one before. The
  * returned getter throws only as `channel` does.
  */
-export function createLazyRecentLabels({ channel, mirror = pageRecentMirror }: Params): () => RecentLabels {
+export function createLazyRecentLabels({ channel, mirror }: Params): () => RecentLabels {
   let recents: RecentLabels | null = null;
 
   function getRecentLabels(): RecentLabels {

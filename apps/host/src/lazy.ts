@@ -31,14 +31,13 @@ type HostRuntimeChunk = {
 /** `qrcode` is CommonJS, so its dynamic import also carries the whole module as `default`. */
 type QrCodeModule = typeof QrCodeNamespace & { default: typeof QrCodeNamespace };
 
-export type DebugPanelHostModule = typeof DebugPanelHostNamespace;
 export type ChatPanelModule = typeof ChatPanelNamespace;
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
 export type PhraseScreenModule = typeof PhraseScreenNamespace;
 
 /** The page as the debug panel reads it. Rejects when its chunk fails to load. */
-export function loadDebugPanelHost(): Promise<DebugPanelHostModule> {
-  return import('./debugPanelHost.js');
+export async function loadDebugPanelHost(): Promise<typeof DebugPanelHostNamespace.debugPanelHost> {
+  return (await import('./debugPanelHost.js')).debugPanelHost;
 }
 
 /**

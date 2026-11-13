@@ -49,12 +49,12 @@ const KEY = 'dotli:journey';
  */
 export function beginAttempt(label: string, params: JourneyParams = pageJourney): Attempt {
   const entry = params.takeContinuation() ?? getNavigationEntry(params.navigationType());
-  const stored = readJourney(params);
+  const stored = readJourney(params.session);
   const journey: StoredJourney =
     stored?.label === label
       ? { ...stored, attempts: stored.attempts + 1 }
       : { id: createRandomId(), label, attempts: 1 };
-  writeJourney(params, journey);
+  params.session.setItem(KEY, JSON.stringify(journey));
   return { journeyId: journey.id, attemptNumber: journey.attempts, entry };
 }
 
@@ -63,8 +63,8 @@ export function endJourney(params: JourneyParams = pageJourney): void {
   params.session.removeItem(KEY);
 }
 
-function readJourney(params: JourneyParams): StoredJourney | null {
-  const raw = params.session.getItem(KEY);
+function readJourney(session: JourneyParams['session']): StoredJourney | null {
+  const raw = session.getItem(KEY);
   if (raw === null) {
     return null;
   }
@@ -85,10 +85,6 @@ function readJourney(params: JourneyParams): StoredJourney | null {
   return { id, label, attempts };
 }
 
-function writeJourney(params: JourneyParams, journey: StoredJourney): void {
-  params.session.setItem(KEY, JSON.stringify(journey));
-}
-
 function getNavigationEntry(type: NavigationTimingType | undefined): AttemptEntry {
   // Not a `switch`: a browser may report a type the DOM types leave out, such as `prerender`, which is a navigation.
   if (type === 'reload') {
@@ -99,6 +95,7 @@ function getNavigationEntry(type: NavigationTimingType | undefined): AttemptEntr
 
 function readNavigationType(): NavigationTimingType | undefined {
   const [entry] = performance.getEntriesByType('navigation');
+  // A runtime with no navigation entry may not define the class either.
   if (entry === undefined) {
     return undefined;
   }

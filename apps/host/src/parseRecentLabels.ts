@@ -4,7 +4,9 @@
 // The recent list's stored form, the same in every store that holds it.
 
 import { isValidDotLabel } from '@dotli/resolver';
-import { MAX_RECENT } from './maxRecent.js';
+
+/** The most names the recent list keeps. */
+const MAX_RECENT = 8;
 
 /** Returns the usable labels of a stored list, dropping anything else and cut to the most it keeps. Never throws. */
 export function parseRecentLabels(raw: string | null): string[] {

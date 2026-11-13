@@ -9,7 +9,6 @@ import { createAsyncTaskPool } from '@dotli/shared';
 import { isValidDotLabel } from '@dotli/resolver';
 import type { SharedChannel } from './runtime/sharedMode.js';
 import { pageRecentMirror, type RecentMirror } from './createStorageMirror.js';
-import { MAX_RECENT } from './maxRecent.js';
 import { parseRecentLabels, serializeRecentLabels } from './parseRecentLabels.js';
 import { RECENT_KEY } from './recentKey.js';
 
@@ -22,34 +21,19 @@ const report = createReporter({ flow: 'storage' });
 const recentLabelsUpdateMetric = defineCount<'error'>('recent_labels.update');
 
 /** The recently visited names, over one shared store. */
-export type RecentLabels = {
-  /**
-   * Resolves the list, newest first. An absent shared key is seeded from the mirror, so an upgrading device keeps its
-   * list. Rejects only as the mirror does.
-   */
-  load: () => Promise<string[]>;
-  /**
-   * Puts `label` first on the list, and ignores a label that is not a valid dot label. Only call this after a
-   * successful resolution. Rejects only as the mirror does.
-   */
-  record: (label: string) => Promise<void>;
-  /** Takes `label` off the list. Rejects only as the mirror does. */
-  forget: (label: string) => Promise<void>;
-};
-
-/** A closed set, so the metric's `reason` tag stays bounded. */
-type SharedFailure = 'read' | 'write' | 'migrate';
+export type RecentLabels = ReturnType<typeof createRecentLabels>;
 
 type Params = {
   /** The store every subdomain shares. */
-  channel: SharedChannel;
+  channel: Pick<SharedChannel, 'read' | 'write'>;
   /** This origin's copy, the page's local storage by default. */
   mirror?: RecentMirror | undefined;
 };
 
 type ReportSharedFailureParams = {
   error: unknown;
-  reason: SharedFailure;
+  /** A closed set, so the metric's `reason` tag stays bounded. */
+  reason: 'read' | 'write' | 'migrate';
   message: string;
 };
 
@@ -57,7 +41,7 @@ type ReportSharedFailureParams = {
  * Builds the list over `channel`, mirrored in `mirror`. A shared store failure is reported, and the mirror carries the
  * list meanwhile. Never throws.
  */
-export function createRecentLabels({ channel, mirror = pageRecentMirror }: Params): RecentLabels {
+export function createRecentLabels({ channel, mirror = pageRecentMirror }: Params) {
   // Each update reads, changes and writes the whole list, so two at once would drop one of them.
   const updates = createAsyncTaskPool({ poolSize: 1 });
 
@@ -95,13 +79,17 @@ export function createRecentLabels({ channel, mirror = pageRecentMirror }: Param
           await channel.write(RECENT_KEY, serializeRecentLabels(labels));
         }
       } catch (error: unknown) {
-        reportSharedFailure({ error, reason: 'migrate', message: '[dot.li recent] Migration write failed:' });
+        reportSharedFailure({ error, reason: 'migrate', message: '[dot.li recent] Migration failed:' });
       }
     });
   }
 
   return {
-    async load() {
+    /**
+     * Resolves the list, newest first. An absent shared key is seeded from the mirror, so an upgrading device keeps its
+     * list. Rejects only as the mirror does.
+     */
+    async load(): Promise<string[]> {
       let raw: string | null;
       try {
         raw = await channel.read(RECENT_KEY);
@@ -126,18 +114,19 @@ export function createRecentLabels({ channel, mirror = pageRecentMirror }: Param
       mirror.write(labels);
       return labels;
     },
-    async record(label) {
+    /**
+     * Puts `label` first on the list, and ignores a label that is not a valid dot label. Only call this after a
+     * successful resolution. Rejects only as the mirror does.
+     */
+    async record(label: string): Promise<void> {
       if (!isValidDotLabel(label)) {
         return;
       }
-      await update(labels => addRecentLabel(labels, label));
+      await update(labels => [label, ...labels.filter(l => l !== label)]);
     },
-    forget: label => update(labels => labels.filter(l => l !== label)),
+    /** Takes `label` off the list. Rejects only as the mirror does. */
+    forget: (label: string): Promise<void> => update(labels => labels.filter(l => l !== label)),
   };
-}
-
-function addRecentLabel(labels: string[], label: string): string[] {
-  return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
 }
 
 // An unreachable shared store is the environment's failure, and the mirror carries the list meanwhile.

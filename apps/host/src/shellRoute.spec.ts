@@ -129,6 +129,16 @@ describe('readShellRoute', () => {
     expect(bare).toEqual({ kind: 'landing' });
   });
 
+  it('As a visitor on the deployed domain, I open a product subdomain and get that product, while its sandbox gets none', () => {
+    // When
+    const product = readShellRoute(toLocation(`https://doom.${BASE_DOMAIN}/`), RELEASE);
+    const sandbox = readShellRoute(toLocation(`https://bafy.app.${BASE_DOMAIN}/`), RELEASE);
+
+    // Then
+    expect(product).toEqual({ kind: 'product', label: 'doom', base: '' });
+    expect(sandbox).toEqual({ kind: 'landing' });
+  });
+
   it('As a developer previewing a web container on localhost, I ask for a product id and get the preview with it', () => {
     // When
     const route = readShellRoute(toPreviewLocation(PREVIEW, '&dotliProductId=localhost%3A3000'), LOCAL_DEBUG);
@@ -166,6 +176,22 @@ describe('readShellRoute', () => {
       productId: undefined,
     });
     expect(release).toEqual({ kind: 'landing' });
+  });
+
+  it('As a developer, I open a path that only starts with localhost and it is read as a name, not proxied', () => {
+    // When
+    const route = readShellRoute(toLocation('http://localhost:5173/localhost.evil.com/x'), LOCAL_DEBUG);
+
+    // Then
+    expect(route).toEqual({ kind: 'product', label: 'localhost.evil.com', base: '/localhost.evil.com' });
+  });
+
+  it('As a developer, I open a localhost path with a port no URL can carry and get no product rather than a failed boot', () => {
+    // When
+    const route = readShellRoute(toLocation('http://localhost:5173/localhost:99999/'), LOCAL_DEBUG);
+
+    // Then
+    expect(route).toEqual({ kind: 'landing' });
   });
 
   it('As a developer, I pass a product id that names no product and it is ignored', () => {

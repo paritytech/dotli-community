@@ -18,7 +18,6 @@ import { getDefaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Ne
 import { createReporter } from '@dotli/metrics';
 import { createDeferred, listen, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
-import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
 import { getOpenerParty, type OpenerParty } from './runtime/sessionHandoff/openerRule.js';
 import type { PageRole } from './runtime/pageRole.js';
@@ -57,12 +56,20 @@ import { authState } from './runtime/state/authState.js';
 import { getWindowSettings } from './getWindowSettings.js';
 import { sessionWindowState } from './state/sessionWindowState.js';
 import { startPage } from './startPage.js';
-import { startHost, type StartHostParams } from './startHost.js';
+import { startHost } from './startHost.js';
 import { reportBootFailure } from './reportBootFailure.js';
 import { SITE_ROUTE_METRICS } from './runtime/siteSignIn/siteRouteMetrics.js';
 
 const bootReport = createReporter({ flow: 'boot' });
 const walletReport = createReporter({ flow: 'wallet' });
+
+// One per page, so the suffix list loads at most once, and only for a site that asks for a group.
+const siteGroups = createSiteGroups({ listUrl: publicSuffixListUrl, fetch: pageFetch });
+
+/** The page's `fetch`, wrapped, since it throws when called as a method of another object. */
+function pageFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, init);
+}
 
 type OpenFlowParams = {
   responder: Responder<unknown>;
@@ -73,8 +80,6 @@ type OpenFlowParams = {
 type GetSiteWindowParamsParams = {
   responder: Responder<unknown>;
   round: Extract<SignInRound<HostBridge>, { party: 'third' | 'third-sign' }>;
-  /** The product account the window's core serves as, or `null` for dot.li's own. */
-  account: ProductAccountId | null;
   /** Closes the window once the round is done. */
   close: () => void;
 };
@@ -103,24 +108,26 @@ type RunSignOutParams = {
   enabled: readonly Network[];
 } & Pick<WindowSignOutParams, 'notified' | 'read' | 'firstParty'>;
 
-/** The sign-in window restores and pairs, while the sign-out window ends the stored session on a core of its own. */
-function getWindowHostParams(
+/**
+ * Boots the window's core on its request's network when this deployment runs it, else on the default. The sign-in
+ * window restores and pairs, while the sign-out window ends the stored session on a core of its own. Rejects as
+ * `startHost` does.
+ */
+function startWindowHost(
   role: Extract<PageRole, 'signin-window' | 'signout-window'>,
-  network: Network,
-): Omit<StartHostParams, 'bootFlowId'> {
-  return {
+  taken: SessionRequest,
+  enabled: readonly Network[],
+): ReturnType<typeof startHost> {
+  const network = enabled.find(candidate => candidate === taken.network) ?? getDefaultNetwork();
+  return startHost({
+    bootFlowId: createRandomId(),
     role,
     settings: getWindowSettings({
       network,
       local: pageLocalStorage,
       sharedWorkerAvailable: isSharedWorkerAvailable(),
     }),
-  };
-}
-
-/** The network a window boots on: its request's when this deployment runs it, else the default. */
-function bootNetwork(request: SessionRequest, enabled: readonly Network[]): Network {
-  return enabled.find(network => network === request.network) ?? getDefaultNetwork();
+  });
 }
 
 /** The party of a hello's origin, dot.li's own page or a site, or why it has none. */
@@ -175,10 +182,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
 
 /** Boots the sign-out window's core and signs out on it, calling `read` once it read the main store. */
 async function runSignOut({ taken, enabled, notified, read, firstParty }: RunSignOutParams): Promise<void> {
-  const { bridge } = await startHost({
-    bootFlowId: createRandomId(),
-    ...getWindowHostParams('signout-window', bootNetwork(taken, enabled)),
-  }).catch((error: unknown) => {
+  const { bridge } = await startWindowHost('signout-window', taken, enabled).catch((error: unknown) => {
     // Counted beside the window's own results, so every window opened counts how its sign-out ended. The boot
     // failure reports its own.
     sessionWindowSignoutResultMetric.count({ outcome: 'error', reason: notified ? 'notified' : 'unnotified' });
@@ -235,33 +239,16 @@ function openFlow({ responder, intent, bridge }: OpenFlowParams): void {
   sessionWindowState.showScreen(screen);
 }
 
-// One per page, so the suffix list loads at most once, and only for a site that asks for a group.
-const siteGroups = createSiteGroups({
-  listUrl: publicSuffixListUrl,
-  // Wrapped, since the page's `fetch` throws when called as a method of another object.
-  fetch: (input, init) => fetch(input, init),
-});
-
-/** Returns a fresh site token, unpadded base64url. */
-function createSiteToken(): string {
-  return base64urlnopad.encode(crypto.getRandomValues(new Uint8Array(SITE_TOKEN_BYTES)));
-}
-
 /**
  * What a site's round in the window runs on, for the vetted origin `round` carries, whatever its route. `close` closes
- * the window once the round is done, and does nothing where the round's answer itself ends the page. `account` is the
- * product account the window's core serves as, or `null` for dot.li's own.
+ * the window once the round is done, and does nothing where the round's answer itself ends the page.
  */
 function getSiteWindowParams({
   responder,
   round,
-  account,
   close,
 }: GetSiteWindowParamsParams): Omit<SiteWindowParams, 'request'> {
   const { booted: bridge } = round;
-  // Before the round starts, so the first core the window boots runs as the right product: the named account's for a
-  // transaction, and dot.li's own for a sign-in, which names no account.
-  bridge.serveSite(account);
   return {
     origin: round.origin,
     responder,
@@ -271,7 +258,7 @@ function getSiteWindowParams({
     self: window.location.origin,
     mainAccount: signal => bridge.mainAccount.read(signal),
     now: Date.now,
-    randomToken: createSiteToken,
+    randomToken: () => base64urlnopad.encode(crypto.getRandomValues(new Uint8Array(SITE_TOKEN_BYTES))),
     close,
   };
 }
@@ -281,9 +268,12 @@ function getSiteWindowParams({
  * stops it.
  */
 function openSiteFlow({ responder, round, close }: OpenSiteFlowParams): () => void {
+  // Before the round starts, so the first core the window boots runs as dot.li's own product: a sign-in names no
+  // account.
+  round.booted.serveSite(null);
   // The site window lives as long as the window's page, so nothing disposes it.
   const { site, screen } = openSiteSignIn({
-    ...getSiteWindowParams({ responder, round, account: null, close }),
+    ...getSiteWindowParams({ responder, round, close }),
     request: round.request,
   });
   sessionWindowState.setSiteIntents(site);
@@ -300,9 +290,11 @@ async function openSiteTransactionFlow({
   stopShowingResponder,
 }: OpenSiteTransactionFlowParams): Promise<void> {
   const { booted: bridge } = round;
+  // Before the round starts, so the first core the window boots runs as the product account the transaction names.
+  bridge.serveSite(round.request.account);
   // The site window lives as long as the window's page, so nothing disposes it.
   const opened = await openSiteTransaction({
-    ...getSiteWindowParams({ responder, round, account: round.request.account, close: closeWindow }),
+    ...getSiteWindowParams({ responder, round, close: closeWindow }),
     request: round.request,
     chain: bridge.siteChain,
     txSigner: bridge.siteTxSigner,
@@ -326,10 +318,7 @@ function showResponder(responder: Responder<unknown>): () => void {
 }
 
 async function bootSignIn(taken: SessionRequest, enabled: readonly Network[]): Promise<HostBridge> {
-  const { bridge } = await startHost({
-    bootFlowId: createRandomId(),
-    ...getWindowHostParams('signin-window', bootNetwork(taken, enabled)),
-  });
+  const { bridge } = await startWindowHost('signin-window', taken, enabled);
   bootReport.log.event('Route: session window');
   return bridge;
 }
@@ -343,11 +332,9 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   sessionWindowState.setScreen(getResponderScreen({ kind: 'connecting' }));
   const verdict = await vetRedirect(fields, {
     self: window.location.origin,
-    probe: sitePublicKey => probeSeal(sitePublicKey),
-    // Wrapped, since the page's `fetch` throws when called as a method of another object. The deadline keeps a site
-    // that never answers from leaving the window on Connecting.
-    checkReturnTo: url =>
-      checkReturnTo(url, { fetch: (input, init) => fetch(input, init), signal: AbortSignal.timeout(10_000) }),
+    probe: probeSeal,
+    // The deadline keeps a site that never answers from leaving the window on Connecting.
+    checkReturnTo: url => checkReturnTo(url, { fetch: pageFetch, signal: AbortSignal.timeout(10_000) }),
   });
   if (!verdict.ok) {
     const { view, reason } = verdict;

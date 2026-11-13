@@ -18,6 +18,7 @@ import { topbarState } from '../../src/state/topbarState.js';
 import { pageTopbarAutoHide } from '../../src/createTopbarAutoHide.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/createProductFrameView.js';
+import { productFrameLayout } from '../../src/createProductFrameLayout.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { authModalState } from '../../src/state/authModalState.js';
 
@@ -116,10 +117,12 @@ describe('AuthModal island', () => {
     const button = document.createElement('button');
     document.body.append(frame, button);
     createProductFrameView({
+      layout: productFrameLayout,
       body: () => document.body,
       container: () => document.body,
       clearScreen: () => undefined,
       hideLoading: () => undefined,
+      setTitle: () => undefined,
     }).attachFrame(frame);
     const handBack = authModalState.setTrigger(button);
     mountIsland();

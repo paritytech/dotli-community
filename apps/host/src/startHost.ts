@@ -7,7 +7,7 @@
 import { createReporter, defineCount, m, setResolutionId } from '@dotli/metrics';
 import { topbarState } from './state/topbarState.js';
 import { showNotification } from '@dotli/ui';
-import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
+import { getProtocolClient } from '@dotli/protocol';
 import { markHandled, pageLocalStorage } from '@dotli/shared';
 import { bootTracker } from './createBootTracker.js';
 import { isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
@@ -36,10 +36,6 @@ const protocolFramePrewarmMetric = defineCount<'error'>('protocol.frame_prewarm'
 /** Count. The boot's resolver warm-up failed. Expected. Tagged `outcome` (error) and `reason` (the error's name). */
 const resolveWarmupMetric = defineCount<'error'>('resolve.warmup');
 
-export type EmitDebugEvent = (event: DotliDebugEvent) => void;
-
-export type HostStartup = Awaited<ReturnType<typeof startHost>>;
-
 /** What the page is, and what only the shell has. The landing page renders no chrome and shows no debug panel. */
 export type StartHostParams = {
   /** One id for the debug panel's flow and the Sentry trace. */
@@ -47,7 +43,7 @@ export type StartHostParams = {
   /** What the page is to sign-in, chosen by its entry. */
   role: PageRole;
   /** The shell's debug bus. An option, so the landing page's first load does not carry the bus. */
-  emitDotliDebugEvent?: EmitDebugEvent;
+  emitDotliDebugEvent?: (event: DotliDebugEvent) => void;
   /** Starts the state the shell's chrome renders, right after this origin's settings and the link's are set. */
   startShellState?: () => void;
   /**
@@ -78,31 +74,41 @@ export async function startHost({
   const protocolPendingReset = pendingResets.take('protocol');
 
   function configureFrame(settings: Settings): void {
-    getProtocolClient().frame.configure(getProtocolFrameConfig(settings, protocolPendingReset));
+    getProtocolClient().frame.configure({
+      backend: settings.backend,
+      network: settings.network,
+      // A pending reset forces a clean chain DB whatever the cache says.
+      skipWorkerCache: protocolPendingReset || settings.cache.skipWorkerCache,
+    });
   }
   // Before the first await this sets this origin's settings and the link's and boots the frame on them. A URL-driven
   // wipe reloads, so nothing below runs.
   bootTracker.setStep('url_settings');
-  const settingsBoot =
-    fixedSettings === undefined
-      ? readBootSettings({
-          search: window.location.search,
-          local: pageLocalStorage,
-          sharedWorkerAvailable: isSharedWorkerAvailable(),
-          preferLocal: isLocalhost,
-          readShared: () => readSharedSettings(),
-          writeShared(shared) {
-            void writeSharedSettings(shared);
-          },
-          configureFrame,
-          actions: pageSettingsActions,
-          notify: showNotification,
-          replaceSearch(query) {
-            const { pathname, hash } = window.location;
-            window.history.replaceState(null, '', `${pathname}${query ? `?${query}` : ''}${hash}`);
-          },
-        })
-      : Promise.resolve(fixSettings(fixedSettings, configureFrame));
+  let settingsBoot: Promise<Settings>;
+  if (fixedSettings === undefined) {
+    settingsBoot = readBootSettings({
+      search: window.location.search,
+      local: pageLocalStorage,
+      sharedWorkerAvailable: isSharedWorkerAvailable(),
+      preferLocal: isLocalhost,
+      readShared: readSharedSettings,
+      writeShared(shared) {
+        void writeSharedSettings(shared);
+      },
+      configureFrame,
+      actions: pageSettingsActions,
+      notify: showNotification,
+      replaceSearch(query) {
+        const { pathname, hash } = window.location;
+        window.history.replaceState(null, '', `${pathname}${query ? `?${query}` : ''}${hash}`);
+      },
+    });
+  } else {
+    // Fixed before boot, so there is no store to read or write.
+    setSettings(fixedSettings);
+    configureFrame(fixedSettings);
+    settingsBoot = Promise.resolve(fixedSettings);
+  }
   // After this origin's settings are set and before the first await, so the capsule shows going offline at once and no
   // island mounts on a store not yet started.
   startShellState?.();
@@ -200,20 +206,4 @@ export async function startHost({
     /** The loaded bridge, initialised. */
     bridge,
   };
-}
-
-/** A pending reset forces a clean chain DB whatever the cache says. */
-function getProtocolFrameConfig(settings: Settings, pendingReset: boolean): ProtocolFrameConfig {
-  return {
-    backend: settings.backend,
-    network: settings.network,
-    skipWorkerCache: pendingReset || settings.cache.skipWorkerCache,
-  };
-}
-
-/** Sets settings fixed before boot and boots the frame on them, with no store to read or write. */
-function fixSettings(settings: Settings, configureFrame: (settings: Settings) => void): Settings {
-  setSettings(settings);
-  configureFrame(settings);
-  return settings;
 }

@@ -39,7 +39,7 @@ export function startMainThreadMonitor({
   poll = pagePoll,
 }: Params): () => void {
   const startedAt = readClock();
-  let lastTick = readClock();
+  let lastTick = startedAt;
   let lastHeartbeat = startedAt;
 
   function dispose(): void {

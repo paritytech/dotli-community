@@ -228,6 +228,37 @@ describe('recent labels across subdomains', () => {
     expect(captures.expected).toHaveBeenCalledTimes(1);
   });
 
+  it("As an operator, I see an upgrade's seeding fail to read the shared store and the warning does not claim a write failed", async () => {
+    // Given a device upgrading from the build that wrote only localStorage, and a shared store that answers one read
+    const { channel, local, mirror } = setupStand();
+    local.setItem(KEY, '["explore"]');
+    let reads = 0;
+    const flaky = {
+      ...channel,
+      read(key: string): Promise<string | null> {
+        reads += 1;
+        return reads === 1 ? channel.read(key) : Promise.reject(new Error('unreachable'));
+      },
+    };
+    const warned = createDeferred<string>();
+    onTestFinished(
+      bindLogSink({
+        emit({ level, message }) {
+          if (level === 'warn') {
+            warned.resolve(message);
+          }
+        },
+      }),
+    );
+
+    // When
+    await createRecentLabels({ channel: flaky, mirror }).load();
+    const message = await warned.promise;
+
+    // Then
+    expect(message).not.toMatch(/write/i);
+  });
+
   it('As a visitor upgrading from a build that wrote only localStorage, I resolve a name while my list seeds the shared one and it sticks with the list', async () => {
     // Given a mirror from the old build, and a shared store whose first write lands only when the test lets it
     const { channel, local, mirror, readSharedList } = setupStand();

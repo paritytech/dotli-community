@@ -4,12 +4,11 @@
 // The page as the debug panel reads it. Loaded only with the panel, so the diagnostics and the archive reader stay out
 // of the boot chunk.
 
-import { getBackend } from '@dotli/config';
+import { getBackend, hasLightClient } from '@dotli/config';
 import { readArchiveFiles } from '@dotli/content';
 import { blockCache } from '@dotli/storage';
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
 import { hostBitswapClient } from './runtime/hostCallbacks/createHostBitswapClient.js';
-import { createArchiveTransport } from './createArchiveTransport.js';
 import { productFrameLayout, type ProductFrameLayout } from './createProductFrameLayout.js';
 import { topbarState } from './state/topbarState.js';
 import { closeDebugMode } from './debugMode.js';
@@ -32,7 +31,9 @@ export function createDebugPanelHost({ layout }: Params): DebugPanelHost {
     walletMode: walletModeState.store,
     walletSwitch: { importPhrase: authControl.importPhrase, usePolkadotApp: authControl.logout },
     diagnostics: pageDiagnostics,
-    archive: cid => readArchiveFiles(cid, createArchiveTransport(getBackend(), relayBlock)),
+    // The Archive tab reads what the sandbox was served: blocks on the light client, the gateway on rpc-gateway.
+    archive: cid =>
+      readArchiveFiles(cid, hasLightClient(getBackend()) ? { blockSource: relayBlock } : { gateway: true }),
     contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },
     topbarPresent: () => topbarState.get().present,
     reportDockInset(inset) {

@@ -17,11 +17,14 @@ type Params = {
 };
 
 const DISMISSED_KEY = 'desktop-banner-dismissed';
-const PUBLIC_DOWNLOAD_URL = 'https://polkadot.com/get-started/polkadot-for-desktop';
 
 /** Offers the desktop app unless the visitor dismissed the offer before. Throws only as `notify` does. */
-export function offerDesktopApp({ storage, notify, downloadUrl = PUBLIC_DOWNLOAD_URL }: Params): void {
-  if (isDismissed(storage)) {
+export function offerDesktopApp({
+  storage,
+  notify,
+  downloadUrl = 'https://polkadot.com/get-started/polkadot-for-desktop',
+}: Params): void {
+  if (storage.getItem(DISMISSED_KEY) !== null) {
     return;
   }
   notify({
@@ -35,8 +38,4 @@ export function offerDesktopApp({ storage, notify, downloadUrl = PUBLIC_DOWNLOAD
       storage.setItem(DISMISSED_KEY, '1');
     },
   });
-}
-
-function isDismissed(storage: Params['storage']): boolean {
-  return storage.getItem(DISMISSED_KEY) !== null;
 }
