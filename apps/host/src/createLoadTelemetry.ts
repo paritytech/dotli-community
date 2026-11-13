@@ -150,7 +150,9 @@ export function createLoadTelemetry({
   telemetry,
   debugBus = pageDebugBus,
 }: LoadTelemetryParams) {
-  const resolveSource = hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
+  const lightClient = hasLightClient(backend);
+  const resolveSource = lightClient ? 'smoldot' : 'rpc-gateway';
+  const dependency = lightClient ? 'smoldot' : 'asset-hub-rpc';
   const cidCacheMiss = skipCidCache ? 'skipped' : 'miss';
   /** Reports the load's failure, ends a fast path's span with it, and finishes the trace. */
   const fail: HandlerOf<TelemetryMachine, TracedKind, 'failed'> = (state, { error, description }) => {
@@ -163,10 +165,9 @@ export function createLoadTelemetry({
     if (state.kind !== 'content') {
       performance.mark('dotli:main:end');
     }
-    const dependency = hasLightClient(backend) ? 'smoldot' : 'asset-hub-rpc';
     const cidCache = state.kind === 'cid_cache_read' ? 'unknown' : state.path.kind === 'fast' ? 'hit' : cidCacheMiss;
     // "n/a" where no light client gates the render, keeping "unknown" for a signal that should have arrived.
-    const smoldotDbInapplicable = cidCache === 'hit' || !hasLightClient(backend);
+    const smoldotDbInapplicable = cidCache === 'hit' || !lightClient;
     // Captured while the trace is still open, so the error lands in it.
     resolveReport.capture(error, {
       step: state.kind,
