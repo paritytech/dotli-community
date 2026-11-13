@@ -115,7 +115,7 @@ function isControlLeg(leg: Leg): leg is 'interrupt' | 'stop' {
 }
 
 describe('describeWireFrame', () => {
-  it("As a dotli integrator, I describe a chain frame and it carries the panel's legacy name and its decoded payload", () => {
+  it("As a dotli integrator, I describe a chain frame and it carries the panel's chain tag and its decoded payload", () => {
     // Given a chain follow start frame
     const bytes = encodePayload(VersionedRemoteChainHeadFollowRequest, {
       tag: 'V1',
@@ -125,7 +125,7 @@ describe('describeWireFrame', () => {
     // When it is described
     const described = describeWireFrame(getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START), bytes);
 
-    // Then it carries the legacy tag and the decoded payload
+    // Then it carries the chain tag and the decoded payload
     expect(described).toEqual({
       tag: 'remote_chain_head_follow_start',
       value: {
@@ -219,7 +219,7 @@ describe('describeWireFrame', () => {
       // When it is described
       const described = describeWireFrame(getWireFrameId(ids, MESSAGE_TYPE_RESPONSE), bytes);
 
-      // Then it carries the legacy tag and the decoded result
+      // Then it carries the chain tag and the decoded result
       expect(described).toEqual({ tag, value });
     },
   );
@@ -293,7 +293,7 @@ describe('describeWireFrame', () => {
   });
 });
 
-// Chain frames keep the legacy `remote_chain_*` tags the panel's swimlane keys on. These tests fail when the installed
+// Chain frames carry the `remote_chain_*` tags the panel's swimlane keys on. These tests fail when the installed
 // `@parity/truapi` adds, renames or reshapes a chain method the host does not yet describe.
 describe('chain-family drift guard', () => {
   it('As a dotli integrator, I describe every CHAIN_* wire-table frame and each is tagged and decoded', () => {
@@ -316,7 +316,7 @@ describe('chain-family drift guard', () => {
     );
   });
 
-  it("As a dotli integrator, I describe every chain frame and the tags reduce to the exact legacy vocabulary the panel's swimlane keys on", () => {
+  it("As a dotli integrator, I describe every chain frame and the tags reduce to the exact vocabulary the panel's swimlane keys on", () => {
     // Given every leg of every chain method
     const frames = listChainFrames();
 
@@ -327,7 +327,7 @@ describe('chain-family drift guard', () => {
       ),
     );
 
-    // Then: pins the exact current 16-entry legacy vocabulary as a literal snapshot, so it can't drift silently.
+    // Then: pins the exact 16-entry vocabulary as a literal snapshot, so it can't drift silently.
     expect(vocabulary).toEqual(
       new Set([
         'remote_chain_head_follow',
