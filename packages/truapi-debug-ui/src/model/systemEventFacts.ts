@@ -24,7 +24,7 @@ const SYSTEM_EVENT_FACTS = {
   'boot:started': {
     explanation: {
       title: 'Host boot started',
-      body: `The host application has begun executing \`main()\`. At this point the browser URL has not been parsed yet, the topbar is not mounted, and no network requests have gone out, but the chosen mode and backend preferences have already been read from localStorage.
+      body: `The host application has begun executing \`main()\`. At this point the browser URL has not been parsed yet, the topbar is not mounted, and no network requests have gone out, but the chain backend and cache settings have already been read.
 
 This is the very first application-level event you'll see in a tab. Everything downstream (resolver, render, bridge, product boot) follows from here, and every boot-layer event in this group shares the same \`flowId\`.`,
     },

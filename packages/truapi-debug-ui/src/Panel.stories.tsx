@@ -238,9 +238,7 @@ export const SystemRows: Story = {
       await expect(cells.getByTestId('td-layer-badge')).toHaveTextContent('boot');
       await expect(cells.getByTestId('td-rid')).toHaveTextContent('flow-b');
       await expect(cells.getByTestId('td-tag')).toHaveAttribute('data-kind', 'system');
-      await expect(cells.getByTestId('td-summary')).toHaveTextContent(
-        'Host boot started (mode: direct, chain: smoldot, content: helia).',
-      );
+      await expect(cells.getByTestId('td-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
       await expect(cells.queryByTestId('td-arrow-out')).toBeNull();
       await expect(cells.queryByTestId('td-arrow-in')).toBeNull();
     });
@@ -691,9 +689,7 @@ export const SystemDetailExplains: Story = {
         group: '1 event',
       });
       await expect(getPart('td-detail-section-title')).toHaveTextContent('Summary');
-      await expect(getPart('td-detail-summary')).toHaveTextContent(
-        'Host boot started (mode: direct, chain: smoldot, content: helia).',
-      );
+      await expect(getPart('td-detail-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
       const explanation = getPart('td-detail-explanation');
       await expect(explanation.querySelector('summary')).toHaveTextContent('What is this? (Host boot started)');
       await expect(explanation.querySelector('code')).toHaveTextContent('main()');

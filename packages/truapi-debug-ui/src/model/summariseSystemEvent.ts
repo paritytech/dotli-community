@@ -12,7 +12,7 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
   const key = getSystemEventKey(event);
   switch (key) {
     case 'boot:started':
-      return `Host boot started (mode: ${formatValue(payload['mode'])}, chain: ${formatValue(payload['chainBackend'])}, content: ${formatValue(payload['contentBackend'])}).`;
+      return `Host boot started (chain: ${formatValue(payload['chainBackend'])}).`;
     case 'boot:protocol_warmup_started':
       return `Warming protocol iframe (${formatValue(payload['subMode'])}).`;
     case 'boot:topbar_ready':

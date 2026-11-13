@@ -220,7 +220,7 @@ export function seedMixedTraffic({ advance = () => undefined }: { advance?: (ms:
     layer: 'boot',
     event: 'started',
     flowId: 'flow-boot-1',
-    payload: { chainBackend: 'smoldot', mode: 'direct', contentBackend: 'helia' },
+    payload: { chainBackend: 'smoldot', skipCidCache: false, skipArchiveCache: false },
   });
 }
 
@@ -391,7 +391,7 @@ function createDebugPanelStory() {
   }
 
   function emitSystem({ payload = {}, ...step }: SystemParams): void {
-    // A story also sends payloads older hosts sent, such as boot's `mode`, which the event union does not name.
+    // A story sends only the payload fields it shows, which the event union does not allow without the cast.
     const params = { ...step, payload, timestamp: Date.now() } as BuildSystemEventParams;
     bus.emit(buildSystemEvent(params));
   }
