@@ -3,11 +3,11 @@
 
 // The failure screen on this page: what its buttons do here.
 
-import { getSettings, LOCAL_ROOT, type Backend } from '@dotli/config';
+import { getSettings, type Backend } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
-import { getLandingUrl } from './getLandingUrl.js';
+import { getPageLandingUrl } from './getLandingUrl.js';
 import { markAndReload } from './createContinuation.js';
 import { getTrustedProviderHosts } from './describeError.js';
 import { pageSettingsActions } from './createSettingsActions.js';
@@ -45,7 +45,7 @@ export const loadFailureScreen = {
 };
 
 function goHome(): void {
-  window.location.assign(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }));
+  window.location.assign(getPageLandingUrl());
 }
 
 function reloadAfterFailure(): void {

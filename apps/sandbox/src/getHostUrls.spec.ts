@@ -28,6 +28,11 @@ describe('host urls', () => {
       expected: { app: 'https://dot.li/', landing: 'https://dot.li/' },
     },
     {
+      page: 'https://a.b.app.dot.li',
+      dev: false,
+      expected: { app: 'https://dot.li/', landing: 'https://dot.li/' },
+    },
+    {
       page: 'https://elsewhere.example',
       dev: false,
       expected: { app: 'https://dot.li/', landing: 'https://dot.li/' },

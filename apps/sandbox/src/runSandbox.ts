@@ -11,7 +11,7 @@ import { createStateMachine, setErrorName, type MachineTypes, type Transition } 
 
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { HostMessages } from './createHostMessages.js';
-import type { SandboxUi } from './createSandboxUi.js';
+import type { SandboxAction, SandboxUi } from './createSandboxUi.js';
 import {
   describeSandboxFailure,
   getFailureStep,
@@ -331,29 +331,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     try {
       deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
       const { title, message, recovery } = describeSandboxFailure(failure, deps);
-      const recover = getRecover(recovery, retry);
-      deps.ui.showError(title, message, {
-        action:
-          recover === null
-            ? undefined
-            : {
-                label: RECOVERY_LABELS[recovery],
-                onClick: () => {
-                  try {
-                    recover();
-                  } catch (error) {
-                    // The failure stays on screen, so the visitor can press again.
-                    report.defect(error, {
-                      step: 'failure_action',
-                      metric: appRunMetric,
-                      reason: 'action_threw',
-                      message: `${APP_LOG_TAG} The ${step} failure's action threw`,
-                      tags: { surface: 'sandbox_main', failed_step: step },
-                    });
-                  }
-                },
-              },
-      });
+      deps.ui.showError(title, message, { action: buildAction(recovery, retry, step) });
     } catch (error) {
       report.defect(error, {
         step: 'failure_show',
@@ -365,7 +343,36 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     }
   }
 
-  /** What pressing the failure's action does. A retry that was not offered leaves the failure with no action. */
+  /** The failure's action with its defect wrapper. A retry that was not offered leaves the failure with no action. */
+  function buildAction(
+    recovery: SandboxRecovery,
+    retry: (() => void) | undefined,
+    step: string,
+  ): SandboxAction | undefined {
+    const recover = getRecover(recovery, retry);
+    if (recover === null) {
+      return undefined;
+    }
+    return {
+      label: RECOVERY_LABELS[recovery],
+      onClick: () => {
+        try {
+          recover();
+        } catch (error) {
+          // The failure stays on screen, so the visitor can press again.
+          report.defect(error, {
+            step: 'failure_action',
+            metric: appRunMetric,
+            reason: 'action_threw',
+            message: `${APP_LOG_TAG} The ${step} failure's action threw`,
+            tags: { surface: 'sandbox_main', failed_step: step },
+          });
+        }
+      },
+    };
+  }
+
+  /** What pressing the failure's action does, or null when a retry was not offered. */
   function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | null {
     switch (recovery) {
       case 'retry':
@@ -376,9 +383,13 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
           deps.hostMessages.askNavigate(recovery);
         };
       case 'open-app':
-        return deps.tab.openApp;
+        return () => {
+          deps.tab.openApp();
+        };
       case 'open-landing':
-        return deps.tab.openLanding;
+        return () => {
+          deps.tab.openLanding();
+        };
     }
   }
 }

@@ -30,7 +30,7 @@ type Params = {
   fallback: FallbackScreen;
 };
 
-/** The one action an error page offers. Its click takes no event, unlike `ErrorAction`'s, so the run and its Node specs can press it. */
+/** The one action an error page offers. Its click takes no event, so the run and its Node specs can press it. */
 export type SandboxAction = { label: string; onClick: () => void };
 
 /** A full-page screen to show once the UI is up. A need that wants the UI only, such as a toast, has none (`null`). */

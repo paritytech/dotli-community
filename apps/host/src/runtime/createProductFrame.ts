@@ -7,7 +7,6 @@
 
 import { createMessagePortProvider, type ProductId } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import { LOCAL_ROOT } from '@dotli/config';
 import type { SandboxChannel, SandboxRecoverAcceptedMessage, SandboxSender } from '@dotli/sandbox-wire';
 import { createReporter, defineCount, m } from '@dotli/metrics';
 import {
@@ -36,7 +35,7 @@ import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ProductFacts } from '../getProductFacts.js';
-import { getLandingUrl } from '../getLandingUrl.js';
+import { getPageLandingUrl } from '../getLandingUrl.js';
 
 const chatReport = createReporter({ flow: 'chat' });
 const walletReport = createReporter({ flow: 'wallet' });
@@ -288,7 +287,7 @@ const BROWSER_PAGE: ProductFramePage = {
     window.location.reload();
   },
   goHome: () => {
-    window.location.assign(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }));
+    window.location.assign(getPageLandingUrl());
   },
 };
 

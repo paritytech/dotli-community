@@ -6,11 +6,16 @@ import { DEV_HOST_PORT, getLocalRoot } from '@dotli/config';
 type Params = {
   /** The root domain the host is deployed under. */
   baseDomain: string;
-  /** Whether the page is a development build, where the host has its own dev server. The page's own build by default. */
+  /**
+   * Whether the page is a development build, where the host has its own dev server. The page's own build by default.
+   */
   dev?: boolean;
 };
 
-/** The host's pages a visitor on the sandbox page at `page` can move to: the product's app on the host, and its landing. */
+/**
+ * The host's pages a visitor on the sandbox page at `page` can move to: the product's app on the host, and its
+ * landing.
+ */
 export function getHostUrls(
   page: Pick<Location, 'protocol' | 'hostname' | 'port'>,
   { baseDomain, dev = import.meta.env.DEV }: Params,

@@ -143,20 +143,23 @@ describe('host error classification', () => {
       new Error('Resolved a non-IPFS contenthash for example'),
       'contenthash-unsupported',
       HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+      [],
     ],
     [
       'a contenthash that fails to decode',
       new Error('Failed to decode contenthash for example: bad codec'),
       'contenthash-unsupported',
       HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+      [],
     ],
     [
       'an archive without an index page',
       new Error('Archive for example is missing index.html'),
       'archive-missing-index',
       HOST_ERRORS.ARCHIVE_NO_INDEX,
+      ['Contacting the app maintainer.'],
     ],
-  ])('As a dotli user, I open an app with %s and am offered the landing', (_case, failure, kind, message) => {
+  ])('As a dotli user, I open an app with %s and am offered the landing', (_case, failure, kind, message, tips) => {
     // When
     const described = describeError(failure);
 
@@ -166,6 +169,7 @@ describe('host error classification', () => {
       message,
       recovery: 'landing',
     });
+    expect(described.tips).toEqual(tips);
   });
 
   it.each([

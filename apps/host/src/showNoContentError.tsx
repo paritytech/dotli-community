@@ -4,13 +4,13 @@
 // The page for a name that resolved to no content, in place of the page's content. The label goes in as text, so
 // nothing a visitor typed is parsed as markup.
 
-import { getActiveTldSuffix, LOCAL_ROOT } from '@dotli/config';
+import { getActiveTldSuffix } from '@dotli/config';
 import { pageScreen } from '@dotli/ui';
 import { NoContentPage } from './components/noContent/NoContentPage.js';
-import { getLandingUrl } from './getLandingUrl.js';
+import { getPageLandingUrl } from './getLandingUrl.js';
 
 type Params = {
-  /** Opens the landing page. Bound, because a bare `window.location.assign` throws without its `this`. */
+  /** Opens the landing page. */
   openUrl?: (url: string) => void;
 };
 
@@ -18,6 +18,7 @@ type Params = {
 export function showNoContentError(
   label: string,
   {
+    // Not `window.location.assign` bare, which throws without its `this`.
     openUrl = url => {
       window.location.assign(url);
     },
@@ -31,7 +32,7 @@ export function showNoContentError(
       tld={getActiveTldSuffix()}
       standalone={standalone}
       onSearchAgain={() => {
-        openUrl(getLandingUrl({ location: window.location, localRoot: LOCAL_ROOT }, name));
+        openUrl(getPageLandingUrl(name));
       }}
     />
   ));

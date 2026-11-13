@@ -69,7 +69,6 @@ type Params = {
  */
 export function presentLoadFailure(failure: LoadFailure, params: Params): void {
   const { error } = failure;
-  const { timers = realTimers } = params;
   report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
   switch (error.recovery) {
     case 'landing':
@@ -89,13 +88,15 @@ export function presentLoadFailure(failure: LoadFailure, params: Params): void {
       });
       return;
     case 'switch-backend':
-      presentFailover(failure, params, timers);
+      presentFailover(failure, params);
       return;
   }
 }
 
-function presentFailover(failure: LoadFailure, params: Params, timers: Pick<Timers, 'now'>): void {
+/** Shows the screen of a failure whose recovery is to switch backend. */
+function presentFailover(failure: LoadFailure, params: Params): void {
   const { error, backend } = failure;
+  const { timers = realTimers } = params;
   const nextBackend = BACKEND_FACTS[backend].failover;
   // A failed provider will fail again, while a failed light client is usually a transient peer problem.
   const failoverIsPrimary = !hasLightClient(backend);
