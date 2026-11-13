@@ -530,6 +530,50 @@ describe('topbar login over the page core', () => {
     expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
   });
 
+  it('As a user who closes the sign-in while the core connection comes up, I see the login answer cancelled when the connection then fails, and session state is not told', async () => {
+    // Given a login waiting for its connection to the core, which the user closes
+    const fakes = createHarness();
+    const done = fakes.commands.login();
+    await fakes.changes.until(() => fakes.connections.length === 1);
+    fakes.commands.cancelLogin();
+
+    // When the connection fails
+    const failure = new Error('worker fatal error: connect');
+    nth(fakes.connections, 0).reject(failure);
+    const outcome = await done;
+
+    // Then the login answered cancelled, the failure was reported once, and session state was told nothing
+    expect(outcome).toEqual({ kind: 'cancelled' });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({ step: 'login' }),
+    );
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+  });
+
+  it('As a user who closes the sign-in while the core has my login request, I see the login answer cancelled when the connection then drops, and session state is not told', async () => {
+    // Given a login whose request reached the core, which the user closes
+    const fakes = createHarness();
+    const done = fakes.commands.login();
+    const login = createFakeProvider();
+    await answerConnection(fakes, 0, { provider: login });
+    await fakes.changes.until(() => login.postMessage.mock.calls.length === 1);
+    fakes.commands.cancelLogin();
+
+    // When the connection drops
+    const failure = new Error('worker fatal error: boom');
+    login.closeListener?.(failure);
+    const outcome = await done;
+
+    // Then the login answered cancelled, the failure was reported once, and session state was told nothing
+    expect(outcome).toEqual({ kind: 'cancelled' });
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({ step: 'login' }),
+    );
+    expect(fakes.session.reportLoginFailure).not.toHaveBeenCalled();
+  });
+
   it('As an operator, I see a boot failure that lands in the same turn as the user closing the sign-in still reported', async () => {
     // Given: a login waiting for a cold wallet core to boot, whose user closes the sign-in as the boot's failure arrives
     const { fakes, done } = await startLoginClosedAsBootFails();

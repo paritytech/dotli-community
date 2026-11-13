@@ -443,12 +443,14 @@ function withWriteFailure(login: CoreLogin, error: unknown): CoreLogin {
 
 /**
  * Ends the login with a failure. The core already rendered a `LoginRequestError`, or stayed silent on purpose, so
- * session state hears only a failure the core never saw.
+ * session state hears only a failure the core never saw. A login whose round the user ended answers cancelled, and
+ * session state hears nothing of a failure the user no longer waits on.
  */
 function failLogin(login: CoreLogin, error: unknown, transition: Transition<CoreLoginMachine>): void {
   const refused = error instanceof LoginRequestError;
-  transition.emitSideEffect({ kind: 'loginFailed', error, tellSession: !refused });
-  answerLogin(login, refused && error.error.tag === 'Cancelled' ? CANCELLED : FAILED, transition);
+  const cancelled = login.ended || (refused && error.error.tag === 'Cancelled');
+  transition.emitSideEffect({ kind: 'loginFailed', error, tellSession: !refused && !login.ended });
+  answerLogin(login, cancelled ? CANCELLED : FAILED, transition);
 }
 
 /** Closes the login's connection, then lets the core go even when the close throws. Throws what either threw. */
