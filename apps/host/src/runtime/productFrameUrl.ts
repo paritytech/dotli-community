@@ -14,7 +14,7 @@ import type { FrameProduct, ProductFramePage } from './createProductFrame.js';
 
 type PageLocation = ReturnType<ProductFramePage['location']>;
 
-const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointer-lock';
+const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads';
 const SUBDOMAIN_SANDBOX = `${IFRAME_SANDBOX} allow-popups`;
 
 /**
