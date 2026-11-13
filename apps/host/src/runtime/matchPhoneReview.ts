@@ -32,7 +32,7 @@ export function matchPhoneReview(
   { reportEncodeFailure = reportUnmatchablePhoneReview }: Params = {},
 ): PhoneReviewMatch | undefined {
   /**
-   * Matches a request of one of `methods` whose V1 encoding equals that of `value`. With `callData`, the request's
+   * Matches a request of one of `methods` whose encoding equals that of `value`. With `callData`, the request's
    * call data is read as `callData` (the core rewrites it for declared contacts before it builds the review).
    */
   function matchByRequest(
@@ -46,7 +46,7 @@ export function matchPhoneReview(
     function getExpected(method: PhoneMethod): Uint8Array | undefined {
       if (encoded === undefined) {
         try {
-          encoded = new Map(methods.map(each => [each, encodeV1(each, value)]));
+          encoded = new Map(methods.map(each => [each, encodeRequest(each, value)]));
         } catch (error) {
           reportEncodeFailure(methods[0], error);
           encoded = null;
@@ -66,7 +66,7 @@ export function matchPhoneReview(
       try {
         const body = normalizeProductIds(request.body);
         const comparedBody = callData !== undefined && isRecord(body) ? { ...body, callData } : body;
-        return hasSameBytes(expected, encodeV1(request.method, comparedBody));
+        return hasSameBytes(expected, encodeRequest(request.method, comparedBody));
       } catch (error) {
         reportEncodeFailure(request.method, error);
         return false;
@@ -81,7 +81,7 @@ export function matchPhoneReview(
       case 'Product':
         return matchByRequest(['signPayload'], signPayload.value.request);
       case 'LegacyAccount':
-        return matchByRequest(['signPayloadWithLegacyAccount'], signPayload.value);
+        return matchByRequest(['signPayloadWithLegacyAccount'], signPayload.value.request);
     }
   }
 
@@ -106,7 +106,7 @@ export function matchPhoneReview(
         });
       }
       case 'LegacyAccount':
-        return matchByRequest(['createTransactionWithLegacyAccount'], transaction.value);
+        return matchByRequest(['createTransactionWithLegacyAccount'], transaction.value.payload);
     }
   }
 
@@ -170,6 +170,7 @@ function normalizeProductIds(value: unknown): unknown {
   return value;
 }
 
-function encodeV1(method: PhoneMethod, value: unknown): Uint8Array {
-  return PHONE_METHODS[method].request.enc({ tag: 'V1', value });
+function encodeRequest(method: PhoneMethod, value: unknown): Uint8Array {
+  const { request, version } = PHONE_METHODS[method];
+  return request.enc({ tag: version, value });
 }

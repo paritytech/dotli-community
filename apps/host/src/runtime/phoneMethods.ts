@@ -60,6 +60,8 @@ type PhoneMethodEntry = {
   ids: MethodIds;
   /** The method's `Versioned...Request` codec. */
   request: Codec<unknown>;
+  /** The envelope version the request codec speaks. */
+  version: string;
   /** The method's response, as the generated wire decode table pairs it. */
   response: ResponseCodec;
   ask: PhoneAsk;
@@ -69,6 +71,8 @@ type Params<Request, Ok, Failure> = {
   ids: MethodIds;
   /** The method's `Versioned...Request` codec. */
   request: Codec<Request>;
+  /** The envelope version the request codec speaks, checked against the codec. */
+  version: Request extends { tag: infer Version extends string } ? Version : never;
   /** The method's `Versioned...Response` codec. */
   ok: Codec<Ok>;
   /** The method's `Versioned...Error` codec. */
@@ -81,6 +85,7 @@ export const PHONE_METHODS = {
   signPayload: buildMethodEntry({
     ids: SIGNING_SIGN_PAYLOAD,
     request: VersionedHostSignPayloadRequest,
+    version: 'V1',
     ok: VersionedHostSignPayloadResponse,
     error: VersionedHostSignPayloadError,
     ask: 'sign',
@@ -88,6 +93,7 @@ export const PHONE_METHODS = {
   signPayloadWithLegacyAccount: buildMethodEntry({
     ids: SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
     request: VersionedHostSignPayloadWithLegacyAccountRequest,
+    version: 'V1',
     ok: VersionedHostSignPayloadWithLegacyAccountResponse,
     error: VersionedHostSignPayloadWithLegacyAccountError,
     ask: 'sign',
@@ -95,6 +101,7 @@ export const PHONE_METHODS = {
   createTransaction: buildMethodEntry({
     ids: SIGNING_CREATE_TRANSACTION,
     request: VersionedHostCreateTransactionRequest,
+    version: 'V2',
     ok: VersionedHostCreateTransactionResponse,
     error: VersionedHostCreateTransactionError,
     ask: 'sign',
@@ -102,6 +109,7 @@ export const PHONE_METHODS = {
   createTransactionWithLegacyAccount: buildMethodEntry({
     ids: SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
     request: VersionedHostCreateTransactionWithLegacyAccountRequest,
+    version: 'V1',
     ok: VersionedHostCreateTransactionWithLegacyAccountResponse,
     error: VersionedHostCreateTransactionWithLegacyAccountError,
     ask: 'sign',
@@ -109,6 +117,7 @@ export const PHONE_METHODS = {
   signRaw: buildMethodEntry({
     ids: SIGNING_SIGN_RAW,
     request: VersionedHostSignRawRequest,
+    version: 'V1',
     ok: VersionedHostSignRawResponse,
     error: VersionedHostSignRawError,
     ask: 'sign',
@@ -116,6 +125,7 @@ export const PHONE_METHODS = {
   signRawWithLegacyAccount: buildMethodEntry({
     ids: SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
     request: VersionedHostSignRawWithLegacyAccountRequest,
+    version: 'V1',
     ok: VersionedHostSignRawWithLegacyAccountResponse,
     error: VersionedHostSignRawWithLegacyAccountError,
     ask: 'sign',
@@ -123,6 +133,7 @@ export const PHONE_METHODS = {
   signRawUnwatermarkedDeprecated: buildMethodEntry({
     ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
     request: VersionedHostSignRawRequest,
+    version: 'V1',
     ok: VersionedHostSignRawResponse,
     error: VersionedHostSignRawError,
     ask: 'sign',
@@ -130,6 +141,7 @@ export const PHONE_METHODS = {
   signRawUnwatermarkedDeprecatedWithLegacyAccount: buildMethodEntry({
     ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
     request: VersionedHostSignRawWithLegacyAccountRequest,
+    version: 'V1',
     ok: VersionedHostSignRawWithLegacyAccountResponse,
     error: VersionedHostSignRawWithLegacyAccountError,
     ask: 'sign',
@@ -137,6 +149,7 @@ export const PHONE_METHODS = {
   signVrf: buildMethodEntry({
     ids: ACCOUNT_SIGN_VRF,
     request: VersionedHostAccountSignVrfRequest,
+    version: 'V1',
     ok: VersionedHostAccountSignVrfResponse,
     error: VersionedHostAccountSignVrfError,
     ask: 'sign',
@@ -144,6 +157,7 @@ export const PHONE_METHODS = {
   getAccount: buildMethodEntry({
     ids: ACCOUNT_GET_ACCOUNT,
     request: VersionedHostAccountGetRequest,
+    version: 'V1',
     ok: VersionedHostAccountGetResponse,
     error: VersionedHostAccountGetError,
     ask: 'approve',
@@ -151,6 +165,7 @@ export const PHONE_METHODS = {
   requestResourceAllocation: buildMethodEntry({
     ids: RESOURCE_ALLOCATION_REQUEST,
     request: VersionedHostRequestResourceAllocationRequest,
+    version: 'V1',
     ok: VersionedHostRequestResourceAllocationResponse,
     error: VersionedHostRequestResourceAllocationError,
     ask: 'approve',
@@ -164,6 +179,7 @@ export const PHONE_METHODS = {
 function buildMethodEntry<Request, Ok, Failure>({
   ids,
   request,
+  version,
   ok,
   error,
   ask,
@@ -172,6 +188,7 @@ function buildMethodEntry<Request, Ok, Failure>({
     ids,
     // Erases the method's request type, so one table holds every method's request codec.
     request: request as Codec<unknown>,
+    version,
     // Erases the method's ok and error types, so one table holds every method's response codec.
     response: Result(ok, CallError(error)) as unknown as ResponseCodec,
     ask,

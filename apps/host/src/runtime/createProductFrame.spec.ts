@@ -1300,7 +1300,7 @@ describe('product frame rebuilds', () => {
     const rendered = fakes.frame.render(buildSubdomainProduct('prompted'));
     const core = await answerConnection(fakes, 0);
     await rendered;
-    nth(fakes.hosts, 0).options.onPort(port.port1);
+    void nth(fakes.hosts, 0).options.onPort(port.port1);
     const answer = encodeResponseFrame({
       requestId: 'camera-prompt',
       method: PERMISSIONS_REQUEST_DEVICE_PERMISSION,
@@ -1337,7 +1337,7 @@ describe('product frame rebuilds', () => {
     const rendered = fakes.frame.render(buildSubdomainProduct('prompted'));
     const core = await answerConnection(fakes, 0);
     await rendered;
-    nth(fakes.hosts, 0).options.onPort(port.port1);
+    void nth(fakes.hosts, 0).options.onPort(port.port1);
     fakes.announce({ label: 'prompted', permissions: ['Camera'], fromPrompt: true });
     // And a render of another app asked for, whose frame is held
     const release = fakes.holdNextFrame();

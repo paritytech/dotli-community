@@ -32,6 +32,19 @@ describe('formatChainDisplay', () => {
     expect(names).toEqual(['Previewnet Relay', 'Previewnet Hub', 'Previewnet Storage', 'Previewnet Identity']);
   });
 
+  it("As a dotli developer, I read PCF Devnet's chains in the debug panel and its own are named after it, the relay it shares after Paseo", () => {
+    // Given
+    const devnet = NETWORK_NAME_TO_SERVICES_CONFIG['pcf-devnet'];
+
+    // When
+    const names = [devnet.relay, devnet.assethub, devnet.bulletin, devnet.people].map(chain =>
+      formatChainDisplay(chain.genesis),
+    );
+
+    // Then
+    expect(names).toEqual(['Paseo Relay', 'PCF Devnet Hub', 'PCF Devnet Storage', 'PCF Devnet Identity']);
+  });
+
   it('As a dotli developer, I read a chain no network names and it shows as its short hash', () => {
     // When
     const name = formatChainDisplay(`0x${'ab'.repeat(32)}`);

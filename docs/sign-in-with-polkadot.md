@@ -279,6 +279,7 @@ A deployment enables one or more of these networks.
 | --------------- | --------- | -------------------------------------------------------------------- |
 | `paseo-next-v2` | `paseo`   | `0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a` |
 | `previewnet`    | `testnet` | `0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896` |
+| `pcf-devnet`    | `dot`     | `0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2` |
 
 ## Messages
 

@@ -47,7 +47,13 @@ const ROWS: Row[] = [
     name: 'legacy sign-payload review',
     review: {
       tag: 'SignPayload',
-      value: { tag: 'LegacyAccount', value: { signer: '0x0a', payload: buildSignPayloadData('0x06') } },
+      value: {
+        tag: 'LegacyAccount',
+        value: {
+          account: buildAccount('product.dot'),
+          request: { signer: '0x0a', payload: buildSignPayloadData('0x06') },
+        },
+      },
     },
     matching: [buildRequest('signPayloadWithLegacyAccount', { signer: '0x0a', payload: buildSignPayloadData('0x06') })],
     differing: buildRequest('signPayloadWithLegacyAccount', { signer: '0x0b', payload: buildSignPayloadData('0x06') }),
@@ -70,7 +76,11 @@ const ROWS: Row[] = [
       tag: 'SignRaw',
       value: {
         tag: 'LegacyAccount',
-        value: { request: { signer: '0x0a', payload: buildRawPayload('0xaa') }, watermarked: false },
+        value: {
+          account: { tag: 'Identity' },
+          request: { signer: '0x0a', payload: buildRawPayload('0xaa') },
+          watermarked: false,
+        },
       },
     },
     matching: [
@@ -90,7 +100,10 @@ const ROWS: Row[] = [
   },
   {
     name: 'legacy create-transaction review',
-    review: { tag: 'CreateTransaction', value: { tag: 'LegacyAccount', value: buildLegacyTxPayload('0x01') } },
+    review: {
+      tag: 'CreateTransaction',
+      value: { tag: 'LegacyAccount', value: { account: { tag: 'Identity' }, payload: buildLegacyTxPayload('0x01') } },
+    },
     matching: [buildRequest('createTransactionWithLegacyAccount', buildLegacyTxPayload('0x01'))],
     differing: buildRequest('createTransactionWithLegacyAccount', buildLegacyTxPayload('0x02')),
   },

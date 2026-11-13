@@ -43,10 +43,27 @@ describe('chat platform', () => {
     await platform.createChatRoom(PRODUCT, buildRoom('main'));
 
     // When
-    await platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: 'Empty' });
+    await platform.setChatRoomFooter(PRODUCT, { roomId: 'main', footer: { tag: 'Empty' } });
 
     // Then
     expect(repo.rooms).toMatchObject([{ productId: PRODUCT.productId, roomId: 'main', footer: 'Empty' }]);
+  });
+
+  it('As a product developer, I set a card as the footer of my room and the call fails', async () => {
+    // Given
+    const repo = createMemoryChatRepo();
+    const platform = createChatPlatform({ chat: createChatStore({ repo, connections: createChatConnections() }) });
+    await platform.createChatRoom(PRODUCT, buildRoom('main'));
+
+    // When
+    const set = platform.setChatRoomFooter(PRODUCT, {
+      roomId: 'main',
+      footer: { tag: 'Card', value: { messageType: 'poll', payload: '0x00' } },
+    });
+
+    // Then
+    await expect(set).rejects.toThrow('A card footer is not supported');
+    expect(repo.rooms[0]?.footer).toBeUndefined();
   });
 
   it("As a product developer, I set the footer of another product's room and the call fails", async () => {

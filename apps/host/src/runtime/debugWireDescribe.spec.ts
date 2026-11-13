@@ -63,14 +63,15 @@ const LEGS: Record<MethodIds['kind'], readonly (readonly [number, Leg])[]> = {
   ],
 };
 
-const WALLET_FRAME_IDS = [
-  SIGNING_SIGN_PAYLOAD,
-  SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-  SIGNING_SIGN_RAW,
-  SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
-  SIGNING_CREATE_TRANSACTION,
-  SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-  RESOURCE_ALLOCATION_REQUEST,
+/** Each wallet method with the version its envelope speaks. */
+const WALLET_FRAMES = [
+  { ids: SIGNING_SIGN_PAYLOAD, version: 1 },
+  { ids: SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT, version: 1 },
+  { ids: SIGNING_SIGN_RAW, version: 1 },
+  { ids: SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT, version: 1 },
+  { ids: SIGNING_CREATE_TRANSACTION, version: 2 },
+  { ids: SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT, version: 1 },
+  { ids: RESOURCE_ALLOCATION_REQUEST, version: 1 },
 ];
 
 // A response leg carries Result(<versioned response>, CallError(<versioned error>)) on the wire. A bare response codec
@@ -91,6 +92,14 @@ const SIGN_RAW = {
     payload: { tag: 'Payload', value: { payload: 'hello' } },
   },
 };
+
+/** A zero payload whose envelope is `version`, behind the Ok byte on a response. */
+function buildVersionedZeroPayload(leg: 'request' | 'response', version: number): Uint8Array {
+  const payload = new Uint8Array(ZERO_PAYLOAD.length);
+  // An envelope's variant index is one below its version.
+  payload[leg === 'response' ? 1 : 0] = version - 1;
+  return payload;
+}
 
 function encodePayload(codec: { enc: (value: never) => Uint8Array }, value: unknown): Uint8Array {
   // Each codec takes its own generated value type, which a test spells as plain data.
@@ -274,21 +283,26 @@ describe('describeWireFrame', () => {
   });
 
   it('As a dotli integrator, I describe every wallet frame the tap decodes and each finds its codec', () => {
-    // Given the frames a local signing host serves itself, each leg carrying its codec's zero value
-    const frames = WALLET_FRAME_IDS.flatMap(ids => [
-      { leg: 'request' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_REQUEST) },
-      { leg: 'response' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_RESPONSE) },
+    // Given the frames a local signing host serves itself, each leg carrying its codec's zero value in its version
+    const frames = WALLET_FRAMES.flatMap(({ ids, version }) => [
+      { version, leg: 'request' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_REQUEST) },
+      { version, leg: 'response' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_RESPONSE) },
     ]);
 
     // When each is described with wallet frames decoded
-    const described = frames.map(({ leg, frame }) => ({
+    const described = frames.map(({ version, leg, frame }) => ({
+      version,
       leg,
-      ...describeWireFrame(frame, ZERO_PAYLOAD, { decodeWalletFrames: true }),
+      ...describeWireFrame(frame, buildVersionedZeroPayload(leg, version), { decodeWalletFrames: true }),
     }));
 
     // Then: every leg decodes, neither redacted nor left as raw bytes.
     expect(described.map(({ tag, value }) => ({ tag, value }))).toMatchObject(
-      described.map(({ tag, leg }) => ({ tag, value: DECODED[leg] })),
+      described.map(({ tag, leg, version }) => ({
+        tag,
+        value:
+          leg === 'request' ? { tag: `V${String(version)}` } : { success: true, value: { tag: `V${String(version)}` } },
+      })),
     );
   });
 });

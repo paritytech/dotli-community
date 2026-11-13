@@ -42,6 +42,8 @@ export type { Network } from './networkNames.js';
 export { NETWORK_KEY, NETWORK_NAMES, isValidNetwork } from './networkNames.js';
 export { NETWORK_NAME_TO_SERVICES_CONFIG } from './networkServices.js';
 export type { ResolvedSettings, Settings, SettingsSources, SharedSettings } from './resolveSettings.js';
+export type { BundledStack } from './loadStack.js';
+export { loadStack } from './loadStack.js';
 export { resolveSettings } from './resolveSettings.js';
 export { getSettings, setActiveNetwork } from './settings.js';
 export { TIMEOUTS } from './timeouts.js';

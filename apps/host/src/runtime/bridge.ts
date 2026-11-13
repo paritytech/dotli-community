@@ -5,7 +5,7 @@
 // dialogs, showing its notifications and drawing around the frame with its layout.
 
 import type { ProductAccountId } from '@parity/truapi';
-import { getActiveServicesConfig } from '@dotli/config';
+import { getActiveServicesConfig, getNetwork, loadStack } from '@dotli/config';
 import { m } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
@@ -80,6 +80,7 @@ const bootRuntime = createCoreRuntimeBoot({
     const { web, HostWorker } = await hostRuntime();
     return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
   },
+  loadStack: () => loadStack(getNetwork()),
   createCallbacks: options =>
     createHostCallbacks({
       ...options,

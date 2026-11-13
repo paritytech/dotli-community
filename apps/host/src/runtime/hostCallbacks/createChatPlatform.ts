@@ -4,8 +4,8 @@
 // The product side of chat. The core checks the product's access before it forwards a call here.
 
 import type { ChatPlatform } from '@parity/truapi-host';
-import type { HostChatListSubscribeItem } from '@parity/truapi';
-import { chatStore, type ChatStore } from '../chat/createChatStore.js';
+import type { ChatRoomFooter, HostChatListSubscribeItem } from '@parity/truapi';
+import { chatStore, type ChatStore, type ChatRoomFooter as StoredFooter } from '../chat/createChatStore.js';
 import { createResultStream } from './createResultStream.js';
 import { followChatRooms } from './followChatRooms.js';
 
@@ -30,7 +30,11 @@ export function createChatPlatform({ chat = chatStore }: Params = {}): Required<
     },
 
     async setChatRoomFooter(product, request) {
-      await chat.setRoomFooter({ productId: product.productId, roomId: request.roomId, footer: request.footer });
+      await chat.setRoomFooter({
+        productId: product.productId,
+        roomId: request.roomId,
+        footer: toStoredFooter(request.footer),
+      });
     },
 
     async registerChatBot(product, request) {
@@ -57,4 +61,13 @@ export function createChatPlatform({ chat = chatStore }: Params = {}): Required<
       );
     },
   };
+}
+
+/** The footer a room stores for the one a product sets. Throws for a card, since this host draws no card footer. */
+function toStoredFooter(footer: ChatRoomFooter): StoredFooter {
+  const kind = typeof footer === 'string' ? footer : footer.tag;
+  if (kind === 'Card') {
+    throw new Error('A card footer is not supported');
+  }
+  return kind;
 }

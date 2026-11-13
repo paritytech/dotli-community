@@ -190,6 +190,13 @@ function getSlotName(key: LocalCoreKey): string {
     // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productLabel}`;
+    // Per product, so each product's manifest expires on its own.
+    case 'WorkerManifest':
+      return `${CORE_LOCAL_STORAGE_PREFIX}worker-manifest:${key.value.productLabel}`;
+    case 'AppManifest':
+      return `${CORE_LOCAL_STORAGE_PREFIX}app-manifest:${key.value.productLabel}`;
+    case 'FundingSupport':
+      return `${CORE_LOCAL_STORAGE_PREFIX}funding-support`;
   }
 }
 
@@ -208,6 +215,9 @@ function isSecretMaterialSlot(key: LocalCoreKey): boolean {
     case 'ProductSubtree':
     case 'SsoResponderRequestLedger':
     case 'ProductManifest':
+    case 'WorkerManifest':
+    case 'AppManifest':
+    case 'FundingSupport':
       return false;
   }
 }

@@ -51,11 +51,13 @@ export function peekFrameHeader(message: Uint8Array): FrameHeader | undefined {
   };
 }
 
-/** The unwrapped V1 body of a `method` request's payload. Throws when it does not decode or is another version. */
+/**
+ * The unwrapped body of a `method` request's payload. Throws when it does not decode or is not the method's version.
+ */
 export function decodePhoneRequestBody(method: PhoneMethod, payload: Uint8Array): unknown {
   const versioned = PHONE_METHODS[method].request.dec(payload);
   const version = isRecord(versioned) ? versioned['tag'] : undefined;
-  if (!isRecord(versioned) || version !== 'V1') {
+  if (!isRecord(versioned) || version !== PHONE_METHODS[method].version) {
     throw new Error(`unsupported request version ${String(version)}`);
   }
   return versioned['value'];
