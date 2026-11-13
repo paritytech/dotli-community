@@ -121,7 +121,7 @@ type ByteSample = { at: number; total: number };
  * The sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or it
  * pushes the load's own events out of the panel's ring buffer.
  */
-type ByteTotals = { kind: 'open'; received: number; sampled: ByteSample | null; samples: number } | { kind: 'closed' };
+type ByteTotals = { kind: 'open'; sampled: ByteSample | null; samples: number } | { kind: 'closed' };
 
 /** The whole load's throughput over a trailing window. */
 type Throughput = { samples: readonly ByteSample[]; bytesPerSecond: number | null };
@@ -137,6 +137,8 @@ type ProgressState =
       kind: 'lightClient';
       stops: readonly (() => void)[];
       warning: Warning;
+      /** The load's byte total so far. */
+      received: number;
       // Per chain, since one figure would blank to zero at every handover.
       watches: ReadonlyMap<CriticalChain, StallWatch>;
       byteTotals: ByteTotals;
@@ -212,35 +214,6 @@ export function startLoadProgress({
 }: Params) {
   const bands = getLoadingBands(backend);
   const chainReporter = createChainReporter({ flowId, timers, debugBus });
-  const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (
-    _state,
-    { detail },
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'chainDetailRecorded', detail });
-  };
-  const holdBar: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'nameResolved'> = (
-    _state,
-    _event,
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'barHeld' });
-  };
-  const enterDownload: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'contentFetchEntered'> = (
-    _state,
-    _event,
-    { emitSideEffect },
-  ) => {
-    emitSideEffect({ kind: 'barMovedToDownload' });
-  };
-  const stop: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'disposed'> = (
-    { stops },
-    _event,
-    { emitState },
-  ) => {
-    emitState({ kind: 'disposed' });
-    stopEach(stops);
-  };
   const progress = createStateMachine<ProgressMachine>({
     initial: { kind: 'idle' },
     handlers: {
@@ -287,8 +260,9 @@ export function startLoadProgress({
             kind: 'lightClient',
             stops,
             warning: { kind: 'early', parked: null },
+            received: 0,
             watches: new Map(),
-            byteTotals: { kind: 'open', received: 0, sampled: null, samples: 0 },
+            byteTotals: { kind: 'open', sampled: null, samples: 0 },
             // Seeded with page start, so the first report already has a reading to measure against.
             throughput: { samples: [{ at: 0, total: 0 }], bytesPerSecond: null },
           });
@@ -356,17 +330,10 @@ export function startLoadProgress({
         netBytes(state, { received, at }, { emitState, emitSideEffect }) {
           emitSideEffect({ kind: 'bytesRecorded', received });
           const throughput = measureThroughput(state.throughput, received, at);
-          const totals = state.byteTotals;
-          if (totals.kind === 'open' && isByteTotalDue(totals, received, at)) {
-            const sampled = { at, total: received };
-            emitState({
-              ...state,
-              throughput,
-              byteTotals: { ...totals, received, sampled, samples: totals.samples + 1 },
-            });
+          const sampled = sampleByteTotal(state.byteTotals, received, at);
+          emitState({ ...state, received, throughput, byteTotals: sampled ?? state.byteTotals });
+          if (sampled !== null) {
             emitSideEffect({ kind: 'byteTotalSampled', received });
-          } else {
-            emitState({ ...state, throughput, byteTotals: totals.kind === 'open' ? { ...totals, received } : totals });
           }
           if (throughput.bytesPerSecond !== null) {
             emitSideEffect({ kind: 'rateMeasured', bytesPerSecond: throughput.bytesPerSecond });
@@ -386,14 +353,14 @@ export function startLoadProgress({
           raiseWarning(state, { message, chain: null }, transition);
         },
         productLoaded(state, _event, { emitState, emitSideEffect }) {
-          const { byteTotals } = state;
+          const { byteTotals, received } = state;
           if (byteTotals.kind === 'closed') {
             return;
           }
           emitState({ ...state, byteTotals: { kind: 'closed' } });
           // No report at all leaves nothing unsampled.
-          if (byteTotals.sampled !== null && byteTotals.received !== byteTotals.sampled.total) {
-            emitSideEffect({ kind: 'byteTotalSampled', received: byteTotals.received });
+          if (byteTotals.sampled !== null && received !== byteTotals.sampled.total) {
+            emitSideEffect({ kind: 'byteTotalSampled', received });
           }
         },
         phaseResolved(_state, { phase }, { emitSideEffect }) {
@@ -534,6 +501,31 @@ export function startLoadProgress({
   }
 }
 
+const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (
+  _state,
+  { detail },
+  { emitSideEffect },
+) => {
+  emitSideEffect({ kind: 'chainDetailRecorded', detail });
+};
+const holdBar: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'nameResolved'> = (
+  _state,
+  _event,
+  { emitSideEffect },
+) => {
+  emitSideEffect({ kind: 'barHeld' });
+};
+const enterDownload: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'contentFetchEntered'> = (
+  _state,
+  _event,
+  { emitSideEffect },
+) => {
+  emitSideEffect({ kind: 'barMovedToDownload' });
+};
+const stop: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'disposed'> = ({ stops }, _event, { emitState }) => {
+  emitState({ kind: 'disposed' });
+  stopEach(stops);
+};
 /** Shows `line` as the slow-load warning, or parks it in place of any parked line until the load is old enough to be slow. */
 function raiseWarning(state: LightClientState, line: WarningLine, transition: Transition<ProgressMachine>): void {
   if (state.warning.kind === 'early') {
@@ -604,18 +596,18 @@ function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWa
 }
 
 /**
- * Returns whether the open report samples `received`, the load's byte total, at `at`: a new total a second after the
- * last one, up to the cap.
+ * The open report with `received`, the load's byte total, sampled at `at`, or `null` when the report is closed or the
+ * total is not due. A total is due when it is new a second after the last one, up to the cap.
  */
-function isByteTotalDue(
-  { sampled, samples }: Extract<ByteTotals, { kind: 'open' }>,
-  received: number,
-  at: number,
-): boolean {
-  return (
+function sampleByteTotal(byteTotals: ByteTotals, received: number, at: number): ByteTotals | null {
+  if (byteTotals.kind === 'closed') {
+    return null;
+  }
+  const { sampled, samples } = byteTotals;
+  const due =
     samples < CHAIN_BYTES_DEBUG_MAX &&
-    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS))
-  );
+    (sampled === null || (received !== sampled.total && at - sampled.at >= CHAIN_BYTES_DEBUG_MS));
+  return due ? { kind: 'open', sampled: { at, total: received }, samples: samples + 1 } : null;
 }
 
 /**
