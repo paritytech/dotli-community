@@ -36,7 +36,7 @@ type AskBrowserBlockParams = {
   /** The browser still blocked it after a Retry. */
   retried: boolean;
   /** Runs inside the Retry click, so it may ask the browser for what needs a user gesture. */
-  onRetry?: (() => void) | undefined;
+  onRetry: () => void;
 };
 
 type ConfirmReviewParams<R extends string> = {

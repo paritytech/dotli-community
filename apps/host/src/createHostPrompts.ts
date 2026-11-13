@@ -57,7 +57,7 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
       const dialog = browserBlockDialog({ app: withActiveTld(label), permission, retried });
       function handoff(outcome: ModalOutcome<BrowserBlockAnswer>): undefined {
         if (isRetry(outcome.result)) {
-          onRetry?.();
+          onRetry();
         }
         return undefined;
       }

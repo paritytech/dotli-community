@@ -6,6 +6,7 @@
 import { isBrowserBlocked, type BrowserPermissions, type BrowserPermissionStatus } from './createBrowserPermissions.js';
 import type { HostPrompts } from './hostPrompts.js';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
+import type { ProductPermissions } from './state/productPermissions.js';
 import { throwIfModalAborted } from './throwIfModalAborted.js';
 
 /** How the user settled a browser block. `kept` leaves the grant as it is. */
@@ -30,11 +31,14 @@ type Params = {
   signal: AbortSignal;
   prompts: Pick<HostPrompts, 'askBrowserBlock'>;
   browser: Pick<BrowserPermissions, 'read' | 'request'>;
+  /** Stores the denial when the user restricts the product. */
+  record: ProductPermissions['recordPromptDecision'];
 };
 
 /**
- * Shows the blocked dialog until the user settles it, again after each Retry the browser still blocks. Rejects with the
- * modal's AbortError once `signal` aborts, after the browser answers a Retry already asked.
+ * Shows the blocked dialog until the user settles it, again after each Retry the browser still blocks, and stores a
+ * lasting denial when the user restricts the product. Rejects with the modal's AbortError once `signal` aborts, after
+ * the browser answers a Retry already asked, and with the store's error when the denial fails to save.
  */
 export async function resolveBrowserBlock({
   label,
@@ -42,6 +46,7 @@ export async function resolveBrowserBlock({
   signal,
   prompts,
   browser,
+  record,
 }: Params): Promise<BrowserBlockResolution> {
   for (let retried = false; ; retried = true) {
     // An object, so TypeScript keeps the type the Retry click widens it to.
@@ -58,6 +63,7 @@ export async function resolveBrowserBlock({
     });
     switch (answer) {
       case 'restrict':
+        await record({ label, name: permission, decision: 'denied', signal });
         return 'restricted';
       case 'dismissed':
         return 'kept';

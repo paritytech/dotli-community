@@ -6,6 +6,7 @@ import type { BrowserPermissions, BrowserPermissionStatus } from './createBrowse
 import { createFakePrompts, type FakePrompt, type FakePrompts } from './hostPrompts.fake.js';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
 import { resolveBrowserBlock, type BrowserBlockResolution } from './resolveBrowserBlock.js';
+import type { ProductPermissions } from './state/productPermissions.js';
 
 type FakeBrowser = {
   read: Mock<BrowserPermissions['read']>;
@@ -18,6 +19,7 @@ let page: FakePrompts;
 let browserStatus: BrowserPermissionStatus;
 let browser: FakeBrowser;
 let controller: AbortController;
+let record: Mock<ProductPermissions['recordPromptDecision']>;
 
 beforeEach(() => {
   page = createFakePrompts();
@@ -27,10 +29,11 @@ beforeEach(() => {
     request: vi.fn<BrowserPermissions['request']>(() => null),
   };
   controller = new AbortController();
+  record = vi.fn<ProductPermissions['recordPromptDecision']>(() => Promise.resolve());
 });
 
 describe('resolveBrowserBlock', () => {
-  it('As a dotli user, I restrict a blocked permission and it resolves restricted', async () => {
+  it('As a dotli user, I restrict a blocked permission and a denial is stored for the app', async () => {
     // Given the blocked dialog on screen
     const { resolution } = await showBlock('Camera');
 
@@ -39,6 +42,20 @@ describe('resolveBrowserBlock', () => {
 
     // Then
     await expect(resolution).resolves.toBe('restricted');
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ label: LABEL, name: 'Camera', decision: 'denied' }));
+  });
+
+  it('As a dotli user, I restrict and the denial fails to save, and it rejects with the store error', async () => {
+    // Given the blocked dialog on screen, and a store that fails to write
+    const failure = new Error('write failed');
+    record.mockRejectedValue(failure);
+    const { resolution } = await showBlock('Camera');
+
+    // When
+    page.answerBrowserBlock('restrict');
+
+    // Then
+    await expect(resolution).rejects.toBe(failure);
   });
 
   it('As a dotli user, I close the blocked dialog and the grant is kept', async () => {
@@ -145,6 +162,7 @@ async function showBlock(
     signal: controller.signal,
     prompts: page.prompts,
     browser,
+    record,
   });
   await page.waitForPrompt();
   return { resolution };

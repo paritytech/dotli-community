@@ -289,7 +289,13 @@ describe('browser block', () => {
 
   it('As a dotli user, I see a browser block that names the app on the active network', () => {
     // When
-    void prompts.askBrowserBlock({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), retried: false });
+    void prompts.askBrowserBlock({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: createLiveSignal(),
+      retried: false,
+      onRetry: () => undefined,
+    });
 
     // Then
     expect(shownModal().view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });

@@ -10,7 +10,7 @@ import type { BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { isBrowserBlocked, type BrowserPermissions } from './createBrowserPermissions.js';
 import type { PermissionAuthorizations } from './createPermissionAuthorizations.js';
 import type { HostPrompts } from './hostPrompts.js';
-import { isPermissionGranted, type EnforceablePermissionName, type PermissionStatus } from './permissionPolicy.js';
+import { isPermissionGranted, type PermissionStatus } from './permissionPolicy.js';
 import { resolveBrowserBlock } from './resolveBrowserBlock.js';
 import type { ProductPermissions } from './state/productPermissions.js';
 import type { ProductState } from './state/productState.js';
@@ -60,7 +60,8 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
     });
     for (const permission of blocked) {
       try {
-        await scope.enqueue(signal => settleBlock(label, permission, signal));
+        // The denial is stored within the dialog's turn, so the modal slot stays held until it is written.
+        await scope.enqueue(signal => resolveBrowserBlock({ label, permission, signal, prompts, browser, record }));
       } catch (error) {
         // The scope was disposed, which ends its dialogs.
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -69,19 +70,6 @@ export function createBrowserBlockCheck({ products, statuses, browser, scope, pr
         // A permission whose denial failed to save does not end the check of the product's other permissions.
         report.expected(error, { step: 'browser_block_check', metric: browserCheckMetric });
       }
-    }
-  }
-
-  /** Stores a restriction within the dialog's turn, so the modal slot stays held until the denial is written. */
-  async function settleBlock(label: string, permission: EnforceablePermissionName, signal: AbortSignal): Promise<void> {
-    const resolution = await resolveBrowserBlock({ label, permission, signal, prompts, browser });
-    switch (resolution) {
-      case 'restricted':
-        await record({ label, name: permission, decision: 'denied', signal });
-        return;
-      case 'allowed':
-      case 'kept':
-        return;
     }
   }
 

@@ -49,7 +49,7 @@ export function createFakePrompts() {
     askBrowserBlock: ({ label, permission, signal, retried, onRetry }) =>
       ask<BrowserBlockAnswer>({ kind: 'browserBlock', label, permission, retried }, signal, answer => {
         if (isRetry(answer)) {
-          onRetry?.();
+          onRetry();
         }
       }),
     async confirmReview({ dialog, signal, handoff }) {
