@@ -9,13 +9,14 @@ import { useSuggestions } from './useSuggestions.js';
 
 const LABELS = ['ant', 'apple', 'avocado', 'banana'];
 
-/** The suggestions under a fresh owner, over a focused input holding `text`, settled. */
-function mount(text: string) {
-  const [input, setInput] = createSignal({ text, focused: true }, { ownedWrite: true });
+/** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
+function mount(initial: string) {
+  const [text, setText] = createSignal(initial, { ownedWrite: true });
+  const [focused, setFocused] = createSignal(true, { ownedWrite: true });
   const combobox = createNavComboboxState();
   const open = vi.fn();
   const { suggestions, dispose } = createRoot(d => ({
-    suggestions: useSuggestions({ input, labels: () => LABELS, suffix: () => '.dot', combobox, open }),
+    suggestions: useSuggestions({ text, focused, labels: () => LABELS, suffix: () => '.dot', combobox, open }),
     dispose: d,
   }));
   onTestFinished(dispose);
@@ -25,11 +26,11 @@ function mount(text: string) {
     open,
     listbox: () => combobox.listbox.get(),
     type(next: string): void {
-      setInput({ ...input(), text: next });
+      setText(next);
       flush();
     },
     blur(): void {
-      setInput({ ...input(), focused: false });
+      setFocused(false);
       flush();
     },
     press(key: NavKey): boolean {

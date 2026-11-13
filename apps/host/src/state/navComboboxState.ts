@@ -5,8 +5,6 @@ import { atom, type ReadableAtom } from 'nanostores';
 
 export type NavKey = 'ArrowDown' | 'ArrowUp' | 'Enter' | 'Escape';
 
-export type NavInput = { text: string; focused: boolean };
-
 /** The suggestions the input controls: the listbox's id and its active option's id. */
 export type ListboxView = { id: string; activeId: string | null };
 
@@ -17,28 +15,26 @@ export const navComboboxState = createNavComboboxState();
 
 /** Creates the state the name input and its suggestions share. */
 export function createNavComboboxState() {
-  const input = atom<NavInput>({ text: '', focused: false });
-  const inputStore: ReadableAtom<NavInput> = input;
+  const text = atom('');
+  const textStore: ReadableAtom<string> = text;
+  const focused = atom(false);
+  const focusedStore: ReadableAtom<boolean> = focused;
   const listbox = atom<ListboxView | null>(null);
   const listboxStore: ReadableAtom<ListboxView | null> = listbox;
   let keyHandler: ((key: NavKey) => boolean) | null = null;
 
   return {
-    /** What the visitor typed and whether the input has focus. */
-    input: inputStore,
+    /** What the visitor typed. */
+    text: textStore,
+    /** Whether the input has focus. */
+    focused: focusedStore,
     /** The suggestions the input controls, or null while none show. */
     listbox: listboxStore,
-    setText(text: string): void {
-      if (input.get().text === text) {
-        return;
-      }
-      input.set({ ...input.get(), text });
+    setText(value: string): void {
+      text.set(value);
     },
-    setFocused(focused: boolean): void {
-      if (input.get().focused === focused) {
-        return;
-      }
-      input.set({ ...input.get(), focused });
+    setFocused(value: boolean): void {
+      focused.set(value);
     },
     showListbox(view: ListboxView | null): void {
       listbox.set(view);

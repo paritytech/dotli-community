@@ -4,13 +4,15 @@
 // What the suggestion island does beside rendering.
 
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
-import type { NavComboboxState, NavInput, NavKey } from '../state/navComboboxState.js';
+import type { NavComboboxState, NavKey } from '../state/navComboboxState.js';
 import { matchLabels } from '../components/landing/matchLabels.js';
 import { getSuggestionId, SUGGESTIONS_ID } from '../components/landing/suggestionIds.js';
 
 type Params = {
-  /** What the visitor typed and whether the input has focus. */
-  input: Accessor<NavInput>;
+  /** What the visitor typed. */
+  text: Accessor<string>;
+  /** Whether the input has focus. */
+  focused: Accessor<boolean>;
   /** Every label the list may suggest. */
   labels: Accessor<readonly string[]>;
   /** The TLD a typed name may end with. Null suggests nothing. */
@@ -25,20 +27,20 @@ type Params = {
  * them until the text changes. Once settled, the arrow keys move the active label, wrapping around, Enter opens it,
  * and the input points at the list while it shows.
  */
-export function useSuggestions({ input, labels, suffix, combobox, open }: Params): {
+export function useSuggestions({ text, focused, labels, suffix, combobox, open }: Params): {
   shown: Accessor<readonly string[]>;
   active: Accessor<string | null>;
 } {
-  const matches = createMemo(() => matchLabels(labels(), input().text, suffix()));
+  const matches = createMemo(() => matchLabels(labels(), text(), suffix()));
   const [escapedAt, setEscapedAt] = createSignal<string | null>(null);
-  const shown = createMemo<readonly string[]>(() => {
-    const { text, focused } = input();
-    return focused && text !== escapedAt() ? matches() : [];
-  });
+  const shown = createMemo<readonly string[]>(() => (focused() && text() !== escapedAt() ? matches() : []));
   // Counts the text's changes, so a label chosen at one text never comes back when the text returns to it.
   const textRevision = createMemo<{ text: string; revision: number } | undefined>(previous => {
-    const { text } = input();
-    return { text, revision: (previous?.revision ?? 0) + (previous === undefined || text === previous.text ? 0 : 1) };
+    const current = text();
+    return {
+      text: current,
+      revision: (previous?.revision ?? 0) + (previous === undefined || current === previous.text ? 0 : 1),
+    };
   });
   const [chosen, setChosen] = createSignal<{ label: string; revision: number } | null>(null);
   const active = createMemo(() => {
@@ -88,7 +90,7 @@ export function useSuggestions({ input, labels, suffix, combobox, open }: Params
         open(label);
         return true;
       case 'Escape':
-        setEscapedAt(input().text);
+        setEscapedAt(text());
         setChosen(null);
         return true;
     }

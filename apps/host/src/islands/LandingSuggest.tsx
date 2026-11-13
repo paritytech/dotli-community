@@ -25,7 +25,8 @@ export function LandingSuggest(): JSX.Element {
 
 // Inside the part, so a failure binding the list shows the error page as a failure rendering it does.
 function BoundSuggestions(): JSX.Element {
-  const input = useStore(navComboboxState.input);
+  const text = useStore(navComboboxState.text);
+  const focused = useStore(navComboboxState.focused);
   const labels = useStore(landingNameList.labels);
   const suffix = useActiveTld();
   onSettled(() => {
@@ -34,6 +35,6 @@ function BoundSuggestions(): JSX.Element {
   const open = (label: string): void => {
     window.location.href = dotUrl(label);
   };
-  const suggestions = useSuggestions({ input, labels, suffix, combobox: navComboboxState, open });
+  const suggestions = useSuggestions({ text, focused, labels, suffix, combobox: navComboboxState, open });
   return <Suggestions labels={suggestions.shown} suffix={suffix} active={suggestions.active} onPick={open} />;
 }

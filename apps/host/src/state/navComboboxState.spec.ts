@@ -42,16 +42,4 @@ describe('navComboboxState', () => {
     // Then the newer handler took the key
     expect(taken).toBe(true);
   });
-
-  it("As the name input, I set my text and focus and they reach the suggestions' view of the input", () => {
-    // Given a fresh combobox state
-    const state = createNavComboboxState();
-
-    // When the visitor focuses the input and types
-    state.setFocused(true);
-    state.setText('al');
-
-    // Then the input view holds both
-    expect(state.input.get()).toEqual({ text: 'al', focused: true });
-  });
 });
