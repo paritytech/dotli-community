@@ -85,7 +85,8 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
     { asker },
     { emitState, update },
   ) => {
-    // The open runs in the next transition, so `connecting` is told before the open's own calls log.
+    // The open runs in its own transition, queued before `connecting` is emitted: `connecting` is told before the
+    // open's own calls log, and a listener that throws on it still leaves the open to come.
     update({ kind: 'connect' });
     emitState({ kind: 'connecting', asker, startedAt: performance.now() });
   };
