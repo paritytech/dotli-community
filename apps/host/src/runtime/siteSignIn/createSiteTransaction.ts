@@ -182,25 +182,23 @@ export function createSiteTransactionAction({
       ),
     );
   }
-  /** Builds the decode the review showed, so the phone signs the call the user confirmed. */
+  /**
+   * Builds the decode the review showed with the account's `readKey`, so the phone signs the call the user confirmed.
+   */
   function startBuild(
     { run, session, decoded }: DecodedRun,
-    publicKey: Uint8Array,
+    readKey: ReadKey,
     { emitState, update }: Transition<TransactionMachine>,
   ): void {
-    emitState({ kind: 'building', run, session, decoded });
-    // Async, so a creator that throws fails the build like a signing that rejects.
-    async function build(): Promise<string> {
-      const creator = txSigner.creator(account, {
-        onAsk() {
-          update({ kind: 'asked', session });
-        },
-      });
-      return toHex(await session.create({ call: decoded, creator, publicKey }));
-    }
+    emitState({ kind: 'building', run: { main: run.main, readKey }, session, decoded });
+    const creator = txSigner.creator(account, {
+      onAsk() {
+        update({ kind: 'asked', session });
+      },
+    });
     update(
-      build().then(
-        transaction => ({ kind: 'built', transaction }),
+      session.create({ call: decoded, creator, publicKey: readKey.key }).then(
+        signed => ({ kind: 'built', transaction: toHex(signed) }),
         (error: unknown) => ({ kind: 'buildFailed', error }),
       ),
     );
@@ -301,13 +299,14 @@ export function createSiteTransactionAction({
         ended: endSession,
       },
       reviewing: {
-        confirmed({ run, session, decoded }, _event, transition) {
+        confirmed(state, _event, transition) {
+          const { run } = state;
           // Nothing reaches the phone before the user confirms the review. The account's key fills the nonce.
           if (run.readKey?.owner === run.main.owner) {
-            startBuild({ run, session, decoded }, run.readKey.key, transition);
+            startBuild(state, run.readKey, transition);
             return;
           }
-          transition.emitState({ kind: 'sharing', run, session, decoded });
+          transition.emitState({ ...state, kind: 'sharing' });
           transition.update(
             accountReader.account(account).then(
               key => ({ kind: 'keyRead', key }),
@@ -318,9 +317,8 @@ export function createSiteTransactionAction({
         ended: endSession,
       },
       sharing: {
-        keyRead({ run, session, decoded }, { key }, transition) {
-          const { main } = run;
-          startBuild({ run: { main, readKey: { owner: main.owner, key } }, session, decoded }, key, transition);
+        keyRead(state, { key }, transition) {
+          startBuild(state, { owner: state.run.main.owner, key }, transition);
         },
         keyFailed({ run, session }, { error }, transition) {
           if (error instanceof SiteAccountRejectedError) {
