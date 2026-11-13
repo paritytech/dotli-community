@@ -17,6 +17,7 @@ import {
   noop,
   realTimers,
   type AsyncTaskPool,
+  type HandlerOf,
   type MachineTypes,
   type Timers,
   type Transition,
@@ -191,7 +192,7 @@ type PageCoreEvent =
   | { kind: 'booted'; coreId: symbol; booted: BootedCoreRuntime }
   | { kind: 'bootFailed'; coreId: symbol; error: unknown }
   | { kind: 'leaseReleased'; coreId: symbol; leaseId: symbol }
-  | { kind: 'lingerEnded'; coreId: symbol; timer: unknown }
+  | { kind: 'lingerEnded'; coreId: symbol }
   | { kind: 'wentDown'; coreId: symbol; reason: CoreDownReason }
   | { kind: 'storeChanged'; coreId: symbol }
   | { kind: 'staleRead'; coreId: symbol; stale: boolean }
@@ -246,11 +247,11 @@ export function createPageCore({
    * Moves a live or lingering core out of service. A held core that is the page's has its replacement dialed in the
    * same state, so a lease that hears the core go finds the replacement current. One nobody holds leaves.
    */
-  function takeOutOfService(
-    state: PageCoreState,
-    { coreId, reason }: { coreId: symbol; reason: CoreDownReason },
-    transition: Transition<PageCoreMachine>,
-  ): void {
+  const takeOutOfService: HandlerOf<PageCoreMachine, 'serving', 'wentDown'> = (
+    state,
+    { coreId, reason },
+    transition,
+  ) => {
     const core = state.cores.get(coreId);
     if (core?.kind === 'lingering') {
       transition.emitState(leave(state, core, transition));
@@ -269,7 +270,7 @@ export function createPageCore({
     } else {
       transition.emitState(next);
     }
-  }
+  };
 
   const machine = createStateMachine<PageCoreMachine>({
     initial: { kind: 'serving', product: LANDING_PRODUCT, current: null, cores: new Map() },
@@ -381,13 +382,14 @@ export function createPageCore({
             return;
           }
           const timer = timers.setTimeout(() => {
-            transition.update({ kind: 'lingerEnded', coreId, timer });
+            transition.update({ kind: 'lingerEnded', coreId });
           }, destroyDelay);
           transition.emitState(withCore(state, { ...getBootedParts(core), kind: 'lingering', timer }));
         },
-        lingerEnded(state, { coreId, timer }, transition) {
+        lingerEnded(state, { coreId }, transition) {
           const core = state.cores.get(coreId);
-          if (core?.kind !== 'lingering' || core.timer !== timer) {
+          // Every way out of `lingering` clears its timer, so a core still lingering is the one that set it.
+          if (core?.kind !== 'lingering') {
             return;
           }
           transition.emitState(leave(state, core, transition));
@@ -413,7 +415,7 @@ export function createPageCore({
           if (!stale) {
             return;
           }
-          takeOutOfService(state, { coreId, reason: 'stale' }, transition);
+          takeOutOfService(state, { kind: 'wentDown', coreId, reason: 'stale' }, transition);
         },
         staleReadFailed(_state, { error }, { emitSideEffect }) {
           emitSideEffect({ kind: 'staleReadFailed', error });
