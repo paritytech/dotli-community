@@ -101,17 +101,6 @@ describe('resolveSettings', () => {
     expect(settings.network).toBe('paseo-next-v2');
   });
 
-  it('As a visitor from an old build, I return and get the backend my old mode key names', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { 'dotli:mode': 'gateway' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.backend).toBe('rpc-gateway');
-  });
-
   it('As a first-time visitor on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
     const { settings } = resolveSettings({
@@ -158,17 +147,6 @@ describe('resolveSettings', () => {
     // Then
     expect(url.network).toBeNull();
     expect(settings.network).toBe('previewnet');
-  });
-
-  it('As a visitor with a valid backend and a stale old mode key, I return and the backend I chose wins', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' } });
-
-    // When
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // Then
-    expect(settings.backend).toBe('smoldot-direct');
   });
 
   it('As a visitor whose browser lacks SharedWorker, I am told only when the shared light client was my choice', () => {

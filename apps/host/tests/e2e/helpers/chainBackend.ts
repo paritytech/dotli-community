@@ -25,8 +25,6 @@ export const E2E_CHAIN_BACKEND = readChainBackend();
 export function initializeChainBackend(backend: Backend): void {
   try {
     localStorage.setItem('dotli:chain-backend', backend);
-    localStorage.removeItem('dotli:mode');
-    localStorage.removeItem('dotli:content-backend');
   } catch (error) {
     if (window === window.top) {
       throw error;

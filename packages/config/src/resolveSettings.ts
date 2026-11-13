@@ -8,7 +8,6 @@
 import { BACKEND_KEY, getDefaultBackend, hasSharedWorker, parseBackend, type Backend } from './backend.js';
 import { CACHE_KEY, parseCacheSettings, type CacheSettings } from './cacheSettings.js';
 import { getDefaultNetwork, getEnabledNetworks } from './getEnabledNetworks.js';
-import { getLegacyBackend } from './getLegacyBackend.js';
 import { NETWORK_KEY, isValidNetwork, type Network } from './networkNames.js';
 import type { ParsedUrlSettings } from './urlSettings.js';
 
@@ -60,7 +59,6 @@ export function resolveSettings({
     url?.backend ??
     parseBackend(preferLocal ? null : (shared?.backend ?? null)) ??
     parseBackend(local.getItem(BACKEND_KEY)) ??
-    getLegacyBackend(local) ??
     getDefaultBackend();
   const sharedWorkerFallback = hasSharedWorker(wanted) && !sharedWorkerAvailable;
   const ownCache = local.getItem(CACHE_KEY);
