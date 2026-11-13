@@ -594,19 +594,17 @@ export function createWorkerLifecycle({
     onEffect: effect => {
       switch (effect.kind) {
         case 'portConnected':
-          logWorkerEvent('Port connected', { ports: countServed(machine.state.get()), engine: effect.engine });
+          logWorkerEvent('Port connected', { ports: countHeld(machine.state.get(), 'served'), engine: effect.engine });
           break;
         case 'portReleased':
-          logWorkerEvent('Port released', { ports: countServed(machine.state.get()) });
+          logWorkerEvent('Port released', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'portClosed':
-          logWorkerEvent('Port closed', { ports: countServed(machine.state.get()) });
+          logWorkerEvent('Port closed', { ports: countHeld(machine.state.get(), 'served') });
           break;
         case 'releasedPortClosed':
           logWorkerEvent('Released port closed', {
-            released: [...(readLive(machine.state.get())?.ports.values() ?? [])].filter(
-              held => held.kind === 'released',
-            ).length,
+            released: countHeld(machine.state.get(), 'released'),
           });
           break;
         case 'workerClosing':
@@ -675,7 +673,7 @@ export function createWorkerLifecycle({
 
   return {
     /** How many ports the worker serves. Never throws. */
-    countPorts: (): number => countServed(machine.state.get()),
+    countPorts: (): number => countHeld(machine.state.get(), 'served'),
     /** Whether the worker is marked ready and has not failed, closed or been disposed since. */
     isReady: (): boolean => machine.state.get().kind === 'ready',
     /**
@@ -872,6 +870,7 @@ function readLive(state: LifecycleState): Live | null {
   }
 }
 
-function countServed(state: LifecycleState): number {
-  return listServed(readLive(state)?.ports ?? new Map()).length;
+/** How many ports of `kind` the worker holds, none once it closed or was disposed. */
+function countHeld(state: LifecycleState, kind: (ServedPort | ReleasedPort)['kind']): number {
+  return [...(readLive(state)?.ports.values() ?? [])].filter(held => held.kind === kind).length;
 }
