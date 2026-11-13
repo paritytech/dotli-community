@@ -806,4 +806,56 @@ describe('app service worker', () => {
     // Then it comes from the archive handed over last
     expect(await chunk?.text()).toBe('second()');
   });
+
+  it('As a visitor, I open two tabs that hand over their archives while the worker lists the open pages for an earlier handoff, and each tab is served its own', async () => {
+    // Given a worker whose listings of the open pages are held, and the first tab's handoff waiting on the first one
+    const listings = [createDeferred<undefined>(), createDeferred<undefined>(), createDeferred<undefined>()];
+    onTestFinished(() => {
+      for (const listing of listings) {
+        listing.resolve(undefined);
+      }
+    });
+    const liveClients = ['page-1'];
+    const scope = startWorker(origin, { liveClients, holdListings: listings.map(listing => listing.promise) });
+    const firstHandoff = setArchive(scope, { 'late.js': 'first()' }, { clientId: 'page-1' });
+    void setArchive(scope, { 'late.js': 'second()' }, { clientId: 'page-2' });
+    void setArchive(scope, { 'late.js': 'third()' }, { clientId: 'page-3' });
+
+    // When the listing taken before the two tabs opened ends, and the second tab loads a chunk
+    listings[0]?.resolve(undefined);
+    await firstHandoff;
+    liveClients.push('page-2', 'page-3');
+    const chunk = await request(scope, '/late.js', { clientId: 'page-2' });
+
+    // Then
+    expect(await chunk?.text()).toBe('second()');
+  });
+
+  it('As a user, I start a product worker while the worker lists the open pages for a handoff, and after a restart the product worker is still served the archive of the page that started it', async () => {
+    // Given the page's handoff waiting on a listing of the open clients taken before the product worker started
+    const listing = createDeferred<undefined>();
+    onTestFinished(() => {
+      listing.resolve(undefined);
+    });
+    const liveClients = ['page-1'];
+    const first = startWorker(origin, { liveClients, holdListings: [listing.promise] });
+    const handoff = setArchive(first, { 'late.js': 'first()' }, { clientId: 'page-1' });
+    const workerScript = request(first, '/worker.js', {
+      clientId: 'page-1',
+      destination: 'worker',
+      resultingClientId: 'worker-1',
+    });
+
+    // When the listing ends, another tab hands over the newest archive, and a restarted worker is asked by the
+    // product worker
+    listing.resolve(undefined);
+    await handoff;
+    liveClients.push('worker-1', 'page-2');
+    await workerScript;
+    await setArchive(first, { 'late.js': 'second()' }, { clientId: 'page-2' });
+    const chunk = await request(startWorker(origin, { liveClients }), '/late.js', { clientId: 'worker-1' });
+
+    // Then
+    expect(await chunk?.text()).toBe('first()');
+  });
 });

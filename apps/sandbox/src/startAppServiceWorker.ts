@@ -55,18 +55,25 @@ type Archives = {
 type ReadBack = ReturnType<typeof createDeferred<Archives>>;
 
 /**
+ * A sweep of the clients that closed. While it lists the open clients, the ids handed over or linked since are `spared`,
+ * since the listing may have been taken before they opened.
+ */
+type Sweep = { kind: 'idle' } | { kind: 'listing'; spared: ReadonlySet<string> };
+
+/**
  * The archives in memory, and whether the worker has read the store back since it started. `readBack` is the read in
  * flight, and `missedBefore` says whether a read failed before, since only the first failure is reported to the pages.
  */
 type WorkerState =
-  | { kind: 'unread'; archives: Archives; missedBefore: boolean }
-  | { kind: 'reading'; archives: Archives; readBack: ReadBack; missedBefore: boolean }
-  | { kind: 'read'; archives: Archives };
+  | { kind: 'unread'; archives: Archives; sweep: Sweep; missedBefore: boolean }
+  | { kind: 'reading'; archives: Archives; sweep: Sweep; readBack: ReadBack; missedBefore: boolean }
+  | { kind: 'read'; archives: Archives; sweep: Sweep };
 
 type WorkerEvent =
   | { kind: 'requested'; event: FetchEvent; pathname: string }
   | { kind: 'archiveHanded'; clientId: string; archive: ServedArchive }
   | { kind: 'workerLinked'; workerId: string; pageId: string }
+  | { kind: 'sweepStarted' }
   | { kind: 'clientsClosed'; closed: IsClosedClientParams }
   | { kind: 'archivesRestored'; restored: Archives }
   | { kind: 'restoreMissed'; error: unknown };
@@ -96,7 +103,11 @@ const handArchive: HandlerOf<WorkerMachine, WorkerState['kind'], 'archiveHanded'
   { emitState },
 ) => {
   const byClient = new Map(state.archives.byClient).set(clientId, archive);
-  emitState({ ...state, archives: { ...state.archives, byClient, newest: archive } });
+  emitState({
+    ...state,
+    archives: { ...state.archives, byClient, newest: archive },
+    sweep: spare(state.sweep, clientId),
+  });
 };
 
 /** A worker a page started is served that page's archive. */
@@ -106,19 +117,29 @@ const linkWorker: HandlerOf<WorkerMachine, WorkerState['kind'], 'workerLinked'> 
   { emitState },
 ) => {
   const workerPages = new Map(state.archives.workerPages).set(workerId, pageId);
-  emitState({ ...state, archives: { ...state.archives, workerPages } });
+  emitState({ ...state, archives: { ...state.archives, workerPages }, sweep: spare(state.sweep, workerId) });
 };
 
-/** Drops the archives and links of clients that are not open, except the sender's, which was open to send. */
+/** Starts a sweep, which spares from now on what is handed over or linked until the open clients are listed. */
+const startSweep: HandlerOf<WorkerMachine, WorkerState['kind'], 'sweepStarted'> = (state, _event, { emitState }) => {
+  emitState({ ...state, sweep: { kind: 'listing', spared: new Set() } });
+};
+
+/**
+ * Ends the sweep: drops the archives and links of clients that are not open, except the sender's, which was open to
+ * send, and those the sweep spares.
+ */
 const dropClosed: HandlerOf<WorkerMachine, WorkerState['kind'], 'clientsClosed'> = (
   state,
   { closed },
   { emitState },
 ) => {
-  const { archives } = state;
-  const byClient = new Map([...archives.byClient].filter(([clientId]) => !isClosedClient(clientId, closed)));
-  const workerPages = new Map([...archives.workerPages].filter(([workerId]) => !isClosedClient(workerId, closed)));
-  emitState({ ...state, archives: { ...archives, byClient, workerPages } });
+  const { archives, sweep } = state;
+  const spared = sweep.kind === 'listing' ? sweep.spared : new Set<string>();
+  const isDropped = (id: string) => isClosedClient(id, closed) && !spared.has(id);
+  const byClient = new Map([...archives.byClient].filter(([clientId]) => !isDropped(clientId)));
+  const workerPages = new Map([...archives.workerPages].filter(([workerId]) => !isDropped(workerId)));
+  emitState({ ...state, archives: { ...archives, byClient, workerPages }, sweep: { kind: 'idle' } });
 };
 
 /**
@@ -143,6 +164,7 @@ export function startAppServiceWorker({
     initial: {
       kind: 'unread',
       archives: { byClient: new Map(), workerPages: new Map(), newest: null },
+      sweep: { kind: 'idle' },
       missedBefore: false,
     },
     handlers: {
@@ -156,7 +178,8 @@ export function startAppServiceWorker({
           // A restarted worker reads the archives back first, since nginx answers every path with the shell as
           // `text/html`.
           const readBack: ReadBack = createDeferred();
-          emitState({ kind: 'reading', archives: state.archives, readBack, missedBefore: state.missedBefore });
+          const { archives, sweep, missedBefore } = state;
+          emitState({ kind: 'reading', archives, sweep, readBack, missedBefore });
           emitSideEffect({ kind: 'respondAfterRead', event, pathname, readBack });
           update(
             loadPersistedArchives(indexedDB)
@@ -169,6 +192,7 @@ export function startAppServiceWorker({
         },
         archiveHanded: handArchive,
         workerLinked: linkWorker,
+        sweepStarted: startSweep,
         clientsClosed: dropClosed,
       },
       reading: {
@@ -180,18 +204,18 @@ export function startAppServiceWorker({
           }
           emitSideEffect({ kind: 'respondAfterRead', event, pathname, readBack });
         },
-        archivesRestored({ archives, readBack }, { restored }, { emitState, emitSideEffect }) {
+        archivesRestored({ archives, sweep, readBack }, { restored }, { emitState, emitSideEffect }) {
           // What the store kept fills in only where memory has nothing, since a handoff during the read is newer.
           const merged: Archives = {
             byClient: new Map([...restored.byClient, ...archives.byClient]),
             workerPages: new Map([...restored.workerPages, ...archives.workerPages]),
             newest: archives.newest ?? restored.newest,
           };
-          emitState({ kind: 'read', archives: merged });
+          emitState({ kind: 'read', archives: merged, sweep });
           emitSideEffect({ kind: 'readEnded', readBack, archives: merged });
         },
-        restoreMissed({ archives, readBack, missedBefore }, { error }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'unread', archives, missedBefore: true });
+        restoreMissed({ archives, sweep, readBack, missedBefore }, { error }, { emitState, emitSideEffect }) {
+          emitState({ kind: 'unread', archives, sweep, missedBefore: true });
           emitSideEffect({ kind: 'restoreMissed', error });
           if (!missedBefore) {
             emitSideEffect({ kind: 'firstRestoreMissed', error });
@@ -200,6 +224,7 @@ export function startAppServiceWorker({
         },
         archiveHanded: handArchive,
         workerLinked: linkWorker,
+        sweepStarted: startSweep,
         clientsClosed: dropClosed,
       },
       read: {
@@ -211,6 +236,7 @@ export function startAppServiceWorker({
         },
         archiveHanded: handArchive,
         workerLinked: linkWorker,
+        sweepStarted: startSweep,
         clientsClosed: dropClosed,
       },
     },
@@ -317,12 +343,18 @@ export function startAppServiceWorker({
       return;
     }
     worker.update({ kind: 'workerLinked', workerId, pageId });
+    // In the same queue as the archive writes, so a write that lists the open clients first never drops this link.
     event.waitUntil(
-      persistWorkerPage(indexedDB, { workerId, pageId }).catch((error: unknown) => {
-        // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
-        console.error("Failed to persist a worker's page; a restarted worker will serve it the newest archive:", error);
-        return reportToPages({ stage: 'persist', error });
-      }),
+      persists
+        .call(() => persistWorkerPage(indexedDB, { workerId, pageId }))
+        .catch((error: unknown) => {
+          // eslint-disable-next-line no-console -- the worker has no logger, and it reports the failure to its pages
+          console.error(
+            "Failed to persist a worker's page; a restarted worker will serve it the newest archive:",
+            error,
+          );
+          return reportToPages({ stage: 'persist', error });
+        }),
     );
   }
 
@@ -396,10 +428,21 @@ export function startAppServiceWorker({
 
   /** Forgets the clients no longer open and keeps a page's archive for a restart. Rejects as the store does. */
   async function keepPageArchive(clientId: string, archive: PersistedArchive): Promise<void> {
+    worker.update({ kind: 'sweepStarted' });
     const clients = await scope.clients.matchAll({ includeUncontrolled: true, type: 'all' });
     const liveClientIds = new Set(clients.map(client => client.id));
     worker.update({ kind: 'clientsClosed', closed: { clientId, liveClientIds } });
     await persistPageArchive(indexedDB, { clientId, archive, liveClientIds });
+  }
+}
+
+/** `sweep` with `id` spared when it is listing. */
+function spare(sweep: Sweep, id: string): Sweep {
+  switch (sweep.kind) {
+    case 'idle':
+      return sweep;
+    case 'listing':
+      return { kind: 'listing', spared: new Set(sweep.spared).add(id) };
   }
 }
 
