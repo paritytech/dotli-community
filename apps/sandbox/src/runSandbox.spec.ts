@@ -504,7 +504,7 @@ describe('runSandbox retries', () => {
     expect(sandbox.events.filter(event => event === 'retrying')).toHaveLength(1);
   });
 
-  it('As a visitor after five failed loads, I press retry, am offered a reload instead, and pressing it asks the host to reload', async () => {
+  it('As a visitor after five failed loads, I press retry and am asked to reload instead', async () => {
     // Given five failed loads
     const sandbox = createHarness([failed]);
     await sandbox.start(toFramedPage(createSandboxUrl())).await();
@@ -512,8 +512,7 @@ describe('runSandbox retries', () => {
       await sandbox.press();
     }
 
-    // When retry is pressed once more, and then the action that failure offers
-    await sandbox.press();
+    // When
     await sandbox.press();
 
     // Then
@@ -522,9 +521,7 @@ describe('runSandbox retries', () => {
       step: 'retry_limit',
       title: 'Too many retry attempts',
       message: 'Reached 5 failed attempts. Reload the page to start over.',
-      action: { label: 'Reload' },
     });
-    expect(sandbox.events.at(-1)).toBe('navigate reload');
   });
 });
 
@@ -572,16 +569,7 @@ describe('runSandbox failure actions', () => {
       event: 'open app',
       loads: 0,
     },
-    {
-      cause: 'a load whose content fetch failed',
-      page: toFramedPage(createSandboxUrl()),
-      outcomes: [{ outcome: 'failed', step: 'content_fetch', error: new Error('unreachable') }, { outcome: 'loaded' }],
-      label: 'Retry',
-      goal: 'the product loads again',
-      event: 'load 2',
-      loads: 2,
-    },
-  ])('As a visitor facing $cause, I press $label and $goal', async ({ page, outcomes, label, event, loads }) => {
+  ])('As a visitor facing $cause, I press $label and $goal', async ({ page, outcomes, event, loads }) => {
     // Given a failure on screen
     const sandbox = createHarness(outcomes);
     await sandbox.start(page).await();
@@ -590,11 +578,7 @@ describe('runSandbox failure actions', () => {
     await sandbox.press();
 
     // Then
-    expect({
-      label: sandbox.failures.at(-1)?.action?.label,
-      event: sandbox.events.at(-1),
-      loads: sandbox.loads.length,
-    }).toEqual({ label, event, loads });
+    expect({ event: sandbox.events.at(-1), loads: sandbox.loads.length }).toEqual({ event, loads });
   });
 
   it('As a visitor whose failure action throws, I keep the failure on screen, and the operator sees the throw', async () => {

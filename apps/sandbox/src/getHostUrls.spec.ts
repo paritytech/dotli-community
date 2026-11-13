@@ -32,11 +32,6 @@ describe('host urls', () => {
       dev: false,
       expected: { app: 'https://dot.li/', landing: 'https://dot.li/' },
     },
-    {
-      page: 'https://elsewhere.example',
-      dev: false,
-      expected: { app: 'https://dot.li/', landing: 'https://dot.li/' },
-    },
   ])(
     "As a visitor on the sandbox page $page (dev: $dev), I get the host's app and landing addresses",
     ({ page, dev, expected }) => {

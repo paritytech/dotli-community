@@ -14,6 +14,7 @@ import type { HostMessages } from './createHostMessages.js';
 import type { SandboxAction, SandboxUi } from './createSandboxUi.js';
 import {
   describeSandboxFailure,
+  getFailureRecovery,
   getFailureStep,
   RECOVERY_LABELS,
   type LoadDependency,
@@ -250,13 +251,20 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     { step, error }: { step: LoadStep; error: unknown },
     { emitState, emitSideEffect, update }: Transition<RunMachine>,
   ): void {
+    const dependency = hasLightClient(params.backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
+    const failure: SandboxFailure = { kind: 'load', step, error, dependency };
+    if (getFailureRecovery(failure) !== 'retry') {
+      emitState({ kind: 'ended' });
+      emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
+      emitSideEffect({ kind: 'showFailure', failure });
+      return;
+    }
     const failedState: FailedRun = { kind: 'failed', params, attempt };
     emitState(failedState);
-    const dependency = hasLightClient(params.backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
     emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
     emitSideEffect({
       kind: 'showFailure',
-      failure: { kind: 'load', step, error, dependency },
+      failure,
       retry: () => {
         update({ kind: 'retried', from: failedState });
       },
@@ -331,8 +339,8 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     const step = getFailureStep(failure);
     try {
       deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
-      const { title, message, recovery } = describeSandboxFailure(failure, deps);
-      deps.ui.showError(title, message, { action: buildAction(recovery, retry, step) });
+      const { title, message } = describeSandboxFailure(failure, deps);
+      deps.ui.showError(title, message, { action: buildAction(getFailureRecovery(failure), retry, step) });
     } catch (error) {
       report.defect(error, {
         step: 'failure_show',
@@ -344,7 +352,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     }
   }
 
-  /** The failure's action with its defect wrapper. A retry that was not offered leaves the failure with no action. */
+  /** The failure's action with its defect wrapper, or none for a retry recovery that came without its retry. */
   function buildAction(
     recovery: SandboxRecovery,
     retry: (() => void) | undefined,
@@ -373,7 +381,10 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     };
   }
 
-  /** What pressing the failure's action does, or null when a retry was not offered. */
+  /**
+   * What pressing the failure's action does, or null for a retry recovery without its retry. Only a failed attempt
+   * that the run keeps open hands a retry over, so the guard holds that pairing across the two modules.
+   */
   function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | null {
     switch (recovery) {
       case 'retry':
