@@ -568,4 +568,39 @@ describe('createDotnsResolver', () => {
     expect(owner).toBeNull();
     expect(assetHub).toHaveBeenCalledTimes(2);
   });
+  it.each([
+    ['a light client that ended', 'AlreadyDestroyedError', 'expected'],
+    ['a bug', 'TypeError', 'exceptions'],
+  ] as const)(
+    'As an operator, I see a chain client whose teardown throws for %s reported and counted under its own step',
+    async (_case, name, kind) => {
+      // Given an Asset Hub connection that refuses the follow, and whose disconnect throws
+      const reports = recordReports({ onFinished: onTestFinished });
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      const refusing: JsonRpcProvider = onMessage => ({
+        send: request => {
+          queueMicrotask(() => {
+            onMessage({ jsonrpc: '2.0', id: request.id ?? null, error: { code: -32_000, message: 'refused' } });
+          });
+        },
+        disconnect: () => {
+          const error = new Error('light client gone');
+          error.name = name;
+          throw error;
+        },
+      });
+      const dotns = createDotnsResolver({
+        assetHub: () => refusing,
+        dotns: getActiveServicesConfig().dotns,
+        source: 'rpc-gateway',
+      });
+
+      // When the build fails and its client is torn down
+      await dotns.waitForAssetHubFinalized().catch(() => undefined);
+
+      // Then
+      expect(reports[kind]).toMatchObject([{ step: 'client_destroy' }]);
+      expect(metrics.counted('resolve.client_destroy')).toEqual([{ outcome: 'error', reason: name }]);
+    },
+  );
 });

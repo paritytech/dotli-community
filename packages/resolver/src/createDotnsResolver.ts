@@ -8,7 +8,7 @@
 import { createClient, DisjointError } from '@polkadot-api/substrate-client';
 import type { JsonRpcProvider } from 'polkadot-api';
 import { TIMEOUTS, type DotnsContracts } from '@dotli/config';
-import { createReporter, m } from '@dotli/metrics';
+import { createReporter, defineCount, m } from '@dotli/metrics';
 import { createAsyncTaskPool, isChainHaltedRpcError, log, toHex, withTimeout } from '@dotli/shared';
 
 import { ApiStoppedError } from './apiStoppedError.js';
@@ -29,6 +29,15 @@ import { UnsupportedContenthashCodecError } from './unsupportedContenthashCodecE
 const report = createReporter({ flow: 'resolve' });
 
 const RESOLVE_STORAGE_READ = 'resolve.storage_read';
+
+/**
+ * Count. A chain client whose teardown threw. Tagged `outcome` (error) and `reason` (the error's name):
+ * `AlreadyDestroyedError` or `CrashError` for a light client that ended or panicked, and any other name for a bug.
+ */
+const clientDestroyMetric = defineCount<'error'>('resolve.client_destroy');
+
+// A panicked smoldot says so in its message, while its own class names may not survive the bundle.
+const SMOLDOT_GONE_PATTERN = /panicked at|Smoldot has (?:panicked|crashed)/i;
 
 export type ResolveOptions = {
   onPhase?: PhaseCallback | undefined;
@@ -295,10 +304,28 @@ function openRawClient(provider: JsonRpcProvider): ChainClient {
       try {
         api.destroy();
         client.destroy();
-        // eslint-disable-next-line no-restricted-syntax -- a panicked smoldot may throw here, and the owner must still let go of the client.
-      } catch {
-        /* already dead */
+      } catch (error: unknown) {
+        // A light client that ended or panicked throws as its chain is removed, which the environment causes.
+        if (isLightClientGone(error)) {
+          report.expected(error, { step: 'client_destroy', metric: clientDestroyMetric });
+          return;
+        }
+        report.defect(error, {
+          step: 'client_destroy',
+          metric: clientDestroyMetric,
+          message: '[dot.li resolve] A chain client teardown threw:',
+        });
       }
     },
   };
+}
+
+/** Whether `error` is a light client's refusal because it already ended or panicked. */
+function isLightClientGone(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    error.name === 'AlreadyDestroyedError' || error.name === 'CrashError' || SMOLDOT_GONE_PATTERN.test(error.message)
+  );
 }
