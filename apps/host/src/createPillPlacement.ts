@@ -9,8 +9,8 @@ type Params = {
 };
 
 /**
- * Returns a placement that publishes the pill's box at rest. A folded or morphing bar keeps the box it published open,
- * which is the one it reveals to, and is not measured. An unchanged box is not written again.
+ * Returns a placement that publishes the pill's box at rest. A folded or morphing bar keeps the box it last published
+ * at rest and is not measured, since its box changes every frame. An unchanged box is not written again.
  */
 export function createPillPlacement({ publish }: Params): (measure: () => PillBox | null, atRest: boolean) => void {
   // As last published. Undefined until the first one.

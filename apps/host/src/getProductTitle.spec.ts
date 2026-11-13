@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { SITE_ID, withActiveTld } from '@dotli/config';
 
-import { getProductTitle } from './showProductTitle.js';
+import { getProductTitle } from './getProductTitle.js';
 
 describe('product tab title', () => {
   it('As a dApp user, I open a named product and the tab shows its published name', () => {

@@ -138,7 +138,10 @@ export function createTopbarAutoHide({
   ) => {
     scheduleFold(listeners, shown, transition);
   };
-  /** Shows a bar that holds focus or an open surface, and restarts the wait for the fold of one that does not. */
+  /**
+   * Shows a bar that holds focus or the pointer, or has a surface open, and restarts the wait for the fold of one that
+   * does not.
+   */
   const followFocus: HandlerOf<AutoHideMachine, 'up' | 'folding', 'focusChanged'> = (
     { listeners, contentShown },
     _event,
@@ -173,7 +176,9 @@ export function createTopbarAutoHide({
       return;
     }
     emitState({ kind: 'folded', listeners: state.listeners, contentShown: true });
-    emitSideEffect({ kind: 'focusReleased' });
+    if (isTopbarFocused()) {
+      emitSideEffect({ kind: 'focusReleased' });
+    }
   };
   const revealBar: HandlerOf<AutoHideMachine, 'folding' | 'folded', 'revealAsked'> = (
     { listeners },
@@ -280,9 +285,15 @@ export function createTopbarAutoHide({
             getPage().focusFirst(bar);
           }
           return;
-        case 'focusReleased':
-          releaseFocusToApp();
+        case 'focusReleased': {
+          const frame = layout.getFrame();
+          if (frame !== null) {
+            frame.focus();
+            return;
+          }
+          getPage().activeElement()?.blur();
           return;
+        }
         case 'shortcutTaken':
           effect.press.preventDefault();
           return;
@@ -435,18 +446,6 @@ export function createTopbarAutoHide({
   /** Whether the bar holds focus or the pointer, or a surface of it is open, any of which keeps it up. */
   function isBusy(): boolean {
     return isTopbarFocused() || (bar !== undefined && getPage().isHovered(bar)) || topbarSurfaces.isAnyOpen();
-  }
-
-  function releaseFocusToApp(): void {
-    if (!isTopbarFocused()) {
-      return;
-    }
-    const frame = layout.getFrame();
-    if (frame !== null) {
-      frame.focus();
-      return;
-    }
-    getPage().activeElement()?.blur();
   }
 
   /** Folds the bar over shown content, or waits again while it is busy. */

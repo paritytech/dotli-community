@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createPillPlacement } from './createPillPlacement.js';
-import { getPillBox, type PillBox } from './getPillBox.js';
+import type { PillBox } from './getPillBox.js';
 
 type RecordingPlacement = {
   /** Places `box`, at rest unless told otherwise. */
@@ -30,26 +30,26 @@ describe('pill placement', () => {
     ]);
   });
 
-  it('As a user, I keep the pill box unchanged and the root style is left alone', () => {
+  it('As a user, I resize the window without moving the pill and its box is not published again', () => {
     // Given
     const { place, published } = createRecordingPlacement();
-    place(getPillBox({ right: 1100, bottom: 72.4, width: 760 }, 1440));
+    place({ inlineEnd: 340, bottom: 72 });
 
     // When
-    place(getPillBox({ right: 1100, bottom: 72.4, width: 760 }, 1440));
+    place({ inlineEnd: 340, bottom: 72 });
 
     // Then
     expect(published).toEqual([{ inlineEnd: 340, bottom: 72 }]);
   });
 
-  it('As a user opening a menu on the landing page, I hide the bar and the menu keeps its own place', () => {
-    // Given a hidden bar, which has no box
+  it('As a user opening a menu on a page whose bar is not laid out, I see its absence published, not skipped as unchanged', () => {
+    // Given a bar not laid out, which has no box
     const { place, published } = createRecordingPlacement();
 
     // When
-    place(getPillBox({ right: 0, bottom: 0, width: 0 }, 1440));
+    place(null);
 
-    // Then the menus fall back to their own place
+    // Then
     expect(published).toEqual([null]);
   });
 });

@@ -42,6 +42,8 @@ type AutoHidePage = {
   frame: FakeElement;
   /** Points focus at `element` without the page hearing it. */
   setActive: (element: FakeElement | null) => void;
+  /** Returns the element that has focus. */
+  getActive: () => FakeElement | null;
   /** Builds an element of the page under `parent`. */
   createElement: (id: string, parent?: FakeElement | null) => FakeElement;
   /** Builds the auto-hide as the shell state builds it on a page with the bar, not started and with no bar registered. */
@@ -154,6 +156,22 @@ describe('topbar auto-hide reveal', () => {
 
     // Then the popover owns the moment, so the bar stays
     expect(isHidden()).toBe(false);
+  });
+
+  it('As a keyboard user typing in a host field outside the bar, I press Alt+Shift+T and the bar folds with focus left in the field', () => {
+    // Given
+    const { loadAutoHide, createElement, focusElement, getActive, document } = setupAutoHidePage();
+    const { arm: armTopbarAutoHide } = loadAutoHide();
+    armTopbarAutoHide();
+    const field = createElement('host-field');
+    focusElement(field);
+
+    // When
+    document.dispatchEvent(createShortcut());
+
+    // Then
+    expect(isHidden()).toBe(true);
+    expect(getActive()).toBe(field);
   });
 
   it('As a dotli integrator, I dispose the auto-hide with a focus check queued and the check does not outlive it', async () => {
@@ -519,6 +537,7 @@ function setupAutoHidePage({ mobile = false, phone = false }: Params = {}): Auto
     setActive(element) {
       active = element;
     },
+    getActive: () => active,
     createElement,
     createAutoHide,
     loadAutoHide,

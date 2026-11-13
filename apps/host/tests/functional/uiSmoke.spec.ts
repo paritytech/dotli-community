@@ -137,13 +137,14 @@ test.describe('Shell UI smoke', () => {
     await expect(html).toHaveAttribute('data-theme', 'dark');
   });
 
-  test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
+  test("As a user who loses the connection, the bar's status turns red and says so, and recovers when I'm back", async ({
     page,
     context,
   }) => {
     // Given
     await page.goto(LABEL_URL);
     const bar = page.locator('#topbar');
+    const offlineLine = page.locator('#topbar-offline');
     await expect(bar).toBeVisible();
 
     // When
@@ -151,12 +152,14 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(bar).toHaveAttribute('data-tone', 'err');
+    await expect(offlineLine).not.toBeEmpty();
 
     // When
     await context.setOffline(false);
 
     // Then
     await expect(bar).not.toHaveAttribute('data-tone', 'err');
+    await expect(offlineLine).toBeEmpty();
   });
 
   test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {

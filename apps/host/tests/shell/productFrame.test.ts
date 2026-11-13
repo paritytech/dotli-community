@@ -13,6 +13,7 @@ import { createProductFrame } from '../../src/runtime/createProductFrame.js';
 import { createPermissionAuthorizations } from '../../src/runtime/createPermissionAuthorizations.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
 import { createProductFrameView } from '../../src/createProductFrameView.js';
+import { productFrameLayout } from '../../src/createProductFrameLayout.js';
 import { nth } from '@dotli/shared/testing';
 import { rethrow } from '../../src/testing/rethrow.js';
 
@@ -80,10 +81,12 @@ function setupProductFramePage() {
     permissions: createPermissionAuthorizations(),
     // The real view over `#app`, so the error page meets the container swap.
     view: createProductFrameView({
+      layout: productFrameLayout,
       body: () => document.body,
       container: () => container,
       clearScreen: pageScreen.clear,
       hideLoading: () => undefined,
+      setTitle: () => undefined,
     }),
     notify: () => undefined,
   });

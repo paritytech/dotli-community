@@ -8,16 +8,18 @@ import { topbarState } from './state/topbarState.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { TOPBAR_REVEAL_SHORTCUT } from './topbarRevealShortcut.js';
 import { bindTopbarStatus } from './bindTopbarStatus.js';
+import { bindPillBox } from './bindPillBox.js';
 import { watchTopbarOffset } from './watchTopbarOffset.js';
 
 /**
- * Binds `bar` to the topbar auto-hide, the frame's offset, the topbar store and the network health store until the
- * returned unbind. Throws only as `bar` or the stores do.
+ * Binds `bar` to the topbar auto-hide, the frame's offset, the topbar store, the network health store and the pill's
+ * published box until the returned unbind. Throws only as `bar` or the stores do.
  */
 export function bindTopbar(bar: HTMLElement): () => void {
   const releaseBar = pageTopbarAutoHide.registerBar(bar);
   const unwatchOffset = watchTopbarOffset();
   const unbindStatus = bindTopbarStatus(bar, networkHealthState.store);
+  const unbindPillBox = bindPillBox(bar);
   bar.addEventListener('mouseenter', pageTopbarAutoHide.reveal);
   bar.addEventListener('mouseleave', pageTopbarAutoHide.scheduleHide);
 
@@ -37,6 +39,7 @@ export function bindTopbar(bar: HTMLElement): () => void {
     bar.removeEventListener('mouseenter', pageTopbarAutoHide.reveal);
     bar.removeEventListener('mouseleave', pageTopbarAutoHide.scheduleHide);
     unbindStatus();
+    unbindPillBox();
     unwatchOffset();
     releaseBar();
   }

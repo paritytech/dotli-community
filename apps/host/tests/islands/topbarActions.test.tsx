@@ -11,6 +11,7 @@ import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { TopbarActions } from '../../src/islands/TopbarActions.js';
 import { createProductFrameView } from '../../src/createProductFrameView.js';
+import { productFrameLayout } from '../../src/createProductFrameLayout.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { byId } from '@dotli/ui/testing';
 import { resetViewport, setPhoneViewport } from '../happyDom.js';
@@ -69,10 +70,12 @@ describe('TopbarActions island', () => {
     const frame = document.createElement('iframe');
     document.body.append(frame);
     createProductFrameView({
+      layout: productFrameLayout,
       body: () => document.body,
       container: () => document.body,
       clearScreen: () => undefined,
       hideLoading: () => undefined,
+      setTitle: () => undefined,
     }).attachFrame(frame);
     mount({ island: () => <TopbarActions /> });
     const trigger = byId('chains-button');
