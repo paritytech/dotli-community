@@ -241,6 +241,30 @@ describe('phone request tracker', () => {
     await expect(reentrant[1]?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
+  it('As a dotli integrator, I claim from inside a tracker transition as the tracker is disposed and my claim ends as gone', async () => {
+    // Given a network hold that disposes the tracker, then claims, while the second request is tracked
+    let reentrant: PhoneClaim | undefined;
+    let holds = 0;
+    const tracker: PhoneRequestTracker = createPhoneRequestTracker({
+      holdNetwork() {
+        holds += 1;
+        if (holds === 2) {
+          tracker.dispose();
+          reentrant = tracker.claim(isSignRaw);
+        }
+        return () => {};
+      },
+    });
+    const tap = tracker.connect();
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signRaw', body: buildSignRawBody('x') }));
+
+    // When
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signRaw', body: buildSignRawBody('y') }));
+
+    // Then
+    await expect(reentrant?.ended).resolves.toEqual({ kind: 'gone' });
+  });
+
   it('As a dotli integrator, I send a request on a closed tap and find nothing to claim', () => {
     // Given
     const { tracker: requests, reportUndecodable } = createTrackerHarness();

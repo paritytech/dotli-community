@@ -166,7 +166,12 @@ export function createPhoneRequestTracker({
           endRequests(requests, transition);
         },
       },
-      disposed: null,
+      disposed: {
+        // A claim made inside a transition may be handled after a dispose that was already on its way.
+        claimed(_state, { settle }, { emitSideEffect }) {
+          emitSideEffect({ kind: 'settled', settle, outcome: { kind: 'gone' } });
+        },
+      },
     },
     onEffect: effect => {
       switch (effect.kind) {
