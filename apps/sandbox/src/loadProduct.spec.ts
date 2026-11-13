@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 
 import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
-import { setErrorName } from '@dotli/shared';
+import { bindLogSink, setErrorName } from '@dotli/shared';
 
 import type { HostMessages } from './createHostMessages.js';
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
@@ -130,6 +130,32 @@ describe('loadProduct', () => {
     // Then the fetch reads its blocks from the relay
     expect(outcome).toEqual({ outcome: 'loaded' });
     expect(page.fetches).toEqual([{ bitswapBlockSource: BLOCK_SOURCE }]);
+  });
+
+  it('As an operator, I read the log of a load and see it start before its fetch, and the fetch end before the write', async () => {
+    // Given a gateway that serves a single page, and a log that records each line
+    const page = createHarness({ type: 'single', content: encode('<h1>hi</h1>') });
+    const lines: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: entry => {
+          lines.push(entry.message);
+        },
+      }),
+    );
+
+    // When the first attempt loads it
+    await loadProduct({ params: createParams(), attempt: 1 }, page.deps);
+
+    // Then the lines come in the order the load ran its steps
+    expect(lines).toEqual([
+      'Sandbox load started',
+      `Fetching ${CID} via IPFS gateway`,
+      'Service worker ready',
+      'Content fetched via gateway',
+      'Writing content into the window',
+      'Content rendered',
+    ]);
   });
 
   it('As a visitor, I open an archive and it is handed to the service worker before its index is written', async () => {

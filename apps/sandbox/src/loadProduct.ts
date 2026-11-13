@@ -68,22 +68,14 @@ export type LoadProductDeps = {
   measureSinceStart: () => number;
 };
 
-/** How the registration ended, held while the fetch still runs. */
-type WorkerOutcome = { kind: 'ready'; controlled: boolean } | { kind: 'failed'; error: unknown };
-
-/** How the fetch ended, held while the registration still runs. */
-type ContentOutcome = { kind: 'fetched'; result: FetchResult } | { kind: 'failed'; error: unknown };
-
 /**
- * Where one load is. From `preparing` the registration and the fetch run side by side, and the load goes on once both
+ * Where one load is. In `preparing` the registration and the fetch run side by side, and the load goes on once both
  * have settled. It ends with the outcome the caller gets.
  */
 type LoadState =
   | { kind: 'idle' }
   | { kind: 'purging' }
   | { kind: 'preparing' }
-  | { kind: 'awaitingContent'; worker: WorkerOutcome }
-  | { kind: 'awaitingWorker'; content: ContentOutcome }
   | { kind: 'decrypting'; content: Uint8Array }
   | { kind: 'storing'; files: ArchiveFiles }
   | { kind: 'rendering'; result: FetchResult }
@@ -93,21 +85,26 @@ type LoadState =
 type LoadEvent =
   | { kind: 'started' }
   | { kind: 'purged' }
-  | { kind: 'workerSettled'; worker: WorkerOutcome }
-  | { kind: 'contentSettled'; content: ContentOutcome }
+  | { kind: 'prepared'; worker: PromiseSettledResult<WorkerReady>; content: PromiseSettledResult<ContentFetched> }
   | { kind: 'decrypted'; files: ArchiveFiles | null }
   | { kind: 'archiveStored' }
   | { kind: 'htmlPrepared'; html: string }
   | { kind: 'write' }
   | { kind: 'stepFailed'; step: LoadStep; error: unknown };
 
+/** A registration that ended, with the time since start it ended at. */
+type WorkerReady = { controlled: boolean; ms: number };
+
+/** A fetch that ended, with the time since start it ended at. */
+type ContentFetched = { result: FetchResult; ms: number };
+
 /** What happened to a load, for its reports. */
 type LoadEffect =
   | { kind: 'started' }
   | { kind: 'purging' }
-  | { kind: 'workerSettled'; worker: WorkerOutcome }
   | { kind: 'fetching' }
-  | { kind: 'contentSettled'; content: ContentOutcome }
+  | ({ kind: 'workerReady' } & WorkerReady)
+  | ({ kind: 'contentFetched' } & ContentFetched)
   | { kind: 'decrypted'; files: ArchiveFiles }
   | { kind: 'archiveStored'; files: ArchiveFiles }
   | { kind: 'writing'; result: FetchResult }
@@ -146,25 +143,39 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
         stepFailed: failStep,
       },
       preparing: {
-        workerSettled(_state, { worker }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'awaitingContent', worker });
-          emitSideEffect({ kind: 'workerSettled', worker });
-        },
-        contentSettled(_state, { content }, { emitState, emitSideEffect }) {
-          emitState({ kind: 'awaitingWorker', content });
-          emitSideEffect({ kind: 'contentSettled', content });
-        },
-      },
-      awaitingContent: {
-        contentSettled({ worker }, { content }, transition) {
-          transition.emitSideEffect({ kind: 'contentSettled', content });
-          goOnPrepared(worker, content, transition);
-        },
-      },
-      awaitingWorker: {
-        workerSettled({ content }, { worker }, transition) {
-          transition.emitSideEffect({ kind: 'workerSettled', worker });
-          goOnPrepared(worker, content, transition);
+        prepared(_state, { worker, content }, transition) {
+          const { emitState, emitSideEffect, update } = transition;
+          if (worker.status === 'fulfilled') {
+            emitSideEffect({ kind: 'workerReady', ...worker.value });
+          }
+          if (content.status === 'fulfilled') {
+            emitSideEffect({ kind: 'contentFetched', ...content.value });
+          }
+          // The registration is the earlier step, so its failure names the load whatever the fetch did.
+          if (worker.status === 'rejected') {
+            emitState(toFailure('sw_register', worker.reason));
+            return;
+          }
+          if (content.status === 'rejected') {
+            emitState(toFailure('content_fetch', content.reason));
+            return;
+          }
+          const { result } = content.value;
+          switch (result.type) {
+            case 'single':
+              emitState({ kind: 'decrypting', content: result.content });
+              update(
+                runStep(
+                  'decrypt',
+                  () => deps.decrypt(result.content, cid),
+                  files => ({ kind: 'decrypted', files }),
+                ),
+              );
+              return;
+            case 'archive':
+              startStoring(result.files, transition);
+              return;
+          }
         },
       },
       decrypting: {
@@ -244,68 +255,35 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
     { emitState, emitSideEffect, update }: Transition<LoadMachine>,
   ): void {
     emitState({ kind: 'preparing' });
-    update(
-      startStep(() => registerWorker(registration)).then(
-        controlled => ({ kind: 'workerSettled', worker: { kind: 'ready', controlled } }),
-        (error: unknown) => ({ kind: 'workerSettled', worker: { kind: 'failed', error } }),
-      ),
-    );
+    // Logged as an effect, so it follows the start line of a load that did not purge.
+    emitSideEffect({ kind: 'fetching' });
     // The fetch needs no worker, so it runs while the worker registers. A single page waits for the worker too, so a
     // failed registration is still reported and the worker never claims a document that was already replaced.
-    emitSideEffect({ kind: 'fetching' });
     update(
-      startStep(fetchContent).then(
-        result => ({ kind: 'contentSettled', content: { kind: 'fetched', result } }),
-        (error: unknown) => ({ kind: 'contentSettled', content: { kind: 'failed', error } }),
-      ),
+      Promise.allSettled([registerWorker(registration), fetchContent()]).then(([worker, content]) => ({
+        kind: 'prepared',
+        worker,
+        content,
+      })),
     );
   }
 
   /** Registers the worker, timing the registration alone, so a full reset's purge is left out. */
-  async function registerWorker(registration: Parameters<LoadProductDeps['registerWorker']>[0]): Promise<boolean> {
+  async function registerWorker(registration: Parameters<LoadProductDeps['registerWorker']>[0]): Promise<WorkerReady> {
     const stopTimer = m.timer('app.sw_register');
     const controlled = await deps.registerWorker(registration);
     stopTimer();
-    return controlled;
+    return { controlled, ms: deps.measureSinceStart() };
   }
 
   /** Says on the host how the content is fetched, as the fetch's own status does, then fetches it. */
-  function fetchContent(): Promise<FetchResult> {
+  async function fetchContent(): Promise<ContentFetched> {
     const { blockSource, hostMessages } = deps;
     const { showStatus } = hostMessages;
     // Bitswap goes through the host-relayed protocol bridge, so the sandbox runs no libp2p.
     showStatus(blockSource === null ? 'Fetching via IPFS gateway...' : 'Fetching via bitswap...');
-    return deps.fetchArchive(cid, { onStatus: showStatus, bitswapBlockSource: blockSource });
-  }
-
-  /** Takes the load on once the registration and the fetch have both settled. */
-  function goOnPrepared(worker: WorkerOutcome, content: ContentOutcome, transition: Transition<LoadMachine>): void {
-    const { emitState, update } = transition;
-    // The registration is the earlier step, so its failure names the load whatever the fetch did.
-    if (worker.kind === 'failed') {
-      emitState(toFailure('sw_register', worker.error));
-      return;
-    }
-    if (content.kind === 'failed') {
-      emitState(toFailure('content_fetch', content.error));
-      return;
-    }
-    const { result } = content;
-    switch (result.type) {
-      case 'single':
-        emitState({ kind: 'decrypting', content: result.content });
-        update(
-          runStep(
-            'decrypt',
-            () => deps.decrypt(result.content, cid),
-            files => ({ kind: 'decrypted', files }),
-          ),
-        );
-        return;
-      case 'archive':
-        startStoring(result.files, transition);
-        return;
-    }
+    const result = await deps.fetchArchive(cid, { onStatus: showStatus, bitswapBlockSource: blockSource });
+    return { result, ms: deps.measureSinceStart() };
   }
 
   function startStoring(files: ArchiveFiles, { emitState, update }: Transition<LoadMachine>): void {
@@ -342,7 +320,6 @@ function createLoadReports(
   }: Pick<LoadProductDeps, 'hostMessages' | 'measureSinceStart' | 'blockSource'>,
 ): (effect: LoadEffect) => void {
   const { cid, backend, resolutionId } = params;
-  const via = blockSource === null ? 'gateway' : 'bitswap';
   const stopApp = m.timer('app.total');
   return reportEffect;
 
@@ -355,35 +332,23 @@ function createLoadReports(
       case 'purging':
         report.log.event('Purging sandbox-origin state for a full reset');
         return;
-      case 'workerSettled': {
-        const { worker } = effect;
-        if (worker.kind === 'failed') {
-          return;
-        }
-        report.log.event('Service worker ready', { controlled: worker.controlled, ms: measureSinceStart() });
-        return;
-      }
       case 'fetching':
-        switch (via) {
-          case 'gateway':
-            report.log.event(`Fetching ${cid} via IPFS gateway`, { ms: measureSinceStart() });
-            break;
-          case 'bitswap':
-            report.log.event(`Fetching ${cid} via bitswap`, { backend, ms: measureSinceStart() });
-            break;
-        }
-        return;
-      case 'contentSettled': {
-        const { content } = effect;
-        if (content.kind === 'failed') {
+        if (blockSource === null) {
+          report.log.event(`Fetching ${cid} via IPFS gateway`, { ms: measureSinceStart() });
           return;
         }
-        const { result } = content;
-        report.log.event(`Content fetched via ${via}`, {
+        report.log.event(`Fetching ${cid} via bitswap`, { backend, ms: measureSinceStart() });
+        return;
+      case 'workerReady':
+        report.log.event('Service worker ready', { controlled: effect.controlled, ms: effect.ms });
+        return;
+      case 'contentFetched': {
+        const { result } = effect;
+        report.log.event(`Content fetched via ${blockSource === null ? 'gateway' : 'bitswap'}`, {
           type: result.type,
           bytes: countResultBytes(result),
           files: countResultFiles(result),
-          ms: measureSinceStart(),
+          ms: effect.ms,
         });
         return;
       }
@@ -433,14 +398,10 @@ const failStep: HandlerOf<LoadMachine, 'purging' | 'decrypting' | 'storing' | 'r
 
 /** The event `work` settles with, as `toEvent` makes it, or the failure of `step` when it throws or rejects. */
 function runStep<T>(step: LoadStep, work: () => Promise<T>, toEvent: (value: T) => LoadEvent): Promise<LoadEvent> {
-  return startStep(work).then(toEvent, (error: unknown) => ({ kind: 'stepFailed', step, error }));
-}
-
-/** `work`'s promise, with a throw before it returns one turned into its rejection. */
-function startStep<T>(work: () => Promise<T>): Promise<T> {
+  // A throw before `work` returns its promise becomes that promise's rejection.
   return new Promise<T>(resolve => {
     resolve(work());
-  });
+  }).then(toEvent, (error: unknown) => ({ kind: 'stepFailed', step, error }));
 }
 
 /** The end state of a load that failed at `step`. */
