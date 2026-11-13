@@ -403,7 +403,7 @@ describe('startLoadProgress', () => {
     expect(trace.recordBytes.mock.calls).toEqual([[100]]);
   });
 
-  it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while dispose returns', () => {
+  it('As an operator, I see an unsubscribe that throws as the load progress is disposed reported as a defect, while the sources after it are still unsubscribed', () => {
     // Given a chain detail source whose unsubscribe throws
     const { counted } = bindReports();
     const events: Partial<LoadEvents> = {
@@ -411,13 +411,14 @@ describe('startLoadProgress', () => {
         throw new Error('the protocol frame is gone');
       },
     };
-    const { progress } = setupLoad({ backend: 'smoldot-direct', events });
+    const { progress, netBytes } = setupLoad({ backend: 'smoldot-direct', events });
 
     // When
     progress.dispose();
 
     // Then
     expect(counted('load_progress.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    expect(netBytes.isHeard()).toBe(false);
   });
 
   it('As a visitor whose download parks after the load progress was disposed, I wait and see no slow-load warning', async () => {

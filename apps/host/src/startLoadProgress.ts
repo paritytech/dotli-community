@@ -8,7 +8,8 @@ import { hasLightClient, type Backend } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
 import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
-import { pageLoading, type LoadingController, type LoadingPhase } from './createLoadingController.js';
+import { pageLoading, type LoadingController } from './createLoadingController.js';
+import { getLoadingBands, getResolvePhaseBand, moveBarOnChainSync } from './loadingBands.js';
 import type { ResolutionTrace } from './startResolutionTrace.js';
 import {
   createStateMachine,
@@ -165,22 +166,6 @@ const STALL_WARNING_MS = 3_000;
  */
 const WARNING_MIN_LOAD_MS = 5_000;
 
-// Bands follow where load time goes: Asset Hub sync and the content fetch own most of the bar. Connecting takes no
-// time, so it shares the Syncing band.
-const PHASE_INDEX: Partial<Record<ResolvePhase, number>> = {
-  'asset-hub-connecting': 1,
-  'asset-hub-syncing': 1,
-  'asset-hub-ready': 1,
-  'resolving-content': 2,
-};
-
-const GATEWAY_PHASES: LoadingPhase[] = [
-  { label: 'Connecting', base: 5, target: 50, expectedMs: 1200, stage: 'relay' },
-  { label: 'Resolving', base: 50, target: 62, expectedMs: 1200, stage: 'resolving' },
-  // No `reportsProgress`: the sandbox pulls the archive over HTTP, so nothing counts its bytes here.
-  { label: 'Fetching content', base: 62, target: 95, expectedMs: 10000, stage: 'content' },
-];
-
 /**
  * Starts the bar for one load and returns what moves it. Call it once the label is known and before anything is
  * resolved. Never throws: a throw of the loading screen or of a subscription in `events` is reported, and the load
@@ -198,7 +183,7 @@ export function startLoadProgress({
   debugBus = pageDebugBus,
 }: Params) {
   const gateway = !hasLightClient(backend);
-  const phases = getLoadingPhases(backend);
+  const phases = getLoadingBands(backend);
   const loadStartedAt = readClock();
   const chainReporter = createChainReporter({ flowId, timers, debugBus });
   const recordDetail: HandlerOf<ProgressMachine, 'gateway' | 'lightClient', 'chainDetailed'> = (_state, { detail }) => {
@@ -218,9 +203,7 @@ export function startLoadProgress({
     { emitState },
   ) => {
     emitState({ kind: 'disposed' });
-    for (const stopListening of stops) {
-      stopListening();
-    }
+    stopEach(stops);
   };
   const progress = createStateMachine<ProgressMachine>({
     initial: { kind: 'idle' },
@@ -230,57 +213,47 @@ export function startLoadProgress({
           loading.initPhases(phases);
           loading.setLoadingDomain(label);
           loading.advancePhase(0);
-          // On every backend: a gateway trace with no chain events is the point, not a gap.
-          const subscribes = [
-            () =>
+          const stops: (() => void)[] = [];
+          // A subscription that throws leaves none of the others behind, as the progress then stays idle.
+          try {
+            // Pushed one by one, so each stop is kept before the next subscription can throw. On every backend: a
+            // gateway trace with no chain events is the point, not a gap.
+            stops.push(
               events.onChainSync(sync => {
                 update({ kind: 'chainSynced', sync });
               }),
-            () =>
+            );
+            stops.push(
               events.onChainDetail(detail => {
                 update({ kind: 'chainDetailed', detail });
               }),
-            () =>
+            );
+            stops.push(
               events.onNetBytes(({ received }) => {
                 update({ kind: 'netBytes', received });
               }),
-            () =>
+            );
+            stops.push(
               events.onContentProgress(facts => {
                 update({ kind: 'contentProgressed', ...facts });
               }),
-          ];
-          if (!gateway) {
-            subscribes.push(
-              () =>
+            );
+            if (!gateway) {
+              stops.push(
                 loading.onProgressStall(() => {
                   update({ kind: 'barStalled' });
                 }),
-              () =>
+              );
+              stops.push(
                 productState.store.listen(product => {
                   if (product.status === 'loaded') {
                     update({ kind: 'productLoaded' });
                   }
                 }),
-            );
-          }
-          const stops: (() => void)[] = [];
-          // A subscription that throws leaves none of the others behind, as the progress then stays idle.
-          try {
-            for (const subscribe of subscribes) {
-              stops.push(subscribe());
+              );
             }
           } catch (error) {
-            for (const stopListening of stops) {
-              try {
-                stopListening();
-              } catch (stopError) {
-                report.defect(stopError, {
-                  step: 'transition',
-                  metric: loadProgressTransitionMetric,
-                  message: '[dot.li] A load progress unsubscribe threw while the start failed',
-                });
-              }
-            }
+            stopEach(stops);
             throw error;
           }
           if (gateway) {
@@ -382,9 +355,9 @@ export function startLoadProgress({
           }
         },
         phaseResolved(_state, { phase }) {
-          const index = PHASE_INDEX[phase];
-          if (index !== undefined) {
-            loading.advancePhase(index);
+          const band = getResolvePhaseBand(phase);
+          if (band !== null) {
+            loading.advancePhase(band);
           }
         },
         nameResolved: holdBar,
@@ -533,6 +506,21 @@ export function startLoadProgress({
   }
 }
 
+/** Calls every stop, so one that throws is reported and leaves none of the others listening. */
+function stopEach(stops: readonly (() => void)[]): void {
+  for (const stopListening of stops) {
+    try {
+      stopListening();
+    } catch (error) {
+      report.defect(error, {
+        step: 'transition',
+        metric: loadProgressTransitionMetric,
+        message: '[dot.li] A load progress unsubscribe threw',
+      });
+    }
+  }
+}
+
 /** `state` with `chain`'s stall watch replaced by `watch`. */
 function withWatch(state: LightClientState, chain: CriticalChain, watch: StallWatch): LightClientState {
   return { ...state, watches: new Map(state.watches).set(chain, watch) };
@@ -556,76 +544,4 @@ function measureThroughput({ samples, bytesPerSecond }: Throughput, received: nu
   const oldest = kept[0] ?? { at: now, total: received };
   const span = now - oldest.at;
   return { samples: kept, bytesPerSecond: span > 0 ? ((received - oldest.total) / span) * 1000 : bytesPerSecond };
-}
-
-function getLoadingPhases(backend: Backend): LoadingPhase[] {
-  switch (backend) {
-    case 'rpc-gateway':
-      return GATEWAY_PHASES;
-    case 'smoldot-shared-worker':
-      return getSmoldotPhases('Starting Worker', false);
-    case 'smoldot-direct':
-      // Only direct mode relays bitswap through this window, so only it can report a download percentage.
-      return getSmoldotPhases('Starting', true);
-  }
-}
-
-/** The visitor reads the stage's copy, not the label. */
-function getSmoldotPhases(startLabel: string, countsContentBytes: boolean): LoadingPhase[] {
-  return [
-    { label: startLabel, base: 2, target: 10, expectedMs: 770, stage: 'starting' },
-    { label: 'Syncing Asset Hub', base: 10, target: 55, expectedMs: 6500, stage: 'assetHub' },
-    { label: 'Resolving', base: 55, target: 62, expectedMs: 1200, stage: 'resolving' },
-    {
-      label: 'Fetching content',
-      base: 62,
-      target: 95,
-      expectedMs: 10000,
-      stage: 'content',
-      // Driven by counted bytes, only where something counts them, or the bar would hold at 62 for the whole fetch.
-      reportsProgress: countsContentBytes,
-    },
-  ];
-}
-
-/** Moves the loading bar on a chain's lifecycle milestone. Never throws. */
-function moveBarOnChainSync(event: ChainSyncEvent, loading: LoadingScreen): void {
-  switch (event.kind) {
-    case 'peers':
-      // With a peer the download can start, so the clock takes over: a cached archive never asks for a block.
-      if (event.chain === 'bulletin' && event.peers !== undefined && event.peers > 0) {
-        loading.releasePhaseProgress();
-      }
-      return;
-    case 'warpSyncProgress': {
-      // The one true percentage smoldot offers. Adding the relay happens inside the starting band, so its warp
-      // fills that band.
-      const { at, target } = event;
-      if (event.chain === 'relay' && at !== undefined && target !== undefined && target > 0 && at <= target) {
-        loading.nudgePhaseProgress(at / target, 'starting');
-      }
-      return;
-    }
-    case 'firstPeer':
-      if (event.chain === 'assethub') {
-        loading.advancePhase(1);
-      }
-      return;
-    case 'bootstrapComplete':
-      if (event.chain === 'assethub') {
-        loading.advancePhase(2);
-      }
-      return;
-    case 'warpSyncFinished':
-      // The last sample lands short of the target, which would leave the band just below full.
-      if (event.chain === 'relay') {
-        loading.nudgePhaseProgress(1, 'starting');
-      }
-      return;
-    case 'connecting':
-    case 'stalled':
-    case 'recovered':
-      // The per-chain peer counts already show these.
-      return;
-  }
 }
