@@ -78,8 +78,9 @@ describe('createBrowserPermissions', () => {
     ]);
   });
 
-  it('As a dotli user in a browser that cannot query a permission, I read it and get unknown', async () => {
+  it('As a dotli user in a browser that cannot query a permission, I read it and get unknown and the failure is counted', async () => {
     // Given
+    const reports = recordReports({ onFinished: onTestFinished });
     const rejecting = create({ permissions: { query: () => Promise.reject(new TypeError('Unsupported permission')) } });
     const missing = create({ permissions: null });
 
@@ -88,6 +89,7 @@ describe('createBrowserPermissions', () => {
 
     // Then
     expect(statuses).toEqual(['unknown', 'unknown']);
+    expect(reports.expected).toMatchObject([{ step: 'browser_permission_read' }]);
   });
 
   it('As a dotli user, I read a permission with no browser check and the browser is not asked', async () => {
