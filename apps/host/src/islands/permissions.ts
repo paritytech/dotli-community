@@ -7,7 +7,6 @@ import type { PermissionTargets } from '../runtime/permissionPolicy.js';
 import type { ProductPermissions } from '../runtime/state/productPermissions.js';
 import {
   getRead,
-  hasGrant,
   isUnreadable,
   type PermissionsRead,
   type ProductPermissionsState,
@@ -61,7 +60,6 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
 
   return {
     permissions: binding.permissions,
-    hasGrants: useStore(binding.store.state, hasGrant, { initial: INITIAL_STATE }),
     notice,
     statuses: () => {
       const read = shownRead();

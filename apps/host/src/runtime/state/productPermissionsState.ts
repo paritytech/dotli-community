@@ -38,8 +38,3 @@ export function isUnreadable(state: ProductPermissionsState, label: string): boo
       return false;
   }
 }
-
-/** Whether a permission read is granted. Never throws. */
-export function hasGrant(state: ProductPermissionsState): boolean {
-  return getRead(state)?.statuses.includes('granted') === true;
-}

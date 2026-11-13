@@ -107,10 +107,10 @@ export const RowOpensCollapsedPopover: Story = {
 };
 
 /**
- * As a phone user with the permissions button in More, I see its row carry the grants mark while the app has a grant,
- * and open the panel with every permission and its status.
+ * As a phone user with the permissions button in More, I open the panel from its row with every permission and its
+ * status.
  */
-export const PhoneRowMarksGrants: Story = {
+export const PhoneRowOpensPermissions: Story = {
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
   beforeEach: () => {
@@ -126,18 +126,7 @@ export const PhoneRowMarksGrants: Story = {
     await step('When I open More', async () => {
       await openMore(userEvent);
     });
-    await step('Then the Permissions row carries the grants mark and More none', async () => {
-      await expect(within(moreRow('permissions')).getByRole('img')).toHaveAttribute('aria-label', 'Has permissions');
-      await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
-    });
-    await step('When the only grant goes back to Ask', () => {
-      void storyPermissions.onChange({ Camera: 'ask' });
-    });
-    await step('Then the row has no mark', async () => {
-      await waitFor(() => expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull());
-    });
-    await step('When Camera is allowed again and I choose the Permissions row', async () => {
-      void storyPermissions.onChange({ Camera: 'granted' });
+    await step('When I choose the Permissions row', async () => {
       await userEvent.click(moreRow('permissions'));
     });
     await step("Then the panel took More's place with every permission, Camera pressed Allow", async () => {

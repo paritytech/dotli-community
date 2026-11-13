@@ -17,7 +17,6 @@ import type { PermissionsItemProps } from '../../components/permissions/Permissi
 
 const [notice, setNotice] = createSignal<PermissionsNotice | undefined>('loading');
 const [statuses, setStatuses] = createSignal<readonly PermissionStatus[] | undefined>(undefined);
-const [hasGrants, setHasGrants] = createSignal(false);
 const [pending, setPending] = createSignal(false);
 
 // A held change stays pending until the story releases it.
@@ -33,7 +32,6 @@ export const permissionsAsked = {
 
 function write(next: readonly PermissionStatus[] | undefined): void {
   setStatuses(next);
-  setHasGrants(next?.includes('granted') ?? false);
   flush();
 }
 
@@ -47,7 +45,6 @@ function laidOver(base: readonly PermissionStatus[], targets: PermissionTargets)
 /** The props a page gives the permissions button. */
 export const storyPermissions: PermissionsItemProps = {
   permissions: ALL_PERMISSIONS,
-  hasGrants,
   notice,
   statuses,
   pending,
