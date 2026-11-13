@@ -90,16 +90,14 @@ describe('createWindowProvider', () => {
     expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://a.peer.example']);
   });
 
-  it('As an embedded page, I hear an object from an allowed origin and stay unlocked to that origin', () => {
+  it('As an embedded page, I drop an object from an allowed origin and stay unlocked to that origin', () => {
     // Given
     const listen = createTarget();
     const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
     const provider = createWindowProvider({
       listen,
       peer: () => parent,
       origin: origin => origin.endsWith('.peer.example'),
-      onNotBytes,
     });
     const heard = vi.fn();
     provider.subscribe(heard);
@@ -112,7 +110,7 @@ describe('createWindowProvider', () => {
     });
 
     // Then
-    expect(onNotBytes).toHaveBeenCalledOnce();
+    expect(heard).not.toHaveBeenCalled();
     expect(thrown).toEqual(matchInstance(Error));
 
     // When
@@ -152,38 +150,6 @@ describe('createWindowProvider', () => {
 
     // Then
     expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://parent.example']);
-  });
-
-  it('As an embedded page, I count objects from my parent and drop them', () => {
-    // Given
-    const listen = createTarget();
-    const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
-    const provider = createWindowProvider({ listen, peer: () => parent, origin: () => true, onNotBytes });
-    const heard = vi.fn();
-    provider.subscribe(heard);
-
-    // When
-    listen.dispatchEvent(messageFrom(parent, 'https://a.peer.example', { type: 'hello' }));
-    listen.dispatchEvent(messageFrom(createFakeWindow(), 'https://a.peer.example', { type: 'stranger' }));
-
-    // Then
-    expect(onNotBytes).toHaveBeenCalledTimes(1);
-    expect(heard).not.toHaveBeenCalled();
-  });
-
-  it('As an embedded page, I hear an object from an origin my predicate rejects and do not count it', () => {
-    // Given
-    const listen = createTarget();
-    const parent = createFakeWindow();
-    const onNotBytes = vi.fn();
-    createWindowProvider({ listen, peer: () => parent, origin: () => false, onNotBytes });
-
-    // When
-    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', {}));
-
-    // Then
-    expect(onNotBytes).not.toHaveBeenCalled();
   });
 
   it('As an embedded page, I hear bytes from an origin my predicate refuses and never deliver them, before or after my lock', () => {

@@ -13,9 +13,8 @@ const report = createReporter({ flow: 'protocol' });
 
 /**
  * A protocol message dropped on receipt. Tagged `outcome` (refused), `side` (host, frame or worker) and `reason`:
- * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, `not_bytes` for
- * data that is not an `ArrayBuffer`, which a host page of an earlier release sends, and `origin` for the first bytes
- * from each page outside the frame's trust boundary.
+ * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, and `origin` for
+ * the first bytes from each page outside the frame's trust boundary.
  */
 const protocolWireRefusedMetric = defineCount<'refused'>('protocol.wire_refused');
 
@@ -26,9 +25,6 @@ const protocolWireRefusedMetric = defineCount<'refused'>('protocol.wire_refused'
 const protocolServePostMetric = defineCount<'error'>('protocol.serve_post');
 
 type WireSide = 'host' | 'frame' | 'worker';
-
-/** What the transport hands its owner, and data a provider dropped as no bytes, which only the owner hears. */
-type WireIssue = TransportIssue | { kind: 'refused'; reason: 'not_bytes' };
 
 type Params = {
   /** The side whose wire this reports, which tags every count. */
@@ -57,10 +53,6 @@ export function createWireReport({ side, count, warn = log.warn }: Params) {
   const reportIssue = createIssueReporter({ side, count });
   const refusedOrigins = new Set<string>();
 
-  function reportNotBytes(): void {
-    reportIssue({ kind: 'refused', reason: 'not_bytes' });
-  }
-
   function reportRefusedOrigin(origin: string): void {
     if (refusedOrigins.has(origin)) {
       return;
@@ -73,8 +65,6 @@ export function createWireReport({ side, count, warn = log.warn }: Params) {
   return {
     /** The transport's issue hook, which counts and logs each issue. */
     onIssue: reportIssue,
-    /** Data from the admitted peer that is not bytes, which the provider drops before the transport sees it. */
-    onNotBytes: reportNotBytes,
     /** Bytes from a page at an origin the provider does not admit. Only the first bytes of each origin are reported. */
     onRefusedOrigin: reportRefusedOrigin,
   };
@@ -84,18 +74,18 @@ export function createWireReport({ side, count, warn = log.warn }: Params) {
  * Counts and logs each issue of the transport on `side`. A refused message is counted once with its reason, a post the
  * provider threw on is captured, logged and counted, and a listener that threw is reported as a listener.
  */
-function createIssueReporter({ side, count }: IssueReporterParams): (issue: WireIssue) => void {
+function createIssueReporter({ side, count }: IssueReporterParams): (issue: TransportIssue) => void {
   const reportListenerError = report.listener('protocol.transport');
 
-  function reportIssue(issue: WireIssue): void {
+  function reportIssue(issue: TransportIssue): void {
     switch (issue.kind) {
       case 'refused': {
-        const { reason } = issue;
+        const { reason, cause } = issue;
         count(protocolWireRefusedMetric, { outcome: 'refused', reason, side });
         report.log.event('protocol message refused', {
           reason,
           side,
-          ...('cause' in issue ? { cause: getFailureReason(issue.cause).slice(0, MAX_CAUSE_CHARS) } : {}),
+          cause: getFailureReason(cause).slice(0, MAX_CAUSE_CHARS),
         });
         return;
       }

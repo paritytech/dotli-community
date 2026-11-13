@@ -36,23 +36,16 @@ describe('the transport issues', () => {
 
     // When
     report.onIssue({ kind: 'refused', reason: 'malformed', cause: new RangeError('the data is cut short') });
-    report.onNotBytes();
 
     // Then
     expect(metrics.counted('protocol.wire_refused')).toEqual([
       { outcome: 'refused', reason: 'malformed', side: 'host' },
-      { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
     expect(lines).toMatchObject([
       {
         level: 'info',
         message: 'protocol message refused',
         attrs: { reason: 'malformed', side: 'host', cause: 'RangeError: the data is cut short' },
-      },
-      {
-        level: 'info',
-        message: 'protocol message refused',
-        attrs: { reason: 'not_bytes', side: 'host' },
       },
     ]);
   });

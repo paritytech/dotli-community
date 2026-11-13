@@ -119,8 +119,6 @@ const serving = createTransport({
     // The shared-auth allowlist guards every method served here, the shared stores and the wallet included, so sandboxed
     // apps never drive them or the chain bridge directly.
     origin: isSharedAuthOriginAllowed,
-    // Objects come only from a host page of an earlier release. They are counted and never answered.
-    onNotBytes: wire.onNotBytes,
     onRefusedOrigin: wire.onRefusedOrigin,
   }),
   handshake: 'respond',
