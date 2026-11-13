@@ -157,11 +157,14 @@ export function createSiteTransactionAction({
   txSigner,
   accountReader,
 }: CreateSiteTransactionActionParams): SiteAction<SiteTransactionResult, 'signed'> {
-  const signing: SiteActionState<SiteTransactionResult> = {
-    kind: 'working',
-    screen: { view: 'site-signing', origin, route: 'sign' },
+  /** Waits for the open in flight, to close the session it opens. */
+  const closeOnOpen: HandlerOf<TransactionMachine, 'prepared' | 'opening', 'ended'> = (
+    _state,
+    _event,
+    { emitState },
+  ) => {
+    emitState({ kind: 'closing' });
   };
-
   const endUnopened: HandlerOf<TransactionMachine, 'idle' | 'openFailed' | 'failed', 'ended'> = (
     _state,
     _event,
@@ -234,11 +237,11 @@ export function createSiteTransactionAction({
       idle: {
         prepared(_state, _event, { emitState, update }) {
           emitState({ kind: 'prepared' });
-          update(openChain(chain, genesis));
+          update(openChain());
         },
         started(_state, { main }, { emitState, update }) {
           emitState({ kind: 'opening', run: { main, readKey: null } });
-          update(openChain(chain, genesis));
+          update(openChain());
         },
         ended: endUnopened,
       },
@@ -253,9 +256,7 @@ export function createSiteTransactionAction({
         started(_state, { main }, { emitState }) {
           emitState({ kind: 'opening', run: { main, readKey: null } });
         },
-        ended(_state, _event, { emitState }) {
-          emitState({ kind: 'closing' });
-        },
+        ended: closeOnOpen,
       },
       opened: {
         started({ session }, { main }, transition) {
@@ -276,9 +277,7 @@ export function createSiteTransactionAction({
         chainFailed({ run }, { failure }, { emitState }) {
           emitState({ kind: 'failed', failure, readKey: run.readKey });
         },
-        ended(_state, _event, { emitState }) {
-          emitState({ kind: 'closing' });
-        },
+        ended: closeOnOpen,
       },
       decoding: {
         decoded({ run, session }, { decoded }, { emitState }) {
@@ -362,7 +361,7 @@ export function createSiteTransactionAction({
       failed: {
         started({ readKey }, { main }, { emitState, update }) {
           emitState({ kind: 'opening', run: { main, readKey } });
-          update(openChain(chain, genesis));
+          update(openChain());
         },
         ended: endUnopened,
       },
@@ -414,7 +413,7 @@ export function createSiteTransactionAction({
       case 'opening':
       case 'decoding':
       case 'building':
-        return signing;
+        return { kind: 'working', screen: { view: 'site-signing', origin, route: 'sign' } };
       case 'reviewing':
         return {
           kind: 'working',
@@ -455,22 +454,22 @@ export function createSiteTransactionAction({
     },
     await: () => machine.await(),
   };
-}
 
-/** Opens Asset Hub for `genesis`. */
-async function openChain(chain: SiteChain, genesis: string): Promise<ChainEvent> {
-  try {
-    return { kind: 'chainOpened', session: await chain.open(genesis) };
-  } catch (error) {
-    // Another network's Asset Hub stays another network's on a Try again.
-    const retry = !(error instanceof SiteChainError && error.kind === 'mismatch');
-    const failure = new SiteRoundFailure({
-      step: 'chain',
-      retry,
-      message: 'Asset Hub could not be opened',
-      cause: error,
-    });
-    return { kind: 'chainFailed', failure };
+  /** Opens the Asset Hub the site asked for. */
+  async function openChain(): Promise<ChainEvent> {
+    try {
+      return { kind: 'chainOpened', session: await chain.open(genesis) };
+    } catch (error) {
+      // Another network's Asset Hub stays another network's on a Try again.
+      const retry = !(error instanceof SiteChainError && error.kind === 'mismatch');
+      const failure = new SiteRoundFailure({
+        step: 'chain',
+        retry,
+        message: 'Asset Hub could not be opened',
+        cause: error,
+      });
+      return { kind: 'chainFailed', failure };
+    }
   }
 }
 
