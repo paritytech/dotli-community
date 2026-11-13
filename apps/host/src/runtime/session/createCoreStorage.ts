@@ -26,7 +26,6 @@ import { recordPresenceWalletReadFailure, siteWallet } from './siteWallet.js';
 import { sharedSessionUiCacheMetric } from './sharedSessionUiCacheMetric.js';
 
 const storageReport = createReporter({ flow: 'storage' });
-const walletReport = createReporter({ flow: 'wallet' });
 
 /**
  * One read of the login session shared across subdomains. Tagged `outcome` (hit, miss or error) and, on error,
@@ -36,8 +35,8 @@ const sharedSessionReadMetric = defineCount<'error' | 'hit' | 'miss'>('shared_se
 
 /**
  * The at-rest key of the core's secret slots. Tagged `outcome` (error) and `reason`: `ephemeral_key` when IndexedDB
- * cannot keep it, so this session's secrets will not decrypt after a reload, `undecryptable` for a slot dropped
- * because it no longer decrypts, or `reencrypt` for a legacy plaintext slot that could not be written back encrypted.
+ * cannot keep it, so this session's secrets will not decrypt after a reload, or `undecryptable` for a slot dropped
+ * because it does not decrypt.
  */
 const coreStorageSecretMetric = defineCount<'error'>('core_storage.secret');
 
@@ -105,7 +104,7 @@ const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 // Beside the opaque session blob, so the account reads without decoding the blob.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 
-// Legacy plaintext slots are bare hex, so a decrypt failure never falls back to treating ciphertext as plaintext.
+// Marks a secret slot's value as ciphertext. A value without it does not decrypt and is dropped.
 const ENCRYPTED_VALUE_PREFIX = 'enc1:';
 
 // A fresh nonce per write, since GCM security collapses if a key and nonce pair is ever reused.
@@ -229,25 +228,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
       return decodeStoredBytes(raw, `core storage ${key.tag}`);
     }
     if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
-      // Slots from before at-rest encryption hold plain bytes, so re-persist them encrypted.
-      const bytes = decodeStoredBytes(raw, `core storage ${key.tag}`);
-      if (bytes === undefined) {
-        return undefined;
-      }
-      walletReport.log.event('re-encrypting legacy plaintext core storage', { slot: key.tag });
-      const encoded = await encodeCoreStorageValue(key, bytes);
-      try {
-        local().setItem(getCoreLocalStorageKey(key), encoded);
-      } catch (error) {
-        // A full or blocked storage cannot take the migration. The slot stays plain and migrates on a later read.
-        storageReport.expected(error, {
-          step: 'core_secret_reencrypt',
-          metric: coreStorageSecretMetric,
-          reason: 'reencrypt',
-          message: `[dot.li] keeping legacy plaintext core storage ${key.tag}, its re-encrypt failed:`,
-        });
-      }
-      return bytes;
+      return dropUndecryptable(key, new Error(`core storage ${key.tag} is not encrypted`));
     }
     const bytes = decodeStoredBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length), `core storage ${key.tag}`);
     if (bytes === undefined) {
@@ -264,15 +245,19 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     } catch (error) {
       // Written under a key we no longer hold, or corrupt. Returning the raw bytes would hand
       // ciphertext to the core as key material.
-      storageReport.expected(error, {
-        step: 'core_secret_decrypt',
-        metric: coreStorageSecretMetric,
-        reason: 'undecryptable',
-        message: `[dot.li] dropping undecryptable core storage ${key.tag}:`,
-      });
-      local().removeItem(getCoreLocalStorageKey(key));
-      return undefined;
+      return dropUndecryptable(key, error);
     }
+  }
+
+  function dropUndecryptable(key: CoreStorageKey, error: unknown): undefined {
+    storageReport.expected(error, {
+      step: 'core_secret_decrypt',
+      metric: coreStorageSecretMetric,
+      reason: 'undecryptable',
+      message: `[dot.li] dropping undecryptable core storage ${key.tag}:`,
+    });
+    local().removeItem(getCoreLocalStorageKey(key));
+    return undefined;
   }
 
   async function readCoreStorageValue(key: CoreStorageKey): Promise<Uint8Array | undefined> {
