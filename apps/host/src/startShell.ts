@@ -87,5 +87,19 @@ export async function startShell(route: ShellRoute, role: PageRole): Promise<She
     },
   });
   const productFrame = startup.bridge.startProductFrame(sandboxChannel);
+  // With the path as the settings left it. A preview is not announced.
+  if (route.kind !== 'preview') {
+    debugBus.emit({
+      layer: 'boot',
+      event: 'url_parsed',
+      flowId,
+      timestamp: Date.now(),
+      payload: {
+        label: route.kind === 'product' ? route.label : null,
+        localhostHost: route.kind === 'localhost' ? route.host : null,
+        deepPath: window.location.pathname + window.location.search,
+      },
+    });
+  }
   return { flowId, sandboxChannel, sandboxLoad, startup, productFrame };
 }

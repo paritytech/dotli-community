@@ -18,39 +18,36 @@ import { urlPillState } from './state/urlPillState.js';
 import { cidCache } from '@dotli/storage';
 import { createStateMachine, type HandlerOf, type HandlersOf, type MachineTypes } from '@dotli/shared';
 import { DEBUG, getNetwork, isLocalhost, LOCAL_ROOT } from '@dotli/config';
-import { debugBus } from '@dotli/truapi-debug';
 import type { EarlyCidRead } from './createPageCidCache.js';
 import { leaveForLanding, readLocalhostUrl, readShellRoute, type ShellRoute } from './shellRoute.js';
 import { getShellPageRole, type PageRole } from './runtime/pageRole.js';
 import { bindTopbar } from './bindTopbar.js';
 import { bindUrlPill } from './bindUrlPill.js';
 
-/** A route the page opens rather than leaves to its parent. */
-type OpenedRoute = Exclude<ShellRoute, { kind: 'nested' }>;
+/** A route the boot takes: every route but a nested one. */
+type BootRoute = Exclude<ShellRoute, { kind: 'nested' }>;
 
 /**
  * Where the page's boot is. It starts the shell, then opens what the route names: a local target by its URL, or a
- * product by its name, or leaves for the landing page. It ends opened, or failed once its failure screen shows.
+ * product by its name, or leaves for the landing page. It ends opened, left for the landing page, or failed once its
+ * failure screen shows.
  */
 type BootState =
   | { kind: 'idle' }
-  | { kind: 'startingShell'; route: OpenedRoute; cidRead: EarlyCidRead | null }
+  | { kind: 'startingShell'; route: BootRoute; cidRead: EarlyCidRead | null }
   | { kind: 'opening' }
   | { kind: 'opened' }
   | { kind: 'leftForLanding' }
   | { kind: 'failed' };
 
 type BootEvent =
-  | { kind: 'started'; route: OpenedRoute; role: PageRole }
+  | { kind: 'started'; route: BootRoute; role: PageRole }
   | { kind: 'shellStarted'; shell: Shell }
   | { kind: 'opened' }
   | { kind: 'failed'; error: unknown };
 
-/** What the boot reports and does: the route it took, the move to the landing page, a failure. */
-type BootEffect =
-  | { kind: 'routed'; route: OpenedRoute; flowId: string }
-  | { kind: 'leftForLanding' }
-  | { kind: 'failed'; error: unknown };
+/** What the boot does: the move to the landing page, and the report of a failure. */
+type BootEffect = { kind: 'leftForLanding' } | { kind: 'failed'; error: unknown };
 
 type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
 
@@ -125,7 +122,6 @@ const failBoot: HandlerOf<BootMachine, 'startingShell' | 'opening', 'failed'> = 
 const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
   failed: failBoot,
   shellStarted({ route, cidRead }, { shell }, { emitState, emitSideEffect, update }) {
-    emitSideEffect({ kind: 'routed', route, flowId: shell.flowId });
     if (route.kind === 'landing') {
       emitState({ kind: 'leftForLanding' });
       emitSideEffect({ kind: 'leftForLanding' });
@@ -149,15 +145,9 @@ const opening: HandlersOf<BootMachine, 'opening'> = {
   },
 };
 
-/** Runs the boot's effects: the debug panel's route, the landing move and the failure screen. */
+/** Runs the boot's effects: the landing move and the failure screen. */
 function runBootEffect(effect: BootEffect): void {
   switch (effect.kind) {
-    case 'routed':
-      // A preview is not announced.
-      if (effect.route.kind !== 'preview') {
-        announceRoute(effect.route, effect.flowId);
-      }
-      return;
     case 'leftForLanding':
       leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
       return;
@@ -165,21 +155,6 @@ function runBootEffect(effect: BootEffect): void {
       reportBootFailure(effect.error);
       return;
   }
-}
-
-/** Tells the debug panel the route the URL named, with the path as the settings left it. */
-function announceRoute(route: OpenedRoute, flowId: string): void {
-  debugBus.emit({
-    layer: 'boot',
-    event: 'url_parsed',
-    flowId,
-    timestamp: Date.now(),
-    payload: {
-      label: route.kind === 'product' ? route.label : null,
-      localhostHost: route.kind === 'localhost' ? route.host : null,
-      deepPath: window.location.pathname + window.location.search,
-    },
-  });
 }
 
 // The shell's chrome is static markup that only this page renders, so its bindings run from this one script. They
