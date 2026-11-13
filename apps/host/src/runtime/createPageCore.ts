@@ -24,9 +24,9 @@ import {
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { CoreRedialError } from './coreRedialError.js';
+import { connectCore } from './connectCore.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './createPhoneRequestTracker.js';
 import { toProductId } from './createTruapiRuntimeConfig.js';
-import { tapPhoneRequests } from './tapPhoneRequests.js';
 
 const report = createReporter({ flow: 'wallet' });
 const hearDownFailed = report.listener('page_core.down');
@@ -140,8 +140,6 @@ type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void 
 type CoreParts = {
   id: symbol;
   product: PageProduct;
-  /** Why the core before it went down. A first dial has none. */
-  redial: CoreDownReason | undefined;
   blockingModalScope: BlockingModalScope;
   phoneRequests: PhoneRequestTracker;
 };
@@ -155,6 +153,8 @@ type BootedParts = CoreParts & { booted: BootedCoreRuntime; stopFollowing: () =>
 type Core =
   | (CoreParts & {
       kind: 'booting';
+      /** Why the core before it went down. A first dial has none. */
+      redial: CoreDownReason | undefined;
       /** Aborted as the core leaves before it booted, so its redial starts no further attempt. */
       dropped: AbortController;
       waiting: ReadonlyMap<symbol, Reply<CoreLease>>;
@@ -192,14 +192,14 @@ type PageCoreEffect =
   | { kind: 'leaseRefused'; reply: Reply<CoreLease>; error: unknown }
   | { kind: 'dialed'; product: PageProduct; redial: CoreDownReason | undefined }
   | { kind: 'redialed'; outcome: 'ok' | 'aborted'; reason: CoreDownReason }
-  | { kind: 'bootFailed'; redial: CoreDownReason | undefined; error: unknown }
+  | { kind: 'bootFailureReported'; redial: CoreDownReason | undefined; error: unknown }
   | { kind: 'disposed'; core: Core }
   | { kind: 'lingerCancelled'; timer: unknown }
   | { kind: 'orphaned'; runtime: WorkerPairingHostRuntime }
   /** A local wallet core has no phone. */
   | { kind: 'phoneDropped'; phoneRequests: PhoneRequestTracker }
   | { kind: 'sessionStoreChanged'; runtime: WorkerPairingHostRuntime }
-  | { kind: 'pairingCancelled'; runtime: WorkerPairingHostRuntime }
+  | { kind: 'runtimePairingCancelled'; runtime: WorkerPairingHostRuntime }
   | { kind: 'coresGone' };
 
 type PageCoreMachine = MachineTypes<PageCoreState, PageCoreEvent, PageCoreEffect>;
@@ -221,7 +221,8 @@ export function createPageCore({
   subscribeStoredSession,
   coordinator,
   redials = createAsyncTaskPool({
-    poolSize: 1,
+    // A redial dropped while it boots runs on, so a later redial never waits on it.
+    poolSize: Number.POSITIVE_INFINITY,
     retryCount: REDIAL_RETRIES,
     retryDelay: retry => REDIAL_FIRST_DELAY_MS * 2 ** retry,
   }),
@@ -239,11 +240,9 @@ export function createPageCore({
           const core = getCurrentCore(state);
           // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it
           // goes now rather than with the next request.
-          if (core === null || servesProduct(core, product)) {
-            transition.emitState(next);
-            return;
-          }
-          transition.emitState(dropIfUnheld(next, core, transition));
+          transition.emitState(
+            core === null || servesProduct(core, product) ? next : dropIfUnheld(next, core, transition),
+          );
         },
         leaseAsked(state, { leaseId, reply }, transition) {
           const core = getCurrentCore(state);
@@ -299,7 +298,7 @@ export function createPageCore({
             // A session stored or a store that came back before the core followed it is no store event.
             update({ kind: 'storeChanged', coreId });
             if (core.pairingCancelled) {
-              emitSideEffect({ kind: 'pairingCancelled', runtime: booted.runtime });
+              emitSideEffect({ kind: 'runtimePairingCancelled', runtime: booted.runtime });
             }
           }
           for (const [leaseId, reply] of core.waiting) {
@@ -314,7 +313,7 @@ export function createPageCore({
           if (core?.kind !== 'booting') {
             return;
           }
-          transition.emitSideEffect({ kind: 'bootFailed', redial: core.redial, error });
+          transition.emitSideEffect({ kind: 'bootFailureReported', redial: core.redial, error });
           transition.emitState(leave(state, core, transition));
           // The page core reports a redial that failed, so a caller that hears of it must not report it again.
           const refusal = core.redial === undefined ? error : new CoreRedialError(error);
@@ -324,7 +323,7 @@ export function createPageCore({
         },
         leaseReleased(state, { coreId, leaseId }, transition) {
           const core = state.cores.get(coreId);
-          if ((core?.kind !== 'live' && core?.kind !== 'down') || !core.leases.has(leaseId)) {
+          if (!holdsLease(core, leaseId)) {
             return;
           }
           const leases = new Set(core.leases);
@@ -376,7 +375,7 @@ export function createPageCore({
               cores.set(core.id, { ...core, pairingCancelled: true });
             } else if (!core.booted.local) {
               // A signing runtime has no pairing to cancel.
-              emitSideEffect({ kind: 'pairingCancelled', runtime: core.booted.runtime });
+              emitSideEffect({ kind: 'runtimePairingCancelled', runtime: core.booted.runtime });
             }
           }
           emitState({ ...state, cores });
@@ -400,7 +399,7 @@ export function createPageCore({
         case 'redialed':
           walletCoreRedialMetric.count({ outcome: effect.outcome, reason: effect.reason });
           return;
-        case 'bootFailed':
+        case 'bootFailureReported':
           if (effect.redial === undefined) {
             // The caller that asked for this core gets the error and reports it.
             log.warn('[dot.li page-core] wallet core failed to boot:', effect.error);
@@ -438,7 +437,7 @@ export function createPageCore({
             });
           }
           return;
-        case 'pairingCancelled':
+        case 'runtimePairingCancelled':
           effect.runtime.cancelPairing();
           return;
         case 'coresGone':
@@ -530,27 +529,38 @@ export function createPageCore({
   ): PageCoreState {
     const { product } = state;
     const id = Symbol('core');
-    const blockingModalScope = coordinator.createScope();
-    const phoneRequests = createPhoneRequests();
-    const dropped = new AbortController();
+    const booting: Core = {
+      id,
+      product,
+      blockingModalScope: coordinator.createScope(),
+      phoneRequests: createPhoneRequests(),
+      kind: 'booting',
+      redial,
+      dropped: new AbortController(),
+      waiting,
+      pairingCancelled: false,
+    };
     const context: CoreContext = {
       product,
-      blockingModalScope,
-      phoneRequests,
+      blockingModalScope: booting.blockingModalScope,
+      phoneRequests: booting.phoneRequests,
       isLive: () => machine.state.get().cores.has(id),
       isInService: () => (machine.state.get().cores.get(id)?.kind ?? 'down') !== 'down',
       sessionInMemory: false,
     };
+    const { signal } = booting.dropped;
     /**
-     * Resolves with the event that ends the boot. Rejects when the boot fails. A redial dropped before an attempt
-     * starts boots nothing, and an attempt already running ends in its event, which hands its runtime to the machine.
+     * Resolves with the event that ends one boot attempt. Rejects when the attempt fails. A core dropped before an
+     * attempt starts boots nothing more, and an attempt already running ends in its event, which hands its runtime to
+     * the machine.
      */
     async function boot(): Promise<PageCoreEvent> {
-      if (dropped.signal.aborted) {
-        return { kind: 'bootFailed', coreId: id, error: dropped.signal.reason };
+      if (signal.aborted) {
+        return { kind: 'bootFailed', coreId: id, error: signal.reason };
       }
       return { kind: 'booted', coreId: id, booted: await bootRuntime(context) };
     }
+    // The first attempt starts at once, before the core is in the state, so an attempt reads the drop from `dropped`.
     transition.update(
       (redial === undefined ? boot() : redials.call(boot)).catch((error: unknown): PageCoreEvent => ({
         kind: 'bootFailed',
@@ -560,20 +570,7 @@ export function createPageCore({
     );
     transition.emitSideEffect({ kind: 'dialed', product, redial });
     const previous = getCurrentCore(state);
-    const next = withCore(
-      { ...state, current: id },
-      {
-        id,
-        product,
-        redial,
-        blockingModalScope,
-        phoneRequests,
-        dropped,
-        kind: 'booting',
-        waiting,
-        pairingCancelled: false,
-      },
-    );
+    const next = withCore({ ...state, current: id }, booting);
     return previous === null ? next : dropIfUnheld(next, previous, transition);
   }
 
@@ -612,6 +609,7 @@ export function createPageCore({
   function disposeCore(core: Core): void {
     report.log.event('wallet core disposed', { faulted: core.kind === 'down' });
     if (core.kind === 'booting') {
+      // Its runtime, if an attempt is running, goes with that attempt's event.
       core.dropped.abort(new Error('The page core was disposed'));
     } else {
       if (core.kind === 'lingering') {
@@ -628,7 +626,7 @@ export function createPageCore({
     /** Whether the lease is still held, and whether its core went down. */
     function readLease(state: PageCoreState): 'held' | 'down' | 'released' {
       const leased = state.cores.get(core.id);
-      if ((leased?.kind !== 'live' && leased?.kind !== 'down') || !leased.leases.has(leaseId)) {
+      if (!holdsLease(leased, leaseId)) {
         return 'released';
       }
       return leased.kind === 'down' ? 'down' : 'held';
@@ -636,7 +634,15 @@ export function createPageCore({
 
     return {
       runtime: core.booted.runtime,
-      connect: params => connect(core, params),
+      connect: ({ executionKind = 'App' } = {}) =>
+        connectCore({
+          booted: core.booted,
+          phoneRequests: core.phoneRequests,
+          executionKind,
+          onDown: reason => {
+            machine.update({ kind: 'wentDown', coreId: core.id, reason });
+          },
+        }),
       subscribeDown(listener) {
         // A listener runs inside the state's write, which a throw would reach.
         function hearDown(): void {
@@ -673,37 +679,6 @@ export function createPageCore({
     };
   }
 
-  async function connect(core: LiveCore, { executionKind = 'App' }: ConnectParams = {}): Promise<CoreConnection> {
-    const { runtime, productId } = core.booted;
-    let provider: TrUApiProductProvider;
-    try {
-      provider = await runtime.createProvider({ productId, executionKind });
-    } catch (error) {
-      log.warn('[dot.li page-core] wallet core refused a connection:', error);
-      machine.update({ kind: 'wentDown', coreId: core.id, reason: 'refused' });
-      throw error;
-    }
-    const tapped = tapPhoneRequests(provider, core.phoneRequests);
-    let closing = false;
-    // A deliberate close also fires close listeners. Any other close is the core going down.
-    provider.subscribeClose?.(() => {
-      tapped.untap();
-      if (!closing) {
-        report.log.event('wallet core went down under a connection');
-        machine.update({ kind: 'wentDown', coreId: core.id, reason: 'closed' });
-      }
-    });
-    return {
-      provider: tapped.provider,
-      productId,
-      close() {
-        closing = true;
-        tapped.untap();
-        provider.dispose();
-      },
-    };
-  }
-
   function getCurrentCore(state: PageCoreState): Core | null {
     return state.current === null ? null : (state.cores.get(state.current) ?? null);
   }
@@ -714,8 +689,13 @@ export function createPageCore({
 }
 
 /** The parts every phase of `core` keeps, so a core that moves on carries no field of the phase it left. */
-function getParts({ id, product, redial, blockingModalScope, phoneRequests }: Core): CoreParts {
-  return { id, product, redial, blockingModalScope, phoneRequests };
+function getParts({ id, product, blockingModalScope, phoneRequests }: Core): CoreParts {
+  return { id, product, blockingModalScope, phoneRequests };
+}
+
+/** Whether `core` is booted and still counts `leaseId` among its leases. */
+function holdsLease(core: Core | undefined, leaseId: symbol): core is Extract<Core, { kind: 'live' | 'down' }> {
+  return (core?.kind === 'live' || core?.kind === 'down') && core.leases.has(leaseId);
 }
 
 /** The parts every booted phase of `core` keeps. */
