@@ -59,6 +59,14 @@ describe('sandbox messages', () => {
     expect(received).toBeNull();
   });
 
+  it.each(['landing', 'reload'] as const)('As the host, I drop the extra fields of a navigate to %s', to => {
+    // When
+    const received = parseSandboxToHostMessage({ type: 'dotli:sandbox-navigate', to, href: 'https://evil' });
+
+    // Then
+    expect(received).toEqual({ type: 'dotli:sandbox-navigate', to });
+  });
+
   it('As the host, I keep only the loading status fields with the types I expect', () => {
     // When
     const received = parseSandboxToHostMessage({
