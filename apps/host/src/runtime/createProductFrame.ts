@@ -248,8 +248,6 @@ type FrameEvent =
 
 type FrameEffect =
   | { kind: 'statusShown'; status: ProductFrameStatus }
-  /** Asks the page core for a lease on `attempt`, once the core was told the product. */
-  | { kind: 'leaseAsked'; attempt: Attempt }
   | { kind: 'productNamed'; product: PageProduct }
   | { kind: 'attemptEnded'; attempt: Attempt }
   /** Ends only the core side of `attempt`: the product stays on screen without its core. */
@@ -307,7 +305,7 @@ export function createProductFrame({
     const attempt = createAttempt(2);
     transition.emitState({ ...getRunParts(run), kind: 'leasing', attempt });
     transition.emitSideEffect({ kind: 'attemptEnded', attempt: run.attempt });
-    transition.emitSideEffect({ kind: 'leaseAsked', attempt });
+    transition.update(leaseCore(attempt));
   };
 
   /** Hands each event of the run's steps to its step, while the event's attempt is the run's. */
@@ -711,9 +709,6 @@ export function createProductFrame({
     },
     onEffect: effect => {
       switch (effect.kind) {
-        case 'leaseAsked':
-          acquireLease(effect.attempt);
-          return;
         case 'productNamed':
           core.setProduct(effect.product);
           return;
@@ -908,7 +903,7 @@ export function createProductFrame({
         transition.emitSideEffect({ kind: 'productNamed', product: { label: product.label } });
         break;
     }
-    transition.emitSideEffect({ kind: 'leaseAsked', attempt: run.attempt });
+    transition.update(leaseCore(run.attempt));
   }
 
   /**
@@ -920,28 +915,27 @@ export function createProductFrame({
     transition: Transition<FrameMachine>,
   ): void {
     const { run, shown } = state;
-    if (shown.core === 'down') {
-      const lively = settleRun(
-        state,
-        { origin: run.origin, outcome: { kind: 'superseded', setupStartedAt: run.setupStartedAt } },
-        transition,
-      );
+    const down = shown.core === 'down';
+    const lively = settleRun(
+      state,
+      { origin: run.origin, outcome: { kind: down ? 'superseded' : 'shown', setupStartedAt: run.setupStartedAt } },
+      transition,
+    );
+    if (down) {
       loseCore({ ...lively, kind: state.kind, shown }, transition);
     } else {
-      const lively = settleRun(
-        state,
-        { origin: run.origin, outcome: { kind: 'shown', setupStartedAt: run.setupStartedAt } },
-        transition,
-      );
       moveTo(state, { ...lively, kind: 'connected', shown }, transition);
     }
     transition.emitSideEffect({ kind: 'productShown', product: run.product, link: shown.link });
     transition.emitSideEffect({ kind: 'traced', milestone: 'ready', run });
   }
 
-  /** Leases the page core for `attempt`. The lease goes as the attempt's core side ends, at once when it already has. */
-  function acquireLease(attempt: Attempt): void {
-    machine.update(
+  /**
+   * Leases the page core for `attempt`, once the transition's effects have told the core the product. The lease goes as
+   * the attempt's core side ends, at once when it already has.
+   */
+  function leaseCore(attempt: Attempt): Promise<FrameEvent> {
+    return Promise.resolve().then(() =>
       runStepWork(
         attempt,
         () => core.acquire(),
