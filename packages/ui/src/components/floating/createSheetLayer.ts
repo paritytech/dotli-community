@@ -16,7 +16,10 @@ type Params = {
 type SheetLayerState =
   | { kind: 'closed'; handedOff: boolean }
   | { kind: 'open'; handedOff: boolean }
-  /** Closed inside a hand-off, up until it is known whether another sheet took its place. */
+  /**
+   * Closed inside a hand-off, up until it is known whether another sheet took its place. It keeps the `handedOff` it
+   * opened with, so it looks as it did while it waits.
+   */
   | { kind: 'held'; handedOff: boolean };
 
 type HeldState = Extract<SheetLayerState, { kind: 'held' }>;
