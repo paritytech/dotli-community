@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { withActiveTld } from '@dotli/config';
 import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
 import { modals } from '@dotli/ui';
 import { SignIcon } from './components/icons/SignIcon.js';
 import { createHostPrompts } from './createHostPrompts.js';
-import type { GrantAnswer } from './runtime/hostPrompts.js';
+import type { BrowserBlockAnswer, GrantAnswer } from './runtime/hostPrompts.js';
 import type { EnforceablePermissionName } from './runtime/permissionPolicy.js';
 
 afterEach(() => {
@@ -196,6 +196,103 @@ describe('permission request', () => {
     // Then
     await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
     expect(() => shownModal()).toThrow();
+  });
+
+  it('As a dotli user, I allow a permission and the approve hook runs inside my click', () => {
+    // Given
+    const onApprove = vi.fn();
+    void prompts.askPermission({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: createLiveSignal(),
+      allowOnce: false,
+      onApprove,
+    });
+
+    // When
+    chooseModalButton('Allow');
+
+    // Then
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+
+  it.each<{ story: string; answer: () => void }>([
+    { story: 'Deny', answer: pressButton('Deny') },
+    { story: 'a backdrop click', answer: dismissModal },
+  ])(
+    'As a dotli user, I deny or dismiss a permission with $story and the approve hook never runs',
+    async ({ answer }) => {
+      // Given
+      const onApprove = vi.fn();
+      const decision = prompts.askPermission({
+        label: 'myapp',
+        permission: 'Camera',
+        signal: createLiveSignal(),
+        allowOnce: false,
+        onApprove,
+      });
+
+      // When
+      answer();
+      await decision;
+
+      // Then
+      expect(onApprove).not.toHaveBeenCalled();
+    },
+  );
+
+  it('As a dotli user, I allow once and the approve hook runs', () => {
+    // Given
+    const onApprove = vi.fn();
+    void prompts.askPermission({
+      label: 'myapp',
+      permission: 'ChainSubmit',
+      signal: createLiveSignal(),
+      allowOnce: true,
+      onApprove,
+    });
+
+    // When
+    chooseModalButton('Allow once');
+
+    // Then
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+});
+
+describe('browser block', () => {
+  it.each<{ story: string; answer: () => void; expected: BrowserBlockAnswer; retries: number }>([
+    { story: 'Restrict', answer: pressButton('Restrict access for product'), expected: 'restrict', retries: 0 },
+    { story: 'Retry', answer: pressButton('Retry'), expected: 'retry', retries: 1 },
+    { story: 'a backdrop click', answer: dismissModal, expected: 'dismissed', retries: 0 },
+  ])(
+    'As a dotli user, I answer a browser block with $story and the runtime gets $expected',
+    async ({ answer, expected, retries }) => {
+      // Given
+      const onRetry = vi.fn();
+      const decision = prompts.askBrowserBlock({
+        label: 'myapp',
+        permission: 'Camera',
+        signal: createLiveSignal(),
+        retried: false,
+        onRetry,
+      });
+
+      // When
+      answer();
+
+      // Then
+      expect(onRetry).toHaveBeenCalledTimes(retries);
+      await expect(decision).resolves.toBe(expected);
+    },
+  );
+
+  it('As a dotli user, I see a browser block that names the app on the active network', () => {
+    // When
+    void prompts.askBrowserBlock({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), retried: false });
+
+    // Then
+    expect(shownModal().view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
   });
 });
 

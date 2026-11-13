@@ -5,10 +5,17 @@
 // this, so the dialogs stay out of boot.
 
 import { withActiveTld } from '@dotli/config';
-import type { HostPrompts } from './runtime/hostPrompts.js';
+import {
+  isGranted,
+  isRetry,
+  type BrowserBlockAnswer,
+  type GrantAnswer,
+  type HostPrompts,
+} from './runtime/hostPrompts.js';
 import { hasFrameDirective } from './runtime/permissionPolicy.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permissionDialog.js';
+import { browserBlockDialog } from './components/permissions/browserBlockDialog.js';
 
 type Params = {
   /** Where the dialogs queue. The page's overlays by default. */
@@ -30,14 +37,31 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
   const ask = <Result extends string>({ view, signal, handoff }: AskParams<Result>) =>
     present({ ...view, testId: HOST_PROMPT_TEST_ID }, { signal, handoff });
   return {
-    async askPermission({ label, permission, signal, allowOnce }) {
+    async askPermission({ label, permission, signal, allowOnce, onApprove }) {
       const dialog = permissionRequestDialog({
         app: withActiveTld(label),
         permission,
         allowOnce,
         reloads: hasFrameDirective(permission),
       });
-      return (await ask({ view: dialog, signal })).result;
+      // In the handoff, not after the await, so the hook still runs inside the user's click.
+      function handoff(outcome: ModalOutcome<GrantAnswer>): undefined {
+        if (isGranted(outcome.result)) {
+          onApprove?.();
+        }
+        return undefined;
+      }
+      return (await ask({ view: dialog, signal, handoff })).result;
+    },
+    async askBrowserBlock({ label, permission, signal, retried, onRetry }) {
+      const dialog = browserBlockDialog({ app: withActiveTld(label), permission, retried });
+      function handoff(outcome: ModalOutcome<BrowserBlockAnswer>): undefined {
+        if (isRetry(outcome.result)) {
+          onRetry?.();
+        }
+        return undefined;
+      }
+      return (await ask({ view: dialog, signal, handoff })).result;
     },
     confirmReview: async ({ dialog, signal, handoff }) =>
       (await ask({ view: dialog, signal, handoff: outcome => handoff?.(outcome.result) })).result,
