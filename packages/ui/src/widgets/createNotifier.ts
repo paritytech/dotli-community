@@ -2,19 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Component } from 'solid-js';
-import { createReporter, defineCount } from '@dotli/metrics';
 import { realTimers, type Timers } from '@dotli/shared';
 import type { IconProps } from '../components/icons/iconProps.js';
 import { toasts, type createToasts } from '../page/state/createToasts.js';
 import type { StatusTone } from '../page/statusTone.js';
-
-const report = createReporter({ flow: 'ui' });
-
-/**
- * A permission request that failed, or a system notification that could not be shown after a late grant. Tagged
- * `outcome` (error) and `reason` (the error's name).
- */
-const notificationSystemMetric = defineCount<'error'>('notification.system');
 
 type NoticeTone = Exclude<StatusTone, 'quiet'>;
 
@@ -44,7 +35,7 @@ export type SystemNotifications = typeof Notification;
 
 type Params = {
   /** The toast stack that shows each notification in the page. */
-  toasts: Pick<ReturnType<typeof createToasts>, 'push' | 'setDismissMs'>;
+  toasts: Pick<ReturnType<typeof createToasts>, 'push'>;
   /**
    * Whether the user is looking at the page: the tab showing and its window focused. A window behind other windows
    * still reports visible, so focus decides there. An unattended page also gets a system notification.
@@ -67,13 +58,11 @@ type FireBrowserNotificationParams = {
   label: string;
   /** What the notification closes on after its time on screen. */
   timers: Timers;
-  /** Runs once the system notification is shown after a permission granted when asked. Never throws. */
-  onShownOnGrant: () => void;
 };
 
 /**
  * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the
- * toast waits in the page until closed.
+ * toast waits in the page until closed. It never asks the browser for that permission.
  */
 export type ShowNotification = ReturnType<typeof createNotifier>;
 
@@ -89,9 +78,8 @@ const SYSTEM_NOTIFICATION_MS = 5000;
 export function createNotifier({ toasts, attended, system, timers = realTimers }: Params) {
   /**
    * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the
-   * toast waits in the page until closed. A permission granted when asked gives the toast its usual time. Drops a
-   * notification whose text is blank. Throws only what the system notification throws when built under a permission
-   * already granted.
+   * toast waits in the page until closed. It never asks the browser for that permission. Drops a notification whose
+   * text is blank. Throws only what the system notification throws when built under a permission already granted.
    */
   function notify(params: NotificationParams): void {
     const text = sanitizeText(params.text);
@@ -105,7 +93,7 @@ export function createNotifier({ toasts, attended, system, timers = realTimers }
     // One the system cannot show stays in the page until closed, or a window behind others would lose it unseen.
     const fallback = wantsSystem && notifications?.permission !== 'granted';
 
-    const id = toasts.push({
+    toasts.push({
       text,
       label: params.label,
       ...(params.icon === undefined ? {} : { icon: params.icon }),
@@ -123,9 +111,6 @@ export function createNotifier({ toasts, attended, system, timers = realTimers }
         deeplink,
         label: params.label,
         timers,
-        onShownOnGrant: () => {
-          toasts.setDismissMs(id, params.dismissMs ?? NOTIFICATION_DISMISS_MS);
-        },
       });
     }
   }
@@ -163,7 +148,6 @@ function fireBrowserNotification({
   deeplink,
   label,
   timers,
-  onShownOnGrant,
 }: FireBrowserNotificationParams): void {
   function show(): void {
     const notification = new SystemNotification(label, { body: text });
@@ -183,18 +167,7 @@ function fireBrowserNotification({
       show();
       return;
     case 'denied':
-      return;
     case 'default':
-      void SystemNotification.requestPermission()
-        .then(permission => {
-          if (permission === 'granted') {
-            show();
-            onShownOnGrant();
-          }
-        })
-        .catch((error: unknown) => {
-          report.expected(error, { step: 'system_notification', metric: notificationSystemMetric });
-        });
       return;
   }
 }

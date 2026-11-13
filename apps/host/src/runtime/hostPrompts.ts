@@ -12,6 +12,9 @@ import type { EnforceablePermissionName, PermissionStatus } from './permissionPo
 /** The user's answer to a grant prompt. `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type GrantAnswer = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
+/** The user's answer to a browser block. `dismissed` keeps the grant. */
+export type BrowserBlockAnswer = 'restrict' | 'retry' | 'dismissed';
+
 type AskPermissionParams = {
   /** The product that asks. */
   label: string;
