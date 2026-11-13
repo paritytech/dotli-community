@@ -84,31 +84,33 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
     initial: { kind: 'idle' },
     handlers: {
       idle: {
-        asked(_state, { cid, caller }, { emitState, emitSideEffect, update }) {
+        asked(_state, { cid, caller }, transition) {
           let connection: JsonRpcConnection;
           // A dial that fails fails this caller at once, and the next one dials again.
           try {
             connection = dial();
           } catch (error) {
-            emitSideEffect({ kind: 'reject', caller, error: toError(error) });
+            transition.emitSideEffect({ kind: 'reject', caller, error: toError(error) });
             return;
           }
-          emitState({ kind: 'dialed', connection, fetches: new Map([[cid, { runner: caller, queued: [] }]]) });
-          startFetch({ cid, runner: caller, connection }, update);
+          startFetch(
+            { kind: 'dialed', connection, fetches: new Map() },
+            { cid, runner: caller, queued: [] },
+            transition,
+          );
         },
       },
       dialed: {
         // A CID with no fetch gets the caller as its runner, and a CID with one queues the caller behind it.
-        asked(state, { cid, caller }, { emitState, update }) {
+        asked(state, { cid, caller }, transition) {
           const fetch = state.fetches.get(cid);
           if (fetch !== undefined) {
-            emitState(withFetch(state, cid, { ...fetch, queued: [...fetch.queued, caller] }));
+            transition.emitState(withFetch(state, cid, { ...fetch, queued: [...fetch.queued, caller] }));
             return;
           }
-          emitState(withFetch(state, cid, { runner: caller, queued: [] }));
-          startFetch({ cid, runner: caller, connection: state.connection }, update);
+          startFetch(state, { cid, runner: caller, queued: [] }, transition);
         },
-        // A settle of a runner that already left finds nothing.
+        // Either settle of a runner that already left finds nothing.
         blockFetched(state, { cid, runner, bytes }, transition) {
           const fetch = state.fetches.get(cid);
           if (fetch?.runner !== runner) {
@@ -230,17 +232,18 @@ export function createBitswapClient({ provider, timers = realTimers }: Params) {
       endFetch(state, cid, transition);
       return;
     }
-    transition.emitState(withFetch(state, cid, { runner: next, queued: rest }));
-    startFetch({ cid, runner: next, connection: state.connection }, transition.update);
+    startFetch(state, { cid, runner: next, queued: rest }, transition);
   }
 
-  /** Runs the fetch of `cid` for `runner`, and sends its outcome to the machine. */
+  /** Moves `state` to hold the fetch of `cid`, runs it for its runner, and sends its outcome to the machine. */
   function startFetch(
-    { cid, runner, connection }: { cid: string; runner: Caller; connection: JsonRpcConnection },
-    update: Transition<ClientMachine>['update'],
+    state: Dialed,
+    { cid, runner, queued }: SharedFetch & { cid: string },
+    { emitState, update }: Transition<ClientMachine>,
   ): void {
+    emitState(withFetch(state, cid, { runner, queued }));
     update(
-      requests.fetchBlock({ cid, deadline: runner.deadline, signal: runner.signal, connection }).then(
+      requests.fetchBlock({ cid, deadline: runner.deadline, signal: runner.signal, connection: state.connection }).then(
         bytes => ({ kind: 'blockFetched', cid, runner, bytes }),
         (error: unknown) => ({ kind: 'fetchFailed', cid, runner, error }),
       ),
@@ -253,11 +256,7 @@ function withFetch(state: Dialed, cid: string, fetch: SharedFetch): Dialed {
 }
 
 /** Removes the fetch of `cid`, and closes the connection once no fetch is left. */
-function endFetch(
-  state: Dialed,
-  cid: string,
-  { emitState, emitSideEffect }: Pick<Transition<ClientMachine>, 'emitState' | 'emitSideEffect'>,
-): void {
+function endFetch(state: Dialed, cid: string, { emitState, emitSideEffect }: Transition<ClientMachine>): void {
   const fetches = new Map(state.fetches);
   fetches.delete(cid);
   if (fetches.size === 0) {
