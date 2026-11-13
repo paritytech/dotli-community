@@ -99,9 +99,10 @@ export async function bundleClassicScript(file: string, target: string | string[
   if (!Array.isArray(result) && !('output' in result)) {
     throw new Error(`${file} started a watcher instead of a build`);
   }
-  const [only, ...more] = Array.isArray(result) ? result : [result];
-  if (only === undefined || more.length > 0) {
-    throw new Error(`${file} built ${String(more.length + 1)} outputs, expected one`);
+  // One output is configured, so a build returns one.
+  const only = Array.isArray(result) ? result[0] : result;
+  if (only === undefined) {
+    throw new Error(`${file} built no output`);
   }
   return toClassicScript(file, only.output);
 }

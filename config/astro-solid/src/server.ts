@@ -19,10 +19,8 @@ type Metadata = {
   hydrate?: string;
   /** Set when Astro strips static slot markup, so a static component's slots render as static slots. */
   astroStaticSlot?: boolean;
-  /** `probe` renders only to test the component: no scripts, no head output and no thrown render error. */
-  renderStrategy?: 'default' | 'probe';
-  /** Called when a probe render reports an error. */
-  onProbeError?: () => void;
+  /** `probe` renders only to test the component: no scripts and no island styles. */
+  renderStrategy?: 'probe';
 };
 
 type Params = {
@@ -102,15 +100,9 @@ async function probeSolidComponent({ context, Component, props, children }: Para
 
   // Solid components are plain functions, so probe-render and reject anything that errors. A stream render, because a
   // sync render of an async component throws and orphans promise rejections.
-  let errored = false;
   try {
-    const { html } = await renderToStaticMarkup.call(context, Component, props, children, {
-      renderStrategy: 'probe',
-      onProbeError() {
-        errored = true;
-      },
-    });
-    return typeof html === 'string' && !errored;
+    await renderToStaticMarkup.call(context, Component, props, children, { renderStrategy: 'probe' });
+    return true;
   } catch {
     // A probe render that throws marks the component as not Solid.
     return false;
@@ -120,7 +112,7 @@ async function probeSolidComponent({ context, Component, props, children }: Para
 /**
  * Resolves to the component's HTML, with its island styles first, and its render id attribute.
  *
- * Rejects with the component's error when a real render fails. A probe render reports it through `onProbeError`.
+ * Rejects with the component's error when the render fails.
  */
 // eslint-disable-next-line @typescript-eslint/max-params -- Astro's renderer `renderToStaticMarkup` fixes this signature
 async function renderToStaticMarkup(
@@ -137,8 +129,8 @@ async function renderToStaticMarkup(
 
   const isProbe = metadata?.renderStrategy === 'probe';
 
-  // The stream never rejects. Uncontained errors surface through onError and are rethrown for real renders, so Astro
-  // can report them.
+  // The stream never rejects. Uncontained errors surface through onError and are rethrown, so Astro can report them and
+  // a probe fails.
   let renderError: { error: unknown } | undefined;
   let head = '';
   const manifest = await getManifest();
@@ -147,25 +139,19 @@ async function renderToStaticMarkup(
     noScripts: !needsHydrate || isProbe,
     ...(manifest === undefined ? {} : { manifest }),
     onError(error: unknown) {
-      if (isProbe) {
-        metadata.onProbeError?.();
-      } else {
-        renderError ??= { error };
-      }
+      renderError ??= { error };
     },
-    // Probe renders must not consume style dedupe keys the real render needs.
-    onHead: isProbe
-      ? () => undefined
-      : (headHtml: string) => {
-          head += headHtml;
-        },
+    onHead(headHtml: string) {
+      head += headHtml;
+    },
   });
   if (renderError !== undefined) {
     throw renderError.error;
   }
 
   // Serializer scripts already ride inside island markup, so extra non-marker nodes are safe for hydration.
-  const styles = head !== '' && !isProbe ? extractIslandStyles(head, pageRenderState.claimStyle) : '';
+  // A probe must not consume style dedupe keys the real render needs.
+  const styles = isProbe ? '' : extractIslandStyles(head, pageRenderState.claimStyle);
 
   return {
     attrs: {

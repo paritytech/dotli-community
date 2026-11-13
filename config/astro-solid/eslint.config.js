@@ -19,9 +19,8 @@ export default defineConfig([
   },
   ...importBans([TOOLING_SCOPES]),
   {
-    // Node loads the integration and its container renderer through astro.config.ts directly, so their imports name
-    // `.ts` files. The `.ts` and test-only module bans are lifted. The workspace-import ban still holds.
-    files: ['src/index.ts', 'src/containerRenderer.ts'],
+    // Node loads the integration through astro.config.ts directly, so its imports name `.ts` files. The `.ts` and test-only module bans are lifted. The workspace-import ban still holds.
+    files: ['src/index.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [TOOLING_SCOPES] }],
     },

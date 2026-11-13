@@ -58,7 +58,7 @@ export function listSocialMetaAttributes(config: SocialMeta): Record<string, str
  * Returns `image` resolved against `VITE_APP_URL`, or `image` as it is when that is unset. Throws when it is set but is
  * not a URL.
  */
-export function getSocialImageUrl(image: string): string {
+function getSocialImageUrl(image: string): string {
   const appUrl = process.env['VITE_APP_URL']?.trim();
   if (appUrl === undefined || appUrl === '') {
     return image;

@@ -25,7 +25,8 @@ export function buildInfo(build: Site): Plugin {
       order: 'post',
       handler(_options, bundle) {
         const hash = createHash('sha256');
-        const outputs = Object.entries(bundle).sort(([a], [b]) => compareNames(a, b));
+        // By UTF-16 code units, the same on every machine, unlike a locale compare. Bundle names are unique.
+        const outputs = Object.entries(bundle).sort(([a], [b]) => (a < b ? -1 : 1));
         for (const [fileName, output] of outputs) {
           hash.update(`${fileName}\0`);
           hash.update(readOutputContent(output));
@@ -84,15 +85,4 @@ function readOutputContent(output: Rolldown.OutputChunk | Rolldown.OutputAsset):
     case 'asset':
       return output.source;
   }
-}
-
-/** Orders by UTF-16 code units, the same on every machine, unlike a locale compare. */
-function compareNames(left: string, right: string): number {
-  if (left < right) {
-    return -1;
-  }
-  if (left > right) {
-    return 1;
-  }
-  return 0;
 }

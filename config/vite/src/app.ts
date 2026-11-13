@@ -39,7 +39,8 @@ const wasm = wasmPlugin as unknown as () => Plugin;
 export function createDotliApp({ appDir, site, roots }: Params) {
   const serving = createLocalServing(roots);
   provideCommitSha(appDir);
-  provideSentryRelease(appDir);
+  // The upload falls back to the commit when no tag names the release.
+  const release = provideSentryRelease(appDir) ?? process.env['VITE_COMMIT_SHA'];
   const appUrl = process.env['VITE_APP_URL'] ?? '';
   const envDir = resolve(appDir, '../..');
   const shared: UserConfig = {
@@ -75,7 +76,7 @@ export function createDotliApp({ appDir, site, roots }: Params) {
 
   function createViteConfig(own: UserConfig): UserConfig {
     const merged: UserConfig = mergeConfig(shared, own);
-    return { ...merged, plugins: [...(merged.plugins ?? []), createSentryUpload(appDir, envDir)] };
+    return { ...merged, plugins: [...(merged.plugins ?? []), createSentryUpload(release, envDir)] };
   }
 
   return {

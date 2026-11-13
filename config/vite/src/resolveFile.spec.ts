@@ -202,4 +202,19 @@ describe('resolveFile', () => {
     // Then no file is served for any of them
     expect(answers).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
+  it('As a page framing the session window on a disk that ignores case, I ask for its built file in capitals and get a 404', () => {
+    // Given a build with the session window on a disk that finds a file whatever the case of its name, as macOS does
+    const present = new Set([join(DIR, 'session.html').toLowerCase(), join(DIR, 'index.html').toLowerCase()]);
+
+    // When
+    const resolved = resolveFile({
+      dir: DIR,
+      route: BARE_HOST,
+      pathname: '/Session.html',
+      isFile: path => present.has(path.toLowerCase()),
+    });
+
+    // Then
+    expect(resolved).toBeUndefined();
+  });
 });

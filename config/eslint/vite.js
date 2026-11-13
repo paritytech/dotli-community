@@ -256,16 +256,11 @@ export const config = defineConfig([
     },
   },
   {
-    files: ['tests/**/*.ts'],
-    rules: {
-      'no-console': 'off',
-    },
-  },
-  {
     // Test doubles and best-effort Playwright steps are deliberate no-ops. A test's helpers and table rows take their
     // inputs positionally.
     files: ['tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
+      'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/max-params': 'off',
     },
@@ -361,20 +356,19 @@ export function onlyAllowedScopes(allowed, message) {
  * @param {string[]} [within]
  */
 export function importBans(bans, within) {
-  const directLoads = ['**/vite.config.ts'];
   /** @param {string[]} globs */
   const scoped = globs => (within === undefined ? globs : globs.flatMap(glob => within.map(zone => [glob, zone])));
   return defineConfig([
     {
       files: scoped(['**/*.ts', '**/*.tsx', '**/*.js']),
-      ignores: directLoads,
+      // Node loads a Vite config directly, so it imports `.ts` files.
+      ignores: ['**/vite.config.ts'],
       rules: {
         'no-restricted-imports': ['error', { patterns: [tsExtensionImport, ...bans] }],
       },
     },
     {
       files: scoped(['**/src/**/*.ts', '**/src/**/*.tsx']),
-      ignores: directLoads,
       rules: {
         'no-restricted-imports': ['error', { patterns: [...shippedImportPatterns, ...bans] }],
       },

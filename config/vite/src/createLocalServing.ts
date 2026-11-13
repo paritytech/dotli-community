@@ -33,7 +33,7 @@ const LOCAL_SERVER_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /** The Content-Type a local server sends for each file extension. */
-export const MIME_TYPES: Readonly<Record<string, string>> = {
+const MIME_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript',
   '.mjs': 'text/javascript',

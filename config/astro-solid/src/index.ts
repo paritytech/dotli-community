@@ -9,9 +9,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import solid, { type Options as ViteSolidPluginOptions } from '@solidjs/vite-plugin';
 import type { AstroIntegration } from 'astro';
-import type { Plugin, PluginOption } from 'vite';
+import type { Plugin } from 'vite';
 import { crawlFrameworkPkgs } from 'vitefu';
-import { getContainerRenderer } from './containerRenderer.ts';
 import { PACKAGE_NAME } from './packageName.ts';
 
 type Params = Pick<ViteSolidPluginOptions, 'include' | 'exclude' | 'compiler'>;
@@ -23,15 +22,6 @@ type ManifestSource = {
   clientDir: string;
   /** The site's base path, which prefixes the manifest's asset URLs. */
   base: string;
-};
-
-type GetViteConfigurationParams = {
-  /** The Solid plugin options the integration passes through. */
-  options: Params;
-  /** Solid libraries that must go through Vite outside the client. */
-  solidNoExternal: string[];
-  /** Read when the virtual manifest module loads, after Astro has filled it in. */
-  manifestSource: ManifestSource;
 };
 
 const VIRTUAL_MANIFEST_ID = 'virtual:astro-solid-manifest';
@@ -71,9 +61,18 @@ export default function astroSolid(options: Params = {}): AstroIntegration {
           },
         });
 
-        addRenderer(getContainerRenderer());
+        addRenderer({
+          name: PACKAGE_NAME,
+          clientEntrypoint: `${PACKAGE_NAME}/client.js`,
+          serverEntrypoint: `${PACKAGE_NAME}/server.js`,
+        });
         updateConfig({
-          vite: getViteConfiguration({ options, solidNoExternal: solidPackages.ssr.noExternal, manifestSource }),
+          vite: {
+            plugins: [
+              solid({ ...options, ssr: true }),
+              createConfigEnvironmentPlugin(solidPackages.ssr.noExternal, manifestSource),
+            ],
+          },
         });
       },
       'astro:config:done'({ config }) {
@@ -83,24 +82,6 @@ export default function astroSolid(options: Params = {}): AstroIntegration {
       },
     },
   };
-}
-
-function getViteConfiguration({
-  options: { include, exclude, compiler },
-  solidNoExternal,
-  manifestSource,
-}: GetViteConfigurationParams): { plugins: PluginOption[] } {
-  const plugins: PluginOption[] = [
-    solid({
-      ...(include === undefined ? {} : { include }),
-      ...(exclude === undefined ? {} : { exclude }),
-      ...(compiler === undefined ? {} : { compiler }),
-      ssr: true,
-    }),
-    createConfigEnvironmentPlugin(solidNoExternal, manifestSource),
-  ];
-
-  return { plugins };
 }
 
 // Per project output, so several builds in one process don't read each other's manifests.

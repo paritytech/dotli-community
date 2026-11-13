@@ -6,9 +6,9 @@
 // The tree-shaking assumptions below hold because nothing reads a layout property such as `offsetHeight` for its
 // effect.
 
-import type { BuildEnvironmentOptions, Rolldown, TerserOptions } from 'vite';
+import type { BuildEnvironmentOptions, Rolldown, TerserOptions, UserConfig } from 'vite';
 
-type WorkerRolldownOptions = Omit<Rolldown.RolldownOptions, 'plugins' | 'input' | 'onwarn' | 'preserveEntrySignatures'>;
+type WorkerRolldownOptions = NonNullable<NonNullable<UserConfig['worker']>['rolldownOptions']>;
 
 type Params = {
   /** Output options the bundle adds to the shared ones. */

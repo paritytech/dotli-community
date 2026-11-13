@@ -41,10 +41,10 @@ export function provideSentryRelease(cwd: string): string | undefined {
 }
 
 /**
- * Returns the plugin that uploads the source maps of the app in `appDir` when metrics are on and a token is set, and
- * `false` otherwise, so local builds keep them. Never throws.
+ * Returns the plugin that uploads the source maps under `release` when metrics are on and a token is set, and `false`
+ * otherwise, so local builds keep them. Never throws.
  */
-export function createSentryUpload(appDir: string, envDir: string): PluginOption {
+export function createSentryUpload(release: string | undefined, envDir: string): PluginOption {
   if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
     return false;
   }
@@ -54,7 +54,11 @@ export function createSentryUpload(appDir: string, envDir: string): PluginOption
       project: 'dotli',
       telemetry: false,
       authToken: process.env['SENTRY_AUTH_TOKEN'],
-      release: getUploadRelease(appDir),
+      // `ignoreMissing` because the previous release may be a commit-named one git does not know.
+      release:
+        release === undefined || release === ''
+          ? {}
+          : { name: release, setCommits: { auto: true, ignoreMissing: true } },
       sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
     }),
   ].flat();
@@ -82,15 +86,4 @@ export function parseReleaseName(describe: string): string | null {
       ? `${base}.${String(Number(patch) + 1)}-dev.${String(ahead)}`
       : `${base}.${String(patch)}-${pre}.dev.${String(ahead)}`;
   return `${PACKAGE}@${version}+${String(hash)}`;
-}
-
-/**
- * The sourcemap upload's `release`, with commits read from git for suspect commits.
- * `ignoreMissing` because the previous release may be a commit-named one git does not know.
- */
-function getUploadRelease(
-  cwd: string,
-): { name: string; setCommits: { auto: true; ignoreMissing: true } } | Record<string, never> {
-  const name = provideSentryRelease(cwd) ?? process.env['VITE_COMMIT_SHA'];
-  return name === undefined || name === '' ? {} : { name, setCommits: { auto: true, ignoreMissing: true } };
 }
