@@ -4,9 +4,10 @@
 // The "dotli" database's one schema, and the frame's wallet and the session windows' grants databases.
 
 export const DB_NAME = 'dotli';
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 export const CID_STORE = 'cids';
+export const NAME_LIST_STORE = 'name_lists';
 export const NOTIFICATION_STORE = 'scheduled_notifications';
 export const NOTIFICATION_BY_PRODUCT_ID = 'byProductId';
 export const NOTIFICATION_BY_SCHEDULED_AT = 'byScheduledAt';
@@ -64,6 +65,10 @@ export function upgradeDotliDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(BLOCK_META_STORE)) {
     const store = db.createObjectStore(BLOCK_META_STORE, { keyPath: 'cid' });
     store.createIndex(BLOCK_META_BY_LAST_USED, 'lastUsed', { unique: false });
+  }
+  // v7: the landing page's dotNS name lists.
+  if (!db.objectStoreNames.contains(NAME_LIST_STORE)) {
+    db.createObjectStore(NAME_LIST_STORE, { keyPath: 'network' });
   }
 }
 

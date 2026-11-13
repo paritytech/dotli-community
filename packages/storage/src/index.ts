@@ -6,6 +6,8 @@ export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord }
 export { chat } from './chat.js';
 export type { CachedCid, CachedManifests } from './cidCache.js';
 export { cidCache } from './cidCache.js';
+export type { NameListRecord } from './nameList.js';
+export { nameList } from './nameList.js';
 export { isExpectedDbError } from './isExpectedDbError.js';
 export type { LocalWalletStore } from './localWallet.js';
 export { createLocalWalletStore, localWallet } from './localWallet.js';
