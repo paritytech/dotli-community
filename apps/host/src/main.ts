@@ -12,7 +12,7 @@ import { startShell, type Shell } from './startShell.js';
 import { PAGE_START } from './pageStart.js';
 import { openProduct } from './openProduct.js';
 import { openTarget } from './openTarget.js';
-import { bootTracker, type BootStep } from './createBootTracker.js';
+import { bootTracker } from './createBootTracker.js';
 import { holdNetworkWhileLoading } from './holdNetworkWhileLoading.js';
 import { loadingState } from './state/loadingState.js';
 import { networkPause } from './runtime/createNetworkPause.js';
@@ -52,15 +52,12 @@ type BootEvent =
   | { kind: 'failed'; error: unknown };
 
 /**
- * What the boot reports and does: its step for a failure's tag, the route it took, a local target on screen, the move
- * to the landing page, a failure. A throw goes to the failure report.
+ * What the boot reports and does: the route it took, which a landing route leaves for the landing page, a local target
+ * on screen, a failure. A throw goes to the failure report.
  */
 type BootEffect =
-  | { kind: 'stepEntered'; step: BootStep }
-  | { kind: 'routeAnnounced'; route: OpenedRoute; flowId: string }
-  | { kind: 'targetRouted'; target: LocalTarget }
+  | { kind: 'routed'; route: OpenedRoute; flowId: string }
   | { kind: 'targetOpened'; target: LocalTarget; flowId: string }
-  | { kind: 'leftForLanding' }
   | { kind: 'failed'; error: unknown };
 
 type BootMachine = MachineTypes<BootState, BootEvent, BootEffect>;
@@ -136,16 +133,11 @@ const failBoot: HandlerOf<BootMachine, 'startingShell' | 'openingTarget' | 'open
 const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
   failed: failBoot,
   shellStarted({ route, cidRead }, { shell }, { emitState, emitSideEffect, update }) {
+    emitSideEffect({ kind: 'routed', route, flowId: shell.flowId });
     switch (route.kind) {
       case 'preview':
-      case 'localhost': {
-        const proxied = isLocalhostProxy(route);
+      case 'localhost':
         emitState({ kind: 'openingTarget', target: route, flowId: shell.flowId });
-        if (proxied) {
-          emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        }
-        emitSideEffect({ kind: 'stepEntered', step: proxied ? 'localhost_render' : 'preview_render' });
-        emitSideEffect({ kind: 'targetRouted', target: route });
         update(
           openTarget(route, shell).then(
             () => ({ kind: 'opened' }),
@@ -153,11 +145,8 @@ const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
           ),
         );
         return;
-      }
       case 'product':
         emitState({ kind: 'openingProduct' });
-        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        emitSideEffect({ kind: 'stepEntered', step: 'resolve_setup' });
         update(
           openProduct({ route, shell, cidRead }).then(
             () => ({ kind: 'opened' }),
@@ -167,8 +156,6 @@ const startingShell: HandlersOf<BootMachine, 'startingShell'> = {
         return;
       case 'landing':
         emitState({ kind: 'opened' });
-        emitSideEffect({ kind: 'routeAnnounced', route, flowId: shell.flowId });
-        emitSideEffect({ kind: 'leftForLanding' });
         return;
     }
   },
@@ -192,29 +179,8 @@ const openingProduct: HandlersOf<BootMachine, 'openingProduct'> = {
 /** Runs the boot's effects: a failure's step, the debug panel's events, the landing move and the failure screen. */
 function reportBoot(effect: BootEffect): void {
   switch (effect.kind) {
-    case 'stepEntered':
-      bootTracker.setStep(effect.step);
-      return;
-    case 'routeAnnounced': {
-      const { route } = effect;
-      // With the path as the settings left it.
-      debugBus.emit({
-        layer: 'boot',
-        event: 'url_parsed',
-        flowId: effect.flowId,
-        timestamp: Date.now(),
-        payload: {
-          label: route.kind === 'product' ? route.label : null,
-          localhostHost: route.kind === 'localhost' ? route.host : null,
-          deepPath: window.location.pathname + window.location.search,
-        },
-      });
-      return;
-    }
-    case 'targetRouted':
-      bootReport.log.event(isLocalhostProxy(effect.target) ? 'Route: localhost proxy' : 'Route: preview', {
-        host: effect.target.host,
-      });
+    case 'routed':
+      takeRoute(effect.route, effect.flowId);
       return;
     case 'targetOpened':
       performance.mark('dotli:main:end');
@@ -228,13 +194,49 @@ function reportBoot(effect: BootEffect): void {
         });
       }
       return;
-    case 'leftForLanding':
-      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
-      return;
     case 'failed':
       reportBootFailure(effect.error);
       return;
   }
+}
+
+/** Reports the route the boot took, the step a failure is tagged with, and leaves for the landing page on its route. */
+function takeRoute(route: OpenedRoute, flowId: string): void {
+  switch (route.kind) {
+    case 'preview':
+    case 'localhost': {
+      const proxied = isLocalhostProxy(route);
+      if (proxied) {
+        announceRoute(route, flowId);
+      }
+      bootTracker.setStep(proxied ? 'localhost_render' : 'preview_render');
+      bootReport.log.event(proxied ? 'Route: localhost proxy' : 'Route: preview', { host: route.host });
+      return;
+    }
+    case 'product':
+      announceRoute(route, flowId);
+      bootTracker.setStep('resolve_setup');
+      return;
+    case 'landing':
+      announceRoute(route, flowId);
+      leaveForLanding({ location: window.location, localRoot: LOCAL_ROOT });
+      return;
+  }
+}
+
+/** Tells the debug panel the route the URL named, with the path as the settings left it. */
+function announceRoute(route: OpenedRoute, flowId: string): void {
+  debugBus.emit({
+    layer: 'boot',
+    event: 'url_parsed',
+    flowId,
+    timestamp: Date.now(),
+    payload: {
+      label: route.kind === 'product' ? route.label : null,
+      localhostHost: route.kind === 'localhost' ? route.host : null,
+      deepPath: window.location.pathname + window.location.search,
+    },
+  });
 }
 
 /** Whether `target` is a local dev server behind the proxy. */
