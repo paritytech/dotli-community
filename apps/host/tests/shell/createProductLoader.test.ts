@@ -70,6 +70,21 @@ describe('createProductLoader', () => {
     expect(listEvents()).toContain('boot:ready');
   });
 
+  it('As an operator, I see a load whose content loaded before its render resolved traced as handed off, then rendered', async () => {
+    // Given content the sandbox reported before the loader follows it
+    const { loader, readResolution, reportContent } = setupLoader({
+      published: { 'app.doom': 'bafy-app', doom: 'bafy-base' },
+    });
+    await reportContent('loaded');
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readResolution()).toMatchObject({ outcome: 'rendered' });
+    expect(typeof readResolution()?.['handoff_ms']).toBe('number');
+  });
+
   it('As a visitor, I open a name for the first time and see its URL pill as verified', async () => {
     // Given
     const { loader } = setupLoader({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });

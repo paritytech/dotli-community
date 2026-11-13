@@ -74,6 +74,8 @@ type LoadState =
       cid: string;
       manifests: ProductManifests;
       stopListening: () => void;
+      /** The content's outcome the sandbox had already reported, told once the handoff is. */
+      outcome: SandboxLoadReport | null;
     }
   | { kind: 'onScreen'; run: LoadRun; stopListening: () => void }
   | { kind: 'failing'; run: LoadRun; error: unknown; description: ErrorDescription }
@@ -274,7 +276,6 @@ const readingCache: HandlersOf<LoadMachine, 'readingCache'> = {
       // In parallel with the CID, and awaited before anything renders, so a refused product is never downloaded. A
       // CID failure first leaves its failure to the load's outcome.
       const manifestsRead = markHandled(params.names.readManifests(label));
-      emitSideEffect({ kind: 'resolvingName' });
       emitState({ kind: 'resolvingName', run, manifestsRead });
       update(
         params.names
@@ -411,7 +412,7 @@ const rendering: HandlersOf<LoadMachine, 'rendering'> = {
       update({ kind: 'stepFailed', error });
       return;
     }
-    emitState({ ...state, kind: 'handingOff', stopListening });
+    emitState({ ...state, kind: 'handingOff', stopListening, outcome: null });
     emitSideEffect({ kind: 'coreReleased', run: state.run });
     // Queued behind what the listeners heard as they subscribed, so a failure or a content outcome heard then is
     // handled before the side work.
@@ -434,26 +435,25 @@ const failProduct: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'productFai
   update({ kind: 'showFailure' });
 };
 
-const settleContent: HandlerOf<LoadMachine, 'handingOff' | 'onScreen', 'contentOutcome'> = (
-  _state,
-  { report },
-  { emitSideEffect },
-) => {
-  emitSideEffect({ kind: 'contentSettled', report });
-};
-
 const onScreen: HandlersOf<LoadMachine, 'onScreen'> = {
   productFailed: failProduct,
-  contentOutcome: settleContent,
+  contentOutcome(_state, { report }, { emitSideEffect }) {
+    emitSideEffect({ kind: 'contentSettled', report });
+  },
 };
 
 const handingOff: HandlersOf<LoadMachine, 'handingOff'> = {
   productFailed: failProduct,
-  contentOutcome: settleContent,
-  handOff({ run, path, cid, manifests, stopListening }, _event, { emitState, emitSideEffect }) {
+  contentOutcome(state, { report }, { emitState }) {
+    emitState({ ...state, outcome: report });
+  },
+  handOff({ run, path, cid, manifests, stopListening, outcome }, _event, { emitState, emitSideEffect }) {
     const { label } = run;
     emitState({ kind: 'onScreen', run, stopListening });
     emitSideEffect({ kind: 'handedOff' });
+    if (outcome !== null) {
+      emitSideEffect({ kind: 'contentSettled', report: outcome });
+    }
     emitSideEffect({ kind: 'productShown', label, manifests });
     if (path === 'fast') {
       // Keeps the cache honest without blocking the render.
