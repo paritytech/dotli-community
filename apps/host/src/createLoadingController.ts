@@ -35,7 +35,7 @@ export type LoadingPhase = {
 export type LoadingStage = 'starting' | 'relay' | 'assetHub' | 'resolving' | 'content' | 'preparing';
 
 /** Animation frames for the typed explanation, and their clock. */
-export type LoadingFrames = {
+type LoadingFrames = {
   /** Asks for `step` on the next frame and returns the frame's handle. Never throws. */
   request: (step: (now: number) => void) => number;
   /** Drops the frame `handle` names, if it is still due. Never throws. */
@@ -198,13 +198,14 @@ export function createLoadingController({
     { emitState, emitSideEffect },
   ) => {
     emitState({ kind: 'gone' });
+    // Queued before the stops, so one that throws still takes the screen down. An interrupted fade would otherwise
+    // leave the line stranded dim.
+    emitSideEffect({ kind: 'drawn', view: { phase: 'gone', explanationOpacity: 1 } });
     stopPhase(state);
     // A screen that is gone has nothing left to hide.
     state.stopFollowing();
-    // An interrupted fade would otherwise leave the line stranded dim.
-    emitSideEffect({ kind: 'drawn', view: { phase: 'gone', explanationOpacity: 1 } });
   };
-  const showWarning: HandlerOf<ScreenMachine, 'active' | 'dismissing' | 'gone', 'warningSet'> = (
+  const showWarning: HandlerOf<ScreenMachine, 'active' | 'dismissing', 'warningSet'> = (
     _state,
     { message },
     { emitSideEffect },
@@ -251,10 +252,12 @@ export function createLoadingController({
             bar: { percent: 0, shown: -1, shownAt: timers.now(), realShown: -1 },
             band: { kind: 'unbanded' },
             released: false,
+            stall: { kind: 'idle' },
             stageIndex: -1,
           };
           transition.emitState(next);
           stopCrawl(state.band);
+          stopStall(state.stall);
           // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
           // the explanation clock starts now.
           enterStage(next, 'starting', transition);
@@ -273,13 +276,13 @@ export function createLoadingController({
             return;
           }
           const { base, target, expectedMs, reportsProgress } = phase;
-          const moved = base > state.bar.percent ? moveBar(state, { percent: base }, transition) : state;
+          const atBase = base > state.bar.percent ? moveBar(state, { percent: base }, transition) : state;
           const stopTick = poll.start(() => {
             transition.update({ kind: 'crawled' });
           }, CRAWL_TICK_MS);
           const creepCeiling = Math.min(getLentCeiling(phases[index + 1]), CREEP_CEILING);
           const next: ActiveState = {
-            ...moved,
+            ...atBase,
             band: {
               kind: 'banded',
               index,
@@ -424,18 +427,13 @@ export function createLoadingController({
             update({ kind: 'hidden' });
           }, FADE_MS);
           emitState({ kind: 'dismissing', stopFollowing: state.stopFollowing, fadeTimer });
-          stopPhase(state);
           emitSideEffect({ kind: 'drawn', view: { progress: 100, explanationOpacity: 1, phase: 'dismissing' } });
+          stopPhase(state);
         },
         disposed: stop,
       },
       dismissing: { hidden: hide, warningSet: showWarning, disposed: stop },
-      gone: {
-        warningSet: showWarning,
-        disposed(_state, _event, { emitState }) {
-          emitState({ kind: 'disposed' });
-        },
-      },
+      gone: null,
       disposed: null,
     },
     onEffect: effect => {

@@ -647,6 +647,22 @@ describe('The loading screen reports a collaborator that throws', () => {
     expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
   });
 
+  it('As a visitor whose page content throws as the screen stops following it, I see a full-page screen still take the loading screen down', () => {
+    // Given a page whose unsubscribe throws
+    bindReports();
+    const pageContent = atom<PageContent>('page');
+    pageContent.listen = () => () => {
+      throw new Error('the page cannot be unfollowed');
+    };
+    const { controller } = setupController({ pageContent });
+
+    // When
+    controller.hideLoading();
+
+    // Then
+    expect(loadingState.get().phase).toBe('gone');
+  });
+
   it('As an operator, I see a page content that throws as the screen starts following it reported as a defect while the screen still shows its steps', () => {
     // Given a page that cannot be followed
     const { counted } = bindReports();
@@ -748,6 +764,24 @@ describe('Restarting the loading phases', () => {
 
     // Then
     expect(loadingState.get().phase).toBe('gone');
+  });
+
+  it('As a user whose loading phases start again, I wait past the stall time and am not warned about the earlier load', () => {
+    // Given a counting step whose bar is watched for a stall
+    const { controller } = setupController();
+    const stalls: number[] = [];
+    controller.initPhases(STALL_PHASES);
+    controller.onProgressStall(percent => {
+      stalls.push(percent);
+    });
+    controller.advancePhase(1);
+
+    // When the phases start again and the stall time passes
+    controller.initPhases(STALL_PHASES);
+    vi.advanceTimersByTime(PROGRESS_STALL_MS + 100);
+
+    // Then
+    expect(stalls).toEqual([]);
   });
 });
 
