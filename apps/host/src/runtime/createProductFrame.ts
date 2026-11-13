@@ -262,6 +262,8 @@ type FrameEffect =
   | ({ kind: 'traced' } & RenderTrace)
   | { kind: 'chatResolved'; capable: boolean }
   | { kind: 'walletConnected'; chat: boolean }
+  /** Routes the page's chat for the product to `connection` until the core side of `attempt` ends. */
+  | { kind: 'chatRegistered'; attempt: Attempt; connection: CoreConnection }
   | { kind: 'gaveUp'; deaths: number };
 
 type FrameMachine = MachineTypes<FrameState, FrameEvent, FrameEffect>;
@@ -348,9 +350,6 @@ export function createProductFrame({
                 });
                 // Registered before the allow attribute is read, which reads the newest registration.
                 attempt.core.hold(permissions.register(product.label, coreProvider));
-                if (chatCapable) {
-                  attempt.core.hold(registerProductChat(connection));
-                }
                 return { kind: 'opened', attempt, connection, coreProvider };
               },
             ),
@@ -372,6 +371,10 @@ export function createProductFrame({
           };
           emitState({ ...getRunParts(run), kind: 'readingAllow', attempt, link, core: coreSide });
           emitSideEffect({ kind: 'walletConnected', chat });
+          // Only the run's own connection, since a chat view waiting for the product takes the first one registered.
+          if (chat) {
+            emitSideEffect({ kind: 'chatRegistered', attempt, connection });
+          }
           update(
             runStepWork(
               attempt,
@@ -499,7 +502,7 @@ export function createProductFrame({
       return;
     }
     // A rebuild since the ask already answered it.
-    if (recover.waiting === null || recover.waiting !== state.shown?.attempt) {
+    if (recover.waiting !== state.shown?.attempt) {
       moveTo(state, { ...state, recover: { kind: 'ready' } }, transition);
       return;
     }
@@ -737,6 +740,9 @@ export function createProductFrame({
         case 'chatResolved':
           chatReport.log.event('chat capability resolved', { capable: effect.capable });
           return;
+        case 'chatRegistered':
+          effect.attempt.core.hold(registerProductChat(effect.connection));
+          return;
         case 'walletConnected':
           walletReport.log.event('product connected to wallet core', { kind: effect.chat ? 'Worker' : 'App' });
           return;
@@ -901,8 +907,8 @@ export function createProductFrame({
   }
 
   /**
-   * Leases the page core for `attempt`, once the transition's effects have told the core the product. The lease goes as
-   * the attempt's core side ends, at once when it already has.
+   * Leases the page core for `attempt`, once the transition's effects have told the core the product and let go of the
+   * lease of the run it superseded. The lease goes as the attempt's core side ends, at once when it already has.
    */
   function leaseCore(attempt: Attempt): Promise<FrameEvent> {
     return Promise.resolve().then(() =>
