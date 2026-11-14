@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import type { Network } from '@dotli/config';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import type { LabelStoreCursor } from '@dotli/resolver';
-import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
+import { CHAIN_HALTED_ERROR_DATA, getErrorName } from '@dotli/shared';
 import type { NameListRecord } from '@dotli/storage';
 import { atom } from 'nanostores';
 import { createLandingNameList } from './landingNameList.js';
@@ -172,6 +172,36 @@ describe('landing name list', () => {
     expect(events).not.toContain('released');
   });
 
+  it("As a visitor whose reads fail to load, I see the sync's trace end with the error", async () => {
+    // Given reads whose chunk fails to load
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, traced, traceEnded } = setupNameList({ open: 'failed' });
+
+    // When
+    nameList.start();
+    await traceEnded;
+
+    // Then
+    expect(traced).toEqual(['error TypeError']);
+  });
+
+  it('As a visitor whose sync read fails, I see its trace end with the error', async () => {
+    // Given a read that fails in the code
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, traced, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.reject(new TypeError('bad slot')),
+      },
+    });
+
+    // When
+    nameList.start();
+    await traceEnded;
+
+    // Then
+    expect(traced).toEqual(['error TypeError']);
+  });
+
   it('As the suggestion island, I start twice and one sync runs', async () => {
     // Given
     const { nameList, opened, released } = setupNameList();
@@ -196,6 +226,8 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
   const opened: SettingsState[] = [];
   const opening = Promise.withResolvers<undefined>();
   const released = Promise.withResolvers<undefined>();
+  const traced: string[] = [];
+  const traceEnded = Promise.withResolvers<undefined>();
   const settingsStore = atom<SettingsState | null>(settings);
   const fakeReads = {
     readLabelStores: () => Promise.resolve([]),
@@ -231,6 +263,16 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
       }
     },
     settings: settingsStore,
+    openTrace: () => ({
+      storedRead: () => undefined,
+      readsOpened: () => undefined,
+      labelsShown: () => undefined,
+      withReads: reads => reads,
+      ended: end => {
+        traced.push(end.kind === 'ok' ? 'ok' : `error ${getErrorName(end.error) ?? 'unknown'}`);
+        traceEnded.resolve(undefined);
+      },
+    }),
     now: () => NOW,
   });
   nameList.labels.listen(labels => {
@@ -244,6 +286,8 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
     opened,
     opening: opening.promise,
     released: released.promise,
+    traced,
+    traceEnded: traceEnded.promise,
   };
 }
 

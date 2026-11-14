@@ -3,11 +3,12 @@
 
 // The landing page's app labels: the stored list at once, then each step of one sync on the page's Asset Hub lease.
 
-import { hasLightClient, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
+import { hasLightClient, NETWORK_NAME_TO_SERVICES_CONFIG, type Backend } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { isExpectedReadError, loadResolve, type DotnsResolver } from '@dotli/resolver';
 import { nameList, type NameList } from '@dotli/storage';
 import { atom, type ReadableAtom } from 'nanostores';
+import { createNameListTrace, type NameListTrace } from './createNameListTrace.js';
 import { loadHostBridge } from './lazy.js';
 import { reportLazyMiss } from './reportLazyMiss.js';
 import { settingsState, type SettingsState } from './state/settingsState.js';
@@ -19,6 +20,8 @@ type Params = {
   openReads: (settings: SettingsState) => Promise<NameListReads & Pick<DotnsResolver, 'release'>>;
   /** The page's settings, null until the boot sets them. */
   settings: ReadableAtom<SettingsState | null>;
+  /** Opens the trace of one sync on the page's performance timeline. */
+  openTrace?: (backend: Backend) => NameListTrace;
   now?: () => number;
 };
 
@@ -28,7 +31,13 @@ const report = createReporter({ flow: 'name_list' });
 const nameListSyncMetric = defineCount<'ok' | 'error'>('name_list.sync');
 
 /** Builds the landing page's app labels, which one sync on the Asset Hub lease brings up to date. */
-export function createLandingNameList({ store, openReads, settings, now = Date.now }: Params) {
+export function createLandingNameList({
+  store,
+  openReads,
+  settings,
+  openTrace = backend => createNameListTrace({ backend }),
+  now = Date.now,
+}: Params) {
   const labels = atom<readonly string[]>([]);
   const labelsStore: ReadableAtom<readonly string[]> = labels;
   // A latch, since the page runs one sync and a second start must not queue another.
@@ -61,9 +70,11 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
   }
 
   async function sync(current: SettingsState): Promise<void> {
+    const trace = openTrace(current.backend);
     try {
-      await runSync(current);
+      await runSync(current, trace);
     } catch (error) {
+      trace.ended({ kind: 'error', error });
       if (isExpectedReadError(error)) {
         report.expected(error, { step: 'sync', metric: nameListSyncMetric });
       } else {
@@ -72,32 +83,38 @@ export function createLandingNameList({ store, openReads, settings, now = Date.n
     }
   }
 
-  async function runSync(current: SettingsState): Promise<void> {
+  async function runSync(current: SettingsState, trace: NameListTrace): Promise<void> {
     const { network } = current;
     const stored = await store.get(network);
+    trace.storedRead(stored);
     labels.set(stored?.apps ?? []);
+    trace.labelsShown(stored?.apps.length ?? 0);
     let reads: Awaited<ReturnType<Params['openReads']>>;
     try {
       reads = await openReads(current);
     } catch (error) {
+      trace.ended({ kind: 'error', error });
       reportLazyMiss({ report, step: 'name_list_reads', error });
       return;
     }
+    trace.readsOpened();
     try {
       await syncNameList({
         stored,
         network,
-        reads,
+        reads: trace.withReads(reads),
         now,
         save: async record => {
           // Saved first, so a `labels` listener that throws never loses the chunk.
           await store.set(record);
           labels.set(record.apps);
+          trace.labelsShown(record.apps.length);
         },
       });
     } finally {
       reads.release();
     }
+    trace.ended({ kind: 'ok' });
     nameListSyncMetric.count({ outcome: 'ok' });
   }
 }
