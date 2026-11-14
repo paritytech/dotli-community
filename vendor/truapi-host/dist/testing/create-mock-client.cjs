@@ -348,7 +348,7 @@ var require_index_cjs = __commonJS({
     };
     var combineResultAsyncListWithAllErrors = (asyncResultList) => ResultAsync.fromSafePromise(Promise.all(asyncResultList)).andThen(combineResultListWithAllErrors);
     exports2.Result = void 0;
-    (function(Result) {
+    (function(Result2) {
       function fromThrowable2(fn, errorFn) {
         return (...args) => {
           try {
@@ -359,15 +359,15 @@ var require_index_cjs = __commonJS({
           }
         };
       }
-      Result.fromThrowable = fromThrowable2;
+      Result2.fromThrowable = fromThrowable2;
       function combine(resultList) {
         return combineResultList(resultList);
       }
-      Result.combine = combine;
+      Result2.combine = combine;
       function combineWithAllErrors(resultList) {
         return combineResultListWithAllErrors(resultList);
       }
-      Result.combineWithAllErrors = combineWithAllErrors;
+      Result2.combineWithAllErrors = combineWithAllErrors;
     })(exports2.Result || (exports2.Result = {}));
     function ok2(value) {
       return new Ok(value);
@@ -879,6 +879,7 @@ function createWasmRawCallbacks(callbacks) {
   const pocket = callbacks.pocket;
   const profile = profileHostAdapter(callbacks.profile);
   const scanner = callbacks.scanner;
+  const validator = callbacks.validator;
   const hop = callbacks.hop ?? unavailableHopProvider;
   const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
@@ -968,7 +969,20 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi4.HostThemeSubscribeItem.enc(item)), sendError),
     confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
-    confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
+    confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
+    ...validator ? {
+      validatorOpen: async (authority, request) => S2.Result(import_truapi4.HostValidatorOpenResponse, import_truapi4.HostValidatorError).enc(await validator.validatorOpen(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorOpenRequest.dec(request))),
+      validatorCommit: async (authority, request) => S2.Result(import_truapi4.HostValidatorCommitResponse, import_truapi4.HostValidatorError).enc(await validator.validatorCommit(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorCommitRequest.dec(request))),
+      validatorSign: async (authority, request) => S2.Result(import_truapi4.HostValidatorSignResponse, import_truapi4.HostValidatorError).enc(await validator.validatorSign(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorSignRequest.dec(request))),
+      validatorVrfOutput: async (authority, request) => S2.Result(import_truapi4.HostValidatorVrfOutputResponse, import_truapi4.HostValidatorError).enc(await validator.validatorVrfOutput(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorVrfOutputRequest.dec(request))),
+      validatorTicketProve: async (authority, request) => S2.Result(import_truapi4.HostValidatorTicketProveResponse, import_truapi4.HostValidatorError).enc(await validator.validatorTicketProve(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorTicketProveRequest.dec(request))),
+      validatorEntropySource: async (authority, request) => S2.Result(import_truapi4.HostValidatorEntropySourceResponse, import_truapi4.HostValidatorError).enc(await validator.validatorEntropySource(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorEntropySourceRequest.dec(request))),
+      validatorSeal: async (authority, request) => S2.Result(import_truapi4.HostValidatorSealResponse, import_truapi4.HostValidatorError).enc(await validator.validatorSeal(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorSealRequest.dec(request))),
+      validatorFullSign: async (authority, request) => S2.Result(import_truapi4.HostValidatorFullSignResponse, import_truapi4.HostValidatorError).enc(await validator.validatorFullSign(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorFullSignRequest.dec(request))),
+      validatorAuditProve: async (authority, request) => S2.Result(import_truapi4.HostValidatorAuditProveResponse, import_truapi4.HostValidatorError).enc(await validator.validatorAuditProve(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorAuditProveRequest.dec(request))),
+      validatorClose: async (authority, request) => S2.Result(S2._void, import_truapi4.HostValidatorError).enc(await validator.validatorClose(import_truapi4.ValidatorAuthority.dec(authority), import_truapi4.HostValidatorCloseRequest.dec(request))),
+      validatorRevoke: async (executionId) => await validator.validatorRevoke(executionId)
+    } : {}
   };
 }
 var S2, import_truapi4, allowedHopEndpointsResultCodec, identityUsernameCandidatesResultCodec, pickChatFilesResultCodec;

@@ -568,6 +568,71 @@ export declare const JAM_PEER_TRANSPORT_EVENTS: {
     readonly method: 6;
     readonly kind: "request";
 };
+export declare const JAM_PEER_TRANSPORT_LISTEN: {
+    readonly trait: 111;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_SEND_CHUNK: {
+    readonly trait: 111;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_RECV_CHUNK: {
+    readonly trait: 111;
+    readonly method: 9;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_OPEN: {
+    readonly trait: 112;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_COMMIT: {
+    readonly trait: 112;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_SIGN: {
+    readonly trait: 112;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_CLOSE: {
+    readonly trait: 112;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_VRF_OUTPUT: {
+    readonly trait: 112;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_TICKET_PROVE: {
+    readonly trait: 112;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_ENTROPY_SOURCE: {
+    readonly trait: 112;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_SEAL: {
+    readonly trait: 112;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_FULL_SIGN: {
+    readonly trait: 112;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const VALIDATOR_AUDIT_PROVE: {
+    readonly trait: 112;
+    readonly method: 9;
+    readonly kind: "request";
+};
 export declare const MEDIA_GET_CAPABILITIES: {
     readonly trait: 218;
     readonly method: 0;

@@ -22,8 +22,11 @@ import { mediaOwnsCapture } from '../media-host.js';
 
 // Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
 // Protected Media containers separately deny all product-side raw capture.
-// `JamPeers` carries its genesis and has its own prompt.
-function gatedRemotePermissionName(tag: Exclude<RemotePermission['tag'], 'JamPeers'>): PromptPermissionName | null {
+// `JamPeers` carries its genesis and has its own prompt. The browser host has no
+// protected validator custody, so `Validator` is always denied.
+function gatedRemotePermissionName(
+  tag: Exclude<RemotePermission['tag'], 'JamPeers' | 'Validator'>,
+): PromptPermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
@@ -66,8 +69,9 @@ export function createPromptPermission(
         }),
       );
     }
-    // Calling consent is operation-scoped through the host Media backend.
-    if (permission.tag === 'Calling') {
+    // Calling consent is operation-scoped through the host Media backend;
+    // Validator has no custody in this host.
+    if (permission.tag === 'Calling' || permission.tag === 'Validator') {
       return 'Deny';
     }
     const name = gatedRemotePermissionName(permission.tag);

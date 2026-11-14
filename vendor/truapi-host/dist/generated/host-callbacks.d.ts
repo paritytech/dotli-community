@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, CodeFormat, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, MediaLocalState, MediaLocalTracks, MediaOperationFailure, MediaOperationId, MediaParticipantId, MediaRemoteState, MediaSessionId, MediaSurface, MediaViewport, ProductAccountId, ProductAccountTxPayload, ProductProofContext, ReceivingWatch, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostValidatorAuditProveRequest, HostValidatorAuditProveResponse, HostValidatorCloseRequest, HostValidatorCommitRequest, HostValidatorCommitResponse, HostValidatorEntropySourceRequest, HostValidatorEntropySourceResponse, HostValidatorError, HostValidatorFullSignRequest, HostValidatorFullSignResponse, HostValidatorOpenRequest, HostValidatorOpenResponse, HostValidatorSealRequest, HostValidatorSealResponse, HostValidatorSignRequest, HostValidatorSignResponse, HostValidatorTicketProveRequest, HostValidatorTicketProveResponse, HostValidatorVrfOutputRequest, HostValidatorVrfOutputResponse, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, Result, ValidatorAuthority } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -315,8 +315,8 @@ export type CoreStorageKey =
  * wallet and network, whichever product wrote it. The reference is a
  * bearer capability.
  *
- * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose replaces
- * the others.
+ * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose
+ * replaces the others.
  */
  | {
     tag: "ProfileDisclosure";
@@ -3152,6 +3152,119 @@ export interface UserConfirmation {
     confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }
 /**
+ * Optional protected validator custody backend. The runtime supplies authority,
+ * never the guest. The adapter must bind the verified artifact and live account
+ * to this execution, obtain fresh artifact consent, serialize accepted work and
+ * retain ownership until persistence, signing and peer transport are drained.
+ */
+export interface ValidatorPlatform {
+    /**
+     * Acquire existing enrolled custody, read recovery bytes, or acknowledge replay.
+     */
+    validatorOpen(authority: ValidatorAuthority, request: HostValidatorOpenRequest): Promise<{
+        success: true;
+        value: HostValidatorOpenResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Bounded immutable recovery upload or durable compare-and-append checkpoint.
+     */
+    validatorCommit(authority: ValidatorAuthority, request: HostValidatorCommitRequest): Promise<{
+        success: true;
+        value: HostValidatorCommitResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Guard and persist a typed intent before invoking the native signer.
+     */
+    validatorSign(authority: ValidatorAuthority, request: HostValidatorSignRequest): Promise<{
+        success: true;
+        value: HostValidatorSignResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Typed Safrole eligibility under the immutable authoring role.
+     */
+    validatorVrfOutput(authority: ValidatorAuthority, request: HostValidatorVrfOutputRequest): Promise<{
+        success: true;
+        value: HostValidatorVrfOutputResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Bounded ticket proof for the enrolled Bandersnatch identity.
+     */
+    validatorTicketProve(authority: ValidatorAuthority, request: HostValidatorTicketProveRequest): Promise<{
+        success: true;
+        value: HostValidatorTicketProveResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Typed JAM entropy-source signature.
+     */
+    validatorEntropySource(authority: ValidatorAuthority, request: HostValidatorEntropySourceRequest): Promise<{
+        success: true;
+        value: HostValidatorEntropySourceResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Durable one-payload-per-slot seal with complete recovery material.
+     */
+    validatorSeal(authority: ValidatorAuthority, request: HostValidatorSealRequest): Promise<{
+        success: true;
+        value: HostValidatorSealResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Explicit role-4 typed signing with durable conflict guards.
+     */
+    validatorFullSign(authority: ValidatorAuthority, request: HostValidatorFullSignRequest): Promise<{
+        success: true;
+        value: HostValidatorFullSignResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Typed Bandersnatch audit selection under explicit role-4 consent.
+     */
+    validatorAuditProve(authority: ValidatorAuthority, request: HostValidatorAuditProveRequest): Promise<{
+        success: true;
+        value: HostValidatorAuditProveResponse;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Return only after accepted work and owned peer transport are drained/reaped.
+     */
+    validatorClose(authority: ValidatorAuthority, request: HostValidatorCloseRequest): Promise<{
+        success: true;
+        value: undefined;
+    } | {
+        success: false;
+        value: HostValidatorError;
+    }>;
+    /**
+     * Immediately fence admission on teardown/revocation, then drain and reap
+     * asynchronously. Ambiguous completion must keep ownership or poison it.
+     */
+    validatorRevoke(executionId: string): void;
+}
+/**
  * Combined platform interface. A host must provide every capability trait
  * listed here. Optional capabilities are declared separately in
  * `OptionalPlatform`.
@@ -3182,6 +3295,7 @@ export interface HostCallbacks {
     pocket?: PocketPlatform;
     profile?: ProfilePlatform;
     scanner?: ScannerPlatform;
+    validator?: ValidatorPlatform;
 }
 export interface RequiredHostCallbacks {
     navigation: Required<Navigation>;
@@ -3209,4 +3323,5 @@ export interface RequiredHostCallbacks {
     pocket?: Required<PocketPlatform>;
     profile?: Required<ProfilePlatform>;
     scanner?: Required<ScannerPlatform>;
+    validator?: Required<ValidatorPlatform>;
 }

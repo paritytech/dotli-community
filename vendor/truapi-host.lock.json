@@ -2,31 +2,31 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "4417254048c5d61e19735ec7528b5a9df4c7dad6",
+  "upstreamRevision": "9608ac911400076f74bb56ad937cf0306be1a217",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.25.0",
-      "sourceArchiveSha256": "24f632eee502fd21147f4a7a183c172bb7a03e7497965c6f59b33f53676a3dc3",
-      "clientSha256": "d11ad51a0184e6a7d5c06ed1ae82ddfa444c444186273ee487ff3f144e6804f9"
+      "sourceArchiveSha256": "9143fb223b2d90ab4389eac811f2477d99d9fa7d87b7cc57c1e69125650f688b",
+      "clientSha256": "1e6568c2df768602ea3e2c19e587dfd6e9e184d49e8513fe9daaf67073ef728b"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "cecd9b22c754cf7e3d760be3ddee15c7fa4af6922a580b6bf16ee4de7e9d0ab0",
+      "sourceArchiveSha256": "4f4f283870c762190bd31038e2da3ef5f0105f301d0d929bf62a36a7fc9a34a5",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "ffb2aaf279995d43c2f5a49d7b8e88c8487688395612800130301791f864d2c9",
+          "sha256": "6acd71e45ba47a6d221e2854709884561a74eb4bd32505c63636b68354175fa7",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "2b2c825adc786b7caefc8cd94b7b8a6ecd623b67ca366ca5f1570ef35c2e62a7",
+          "sha256": "96c98d33e2cc56b01aff3d0e77e7d7255295d80e06215a332b83ac976c031d38",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "4417254048c5d61e19735ec7528b5a9df4c7dad6",
+  "wasmUpstreamRevision": "9608ac911400076f74bb56ad937cf0306be1a217",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217"
 }

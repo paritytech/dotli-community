@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "fc7b1e7173832168";
+export const TRUAPI_WIRE_SCHEMA_HASH = "23cbc2eeec8fac84";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -811,9 +811,11 @@ export class EntropyClient {
  * manifest declaration: `dial` requires
  * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
  * its `genesis`, checking the product's stored decision, prompting when it is
- * undetermined and persisting the answer per product and genesis. The other
- * methods act only on connections a granted `dial` opened. A grant is
- * separate from account, signing and storage authority.
+ * undetermined and persisting the answer per product and genesis. `listen`
+ * additionally requires separate trusted, execution-only consent for the exact
+ * policy and custodied identity; a stored outbound grant never authorizes it.
+ * Other methods act only on this execution's outgoing or accepted connections.
+ * A grant is separate from account, signing and storage authority.
  */
 export class JamPeerTransportClient {
     #transport;
@@ -849,7 +851,11 @@ export class JamPeerTransportClient {
             },
         });
     }
-    /** Queue one message; the host prepends the `u32` little-endian length. */
+    /**
+     * Queue one message with a `u32` little-endian length prefix. An empty
+     * message with `fin: true` sends only FIN, without a zero-length frame.
+     * An empty nonterminal message still sends the zero-length prefix.
+     */
     send(request, options) {
         return this.#transport.request({
             ids: W.JAM_PEER_TRANSPORT_SEND,
@@ -905,6 +911,62 @@ export class JamPeerTransportClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Listen using the execution's already acquired custody identity.
+     *
+     * Experimental desktop hosts admit only loopback. The trusted confirmation
+     * names product, artifact, custodied public key, full genesis, bind endpoint
+     * and allowed peers. Configure one immutable policy before any connection;
+     * attempts to change or rebind it fail rather than replacing live resources.
+     * Cancellation, revocation and disposal fence accepts and drain the listener
+     * and connections before custody ownership is released. Unsupported hosts
+     * explicitly refuse.
+     */
+    listen(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_LISTEN,
+            payload: T.VersionedHostJamPeerTransportListenRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportListenResponse, S.CallError(T.VersionedHostJamPeerTransportListenError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Queue a fragment of one logical JAMNP-S message (at most 64 MiB).
+     * Fragments are at most 256 KiB, ordered, contiguous and not interleaved
+     * with `send`. `Limit` leaves the next offset unchanged. Malformed
+     * sequences reset the stream; FIN is allowed only on the final fragment.
+     */
+    sendChunk(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_SEND_CHUNK,
+            payload: T.VersionedHostJamPeerTransportSendChunkRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportSendChunkResponse, S.CallError(T.VersionedHostJamPeerTransportSendChunkError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Poll up to 256 KiB of a message without whole-message allocation.
+     * Includes already prefetched bytes. `total: Some(0)` is an empty message,
+     * unlike `None` (no arrival). Reset invalidates any incomplete message.
+     * Do not switch to `recv` in the middle of a logical message.
+     */
+    recvChunk(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_RECV_CHUNK,
+            payload: T.VersionedHostJamPeerTransportRecvChunkRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportRecvChunkResponse, S.CallError(T.VersionedHostJamPeerTransportRecvChunkError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -2218,6 +2280,137 @@ export class WorkerClient {
         });
     }
 }
+/**
+ * Host custody only: consensus, replay, target validity and broadcast remain in
+ * the guest. Acquiring custody requires a distinct execution/account-scoped
+ * Validator permission and trusted artifact consent. Keys never cross this API.
+ */
+export class ValidatorClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /** Acquire an enrolled identity, fetch bounded recovery material, or acknowledge replay. */
+    open(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_OPEN,
+            payload: T.VersionedHostValidatorOpenRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorOpenResponse, S.CallError(T.VersionedHostValidatorOpenError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Upload complete recovery material or compare-and-commit a durable checkpoint. */
+    commit(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_COMMIT,
+            payload: T.VersionedHostValidatorCommitRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorCommitResponse, S.CallError(T.VersionedHostValidatorCommitError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Durably guard and sign one typed GRANDPA domain, never arbitrary bytes. */
+    sign(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_SIGN,
+            payload: T.VersionedHostValidatorSignRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorSignResponse, S.CallError(T.VersionedHostValidatorSignError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Stop admission, drain accepted work and peer transport, then release custody. */
+    close(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_CLOSE,
+            payload: T.VersionedHostValidatorCloseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorCloseResponse, S.CallError(T.VersionedHostValidatorCloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Return deterministic Safrole eligibility output under authoring consent. */
+    vrfOutput(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_VRF_OUTPUT,
+            payload: T.VersionedHostValidatorVrfOutputRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorVrfOutputResponse, S.CallError(T.VersionedHostValidatorVrfOutputError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Prove one bounded ticket attempt against the ordered waiting ring. */
+    ticketProve(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_TICKET_PROVE,
+            payload: T.VersionedHostValidatorTicketProveRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorTicketProveResponse, S.CallError(T.VersionedHostValidatorTicketProveError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Sign only the typed JAM entropy-source domain. */
+    entropySource(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_ENTROPY_SOURCE,
+            payload: T.VersionedHostValidatorEntropySourceRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorEntropySourceResponse, S.CallError(T.VersionedHostValidatorEntropySourceError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Persist a canonical block-seal intent before signing, one payload per slot. */
+    seal(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_SEAL,
+            payload: T.VersionedHostValidatorSealRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorSealResponse, S.CallError(T.VersionedHostValidatorSealError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Durably guard and sign a typed full-validator domain under explicit role-4 consent. */
+    fullSign(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_FULL_SIGN,
+            payload: T.VersionedHostValidatorFullSignRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorFullSignResponse, S.CallError(T.VersionedHostValidatorFullSignError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Prove a typed initial or subsequent audit selection under role-4 consent. */
+    auditProve(request, options) {
+        return this.#transport.request({
+            ids: W.VALIDATOR_AUDIT_PROVE,
+            payload: T.VersionedHostValidatorAuditProveRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostValidatorAuditProveResponse, S.CallError(T.VersionedHostValidatorAuditProveError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
 export function createClient(transport) {
@@ -2248,5 +2441,6 @@ export function createClient(transport) {
         system: new SystemClient(transport),
         theme: new ThemeClient(transport),
         worker: new WorkerClient(transport),
+        validator: new ValidatorClient(transport),
     };
 }

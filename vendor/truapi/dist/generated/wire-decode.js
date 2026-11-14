@@ -500,6 +500,58 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
     },
+    [W.JAM_PEER_TRANSPORT_LISTEN.trait * 256 + W.JAM_PEER_TRANSPORT_LISTEN.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportListenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportListenResponse, S.CallError(T.VersionedHostJamPeerTransportListenError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_SEND_CHUNK.trait * 256 + W.JAM_PEER_TRANSPORT_SEND_CHUNK.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportSendChunkRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportSendChunkResponse, S.CallError(T.VersionedHostJamPeerTransportSendChunkError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RECV_CHUNK.trait * 256 + W.JAM_PEER_TRANSPORT_RECV_CHUNK.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportRecvChunkRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportRecvChunkResponse, S.CallError(T.VersionedHostJamPeerTransportRecvChunkError)).dec(payload),
+    },
+    [W.VALIDATOR_OPEN.trait * 256 + W.VALIDATOR_OPEN.method]: {
+        0: (payload) => T.VersionedHostValidatorOpenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorOpenResponse, S.CallError(T.VersionedHostValidatorOpenError)).dec(payload),
+    },
+    [W.VALIDATOR_COMMIT.trait * 256 + W.VALIDATOR_COMMIT.method]: {
+        0: (payload) => T.VersionedHostValidatorCommitRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorCommitResponse, S.CallError(T.VersionedHostValidatorCommitError)).dec(payload),
+    },
+    [W.VALIDATOR_SIGN.trait * 256 + W.VALIDATOR_SIGN.method]: {
+        0: (payload) => T.VersionedHostValidatorSignRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorSignResponse, S.CallError(T.VersionedHostValidatorSignError)).dec(payload),
+    },
+    [W.VALIDATOR_CLOSE.trait * 256 + W.VALIDATOR_CLOSE.method]: {
+        0: (payload) => T.VersionedHostValidatorCloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorCloseResponse, S.CallError(T.VersionedHostValidatorCloseError)).dec(payload),
+    },
+    [W.VALIDATOR_VRF_OUTPUT.trait * 256 + W.VALIDATOR_VRF_OUTPUT.method]: {
+        0: (payload) => T.VersionedHostValidatorVrfOutputRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorVrfOutputResponse, S.CallError(T.VersionedHostValidatorVrfOutputError)).dec(payload),
+    },
+    [W.VALIDATOR_TICKET_PROVE.trait * 256 + W.VALIDATOR_TICKET_PROVE.method]: {
+        0: (payload) => T.VersionedHostValidatorTicketProveRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorTicketProveResponse, S.CallError(T.VersionedHostValidatorTicketProveError)).dec(payload),
+    },
+    [W.VALIDATOR_ENTROPY_SOURCE.trait * 256 + W.VALIDATOR_ENTROPY_SOURCE.method]: {
+        0: (payload) => T.VersionedHostValidatorEntropySourceRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorEntropySourceResponse, S.CallError(T.VersionedHostValidatorEntropySourceError)).dec(payload),
+    },
+    [W.VALIDATOR_SEAL.trait * 256 + W.VALIDATOR_SEAL.method]: {
+        0: (payload) => T.VersionedHostValidatorSealRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorSealResponse, S.CallError(T.VersionedHostValidatorSealError)).dec(payload),
+    },
+    [W.VALIDATOR_FULL_SIGN.trait * 256 + W.VALIDATOR_FULL_SIGN.method]: {
+        0: (payload) => T.VersionedHostValidatorFullSignRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorFullSignResponse, S.CallError(T.VersionedHostValidatorFullSignError)).dec(payload),
+    },
+    [W.VALIDATOR_AUDIT_PROVE.trait * 256 + W.VALIDATOR_AUDIT_PROVE.method]: {
+        0: (payload) => T.VersionedHostValidatorAuditProveRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorAuditProveResponse, S.CallError(T.VersionedHostValidatorAuditProveError)).dec(payload),
+    },
     [W.MEDIA_GET_CAPABILITIES.trait * 256 + W.MEDIA_GET_CAPABILITIES.method]: {
         0: (payload) => T.VersionedHostMediaGetCapabilitiesRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostMediaGetCapabilitiesResponse, S.CallError(T.VersionedHostMediaGetCapabilitiesError)).dec(payload),

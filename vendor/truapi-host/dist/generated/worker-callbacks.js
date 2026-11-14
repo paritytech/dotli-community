@@ -60,6 +60,17 @@ export const CALLBACK_NAMES = [
     "scanCode",
     "confirmPermission",
     "confirmUserAction",
+    "validatorOpen",
+    "validatorCommit",
+    "validatorSign",
+    "validatorVrfOutput",
+    "validatorTicketProve",
+    "validatorEntropySource",
+    "validatorSeal",
+    "validatorFullSign",
+    "validatorAuditProve",
+    "validatorClose",
+    "validatorRevoke",
 ];
 export const SUBSCRIPTION_NAMES = [
     "subscribeChatRooms",
@@ -180,6 +191,21 @@ function scannerRawCallbacks(bridge) {
         scanCode: (product, request) => bridge.callbackRequest("scanCode", [product, request]),
     };
 }
+function validatorRawCallbacks(bridge) {
+    return {
+        validatorOpen: (authority, request) => bridge.callbackRequest("validatorOpen", [authority, request]),
+        validatorCommit: (authority, request) => bridge.callbackRequest("validatorCommit", [authority, request]),
+        validatorSign: (authority, request) => bridge.callbackRequest("validatorSign", [authority, request]),
+        validatorVrfOutput: (authority, request) => bridge.callbackRequest("validatorVrfOutput", [authority, request]),
+        validatorTicketProve: (authority, request) => bridge.callbackRequest("validatorTicketProve", [authority, request]),
+        validatorEntropySource: (authority, request) => bridge.callbackRequest("validatorEntropySource", [authority, request]),
+        validatorSeal: (authority, request) => bridge.callbackRequest("validatorSeal", [authority, request]),
+        validatorFullSign: (authority, request) => bridge.callbackRequest("validatorFullSign", [authority, request]),
+        validatorAuditProve: (authority, request) => bridge.callbackRequest("validatorAuditProve", [authority, request]),
+        validatorClose: (authority, request) => bridge.callbackRequest("validatorClose", [authority, request]),
+        validatorRevoke: (executionId) => void bridge.callbackRequest("validatorRevoke", [executionId]).catch(() => { }),
+    };
+}
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     const callbacks = {
         ...rawCallbacks(bridge),
@@ -207,6 +233,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, profileRawCallbacks(bridge));
     if (capabilities.scanner)
         Object.assign(callbacks, scannerRawCallbacks(bridge));
+    if (capabilities.validator)
+        Object.assign(callbacks, validatorRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, args, sendItem, sendError) {

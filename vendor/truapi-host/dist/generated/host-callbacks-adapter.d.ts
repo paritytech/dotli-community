@@ -71,6 +71,17 @@ export interface RawCallbacks {
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     confirmPermission?(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;
+    validatorOpen?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorCommit?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorSign?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorVrfOutput?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorTicketProve?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorEntropySource?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorSeal?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorFullSign?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorAuditProve?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorClose?(authority: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    validatorRevoke?(executionId: string): void;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */

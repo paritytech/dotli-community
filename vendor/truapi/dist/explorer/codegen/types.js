@@ -2924,6 +2924,83 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-listen-error",
+        name: "HostJamPeerTransportListenError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportListenError = "NotGranted" | "Refused" | "Limit" | "Unreachable";',
+        description: "Failure to establish an execution-scoped JAM peer listener.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "The genesis grant or separate trusted execution-only consent is absent.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "The host does not support listeners, or the immutable policy is refused.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The listener or peer admission resource limit is exhausted.",
+            },
+            {
+                name: "Unreachable",
+                type: '{ tag: "Unreachable"; value?: undefined }',
+                description: "The requested local endpoint could not be bound.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-listen-request",
+        name: "HostJamPeerTransportListenRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportListenRequest {\n  genesis: HexString;\n  ip: HexString;\n  port: number;\n  allowedPeers: Array<HexString>;\n}",
+        description: "Establish one immutable listener before this execution opens any connection.",
+        fields: [
+            {
+                name: "genesis",
+                type: "HexString",
+                description: "Genesis covered by `RemotePermission::JamPeers` and the listener consent.",
+            },
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Loopback bind address, IPv6 or IPv4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Requested local UDP port.",
+            },
+            {
+                name: "allowed_peers",
+                type: "Array<HexString>",
+                description: "Only these mutually authenticated TLS Ed25519 identities may connect.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-listen-response",
+        name: "HostJamPeerTransportListenResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportListenResponse {\n  ip: HexString;\n  port: number;\n}",
+        description: "The bound execution-scoped listener endpoint.",
+        fields: [
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Bound address, IPv6 or IPv4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Bound local UDP port.",
+            },
+        ],
+    },
+    {
         id: "host-jam-peer-transport-open-error",
         name: "HostJamPeerTransportOpenError",
         category: "jam_peer_transport",
@@ -2957,7 +3034,7 @@ export const types = [
             {
                 name: "conn",
                 type: "number",
-                description: "Connection returned by `dial`.",
+                description: "Connection returned by `dial` or reported by `PeerAccepted`.",
             },
             {
                 name: "kind",
@@ -2977,6 +3054,83 @@ export const types = [
                 name: "stream",
                 type: "number",
                 description: "Execution-local stream id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-error",
+        name: "HostJamPeerTransportRecvChunkError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportRecvChunkError = "Closed" | "InvalidMaxBytes";',
+        description: "Failure to poll a bounded fragment.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already fully consumed.",
+            },
+            {
+                name: "InvalidMaxBytes",
+                type: '{ tag: "InvalidMaxBytes"; value?: undefined }',
+                description: "`max_bytes` must be between one and 256 KiB inclusive.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-request",
+        name: "HostJamPeerTransportRecvChunkRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvChunkRequest {\n  stream: number;\n  maxBytes: number;\n}",
+        description: "Poll a fragment without allocating the complete logical message.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-owned stream.",
+            },
+            {
+                name: "max_bytes",
+                type: "number",
+                description: "Maximum fragment bytes, between one and 256 KiB inclusive.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-response",
+        name: "HostJamPeerTransportRecvChunkResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvChunkResponse {\n  total?: number;\n  offset: number;\n  bytes: HexString;\n  complete: boolean;\n  fin: boolean;\n  reset: boolean;\n}",
+        description: "A bounded message fragment, or no arrival yet.",
+        fields: [
+            {
+                name: "total",
+                type: "number | undefined",
+                description: "Declared length, checked before allocation; `None` means no fragment.\n`Some(0)` with `complete` represents an actual framed empty message.",
+            },
+            {
+                name: "offset",
+                type: "number",
+                description: "Offset within this logical message (zero when there is no fragment).",
+            },
+            {
+                name: "bytes",
+                type: "HexString",
+                description: "At most the requested maximum; never includes the JAMNP-S length prefix.",
+            },
+            {
+                name: "complete",
+                type: "boolean",
+                description: "This fragment ends the logical message; false when none is available.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Clean peer FIN, reported only after all complete messages are drained.",
+            },
+            {
+                name: "reset",
+                type: "boolean",
+                description: "Peer reset or malformed/truncated framing; discard an incomplete message.",
             },
         ],
     },
@@ -3066,6 +3220,69 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-send-chunk-error",
+        name: "HostJamPeerTransportSendChunkError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportSendChunkError = "Closed" | "TooLarge" | "Limit" | "InvalidChunk";',
+        description: "Failure to queue a fragment of a single JAMNP-S message.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is closed, finished or unknown.",
+            },
+            {
+                name: "TooLarge",
+                type: '{ tag: "TooLarge"; value?: undefined }',
+                description: "The fragment exceeds 256 KiB or the logical message exceeds 64 MiB.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "Connection credit is exhausted; retry the same fragment unchanged.",
+            },
+            {
+                name: "InvalidChunk",
+                type: '{ tag: "InvalidChunk"; value?: undefined }',
+                description: "Incorrect offset, changed total, empty nonfinal fragment or premature FIN.\nThe stream is reset and cannot be reused.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-chunk-request",
+        name: "HostJamPeerTransportSendChunkRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportSendChunkRequest {\n  stream: number;\n  total: number;\n  offset: number;\n  bytes: HexString;\n  fin: boolean;\n}",
+        description: "Queue one bounded fragment. Only offset zero emits a length prefix.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-owned stream.",
+            },
+            {
+                name: "total",
+                type: "number",
+                description: "Exact logical message length, at most 64 MiB.",
+            },
+            {
+                name: "offset",
+                type: "number",
+                description: "Exact next byte offset, beginning at zero.",
+            },
+            {
+                name: "bytes",
+                type: "HexString",
+                description: "At most 256 KiB. Empty is allowed only for a zero-length message.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Finish only after the final fragment. A zero-length message still frames.",
+            },
+        ],
+    },
+    {
         id: "host-jam-peer-transport-send-error",
         name: "HostJamPeerTransportSendError",
         category: "jam_peer_transport",
@@ -3109,7 +3326,7 @@ export const types = [
             {
                 name: "fin",
                 type: "boolean",
-                description: "Finish the send side after this message.",
+                description: "Finish the send side after this message. With an empty message, send\nonly FIN; empty nonterminal messages retain their zero-length prefix.",
             },
         ],
     },
@@ -5878,6 +6095,621 @@ export const types = [
         ],
     },
     {
+        id: "host-validator-audit-prove-request",
+        name: "HostValidatorAuditProveRequest",
+        category: "validator",
+        definition: "export interface HostValidatorAuditProveRequest {\n  handle: string;\n  parameters: HexString;\n  input: ValidatorAuditInput;\n}",
+        description: "Typed audit selection proof, never arbitrary-message signing.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "input",
+                type: "ValidatorAuditInput",
+                description: "Exact audit selection domain.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-audit-prove-response",
+        name: "HostValidatorAuditProveResponse",
+        category: "validator",
+        definition: "export interface HostValidatorAuditProveResponse {\n  signature: HexString;\n}",
+        description: "Bandersnatch audit selection proof.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-close-request",
+        name: "HostValidatorCloseRequest",
+        category: "validator",
+        definition: "export interface HostValidatorCloseRequest {\n  handle: string;\n}",
+        description: "Stop admission, drain persistence/signing/transport, reap and release ownership.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Opaque execution-local handle.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-commit-request",
+        name: "HostValidatorCommitRequest",
+        category: "validator",
+        definition: 'export type HostValidatorCommitRequest =\n  | { tag: "Begin"; value: { handle: string; recovery: ValidatorRecoveryRef } }\n  | { tag: "Chunk"; value: { handle: string; offset: number; bytes: HexString } }\n  | { tag: "Finish"; value: { handle: string } }\n  | { tag: "Checkpoint"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }\n  | { tag: "Supersede"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }\n  | { tag: "ArchiveBegin"; value: { handle: string; recovery: ValidatorRecoveryRef } }\n  | { tag: "ArchiveChunk"; value: { handle: string; offset: number; bytes: HexString } }\n  | { tag: "ArchiveFinish"; value: { handle: string } }\n;',
+        description: "Sequential bounded upload or a durable compare-and-append checkpoint.",
+        variants: [
+            {
+                name: "Begin",
+                type: '{ tag: "Begin"; value: { handle: string; recovery: ValidatorRecoveryRef } }',
+                description: "Start the sole in-progress upload; does not create a signing intent.",
+            },
+            {
+                name: "Chunk",
+                type: '{ tag: "Chunk"; value: { handle: string; offset: number; bytes: HexString } }',
+                description: "Append the next sequential chunk.",
+            },
+            {
+                name: "Finish",
+                type: '{ tag: "Finish"; value: { handle: string } }',
+                description: "Verify hash/size and fsync complete immutable blob and its directory.",
+            },
+            {
+                name: "Checkpoint",
+                type: '{ tag: "Checkpoint"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }',
+                description: "Commit a checkpoint referencing an already complete verified blob.",
+            },
+            {
+                name: "Supersede",
+                type: '{ tag: "Supersede"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }',
+                description: "Replace all retained recovery witnesses with one complete checkpoint.\n\nThe ready execution asserts authenticated recovery coverage of every\nretained vote target; consumed-slot guards remain in the host journal.\nThe host binds this assertion to the exact expected head and durably\nrebinds witness references before reclaiming their former blobs. It\nnever removes signing choices or verifies opaque consensus state itself.\nMay reference the existing latest blob, requiring no upload capacity.",
+            },
+            {
+                name: "ArchiveBegin",
+                type: '{ tag: "ArchiveBegin"; value: { handle: string; recovery: ValidatorRecoveryRef } }',
+                description: "Begin a separately quota-accounted immutable archive object.",
+            },
+            {
+                name: "ArchiveChunk",
+                type: '{ tag: "ArchiveChunk"; value: { handle: string; offset: number; bytes: HexString } }',
+                description: "Append a bounded sequential archive chunk.",
+            },
+            {
+                name: "ArchiveFinish",
+                type: '{ tag: "ArchiveFinish"; value: { handle: string } }',
+                description: "Verify and durably store the lossless archive object.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-commit-response",
+        name: "HostValidatorCommitResponse",
+        category: "validator",
+        definition: 'export type HostValidatorCommitResponse =\n  | { tag: "Upload"; value: { offset: number } }\n  | { tag: "Stored"; value: { recovery: ValidatorRecoveryRef } }\n  | { tag: "Committed"; value: { revision: string; head: HexString } }\n;',
+        description: "Upload progress or durably committed checkpoint.",
+        variants: [
+            {
+                name: "Upload",
+                type: '{ tag: "Upload"; value: { offset: number } }',
+                description: "Next upload offset expected by the host.",
+            },
+            {
+                name: "Stored",
+                type: '{ tag: "Stored"; value: { recovery: ValidatorRecoveryRef } }',
+                description: "Immutable complete blob is now referenceable.",
+            },
+            {
+                name: "Committed",
+                type: '{ tag: "Committed"; value: { revision: string; head: HexString } }',
+                description: "Durable checkpoint head.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-entropy-source-request",
+        name: "HostValidatorEntropySourceRequest",
+        category: "validator",
+        definition: "export interface HostValidatorEntropySourceRequest {\n  handle: string;\n  parameters: HexString;\n  ticketId: HexString;\n}",
+        description: "Typed `jam_entropy` signature over a ticket id.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "ticket_id",
+                type: "HexString",
+                description: "Entropy-source ticket id.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-entropy-source-response",
+        name: "HostValidatorEntropySourceResponse",
+        category: "validator",
+        definition: "export interface HostValidatorEntropySourceResponse {\n  signature: HexString;\n}",
+        description: "Entropy-source VRF signature.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-error",
+        name: "HostValidatorError",
+        category: "validator",
+        definition: 'export type HostValidatorError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotGranted"; value?: undefined }\n  | { tag: "Closed"; value?: undefined }\n  | { tag: "Busy"; value?: undefined }\n  | { tag: "Limit"; value?: undefined }\n  | { tag: "Invalid"; value?: undefined }\n  | { tag: "Stale"; value?: undefined }\n  | { tag: "Conflict"; value?: undefined }\n  | { tag: "RecoveryRequired"; value?: undefined }\n  | { tag: "Poisoned"; value?: undefined }\n  | { tag: "Unavailable"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Fail-closed custody errors. The runtime sanitizes private callback failures.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "The host has no protected validator backend.",
+            },
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution/account/artifact has no signing grant.",
+            },
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The execution-local handle is no longer owned.",
+            },
+            {
+                name: "Busy",
+                type: '{ tag: "Busy"; value?: undefined }',
+                description: "Another owner holds this identity.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "A transfer, storage, journal, or admission bound was exceeded.",
+            },
+            {
+                name: "Invalid",
+                type: '{ tag: "Invalid"; value?: undefined }',
+                description: "Malformed fields, noncanonical decimal u64, or invalid transfer order.",
+            },
+            {
+                name: "Stale",
+                type: '{ tag: "Stale"; value?: undefined }',
+                description: "Expected revision or head does not match durable custody state.",
+            },
+            {
+                name: "Conflict",
+                type: '{ tag: "Conflict"; value?: undefined }',
+                description: "The duty conflicts with a retained signing intent.",
+            },
+            {
+                name: "RecoveryRequired",
+                type: '{ tag: "RecoveryRequired"; value?: undefined }',
+                description: "Complete recovery material or replay acknowledgement is missing.",
+            },
+            {
+                name: "Poisoned",
+                type: '{ tag: "Poisoned"; value?: undefined }',
+                description: "Missing/corrupt/ambiguous durable state; no signing is allowed.",
+            },
+            {
+                name: "Unavailable",
+                type: '{ tag: "Unavailable"; value?: undefined }',
+                description: "A trusted host persistence or keyring operation failed.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Private platform bridge failure; runtime converts this to Poisoned and revokes.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-full-sign-request",
+        name: "HostValidatorFullSignRequest",
+        category: "validator",
+        definition: "export interface HostValidatorFullSignRequest {\n  handle: string;\n  parameters: HexString;\n  revision: string;\n  head: HexString;\n  duty: ValidatorFullDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Persist a typed full-duty intent before releasing its Ed25519 signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected custody digest.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorFullDuty",
+                description: "Exact typed signing domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound to this intent.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-full-sign-response",
+        name: "HostValidatorFullSignResponse",
+        category: "validator",
+        definition: "export interface HostValidatorFullSignResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Signature released only after the durable full-duty guard is recorded.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Ed25519 signature.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable custody digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-open-request",
+        name: "HostValidatorOpenRequest",
+        category: "validator",
+        definition: 'export type HostValidatorOpenRequest =\n  | { tag: "Acquire"; value: { genesis: HexString } }\n  | { tag: "Read"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }\n  | { tag: "Ready"; value: { handle: string; revision: string; head: HexString } }\n  | { tag: "Retained"; value: { handle: string; revision: string; head: HexString; offset: number } }\n  | { tag: "LookupIntent"; value: { handle: string; revision: string; head: HexString; stage: number; set: number; round: string } }\n  | { tag: "LookupSeal"; value: { handle: string; revision: string; head: HexString; slot: number } }\n  | { tag: "ArchiveRead"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }\n  | { tag: "ArchiveInfo"; value: { handle: string; hash: HexString } }\n  | { tag: "LookupFull"; value: { handle: string; revision: string; head: HexString; duty: ValidatorFullDuty } }\n;',
+        description: "Acquire custody, read recovery material, or acknowledge completed guest replay.",
+        variants: [
+            {
+                name: "Acquire",
+                type: '{ tag: "Acquire"; value: { genesis: HexString } }',
+                description: "Acquire an existing host-enrolled identity, never enroll/import a key.",
+            },
+            {
+                name: "Read",
+                type: '{ tag: "Read"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }',
+                description: "Read a bounded range of a retained recovery blob.",
+            },
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value: { handle: string; revision: string; head: HexString } }',
+                description: "Guest has replayed/revalidated the acquired head; not proof of consensus.",
+            },
+            {
+                name: "Retained",
+                type: '{ tag: "Retained"; value: { handle: string; revision: string; head: HexString; offset: number } }',
+                description: "Read one exact-head page; no full-history array is acquired.",
+            },
+            {
+                name: "LookupIntent",
+                type: '{ tag: "LookupIntent"; value: { handle: string; revision: string; head: HexString; stage: number; set: number; round: string } }',
+                description: "Look up every historical conflict for one GRANDPA duty key.",
+            },
+            {
+                name: "LookupSeal",
+                type: '{ tag: "LookupSeal"; value: { handle: string; revision: string; head: HexString; slot: number } }',
+                description: "Look up a consumed authoring slot, including archived history.",
+            },
+            {
+                name: "ArchiveRead",
+                type: '{ tag: "ArchiveRead"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }',
+                description: "Read an immutable lossless archive object, not a live recovery witness.",
+            },
+            {
+                name: "ArchiveInfo",
+                type: '{ tag: "ArchiveInfo"; value: { handle: string; hash: HexString } }',
+                description: "Authenticate an immutable archive object's hash and complete length.",
+            },
+            {
+                name: "LookupFull",
+                type: '{ tag: "LookupFull"; value: { handle: string; revision: string; head: HexString; duty: ValidatorFullDuty } }',
+                description: "Look up a full-duty conflict key, including archived history.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-open-response",
+        name: "HostValidatorOpenResponse",
+        category: "validator",
+        definition: 'export type HostValidatorOpenResponse =\n  | { tag: "Acquired"; value: { handle: string; ed25519: HexString; bandersnatch: HexString; p256: HexString; genesis: HexString; parameters: HexString; generation: string; revision: string; head: HexString; recovery?: ValidatorRecoveryRef; intentCount: number; sealCount: number; fullDutyCount: number; fullDuties: boolean; latestSealSlot?: number; historyRoot: HexString; authoring: boolean; unixMs: string; protection: ValidatorProtection; stages: HexString; maxRecoveryBytes: number; maxChunkBytes: number; maxStorageBytes: string; maxHistoryBytes: string; maxArchiveBytes: string } }\n  | { tag: "Read"; value: { bytes: HexString } }\n  | { tag: "Ready"; value?: undefined }\n  | { tag: "Retained"; value: { revision: string; head: HexString; offset: number; intents: Array<ValidatorIntent>; seals: Array<ValidatorSealIntent>; next?: number } }\n  | { tag: "Intent"; value: { revision: string; head: HexString; intent?: ValidatorIntent } }\n  | { tag: "Seal"; value: { revision: string; head: HexString; seal?: ValidatorSealIntent } }\n  | { tag: "ArchiveInfo"; value: { recovery: ValidatorRecoveryRef } }\n  | { tag: "Full"; value: { revision: string; head: HexString; intent?: ValidatorFullIntent } }\n;',
+        description: "Custody acquisition or bounded recovery result.",
+        variants: [
+            {
+                name: "Acquired",
+                type: '{ tag: "Acquired"; value: { handle: string; ed25519: HexString; bandersnatch: HexString; p256: HexString; genesis: HexString; parameters: HexString; generation: string; revision: string; head: HexString; recovery?: ValidatorRecoveryRef; intentCount: number; sealCount: number; fullDutyCount: number; fullDuties: boolean; latestSealSlot?: number; historyRoot: HexString; authoring: boolean; unixMs: string; protection: ValidatorProtection; stages: HexString; maxRecoveryBytes: number; maxChunkBytes: number; maxStorageBytes: string; maxHistoryBytes: string; maxArchiveBytes: string } }',
+                description: "Locked, intact custody state, not yet replay-ready.",
+            },
+            {
+                name: "Read",
+                type: '{ tag: "Read"; value: { bytes: HexString } }',
+                description: "Bounded bytes starting at the requested offset.",
+            },
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value?: undefined }',
+                description: "The exact head was acknowledged for replay.",
+            },
+            {
+                name: "Retained",
+                type: '{ tag: "Retained"; value: { revision: string; head: HexString; offset: number; intents: Array<ValidatorIntent>; seals: Array<ValidatorSealIntent>; next?: number } }',
+                description: "Exact-head bounded retained-history page.",
+            },
+            {
+                name: "Intent",
+                type: '{ tag: "Intent"; value: { revision: string; head: HexString; intent?: ValidatorIntent } }',
+                description: "Authenticated historical GRANDPA lookup; absence is not a storage error.",
+            },
+            {
+                name: "Seal",
+                type: '{ tag: "Seal"; value: { revision: string; head: HexString; seal?: ValidatorSealIntent } }',
+                description: "Authenticated historical consumed-slot lookup.",
+            },
+            {
+                name: "ArchiveInfo",
+                type: '{ tag: "ArchiveInfo"; value: { recovery: ValidatorRecoveryRef } }',
+                description: "Verified immutable archive metadata.",
+            },
+            {
+                name: "Full",
+                type: '{ tag: "Full"; value: { revision: string; head: HexString; intent?: ValidatorFullIntent } }',
+                description: "Exact-head retained full-duty lookup.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-seal-request",
+        name: "HostValidatorSealRequest",
+        category: "validator",
+        definition: "export interface HostValidatorSealRequest {\n  handle: string;\n  parameters: HexString;\n  revision: string;\n  head: HexString;\n  input: ValidatorSealInput;\n  recovery: ValidatorRecoveryRef;\n  payload: HexString;\n}",
+        description: "Compare-and-append one durable slot seal before releasing its signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected durable journal digest.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact seal VRF domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material uploaded before seal admission.",
+            },
+            {
+                name: "payload",
+                type: "HexString",
+                description: "Canonical encoded SealPayload, at most 256 KiB; decoded by the helper.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-seal-response",
+        name: "HostValidatorSealResponse",
+        category: "validator",
+        definition: "export interface HostValidatorSealResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Released only after intent fsync and durable-head barriers.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch block seal.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable journal digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-sign-request",
+        name: "HostValidatorSignRequest",
+        category: "validator",
+        definition: "export interface HostValidatorSignRequest {\n  handle: string;\n  revision: string;\n  head: HexString;\n  duty: ValidatorGrandpaDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Compare, persist a typed GRANDPA intent, then sign its exact JAM domain.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Opaque execution-local handle.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal u64 revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected previous journal digest.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorGrandpaDuty",
+                description: "Supported typed signing domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound to the intent.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-sign-response",
+        name: "HostValidatorSignResponse",
+        category: "validator",
+        definition: "export interface HostValidatorSignResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Signature released only after every required durability barrier succeeds.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Deterministic Ed25519 signature over the exact 65-byte JAM domain.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal u64 durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable journal digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-ticket-prove-request",
+        name: "HostValidatorTicketProveRequest",
+        category: "validator",
+        definition: "export interface HostValidatorTicketProveRequest {\n  handle: string;\n  parameters: HexString;\n  ring: Array<HexString>;\n  index: number;\n  entropy: HexString;\n  attempt: number;\n}",
+        description: "Ring ticket proof over the guest's consensus-selected waiting set.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "ring",
+                type: "Array<HexString>",
+                description: "Ordered waiting-set public keys, at most 1023.",
+            },
+            {
+                name: "index",
+                type: "number",
+                description: "Enrolled key's position in the ring.",
+            },
+            {
+                name: "entropy",
+                type: "HexString",
+                description: "Epoch entropy.",
+            },
+            {
+                name: "attempt",
+                type: "number",
+                description: "Bounded ticket attempt under the enrolled parameters.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-ticket-prove-response",
+        name: "HostValidatorTicketProveResponse",
+        category: "validator",
+        definition: "export interface HostValidatorTicketProveResponse {\n  proof: HexString;\n}",
+        description: "Anonymous ring-VRF proof.",
+        fields: [
+            {
+                name: "proof",
+                type: "HexString",
+                description: "Canonical ring signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-vrf-output-request",
+        name: "HostValidatorVrfOutputRequest",
+        category: "validator",
+        definition: "export interface HostValidatorVrfOutputRequest {\n  handle: string;\n  parameters: HexString;\n  input: ValidatorSealInput;\n}",
+        description: "Deterministic eligibility output, not a signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical encoded parameters matching the enrolled digest, at most 1024 bytes.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact eligibility domain.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-vrf-output-response",
+        name: "HostValidatorVrfOutputResponse",
+        category: "validator",
+        definition: "export interface HostValidatorVrfOutputResponse {\n  output: HexString;\n}",
+        description: "Bandersnatch eligibility result.",
+        fields: [
+            {
+                name: "output",
+                type: "HexString",
+                description: "Deterministic VRF output.",
+            },
+        ],
+    },
+    {
         id: "host-worker-begin-operation-request",
         name: "HostWorkerBeginOperationRequest",
         category: "worker",
@@ -6014,7 +6846,7 @@ export const types = [
         id: "jam-peer-transport-event",
         name: "JamPeerTransportEvent",
         category: "jam_peer_transport",
-        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n;',
+        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n  | { tag: "PeerAccepted"; value: { conn: number; ed25519: HexString; ip: HexString; port: number } }\n;',
         description: "Asynchronous transport notification.",
         variants: [
             {
@@ -6030,7 +6862,12 @@ export const types = [
             {
                 name: "Accepted",
                 type: '{ tag: "Accepted"; value: { conn: number; stream: number; kind: number } }',
-                description: "The peer opened a stream to us on a dialed connection.",
+                description: "The peer opened a stream on an outgoing or accepted connection.",
+            },
+            {
+                name: "PeerAccepted",
+                type: '{ tag: "PeerAccepted"; value: { conn: number; ed25519: HexString; ip: HexString; port: number } }',
+                description: "A mutually authenticated peer connected to the execution's listener.\nThis precedes every stream event for the connection.",
             },
         ],
     },
@@ -8248,7 +9085,7 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n;',
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n  | { tag: "Validator"; value: { genesis: HexString; account: HexString; execution: string } }\n;',
         description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
@@ -8285,6 +9122,11 @@ export const types = [
                 name: "Calling",
                 type: '{ tag: "Calling"; value?: undefined }',
                 description: "Host-owned Media calling, scoped to authenticated product/account/network.\n\nDistinct from browser-realm WebRtc. Receive-only sessions still require\nthis grant; microphone and camera additionally require device grants.\nScreen selection is exclusively a trusted host picker, not a permission\nto enumerate or name capture sources. Revocation ends affected sessions.",
+            },
+            {
+                name: "Validator",
+                type: '{ tag: "Validator"; value: { genesis: HexString; account: HexString; execution: string } }',
+                description: "Experimental host-custodied validator signing.\nScope is one trusted account and execution; artifacts need host consent.\nIndex 112 matches trait 112 and the TrUAPI 0.30 line, clear of the\npositional variants (JamPeers 5, Calling 6).",
             },
         ],
     },
@@ -9363,6 +10205,289 @@ export const types = [
                 name: "clip",
                 type: "AvatarRect",
                 description: "Visible region to which the avatar is clipped.",
+            },
+        ],
+    },
+    {
+        id: "validator-audit-input",
+        name: "ValidatorAuditInput",
+        category: "validator",
+        definition: 'export type ValidatorAuditInput =\n  | { tag: "Initial"; value: { entropy: HexString } }\n  | { tag: "Subsequent"; value: { entropy: HexString; report: HexString; tranche: number } }\n;',
+        description: "Exact Bandersnatch audit selection domain.",
+        variants: [
+            {
+                name: "Initial",
+                type: '{ tag: "Initial"; value: { entropy: HexString } }',
+                description: "Initial audit selection.",
+            },
+            {
+                name: "Subsequent",
+                type: '{ tag: "Subsequent"; value: { entropy: HexString; report: HexString; tranche: number } }',
+                description: "Subsequent audit selection.",
+            },
+        ],
+    },
+    {
+        id: "validator-audit-report",
+        name: "ValidatorAuditReport",
+        category: "validator",
+        definition: "export interface ValidatorAuditReport {\n  core: number;\n  report: HexString;\n}",
+        description: "One canonical audit announcement report.",
+        fields: [
+            {
+                name: "core",
+                type: "number",
+                description: "Core index under the enrolled parameters.",
+            },
+            {
+                name: "report",
+                type: "HexString",
+                description: "Work-report hash.",
+            },
+        ],
+    },
+    {
+        id: "validator-authority",
+        name: "ValidatorAuthority",
+        category: "validator",
+        definition: "export interface ValidatorAuthority {\n  productId: string;\n  account: HexString;\n  executionId: string;\n}",
+        description: "Runtime-owned authority, passed only to trusted platform callbacks.",
+        fields: [
+            {
+                name: "product_id",
+                type: "string",
+                description: "Verified product namespace from the host connection.",
+            },
+            {
+                name: "account",
+                type: "HexString",
+                description: "Current root account from runtime authority, not the guest.",
+            },
+            {
+                name: "execution_id",
+                type: "string",
+                description: "Canonical unsigned decimal runtime instance id.",
+            },
+        ],
+    },
+    {
+        id: "validator-full-duty",
+        name: "ValidatorFullDuty",
+        category: "validator",
+        definition: 'export type ValidatorFullDuty =\n  | { tag: "Assurance"; value: { anchor: HexString; statementHash: HexString } }\n  | { tag: "Guarantee"; value: { report: HexString } }\n  | { tag: "Announcement"; value: { anchor: HexString; tranche: number; reports: Array<ValidatorAuditReport> } }\n  | { tag: "Judgement"; value: { report: HexString; valid: boolean } }\n;',
+        description: "Full-validator signing domains, requiring explicit role-4 consent.",
+        variants: [
+            {
+                name: "Assurance",
+                type: '{ tag: "Assurance"; value: { anchor: HexString; statementHash: HexString } }',
+                description: "Availability assurance, guarded by anchor.",
+            },
+            {
+                name: "Guarantee",
+                type: '{ tag: "Guarantee"; value: { report: HexString } }',
+                description: "Work-report guarantee, guarded by report.",
+            },
+            {
+                name: "Announcement",
+                type: '{ tag: "Announcement"; value: { anchor: HexString; tranche: number; reports: Array<ValidatorAuditReport> } }',
+                description: "Audit announcement, guarded by its exact canonical message hash.",
+            },
+            {
+                name: "Judgement",
+                type: '{ tag: "Judgement"; value: { report: HexString; valid: boolean } }',
+                description: "Validity judgement; opposite validity for one report conflicts.",
+            },
+        ],
+    },
+    {
+        id: "validator-full-intent",
+        name: "ValidatorFullIntent",
+        category: "validator",
+        definition: "export interface ValidatorFullIntent {\n  revision: string;\n  duty: ValidatorFullDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Durable full-duty guard; never enumerated in retained-history pages.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorFullDuty",
+                description: "Exact typed domain that was signed.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound before signing.",
+            },
+        ],
+    },
+    {
+        id: "validator-grandpa-duty",
+        name: "ValidatorGrandpaDuty",
+        category: "validator",
+        definition: "export interface ValidatorGrandpaDuty {\n  stage: number;\n  set: number;\n  round: string;\n  target: HexString;\n  stateRoot: HexString;\n  slot: number;\n}",
+        description: "One supported GRANDPA signing domain. No arbitrary-byte signing exists.",
+        fields: [
+            {
+                name: "stage",
+                type: "number",
+                description: "0 prevote, 1 precommit, 2 proposal; all other values refuse.",
+            },
+            {
+                name: "set",
+                type: "number",
+                description: "Authority set identifier.",
+            },
+            {
+                name: "round",
+                type: "string",
+                description: "Canonical unsigned decimal u64, never a JSON number.",
+            },
+            {
+                name: "target",
+                type: "HexString",
+                description: "Target header hash.",
+            },
+            {
+                name: "state_root",
+                type: "HexString",
+                description: "Target posterior state root, independently computed by execution.",
+            },
+            {
+                name: "slot",
+                type: "number",
+                description: "Target slot.",
+            },
+        ],
+    },
+    {
+        id: "validator-intent",
+        name: "ValidatorIntent",
+        category: "validator",
+        definition: "export interface ValidatorIntent {\n  revision: string;\n  duty: ValidatorGrandpaDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Retained durable signing intent needed by guest recovery.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical unsigned decimal u64 journal revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorGrandpaDuty",
+                description: "Exact domain that was durably accepted.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound before signing.",
+            },
+        ],
+    },
+    {
+        id: "validator-protection",
+        name: "ValidatorProtection",
+        category: "validator",
+        definition: 'export type ValidatorProtection = "OsKeyringWrappedSoftware";',
+        description: "Honest protection classes offered by this experiment.",
+        variants: [
+            {
+                name: "OsKeyringWrappedSoftware",
+                type: '{ tag: "OsKeyringWrappedSoftware"; value?: undefined }',
+                description: "OS keyring wraps a software seed, which exists in trusted host memory.",
+            },
+        ],
+    },
+    {
+        id: "validator-recovery-ref",
+        name: "ValidatorRecoveryRef",
+        category: "validator",
+        definition: "export interface ValidatorRecoveryRef {\n  hash: HexString;\n  length: number;\n}",
+        description: "Content-addressed complete recovery material; hashes are Blake2b-256.",
+        fields: [
+            {
+                name: "hash",
+                type: "HexString",
+                description: "Complete blob hash.",
+            },
+            {
+                name: "length",
+                type: "number",
+                description: "Complete byte length, at most 64 MiB.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-duty",
+        name: "ValidatorSealDuty",
+        category: "validator",
+        definition: "export interface ValidatorSealDuty {\n  slot: number;\n  authorIndex: number;\n  input: ValidatorSealInput;\n  payloadHash: HexString;\n}",
+        description: "Canonical decoded seal domain retained by the durable helper.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Consumed slot; at most one payload can be sealed per slot.",
+            },
+            {
+                name: "author_index",
+                type: "number",
+                description: "Author index decoded from the canonical seal payload.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact VRF domain.",
+            },
+            {
+                name: "payload_hash",
+                type: "HexString",
+                description: "Blake2b-256 of the canonical encoded seal payload.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-input",
+        name: "ValidatorSealInput",
+        category: "validator",
+        definition: 'export type ValidatorSealInput =\n  | { tag: "TicketSeal"; value: { entropy: HexString; attempt: number } }\n  | { tag: "FallbackSeal"; value: { entropy: HexString } }\n;',
+        description: "Exact Safrole VRF domain selector; no arbitrary signing message.",
+        variants: [
+            {
+                name: "TicketSeal",
+                type: '{ tag: "TicketSeal"; value: { entropy: HexString; attempt: number } }',
+                description: "Ticket-based eligibility and seal domain.",
+            },
+            {
+                name: "FallbackSeal",
+                type: '{ tag: "FallbackSeal"; value: { entropy: HexString } }',
+                description: "Fallback slot eligibility and seal domain.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-intent",
+        name: "ValidatorSealIntent",
+        category: "validator",
+        definition: "export interface ValidatorSealIntent {\n  revision: string;\n  duty: ValidatorSealDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Persisted seal intent exposed for complete guest recovery.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorSealDuty",
+                description: "Consumed slot and exact domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete pre-seal recovery material.",
             },
         ],
     },

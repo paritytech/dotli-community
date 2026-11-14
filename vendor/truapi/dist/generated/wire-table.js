@@ -579,6 +579,71 @@ export const JAM_PEER_TRANSPORT_EVENTS = {
     method: 6,
     kind: "request",
 };
+export const JAM_PEER_TRANSPORT_LISTEN = {
+    trait: 111,
+    method: 7,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_SEND_CHUNK = {
+    trait: 111,
+    method: 8,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_RECV_CHUNK = {
+    trait: 111,
+    method: 9,
+    kind: "request",
+};
+export const VALIDATOR_OPEN = {
+    trait: 112,
+    method: 0,
+    kind: "request",
+};
+export const VALIDATOR_COMMIT = {
+    trait: 112,
+    method: 1,
+    kind: "request",
+};
+export const VALIDATOR_SIGN = {
+    trait: 112,
+    method: 2,
+    kind: "request",
+};
+export const VALIDATOR_CLOSE = {
+    trait: 112,
+    method: 3,
+    kind: "request",
+};
+export const VALIDATOR_VRF_OUTPUT = {
+    trait: 112,
+    method: 4,
+    kind: "request",
+};
+export const VALIDATOR_TICKET_PROVE = {
+    trait: 112,
+    method: 5,
+    kind: "request",
+};
+export const VALIDATOR_ENTROPY_SOURCE = {
+    trait: 112,
+    method: 6,
+    kind: "request",
+};
+export const VALIDATOR_SEAL = {
+    trait: 112,
+    method: 7,
+    kind: "request",
+};
+export const VALIDATOR_FULL_SIGN = {
+    trait: 112,
+    method: 8,
+    kind: "request",
+};
+export const VALIDATOR_AUDIT_PROVE = {
+    trait: 112,
+    method: 9,
+    kind: "request",
+};
 export const MEDIA_GET_CAPABILITIES = {
     trait: 218,
     method: 0,
