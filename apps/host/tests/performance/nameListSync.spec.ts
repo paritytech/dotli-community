@@ -27,7 +27,14 @@ type Step = 'cold' | 'stored';
 type SyncTimeline = {
   summary: NameListSyncSummary;
   marks: { name: string; startTime: number }[];
-  reads: { kind: NameListReadDetail['kind']; duration: number }[];
+  reads: { detail: NameListReadDetail; duration: number }[];
+};
+
+/** A timeline as the page hands it over, before its details are checked. */
+type RecordedTimeline = {
+  summary: unknown;
+  marks: SyncTimeline['marks'];
+  reads: { detail: unknown; duration: number }[];
 };
 
 type Settled<Value> = { kind: 'ok'; value: Value } | { kind: 'failed'; error: unknown };
@@ -108,17 +115,19 @@ async function measureIteration(browser: Browser, backend: Backend, run: number)
   }
 }
 
-/** Waits for the sync's end mark, then reads its marks and read measures. Rejects with a `TimeoutError` past the limit. */
+/**
+ * Waits for the sync's end mark, then reads its marks and read measures. Rejects with a `TimeoutError` past the limit,
+ * and with an `Error` when the end mark is gone by the time it reads or a detail is not the expected shape.
+ */
 async function readSyncTimeline(page: Page): Promise<SyncTimeline> {
   // The page functions run in the page, where no module binding exists, so every name goes in as their argument.
   await page.waitForFunction(name => performance.getEntriesByName(name, 'mark').length > 0, NAME_LIST_MARKS.end, {
     polling: 500,
     timeout: SYNC_TIMEOUT_MS,
   });
-  return page.evaluate(
-    ({ end, markNames, measure }) => ({
-      summary: performance.getEntriesByName(end, 'mark').find(entry => entry instanceof PerformanceMark)
-        ?.detail as NameListSyncSummary,
+  const recorded = await page.evaluate(
+    ({ end, markNames, measure }): RecordedTimeline => ({
+      summary: performance.getEntriesByName(end, 'mark').find(entry => entry instanceof PerformanceMark)?.detail,
       marks: markNames.flatMap(name =>
         performance
           .getEntriesByName(name, 'mark')
@@ -128,10 +137,45 @@ async function readSyncTimeline(page: Page): Promise<SyncTimeline> {
       reads: performance
         .getEntriesByName(measure, 'measure')
         .filter(entry => entry instanceof PerformanceMeasure)
-        .map(entry => ({ kind: (entry.detail as NameListReadDetail).kind, duration: entry.duration })),
+        .map((entry): RecordedTimeline['reads'][number] => ({ detail: entry.detail, duration: entry.duration })),
     }),
     { end: NAME_LIST_MARKS.end, markNames: Object.values(NAME_LIST_MARKS), measure: NAME_LIST_READ_MEASURE },
   );
+  // The host can reload itself between the wait and this read, and the new document has no end mark yet.
+  const { summary } = recorded;
+  if (!isSyncSummary(summary)) {
+    throw new Error(`The name list end mark '${NAME_LIST_MARKS.end}' held no sync summary after the wait`);
+  }
+  const reads = recorded.reads.map(({ detail, duration }) => {
+    if (!isReadDetail(detail)) {
+      throw new Error(`A '${NAME_LIST_READ_MEASURE}' measure held no read detail`);
+    }
+    return { detail, duration };
+  });
+  return { summary, marks: recorded.marks, reads };
+}
+
+/** Whether a detail read back from the page is a sync summary, checked on the fields this script prints. */
+function isSyncSummary(value: unknown): value is NameListSyncSummary {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'outcome' in value &&
+    (value.outcome === 'ok' || value.outcome === 'error') &&
+    'entries' in value &&
+    typeof value.entries === 'number' &&
+    'labels' in value &&
+    typeof value.labels === 'number' &&
+    'apps' in value &&
+    typeof value.apps === 'number' &&
+    'reads' in value &&
+    typeof value.reads === 'number'
+  );
+}
+
+/** Whether a detail read back from the page is a read's detail, checked on the kind this script groups by. */
+function isReadDetail(value: unknown): value is NameListReadDetail {
+  return typeof value === 'object' && value !== null && 'kind' in value && READ_KINDS.some(kind => kind === value.kind);
 }
 
 function printStep(leading: [Backend, Step, string], step: Settled<SyncTimeline>): void {
@@ -147,7 +191,7 @@ function printStep(leading: [Backend, Step, string], step: Settled<SyncTimeline>
     return start === undefined || time === undefined ? '-' : formatSeconds(time - start);
   };
   const readTimes = READ_KINDS.map(kind => {
-    const durations = reads.filter(read => read.kind === kind).map(read => read.duration);
+    const durations = reads.filter(read => read.detail.kind === kind).map(read => read.duration);
     return durations.length === 0 ? '-' : formatSeconds(durations.reduce((sum, duration) => sum + duration, 0));
   });
   printRow([
