@@ -31,7 +31,7 @@ const DOT_LABEL_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const SUBNAME_SANDBOX_PREFIX = 'sn--';
 
 /** The longest label a DNS name can carry. */
-const MAX_LABEL_LENGTH = 63;
+export const MAX_LABEL_LENGTH = 63;
 
 /** No name under the TLD is a single character, while 2-character nodes exist, such as a device name's two-digit node. */
 const MIN_REGISTERED_LABEL_LENGTH = 2;

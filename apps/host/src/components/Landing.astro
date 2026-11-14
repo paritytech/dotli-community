@@ -2,11 +2,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Static but for its three controls, which are islands. The logo renders here with no directive, so it ships no code.
+// Static but for its four islands. The logo renders here with no directive, so it ships no code.
 import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
 import { LandingAuth } from '../islands/LandingAuth.jsx';
 import { LandingNav } from '../islands/LandingNav.jsx';
+import { LandingSuggest } from '../islands/LandingSuggest.jsx';
 import { LandingRecents } from '../islands/LandingRecents.jsx';
 import s from './Landing.module.css';
 ---
@@ -24,7 +25,10 @@ import s from './Landing.module.css';
         <span class={s['beta']}>β</span>
       </h1>
       <p class={s['subtitle']}>The decentralized web, in your browser.</p>
-      <LandingNav client:load />
+      <div class={s['nav']}>
+        <LandingNav client:load />
+        <LandingSuggest client:idle />
+      </div>
       <LandingRecents client:load />
     </div>
   </div>

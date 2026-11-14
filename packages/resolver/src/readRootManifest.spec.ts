@@ -22,6 +22,9 @@ const DOTNS_WITHOUT_TEXT_RECORDS: DotnsContracts = {
     REGISTRY_PROTOCOL_REGISTRY: 1,
     PROTOCOL_REGISTRY_ADDRESSES: 0,
     REGISTRAR_OWNERS: `0x${'00'.repeat(32)}`,
+    STORE_FACTORY_LABEL_STORES: 5,
+    LABEL_STORE_LABELS: 2,
+    LABEL_STORE_LABEL_LIST: 3,
   },
 };
 
@@ -83,6 +86,8 @@ function createRecordingApi(): { api: Api; calls: string[] } {
       calls.push('readSlot');
       return Promise.resolve(null);
     },
+    resolveTrieIds: () => Promise.resolve(new Map()),
+    readSlots: (_contract, keys) => Promise.resolve(keys.map(() => null)),
     onStop: () => {
       calls.push('onStop');
       return () => undefined;

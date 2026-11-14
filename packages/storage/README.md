@@ -19,6 +19,7 @@ dotli's persistent browser data in IndexedDB:
 - **Owns** the stores on them:
   - block cache
   - label to CID cache
+  - landing name list
   - chat
   - local wallet
   - site grants
@@ -35,6 +36,7 @@ dotli's persistent browser data in IndexedDB:
 | `isExpectedDbError`                                                              | Whether a database error is not a fault. |
 | `blockCache`                                                                     | Bitswap block cache.                     |
 | `cidCache`, `CachedCid`, `CachedManifests`                                       | Label to CID cache.                      |
+| `nameList`, `NameList`, `NameListRecord`                                         | The landing page's dotNS name list.      |
 | `createLocalWalletStore`, `localWallet`, `LocalWalletUnreadableError`            | The local wallet.                        |
 | `LocalWalletStore`                                                               | Local wallet type.                       |
 | `createSiteGrantStore`, `siteGrants`, `SiteGrant`, `SiteGrantStore`              | Site grants.                             |
@@ -60,6 +62,7 @@ In-memory databases (fake-indexeddb) for tests:
 - **Block cache:** keeps bitswap blocks on the host, since the credentialless sandbox loses its storage on reload. It
   does not hash-check.
 - **CID cache:** maps a label to its CID, manifests and owner for instant repeat visits. A hit is still validated.
+- **Name list:** one record per network, which the landing page replaces after each sync step.
 - **Local wallet:** root entropy encrypted under a key this origin cannot export. `forgetIf` never deletes a wallet
   saved since the load.
 - **Site grants:** what a session window keeps of each site the user signed in to. One grant per token, or per group and

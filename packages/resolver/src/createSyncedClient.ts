@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // One chain client kept synced over its connection: built on the first ask, kept while its follow runs, dropped when
-// the follow stops, and built again on the next ask.
+// the follow stops or the caller releases it, and built again on the next ask.
 
 import { createReporter, defineCount, m, spans } from '@dotli/metrics';
 import { createStateMachine, withTimeout, type HandlerOf, type MachineTypes } from '@dotli/shared';
@@ -33,9 +33,10 @@ export type SyncedClientState =
 type SyncedClientEvent =
   | { kind: 'asked'; asker: symbol }
   | { kind: 'connect' }
-  | { kind: 'synced' }
-  | { kind: 'syncFailed'; error: unknown }
-  | { kind: 'stopped' };
+  | { kind: 'synced'; client: ChainClient }
+  | { kind: 'syncFailed'; client: ChainClient; error: unknown }
+  | { kind: 'stopped'; client: ChainClient }
+  | { kind: 'released' };
 
 type SyncedClientEffect =
   | { kind: 'built'; syncMs: number; totalMs: number }
@@ -97,6 +98,17 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
     emitState({ kind: 'connecting', asker, startedAt: performance.now() });
   };
 
+  // The teardown stops the client's follow, and the `stopped` event that sends names a client no state holds any more,
+  // so a release is never counted as a follow stop.
+  const release: HandlerOf<SyncedClientMachine, 'syncing' | 'ready', 'released'> = (
+    { client },
+    _event,
+    { emitState, emitSideEffect },
+  ) => {
+    emitSideEffect({ kind: 'destroy', client });
+    emitState({ kind: 'idle' });
+  };
+
   const machine = createStateMachine<SyncedClientMachine>({
     initial: { kind: 'idle' },
     // Each handler starts the work its next state waits on before it emits that state. A store listener that throws
@@ -117,28 +129,41 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
           emitState({ kind: 'syncing', asker, client, startedAt, syncStartedAt: performance.now() });
         },
       },
+      // A sync event of a client released before it synced lands here once a newer build runs, and is ignored.
       syncing: {
-        synced({ client, startedAt, syncStartedAt }, _event, { emitState, emitSideEffect, update }) {
+        synced({ client, startedAt, syncStartedAt }, event, { emitState, emitSideEffect, update }) {
+          if (event.client !== client) {
+            return;
+          }
           // A dead follow would otherwise make every later read return `null`, which reads as "name not found".
           client.api.onStop(() => {
-            update({ kind: 'stopped' });
+            update({ kind: 'stopped', client });
           });
           const now = performance.now();
           emitSideEffect({ kind: 'built', syncMs: now - syncStartedAt, totalMs: now - startedAt });
           emitState({ kind: 'ready', client });
         },
-        syncFailed({ asker, client, startedAt }, { error }, { emitState, emitSideEffect }) {
+        syncFailed({ asker, client, startedAt }, event, { emitState, emitSideEffect }) {
+          if (event.client !== client) {
+            return;
+          }
+          const { error } = event;
           emitSideEffect({ kind: 'destroy', client });
           emitSideEffect({ kind: 'buildFailed', error, totalMs: performance.now() - startedAt });
           emitState({ kind: 'failed', asker, error });
         },
+        released: release,
       },
       ready: {
-        stopped({ client }, _event, { emitState, emitSideEffect }) {
+        stopped({ client }, event, { emitState, emitSideEffect }) {
+          if (event.client !== client) {
+            return;
+          }
           emitSideEffect({ kind: 'destroy', client });
           emitSideEffect({ kind: 'stopped' });
           emitState({ kind: 'idle' });
         },
+        released: release,
       },
       failed: { asked: startBuild },
     },
@@ -172,7 +197,7 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
         switch (settled.kind) {
           case 'ready':
             return settled.client.api;
-          // The client turned ready and stopped before this call read it, which the caller's halt retry counts.
+          // The client stopped or was released before this call read it, which the caller's halt retry counts.
           case 'idle':
             throw new ApiStoppedError();
           case 'failed':
@@ -180,13 +205,20 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
               throw settled.error;
             }
             continue;
-          // Relies on every build ending in a transition: `syncing` is left by the sync's own event, and `onStop` never
-          // throws. Without that, a settled machine here would make this loop spin.
+          // Relies on every build ending in a transition: `syncing` is left by the sync's own event or a release, and
+          // `onStop` never throws. Without that, a settled machine here would make this loop spin.
           case 'connecting':
           case 'syncing':
             continue;
         }
       }
+    },
+    /**
+     * Ends a kept or building client so its connection closes, and a waiting `getApi` rejects with `ApiStoppedError`.
+     * The next `getApi` builds a new client. Does nothing while no client is kept or building.
+     */
+    release(): void {
+      machine.update({ kind: 'released' });
     },
   };
 
@@ -201,9 +233,9 @@ export function createSyncedClient({ chain, syncTimeoutMs, timed, openClient }: 
       });
     try {
       await (timed ? m.span(SMOLDOT_FINALIZED_BLOCK, waitForFirstBlock) : waitForFirstBlock());
-      return { kind: 'synced' };
+      return { kind: 'synced', client };
     } catch (error) {
-      return { kind: 'syncFailed', error };
+      return { kind: 'syncFailed', client, error };
     }
   }
 

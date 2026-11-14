@@ -3,7 +3,14 @@
 
 import { describe, it, expect } from 'vitest';
 import { fromHex } from '@dotli/shared';
-import { computeNamehash, computeMappingSlot, addToSlot, readWordAsBigInt, decodeBytesSlot } from './storageSlots.js';
+import {
+  computeNamehash,
+  computeMappingSlot,
+  addToSlot,
+  readWordAsBigInt,
+  decodeBytesSlot,
+  computeArrayElementSlot,
+} from './storageSlots.js';
 
 describe('computeNamehash', () => {
   // eth and foo.eth are well-known ENS test vectors.
@@ -127,6 +134,16 @@ describe('addToSlot', () => {
 
     // Then
     expect(stepped).toBe(expected);
+  });
+});
+
+describe('computeArrayElementSlot', () => {
+  it('As the resolver reading dotNS storage, I compute the first element of the array at slot 0 as keccak256(uint256(0))', () => {
+    // When
+    const slot = computeArrayElementSlot(0, 0);
+
+    // Then
+    expect(slot).toBe('0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563');
   });
 });
 

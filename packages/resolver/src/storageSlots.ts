@@ -47,6 +47,16 @@ function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
   return toHex(new Uint8Array(keccak_256(fromHex(baseSlot))));
 }
 
+/** The 32-byte key of a plain slot number. */
+export function encodeSlotKey(slot: number): `0x${string}` {
+  return toHex(encodeSlotNumber(slot));
+}
+
+/** For a dynamic array at slot N, element I lives at `keccak256(uint256(N)) + I`. */
+export function computeArrayElementSlot(slot: number, index: number): `0x${string}` {
+  return addToSlot(computeBytesDataSlot(encodeSlotKey(slot)), index);
+}
+
 /** For `mapping(bytes32 => mapping(string => T))`. Solidity hashes a string key as raw UTF-8, unpadded. */
 export function computeNestedStringMappingSlot({
   outerKey,

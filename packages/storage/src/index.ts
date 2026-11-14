@@ -10,6 +10,8 @@ export { isExpectedDbError } from './isExpectedDbError.js';
 export type { LocalWalletStore } from './localWallet.js';
 export { createLocalWalletStore, localWallet } from './localWallet.js';
 export { LocalWalletUnreadableError } from './localWalletUnreadableError.js';
+export type { NameList, NameListRecord } from './nameList.js';
+export { nameList } from './nameList.js';
 export type { ScheduledNotificationRecord } from './scheduledNotifications.js';
 export { scheduledNotifications } from './scheduledNotifications.js';
 export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';

@@ -4,8 +4,10 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
+import { useStore } from '@dotli/stores-solid';
 import { NavForm } from '../components/landing/NavForm.js';
 import { readLandingName } from '../getLandingUrl.js';
+import { navComboboxState } from '../state/navComboboxState.js';
 import { useActiveTld } from './landing.js';
 import { LandingPart } from './LandingPart.js';
 
@@ -21,5 +23,13 @@ export function LandingNav(): JSX.Element {
 // Inside the part, so a failure binding the form shows the error page as a failure rendering it does.
 function BoundNavForm(): JSX.Element {
   const suffix = useActiveTld();
-  return <NavForm suffix={suffix} readInitialName={() => readLandingName(window.location.search)} />;
+  const listbox = useStore(navComboboxState.listbox);
+  return (
+    <NavForm
+      suffix={suffix}
+      listbox={listbox}
+      combobox={navComboboxState}
+      readInitialName={() => readLandingName(window.location.search)}
+    />
+  );
 }

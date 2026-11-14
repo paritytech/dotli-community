@@ -57,6 +57,13 @@
   text-align: center;
 }
 
+/* The input and, under it, its suggestions. */
+.nav {
+  position: relative;
+  width: 100%;
+  max-width: var(--w-landing);
+}
+
 /* Holds only the wordmark and its tag, so no line box adds space under it. */
 .title {
   position: relative;
