@@ -252,7 +252,7 @@ describe('createRawApi', () => {
       vi.useRealTimers();
     });
 
-    it('As the resolver, I read three slots of one contract in one call and get them in order, with null for the unset one', async () => {
+    it('As the resolver, I read three slots of one contract and get them in order, with null for the unset one', async () => {
       // Given a contract whose first and third slots are set
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -267,21 +267,22 @@ describe('createRawApi', () => {
       const values = await readSlotsUpTo(api, 3);
 
       // Then
-      expect(askedKeys(follow)).toEqual([[0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)))]);
       expect(values).toEqual([new Uint8Array([0x0a]), null, new Uint8Array([0x0c])]);
     });
 
-    it('As the resolver, I read 300 slots and they go out as two calls of at most 256 keys', async () => {
-      // Given
+    it('As the resolver, I read 300 slots on a server that holds every call open and never ask it for more than 16 keys at once', async () => {
+      // Given a server that answers no call
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
       follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
+      follow.storageSubscription.mockImplementation(() => () => undefined);
 
       // When
-      await readSlotsUpTo(api, 300);
+      void readSlotsUpTo(api, 300);
+      await vi.runAllTimersAsync();
 
       // Then
-      expect(askedKeys(follow).map(keys => keys.length)).toEqual([256, 44]);
+      expect(askedKeys(follow).flat()).toHaveLength(16);
     });
 
     it('As the resolver, I read 300 slots, one call fails while the other runs, and the read rejects only once both ended', async () => {
@@ -322,28 +323,28 @@ describe('createRawApi', () => {
       expect(error).toBe(failure);
     });
 
-    it('As the resolver on a server that discards the last two keys of a call, I read three slots and get every value', async () => {
+    it('As the resolver on a server that discards the last key of a call, I read two slots and get every value', async () => {
       // Given every slot set, and a server that discards the tail of the first call
-      const keys = [0, 1, 2].map(index => getChildSlotKey(slotKeyAt(index)));
+      const keys = [0, 1].map(index => getChildSlotKey(slotKeyAt(index)));
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
       follow.emit({ type: 'initialized', finalizedBlockHashes: ['0x0a'] });
       follow.storage.mockResolvedValue('0x01');
       follow.storageSubscription.mockImplementationOnce(
         (_hash, inputs, _childTrie, onItems, _onError, onDone, onDiscardedItems) => {
-          onDiscardedItems(2);
-          onItems(inputs.slice(0, -2).map(({ key }) => ({ key, value: '0x01' })));
+          onDiscardedItems(1);
+          onItems(inputs.slice(0, -1).map(({ key }) => ({ key, value: '0x01' })));
           onDone();
           return () => undefined;
         },
       );
 
       // When
-      const values = await readSlotsUpTo(api, 3);
+      const values = await readSlotsUpTo(api, 2);
 
       // Then
       expect(askedKeys(follow)).toEqual([keys, keys.slice(1)]);
-      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1]), new Uint8Array([1])]);
+      expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
     });
 
     it('As the resolver on a server that answers in two item events, I read two slots and get the values of both', async () => {
@@ -369,7 +370,7 @@ describe('createRawApi', () => {
       expect(values).toEqual([new Uint8Array([1]), new Uint8Array([1])]);
     });
 
-    it('As the resolver, I resolve the trie ids of two contracts and an account in one main-trie call and get null for the account that is not a contract', async () => {
+    it('As the resolver, I resolve the trie ids of two contracts and an account from the main trie and get null for the account that is not a contract', async () => {
       // Given two contracts and an account that is not one
       const { client, follow } = createFakeSubstrateClient();
       const api = createRawApi({ client });
@@ -387,9 +388,9 @@ describe('createRawApi', () => {
       const trieIds = await api.resolveTrieIds([CONTRACT_ADDRESS, otherContract, account], '0x0a');
 
       // Then
-      expect(follow.storageSubscription.mock.calls.map(([, inputs, childTrie]) => [inputs.length, childTrie])).toEqual([
-        [3, null],
-      ]);
+      expect(new Set(follow.storageSubscription.mock.calls.map(([, , childTrie]) => childTrie))).toEqual(
+        new Set([null]),
+      );
       expect(trieIds).toEqual(
         new Map([
           [CONTRACT_ADDRESS, TRIE_ID],

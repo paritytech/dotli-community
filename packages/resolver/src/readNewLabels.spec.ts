@@ -39,17 +39,17 @@ describe('readNewLabels', () => {
     expect(result).toEqual({ stores: [{ address: STORE, read: 3 }], labels: ['bob', 'carol'] });
   });
 
-  it("As the name list, I read at most 256 of a store's new entries at a time, and the cursor stops after them", async () => {
-    // Given a store that holds 300 names
-    const labels = Array.from({ length: 300 }, (_, index) => `name${String(index)}`);
+  it("As the name list, I read at most 32 of a store's new entries at a time, and the cursor stops after them", async () => {
+    // Given a store that holds 40 names
+    const labels = Array.from({ length: 40 }, (_, index) => `name${String(index)}`);
     const { api } = createFakeApi({ [STORE]: createStoreWords(labels.map(label => `${label}.${TLD}`)) });
     const stores = [{ address: STORE, read: 0 }];
 
     // When the new labels are read
     const result = await readNewLabels({ api, dotns, stores });
 
-    // Then the first 256 labels come back, and the cursor moves past them only
-    expect(result).toEqual({ stores: [{ address: STORE, read: 256 }], labels: labels.slice(0, 256) });
+    // Then the first 32 labels come back, and the cursor moves past them only
+    expect(result).toEqual({ stores: [{ address: STORE, read: 32 }], labels: labels.slice(0, 32) });
   });
 
   it('As the name list, I keep second-level names under my TLD and drop subnames, other TLDs and invalid labels', async () => {

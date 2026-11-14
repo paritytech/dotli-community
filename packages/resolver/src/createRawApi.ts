@@ -145,9 +145,11 @@ type FollowMachine = MachineTypes<FollowState, FollowEvent, FollowEffect>;
 // A server refuses operations past its per-follow limit, so each follow stays well under a common one.
 const MAX_STORAGE_OPERATIONS = 8;
 
-// Bounds the request and reply of each call, and splits a large batch into calls that run side by side in the operation
-// pool.
-const MAX_BATCH_KEYS = 256;
+// Each key of a storage call holds one of the follow's operation slots until the call ends: a full node gives a follow
+// 16 and smoldot 32. Keys past the free slots come back discarded, or the call is refused, so a large batch asked at once
+// crawls one key per round trip. Calls stay small enough that every operation in the pool fits the smaller budget.
+const MAX_KEYS_IN_FLIGHT = 16;
+const MAX_BATCH_KEYS = MAX_KEYS_IN_FLIGHT / MAX_STORAGE_OPERATIONS;
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
 export function createRawApi({ client, now = () => performance.now() }: Params): Api {
