@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createFakePage,
   createManualTimers,
@@ -154,65 +153,15 @@ describe('showNotification', () => {
     // Then
     expect(readLeaving()).toEqual([true]);
   });
-
-  it('As a dotli user away from the window, I grant system notifications when asked and the toast leaves the page after the default delay', async () => {
-    // Given
-    toasts.show();
-    focused = false;
-    const granted = Promise.resolve<NotificationPermission>('granted');
-    installSystemAt('default', () => granted);
-
-    // When
-    showNotification({ label: 'Ping', text: 'Granted' });
-    // Settles after the notifier's own handler, which was attached first.
-    await granted;
-    await timers.advance(NOTIFICATION_DISMISS_MS);
-
-    // Then
-    expect(readLeaving()).toEqual([true]);
-  });
-
-  it('As a dotli user away from the window, I meet a browser whose permission request fails, the failure is counted and the toast stays in the page', async () => {
-    // Given
-    toasts.show();
-    focused = false;
-    installSystemAt('default', () => Promise.reject(new Error('Permission request failed')));
-    const firstReport = new Promise<{ step: string; exception?: true }>(resolve => {
-      onTestFinished(
-        bindCaptureSink({
-          exception: (_error, { step }) => {
-            resolve({ step, exception: true });
-          },
-          expected: (_error, { step }) => {
-            resolve({ step });
-          },
-        }),
-      );
-    });
-
-    // When
-    showNotification({ label: 'Ping', text: 'Kept' });
-    const report = await firstReport;
-    await timers.advance(NOTIFICATION_DISMISS_MS);
-
-    // Then
-    expect(report).toEqual({ step: 'system_notification' });
-    expect(readLeaving()).toEqual([false]);
-  });
 });
 
 /**
- * A system notification API whose permission stands at `permission`, recording what it shows and closes. Asking for
- * permission returns what `answer` returns.
+ * A system notification API whose permission stands at `permission`, recording what it shows and closes.
  */
-function installSystemAt(
-  permission: NotificationPermission,
-  answer: () => Promise<NotificationPermission> = () => Promise.resolve(permission),
-): { title: string; body: string | undefined }[] {
+function installSystemAt(permission: NotificationPermission): { title: string; body: string | undefined }[] {
   const created: { title: string; body: string | undefined }[] = [];
   class FakeNotification {
     static permission = permission;
-    static requestPermission = vi.fn(answer);
     onclick: (() => void) | null = null;
     readonly title: string;
     constructor(title: string, options?: { body?: string }) {

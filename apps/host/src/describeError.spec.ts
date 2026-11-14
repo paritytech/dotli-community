@@ -105,40 +105,48 @@ describe('host error classification', () => {
       new ManifestRejectedError('unsupported-version', 'app', '$v 2'),
       'manifest-unsupported-version',
       HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION,
+      ['Contacting the app maintainer.'],
     ],
     [
       'an invalid manifest',
       new ManifestRejectedError('invalid', 'root', 'root manifest displayName must be a non-empty string'),
       'manifest-invalid',
       HOST_ERRORS.MANIFEST_INVALID,
+      ['Contacting the app maintainer.'],
     ],
     [
-      'an app manifest without a root manifest',
-      new ManifestRejectedError('missing-root', 'root', 'no root manifest'),
-      'manifest-invalid',
-      HOST_ERRORS.MANIFEST_INVALID,
+      'a non-IPFS contenthash',
+      new Error('Resolved a non-IPFS contenthash for example'),
+      'contenthash-unsupported',
+      HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+      [],
     ],
-  ])(
-    'As a dotli user, I open an app rejected for %s and am told why with no retry',
-    (_case, rejection, kind, message) => {
-      // When
-      const described = describeError(rejection);
+    [
+      'a contenthash that fails to decode',
+      new Error('Failed to decode contenthash for example: bad codec'),
+      'contenthash-unsupported',
+      HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
+      [],
+    ],
+    [
+      'an archive without an index page',
+      new Error('Archive for example is missing index.html'),
+      'archive-missing-index',
+      HOST_ERRORS.ARCHIVE_NO_INDEX,
+      ['Contacting the app maintainer.'],
+    ],
+  ])('As a dotli user, I open an app with %s and am offered the landing', (_case, failure, kind, message, tips) => {
+    // When
+    const described = describeError(failure);
 
-      // Then
-      expect({
-        kind: described.kind,
-        title: described.title,
-        message: described.message,
-        recovery: described.recovery,
-      }).toEqual({
-        kind,
-        title: "This app can't be opened",
-        message,
-        recovery: 'none',
-      });
-      expect(described.tips).toEqual(['Contacting the app maintainer.']);
-    },
-  );
+    // Then
+    expect({
+      kind: described.kind,
+      message: described.message,
+      recovery: described.recovery,
+      tips: described.tips,
+    }).toEqual({ kind, message, recovery: 'landing', tips });
+  });
 
   it.each([
     [

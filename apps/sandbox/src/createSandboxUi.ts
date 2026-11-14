@@ -30,8 +30,11 @@ type Params = {
   fallback: FallbackScreen;
 };
 
+/** The one action an error page offers. Its click takes no event, so the run and its Node specs can press it. */
+export type SandboxAction = { label: string; onClick: () => void };
+
 /** A full-page screen to show once the UI is up. A need that wants the UI only, such as a toast, has none (`null`). */
-type Screen = { kind: 'error'; title: string; message: string; retry: (() => void) | undefined } | { kind: 'retry' };
+type Screen = { kind: 'error'; title: string; message: string; action: SandboxAction | undefined } | { kind: 'retry' };
 
 /**
  * The UI is loaded once and mounted once. Until then each need loads it again, the toasts are listened to, and the last
@@ -157,7 +160,7 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
      */
     loadUi,
     /**
-     * Shows the error page with `title` and `message`, and a retry when one is given. Shows the fallback screen when
+     * Shows the error page with `title` and `message`, and an action when one is given. Shows the fallback screen when
      * the UI cannot load. Never throws.
      */
     showError,
@@ -187,8 +190,8 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
     return ui;
   }
 
-  function showError(title: string, message: string, { retry }: { retry?: (() => void) | undefined } = {}): void {
-    machine.update({ kind: 'uiNeeded', screen: { kind: 'error', title, message, retry } });
+  function showError(title: string, message: string, { action }: { action?: SandboxAction | undefined } = {}): void {
+    machine.update({ kind: 'uiNeeded', screen: { kind: 'error', title, message, action } });
   }
 
   function showRetryScreen(): void {
@@ -202,7 +205,7 @@ export function createSandboxUi({ load, toasts, fallback }: Params) {
   function showScreen(ui: PageUiModule, screen: Screen): void {
     switch (screen.kind) {
       case 'error':
-        ui.showError(screen.title, { detail: screen.message, action: screen.retry });
+        ui.showError(screen.title, { detail: screen.message, action: screen.action });
         return;
       case 'retry':
         ui.showRetryScreen();

@@ -7,10 +7,11 @@
 import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissionPolicy.js';
 import { modals, type ModalView, type NotificationParams } from '@dotli/ui';
-import type { HostPrompts, GrantAnswer } from './hostPrompts.js';
+import { isGranted, isRetry, type BrowserBlockAnswer, type GrantAnswer, type HostPrompts } from './hostPrompts.js';
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName; allowOnce: boolean }
+  | { kind: 'browserBlock'; label: string; permission: EnforceablePermissionName; retried: boolean }
   | { kind: 'review'; dialog: ModalView<string> };
 
 type Pending = {
@@ -39,8 +40,18 @@ export function createFakePrompts() {
   const notices: NotificationParams[] = [];
 
   const prompts: HostPrompts = {
-    askPermission: ({ label, permission, signal, allowOnce }) =>
-      ask({ kind: 'permission', label, permission, allowOnce }, signal),
+    askPermission: ({ label, permission, signal, allowOnce, onApprove }) =>
+      ask<GrantAnswer>({ kind: 'permission', label, permission, allowOnce }, signal, answer => {
+        if (isGranted(answer)) {
+          onApprove?.();
+        }
+      }),
+    askBrowserBlock: ({ label, permission, signal, retried, onRetry }) =>
+      ask<BrowserBlockAnswer>({ kind: 'browserBlock', label, permission, retried }, signal, answer => {
+        if (isRetry(answer)) {
+          onRetry();
+        }
+      }),
     async confirmReview({ dialog, signal, handoff }) {
       const opened = modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) });
       const id = modals.store.get().at(-1)?.id;
@@ -84,8 +95,16 @@ export function createFakePrompts() {
     waitForClearedScreen,
     /** Resolves with the notices once `count` have been shown, woken by each notice rather than polling. */
     waitForNotices,
-    /** Answers the permission prompt on screen. Throws when no permission prompt is on screen. */
+    /**
+     * Answers the permission prompt on screen, running its approve hook first when `decision` grants it. Throws when no
+     * permission prompt is on screen.
+     */
     decide,
+    /**
+     * Answers the browser block on screen, running its retry hook first on `retry`. Throws when no browser block is on
+     * screen.
+     */
+    answerBrowserBlock,
     /**
      * Settles the review on screen with `result`, or closes the step a review handed off to with it. Throws when no
      * review is on screen.
@@ -94,8 +113,8 @@ export function createFakePrompts() {
     /** Presses the review button with this label. Throws when no review with that button is on screen. */
     chooseReviewButton,
     /**
-     * A backdrop click or Escape: settles a review or permission prompt that allows it. Throws when no ask is on
-     * screen.
+     * A backdrop click or Escape: settles a review, permission prompt or browser block that allows it. Throws when no
+     * ask is on screen.
      */
     dismiss,
   };
@@ -139,7 +158,8 @@ export function createFakePrompts() {
     return up;
   }
 
-  function ask<T>(prompt: FakePrompt, signal: AbortSignal): Promise<T> {
+  /** Queues `prompt` until the spec answers it. `heard` sees the answer before it resolves, as a click's handoff does. */
+  function ask<T extends string>(prompt: FakePrompt, signal: AbortSignal, heard: (answer: T) => void): Promise<T> {
     if (signal.aborted) {
       return Promise.reject(toAbortError(signal.reason, 'Prompt aborted'));
     }
@@ -159,7 +179,9 @@ export function createFakePrompts() {
         settle(answer) {
           take();
           // The spec answers each ask with the value its prompt's kind resolves with.
-          resolve(answer as T);
+          const typed = answer as T;
+          heard(typed);
+          resolve(typed);
         },
       });
       signal.addEventListener('abort', onAbort, { once: true });
@@ -206,6 +228,14 @@ export function createFakePrompts() {
     entry.settle(decision);
   }
 
+  function answerBrowserBlock(answer: BrowserBlockAnswer): void {
+    const { entry, prompt } = getShownPrompt();
+    if (prompt.kind !== 'browserBlock') {
+      throw new Error(`expected a browser block on screen, a ${prompt.kind} prompt is`);
+    }
+    entry.settle(answer);
+  }
+
   function settleReview(result: string): void {
     getShownReview();
     getShownPrompt().entry.settle(result);
@@ -224,6 +254,7 @@ export function createFakePrompts() {
     const { entry, prompt } = getShownPrompt();
     switch (prompt.kind) {
       case 'permission':
+      case 'browserBlock':
         entry.settle('dismissed');
         return;
       case 'review':

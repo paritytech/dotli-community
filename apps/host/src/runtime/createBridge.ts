@@ -7,7 +7,7 @@
 
 import type { SandboxChannel } from '@dotli/sandbox-wire';
 import { createAsyncTaskPool } from '@dotli/shared';
-import type { BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
+import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import type { SessionState } from './session/createSessionState.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import {
@@ -37,6 +37,8 @@ type Params = {
   notify: ProductFrameParams['notify'];
   /** Starts telling the network panel who holds each host chain and its best blocks, without holding any. */
   watchChains: () => void;
+  /** Starts the launch check that shows a product its permissions the browser blocks, queued in the given scope. */
+  watchBrowserBlocks: (scope: BlockingModalScope) => void;
   session: Pick<SessionState, 'reportCoresGone'>;
 };
 
@@ -50,6 +52,7 @@ export function createBridge({
   frameView,
   notify,
   watchChains,
+  watchBrowserBlocks,
   session,
 }: Params) {
   let initialised: { core: PageCore; modals: BlockingModalCoordinator } | null = null;
@@ -114,6 +117,7 @@ export function createBridge({
       return;
     }
     watchChains();
+    watchBrowserBlocks(coordinator.createScope());
     initialised = {
       modals: coordinator,
       core: createPageCore({
@@ -169,8 +173,8 @@ export function createBridge({
 
   return {
     /**
-     * Builds the page core on the page's blocking-modal queue and starts reporting the host chains' activity. A
-     * repeated call keeps the first core. Never throws.
+     * Builds the page core on the page's blocking-modal queue and starts reporting the host chains' activity and the
+     * browser block check. A repeated call keeps the first core. Never throws.
      */
     initBridge,
     /**

@@ -6,6 +6,7 @@
 import type { JSX } from '@solidjs/web';
 import { useStore } from '@dotli/stores-solid';
 import { NavForm } from '../components/landing/NavForm.js';
+import { readLandingName } from '../getLandingUrl.js';
 import { navComboboxState } from '../state/navComboboxState.js';
 import { useActiveTld } from './landing.js';
 import { LandingPart } from './LandingPart.js';
@@ -23,5 +24,12 @@ export function LandingNav(): JSX.Element {
 function BoundNavForm(): JSX.Element {
   const suffix = useActiveTld();
   const listbox = useStore(navComboboxState.listbox);
-  return <NavForm suffix={suffix} listbox={listbox} combobox={navComboboxState} />;
+  return (
+    <NavForm
+      suffix={suffix}
+      listbox={listbox}
+      combobox={navComboboxState}
+      readInitialName={() => readLandingName(window.location.search)}
+    />
+  );
 }

@@ -1,16 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, Show, type Component } from 'solid-js';
-import { dynamic, type JSX } from '@solidjs/web';
-import { CloudOffIcon, ShieldAlertIcon, type IconProps } from '../../icons.js';
-import {
-  arrangeErrorActions,
-  type ArrangedAction,
-  type ErrorPageContent,
-  type ErrorText,
-} from './arrangeErrorActions.js';
-import { ErrorDetail, ErrorFrame } from './ErrorFrame.js';
+import { For, Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { CloudOffIcon, ShieldAlertIcon } from '../../icons.js';
+import type { ErrorPageContent, ErrorText } from './arrangeErrorActions.js';
+import { ErrorActions, ErrorDetail, ErrorFrame } from './ErrorFrame.js';
 import s from './ErrorPage.module.css';
 
 function Text(props: { text: ErrorText }): JSX.Element {
@@ -21,35 +16,9 @@ function Text(props: { text: ErrorText }): JSX.Element {
   );
 }
 
-function ActionIcon(props: { icon: Component<IconProps> }): JSX.Element {
-  const Icon = dynamic(() => props.icon);
-  return (
-    <span class={s['retryIcon']} aria-hidden="true">
-      <Icon class={s['actionIcon']} testId="error-page-action-icon" />
-    </span>
-  );
-}
-
-function ActionButton(props: { arranged: ArrangedAction }): JSX.Element {
-  return (
-    <button
-      id={props.arranged.id}
-      class={s['retry']}
-      data-primary={props.arranged.primary ? '' : undefined}
-      onClick={event => {
-        props.arranged.action.onClick(event);
-      }}
-    >
-      <Show when={props.arranged.action.icon}>{icon => <ActionIcon icon={icon()} />}</Show>
-      <span data-testid="error-page-retry-label">{props.arranged.action.label}</span>
-    </button>
-  );
-}
-
 /** The error page: what failed, what to try, and the actions, the recommended one last. */
 export function ErrorPage(props: { page: ErrorPageContent; standalone: boolean }): JSX.Element {
   const tips = (): readonly string[] => props.page.tips ?? [];
-  const actions = (): ArrangedAction[] => arrangeErrorActions(props.page.actions ?? []);
   return (
     <ErrorFrame
       standalone={props.standalone}
@@ -73,11 +42,7 @@ export function ErrorPage(props: { page: ErrorPageContent; standalone: boolean }
           </ul>
         </div>
       </Show>
-      <Show when={actions().length > 0}>
-        <div class={s['actions']} data-testid="error-page-actions">
-          <For each={actions()}>{arranged => <ActionButton arranged={arranged} />}</For>
-        </div>
-      </Show>
+      <ErrorActions actions={props.page.actions ?? []} />
     </ErrorFrame>
   );
 }

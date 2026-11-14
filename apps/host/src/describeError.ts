@@ -24,7 +24,7 @@ import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
 import { ManifestRejectedError } from './manifestRejectedError.js';
 import { SandboxSilentError } from './watchSandboxLoad.js';
 
-export type Recovery = 'switch-backend' | 'reload' | 'none';
+export type Recovery = 'switch-backend' | 'reload' | 'landing';
 
 /** Stable identity for a classified failure, independent of its copy. */
 export type ErrorKind =
@@ -149,7 +149,8 @@ function classifyError(
       recovery: 'reload',
     };
   }
-  // A reload or another transport reads the same manifests and reaches the same verdict.
+  // A reload or another transport reads the same manifests and reaches the same verdict, so the visitor is offered the
+  // landing.
   if (error instanceof ManifestRejectedError) {
     return {
       kind: error.reason === 'unsupported-version' ? 'manifest-unsupported-version' : 'manifest-invalid',
@@ -158,7 +159,7 @@ function classifyError(
         error.reason === 'unsupported-version'
           ? HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION
           : HOST_ERRORS.MANIFEST_INVALID,
-      recovery: 'none',
+      recovery: 'landing',
       tips: MAINTAINER_TIPS,
     };
   }
@@ -166,7 +167,7 @@ function classifyError(
     return {
       kind: 'contenthash-unsupported',
       message: HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
-      recovery: 'none',
+      recovery: 'landing',
     };
   }
   // polkadot-api's `DisjointError`: the follow was torn down with reads in flight. Not the visitor's network, and the
@@ -222,7 +223,7 @@ function classifyError(
       kind: 'archive-missing-index',
       title: ERROR_TITLES.APP_UNUSABLE,
       message: HOST_ERRORS.ARCHIVE_NO_INDEX,
-      recovery: 'none',
+      recovery: 'landing',
       tips: MAINTAINER_TIPS,
     };
   }

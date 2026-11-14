@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, within } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 import { showNoContentError } from '../../showNoContentError.js';
 
 // The page mounts its own root, so each play shows it in the story's `#app` as the host page does.
@@ -30,6 +30,28 @@ export const MarkupShownAsText: Story = {
       await expect(canvasElement.querySelector('img')).toBeNull();
       await expect(canvas.getByTestId('error-page-domain').textContent.startsWith(XSS)).toBe(true);
     });
+  },
+};
+
+/** As a visitor whose name resolved to nothing, I press Search again and the landing opens with my name. */
+export const SearchAgainKeepsName: Story = {
+  tags: ['!autodocs'],
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement);
+    await step(
+      'As a visitor whose name resolved to nothing, I press Search again and the landing opens with my name',
+      async () => {
+        // Given
+        const opened: string[] = [];
+        showNoContentError('nothing', { searchOnLanding: name => opened.push(name) });
+
+        // When
+        await userEvent.click(canvas.getByRole('button', { name: 'Search again' }));
+
+        // Then
+        await expect(opened).toEqual(['nothing']);
+      },
+    );
   },
 };
 

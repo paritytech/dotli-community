@@ -1,18 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onSettled } from 'solid-js';
+import { createSignal, onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { createNavComboboxState, type NavKey } from '../../state/navComboboxState.js';
-import { NavForm } from './NavForm.js';
+import { NavForm, type NavFormProps } from './NavForm.js';
 
 const SUFFIX = '.dot';
 
-type HydratedProps = {
+type HydratedProps = Required<Pick<NavFormProps, 'readInitialName'>> & {
   /** The suggestions' answer to a key the input offers them. */
   onKey: (key: NavKey) => boolean;
+  /** Hears each text the input hands the suggestions. */
+  onText: (text: string) => void;
 };
 
 /** The form as the page hydrates it: no TLD until the browser knows the visitor's network, and no suggestions shown. */
@@ -23,19 +25,37 @@ function Hydrated(props: HydratedProps): JSX.Element {
     setSuffix(SUFFIX);
   });
   onSettled(() => combobox.handleKeys(props.onKey));
-  return <NavForm suffix={suffix} listbox={() => null} combobox={combobox} />;
+  onCleanup(
+    combobox.text.listen(text => {
+      props.onText(text);
+    }),
+  );
+  return <NavForm suffix={suffix} listbox={() => null} combobox={combobox} readInitialName={props.readInitialName} />;
 }
 
 const meta = {
   title: 'Host/Landing/NavForm',
   component: Hydrated,
-  args: { onKey: fn(() => false) },
+  args: { onKey: fn(() => false), onText: fn(), readInitialName: (): string | undefined => undefined },
   // Its ids are the page's, so each story keeps its own frame.
   tags: ['!autodocs'],
 } satisfies Meta<typeof Hydrated>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+/** As a visitor sent to search again, I see my name in the box and nothing focused. */
+export const Prefilled: Story = {
+  args: { readInitialName: () => 'nothing' },
+  play: async ({ args, canvas, step }) => {
+    await step('Then my name is in the box and the suggestions have it, and nothing has focus', async () => {
+      await waitFor(() => expect(canvas.getByRole('combobox')).toBeEnabled());
+      await expect(canvas.getByRole('combobox')).toHaveValue('nothing');
+      await expect(args.onText).toHaveBeenCalledWith('nothing');
+      await expect(document.activeElement).toBe(document.body);
+    });
+  },
+};
 
 /** As a visitor, I load the page with nothing focused, so a screen reader starts at the top. */
 export const NothingFocusedOnLoad: Story = {

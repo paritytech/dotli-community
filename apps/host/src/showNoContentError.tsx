@@ -7,8 +7,23 @@
 import { getActiveTldSuffix } from '@dotli/config';
 import { pageScreen } from '@dotli/ui';
 import { NoContentPage } from './components/noContent/NoContentPage.js';
+import { searchOnLanding as searchOnLandingPage } from './getLandingUrl.js';
+
+type Params = {
+  /** Opens the landing page searching `name`. */
+  searchOnLanding?: (name: string) => void;
+};
 
 /** Shows the no-content page for `label` in place of the page's content. */
-export function showNoContentError(label: string): void {
-  pageScreen.show(standalone => <NoContentPage label={label} tld={getActiveTldSuffix()} standalone={standalone} />);
+export function showNoContentError(label: string, { searchOnLanding = searchOnLandingPage }: Params = {}): void {
+  pageScreen.show(standalone => (
+    <NoContentPage
+      label={label}
+      tld={getActiveTldSuffix()}
+      standalone={standalone}
+      onSearchAgain={() => {
+        searchOnLanding(label);
+      }}
+    />
+  ));
 }

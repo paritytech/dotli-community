@@ -70,7 +70,7 @@ export { showError } from './widgets/errorPage/showError.js';
 export type { ShowErrorPage } from './widgets/errorPage/showErrorPage.js';
 export { showErrorPage } from './widgets/errorPage/showErrorPage.js';
 export type { ErrorFrameProps } from './widgets/errorPage/ErrorFrame.js';
-export { ErrorDetail, ErrorFrame } from './widgets/errorPage/ErrorFrame.js';
+export { ErrorActions, ErrorDetail, ErrorFrame } from './widgets/errorPage/ErrorFrame.js';
 export type { PageContent } from './widgets/createPageScreen.js';
 export { pageScreen } from './widgets/createPageScreen.js';
 export { createReloadOffer } from './widgets/createReloadOffer.js';

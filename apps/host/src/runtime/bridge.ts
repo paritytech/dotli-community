@@ -14,7 +14,9 @@ import { hostPrompts } from '../createHostPrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
 import { pageNotifications } from '../pageNotifications.js';
 import { getProductFrameContainer, productFrameView } from '../createProductFrameView.js';
+import { productState } from './state/productState.js';
 import { networkMonitorState } from '../state/networkMonitorState.js';
+import { createBrowserBlockCheck } from './createBrowserBlockCheck.js';
 import { createBridge } from './createBridge.js';
 import type { AuthCommands } from './runAuthCommand.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
@@ -31,6 +33,7 @@ import { authViews } from './session/authViews.js';
 import { coreStorage, signInFlag, type SessionRead } from './session/createCoreStorage.js';
 import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
 import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
+import { browserPermissions } from './createBrowserPermissions.js';
 import { LANDING_PRODUCT, type CoreLease } from './createPageCore.js';
 import { getWindowAsks } from './hostCallbacks/getWindowAsks.js';
 import { listenForSessionFlagChange, sessionPresence } from './session/createPagePresence.js';
@@ -92,6 +95,7 @@ const bootRuntime = createCoreRuntimeBoot({
           : createPromptAsks({
               prompts: hostPrompts,
               permissions: { registry: pagePermissions, product: productPermissions },
+              browser: browserPermissions,
             }),
     }),
   loadLocalWalletCore,
@@ -115,6 +119,17 @@ const bridge = createBridge({
       onActivity: networkMonitorState.recordChainActivity,
       onBestBlock: networkMonitorState.recordBestBlock,
     });
+  },
+  watchBrowserBlocks: scope => {
+    // The check lasts the page's life, so its stop goes unused.
+    createBrowserBlockCheck({
+      products: productState.store,
+      statuses: pagePermissions.getStatuses,
+      browser: browserPermissions,
+      scope,
+      prompts: hostPrompts,
+      record: productPermissions.recordPromptDecision,
+    }).start();
   },
   session: sessionState,
 });

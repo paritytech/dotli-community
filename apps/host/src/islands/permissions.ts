@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ReadableAtom } from 'nanostores';
+import { getKeys } from '@dotli/shared';
 import { useStore } from '@dotli/stores-solid';
-import type { PermissionTargets } from '../runtime/permissionPolicy.js';
+import { isPermissionGranted, type PermissionTargets } from '../runtime/permissionPolicy.js';
+import type { BrowserPermissions } from '../runtime/createBrowserPermissions.js';
 import type { ProductPermissions } from '../runtime/state/productPermissions.js';
 import {
   getRead,
@@ -26,6 +28,8 @@ export type PermissionsBinding = {
   product: ReadableAtom<ShownProduct>;
   /** The product's permissions as last read or written, and the intents that change them. */
   store: Pick<ProductPermissions, 'state' | 'pending' | 'refresh' | 'change'>;
+  /** The browser's own permissions, asked inside the user's click. */
+  browser: Pick<BrowserPermissions, 'request'>;
 };
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
@@ -78,7 +82,17 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
     },
     onChange: async targets => {
       const read = getRead(binding.store.state.get());
-      return read === undefined ? [] : (await binding.store.change(read.label, targets)).failed;
+      if (read === undefined) {
+        return [];
+      }
+      // The browser accepts a request only inside the user's gesture, so it goes out before the first await.
+      for (const name of getKeys(targets)) {
+        const status = targets[name];
+        if (status !== undefined && isPermissionGranted(status)) {
+          void binding.browser.request(name);
+        }
+      }
+      return (await binding.store.change(read.label, targets)).failed;
     },
   };
 }

@@ -8,6 +8,7 @@
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
 import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
+import type { BrowserPermissions, BrowserPermissionStatus } from '../createBrowserPermissions.js';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../permissionPolicy.js';
 import { throwIfModalAborted } from '../throwIfModalAborted.js';
@@ -16,7 +17,8 @@ import type { CoreContext } from '../createPageCore.js';
 import { ERRORS } from '../errors.js';
 import type { ProductPermissions } from '../state/productPermissions.js';
 import { servedRequests, type ServeRule } from './servedRequests.js';
-import { getLastingStatus, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
+import { getLastingStatus, isGranted, toPermissionDecision, type HostPrompts } from '../hostPrompts.js';
+import { isRestricted, resolveBrowserBlock } from '../resolveBrowserBlock.js';
 
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
@@ -29,10 +31,15 @@ export type PromptPermissionStores = {
 type Params = {
   /** The core the prompts speak for, and whose queue on the page's one coordinator they wait in. */
   core: Pick<CoreContext, 'product' | 'blockingModalScope'>;
-  /** Shows the permission dialog, and the notice that a stored denial blocks the permission. */
-  prompts: Pick<HostPrompts, 'askPermission' | 'notify'>;
+  /**
+   * Shows the permission dialog, the dialog that the browser blocks a device grant, and the notice that a stored denial
+   * blocks the permission.
+   */
+  prompts: Pick<HostPrompts, 'askPermission' | 'askBrowserBlock' | 'notify'>;
   /** The stored statuses a prompt reads first and the store its answer is recorded in. */
   permissions: PromptPermissionStores;
+  /** The browser's own permissions, asked in the click that allows a device permission and read where it is not asked. */
+  browser: Pick<BrowserPermissions, 'read' | 'request'>;
 };
 
 /** One permission the core asks about. */
@@ -47,7 +54,7 @@ type PromptRequest = {
  * page's prompt queue. Rejects when the prompts go past the rate limit, the user dismisses the dialog, or the
  * permission guards a request this host does not serve.
  */
-export function createPromptPermission({ core, prompts, permissions }: Params): Permissions {
+export function createPromptPermission({ core, prompts, permissions, browser }: Params): Permissions {
   const { label } = core.product;
   // Shared by device and remote prompts.
   const limiter = createSubmitRateLimiter();
@@ -119,15 +126,41 @@ export function createPromptPermission({ core, prompts, permissions }: Params): 
     if (!limiter.allow()) {
       throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
     }
-    const answer = await prompts.askPermission({ label, permission: name, signal, allowOnce: !gatedByIframe });
+    // An object, so TypeScript keeps the type the approving click widens it to.
+    const approval: { request: Promise<BrowserPermissionStatus> | null } = { request: null };
+    const answer = await prompts.askPermission({
+      label,
+      permission: name,
+      signal,
+      allowOnce: !gatedByIframe,
+      onApprove() {
+        // The browser prompts only within the click, so it is asked here rather than after the answer settles.
+        approval.request = browser.request(name);
+      },
+    });
     throwIfModalAborted(signal);
-    const decision = toPermissionDecision(answer);
+    // A permission the browser has no say over, a remote one included, is never blocked.
+    if (isGranted(answer)) {
+      const resolution = await resolveBrowserBlock({
+        label,
+        permission: name,
+        known: approval.request,
+        signal,
+        prompts,
+        browser,
+        record: permissions.product.recordPromptDecision,
+      });
+      if (isRestricted(resolution)) {
+        // Allowed once or for good, a restriction has stored a lasting denial.
+        return 'Deny';
+      }
+    }
     const lasting = getLastingStatus(answer);
     // The core keeps a one-time grant for this execution itself, so only a lasting answer is recorded.
     if (lasting !== null) {
       await permissions.product.recordPromptDecision({ label, name, decision: lasting, signal });
     }
-    return decision;
+    return toPermissionDecision(answer);
   }
 
   return { devicePermission, remotePermission };

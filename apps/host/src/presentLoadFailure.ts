@@ -7,12 +7,13 @@ import { BACKEND_FACTS, hasLightClient, isVerifiedSession, withActiveTld, type B
 import { createRandomId, realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { RotateCwIcon, SlidersIcon } from '@dotli/ui/icons';
-import type { ShowErrorPage } from '@dotli/ui';
+import type { ErrorAction, ShowErrorPage } from '@dotli/ui';
 import { createReporter } from '@dotli/metrics';
-import type { ErrorDescription } from './describeError.js';
+import type { ErrorDescription, Recovery } from './describeError.js';
 import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
+  HOME_BTN_LABEL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
@@ -46,6 +47,8 @@ type Params = {
   showErrorPage: ShowErrorPage;
   /** Opens the settings, where the visitor picks the backend. */
   openSettings: () => void;
+  /** Opens the landing page. */
+  goHome: () => void;
   /** The visitor's own retry. */
   reload: () => void;
   /** Reloads on the other backend. */
@@ -65,22 +68,28 @@ type Params = {
  * only as `params.showErrorPage` does.
  */
 export function presentLoadFailure(failure: LoadFailure, params: Params): void {
+  const { error } = failure;
+  report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
+  if (error.recovery === 'switch-backend') {
+    presentFailover(failure, params);
+    return;
+  }
+  const actions = {
+    landing: { label: HOME_BTN_LABEL, onClick: params.goHome },
+    reload: { label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload },
+  } satisfies Record<Exclude<Recovery, 'switch-backend'>, ErrorAction>;
+  params.showErrorPage({
+    title: error.title,
+    detail: error.message,
+    tips: error.tips,
+    actions: [actions[error.recovery]],
+  });
+}
+
+/** Shows the screen of a failure whose recovery is to switch backend. */
+function presentFailover(failure: LoadFailure, params: Params): void {
   const { error, backend } = failure;
   const { timers = realTimers } = params;
-  report.log.event('Error page shown', { error_kind: error.kind, recovery: error.recovery });
-  if (error.recovery === 'none') {
-    params.showErrorPage({ title: error.title, detail: error.message, tips: error.tips });
-    return;
-  }
-  if (error.recovery === 'reload') {
-    params.showErrorPage({
-      title: error.title,
-      detail: error.message,
-      tips: error.tips,
-      actions: [{ label: RELOAD_BTN_LABEL, icon: RotateCwIcon, onClick: params.reload }],
-    });
-    return;
-  }
   const nextBackend = BACKEND_FACTS[backend].failover;
   // A failed provider will fail again, while a failed light client is usually a transient peer problem.
   const failoverIsPrimary = !hasLightClient(backend);

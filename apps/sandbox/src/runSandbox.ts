@@ -11,12 +11,17 @@ import { createStateMachine, setErrorName, type MachineTypes, type Transition } 
 
 import { APP_LOG_TAG } from './appLogTag.js';
 import type { HostMessages } from './createHostMessages.js';
-import type { SandboxUi } from './createSandboxUi.js';
+import type { SandboxAction, SandboxUi } from './createSandboxUi.js';
 import {
+  canRetry,
   describeSandboxFailure,
+  getFailureRecovery,
   getFailureStep,
+  RECOVERY_LABELS,
   type LoadDependency,
   type SandboxFailure,
+  type SandboxStep,
+  type SandboxRecovery,
 } from './describeSandboxFailure.js';
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
 import { readSandboxContract, type SandboxContract, type SandboxPage } from './readSandboxContract.js';
@@ -33,16 +38,21 @@ const MAX_ATTEMPTS = 5;
 
 /**
  * What the run needs from the page. A throw from `configure`, from the host messages or the UI while a failure is
- * shown, and a throw or rejection from `load`, is reported and the run goes on.
+ * shown, from a failure's action, and a throw or rejection from `load`, is reported and the run goes on.
  */
 export type RunSandboxDeps = {
   /** Applies the contract's settings to the page, once, before the first load. */
   configure: (params: SandboxParams) => void;
   /** One load of the product. A rejection is reported and shown as a failed `init`. */
   load: (input: LoadInput) => Promise<LoadOutcome>;
-  /** Ends the host's loading screen with the failed step, and asks the host to render this frame again. */
-  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender'>;
-  /** Shows a failure, with a retry when one is offered, and that a retry started. */
+  /**
+   * Ends the host's loading screen with the failed step, and asks the host to render this frame again or to move its
+   * page.
+   */
+  hostMessages: Pick<HostMessages, 'notifyLoadingDone' | 'askRerender' | 'askNavigate'>;
+  /** Takes the visitor to dot.li from a sandbox no dot.li host frames: the app in this tab, or the landing in a new one. */
+  tab: { openApp: () => void; openLanding: () => void };
+  /** Shows a failure, with the action that recovers from it, and that a retry started. */
   ui: Pick<SandboxUi, 'showError' | 'showRetryScreen'>;
   /** Resolves once the host accepted the recover ask, and rejects once its deadline passed first. */
   waitForRecoverAccepted: () => Promise<void>;
@@ -90,7 +100,7 @@ type RunEffect =
   | { kind: 'loadFailed'; step: LoadStep; error: unknown; attempt: number; dependency: LoadDependency }
   | { kind: 'retryRefused' }
   /** Offers `retry` with the failure when given. */
-  | { kind: 'showFailure'; failure: SandboxFailure; retry?: () => void }
+  | { kind: 'showFailure'; failure: SandboxFailure; retry?: (() => void) | undefined }
   | { kind: 'showRetry' };
 
 type RunMachine = MachineTypes<RunState, RunEvent, RunEffect>;
@@ -242,16 +252,21 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     { step, error }: { step: LoadStep; error: unknown },
     { emitState, emitSideEffect, update }: Transition<RunMachine>,
   ): void {
-    const failedState: FailedRun = { kind: 'failed', params, attempt };
-    emitState(failedState);
     const dependency = hasLightClient(params.backend) ? 'smoldot-bitswap' : 'ipfs-gateway';
+    const failure: SandboxFailure = { kind: 'load', step, error, dependency };
+    const retryable = canRetry(failure);
+    const failedState: FailedRun = { kind: 'failed', params, attempt };
+    // A failure no retry fixes ends the run.
+    emitState(retryable ? failedState : { kind: 'ended' });
     emitSideEffect({ kind: 'loadFailed', step, error, attempt, dependency });
     emitSideEffect({
       kind: 'showFailure',
-      failure: { kind: 'load', step, error, dependency },
-      retry: () => {
-        update({ kind: 'retried', from: failedState });
-      },
+      failure,
+      retry: retryable
+        ? () => {
+            update({ kind: 'retried', from: failedState });
+          }
+        : undefined,
     });
   }
 
@@ -324,7 +339,7 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
     try {
       deps.hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
       const { title, message } = describeSandboxFailure(failure, deps);
-      deps.ui.showError(title, message, { retry });
+      deps.ui.showError(title, message, { action: buildAction(getFailureRecovery(failure), retry, step) });
     } catch (error) {
       report.defect(error, {
         step: 'failure_show',
@@ -333,6 +348,59 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps) {
         message: `${APP_LOG_TAG} Could not show the ${step} failure`,
         tags: { surface: 'sandbox_main', failed_step: step },
       });
+    }
+  }
+
+  /** The failure's action with its defect wrapper, or none for a retry recovery that came without its retry. */
+  function buildAction(
+    recovery: SandboxRecovery,
+    retry: (() => void) | undefined,
+    step: SandboxStep,
+  ): SandboxAction | undefined {
+    const recover = getRecover(recovery, retry);
+    if (recover === undefined) {
+      return undefined;
+    }
+    return {
+      label: RECOVERY_LABELS[recovery],
+      onClick: () => {
+        try {
+          recover();
+        } catch (error) {
+          // The failure stays on screen, so the visitor can press again.
+          report.defect(error, {
+            step: 'failure_action',
+            metric: appRunMetric,
+            reason: 'action_threw',
+            message: `${APP_LOG_TAG} The ${step} failure's action threw`,
+            tags: { surface: 'sandbox_main', failed_step: step },
+          });
+        }
+      },
+    };
+  }
+
+  /**
+   * What pressing the failure's action does, or nothing for a retry recovery without its retry. Only a failed attempt
+   * that the run keeps open hands a retry over, so the guard holds that pairing across the two modules.
+   */
+  function getRecover(recovery: SandboxRecovery, retry: (() => void) | undefined): (() => void) | undefined {
+    switch (recovery) {
+      case 'retry':
+        return retry;
+      case 'landing':
+      case 'reload':
+        return () => {
+          deps.hostMessages.askNavigate(recovery);
+        };
+      case 'open-app':
+        return () => {
+          deps.tab.openApp();
+        };
+      case 'open-landing':
+        return () => {
+          deps.tab.openLanding();
+        };
     }
   }
 }

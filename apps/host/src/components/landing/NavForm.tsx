@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
+import { createSignal, onCleanup, onSettled, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
 import { prefersReducedMotion } from '@dotli/ui';
@@ -36,6 +36,8 @@ export type NavFormProps = {
   listbox: Accessor<ListboxView | null>;
   /** Where the input sends its text, its focus and the keys the suggestions may take. */
   combobox: Pick<NavComboboxState, 'setText' | 'setFocused' | 'press'>;
+  /** Reads the name the form opens filled with, or undefined for an empty form. Read once, when the form settles. */
+  readInitialName?: () => string | undefined;
 };
 
 /**
@@ -50,6 +52,12 @@ export function NavForm(props: NavFormProps): JSX.Element {
   let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
     if (input !== undefined) {
+      // Filled before the placeholder starts.
+      const initial = untrack(() => props.readInitialName?.());
+      if (initial !== undefined) {
+        input.value = initial;
+        props.combobox.setText(initial);
+      }
       placeholder = animatePlaceholder(input, prefersReducedMotion());
     }
   });
