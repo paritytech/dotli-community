@@ -922,10 +922,14 @@
       this.program = null;
       this.run = null;
       this.remaining = 0n;
+      this.hostcalls = 0;
+      this.hostcallBytes = 0;
     }
 
     beginUpdate() {
       this.remaining = VALIDATION_SLICE;
+      this.hostcalls = MAX_HOSTCALLS_PER_UPDATE;
+      this.hostcallBytes = MAX_HOSTCALL_BYTES;
       if (this.run && this.peer) {
         this.run.logBytes = 0;
         this.run.reportBytes = 0;
@@ -980,7 +984,7 @@
       const pvm = instance.exports;
       const parts = this.program.parts.map((part) => new WebAssembly.Instance(part, { pvm }));
       this.run = {
-        instance, parts, pvm, begun: false, event: 0, acknowledged: false,
+        instance, parts, pvm, begun: false, callPending: false, event: 0, acknowledged: false,
         committed: checkpoint.slice(), staged: new Uint8Array(VALIDATION_LIMIT), stagedLength: 0,
         response: new Uint8Array(VALIDATION_LIMIT), responseLength: 0,
         bytes: VALIDATION_EMPTY, work: 0n, started: this.now(), deadline: null,
@@ -1025,32 +1029,42 @@
       }
       run.event = 0;
       run.bytes = VALIDATION_EMPTY;
-      if (this.remaining === 0n) return 0;
       const { pvm } = run;
       for (;;) {
-        const before = this.remaining;
-        pvm.pvm_set_gas(before);
-        const status = run.begun
-          ? pvm.pvm_resume()
-          : pvm.pvm_begin(this.metadata.exports.get("validate"), before);
-        run.begun = true;
-        const after = pvm.gas.value;
-        validationRequire(after >= 0n && after <= before, "invalid translated gas debit");
-        this.remaining = after;
-        run.work += before - after;
-        validationRequire(run.work <= 0xffffffffffffffffn, "work counter overflow");
-        if (status === STATUS_OUT_OF_GAS) {
-          validationRequire(after !== VALIDATION_SLICE, "block exceeds fresh work slice");
+        if (this.remaining === 0n || this.hostcalls === 0 || this.hostcallBytes === 0) return 0;
+        if (!run.callPending) {
+          const before = this.remaining;
+          pvm.pvm_set_gas(before);
+          const status = run.begun
+            ? pvm.pvm_resume()
+            : pvm.pvm_begin(this.metadata.exports.get("validate"), before);
+          run.begun = true;
+          const after = pvm.gas.value;
+          validationRequire(after >= 0n && after <= before, "invalid translated gas debit");
+          this.remaining = after;
+          run.work += before - after;
+          validationRequire(run.work <= 0xffffffffffffffffn, "work counter overflow");
+          if (status === STATUS_OUT_OF_GAS) {
+            // The translator exhausts its gas global on a scheduling debit.
+            this.remaining = 0n;
+            return 0;
+          }
+          if (status === STATUS_FINISHED) {
+            run.bytes = new Uint8Array(8);
+            new DataView(run.bytes.buffer).setBigUint64(0, BigInt.asUintN(64, pvm.r7.value), true);
+            return (run.event = 4);
+          }
+          validationRequire(status === STATUS_ECALL, `child trapped or returned invalid status ${status}`);
+          run.callPending = true;
+        }
+        const event = this.dispatch(this.metadata.imports[pvm.ecall.value >>> 0]);
+        if (event === null) {
+          // Preserve this ECALL and its arguments. Resume it, not the guest,
+          // after the enclosing application grants the next update allowance.
           this.remaining = 0n;
           return 0;
         }
-        if (status === STATUS_FINISHED) {
-          run.bytes = new Uint8Array(8);
-          new DataView(run.bytes.buffer).setBigUint64(0, BigInt.asUintN(64, pvm.r7.value), true);
-          return (run.event = 4);
-        }
-        validationRequire(status === STATUS_ECALL, `child trapped or returned invalid status ${status}`);
-        const event = this.dispatch(this.metadata.imports[pvm.ecall.value >>> 0]);
+        run.callPending = false;
         if (event) return (run.event = event);
       }
     }
@@ -1064,6 +1078,34 @@
         validationRequire(value >= BigInt(minimum) && value <= BigInt(maximum), `${name} bounds`);
         return Number(value);
       };
+      // Reserve all guest-memory traffic before any read, write, or side effect.
+      // Requested capacities are charged even at EOF, just as for the outer VM.
+      let bytes = 0;
+      switch (name) {
+        case "validation_read":
+          bytes = bounded(1, 32) + bounded(4, VALIDATION_CHUNK);
+          break;
+        case "validation_checkpoint_read":
+        case "validation_peer_read":
+          bytes = bounded(2, VALIDATION_CHUNK);
+          break;
+        case "validation_checkpoint_write":
+          bytes = bounded(1, VALIDATION_CHUNK, 1);
+          break;
+        case "validation_peer_request":
+          bytes = bounded(1, VALIDATION_LIMIT, 1);
+          break;
+        case "validation_log":
+        case "validation_report":
+          bytes = bounded(1, VALIDATION_CHUNK);
+          break;
+      }
+      if (this.remaining === 0n || this.hostcalls === 0 || bytes > this.hostcallBytes) return null;
+      this.hostcalls--;
+      this.hostcallBytes -= bytes;
+      this.remaining--;
+      run.work++;
+      validationRequire(run.work <= 0xffffffffffffffffn, "work counter overflow");
       const result = (value) => { run.pvm.r7.value = BigInt.asIntN(64, BigInt(value)); };
       const copy = (bytes, offset, destination, capacity) => {
         validationRequire(offset <= bytes.length, `${name} offset bounds`);
