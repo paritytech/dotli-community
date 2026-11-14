@@ -259,7 +259,9 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the GitHub-only `0.3.2-rc.9` release candidate. It combines bounded WebGPU recovery,
+The current pin is the GitHub-only `0.3.2-rc.11` release candidate. It adds translated `host_validation` v2: an RV32 app
+can run one embedded RV64 computation as a separate translated child module (separate memory, work budget and per-update
+host-call budget); interpreter launches of such apps fail explicitly. rc.9 combined bounded WebGPU recovery,
 replacement-device resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and
 forward dispatch. Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe
 offscreen resources, streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays
