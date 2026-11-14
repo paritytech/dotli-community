@@ -20,11 +20,25 @@ export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDeviceP
 
 export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
+/** True when dot.li grants the permission, so the app may use it without asking. */
+export function isPermissionGranted(status: PermissionStatus): boolean {
+  switch (status) {
+    case 'granted':
+      return true;
+    case 'ask':
+    case 'denied':
+      return false;
+  }
+}
+
 /** Statuses for some of an app's permissions, as one change writes them. */
 export type PermissionTargets = Readonly<Partial<Record<EnforceablePermissionName, PermissionStatus>>>;
 
 /** What the device lets the app use, or what the app does with the account and the network. */
 export type PermissionGroup = 'device' | 'app';
+
+/** A browser permission whose status the page can read. */
+export type BrowserCheck = 'notifications' | 'camera' | 'microphone' | 'geolocation';
 
 type PermissionFacts = {
   /** The menu's name for it. */
@@ -36,6 +50,8 @@ type PermissionFacts = {
   frameDirective: string | null;
   /** Its status under the Trusted preset. */
   trusted: PermissionStatus;
+  /** The browser permission that reports its status, null where the browser reports none. */
+  browserCheck: BrowserCheck | null;
 };
 
 /** Every permission a user can be asked for, in menu order. */
@@ -47,6 +63,7 @@ export const PERMISSION_CATALOG = {
     // Notifications has no directive, and its own prompt gates it with no iframe reload.
     frameDirective: null,
     trusted: 'granted',
+    browserCheck: 'notifications',
   },
   Camera: {
     label: 'Camera',
@@ -54,6 +71,7 @@ export const PERMISSION_CATALOG = {
     description: 'Access your camera for photo and video capture',
     frameDirective: 'camera',
     trusted: 'granted',
+    browserCheck: 'camera',
   },
   Microphone: {
     label: 'Microphone',
@@ -61,6 +79,7 @@ export const PERMISSION_CATALOG = {
     description: 'Access your microphone for audio input',
     frameDirective: 'microphone',
     trusted: 'granted',
+    browserCheck: 'microphone',
   },
   Location: {
     label: 'Location',
@@ -68,6 +87,7 @@ export const PERMISSION_CATALOG = {
     description: 'Access your location for geolocation services',
     frameDirective: 'geolocation',
     trusted: 'ask',
+    browserCheck: 'geolocation',
   },
   Motion: {
     label: 'Motion',
@@ -76,6 +96,7 @@ export const PERMISSION_CATALOG = {
     // Device motion and orientation events need both sensors.
     frameDirective: 'accelerometer; gyroscope',
     trusted: 'ask',
+    browserCheck: null,
   },
   Bluetooth: {
     label: 'Bluetooth',
@@ -83,6 +104,7 @@ export const PERMISSION_CATALOG = {
     description: 'Connect to nearby Bluetooth devices',
     frameDirective: 'bluetooth',
     trusted: 'ask',
+    browserCheck: null,
   },
   NFC: {
     label: 'NFC',
@@ -91,6 +113,7 @@ export const PERMISSION_CATALOG = {
     // Chromium-only, ignored elsewhere.
     frameDirective: 'nfc',
     trusted: 'ask',
+    browserCheck: null,
   },
   Clipboard: {
     label: 'Clipboard',
@@ -99,6 +122,7 @@ export const PERMISSION_CATALOG = {
     // Write is always allowed, read needs consent.
     frameDirective: 'clipboard-read',
     trusted: 'granted',
+    browserCheck: null,
   },
   Biometrics: {
     label: 'Biometrics',
@@ -106,6 +130,7 @@ export const PERMISSION_CATALOG = {
     description: 'Authenticate with a platform passkey or biometric prompt',
     frameDirective: 'publickey-credentials-get',
     trusted: 'ask',
+    browserCheck: null,
   },
   IdentityDisclosure: {
     label: 'Identity disclosure',
@@ -113,6 +138,7 @@ export const PERMISSION_CATALOG = {
     description: 'Share your primary DotNS identity with this app',
     frameDirective: null,
     trusted: 'granted',
+    browserCheck: null,
   },
   ChainSubmit: {
     label: 'Sign transactions',
@@ -120,6 +146,7 @@ export const PERMISSION_CATALOG = {
     description: 'Sign and submit network transactions on your behalf',
     frameDirective: null,
     trusted: 'granted',
+    browserCheck: null,
   },
   PreimageSubmit: {
     label: 'Submit preimages',
@@ -127,6 +154,7 @@ export const PERMISSION_CATALOG = {
     description: 'Store preimage data on the Bulletin network',
     frameDirective: null,
     trusted: 'granted',
+    browserCheck: null,
   },
   StatementSubmit: {
     label: 'Submit statements',
@@ -134,6 +162,7 @@ export const PERMISSION_CATALOG = {
     description: 'Submit signed statements to the statement store',
     frameDirective: null,
     trusted: 'granted',
+    browserCheck: null,
   },
 } satisfies Record<EnforceablePermissionName, PermissionFacts>;
 
@@ -170,6 +199,11 @@ export function isEnforceableDevicePermission(name: DevicePermissionName): name 
 /** The iframe `allow` directive a grant of `name` adds, null when it adds none. Never throws. */
 export function getFrameDirective(name: EnforceablePermissionName): string | null {
   return PERMISSION_CATALOG[name].frameDirective;
+}
+
+/** The browser permission that reports `name`'s status, null where the browser reports none. */
+export function getBrowserCheck(name: EnforceablePermissionName): BrowserCheck | null {
+  return PERMISSION_CATALOG[name].browserCheck;
 }
 
 /** True when granting `name` adds an iframe `allow` directive, so the frame reloads. Never throws. */

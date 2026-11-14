@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { asProductId } from '@parity/truapi';
-import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { createDeferred } from '@dotli/shared';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPermissionAuthorizations, type PermissionAuthorizations } from '../createPermissionAuthorizations.js';
@@ -13,16 +14,24 @@ import {
 } from '../state/productPermissions.js';
 import { productState } from '../state/productState.js';
 import { createBlockingModalCoordinator, type BlockingModalScope } from '../createBlockingModalCoordinator.js';
+import type { BrowserPermissions, BrowserPermissionStatus } from '../createBrowserPermissions.js';
 import { createPromptPermission } from './createPromptPermission.js';
 import { SUBMIT_MAX_PER_WINDOW } from './createSubmitRateLimiter.js';
 import type { GrantAnswer } from '../hostPrompts.js';
-import { createFakePrompts, type FakePrompts } from '../hostPrompts.fake.js';
+import { createFakePrompts, type FakePrompt, type FakePrompts } from '../hostPrompts.fake.js';
 
 type Params = {
   /** The product the prompts speak for, `myapp` by default. */
   label?: string;
   /** Where the prompts queue, a scope of a new coordinator by default. */
   scope?: BlockingModalScope;
+  /** The browser's own permissions, which allow every read and have no prompt by default. */
+  browser?: FakeBrowser;
+};
+
+type FakeBrowser = {
+  read: Mock<BrowserPermissions['read']>;
+  request: Mock<BrowserPermissions['request']>;
 };
 
 type Store = Map<string, PermissionAuthorizationStatus>;
@@ -231,6 +240,109 @@ describe('queued permission prompts', () => {
   });
 });
 
+describe('the browser asked at approval', () => {
+  it('As a dotli user, I allow notifications and the browser is asked inside my click before the product hears the answer', async () => {
+    // Given the browser's notification prompt, which waits for the user
+    const asked = createDeferred<BrowserPermissionStatus>();
+    const browser = createFakeBrowser({ request: () => asked.promise });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+    await page.waitForPrompt();
+
+    // When
+    page.decide('granted');
+    const heardBeforeBrowser = await Promise.race([response, untilPromisesSettled().then(() => 'pending')]);
+
+    // Then
+    expect(browser.request.mock.calls).toEqual([['Notifications']]);
+    expect(heardBeforeBrowser).toBe('pending');
+
+    // When
+    asked.resolve('granted');
+
+    // Then
+    await expect(response).resolves.toBe('AllowAlways');
+  });
+
+  it('As a dotli user, I deny a permission and the browser is not asked', async () => {
+    // Given
+    const browser = createFakeBrowser();
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+
+    // When
+    await clickPromptButton('Deny');
+    await response;
+
+    // Then
+    expect(browser.read).not.toHaveBeenCalled();
+    expect(browser.request).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, I allow a camera my browser blocks and restrict it, and the product is denied and the denial stored', async () => {
+    // Given a browser that blocks the camera
+    const recorded = recordChanges();
+    const browser = createFakeBrowser({ read: () => Promise.resolve('denied') });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
+    await page.waitForPrompt();
+    page.decide('granted');
+    await page.waitForPrompt({ matches: isBrowserBlock });
+
+    // When
+    page.answerBrowserBlock('restrict');
+    const heard = await response;
+    const stored = await registry.getStatus('myapp', 'Camera');
+
+    // Then
+    expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
+    expect(recorded).toMatchObject([{ label: 'myapp', permissions: ['Camera'] }]);
+  });
+
+  it('As a dotli user, I allow notifications my browser blocks and close the warning, and the grant stands', async () => {
+    // Given a browser that blocks notifications
+    const browser = createFakeBrowser({ request: () => Promise.resolve('denied') });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+    await clickPromptButton('Always allow');
+    await page.waitForPrompt({ matches: isBrowserBlock });
+
+    // When
+    page.dismiss();
+
+    // Then
+    await expect(response).resolves.toBe('AllowAlways');
+  });
+
+  it('As a dotli user, I allow once a permission my browser blocks and restrict it, and a lasting denial is stored', async () => {
+    // Given a browser that blocks notifications
+    const browser = createFakeBrowser({ request: () => Promise.resolve('denied') });
+    const response = createPrompts({ browser }).devicePermission(PRODUCT, 'Notifications');
+    await clickPromptButton('Allow once');
+    await page.waitForPrompt({ matches: isBrowserBlock });
+
+    // When
+    page.answerBrowserBlock('restrict');
+    const heard = await response;
+    const stored = await registry.getStatus('myapp', 'Notifications');
+
+    // Then
+    expect({ heard, stored }).toEqual({ heard: 'Deny', stored: 'denied' });
+  });
+
+  it("As a dotli integrator, I dispose the prompt scope while the browser asks and the product's ask rejects with an AbortError", async () => {
+    // Given the browser's notification prompt, which waits for the user after they allowed it
+    const asked = createDeferred<BrowserPermissionStatus>();
+    const browser = createFakeBrowser({ request: () => asked.promise });
+    const scope = createBlockingModalCoordinator().createScope();
+    const response = createPrompts({ browser, scope }).devicePermission(PRODUCT, 'Notifications');
+    await clickPromptButton('Always allow');
+
+    // When
+    scope.dispose();
+    asked.resolve('granted');
+
+    // Then
+    await expect(response).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
+
 describe('prompt rate limiting', () => {
   it('As a dotli integrator, I spend the prompt budget on one permission and a prompt for another is rate limited', async () => {
     // Given notification prompts granted once, so each one asks again, until they spend the whole window budget
@@ -254,11 +366,35 @@ describe('prompt rate limiting', () => {
 function createPrompts({
   label = 'myapp',
   scope = createBlockingModalCoordinator().createScope(),
+  browser = createFakeBrowser(),
 }: Params = {}): ReturnType<typeof createPromptPermission> {
   return createPromptPermission({
     core: { product: { label }, blockingModalScope: scope },
     prompts: page.prompts,
     permissions: { registry, product: store },
+    browser,
+  });
+}
+
+/** The browser's own permissions, which allow every read and have no prompt unless the test gives them. */
+function createFakeBrowser({
+  read = () => Promise.resolve('granted'),
+  request = () => null,
+}: Partial<Pick<BrowserPermissions, 'read' | 'request'>> = {}): FakeBrowser {
+  return { read: vi.fn(read), request: vi.fn(request) };
+}
+
+function isBrowserBlock(prompt: FakePrompt): boolean {
+  return prompt.kind === 'browserBlock';
+}
+
+/**
+ * Resolves after one macrotask turn, so every promise reaction queued now, and every one those queue in turn, has run.
+ * It waits for no time.
+ */
+function untilPromisesSettled(): Promise<void> {
+  return new Promise(resolve => {
+    setImmediate(resolve);
   });
 }
 

@@ -3,6 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ALL_PERMISSIONS } from '../runtime/permissionPolicy.js';
+import { browserPermissions } from '../runtime/createBrowserPermissions.js';
 import { productPermissions } from '../runtime/pagePermissions.js';
 import { productState } from '../runtime/state/productState.js';
 import { PermissionsItem } from '../components/permissions/PermissionsItem.js';
@@ -14,6 +15,7 @@ export function PermissionsButton(): JSX.Element {
     permissions: ALL_PERMISSIONS,
     product: productState.store,
     store: productPermissions,
+    browser: browserPermissions,
   });
   return <PermissionsItem {...panel} />;
 }

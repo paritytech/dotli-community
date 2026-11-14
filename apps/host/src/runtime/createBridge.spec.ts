@@ -40,6 +40,7 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
   const runtimeCalls: string[] = [];
   const session = { reportCoresGone: vi.fn() };
   let watches = 0;
+  const blockScopes: BlockingModalScope[] = [];
   const bridge: Bridge = createBridge({
     bootRuntime: context => {
       contexts.push(context);
@@ -65,9 +66,12 @@ function createHarness({ bootError, activateError, firstDisconnectError }: Param
     watchChains: () => {
       watches += 1;
     },
+    watchBrowserBlocks: scope => {
+      blockScopes.push(scope);
+    },
     session,
   });
-  return { bridge, watches: () => watches, contexts, runtimes, runtimeCalls, session };
+  return { bridge, watches: () => watches, blockScopes, contexts, runtimes, runtimeCalls, session };
 
   function createFakeRuntime() {
     return {
@@ -143,9 +147,22 @@ describe('bridge', () => {
     // Then
     expect(watches()).toBe(1);
     expect(contexts).toHaveLength(1);
-    expect(first.scopes).toHaveLength(1);
-    expect(contexts[0]?.blockingModalScope).toBe(first.scopes[0]);
+    expect(first.scopes).toContain(contexts[0]?.blockingModalScope);
     expect(second.scopes).toEqual([]);
+  });
+
+  it('As a dotli user, I see the browser block check start once, on the first bridge init, in that page queue', () => {
+    // Given
+    const { bridge, blockScopes } = createHarness();
+    const first = createRecordingCoordinator();
+    bridge.initBridge(first.coordinator);
+
+    // When
+    bridge.initBridge(createRecordingCoordinator().coordinator);
+
+    // Then
+    expect(blockScopes).toHaveLength(1);
+    expect(first.scopes).toContain(blockScopes[0]);
   });
 
   it('As a dotli integrator, I start the product frame before the page core is built and it fails with a named error', () => {

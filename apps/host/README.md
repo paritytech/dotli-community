@@ -138,6 +138,10 @@ request in session storage, so a reload answers the same round.
 - The panel shows four presets on a slider, with every permission under Advanced. The preset is derived, never stored.
 - Every change goes through one retrying write. The frame reloads only when its `allow` attribute changes.
 - Each permission's facts are one table in the runtime.
+- The browser is asked for a permission the host serves itself, notifications, inside the click that grants it, from the
+  permission dialog or the menu.
+- A grant the browser denies shows a dialog to restrict it or retry, right after a grant in the permission dialog and
+  when an app is first on show in a page load.
 
 ### Phone requests
 

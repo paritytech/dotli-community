@@ -12,6 +12,9 @@ import type { EnforceablePermissionName, PermissionStatus } from './permissionPo
 /** The user's answer to a grant prompt. `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type GrantAnswer = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
+/** The user's answer to a browser block. `dismissed` keeps the grant. */
+export type BrowserBlockAnswer = 'restrict' | 'retry' | 'dismissed';
+
 type AskPermissionParams = {
   /** The product that asks. */
   label: string;
@@ -20,6 +23,20 @@ type AskPermissionParams = {
   signal: AbortSignal;
   /** Whether the user may grant it for this execution only. */
   allowOnce: boolean;
+  /** Runs inside the click that grants it, so it may ask the browser for what needs a user gesture. */
+  onApprove?: (() => void) | undefined;
+};
+
+type AskBrowserBlockParams = {
+  /** The product whose grant the browser blocks. */
+  label: string;
+  permission: EnforceablePermissionName;
+  /** Ends the ask. */
+  signal: AbortSignal;
+  /** The browser still blocked it after a Retry. */
+  retried: boolean;
+  /** Runs inside the Retry click, so it may ask the browser for what needs a user gesture. */
+  onRetry: () => void;
 };
 
 type ConfirmReviewParams<R extends string> = {
@@ -35,6 +52,8 @@ type ConfirmReviewParams<R extends string> = {
 export type HostPrompts = {
   /** Resolves the user's decision on `label`'s ask for `permission`. */
   askPermission: (params: AskPermissionParams) => Promise<GrantAnswer>;
+  /** Resolves the user's answer to their browser blocking `label`'s grant of `permission`. */
+  askBrowserBlock: (params: AskBrowserBlockParams) => Promise<BrowserBlockAnswer>;
   /** Resolves the result of the button the user chose. */
   confirmReview: <R extends string>(params: ConfirmReviewParams<R>) => Promise<R>;
   /** Shows the user a notification. */
@@ -48,6 +67,17 @@ export function isGranted(answer: GrantAnswer): boolean {
     case 'granted-once':
       return true;
     case 'denied':
+    case 'dismissed':
+      return false;
+  }
+}
+
+/** True when the user asked to try the browser again. Never throws. */
+export function isRetry(answer: BrowserBlockAnswer): boolean {
+  switch (answer) {
+    case 'retry':
+      return true;
+    case 'restrict':
     case 'dismissed':
       return false;
   }
