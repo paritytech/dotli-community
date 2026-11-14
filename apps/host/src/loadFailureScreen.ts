@@ -7,6 +7,7 @@ import { getSettings, type Backend } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
 import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
+import { openLanding } from './getLandingUrl.js';
 import { markAndReload } from './createContinuation.js';
 import { getTrustedProviderHosts } from './describeError.js';
 import { pageSettingsActions } from './createSettingsActions.js';
@@ -30,6 +31,7 @@ export const loadFailureScreen = {
     presentLoadFailure(failure, {
       showErrorPage,
       openSettings: settingsIntent.open,
+      goHome: openLanding,
       reload: reloadAfterFailure,
       switchBackend: switchBackendAndReload,
       resetProtocolOnReload,

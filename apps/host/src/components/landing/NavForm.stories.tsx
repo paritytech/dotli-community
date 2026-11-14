@@ -5,17 +5,17 @@ import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
-import { NavForm } from './NavForm.js';
+import { NavForm, type NavFormProps } from './NavForm.js';
 
 const SUFFIX = '.dot';
 
 /** The form as the page hydrates it: no TLD until the browser knows the visitor's network. */
-function Hydrated(): JSX.Element {
+function Hydrated(props: Pick<NavFormProps, 'readInitialName'>): JSX.Element {
   const [suffix, setSuffix] = createSignal<string | null>(null);
   onSettled(() => {
     setSuffix(SUFFIX);
   });
-  return <NavForm suffix={suffix} />;
+  return <NavForm suffix={suffix} {...props} />;
 }
 
 const meta = {
@@ -27,6 +27,18 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+/** As a visitor sent to search again, I see my name in the box and nothing focused. */
+export const Prefilled: Story = {
+  args: { readInitialName: () => 'nothing' },
+  play: async ({ canvas, step }) => {
+    await step('Then my name is in the box and nothing has focus', async () => {
+      await waitFor(() => expect(canvas.getByRole('textbox')).toBeEnabled());
+      await expect(canvas.getByRole('textbox')).toHaveValue('nothing');
+      await expect(document.activeElement).toBe(document.body);
+    });
+  },
+};
 
 /** As a visitor, I load the page with nothing focused, so a screen reader starts at the top. */
 export const NothingFocusedOnLoad: Story = {

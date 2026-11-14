@@ -46,7 +46,7 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 | `createDrags`, `Drags`                                                                                                        | One pointer drag per component.                 |
 | `isFocusLostOrInside`, `focusTrigger`                                                                                         | Helpers.                                        |
 | `mountRoot`, `RootBoundary`, `ensureOverlayRoot`                                                                              | Roots.                                          |
-| `showErrorPage`, `showError`, `ErrorFrame`, `ErrorDetail`                                                                     | Screens and overlays.                           |
+| `showErrorPage`, `showError`, `ErrorFrame`, `ErrorDetail`, `ErrorActions`                                                     | Screens and overlays.                           |
 | `Overlays`, `showNotification`, `createReloadOffer`, `listenForChunkFailures`                                                 | Screens and overlays.                           |
 | `ErrorAction`, `ErrorPageContent`, `ErrorText`, `ShowErrorPage`, `ErrorFrameProps`                                            | Screen and overlay types.                       |
 | `NotificationParams`, `ShowNotification`                                                                                      | Screen and overlay types.                       |

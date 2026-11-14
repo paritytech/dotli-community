@@ -7,6 +7,7 @@ import {
   HOST_ERRORS,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
+  HOME_BTN_LABEL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   ERROR_TITLES,
@@ -118,7 +119,7 @@ test('As a user using smoldot directly, when smoldot rejects the chain spec, I s
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
 
-test("As a user, when the domain's contenthash is unsupported or malformed, I see the appropriate error with no retry button", async ({
+test("As a user, when the domain's contenthash is unsupported or malformed, I see the appropriate error and am offered the landing", async ({
   page,
 }) => {
   // Given
@@ -133,7 +134,8 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
     timeout: 10_000,
   });
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CONTENTHASH_UNSUPPORTED);
-  await expect(page.locator('#error-retry-btn')).toHaveCount(0);
+  await expect(page.locator('#error-retry-btn')).toContainText(HOME_BTN_LABEL);
+  await expect(page.locator('#error-retry-btn-1')).toHaveCount(0);
 });
 
 test('As a user, after a resolution failure, clicking retry switches backend', async ({ page }) => {

@@ -7,7 +7,8 @@ The per-product origin that loads and renders a product's files inside the host'
 
 - **Load:** read the host's URL contract, then fetch and verify the content by CID. Write the product's page from it.
 - **Serve:** serve the product's files through a service worker.
-- **Screens:** a password prompt for encrypted content and a retry screen for failed loads.
+- **Screens:** a password prompt for encrypted content and a retry screen for failed loads. Each failure screen offers
+  the one forward action that fits its cause.
 - **Checker build:** inject a script that reports each browser API the product reaches around the host.
 - **Not owned:** name resolution and chain connections. Block requests go to the host, which proxies them to the
   protocol iframe.
@@ -18,7 +19,8 @@ The per-product origin that loads and renders a product's files inside the host'
 - **Load:** fetches and verifies content while the service worker registers. It then hands the archive to the worker and
   writes the page. It never throws, so the caller learns which step failed.
 - **Host channel:** blocks, progress and completion pass through a bridge to the host. The sandbox reports its start at
-  once, since the host fails a silent sandbox.
+  once, since the host fails a silent sandbox. The sandbox asks the host to move its page, since its frame may not
+  navigate the top window.
 - **Full reset:** the first load purges what an earlier product left, so a fresh worker starts clean.
 - **Lazy UI:** the sandbox's own UI is one chunk, loaded only when needed. A failed chunk load falls back to a static
   Reload message.

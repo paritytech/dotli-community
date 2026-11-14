@@ -5,7 +5,12 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
-import { startSandboxChannel, type SandboxChannel, type SandboxMessageType } from '@dotli/sandbox-wire';
+import {
+  startSandboxChannel,
+  type SandboxChannel,
+  type SandboxMessageType,
+  type SandboxNavigateMessage,
+} from '@dotli/sandbox-wire';
 import { createDeferred, realTimers, type Timers } from '@dotli/shared';
 import { atom } from 'nanostores';
 import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
@@ -73,13 +78,18 @@ type CreateHarnessParams = {
   loadCheckerPanel?: ProductFrameView['loadCheckerPanel'];
 };
 
-type AskToRecoverParams = {
+type SandboxAskParams = {
   /** The index of the frame whose sandbox asks, the first by default. */
   host?: number;
   /** The window the ask comes from, the frame's own by default. */
   from?: unknown;
   /** The origin the ask comes from, the frame's own by default. */
   origin?: string;
+};
+
+type AskToNavigateParams = SandboxAskParams & {
+  /** Where the sandbox asks the page to go. */
+  to: SandboxNavigateMessage['to'];
 };
 
 type BuildSandboxMessageParams = {
@@ -155,6 +165,11 @@ function createHarness({
     },
   };
   const pageLocation = { ...ROOT_LOCATION, ...location };
+  const page = {
+    location: () => pageLocation,
+    reload: vi.fn(),
+    goHome: vi.fn(),
+  };
   const frame = createProductFrame({
     core: fakes.core,
     createIframeHost: createIframeHost ?? createRecordingHost,
@@ -175,15 +190,14 @@ function createHarness({
       },
     },
     notify: () => undefined,
-    page: {
-      location: () => pageLocation,
-      reload: vi.fn(),
-    },
+    page,
     timers,
   });
   return {
     ...fakes,
     frame,
+    /** The host page the frame reads and moves. */
+    page,
     /** The page around the frame. */
     frameView,
     /** Every frame the product frame created, in order. */
@@ -209,6 +223,8 @@ function createHarness({
     settle,
     /** The sandbox in a frame asking to be rebuilt, as it does after a reload, or another window of its origin asking. */
     askToRecover,
+    /** The sandbox in a frame asking the page to navigate `to`, or another window asking. */
+    askToNavigate,
     /** Answers the connection the render on a replacement core asks for, and waits until the product is back on screen. */
     reconnect,
     /** Puts up both screens the way the shell does, as disposers the test can count. */
@@ -265,11 +281,19 @@ function createHarness({
     await rendered;
   }
 
-  function askToRecover({ host = 0, from, origin }: AskToRecoverParams = {}): void {
+  function askToRecover(params: SandboxAskParams = {}): void {
+    postFromSandbox({ type: 'dotli:sandbox-recover' }, params);
+  }
+
+  function askToNavigate({ to, ...params }: AskToNavigateParams): void {
+    postFromSandbox({ type: 'dotli:sandbox-navigate', to } satisfies SandboxNavigateMessage, params);
+  }
+
+  function postFromSandbox(data: unknown, { host = 0, from, origin }: SandboxAskParams): void {
     const asking = nth(hosts, host);
     sandboxWindow.dispatchEvent(
       buildSandboxMessage({
-        data: { type: 'dotli:sandbox-recover' },
+        data,
         origin: origin ?? asking.options.allowedOrigin ?? '',
         source: from === undefined ? asking.iframe.contentWindow : from,
       }),
@@ -1183,7 +1207,7 @@ describe('product frame rebuilds', () => {
     other.hostname = 'other.app.localhost';
 
     // When
-    fakes.askToRecover({ origin: other.origin, from: null });
+    fakes.askToRecover({ origin: other.origin });
 
     // Then
     expect(fakes.readLastStatus()).toBe('connected');
@@ -1359,6 +1383,42 @@ describe('product frame rebuilds', () => {
 
     // Then the render I asked for fails with that failure
     expect(await catchRejection(opened)).toBe(failure);
+  });
+});
+
+describe('product frame navigates the page', () => {
+  it.each([
+    { to: 'landing', called: 'goHome', other: 'reload' },
+    { to: 'reload', called: 'reload', other: 'goHome' },
+  ] as const)(
+    'As a visitor on a broken app, I pick $to in its frame and the page does it',
+    async ({ to, called, other }) => {
+      // Given a product on screen
+      const fakes = createHarness();
+      await fakes.settle(buildSubdomainProduct('broken'), 0);
+
+      // When its sandbox asks the page to navigate
+      fakes.askToNavigate({ to });
+
+      // Then the page does what was asked and nothing else
+      expect(fakes.page[called]).toHaveBeenCalledOnce();
+      expect(fakes.page[other]).not.toHaveBeenCalled();
+    },
+  );
+
+  it("As a dApp user, I stay on my app while a sandbox of another product asks the page to navigate and the page I'm on stays", async () => {
+    // Given my product on screen, and the origin of another product
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('mine'), 0);
+    const other = new URL(nth(fakes.hosts, 0).options.allowedOrigin ?? '');
+    other.hostname = 'other.app.localhost';
+
+    // When the frame on screen, navigated to the other product's sandbox, asks the page to open the landing
+    fakes.askToNavigate({ to: 'landing', origin: other.origin });
+
+    // Then the page neither opens the landing nor reloads
+    expect(fakes.page.goHome).not.toHaveBeenCalled();
+    expect(fakes.page.reload).not.toHaveBeenCalled();
   });
 });
 

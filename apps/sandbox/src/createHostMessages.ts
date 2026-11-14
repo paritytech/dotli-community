@@ -3,7 +3,7 @@
 
 // What the sandbox tells its host.
 
-import { postToHost } from '@dotli/sandbox-wire';
+import { postToHost, type SandboxNavigateMessage } from '@dotli/sandbox-wire';
 import { realTimers, type Timers } from '@dotli/shared';
 
 import type { SandboxStep } from './describeSandboxFailure.js';
@@ -45,6 +45,8 @@ export function createHostMessages({ parent, timers = realTimers }: Params) {
      * to the host throws.
      */
     askRerender,
+    /** Asks the host to move its page: to the landing, or reload it. Throws what posting to the host throws. */
+    askNavigate,
   };
 
   function showStatus(message: string): void {
@@ -75,5 +77,9 @@ export function createHostMessages({ parent, timers = realTimers }: Params) {
   function askRerender(): void {
     showStatus('Restoring app...');
     postToHost(parent, { type: 'dotli:sandbox-recover' });
+  }
+
+  function askNavigate(to: SandboxNavigateMessage['to']): void {
+    postToHost(parent, { type: 'dotli:sandbox-navigate', to });
   }
 }

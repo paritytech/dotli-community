@@ -25,6 +25,8 @@ const SANDBOX_SENDS: [string, SandboxToHostMessage][] = [
     },
   ],
   ['a recover request', { type: 'dotli:sandbox-recover' }],
+  ['a navigate to the landing', { type: 'dotli:sandbox-navigate', to: 'landing' }],
+  ['a navigate to reload', { type: 'dotli:sandbox-navigate', to: 'reload' }],
   ['a block request', { type: 'dotli:bitswap-get', id: 'bitswap-1-1', cid: 'bafyX', frame: 'f-1' }],
   ['a teardown abort', { type: 'dotli:bitswap-abort', ids: ['bitswap-1-1'], frame: 'f-1' }],
 ];
@@ -41,6 +43,7 @@ describe('sandbox messages', () => {
   it.each([
     ['a non-object', 'dotli:loading-status'],
     ['an unknown type', { type: 'dotli:unknown' }],
+    ['a navigate to an unknown place', { type: 'dotli:sandbox-navigate', to: 'home' }],
     ['a block request without a CID', { type: 'dotli:bitswap-get', id: 'r-1', cid: '', frame: 'f-1' }],
     ['a block request without a frame id', { type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }],
     ['an abort with a non-string id', { type: 'dotli:bitswap-abort', ids: [1], frame: 'f-1' }],
@@ -52,6 +55,14 @@ describe('sandbox messages', () => {
 
     // Then
     expect(received).toBeNull();
+  });
+
+  it('As the host, I drop the extra fields of a navigate', () => {
+    // When
+    const received = parseSandboxToHostMessage({ type: 'dotli:sandbox-navigate', to: 'landing', href: 'https://evil' });
+
+    // Then
+    expect(received).toEqual({ type: 'dotli:sandbox-navigate', to: 'landing' });
   });
 
   it('As the host, I keep only the loading status fields with the types I expect', () => {

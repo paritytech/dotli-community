@@ -14,6 +14,18 @@ export type SandboxStep =
 /** The backend a load read its content through, named in its failure. */
 export type LoadDependency = 'smoldot-bitswap' | 'ipfs-gateway';
 
+/** What the visitor can do next after a failure. */
+export type SandboxRecovery = 'retry' | 'landing' | 'reload' | 'open-app' | 'open-landing';
+
+/** The label of the action each recovery offers. */
+export const RECOVERY_LABELS = {
+  retry: 'Retry',
+  landing: 'Go to dot.li',
+  reload: 'Reload',
+  'open-app': 'Open in dot.li',
+  'open-landing': 'Go to dot.li',
+} satisfies Record<SandboxRecovery, string>;
+
 /** A way the run failed, with the facts its wording needs. */
 export type SandboxFailure =
   /** The sandbox URL was opened as the page itself, at `host`. */
@@ -47,6 +59,27 @@ export function getFailureStep(failure: SandboxFailure): SandboxStep {
     case 'retryLimit':
       return 'retry_limit';
   }
+}
+
+/** What the visitor can do next after `failure`. */
+export function getFailureRecovery(failure: SandboxFailure): SandboxRecovery {
+  switch (failure.kind) {
+    case 'topLevel':
+      return 'open-app';
+    case 'offOrigin':
+      return 'open-landing';
+    case 'unreadable':
+    case 'retryLimit':
+      return 'reload';
+    case 'load':
+      // A retry reads the same archive, so a missing start page sends the visitor on.
+      return failure.step === 'archive_index' ? 'landing' : 'retry';
+  }
+}
+
+/** Returns whether a retry can fix `failure`, so the run keeps it open for one. */
+export function canRetry(failure: SandboxFailure): boolean {
+  return getFailureRecovery(failure) === 'retry';
 }
 
 /** The title and message a failure is shown with. Throws what `getGatewayHost` throws. */

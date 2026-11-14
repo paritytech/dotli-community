@@ -258,28 +258,6 @@ describe('leaveForLanding', () => {
     expect(replace).toHaveBeenCalledWith('http://localhost:5173/?network=previewnet');
   });
 
-  it('As a visitor on a deployed sandbox host, I leave and am sent to the landing page on the base domain', () => {
-    // Given
-    const { params, replace } = setupLanding({ origin: `https://bafy.app.${BASE_DOMAIN}`, localRoot: null });
-
-    // When
-    leaveForLanding(params);
-
-    // Then
-    expect(replace).toHaveBeenCalledWith(`https://${BASE_DOMAIN}/?network=previewnet`);
-  });
-
-  it('As a developer on a local.host sandbox host, I leave and am sent to the landing page on local.host and my port', () => {
-    // Given a page on a sandbox host of local.host
-    const { params, replace } = setupLanding({ origin: 'https://bafy.app.local.host:4321', localRoot: 'local.host' });
-
-    // When the page leaves for the landing page
-    leaveForLanding(params);
-
-    // Then it goes to local.host on the same port
-    expect(replace).toHaveBeenCalledWith('https://local.host:4321/?network=previewnet');
-  });
-
   it('As a visitor on the landing origin at an unknown path, I leave and am sent to the landing page', () => {
     // Given
     const { params, replace } = setupLanding({ origin: 'http://localhost:5173', pathname: '/unknown' });
