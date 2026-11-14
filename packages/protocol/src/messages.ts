@@ -5,6 +5,7 @@ import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
 import type { CoreCustodyOperation } from './core-custody.js';
+import type { WalletOwnerOperation } from './wallet-owner.js';
 
 /** Wire shape of the local wallet's cached identity. */
 export interface LocalWalletIdentity {
@@ -31,6 +32,12 @@ export interface ProtocolRequestMap {
   authStorageRead: { siteId: string; key: string };
   authStorageWrite: { siteId: string; key: string; value: string };
   authStorageClear: { siteId: string; key: string };
+  authStorageCompareExchange: {
+    siteId: string;
+    key: string;
+    expected: Uint8Array | null;
+    replacement: Uint8Array;
+  };
   modeStorageRead: { siteId: string; key: string };
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
@@ -39,6 +46,7 @@ export interface ProtocolRequestMap {
   localWalletIdentity: { siteId: string; identity: LocalWalletIdentity };
   localWalletForget: { siteId: string };
   coreCustody: { siteId: string; operation: CoreCustodyOperation };
+  localWalletOwner: { siteId: string; operation: WalletOwnerOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
@@ -192,6 +200,21 @@ export interface ProtocolAuthStorageChangedEnvelope {
   value: string | null;
 }
 
+/** Another tab asked for the local wallet. The page stops signing, then releases `lease`. */
+export interface ProtocolLocalWalletOwnerRevokedEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'local-wallet-owner-revoked';
+  siteId: string;
+  lease: string;
+}
+
+/** A sibling tab saved or forgot the local wallet, so this page's wallet mode or entropy is stale. */
+export interface ProtocolLocalWalletChangedEnvelope {
+  namespace: 'dotli:protocol';
+  kind: 'local-wallet-changed';
+  siteId: string;
+}
+
 export type ProtocolEnvelope =
   | ProtocolRequestEnvelope
   | ProtocolProgressEnvelope
@@ -207,7 +230,9 @@ export type ProtocolEnvelope =
   | ProtocolChainSyncEnvelope
   | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
-  | ProtocolAuthStorageChangedEnvelope;
+  | ProtocolAuthStorageChangedEnvelope
+  | ProtocolLocalWalletOwnerRevokedEnvelope
+  | ProtocolLocalWalletChangedEnvelope;
 
 const VALID_KINDS = new Set([
   'request',
@@ -224,6 +249,8 @@ const VALID_KINDS = new Set([
   'chain-detail',
   'net-bytes',
   'auth-storage-changed',
+  'local-wallet-owner-revoked',
+  'local-wallet-changed',
 ]);
 
 // postMessage data is untrusted, so chain and kind are checked at runtime. The lists are copied because

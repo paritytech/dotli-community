@@ -143,7 +143,9 @@ flowchart TB
 - **Refcount**: the pool counts leases. When the last one is returned, the
   destroy delay starts; a new lease cancels it.
 - **Watch guard**: transaction watches cannot be safely replayed, so on a
-  disconnect the guard ends each answered watch with `dropped`.
+  disconnect the guard ends each answered watch with `dropped`. It covers the
+  legacy `author_submitAndWatchExtrinsic` watch too, which the local wallet's
+  core uses to register allowances.
 - **Watch** (`ChainPool.watch`): reports each chain's leases, status, follow
   and best blocks without a lease, so it never builds a chain or keeps one
   past its destroy delay. A new watcher first hears every chain held now.
@@ -156,7 +158,35 @@ flowchart TB
   has no consumers. The frame and SharedWorker pools are never watched, so
   they send nothing extra. With `VITE_APP_DEBUG`, the pool logs every lease, release,
   open and close under `[dot.li chain-pool]`, naming each lease's holder
-  (`truapi-core`, `resolver`, `host`, `sync-observer`, `remote:<id>`).
+  (`truapi-core`, `resolver`, `host`, `sync-observer`, `submit-fallback`, `remote:<id>`).
+
+## Light-client submit fallback (temporary)
+
+smoldot 3.4.1 and 3.6.0 validate every transaction locally from a call proof
+a full node returns. For the PGAS `claim_pgas` general extrinsic and
+pallet-revive dry-runs on Asset Hub they reject every proof with
+`MissingProofEntry`, ban the peer, and end the watch `dropped`; the trusted RPC
+node accepts and includes the same bytes.
+
+Only the experimental local wallet signs and submits in the page. Light-client
+transports are always wrapped with `withTrustedSubmitFallback`
+(`packages/ui/src/host-callbacks/light-client-submit-fallback.ts`), but the
+wallet mode is read when a submission drops: a lease opened before the wallet
+read settled the mode may be the entry the core reuses. In Polkadot App mode a
+drop reaches the core unchanged, and `rpc-gateway` builds the transport
+unwrapped.
+
+- Only a legacy `author_submitAndWatchExtrinsic` whose light-client watch ends
+  `dropped` is resent, byte for byte, through a lazily built trusted-RPC pool.
+  The core's subscription id stays the same.
+- The trusted node can see or censor the transaction, never forge it. An
+  `inBlock` or `finalized` update is held until the light client answers
+  `chain_getHeader` for that block (polled each second for up to 30 s);
+  otherwise the watch ends `dropped`.
+- Unwatching or disconnecting closes the trusted watch.
+
+Remove the module and its wrapping in `Chain.ts` once the bundled smoldot
+includes such a call through its own submit.
 
 ## The RPC transport
 

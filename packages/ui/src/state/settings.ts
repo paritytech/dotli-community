@@ -5,13 +5,14 @@ import {
   getBackend,
   getCacheSettings,
   getPolkaVmAppsEnabled,
-  SITE_ID,
+  getLocalWalletEnabled,
   isSharedWorkerAvailable,
   isVerifiedSession,
   type Backend,
   type CacheSettings,
   getEnabledNetworks,
   getNetwork,
+  SITE_ID,
   type Network,
 } from '@dotli/config';
 
@@ -22,6 +23,7 @@ export interface SettingsState {
   cache: CacheSettings;
   network: Network;
   polkaVmAppsEnabled: boolean;
+  localWalletEnabled: boolean;
   enabledNetworks: Network[];
   sharedWorkerAvailable: boolean;
   /** Whether the backend verifies chain data. */
@@ -41,6 +43,7 @@ function readSettings(): SettingsState {
     cache: getCacheSettings(),
     network: getNetwork(),
     polkaVmAppsEnabled: getPolkaVmAppsEnabled(SITE_ID),
+    localWalletEnabled: getLocalWalletEnabled(SITE_ID),
     enabledNetworks: getEnabledNetworks(),
     sharedWorkerAvailable: isSharedWorkerAvailable(),
     verified: isVerifiedSession(backend),

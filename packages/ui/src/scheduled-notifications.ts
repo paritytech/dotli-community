@@ -18,7 +18,7 @@ import { SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS, SCHEDULED_NOTIFICATIONS_P
 import { captureException, recordExpected } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { findNotification } from '@dotli/storage/notification-activations';
-import { notificationContextIsCurrent, presentProductNotification } from './notification-activation.js';
+import { notificationDeliveryIsCurrent, presentProductNotification } from './notification-activation.js';
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
@@ -217,7 +217,7 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
   try {
     const claimAndFire = async (): Promise<void> => {
       const binding = await findNotification(rec.productId, rec.perProductId);
-      if (!binding || !notificationContextIsCurrent(binding.scope)) {
+      if (!binding || binding.expiresAt <= Date.now() || !notificationDeliveryIsCurrent(binding.scope)) {
         return;
       }
       const removed = await removeById(rec.hostId);

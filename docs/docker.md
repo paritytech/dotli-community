@@ -86,15 +86,27 @@ Only **endpoints** are overridable, per network:
 | Field | Overridable | Notes |
 |---|---|---|
 | `label`, `rpcs`, `ipfsGateways` | yes | which node you talk to, and what it is called |
+| `identityBackendBaseUrl` | yes | the experimental local wallet's username backend; a root-relative proxy path or HTTPS (HTTP only on loopback), without credentials, query or fragment |
 | `genesis`, `dotns` | **no** | the trust root for name resolution, fixed at build time |
 
 Fixing `genesis` and `dotns` is what keeps this small and safe. An override cannot
 repoint the DotNS registry, so the worst it can do is move you to a different node
 for the *same* chain identity — which the light client verifies against the
-compiled-in genesis anyway. It also means only documents need the config: the
+compiled-in genesis anyway. An identity backend override receives public account
+proofs, never wallet entropy, and a username claim counts only once the chain
+confirms it, not when the backend accepts it. Only documents need the config: the
 protocol SharedWorker reads solely `genesis` and `dotns`, so nothing is plumbed to
 it. A zombie-bite fork preserves both, so endpoints are the only axis that has to
 move.
+
+The built-in identity backends are same-origin paths, `/__dotli-identity/paseo`
+and `/__dotli-identity/testnet`. The container's nginx, `serve.mjs`, the preview
+server and `npm run dev` all serve them on the apex and product shell origins
+only; the protocol (`host.`) and sandbox (`*.app.`) origins answer 404, and a
+cross-origin caller gets 403. They forward a fixed set of identity API routes to
+`identity.dotspark.app` and `identity-previewnet.dotspark.app` without cookies,
+redirects, CORS or response caching. The image ships the CA roots for that
+upstream and resolves it through the container's own nameservers.
 
 Two more rules:
 

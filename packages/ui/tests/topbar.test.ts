@@ -8,6 +8,7 @@ const sharedAuth = vi.hoisted(() => ({
 
 vi.mock('../../protocol/src/client.js', () => ({
   readSharedLocalWallet: () => Promise.resolve({ status: 'none' }),
+  subscribeLocalWalletChanged: () => () => undefined,
   readSharedAuthStorage: (siteId: string, key: string) =>
     Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {

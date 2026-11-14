@@ -4,7 +4,6 @@
 // Messages that leave the shell. A product may branch on the text, so rewording one is a breaking change.
 
 export const ERRORS = {
-  PREIMAGE_SUBMIT_DENIED: 'User denied preimage submit',
   DECRYPTION_CANCELLED: 'User cancelled decryption',
   /** @deprecated Nothing produces this. Kept because a product may still match on the text. */
   ALIAS_PERMISSION_DENIED: 'User denied alias permission',
@@ -21,4 +20,5 @@ export const ERRORS = {
   INVALID_JSON_RPC_REQUEST: 'Invalid JSON-RPC request',
   CROSS_ORIGIN_APP_URL: 'Refusing to render an app URL outside its sandbox origin',
   MISSING_MODAL_COORDINATOR: 'Top bar initialized without a blocking modal coordinator',
+  MEDIA_RAW_CAPTURE_REFUSED: 'Camera and microphone are owned by the host Media service',
 } as const;

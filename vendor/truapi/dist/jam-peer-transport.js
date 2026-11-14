@@ -1,7 +1,7 @@
 import * as S from "./scale.js";
 import * as T from "./generated/types.js";
 import { TRUAPI_CODEC_VERSION } from "./generated/client.js";
-import { JAM_PEER_TRANSPORT_CLOSE, JAM_PEER_TRANSPORT_DIAL, JAM_PEER_TRANSPORT_EVENTS, JAM_PEER_TRANSPORT_OPEN, JAM_PEER_TRANSPORT_RECV, JAM_PEER_TRANSPORT_RESET, JAM_PEER_TRANSPORT_SEND, SYSTEM_HANDSHAKE, } from "./generated/wire-table.js";
+import { JAM_PEER_TRANSPORT_CLOSE, JAM_PEER_TRANSPORT_DIAL, JAM_PEER_TRANSPORT_EVENTS, JAM_PEER_TRANSPORT_LISTEN, JAM_PEER_TRANSPORT_OPEN, JAM_PEER_TRANSPORT_RECV, JAM_PEER_TRANSPORT_RESET, JAM_PEER_TRANSPORT_SEND, SYSTEM_HANDSHAKE, } from "./generated/wire-table.js";
 import { decodeWireMessage, encodeWireMessage, MESSAGE_TYPE_CANCEL, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, } from "./transport.js";
 import { webTransportCertificateHashes } from "./jam-peer-transport-cert.js";
 /** Caps mirrored from `truapi::v01::jam_peer_transport`. */
@@ -22,6 +22,7 @@ const textEncoder = new TextEncoder();
 const handshakeResult = S.Result(T.VersionedHostHandshakeResponse, S.CallError(T.VersionedHostHandshakeError));
 const frameworkResult = S.Result(S._void, S.CallError(S._void));
 const dialResult = S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError));
+const listenResult = S.Result(T.VersionedHostJamPeerTransportListenResponse, S.CallError(T.VersionedHostJamPeerTransportListenError));
 const openResult = S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError));
 const sendResult = S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError));
 const recvResult = S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError));
@@ -496,29 +497,33 @@ export function createJamPeerTransportSession(options) {
         const message = S.hexToBytes(request.message);
         if (message.length > JAM_PEER_TRANSPORT_MAX_MESSAGE_BYTES)
             return domain(sendResult, "TooLarge");
-        if (stream.conn.rxBytes + stream.conn.txBytes + message.length + 4 > JAM_PEER_TRANSPORT_MAX_BUFFERED_BYTES_PER_CONNECTION)
+        // An empty terminal send closes the write half without framing a message.
+        const frameBytes = request.fin && message.length === 0 ? 0 : 4 + message.length;
+        if (stream.conn.rxBytes + stream.conn.txBytes + frameBytes > JAM_PEER_TRANSPORT_MAX_BUFFERED_BYTES_PER_CONNECTION)
             return domain(sendResult, "Limit");
-        const frame = new Uint8Array(4 + message.length);
-        new DataView(frame.buffer).setUint32(0, message.length, true);
-        frame.set(message, 4);
-        stream.conn.txBytes += frame.length;
         const close = () => pending.withdraw(domain(sendResult, "Closed"));
         stream.onClose.add(close);
         // Reserve FIN before yielding, so a concurrent send cannot pass it.
         if (request.fin)
             stream.txClosed = true;
         try {
-            // Cancellation settles the guest request immediately, but a browser
-            // write can still retain its frame until the underlying sink settles.
-            const writing = stream.writer.write(frame).finally(() => {
-                stream.conn.txBytes -= frame.length;
-                wakeReaders(stream.conn);
-            });
-            let result = await Promise.race([writing, pending.promise]);
-            if (result instanceof Uint8Array)
-                return result;
+            if (frameBytes !== 0) {
+                const frame = new Uint8Array(frameBytes);
+                new DataView(frame.buffer).setUint32(0, message.length, true);
+                frame.set(message, 4);
+                stream.conn.txBytes += frameBytes;
+                // Cancellation settles the guest request immediately, but a browser
+                // write can still retain its frame until the underlying sink settles.
+                const writing = stream.writer.write(frame).finally(() => {
+                    stream.conn.txBytes -= frameBytes;
+                    wakeReaders(stream.conn);
+                });
+                const result = await Promise.race([writing, pending.promise]);
+                if (result instanceof Uint8Array)
+                    return result;
+            }
             if (request.fin) {
-                result = await Promise.race([stream.writer.close(), pending.promise]);
+                const result = await Promise.race([stream.writer.close(), pending.promise]);
                 if (result instanceof Uint8Array)
                     return result;
                 if (stream.rxConsumed) {
@@ -617,6 +622,10 @@ export function createJamPeerTransportSession(options) {
             if (pendingRequests.has(request.requestId))
                 return new Uint8Array();
             try {
+                if (hasIds(request, JAM_PEER_TRANSPORT_LISTEN)) {
+                    exact(T.VersionedHostJamPeerTransportListenRequest, request.payload.value);
+                    return reply(request, domain(listenResult, negotiated ? "Refused" : "NotGranted"));
+                }
                 if (hasIds(request, JAM_PEER_TRANSPORT_DIAL)) {
                     const value = exact(T.VersionedHostJamPeerTransportDialRequest, request.payload.value).value;
                     if (!negotiated)

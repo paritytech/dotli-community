@@ -12,6 +12,7 @@ import {
   getBackend,
   setBackend,
   setPolkaVmAppsEnabled,
+  setLocalWalletEnabled,
   BACKEND_LABELS,
   type Backend,
   type CacheSettings,
@@ -30,6 +31,7 @@ import { getProductState } from './state/product.js';
 import { THEME_KEY } from './theme-controller.js';
 import { flushSharedModeWrites } from './shared-mode.js';
 import { revokeReceivingOnLogout } from './receiving.js';
+import { getWalletMode } from './state/wallet-mode.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
 export interface ModeDraft {
@@ -37,6 +39,7 @@ export interface ModeDraft {
   network: Network;
   cache: CacheSettings;
   polkaVmAppsEnabled: boolean;
+  localWalletEnabled: boolean;
 }
 
 /**
@@ -48,8 +51,10 @@ export async function applyAndReset(
   prior: ModeDraft,
   { forceFullWipe = false }: { forceFullWipe?: boolean } = {},
 ): Promise<void> {
-  // Fence the previous network locally before replacing its selected scope.
-  if (draft.network !== prior.network) {
+  // Fence the previous network locally before replacing its selected scope. Turning the local wallet off while it
+  // signs logs its account out, as forgetting it does, so its receiving registrations go first too.
+  const leavesLocalWallet = prior.localWalletEnabled && !draft.localWalletEnabled && getWalletMode() === 'local';
+  if (draft.network !== prior.network || leavesLocalWallet) {
     await revokeReceivingOnLogout();
   }
   if (forceFullWipe) {
@@ -61,6 +66,7 @@ export async function applyAndReset(
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
       setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
+      setLocalWalletEnabled(draft.localWalletEnabled);
       // Forces the cross-origin frames to purge regardless of their persisted prefs.
       try {
         sessionStorage.setItem('dotli:pending-reset:protocol', '1');
@@ -74,6 +80,7 @@ export async function applyAndReset(
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
       setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
+      setLocalWalletEnabled(draft.localWalletEnabled);
 
       const cidTurnedOff = draft.cache.skipCidCache && !prior.cache.skipCidCache;
       const archiveTurnedOff = draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;

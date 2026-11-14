@@ -22,6 +22,7 @@ export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string
     'M5 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
   ChainSubmit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z',
   PreimageSubmit: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m14-7-5-5-5 5m5-5v12',
+  AutomaticPreimageSubmit: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m14-7-5-5-5 5m5-5v12',
   StatementSubmit: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5zM14 2v6h6m-4 5H8m8 4H8',
 };
 
@@ -32,6 +33,13 @@ export const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, string
  */
 export const JAM_PEERS_ICON =
   'M15 5a3 3 0 1 0 6 0 3 3 0 1 0-6 0M3 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0m12 7a3 3 0 1 0 6 0 3 3 0 1 0-6 0M8.59 13.51l6.83 3.98m-.01-10.98-6.82 3.98';
+
+/**
+ * Host Media calling (`Calling`) as one 24 px path. It is consented per
+ * operation through the host Media backend rather than stored as an
+ * enforceable permission, so it sits beside the board's icons.
+ */
+export const CALLING_ICON = 'M6 3h4l2 5-3 2a14 14 0 0 0 5 5l2-3 5 2v4c0 2-2 3-4 2C9 18 4 13 3 6 2 4 4 3 6 3Z';
 
 /** A board icon's path as markup for a modal's IconTile, which sizes it. */
 export function iconMarkup(path: string): string {

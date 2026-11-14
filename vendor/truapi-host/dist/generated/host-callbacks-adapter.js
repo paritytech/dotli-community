@@ -5,8 +5,8 @@
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, ReceivingWatch, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, ContactSelection, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, HostScan, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PlacedContactLabels, PresentedContactProfile, ProductContext, ReceivingAuthority, UserConfirmationReview, } from "./host-callbacks.js";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostChatSetRoomFooterRequest, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostScannerScanRequest, HostThemeSubscribeItem, HostValidatorAuditProveRequest, HostValidatorAuditProveResponse, HostValidatorCloseRequest, HostValidatorCommitRequest, HostValidatorCommitResponse, HostValidatorEntropySourceRequest, HostValidatorEntropySourceResponse, HostValidatorError, HostValidatorFullSignRequest, HostValidatorFullSignResponse, HostValidatorOpenRequest, HostValidatorOpenResponse, HostValidatorSealRequest, HostValidatorSealResponse, HostValidatorSignRequest, HostValidatorSignResponse, HostValidatorTicketProveRequest, HostValidatorTicketProveResponse, HostValidatorVrfOutputRequest, HostValidatorVrfOutputResponse, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, ReceivingWatch, RemotePermissionRequest, ValidatorAuthority, } from "@parity/truapi";
+import { AuthState, ContactSelection, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, HostScan, MediaBackendCapabilities, MediaBackendCommand, MediaBackendEvent, MediaBackendResponse, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PlacedContactLabels, PresentedContactProfile, ProductContext, ReceivingAuthority, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, coinageWalletHostAdapter, contactsHostAdapter, driveResultStream, hopConnectAdapter, profileHostAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
@@ -19,10 +19,12 @@ export function createWasmRawCallbacks(callbacks) {
     const contacts = contactsHostAdapter(callbacks.contacts);
     const game = callbacks.game;
     const identityBackend = callbacks.identityBackend;
+    const media = callbacks.media;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
     const profile = profileHostAdapter(callbacks.profile);
     const scanner = callbacks.scanner;
+    const validator = callbacks.validator;
     const hop = callbacks.hop ?? unavailableHopProvider;
     const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
     return {
@@ -53,6 +55,8 @@ export function createWasmRawCallbacks(callbacks) {
         readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
         writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
         clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
+        compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => await callbacks.coreStorage.compareExchangeCoreStorage(CoreStorageKey.dec(key), expected ?? undefined, replacement, notifyOnSuccess),
+        coreStorageChanged: async (key) => await callbacks.coreStorage.coreStorageChanged(CoreStorageKey.dec(key)),
         featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
         supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
         ...(game
@@ -70,6 +74,13 @@ export function createWasmRawCallbacks(callbacks) {
             : {}),
         subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(HostLocaleSubscribeItem.enc(item)), sendError),
         localizeTimestamps: async (request) => HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(HostLocaleLocalizeTimestampsRequest.dec(request))),
+        ...(typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function"
+            ? {
+                mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
+                mediaBackendEvents: (product, runtimeId, sendItem, sendError) => driveResultStream(media.mediaBackendEvents(ProductContext.dec(product), runtimeId), (item) => sendItem(MediaBackendEvent.enc(item)), sendError, true),
+                mediaBackendCommand: async (product, runtimeId, command) => MediaBackendResponse.enc(await media.mediaBackendCommand(ProductContext.dec(product), runtimeId, MediaBackendCommand.dec(command))),
+            }
+            : {}),
         pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
         readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
         releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
@@ -121,5 +132,20 @@ export function createWasmRawCallbacks(callbacks) {
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
         confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
+        ...(validator
+            ? {
+                validatorOpen: async (authority, request) => S.Result(HostValidatorOpenResponse, HostValidatorError).enc(await validator.validatorOpen(ValidatorAuthority.dec(authority), HostValidatorOpenRequest.dec(request))),
+                validatorCommit: async (authority, request) => S.Result(HostValidatorCommitResponse, HostValidatorError).enc(await validator.validatorCommit(ValidatorAuthority.dec(authority), HostValidatorCommitRequest.dec(request))),
+                validatorSign: async (authority, request) => S.Result(HostValidatorSignResponse, HostValidatorError).enc(await validator.validatorSign(ValidatorAuthority.dec(authority), HostValidatorSignRequest.dec(request))),
+                validatorVrfOutput: async (authority, request) => S.Result(HostValidatorVrfOutputResponse, HostValidatorError).enc(await validator.validatorVrfOutput(ValidatorAuthority.dec(authority), HostValidatorVrfOutputRequest.dec(request))),
+                validatorTicketProve: async (authority, request) => S.Result(HostValidatorTicketProveResponse, HostValidatorError).enc(await validator.validatorTicketProve(ValidatorAuthority.dec(authority), HostValidatorTicketProveRequest.dec(request))),
+                validatorEntropySource: async (authority, request) => S.Result(HostValidatorEntropySourceResponse, HostValidatorError).enc(await validator.validatorEntropySource(ValidatorAuthority.dec(authority), HostValidatorEntropySourceRequest.dec(request))),
+                validatorSeal: async (authority, request) => S.Result(HostValidatorSealResponse, HostValidatorError).enc(await validator.validatorSeal(ValidatorAuthority.dec(authority), HostValidatorSealRequest.dec(request))),
+                validatorFullSign: async (authority, request) => S.Result(HostValidatorFullSignResponse, HostValidatorError).enc(await validator.validatorFullSign(ValidatorAuthority.dec(authority), HostValidatorFullSignRequest.dec(request))),
+                validatorAuditProve: async (authority, request) => S.Result(HostValidatorAuditProveResponse, HostValidatorError).enc(await validator.validatorAuditProve(ValidatorAuthority.dec(authority), HostValidatorAuditProveRequest.dec(request))),
+                validatorClose: async (authority, request) => S.Result(S._void, HostValidatorError).enc(await validator.validatorClose(ValidatorAuthority.dec(authority), HostValidatorCloseRequest.dec(request))),
+                validatorRevoke: async (executionId) => await validator.validatorRevoke(executionId),
+            }
+            : {}),
     };
 }

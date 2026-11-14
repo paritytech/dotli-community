@@ -1,7 +1,9 @@
 name: Deploy nginx
 
 # Gated by the environment's protection rules and deployment branch policy. Snippets are shared by every site on a
-# box, so a deploy to one environment reloads them for its neighbours too.
+# box, so a deploy to one environment reloads them for its neighbours too. paseoli.dev and paseo.fyi are not offered:
+# their nginx config ships only with their frontend through deploy.yml's opt-in rollout (per-site snippets, receiving
+# CSP and Media TURN secrets), which a dispatch here would overwrite.
 
 run-name: Deploy nginx to ${{ inputs.environment }} from ${{ github.ref_name }}
 
@@ -13,8 +15,6 @@ on:
         required: true
         type: choice
         options:
-          - paseoli.dev
-          - paseo.fyi
           - testnet.li
           - paseo.li
 
@@ -42,8 +42,6 @@ jobs:
           set -euo pipefail
           case "$ENVIRONMENT" in
             paseo.li) TAG=paseo ;;
-            paseoli.dev) TAG=dev-paseo ;;
-            paseo.fyi) TAG=fyi-paseo ;;
             testnet.li) TAG=dev-test ;;
             *) echo "::error::No Makefile ENV for $ENVIRONMENT"; exit 1 ;;
           esac

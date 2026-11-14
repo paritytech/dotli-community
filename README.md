@@ -93,10 +93,15 @@ through a Service Worker that acts as a virtual file system.
 
 ### What it doesn't do
 
-- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is
-  delegated to the connected Polkadot App session.
+- In normal mode it is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation,
+  and signing is delegated to the connected Polkadot App session. The experimental local wallet can instead keep
+  encrypted recovery entropy in the browser; it is off by default on `dot.li` and enabled under **Settings → Advanced →
+  Experimental**.
 - It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
-  dotNS records are read directly from the contract storage.
+  dotNS records are read directly from the contract storage. The one server-side piece is a same-origin proxy at
+  `/__dotli-identity/<network>`, which forwards the experimental local wallet's username check and claim to the public
+  identity service. It carries public account proofs only; the wallet's entropy never leaves the browser, and a claim
+  counts once the chain confirms it.
 - It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally
   per session.
 - It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
@@ -115,6 +120,9 @@ gateway backend reads the same storage over a public RPC node instead.)
 
 The protocol client retries a resolver request once when its chainHead follow stopped, and both resolution backends
 rebuild their client after a stop rather than reading through a dead follow.
+
+On light-client backends, the Media advertisement lookup and the exact `vox.paseo` presence snapshot TEMPORARILY use the
+People chain's trusted RPC node (see [Protected browser Media](#protected-browser-media)).
 
 ## How multi-file SPAs work
 
@@ -139,15 +147,16 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
-On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
-JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
-through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
-genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
-are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
-signing, storage, or arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only
-network permission. JAM permission callbacks return the decision without an administrative permission write, leaving the
-canonical Rust core to persist it against the pending product/genesis request. Administrative settings changes remain a
-separate operation that deliberately invalidates stale consent.
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/media-on-jam-seity`, the native
+integration of Media and the Tommy blocker fixes above `feat/jam-peer-transport-on-seity`. JAM peer transport is
+execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission through the product's
+authenticated port to the shared page core. The host's Solid permission dialog shows the full genesis hash and offers
+**Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions are scoped to product and
+genesis, while a one-time grant lasts only for that execution. This grants no account, signing, storage, or arbitrary
+web access. Peer access permits sending and receiving messages; it is not a read-only network permission. JAM permission
+callbacks return the decision without an administrative permission write, leaving the canonical Rust core to persist it
+against the pending product/genesis request. Administrative settings changes remain a separate operation that
+deliberately invalidates stale consent.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -346,6 +355,16 @@ After a committed permission change, the bridge matches the canonical product id
 Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
 requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
 
+Automatic preimage uploads require separate, explicit consent in addition to the ordinary preimage permission. The
+inline **Automatic preimage uploads** controls apply only to the selected product, active root account and configured
+Bulletin network: at most 256 KiB per upload and four automatic attempts per rolling hour. Larger uploads and exhausted
+budgets still require per-upload review. **Ask per upload** and **Revoke automatic uploads** stop automatic approval
+without preventing individually reviewed uploads; granting again does not reset the rolling budget. Changing this
+consent does not replace the product iframe. Resetting permissions retains the account selected when the reset began,
+rather than applying a delayed result to a newly selected account. The Preimage Factory and Submit E2E cases approve
+each upload with **Allow once**; the ordinary signing/permission approval alone is insufficient. These cases do not opt
+the test account into bounded automatic uploads.
+
 A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
 permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
 connection identifier remain idempotent. Connection creation is single-flight, and a superseded result is closed rather
@@ -355,9 +374,11 @@ not sign the user out or discard lasting grants.
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
-host-owned IndexedDB, scoped to the product execution, authenticated account, network and executable artifact. OS
-notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
-the host entry page. It does not navigate the product's route.
+host-owned IndexedDB, scoped to the host-selected product, live authenticated account, network and executable artifact.
+Published products bind to their verified CID; developer iframe previews instead bind to a fresh execution identity,
+never a mutable URL claimed as immutable content. A session without an optional identity account binds to its
+authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
+activation before focusing or opening the host entry page. It does not navigate the product's route.
 
 The vendored TrUAPI host serves `notifications.send` and `notifications.cancel` only; it carries no product-facing
 activation feed, which belongs to the separate generic notification feature. The retained activation records stay scoped
@@ -368,16 +389,24 @@ Notification authority follows live native auth transitions, not the UI-state ca
 unchanged stored-session reload emits no new auth transition and leaves ordinary notifications usable. A native account
 change, disconnection or explicit logout invalidates the previous scope.
 
+Scheduled presentation can continue after the product frame closes: the durable host-issued binding is checked against
+the current page core's live account and network, and any conflicting mounted artifact suppresses delivery. A click
+while the product is unmounted remains pending until the matching verified product is opened; the host does not execute
+the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement.
+
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
 replacing a direct iframe cannot inherit an earlier execution's notification activations.
 
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
-is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
-In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
-window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
-supply one.
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked route event to accept a new notification.
+Clicks without a destination are consumed by the host, since there is no event for the product to acknowledge. In-page
+toasts remain actionable when OS permission or service-worker notification delivery is unavailable. A pending OS
+permission prompt does not delay the notification ID, cancellation or scheduler; cancelled records are rechecked before
+delayed OS presentation. Plain host toasts without an action or destination remain non-interactive. OS focus and window
+opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not supply
+one.
 
 ### Background receiving activation
 
@@ -448,6 +477,72 @@ use the top-level product's shared Rust core/provider context rather than separa
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
+### Protected browser Media
+
+The bridge installs `@parity/truapi-host/web`'s `createBrowserMediaBackend` for each cross-origin HTML and PolkaVM
+product connection, App and Worker alike. The Media service (prototype wire trait 218) needs the matching vendored
+client, host callbacks, worker bridge and WASM from the native Media layer; updating a single vendored file is unsafe.
+
+A protected product iframe has no camera, microphone, display-capture, fullscreen or picture-in-picture permission and
+no popups or top navigation; its other device grants still apply. Capture grants authorize the trusted host, not raw
+iframe capture: a raw camera or microphone request fails with an error rather than a denial, so it never records a
+durable device denial that would block host Media. Host video planes are siblings of the product inside an isolated
+compositor that takes the frame's layout; neither product DOM/canvas readback nor the product's own RTC connections
+reach host tracks, peers, SDP, ICE or decoded pictures. Host UI that paints above the compositor's stacking context
+(toasts, popovers, modals) covers the planes while pictures keep rendering; any other visible host element over the
+product, or one whose stacking order cannot be established, blanks them. Viewport edges and the call bar clip the
+planes, scaled, rotated or skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls
+stay above the product.
+
+Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
+operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The
+permissions menu lists the Calling scopes the core used and revokes them; withdrawing Calling, microphone or camera
+authority ends active calls. Runtime replacement, navigation, identity changes and teardown fence pending consent and
+capture.
+
+Core storage implements exact-byte compare-exchange. Browser slots serialize per physical slot on cross-document Web
+Locks, the shared auth session on its protocol-origin slot lock, and test-wallet custody in the protocol frame's custody
+lock. An explicit policy change queues its scoped notification with the successful commit; unanswered Ask initialization
+stays silent. Cores sharing that storage refresh authorization through a host-private, acknowledged BroadcastChannel,
+and the settings setter returns only after that fan-out. Without Web Locks, compare-exchange and unavailable
+synchronization fail closed; plain slot reads, writes and clears continue.
+
+Products needing legacy raw capture can select **Use legacy raw capture** in the permissions menu. This ends protected
+calls and reloads into an execution where Media is unsupported and existing device grants govern raw capture. **Use
+protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
+advertise Media.
+
+In legacy raw-capture mode, `display-capture` names the verified product iframe origin; the browser still owns the
+screen-selection prompt. Camera and microphone delegation require their individual host grants, and changing either
+grant replaces the iframe to apply the new policy. Revocation leaves screen-selection consent with the browser.
+Protected host Media removes all raw-capture directives, including origin-scoped ones, before applying its denials.
+
+ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. When a call opens
+a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at `/__dotli-media/turn`
+(`nginx/snippets/dotli-media-turn.conf`); the Cloudflare API token stays on the server. Only credentialed
+`turn:`/`turns:` URLs off port 53 are used. Credentials are reused for two thirds of their 12-hour lifetime, so a call
+keeps its relay for at least four hours. A failed or unconfigured route (503) leaves the peer without a relay: it fails
+with `Media:NoTurnRelay` in the console, and the next peer retries. Products never supply ICE settings. The local dev
+and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+
+Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
+client (smoldot) completes a new statement subscription with an empty retained snapshot and relays only later gossip. On
+light-client backends the host therefore TEMPORARILY routes two narrow Statement Store flows to the People chain's
+trusted RPC node:
+
+- Media callee-advertisement lookups. The core opens a separate connection per lookup and marks its subscribe and
+  unsubscribe requests with `truapi:media-advertisement-lookup:`.
+- The `vox.paseo` public presence lifecycle: an exact single-topic `MatchAll` subscription for
+  `blake2b-256("vox.paseo/lobby/v1")`, its matching unsubscribe, and submissions whose decoded Statement Store fields
+  carry only that topic. Reading and posting use the same trusted transport so different light-client peers cannot miss
+  each other. `MatchAny`, multi-topic filters, other Vox builds and every other product topic stay on the light client.
+
+Chat, live call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
+advertisement topics are looked up and when, plus when a device reads or posts to the one public `vox.paseo` presence
+topic. It can withhold statements but cannot forge one: the Media core verifies each advertisement proof and signature,
+while Vox accepts only signed self-announcements that have not expired. Remove both route modules and their uses in
+`Chain.ts` once the light client can retrieve retained statements. On Trusted Providers every request already uses RPC.
+
 ## Development
 
 ### Prerequisites
@@ -474,15 +569,19 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the integrated TrUAPI 0.24.0 SDK from source `e48777643c52278769a6bac724c7f6577cb87197`, recorded in
-`vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
-pairing-only production host with background receiving, and `wasm/testing` backs the local wallet's signing worker. The
-recorded archive hashes precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody
-and account-bound notification activation sit above the generic PolkaVM runtime. This integration combines Profile
-disclosure, contacts and presentation fences with the separate JamPeerTransport layer and background receiving.
-Replacing a product document retires its execution, receiving registration, avatars and labels immediately; the new
-execution receives fresh capability callbacks. Install the tree in `package-lock.json` with `npm ci`. To iterate against
-a matching local truapi checkout instead, run:
+This branch vendors `@parity/truapi` and `@parity/truapi-host` 0.24.0 from native integration PR #1217,
+`feat/media-on-jam-seity` (#1011 plus Media and the Tommy blocker fixes from #1216), source
+`70627ffb8fb64b3de99db2e37bf514f44f629542`, built with upstream's standard steps (codegen, both package builds, then
+`build-wasm.mjs`). `vendor/truapi-host.lock.json` records the source revision, archive hashes, the generated client
+SHA-256 and both WASM hashes: `wasm/web` is the pairing-only production host (`runtime`, with background receiving and
+Media), and `wasm/testing` (`wasm-signing-host`, `test-host`) backs the local wallet's signing worker. The archive
+hashes precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation remain above the generic PolkaVM runtime; the local wallet layer runs beside it. This
+integration combines Profile disclosure, contacts and presentation fences with the separate JamPeerTransport layer,
+background receiving and Media. Replacing a product document retires its execution, receiving registration, avatars,
+labels and Media capture immediately; the new execution receives fresh capability callbacks and a new protected Media
+adapter bound to its own lifetime. Install the tree in `package-lock.json` with `npm ci`. To iterate against a matching
+local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
@@ -572,6 +671,10 @@ Gateway CAR requests select their representation with `?format=car`, leaving the
 A media-specific Accept header bypasses the Paseo gateway's immutable-content cache despite returning the same archive.
 URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
 verification remain unchanged.
+
+The canonical App v2 smoke (`DOTLI_DOOM_V2_CAR`) serves its archive from a temporary loopback HTTP server, avoiding
+Chromium's DevTools message-size limit for large CARs. It waits for initial host service-worker activation before
+mounting the product, so fixture startup does not overlap the host's compatibility probe.
 
 ### Qualifying a PolkaVM runtime update locally
 
@@ -869,9 +972,9 @@ docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-commun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
-contract addresses stay fixed at build time, because they are the trust root for name resolution. See
-[docs/docker.md](docs/docker.md).
+Overrides patch the tables above and reach endpoints only — `label`, `rpcs`, `ipfsGateways` and the local wallet's
+`identityBackendBaseUrl`. Genesis hashes and contract addresses stay fixed at build time, because they are the trust
+root for name resolution. See [docs/docker.md](docs/docker.md).
 
 ## Security
 

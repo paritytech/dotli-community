@@ -1,5 +1,7 @@
 # Docker profile, rendered by docker/entrypoint.sh with envsubst. Keep in sync with nginx.conf.template by hand.
-# Differs only in plain HTTP on one port, no rate limiting, no Sentry tunnel, and serving the runtime network config.
+# Differs only in plain HTTP on one port, no rate limiting, no Sentry tunnel, serving the runtime network config, and
+# resolving the identity backend through the container's own nameservers: the nginx image's entrypoint exports them as
+# NGINX_LOCAL_RESOLVERS when NGINX_ENTRYPOINT_LOCAL_RESOLVERS is set, which the Dockerfile does.
 #   host.${DOMAIN}    protocol build
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build
@@ -10,6 +12,10 @@ server {
 
     root ${WEBROOT}/host;
     index index.html;
+
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
 
     # The landing page. Every other path gets the shell, which sends a URL with no product back here.
     location = / {
@@ -45,6 +51,8 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
+    location ^~ /__dotli-identity { return 404; }
+
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
     include /etc/nginx/snippets/dotli-host-version.conf;
@@ -66,6 +74,8 @@ server {
     index index.html;
 
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
+
+    location ^~ /__dotli-identity { return 404; }
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
@@ -90,6 +100,10 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 

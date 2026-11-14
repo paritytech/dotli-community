@@ -26,3 +26,18 @@
 .input:focus-visible {
   outline: 1px solid var(--td-focus);
 }
+
+/* A single-line input with fixed text after it, such as a username's network suffix. */
+.affixed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.affixed .input {
+  flex: 1;
+  min-width: 0;
+}
+.suffix {
+  color: var(--td-fg-muted);
+  white-space: nowrap;
+}

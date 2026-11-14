@@ -1526,6 +1526,30 @@ export type VersionedHostJamPeerTransportEventsResponse =
     value: HostJamPeerTransportEventsResponse;
 };
 export declare const VersionedHostJamPeerTransportEventsResponse: S.Codec<VersionedHostJamPeerTransportEventsResponse>;
+/** Versioned envelope for [`HostJamPeerTransportListenError`]. */
+export type VersionedHostJamPeerTransportListenError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportListenError;
+};
+export declare const VersionedHostJamPeerTransportListenError: S.Codec<VersionedHostJamPeerTransportListenError>;
+/** Versioned envelope for [`HostJamPeerTransportListenRequest`]. */
+export type VersionedHostJamPeerTransportListenRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportListenRequest;
+};
+export declare const VersionedHostJamPeerTransportListenRequest: S.Codec<VersionedHostJamPeerTransportListenRequest>;
+/** Versioned envelope for [`HostJamPeerTransportListenResponse`]. */
+export type VersionedHostJamPeerTransportListenResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportListenResponse;
+};
+export declare const VersionedHostJamPeerTransportListenResponse: S.Codec<VersionedHostJamPeerTransportListenResponse>;
 /** Versioned envelope for [`HostJamPeerTransportOpenError`]. */
 export type VersionedHostJamPeerTransportOpenError = 
 /** Version 1 payload. */
@@ -1550,6 +1574,30 @@ export type VersionedHostJamPeerTransportOpenResponse =
     value: HostJamPeerTransportOpenResponse;
 };
 export declare const VersionedHostJamPeerTransportOpenResponse: S.Codec<VersionedHostJamPeerTransportOpenResponse>;
+/** Versioned envelope for [`HostJamPeerTransportRecvChunkError`]. */
+export type VersionedHostJamPeerTransportRecvChunkError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvChunkError;
+};
+export declare const VersionedHostJamPeerTransportRecvChunkError: S.Codec<VersionedHostJamPeerTransportRecvChunkError>;
+/** Versioned envelope for [`HostJamPeerTransportRecvChunkRequest`]. */
+export type VersionedHostJamPeerTransportRecvChunkRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvChunkRequest;
+};
+export declare const VersionedHostJamPeerTransportRecvChunkRequest: S.Codec<VersionedHostJamPeerTransportRecvChunkRequest>;
+/** Versioned envelope for [`HostJamPeerTransportRecvChunkResponse`]. */
+export type VersionedHostJamPeerTransportRecvChunkResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportRecvChunkResponse;
+};
+export declare const VersionedHostJamPeerTransportRecvChunkResponse: S.Codec<VersionedHostJamPeerTransportRecvChunkResponse>;
 /** Versioned envelope for [`HostJamPeerTransportRecvError`]. */
 export type VersionedHostJamPeerTransportRecvError = 
 /** Version 1 payload. */
@@ -1598,6 +1646,30 @@ export type VersionedHostJamPeerTransportResetResponse =
     value?: undefined;
 };
 export declare const VersionedHostJamPeerTransportResetResponse: S.Codec<VersionedHostJamPeerTransportResetResponse>;
+/** Versioned envelope for [`HostJamPeerTransportSendChunkError`]. */
+export type VersionedHostJamPeerTransportSendChunkError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendChunkError;
+};
+export declare const VersionedHostJamPeerTransportSendChunkError: S.Codec<VersionedHostJamPeerTransportSendChunkError>;
+/** Versioned envelope for [`HostJamPeerTransportSendChunkRequest`]. */
+export type VersionedHostJamPeerTransportSendChunkRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostJamPeerTransportSendChunkRequest;
+};
+export declare const VersionedHostJamPeerTransportSendChunkRequest: S.Codec<VersionedHostJamPeerTransportSendChunkRequest>;
+/** Versioned envelope for [`HostJamPeerTransportSendChunkResponse`]. */
+export type VersionedHostJamPeerTransportSendChunkResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostJamPeerTransportSendChunkResponse: S.Codec<VersionedHostJamPeerTransportSendChunkResponse>;
 /** Versioned envelope for [`HostJamPeerTransportSendError`]. */
 export type VersionedHostJamPeerTransportSendError = 
 /** Version 1 payload. */
@@ -1778,6 +1850,278 @@ export type VersionedHostLocaleSubscribeRequest =
     value?: undefined;
 };
 export declare const VersionedHostLocaleSubscribeRequest: S.Codec<VersionedHostLocaleSubscribeRequest>;
+/** Versioned envelope for [`HostMediaAddParticipantError`]. */
+export type VersionedHostMediaAddParticipantError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaAddParticipantError: S.Codec<VersionedHostMediaAddParticipantError>;
+/** Versioned envelope for [`HostMediaAddParticipantRequest`]. */
+export type VersionedHostMediaAddParticipantRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaAddParticipantRequest;
+};
+export declare const VersionedHostMediaAddParticipantRequest: S.Codec<VersionedHostMediaAddParticipantRequest>;
+/** Versioned envelope for [`HostMediaAddParticipantResponse`]. */
+export type VersionedHostMediaAddParticipantResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaAddParticipantResponse;
+};
+export declare const VersionedHostMediaAddParticipantResponse: S.Codec<VersionedHostMediaAddParticipantResponse>;
+/** Versioned envelope for [`HostMediaCancelOperationError`]. */
+export type VersionedHostMediaCancelOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaCancelOperationError: S.Codec<VersionedHostMediaCancelOperationError>;
+/** Versioned envelope for [`HostMediaCancelOperationRequest`]. */
+export type VersionedHostMediaCancelOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaCancelOperationRequest;
+};
+export declare const VersionedHostMediaCancelOperationRequest: S.Codec<VersionedHostMediaCancelOperationRequest>;
+/** Versioned envelope for [`HostMediaCancelOperationResponse`]. */
+export type VersionedHostMediaCancelOperationResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: MediaOperationSnapshot;
+};
+export declare const VersionedHostMediaCancelOperationResponse: S.Codec<VersionedHostMediaCancelOperationResponse>;
+/** Versioned envelope for [`HostMediaCreateSessionError`]. */
+export type VersionedHostMediaCreateSessionError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaCreateSessionError: S.Codec<VersionedHostMediaCreateSessionError>;
+/** Versioned envelope for [`HostMediaCreateSessionRequest`]. */
+export type VersionedHostMediaCreateSessionRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaCreateSessionRequest;
+};
+export declare const VersionedHostMediaCreateSessionRequest: S.Codec<VersionedHostMediaCreateSessionRequest>;
+/** Versioned envelope for [`HostMediaCreateSessionResponse`]. */
+export type VersionedHostMediaCreateSessionResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaCreateSessionResponse;
+};
+export declare const VersionedHostMediaCreateSessionResponse: S.Codec<VersionedHostMediaCreateSessionResponse>;
+/** Versioned envelope for [`HostMediaEndSessionError`]. */
+export type VersionedHostMediaEndSessionError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaEndSessionError: S.Codec<VersionedHostMediaEndSessionError>;
+/** Versioned envelope for [`HostMediaEndSessionRequest`]. */
+export type VersionedHostMediaEndSessionRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaEndSessionRequest;
+};
+export declare const VersionedHostMediaEndSessionRequest: S.Codec<VersionedHostMediaEndSessionRequest>;
+/** Versioned envelope for [`HostMediaEndSessionResponse`]. */
+export type VersionedHostMediaEndSessionResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostMediaEndSessionResponse: S.Codec<VersionedHostMediaEndSessionResponse>;
+/** Versioned envelope for [`HostMediaError`]. */
+export type VersionedHostMediaError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaError: S.Codec<VersionedHostMediaError>;
+/** Versioned envelope for [`HostMediaGetCapabilitiesError`]. */
+export type VersionedHostMediaGetCapabilitiesError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaGetCapabilitiesError: S.Codec<VersionedHostMediaGetCapabilitiesError>;
+/** Versioned envelope for [`HostMediaGetCapabilitiesRequest`]. */
+export type VersionedHostMediaGetCapabilitiesRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostMediaGetCapabilitiesRequest: S.Codec<VersionedHostMediaGetCapabilitiesRequest>;
+/** Versioned envelope for [`HostMediaGetCapabilitiesResponse`]. */
+export type VersionedHostMediaGetCapabilitiesResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: MediaCapabilities;
+};
+export declare const VersionedHostMediaGetCapabilitiesResponse: S.Codec<VersionedHostMediaGetCapabilitiesResponse>;
+/** Versioned envelope for [`HostMediaGetOperationError`]. */
+export type VersionedHostMediaGetOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaGetOperationError: S.Codec<VersionedHostMediaGetOperationError>;
+/** Versioned envelope for [`HostMediaGetOperationRequest`]. */
+export type VersionedHostMediaGetOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaGetOperationRequest;
+};
+export declare const VersionedHostMediaGetOperationRequest: S.Codec<VersionedHostMediaGetOperationRequest>;
+/** Versioned envelope for [`HostMediaGetOperationResponse`]. */
+export type VersionedHostMediaGetOperationResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: MediaOperationSnapshot;
+};
+export declare const VersionedHostMediaGetOperationResponse: S.Codec<VersionedHostMediaGetOperationResponse>;
+/** Versioned envelope for [`HostMediaRemoveParticipantError`]. */
+export type VersionedHostMediaRemoveParticipantError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaRemoveParticipantError: S.Codec<VersionedHostMediaRemoveParticipantError>;
+/** Versioned envelope for [`HostMediaRemoveParticipantRequest`]. */
+export type VersionedHostMediaRemoveParticipantRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaRemoveParticipantRequest;
+};
+export declare const VersionedHostMediaRemoveParticipantRequest: S.Codec<VersionedHostMediaRemoveParticipantRequest>;
+/** Versioned envelope for [`HostMediaRemoveParticipantResponse`]. */
+export type VersionedHostMediaRemoveParticipantResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostMediaRemoveParticipantResponse: S.Codec<VersionedHostMediaRemoveParticipantResponse>;
+/** Versioned envelope for [`HostMediaRespondIncomingError`]. */
+export type VersionedHostMediaRespondIncomingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaRespondIncomingError: S.Codec<VersionedHostMediaRespondIncomingError>;
+/** Versioned envelope for [`HostMediaRespondIncomingRequest`]. */
+export type VersionedHostMediaRespondIncomingRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaRespondIncomingRequest;
+};
+export declare const VersionedHostMediaRespondIncomingRequest: S.Codec<VersionedHostMediaRespondIncomingRequest>;
+/** Versioned envelope for [`HostMediaRespondIncomingResponse`]. */
+export type VersionedHostMediaRespondIncomingResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: MediaIncomingResponse;
+};
+export declare const VersionedHostMediaRespondIncomingResponse: S.Codec<VersionedHostMediaRespondIncomingResponse>;
+/** Versioned envelope for [`HostMediaSessionSubscribeError`]. */
+export type VersionedHostMediaSessionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaSessionSubscribeError: S.Codec<VersionedHostMediaSessionSubscribeError>;
+/** Versioned envelope for [`HostMediaSessionSubscribeItem`]. */
+export type VersionedHostMediaSessionSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: MediaEvent;
+};
+export declare const VersionedHostMediaSessionSubscribeItem: S.Codec<VersionedHostMediaSessionSubscribeItem>;
+/** Versioned envelope for [`HostMediaSessionSubscribeRequest`]. */
+export type VersionedHostMediaSessionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostMediaSessionSubscribeRequest: S.Codec<VersionedHostMediaSessionSubscribeRequest>;
+/** Versioned envelope for [`HostMediaSetLocalTracksError`]. */
+export type VersionedHostMediaSetLocalTracksError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaSetLocalTracksError: S.Codec<VersionedHostMediaSetLocalTracksError>;
+/** Versioned envelope for [`HostMediaSetLocalTracksRequest`]. */
+export type VersionedHostMediaSetLocalTracksRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaSetLocalTracksRequest;
+};
+export declare const VersionedHostMediaSetLocalTracksRequest: S.Codec<VersionedHostMediaSetLocalTracksRequest>;
+/** Versioned envelope for [`HostMediaSetLocalTracksResponse`]. */
+export type VersionedHostMediaSetLocalTracksResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaSetLocalTracksResponse;
+};
+export declare const VersionedHostMediaSetLocalTracksResponse: S.Codec<VersionedHostMediaSetLocalTracksResponse>;
+/** Versioned envelope for [`HostMediaSetSurfacesError`]. */
+export type VersionedHostMediaSetSurfacesError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaError;
+};
+export declare const VersionedHostMediaSetSurfacesError: S.Codec<VersionedHostMediaSetSurfacesError>;
+/** Versioned envelope for [`HostMediaSetSurfacesRequest`]. */
+export type VersionedHostMediaSetSurfacesRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaSetSurfacesRequest;
+};
+export declare const VersionedHostMediaSetSurfacesRequest: S.Codec<VersionedHostMediaSetSurfacesRequest>;
+/** Versioned envelope for [`HostMediaSetSurfacesResponse`]. */
+export type VersionedHostMediaSetSurfacesResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostMediaSetSurfacesResponse;
+};
+export declare const VersionedHostMediaSetSurfacesResponse: S.Codec<VersionedHostMediaSetSurfacesResponse>;
 /** A peer's native delivery acknowledgment, not a payment-clearing receipt. */
 export interface HostNativeChatAcknowledgment {
     /** Authenticated acknowledging identity. */
@@ -2930,6 +3274,311 @@ export type VersionedHostThemeSubscribeRequest =
     value?: undefined;
 };
 export declare const VersionedHostThemeSubscribeRequest: S.Codec<VersionedHostThemeSubscribeRequest>;
+/** Versioned envelope for [`HostValidatorAuditProveError`]. */
+export type VersionedHostValidatorAuditProveError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorAuditProveError: S.Codec<VersionedHostValidatorAuditProveError>;
+/** Versioned envelope for [`HostValidatorAuditProveRequest`]. */
+export type VersionedHostValidatorAuditProveRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorAuditProveRequest;
+};
+export declare const VersionedHostValidatorAuditProveRequest: S.Codec<VersionedHostValidatorAuditProveRequest>;
+/** Versioned envelope for [`HostValidatorAuditProveResponse`]. */
+export type VersionedHostValidatorAuditProveResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorAuditProveResponse;
+};
+export declare const VersionedHostValidatorAuditProveResponse: S.Codec<VersionedHostValidatorAuditProveResponse>;
+/** Versioned envelope for [`HostValidatorCloseError`]. */
+export type VersionedHostValidatorCloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorCloseError: S.Codec<VersionedHostValidatorCloseError>;
+/** Versioned envelope for [`HostValidatorCloseRequest`]. */
+export type VersionedHostValidatorCloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorCloseRequest;
+};
+export declare const VersionedHostValidatorCloseRequest: S.Codec<VersionedHostValidatorCloseRequest>;
+/** Versioned envelope for [`HostValidatorCloseResponse`]. */
+export type VersionedHostValidatorCloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostValidatorCloseResponse: S.Codec<VersionedHostValidatorCloseResponse>;
+/** Versioned envelope for [`HostValidatorCommitError`]. */
+export type VersionedHostValidatorCommitError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorCommitError: S.Codec<VersionedHostValidatorCommitError>;
+/** Versioned envelope for [`HostValidatorCommitRequest`]. */
+export type VersionedHostValidatorCommitRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorCommitRequest;
+};
+export declare const VersionedHostValidatorCommitRequest: S.Codec<VersionedHostValidatorCommitRequest>;
+/** Versioned envelope for [`HostValidatorCommitResponse`]. */
+export type VersionedHostValidatorCommitResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorCommitResponse;
+};
+export declare const VersionedHostValidatorCommitResponse: S.Codec<VersionedHostValidatorCommitResponse>;
+/** Versioned envelope for [`HostValidatorEntropySourceError`]. */
+export type VersionedHostValidatorEntropySourceError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorEntropySourceError: S.Codec<VersionedHostValidatorEntropySourceError>;
+/** Versioned envelope for [`HostValidatorEntropySourceRequest`]. */
+export type VersionedHostValidatorEntropySourceRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorEntropySourceRequest;
+};
+export declare const VersionedHostValidatorEntropySourceRequest: S.Codec<VersionedHostValidatorEntropySourceRequest>;
+/** Versioned envelope for [`HostValidatorEntropySourceResponse`]. */
+export type VersionedHostValidatorEntropySourceResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorEntropySourceResponse;
+};
+export declare const VersionedHostValidatorEntropySourceResponse: S.Codec<VersionedHostValidatorEntropySourceResponse>;
+/** Fail-closed custody errors. The runtime sanitizes private callback failures. */
+export type HostValidatorError = 
+/** The host has no protected validator backend. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** This execution/account/artifact has no signing grant. */
+ | {
+    tag: "NotGranted";
+    value?: undefined;
+}
+/** The execution-local handle is no longer owned. */
+ | {
+    tag: "Closed";
+    value?: undefined;
+}
+/** Another owner holds this identity. */
+ | {
+    tag: "Busy";
+    value?: undefined;
+}
+/** A transfer, storage, journal, or admission bound was exceeded. */
+ | {
+    tag: "Limit";
+    value?: undefined;
+}
+/** Malformed fields, noncanonical decimal u64, or invalid transfer order. */
+ | {
+    tag: "Invalid";
+    value?: undefined;
+}
+/** Expected revision or head does not match durable custody state. */
+ | {
+    tag: "Stale";
+    value?: undefined;
+}
+/** The duty conflicts with a retained signing intent. */
+ | {
+    tag: "Conflict";
+    value?: undefined;
+}
+/** Complete recovery material or replay acknowledgement is missing. */
+ | {
+    tag: "RecoveryRequired";
+    value?: undefined;
+}
+/** Missing/corrupt/ambiguous durable state; no signing is allowed. */
+ | {
+    tag: "Poisoned";
+    value?: undefined;
+}
+/** A trusted host persistence or keyring operation failed. */
+ | {
+    tag: "Unavailable";
+    value?: undefined;
+}
+/** Private platform bridge failure; runtime converts this to Poisoned and revokes. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostValidatorError: S.Codec<HostValidatorError>;
+/** Versioned envelope for [`HostValidatorFullSignError`]. */
+export type VersionedHostValidatorFullSignError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorFullSignError: S.Codec<VersionedHostValidatorFullSignError>;
+/** Versioned envelope for [`HostValidatorFullSignRequest`]. */
+export type VersionedHostValidatorFullSignRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorFullSignRequest;
+};
+export declare const VersionedHostValidatorFullSignRequest: S.Codec<VersionedHostValidatorFullSignRequest>;
+/** Versioned envelope for [`HostValidatorFullSignResponse`]. */
+export type VersionedHostValidatorFullSignResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorFullSignResponse;
+};
+export declare const VersionedHostValidatorFullSignResponse: S.Codec<VersionedHostValidatorFullSignResponse>;
+/** Versioned envelope for [`HostValidatorOpenError`]. */
+export type VersionedHostValidatorOpenError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorOpenError: S.Codec<VersionedHostValidatorOpenError>;
+/** Versioned envelope for [`HostValidatorOpenRequest`]. */
+export type VersionedHostValidatorOpenRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorOpenRequest;
+};
+export declare const VersionedHostValidatorOpenRequest: S.Codec<VersionedHostValidatorOpenRequest>;
+/** Versioned envelope for [`HostValidatorOpenResponse`]. */
+export type VersionedHostValidatorOpenResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorOpenResponse;
+};
+export declare const VersionedHostValidatorOpenResponse: S.Codec<VersionedHostValidatorOpenResponse>;
+/** Versioned envelope for [`HostValidatorSealError`]. */
+export type VersionedHostValidatorSealError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorSealError: S.Codec<VersionedHostValidatorSealError>;
+/** Versioned envelope for [`HostValidatorSealRequest`]. */
+export type VersionedHostValidatorSealRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorSealRequest;
+};
+export declare const VersionedHostValidatorSealRequest: S.Codec<VersionedHostValidatorSealRequest>;
+/** Versioned envelope for [`HostValidatorSealResponse`]. */
+export type VersionedHostValidatorSealResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorSealResponse;
+};
+export declare const VersionedHostValidatorSealResponse: S.Codec<VersionedHostValidatorSealResponse>;
+/** Versioned envelope for [`HostValidatorSignError`]. */
+export type VersionedHostValidatorSignError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorSignError: S.Codec<VersionedHostValidatorSignError>;
+/** Versioned envelope for [`HostValidatorSignRequest`]. */
+export type VersionedHostValidatorSignRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorSignRequest;
+};
+export declare const VersionedHostValidatorSignRequest: S.Codec<VersionedHostValidatorSignRequest>;
+/** Versioned envelope for [`HostValidatorSignResponse`]. */
+export type VersionedHostValidatorSignResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorSignResponse;
+};
+export declare const VersionedHostValidatorSignResponse: S.Codec<VersionedHostValidatorSignResponse>;
+/** Versioned envelope for [`HostValidatorTicketProveError`]. */
+export type VersionedHostValidatorTicketProveError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorTicketProveError: S.Codec<VersionedHostValidatorTicketProveError>;
+/** Versioned envelope for [`HostValidatorTicketProveRequest`]. */
+export type VersionedHostValidatorTicketProveRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorTicketProveRequest;
+};
+export declare const VersionedHostValidatorTicketProveRequest: S.Codec<VersionedHostValidatorTicketProveRequest>;
+/** Versioned envelope for [`HostValidatorTicketProveResponse`]. */
+export type VersionedHostValidatorTicketProveResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorTicketProveResponse;
+};
+export declare const VersionedHostValidatorTicketProveResponse: S.Codec<VersionedHostValidatorTicketProveResponse>;
+/** Versioned envelope for [`HostValidatorVrfOutputError`]. */
+export type VersionedHostValidatorVrfOutputError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorError;
+};
+export declare const VersionedHostValidatorVrfOutputError: S.Codec<VersionedHostValidatorVrfOutputError>;
+/** Versioned envelope for [`HostValidatorVrfOutputRequest`]. */
+export type VersionedHostValidatorVrfOutputRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorVrfOutputRequest;
+};
+export declare const VersionedHostValidatorVrfOutputRequest: S.Codec<VersionedHostValidatorVrfOutputRequest>;
+/** Versioned envelope for [`HostValidatorVrfOutputResponse`]. */
+export type VersionedHostValidatorVrfOutputResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostValidatorVrfOutputResponse;
+};
+export declare const VersionedHostValidatorVrfOutputResponse: S.Codec<VersionedHostValidatorVrfOutputResponse>;
 /** Versioned envelope for [`HostWorkerBeginOperationError`]. */
 export type VersionedHostWorkerBeginOperationError = 
 /** Version 1 payload. */
@@ -3039,13 +3688,26 @@ export type JamPeerTransportEvent =
         stream: number;
     };
 }
-/** The peer opened a stream to us on a dialed connection. */
+/** The peer opened a stream on an outgoing or accepted connection. */
  | {
     tag: "Accepted";
     value: {
         conn: number;
         stream: number;
         kind: number;
+    };
+}
+/**
+ * A mutually authenticated peer connected to the execution's listener.
+ * This precedes every stream event for the connection.
+ */
+ | {
+    tag: "PeerAccepted";
+    value: {
+        conn: number;
+        ed25519: HexString;
+        ip: HexString;
+        port: number;
     };
 };
 export declare const JamPeerTransportEvent: S.Codec<JamPeerTransportEvent>;
@@ -3085,6 +3747,481 @@ export interface LegacyAccountTxPayload {
     txExtVersion: number;
 }
 export declare const LegacyAccountTxPayload: S.Codec<LegacyAccountTxPayload>;
+/** Explicit algorithm and public key for a product-scoped remote account. */
+export type MediaAccount = 
+/** Product-derived sr25519 account; not a legacy wallet or transport address. */
+{
+    tag: "Sr25519";
+    value: HexString;
+};
+export declare const MediaAccount: S.Codec<MediaAccount>;
+/** Sanitized audio route class, never a device identifier or inventory. */
+export type MediaAudioRoute = "Earpiece" | "Speaker" | "Headset" | "Other";
+export declare const MediaAudioRoute: S.Codec<MediaAudioRoute>;
+/** Bounded terminal business outcome; never a raw backend error string. */
+export type MediaCallOutcome = "LocalEnded" | "RemoteEnded" | "Refused" | "Busy" | "Unanswered" | "PermissionRevoked" | "IdentityLost" | "RuntimeClosed" | "ConnectivityLost" | "HostFailed";
+export declare const MediaCallOutcome: S.Codec<MediaCallOutcome>;
+/** Sanitized camera class, never a device identifier or model. */
+export type MediaCameraKind = "Front" | "Rear" | "Other";
+export declare const MediaCameraKind: S.Codec<MediaCameraKind>;
+/**
+ * Complete service discovery, with no permission prompt or capture side effect.
+ * Missing any mandatory capture, connectivity, picker, indicator, or unreadable
+ * compositor facility makes the entire service unsupported, not partially ready.
+ */
+export interface MediaCapabilities {
+    /** Sorted unique supported contract versions, including 1 for this contract. */
+    contractVersions: Array<number>;
+    /** Immutable host-configured network namespace for this runtime. */
+    network: MediaNetwork;
+    /** Live remote endpoint limit, at least five; excludes the local endpoint. */
+    maxRemoteParticipants: number;
+    /** Live session limit, at least one. */
+    maxSessions: number;
+    /** At least twice the endpoint limit including the local endpoint. */
+    maxSurfacesPerSession: number;
+    /** Incoming offer lifetime, 60,000 milliseconds in V1. */
+    incomingLifetimeMs: number;
+    /** Non-consent operation deadline, 5,000 milliseconds in V1. */
+    operationTimeoutMs: number;
+    /** Host consent/picker deadline, 60,000 milliseconds in V1. */
+    consentTimeoutMs: number;
+    /** Connection/reconnection deadline, 30,000 milliseconds in V1. */
+    reconnectTimeoutMs: number;
+    /** Actual finite budgets enforced by this runtime. */
+    limits: MediaRuntimeLimits;
+}
+export declare const MediaCapabilities: S.Codec<MediaCapabilities>;
+/**
+ * Runtime-wide events. Each listener starts with an atomic current snapshot;
+ * subsequent sequence values strictly increase. Resubscription does not replay
+ * old ringing events. Overflow terminates the stream with EventOverflow.
+ */
+export type MediaEvent = 
+/** Atomic initial state, including before any session exists. */
+{
+    tag: "Snapshot";
+    value: {
+        sequence: bigint;
+        sessions: Array<MediaSessionSnapshot>;
+        incoming: Array<MediaIncomingOffer>;
+        viewport?: MediaViewport;
+    };
+}
+/** Authoritative session revision, including terminal teardown exactly once. */
+ | {
+    tag: "SessionChanged";
+    value: {
+        sequence: bigint;
+        session: MediaSessionSnapshot;
+    };
+}
+/** Passive authenticated incoming offer; no consent or capture yet. */
+ | {
+    tag: "IncomingOffered";
+    value: {
+        sequence: bigint;
+        offer: MediaIncomingOffer;
+    };
+}
+/** An offer can no longer be accepted. */
+ | {
+    tag: "IncomingResolved";
+    value: {
+        sequence: bigint;
+        incomingId: MediaIncomingId;
+        result: MediaIncomingResolution;
+    };
+}
+/** Transform changes hide stale pictures; detach/replace clears all layouts. */
+ | {
+    tag: "ViewportChanged";
+    value: {
+        sequence: bigint;
+        viewport?: MediaViewport;
+    };
+};
+export declare const MediaEvent: S.Codec<MediaEvent>;
+/** Picture scaling inside its clipped, rounded rectangle. */
+export type MediaFit = "Contain" | "Cover";
+export declare const MediaFit: S.Codec<MediaFit>;
+/** Incoming decisions atomically claim an offer once acceptance begins. */
+export type MediaIncomingDecision = 
+/** Cleanup requiring no permission, subscription, or new operation quota. */
+{
+    tag: "Refuse";
+    value?: undefined;
+}
+/** Atomically create a session and accept after required consent. */
+ | {
+    tag: "AcceptNew";
+    value: {
+        operationId: MediaOperationId;
+        tracks: MediaLocalTracks;
+    };
+}
+/** Join only the offer's matching existing session; never merge calls. */
+ | {
+    tag: "AcceptExisting";
+    value: {
+        operationId: MediaOperationId;
+        sessionId: MediaSessionId;
+    };
+};
+export declare const MediaIncomingDecision: S.Codec<MediaIncomingDecision>;
+/** Host-minted, single-use authenticated incoming-offer capability. */
+export type MediaIncomingId = HexString;
+export declare const MediaIncomingId: S.Codec<MediaIncomingId>;
+/** Authenticated, expiring offer; passive delivery does not create a session. */
+export interface MediaIncomingOffer {
+    /** Single-use capability bound to sender, nonce, destination, and authority. */
+    incomingId: MediaIncomingId;
+    /** Authenticated remote product account. */
+    peer: MediaPeer;
+    /** Declared caller intent: only Off or Starting, not proof of live capture. */
+    requestedRemoteTracks: MediaRemoteState;
+    /** Remaining host-monotonic lifetime measured at emission. */
+    remainingMs: number;
+    /** Existing local session only for an authenticated offer from its group. */
+    existingSession?: MediaSessionId;
+}
+export declare const MediaIncomingOffer: S.Codec<MediaIncomingOffer>;
+/** Bounded reason an incoming offer no longer rings. */
+export type MediaIncomingResolution = "Accepted" | "Refused" | "Expired" | "Cancelled" | "AnsweredElsewhere";
+export declare const MediaIncomingResolution: S.Codec<MediaIncomingResolution>;
+/** Result of a successful incoming decision. */
+export type MediaIncomingResponse = 
+/** Offer refused without capture or signaling a new call. */
+{
+    tag: "Refused";
+    value?: undefined;
+}
+/** Offer accepted, returning both authoritative owned resources. */
+ | {
+    tag: "Accepted";
+    value: {
+        session: MediaSessionSnapshot;
+        participant: MediaParticipantSnapshot;
+    };
+};
+export declare const MediaIncomingResponse: S.Codec<MediaIncomingResponse>;
+/** Host-observed local media and sanitized selected device classes. */
+export interface MediaLocalState {
+    /** Actual microphone state. */
+    microphone: MediaTrackState;
+    /** Actual camera state. */
+    camera: MediaTrackState;
+    /** Actual screen-sharing state. */
+    screen: MediaTrackState;
+    /** Actual camera class, if selected. */
+    cameraKind?: MediaCameraKind;
+    /** Actual audio route class, if selected. */
+    audioRoute?: MediaAudioRoute;
+}
+export declare const MediaLocalState: S.Codec<MediaLocalState>;
+/**
+ * Complete replacement capture intent. All false means receive-only.
+ * Preferences are advisory; screen capture always uses the trusted host picker.
+ */
+export interface MediaLocalTracks {
+    /** Request microphone capture. */
+    microphone: boolean;
+    /** Request camera capture. */
+    camera: boolean;
+    /** Request screen capture without selecting a source on the product side. */
+    screen: boolean;
+    /** Advisory camera class preference. */
+    cameraPreference?: MediaCameraKind;
+    /** Advisory audio route preference. */
+    audioPreference?: MediaAudioRoute;
+}
+export declare const MediaLocalTracks: S.Codec<MediaLocalTracks>;
+/** Host-configured network namespace; never inferred from a display label or URL. */
+export interface MediaNetwork {
+    /** Genesis hash identifying the authenticated signaling namespace. */
+    genesisHash: HexString;
+}
+export declare const MediaNetwork: S.Codec<MediaNetwork>;
+/** Retained sanitized failure; diagnostics never enter the operation history. */
+export type MediaOperationFailure = 
+/** User or authority denied the operation. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** Bounded Media domain failure. */
+ | {
+    tag: "Domain";
+    value: {
+        error: HostMediaError;
+    };
+}
+/** Host failure without a diagnostic string. */
+ | {
+    tag: "HostFailure";
+    value?: undefined;
+};
+export declare const MediaOperationFailure: S.Codec<MediaOperationFailure>;
+/**
+ * Client-random operation correlation key, shared across runtime listeners.
+ * Reusing a key with a different request is an operation conflict.
+ */
+export type MediaOperationId = HexString;
+export declare const MediaOperationId: S.Codec<MediaOperationId>;
+/** Mutation category retained with a correlation key. */
+export type MediaOperationKind = "CreateSession" | "AddParticipant" | "AcceptIncoming" | "SetLocalTracks";
+export declare const MediaOperationKind: S.Codec<MediaOperationKind>;
+/** Exact committed resources, without guessing from concurrent session snapshots. */
+export type MediaOperationResult = 
+/** Created a session. */
+{
+    tag: "Session";
+    value: {
+        sessionId: MediaSessionId;
+    };
+}
+/** Admitted an outbound participant. */
+ | {
+    tag: "Participant";
+    value: {
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+    };
+}
+/** Accepted a specific incoming offer. */
+ | {
+    tag: "Incoming";
+    value: {
+        incomingId: MediaIncomingId;
+        sessionId: MediaSessionId;
+        participantId: MediaParticipantId;
+    };
+}
+/** Committed local intent for a session. */
+ | {
+    tag: "Tracks";
+    value: {
+        sessionId: MediaSessionId;
+    };
+};
+export declare const MediaOperationResult: S.Codec<MediaOperationResult>;
+/** Authoritative runtime-wide correlation record, shared across all listeners. */
+export interface MediaOperationSnapshot {
+    /** Client-random key identifying the original request. */
+    operationId: MediaOperationId;
+    /** None only for cancellation-before-admission tombstones. */
+    kind?: MediaOperationKind;
+    /** Authoritative current or terminal outcome. */
+    state: MediaOperationState;
+}
+export declare const MediaOperationSnapshot: S.Codec<MediaOperationSnapshot>;
+/**
+ * Cancellation linearizes against commit; a committed result is never undone
+ * or misreported as cancelled. Terminal records last for the owning runtime.
+ */
+export type MediaOperationState = 
+/** Admitted and not yet settled. */
+{
+    tag: "Pending";
+    value?: undefined;
+}
+/** Effects committed before any cancellation won. */
+ | {
+    tag: "Committed";
+    value: {
+        result: MediaOperationResult;
+    };
+}
+/** Settled without committing the mutation. */
+ | {
+    tag: "Failed";
+    value: {
+        failure: MediaOperationFailure;
+    };
+}
+/** Cancellation won; delayed original requests and callbacks cannot act. */
+ | {
+    tag: "Cancelled";
+    value?: undefined;
+};
+export declare const MediaOperationState: S.Codec<MediaOperationState>;
+/** Host-minted remote endpoint capability within one owned session. */
+export type MediaParticipantId = HexString;
+export declare const MediaParticipantId: S.Codec<MediaParticipantId>;
+/** Current state of one remote endpoint; the local endpoint has no participant ID. */
+export interface MediaParticipantSnapshot {
+    /** Runtime-scoped participant capability. */
+    participantId: MediaParticipantId;
+    /** Authenticated remote product account. */
+    peer: MediaPeer;
+    /** Authoritative endpoint state. */
+    state: MediaParticipantState;
+    /** Host-observed remote media state. */
+    media: MediaRemoteState;
+    /** Terminal outcome, if any. */
+    outcome?: MediaCallOutcome;
+}
+export declare const MediaParticipantSnapshot: S.Codec<MediaParticipantSnapshot>;
+/** Authoritative state of one remote endpoint. */
+export type MediaParticipantState = "Inviting" | "Connecting" | "Connected" | "Reconnecting" | "Left";
+export declare const MediaParticipantState: S.Codec<MediaParticipantState>;
+/** Authenticated destination. V1 permits only the caller's network and product. */
+export interface MediaPeer {
+    /** Network namespace returned by discovery. */
+    network: MediaNetwork;
+    /** Full canonical authenticated product identifier, including subdomains. */
+    productId: string;
+    /** Product account resolved and authenticated by the host. */
+    account: MediaAccount;
+}
+export declare const MediaPeer: S.Codec<MediaPeer>;
+/** Host-owned picture kind, without a readable frame or stream handle. */
+export type MediaPictureKind = "Camera" | "Screen";
+export declare const MediaPictureKind: S.Codec<MediaPictureKind>;
+/** Selects an unreadable host-composited local preview or remote picture. */
+export type MediaPictureSource = 
+/** Self-preview uses the same isolated compositor as remote pictures. */
+{
+    tag: "Local";
+    value: {
+        picture: MediaPictureKind;
+    };
+}
+/** Picture belonging to an owned participant in this session. */
+ | {
+    tag: "Remote";
+    value: {
+        participantId: MediaParticipantId;
+        picture: MediaPictureKind;
+    };
+};
+export declare const MediaPictureSource: S.Codec<MediaPictureSource>;
+/** Placement relative to the complete product plane, always below trusted UI. */
+export type MediaPlacement = "BelowProduct" | "AboveProduct";
+export declare const MediaPlacement: S.Codec<MediaPlacement>;
+/**
+ * Axis-aligned logical viewport rectangle. Negative positions permit clipping;
+ * arithmetic overflow is rejected, and zero size draws nothing.
+ */
+export interface MediaRect {
+    /** Left edge relative to viewport origin. */
+    x: number;
+    /** Top edge relative to viewport origin. */
+    y: number;
+    /** Logical width. */
+    width: number;
+    /** Logical height. */
+    height: number;
+}
+export declare const MediaRect: S.Codec<MediaRect>;
+/** Remote track states, without quality metrics or device metadata. */
+export interface MediaRemoteState {
+    /** Remote microphone state. */
+    microphone: MediaTrackState;
+    /** Remote camera state. */
+    camera: MediaTrackState;
+    /** Remote screen-sharing state. */
+    screen: MediaTrackState;
+}
+export declare const MediaRemoteState: S.Codec<MediaRemoteState>;
+/** Exhausted finite resource class, without exposing another runtime's state. */
+export type MediaResource = "Sessions" | "Participants" | "Incoming" | "Operations" | "Subscriptions";
+export declare const MediaResource: S.Codec<MediaResource>;
+/**
+ * Finite runtime-lifetime retention and delivery budgets, reserved before effects.
+ * Known cleanup never allocates quota; terminal and operation tombstones are not
+ * silently evicted. Lower host budgets must still support the six-endpoint floor.
+ */
+export interface MediaRuntimeLimits {
+    /** Total session IDs that may be issued in this runtime (core default 256). */
+    maxIssuedSessions: number;
+    /** Total participant IDs that may be issued (core default 2048). */
+    maxIssuedParticipants: number;
+    /** Total incoming IDs that may be issued (core default 4096). */
+    maxIssuedIncoming: number;
+    /** Retained operation keys, including cancellation tombstones (default 8192). */
+    maxOperations: number;
+    /** Simultaneously pending incoming offers (core default 32). */
+    maxPendingIncoming: number;
+    /** Simultaneous runtime listeners (core default 8). */
+    maxSubscriptions: number;
+    /** Queued events per listener (core default 128); overflow terminates it. */
+    eventQueueCapacity: number;
+}
+export declare const MediaRuntimeLimits: S.Codec<MediaRuntimeLimits>;
+/** Host-minted, unguessable session capability, bound to one product runtime. */
+export type MediaSessionId = HexString;
+export declare const MediaSessionId: S.Codec<MediaSessionId>;
+/** Authoritative session state. Remote departure does not implicitly end it. */
+export interface MediaSessionSnapshot {
+    /** Runtime-scoped session capability. */
+    sessionId: MediaSessionId;
+    /** Strictly increasing per-session revision. */
+    revision: bigint;
+    /** Aggregate endpoint state. */
+    state: MediaSessionState;
+    /** Last committed complete local intent. */
+    requested: MediaLocalTracks;
+    /** Host-observed actual capture and routing state. */
+    actual: MediaLocalState;
+    /** Remote endpoints, including their terminal outcomes. */
+    participants: Array<MediaParticipantSnapshot>;
+    /** Terminal session outcome, if any. */
+    outcome?: MediaCallOutcome;
+}
+export declare const MediaSessionSnapshot: S.Codec<MediaSessionSnapshot>;
+/** Authoritative aggregate session state, independent of track interruption. */
+export type MediaSessionState = "Ready" | "Negotiating" | "Connecting" | "Connected" | "Reconnecting" | "Ended";
+export declare const MediaSessionState: S.Codec<MediaSessionState>;
+/**
+ * One unreadable sibling compositor layer. Layers do not receive product input
+ * and are excluded from product renderer/screenshot APIs. Off or interrupted
+ * sources never retain stale captured frames. Hiding pictures does not stop audio.
+ */
+export interface MediaSurface {
+    /** Product-chosen layout key, unique within the session's submitted set. */
+    surfaceId: number;
+    /** Local or owned remote picture. */
+    source: MediaPictureSource;
+    /** Target logical viewport rectangle. */
+    rect: MediaRect;
+    /** Additional clipping rectangle, intersected with viewport and host region. */
+    clip: MediaRect;
+    /** Clamped to half the smaller target dimension. */
+    cornerRadius: number;
+    /** Placement plane relative to all product content. */
+    placement: MediaPlacement;
+    /** Lower is behind higher; ties sort by session bytes then surface ID. */
+    depth: number;
+    /** Aspect-ratio treatment within the clip. */
+    fit: MediaFit;
+    /** Presentation only; does not change what peers receive. */
+    mirrored: boolean;
+    /** False draws no picture, without changing capture or audio playback. */
+    visible: boolean;
+}
+export declare const MediaSurface: S.Codec<MediaSurface>;
+/** Actual track state, without exposing underlying capture or stream objects. */
+export type MediaTrackState = "Off" | "Starting" | "Live" | "Interrupted";
+export declare const MediaTrackState: S.Codec<MediaTrackState>;
+/**
+ * One authorized rendering attachment shared by every session in a runtime.
+ * Revision never restarts after detach/replace. Product coordinates are logical
+ * viewport units (CSS pixels on web), not document or physical screen coordinates.
+ */
+export interface MediaViewport {
+    /** Runtime-monotonic transform/attachment revision. */
+    revision: bigint;
+    /** Logical viewport width. */
+    width: number;
+    /** Logical viewport height. */
+    height: number;
+    /** Effective uniform physical-pixels/logical-unit ratio numerator. */
+    deviceScaleNumerator: number;
+    /** Positive scale denominator; products must not pre-scale rectangles. */
+    deviceScaleDenominator: number;
+}
+export declare const MediaViewport: S.Codec<MediaViewport>;
 /** Layout and styling applied to one node. */
 export type Modifier = 
 /** Outer spacing. */
@@ -3157,7 +4294,10 @@ export interface NotificationActivation {
     sequence: bigint;
     /** Identifier of the activated notification. */
     notificationId: number;
-    /** Validated product-relative route beginning with exactly one slash. */
+    /**
+     * Original product destination (local path or supported deep-link URI).
+     * Opaque data for the product router, never host navigation authority.
+     */
     route: string;
 }
 export declare const NotificationActivation: S.Codec<NotificationActivation>;
@@ -3897,6 +5037,32 @@ export type RemotePermission =
     tag: "JamPeers";
     value: {
         genesis: HexString;
+    };
+}
+/**
+ * Host-owned Media calling, scoped to authenticated product/account/network.
+ *
+ * Distinct from browser-realm WebRtc. Receive-only sessions still require
+ * this grant; microphone and camera additionally require device grants.
+ * Screen selection is exclusively a trusted host picker, not a permission
+ * to enumerate or name capture sources. Revocation ends affected sessions.
+ */
+ | {
+    tag: "Calling";
+    value?: undefined;
+}
+/**
+ * Experimental host-custodied validator signing.
+ * Scope is one trusted account and execution; artifacts need host consent.
+ * Index 112 matches trait 112 and the TrUAPI 0.30 line, clear of the
+ * positional variants (JamPeers 5, Calling 6).
+ */
+ | {
+    tag: "Validator";
+    value: {
+        genesis: HexString;
+        account: HexString;
+        execution: string;
     };
 };
 export declare const RemotePermission: S.Codec<RemotePermission>;
@@ -5370,12 +6536,35 @@ export interface HostJamPeerTransportEventsResponse {
     events: Array<JamPeerTransportEvent>;
 }
 export declare const HostJamPeerTransportEventsResponse: S.Codec<HostJamPeerTransportEventsResponse>;
+/** Failure to establish an execution-scoped JAM peer listener. */
+export type HostJamPeerTransportListenError = "NotGranted" | "Refused" | "Limit" | "Unreachable";
+export declare const HostJamPeerTransportListenError: S.Codec<HostJamPeerTransportListenError>;
+/** Establish one immutable listener before this execution opens any connection. */
+export interface HostJamPeerTransportListenRequest {
+    /** Genesis covered by `RemotePermission::JamPeers` and the listener consent. */
+    genesis: HexString;
+    /** Loopback bind address, IPv6 or IPv4-mapped IPv6. */
+    ip: HexString;
+    /** Requested local UDP port. */
+    port: number;
+    /** Only these mutually authenticated TLS Ed25519 identities may connect. */
+    allowedPeers: Array<HexString>;
+}
+export declare const HostJamPeerTransportListenRequest: S.Codec<HostJamPeerTransportListenRequest>;
+/** The bound execution-scoped listener endpoint. */
+export interface HostJamPeerTransportListenResponse {
+    /** Bound address, IPv6 or IPv4-mapped IPv6. */
+    ip: HexString;
+    /** Bound local UDP port. */
+    port: number;
+}
+export declare const HostJamPeerTransportListenResponse: S.Codec<HostJamPeerTransportListenResponse>;
 /** Failure to open a stream. */
 export type HostJamPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";
 export declare const HostJamPeerTransportOpenError: S.Codec<HostJamPeerTransportOpenError>;
 /** Open a bidirectional stream and send its kind byte. */
 export interface HostJamPeerTransportOpenRequest {
-    /** Connection returned by `dial`. */
+    /** Connection returned by `dial` or reported by `PeerAccepted`. */
     conn: number;
     /** JAMNP-S stream kind (UP 0, CE 128, ...). */
     kind: number;
@@ -5387,6 +6576,36 @@ export interface HostJamPeerTransportOpenResponse {
     stream: number;
 }
 export declare const HostJamPeerTransportOpenResponse: S.Codec<HostJamPeerTransportOpenResponse>;
+/** Failure to poll a bounded fragment. */
+export type HostJamPeerTransportRecvChunkError = "Closed" | "InvalidMaxBytes";
+export declare const HostJamPeerTransportRecvChunkError: S.Codec<HostJamPeerTransportRecvChunkError>;
+/** Poll a fragment without allocating the complete logical message. */
+export interface HostJamPeerTransportRecvChunkRequest {
+    /** Execution-owned stream. */
+    stream: number;
+    /** Maximum fragment bytes, between one and 256 KiB inclusive. */
+    maxBytes: number;
+}
+export declare const HostJamPeerTransportRecvChunkRequest: S.Codec<HostJamPeerTransportRecvChunkRequest>;
+/** A bounded message fragment, or no arrival yet. */
+export interface HostJamPeerTransportRecvChunkResponse {
+    /**
+     * Declared length, checked before allocation; `None` means no fragment.
+     * `Some(0)` with `complete` represents an actual framed empty message.
+     */
+    total?: number;
+    /** Offset within this logical message (zero when there is no fragment). */
+    offset: number;
+    /** At most the requested maximum; never includes the JAMNP-S length prefix. */
+    bytes: HexString;
+    /** This fragment ends the logical message; false when none is available. */
+    complete: boolean;
+    /** Clean peer FIN, reported only after all complete messages are drained. */
+    fin: boolean;
+    /** Peer reset or malformed/truncated framing; discard an incomplete message. */
+    reset: boolean;
+}
+export declare const HostJamPeerTransportRecvChunkResponse: S.Codec<HostJamPeerTransportRecvChunkResponse>;
 /** Failure to receive from a stream. */
 export type HostJamPeerTransportRecvError = "Closed";
 export declare const HostJamPeerTransportRecvError: S.Codec<HostJamPeerTransportRecvError>;
@@ -5420,6 +6639,23 @@ export interface HostJamPeerTransportResetRequest {
     stream: number;
 }
 export declare const HostJamPeerTransportResetRequest: S.Codec<HostJamPeerTransportResetRequest>;
+/** Failure to queue a fragment of a single JAMNP-S message. */
+export type HostJamPeerTransportSendChunkError = "Closed" | "TooLarge" | "Limit" | "InvalidChunk";
+export declare const HostJamPeerTransportSendChunkError: S.Codec<HostJamPeerTransportSendChunkError>;
+/** Queue one bounded fragment. Only offset zero emits a length prefix. */
+export interface HostJamPeerTransportSendChunkRequest {
+    /** Execution-owned stream. */
+    stream: number;
+    /** Exact logical message length, at most 64 MiB. */
+    total: number;
+    /** Exact next byte offset, beginning at zero. */
+    offset: number;
+    /** At most 256 KiB. Empty is allowed only for a zero-length message. */
+    bytes: HexString;
+    /** Finish only after the final fragment. A zero-length message still frames. */
+    fin: boolean;
+}
+export declare const HostJamPeerTransportSendChunkRequest: S.Codec<HostJamPeerTransportSendChunkRequest>;
 /** Failure to send a message. */
 export type HostJamPeerTransportSendError = "Closed" | "TooLarge" | "Limit";
 export declare const HostJamPeerTransportSendError: S.Codec<HostJamPeerTransportSendError>;
@@ -5429,7 +6665,10 @@ export interface HostJamPeerTransportSendRequest {
     stream: number;
     /** Message bytes without length prefix. */
     message: HexString;
-    /** Finish the send side after this message. */
+    /**
+     * Finish the send side after this message. With an empty message, send
+     * only FIN; empty nonterminal messages retain their zero-length prefix.
+     */
     fin: boolean;
 }
 export declare const HostJamPeerTransportSendRequest: S.Codec<HostJamPeerTransportSendRequest>;
@@ -5495,6 +6734,240 @@ export interface V01HostLocaleSubscribeItem {
     languageTag: string;
 }
 export declare const V01HostLocaleSubscribeItem: S.Codec<V01HostLocaleSubscribeItem>;
+/** Admit an outgoing invitation, not a wait for the remote person's answer. */
+export interface HostMediaAddParticipantRequest {
+    /** Idempotent runtime-wide mutation key. */
+    operationId: MediaOperationId;
+    /** Owned live session capability. */
+    sessionId: MediaSessionId;
+    /** Authenticated peer in the same product and network. */
+    peer: MediaPeer;
+}
+export declare const HostMediaAddParticipantRequest: S.Codec<HostMediaAddParticipantRequest>;
+/** Admitted participant, or the current nonterminal participant for a duplicate peer. */
+export interface HostMediaAddParticipantResponse {
+    /** Authoritative participant, initially inviting for a new outbound offer. */
+    participant: MediaParticipantSnapshot;
+}
+export declare const HostMediaAddParticipantResponse: S.Codec<HostMediaAddParticipantResponse>;
+/** Cancel before commit, or recover the committed outcome if commit won. */
+export interface HostMediaCancelOperationRequest {
+    /** Original key; unknown keys reserve a cancellation tombstone before reply. */
+    operationId: MediaOperationId;
+}
+export declare const HostMediaCancelOperationRequest: S.Codec<HostMediaCancelOperationRequest>;
+/** Create an owned session without connecting to any peer. */
+export interface HostMediaCreateSessionRequest {
+    /** Idempotent runtime-wide mutation key. */
+    operationId: MediaOperationId;
+    /** Complete initial capture intent, subject to calling and device consent. */
+    tracks: MediaLocalTracks;
+}
+export declare const HostMediaCreateSessionRequest: S.Codec<HostMediaCreateSessionRequest>;
+/** Successful session creation. */
+export interface HostMediaCreateSessionResponse {
+    /** Authoritative ready session. */
+    session: MediaSessionSnapshot;
+}
+export declare const HostMediaCreateSessionResponse: S.Codec<HostMediaCreateSessionResponse>;
+/** Idempotent owned-session teardown, never gated on permission or subscriptions. */
+export interface HostMediaEndSessionRequest {
+    /** Previously owned live or terminal session capability. */
+    sessionId: MediaSessionId;
+}
+export declare const HostMediaEndSessionRequest: S.Codec<HostMediaEndSessionRequest>;
+/**
+ * Bounded public domain errors. Permission denial and unsupported service use
+ * framework CallError variants. Never attach backend/device/transport strings.
+ */
+export type HostMediaError = 
+/** Calling connectivity is unavailable. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Peer identity is malformed or unauthenticated. */
+ | {
+    tag: "InvalidPeer";
+    value?: undefined;
+}
+/** Peer belongs to another network namespace. */
+ | {
+    tag: "NetworkMismatch";
+    value?: undefined;
+}
+/** Peer belongs to another canonical product. */
+ | {
+    tag: "ProductMismatch";
+    value?: undefined;
+}
+/** Random and unowned handles are indistinguishable. */
+ | {
+    tag: "InvalidHandle";
+    value?: undefined;
+}
+/** Owned session is terminal. */
+ | {
+    tag: "SessionEnded";
+    value?: undefined;
+}
+/** Incoming offer expired or was cancelled. */
+ | {
+    tag: "IncomingExpired";
+    value?: undefined;
+}
+/** Incoming offer was already claimed. */
+ | {
+    tag: "IncomingConsumed";
+    value?: undefined;
+}
+/** No runtime listener has an initial snapshot enqueued. */
+ | {
+    tag: "SubscriptionRequired";
+    value?: undefined;
+}
+/** Live endpoint capacity would be exceeded before any signaling. */
+ | {
+    tag: "CapacityExceeded";
+    value: {
+        limit: number;
+    };
+}
+/** Mutation is invalid or superseded by a newer admitted intent. */
+ | {
+    tag: "InvalidState";
+    value?: undefined;
+}
+/** Invalid surface set, including conflicting reuse of a layout revision. */
+ | {
+    tag: "InvalidSurface";
+    value?: undefined;
+}
+/** Submitted viewport transform is no longer current. */
+ | {
+    tag: "StaleViewport";
+    value: {
+        currentRevision: bigint;
+    };
+}
+/** Submitted layout revision predates the committed or queued layout. */
+ | {
+    tag: "StaleLayout";
+    value: {
+        currentRevision: bigint;
+    };
+}
+/** No authorized rendering attachment is available. */
+ | {
+    tag: "SurfaceUnavailable";
+    value?: undefined;
+}
+/** A required capture device is currently unavailable. */
+ | {
+    tag: "DeviceUnavailable";
+    value?: undefined;
+}
+/** User cancelled the trusted screen picker. */
+ | {
+    tag: "CaptureCancelled";
+    value?: undefined;
+}
+/** Host operation or consent deadline elapsed; late work cannot commit. */
+ | {
+    tag: "TimedOut";
+    value?: undefined;
+}
+/** Listener queue overflowed; resubscribe for an atomic fresh snapshot. */
+ | {
+    tag: "EventOverflow";
+    value?: undefined;
+}
+/** No operation exists for the queried key in this runtime. */
+ | {
+    tag: "InvalidOperation";
+    value?: undefined;
+}
+/** Same key was previously bound to a different request. */
+ | {
+    tag: "OperationConflict";
+    value?: undefined;
+}
+/** Cancellation tombstone prevents the mutation from acting. */
+ | {
+    tag: "OperationCancelled";
+    value?: undefined;
+}
+/** A finite runtime budget would be exceeded before effects begin. */
+ | {
+    tag: "ResourceExhausted";
+    value: {
+        resource: MediaResource;
+    };
+};
+export declare const HostMediaError: S.Codec<HostMediaError>;
+/** Recover the exact outcome of a potentially lost mutation response. */
+export interface HostMediaGetOperationRequest {
+    /** Original mutation key; unknown keys return InvalidOperation. */
+    operationId: MediaOperationId;
+}
+export declare const HostMediaGetOperationRequest: S.Codec<HostMediaGetOperationRequest>;
+/** Idempotently remove a known participant, even after subscription or grant loss. */
+export interface HostMediaRemoveParticipantRequest {
+    /** Owning session capability. */
+    sessionId: MediaSessionId;
+    /** Previously owned participant capability, live or terminal. */
+    participantId: MediaParticipantId;
+}
+export declare const HostMediaRemoveParticipantRequest: S.Codec<HostMediaRemoveParticipantRequest>;
+/** Decide a single-use offer; a peer address cannot substitute for its capability. */
+export interface HostMediaRespondIncomingRequest {
+    /** Owned, authenticated incoming capability. */
+    incomingId: MediaIncomingId;
+    /** Refusal or operation-correlated acceptance. */
+    decision: MediaIncomingDecision;
+}
+export declare const HostMediaRespondIncomingRequest: S.Codec<HostMediaRespondIncomingRequest>;
+/**
+ * Replace capture intent. Admission orders changes before asynchronous consent;
+ * newer intent cancels older uncommitted work, whose late capture is released.
+ */
+export interface HostMediaSetLocalTracksRequest {
+    /** Idempotent runtime-wide mutation key. */
+    operationId: MediaOperationId;
+    /** Owned live session capability. */
+    sessionId: MediaSessionId;
+    /** Complete replacement intent; all-off remains allowed without a listener. */
+    tracks: MediaLocalTracks;
+}
+export declare const HostMediaSetLocalTracksRequest: S.Codec<HostMediaSetLocalTracksRequest>;
+/** Successful capture intent update; actual tracks may still be starting. */
+export interface HostMediaSetLocalTracksResponse {
+    /** Authoritative session with the newly committed intent. */
+    session: MediaSessionSnapshot;
+}
+export declare const HostMediaSetLocalTracksResponse: S.Codec<HostMediaSetLocalTracksResponse>;
+/**
+ * Atomically replace the complete session layout at one compositor frame.
+ * Validate every entry before queueing. A viewport change discards the entire
+ * stale queued set, and teardown overrides all pending layouts.
+ */
+export interface HostMediaSetSurfacesRequest {
+    /** Owned live session capability. */
+    sessionId: MediaSessionId;
+    /** Current authorized attachment/transform revision. */
+    viewportRevision: bigint;
+    /** Product-monotonic session revision; identical current retries succeed. */
+    layoutRevision: bigint;
+    /** Complete set with unique surface keys; an empty set clears pictures. */
+    surfaces: Array<MediaSurface>;
+}
+export declare const HostMediaSetSurfacesRequest: S.Codec<HostMediaSetSurfacesRequest>;
+/** Acknowledges an atomic queued commit, not immunity from viewport changes. */
+export interface HostMediaSetSurfacesResponse {
+    /** Accepted product layout revision. */
+    layoutRevision: bigint;
+}
+export declare const HostMediaSetSurfacesResponse: S.Codec<HostMediaSetSurfacesResponse>;
 /** Error from [`crate::api::System::navigate_to`]. */
 export type HostNavigateToError = 
 /**
@@ -6277,6 +7750,446 @@ export interface HostThemeSubscribeItem {
     variant: ThemeVariant;
 }
 export declare const HostThemeSubscribeItem: S.Codec<HostThemeSubscribeItem>;
+/** Typed audit selection proof, never arbitrary-message signing. */
+export interface HostValidatorAuditProveRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical parameters matching the enrolled digest. */
+    parameters: HexString;
+    /** Exact audit selection domain. */
+    input: ValidatorAuditInput;
+}
+export declare const HostValidatorAuditProveRequest: S.Codec<HostValidatorAuditProveRequest>;
+/** Bandersnatch audit selection proof. */
+export interface HostValidatorAuditProveResponse {
+    /** Canonical Bandersnatch signature. */
+    signature: HexString;
+}
+export declare const HostValidatorAuditProveResponse: S.Codec<HostValidatorAuditProveResponse>;
+/** Stop admission, drain persistence/signing/transport, reap and release ownership. */
+export interface HostValidatorCloseRequest {
+    /** Opaque execution-local handle. */
+    handle: string;
+}
+export declare const HostValidatorCloseRequest: S.Codec<HostValidatorCloseRequest>;
+/** Sequential bounded upload or a durable compare-and-append checkpoint. */
+export type HostValidatorCommitRequest = 
+/** Start the sole in-progress upload; does not create a signing intent. */
+{
+    tag: "Begin";
+    value: {
+        handle: string;
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/** Append the next sequential chunk. */
+ | {
+    tag: "Chunk";
+    value: {
+        handle: string;
+        offset: number;
+        bytes: HexString;
+    };
+}
+/** Verify hash/size and fsync complete immutable blob and its directory. */
+ | {
+    tag: "Finish";
+    value: {
+        handle: string;
+    };
+}
+/** Commit a checkpoint referencing an already complete verified blob. */
+ | {
+    tag: "Checkpoint";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/**
+ * Replace all retained recovery witnesses with one complete checkpoint.
+ *
+ * The ready execution asserts authenticated recovery coverage of every
+ * retained vote target; consumed-slot guards remain in the host journal.
+ * The host binds this assertion to the exact expected head and durably
+ * rebinds witness references before reclaiming their former blobs. It
+ * never removes signing choices or verifies opaque consensus state itself.
+ * May reference the existing latest blob, requiring no upload capacity.
+ */
+ | {
+    tag: "Supersede";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/** Begin a separately quota-accounted immutable archive object. */
+ | {
+    tag: "ArchiveBegin";
+    value: {
+        handle: string;
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/** Append a bounded sequential archive chunk. */
+ | {
+    tag: "ArchiveChunk";
+    value: {
+        handle: string;
+        offset: number;
+        bytes: HexString;
+    };
+}
+/** Verify and durably store the lossless archive object. */
+ | {
+    tag: "ArchiveFinish";
+    value: {
+        handle: string;
+    };
+};
+export declare const HostValidatorCommitRequest: S.Codec<HostValidatorCommitRequest>;
+/** Upload progress or durably committed checkpoint. */
+export type HostValidatorCommitResponse = 
+/** Next upload offset expected by the host. */
+{
+    tag: "Upload";
+    value: {
+        offset: number;
+    };
+}
+/** Immutable complete blob is now referenceable. */
+ | {
+    tag: "Stored";
+    value: {
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/** Durable checkpoint head. */
+ | {
+    tag: "Committed";
+    value: {
+        revision: string;
+        head: HexString;
+    };
+};
+export declare const HostValidatorCommitResponse: S.Codec<HostValidatorCommitResponse>;
+/** Typed `jam_entropy` signature over a ticket id. */
+export interface HostValidatorEntropySourceRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical parameters matching the enrolled digest. */
+    parameters: HexString;
+    /** Entropy-source ticket id. */
+    ticketId: HexString;
+}
+export declare const HostValidatorEntropySourceRequest: S.Codec<HostValidatorEntropySourceRequest>;
+/** Entropy-source VRF signature. */
+export interface HostValidatorEntropySourceResponse {
+    /** Canonical Bandersnatch signature. */
+    signature: HexString;
+}
+export declare const HostValidatorEntropySourceResponse: S.Codec<HostValidatorEntropySourceResponse>;
+/** Persist a typed full-duty intent before releasing its Ed25519 signature. */
+export interface HostValidatorFullSignRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical parameters matching the enrolled digest. */
+    parameters: HexString;
+    /** Expected canonical decimal durable revision. */
+    revision: string;
+    /** Expected custody digest. */
+    head: HexString;
+    /** Exact typed signing domain. */
+    duty: ValidatorFullDuty;
+    /** Complete recovery material bound to this intent. */
+    recovery: ValidatorRecoveryRef;
+}
+export declare const HostValidatorFullSignRequest: S.Codec<HostValidatorFullSignRequest>;
+/** Signature released only after the durable full-duty guard is recorded. */
+export interface HostValidatorFullSignResponse {
+    /** Canonical Ed25519 signature. */
+    signature: HexString;
+    /** Canonical decimal durable revision. */
+    revision: string;
+    /** Durable custody digest. */
+    head: HexString;
+}
+export declare const HostValidatorFullSignResponse: S.Codec<HostValidatorFullSignResponse>;
+/** Acquire custody, read recovery material, or acknowledge completed guest replay. */
+export type HostValidatorOpenRequest = 
+/** Acquire an existing host-enrolled identity, never enroll/import a key. */
+{
+    tag: "Acquire";
+    value: {
+        genesis: HexString;
+    };
+}
+/** Read a bounded range of a retained recovery blob. */
+ | {
+    tag: "Read";
+    value: {
+        handle: string;
+        recovery: ValidatorRecoveryRef;
+        offset: number;
+        maxBytes: number;
+    };
+}
+/** Guest has replayed/revalidated the acquired head; not proof of consensus. */
+ | {
+    tag: "Ready";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+    };
+}
+/** Read one exact-head page; no full-history array is acquired. */
+ | {
+    tag: "Retained";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        offset: number;
+    };
+}
+/** Look up every historical conflict for one GRANDPA duty key. */
+ | {
+    tag: "LookupIntent";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        stage: number;
+        set: number;
+        round: string;
+    };
+}
+/** Look up a consumed authoring slot, including archived history. */
+ | {
+    tag: "LookupSeal";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        slot: number;
+    };
+}
+/** Read an immutable lossless archive object, not a live recovery witness. */
+ | {
+    tag: "ArchiveRead";
+    value: {
+        handle: string;
+        recovery: ValidatorRecoveryRef;
+        offset: number;
+        maxBytes: number;
+    };
+}
+/** Authenticate an immutable archive object's hash and complete length. */
+ | {
+    tag: "ArchiveInfo";
+    value: {
+        handle: string;
+        hash: HexString;
+    };
+}
+/** Look up a full-duty conflict key, including archived history. */
+ | {
+    tag: "LookupFull";
+    value: {
+        handle: string;
+        revision: string;
+        head: HexString;
+        duty: ValidatorFullDuty;
+    };
+};
+export declare const HostValidatorOpenRequest: S.Codec<HostValidatorOpenRequest>;
+/** Custody acquisition or bounded recovery result. */
+export type HostValidatorOpenResponse = 
+/** Locked, intact custody state, not yet replay-ready. */
+{
+    tag: "Acquired";
+    value: {
+        handle: string;
+        ed25519: HexString;
+        bandersnatch: HexString;
+        p256: HexString;
+        genesis: HexString;
+        parameters: HexString;
+        generation: string;
+        revision: string;
+        head: HexString;
+        recovery?: ValidatorRecoveryRef;
+        intentCount: number;
+        sealCount: number;
+        fullDutyCount: number;
+        fullDuties: boolean;
+        latestSealSlot?: number;
+        historyRoot: HexString;
+        authoring: boolean;
+        unixMs: string;
+        protection: ValidatorProtection;
+        stages: HexString;
+        maxRecoveryBytes: number;
+        maxChunkBytes: number;
+        maxStorageBytes: string;
+        maxHistoryBytes: string;
+        maxArchiveBytes: string;
+    };
+}
+/** Bounded bytes starting at the requested offset. */
+ | {
+    tag: "Read";
+    value: {
+        bytes: HexString;
+    };
+}
+/** The exact head was acknowledged for replay. */
+ | {
+    tag: "Ready";
+    value?: undefined;
+}
+/** Exact-head bounded retained-history page. */
+ | {
+    tag: "Retained";
+    value: {
+        revision: string;
+        head: HexString;
+        offset: number;
+        intents: Array<ValidatorIntent>;
+        seals: Array<ValidatorSealIntent>;
+        next?: number;
+    };
+}
+/** Authenticated historical GRANDPA lookup; absence is not a storage error. */
+ | {
+    tag: "Intent";
+    value: {
+        revision: string;
+        head: HexString;
+        intent?: ValidatorIntent;
+    };
+}
+/** Authenticated historical consumed-slot lookup. */
+ | {
+    tag: "Seal";
+    value: {
+        revision: string;
+        head: HexString;
+        seal?: ValidatorSealIntent;
+    };
+}
+/** Verified immutable archive metadata. */
+ | {
+    tag: "ArchiveInfo";
+    value: {
+        recovery: ValidatorRecoveryRef;
+    };
+}
+/** Exact-head retained full-duty lookup. */
+ | {
+    tag: "Full";
+    value: {
+        revision: string;
+        head: HexString;
+        intent?: ValidatorFullIntent;
+    };
+};
+export declare const HostValidatorOpenResponse: S.Codec<HostValidatorOpenResponse>;
+/** Compare-and-append one durable slot seal before releasing its signature. */
+export interface HostValidatorSealRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical parameters matching the enrolled digest. */
+    parameters: HexString;
+    /** Expected canonical decimal durable revision. */
+    revision: string;
+    /** Expected durable journal digest. */
+    head: HexString;
+    /** Exact seal VRF domain. */
+    input: ValidatorSealInput;
+    /** Complete recovery material uploaded before seal admission. */
+    recovery: ValidatorRecoveryRef;
+    /** Canonical encoded SealPayload, at most 256 KiB; decoded by the helper. */
+    payload: HexString;
+}
+export declare const HostValidatorSealRequest: S.Codec<HostValidatorSealRequest>;
+/** Released only after intent fsync and durable-head barriers. */
+export interface HostValidatorSealResponse {
+    /** Canonical Bandersnatch block seal. */
+    signature: HexString;
+    /** Canonical decimal durable revision. */
+    revision: string;
+    /** Durable journal digest. */
+    head: HexString;
+}
+export declare const HostValidatorSealResponse: S.Codec<HostValidatorSealResponse>;
+/** Compare, persist a typed GRANDPA intent, then sign its exact JAM domain. */
+export interface HostValidatorSignRequest {
+    /** Opaque execution-local handle. */
+    handle: string;
+    /** Expected canonical decimal u64 revision. */
+    revision: string;
+    /** Expected previous journal digest. */
+    head: HexString;
+    /** Supported typed signing domain. */
+    duty: ValidatorGrandpaDuty;
+    /** Complete recovery material bound to the intent. */
+    recovery: ValidatorRecoveryRef;
+}
+export declare const HostValidatorSignRequest: S.Codec<HostValidatorSignRequest>;
+/** Signature released only after every required durability barrier succeeds. */
+export interface HostValidatorSignResponse {
+    /** Deterministic Ed25519 signature over the exact 65-byte JAM domain. */
+    signature: HexString;
+    /** Canonical decimal u64 durable revision. */
+    revision: string;
+    /** Durable journal digest. */
+    head: HexString;
+}
+export declare const HostValidatorSignResponse: S.Codec<HostValidatorSignResponse>;
+/** Ring ticket proof over the guest's consensus-selected waiting set. */
+export interface HostValidatorTicketProveRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical parameters matching the enrolled digest. */
+    parameters: HexString;
+    /** Ordered waiting-set public keys, at most 1023. */
+    ring: Array<HexString>;
+    /** Enrolled key's position in the ring. */
+    index: number;
+    /** Epoch entropy. */
+    entropy: HexString;
+    /** Bounded ticket attempt under the enrolled parameters. */
+    attempt: number;
+}
+export declare const HostValidatorTicketProveRequest: S.Codec<HostValidatorTicketProveRequest>;
+/** Anonymous ring-VRF proof. */
+export interface HostValidatorTicketProveResponse {
+    /** Canonical ring signature. */
+    proof: HexString;
+}
+export declare const HostValidatorTicketProveResponse: S.Codec<HostValidatorTicketProveResponse>;
+/** Deterministic eligibility output, not a signature. */
+export interface HostValidatorVrfOutputRequest {
+    /** Owned execution-local handle. */
+    handle: string;
+    /** Canonical encoded parameters matching the enrolled digest, at most 1024 bytes. */
+    parameters: HexString;
+    /** Exact eligibility domain. */
+    input: ValidatorSealInput;
+}
+export declare const HostValidatorVrfOutputRequest: S.Codec<HostValidatorVrfOutputRequest>;
+/** Bandersnatch eligibility result. */
+export interface HostValidatorVrfOutputResponse {
+    /** Deterministic VRF output. */
+    output: HexString;
+}
+export declare const HostValidatorVrfOutputResponse: S.Codec<HostValidatorVrfOutputResponse>;
 /** Request to begin a pending operation. */
 export interface HostWorkerBeginOperationRequest {
     /** Optional label for host logs and UI. */
@@ -7086,6 +8999,165 @@ export interface HostProfilePlaceContactAvatarsRequest {
     slots: Array<V03ContactAvatarSlot>;
 }
 export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
+/** Exact Bandersnatch audit selection domain. */
+export type ValidatorAuditInput = 
+/** Initial audit selection. */
+{
+    tag: "Initial";
+    value: {
+        entropy: HexString;
+    };
+}
+/** Subsequent audit selection. */
+ | {
+    tag: "Subsequent";
+    value: {
+        entropy: HexString;
+        report: HexString;
+        tranche: number;
+    };
+};
+export declare const ValidatorAuditInput: S.Codec<ValidatorAuditInput>;
+/** One canonical audit announcement report. */
+export interface ValidatorAuditReport {
+    /** Core index under the enrolled parameters. */
+    core: number;
+    /** Work-report hash. */
+    report: HexString;
+}
+export declare const ValidatorAuditReport: S.Codec<ValidatorAuditReport>;
+/** Runtime-owned authority, passed only to trusted platform callbacks. */
+export interface ValidatorAuthority {
+    /** Verified product namespace from the host connection. */
+    productId: string;
+    /** Current root account from runtime authority, not the guest. */
+    account: HexString;
+    /** Canonical unsigned decimal runtime instance id. */
+    executionId: string;
+}
+export declare const ValidatorAuthority: S.Codec<ValidatorAuthority>;
+/** Full-validator signing domains, requiring explicit role-4 consent. */
+export type ValidatorFullDuty = 
+/** Availability assurance, guarded by anchor. */
+{
+    tag: "Assurance";
+    value: {
+        anchor: HexString;
+        statementHash: HexString;
+    };
+}
+/** Work-report guarantee, guarded by report. */
+ | {
+    tag: "Guarantee";
+    value: {
+        report: HexString;
+    };
+}
+/** Audit announcement, guarded by its exact canonical message hash. */
+ | {
+    tag: "Announcement";
+    value: {
+        anchor: HexString;
+        tranche: number;
+        reports: Array<ValidatorAuditReport>;
+    };
+}
+/** Validity judgement; opposite validity for one report conflicts. */
+ | {
+    tag: "Judgement";
+    value: {
+        report: HexString;
+        valid: boolean;
+    };
+};
+export declare const ValidatorFullDuty: S.Codec<ValidatorFullDuty>;
+/** Durable full-duty guard; never enumerated in retained-history pages. */
+export interface ValidatorFullIntent {
+    /** Canonical decimal durable revision. */
+    revision: string;
+    /** Exact typed domain that was signed. */
+    duty: ValidatorFullDuty;
+    /** Complete recovery material bound before signing. */
+    recovery: ValidatorRecoveryRef;
+}
+export declare const ValidatorFullIntent: S.Codec<ValidatorFullIntent>;
+/** One supported GRANDPA signing domain. No arbitrary-byte signing exists. */
+export interface ValidatorGrandpaDuty {
+    /** 0 prevote, 1 precommit, 2 proposal; all other values refuse. */
+    stage: number;
+    /** Authority set identifier. */
+    set: number;
+    /** Canonical unsigned decimal u64, never a JSON number. */
+    round: string;
+    /** Target header hash. */
+    target: HexString;
+    /** Target posterior state root, independently computed by execution. */
+    stateRoot: HexString;
+    /** Target slot. */
+    slot: number;
+}
+export declare const ValidatorGrandpaDuty: S.Codec<ValidatorGrandpaDuty>;
+/** Retained durable signing intent needed by guest recovery. */
+export interface ValidatorIntent {
+    /** Canonical unsigned decimal u64 journal revision. */
+    revision: string;
+    /** Exact domain that was durably accepted. */
+    duty: ValidatorGrandpaDuty;
+    /** Complete recovery material bound before signing. */
+    recovery: ValidatorRecoveryRef;
+}
+export declare const ValidatorIntent: S.Codec<ValidatorIntent>;
+/** Honest protection classes offered by this experiment. */
+export type ValidatorProtection = "OsKeyringWrappedSoftware";
+export declare const ValidatorProtection: S.Codec<ValidatorProtection>;
+/** Content-addressed complete recovery material; hashes are Blake2b-256. */
+export interface ValidatorRecoveryRef {
+    /** Complete blob hash. */
+    hash: HexString;
+    /** Complete byte length, at most 64 MiB. */
+    length: number;
+}
+export declare const ValidatorRecoveryRef: S.Codec<ValidatorRecoveryRef>;
+/** Canonical decoded seal domain retained by the durable helper. */
+export interface ValidatorSealDuty {
+    /** Consumed slot; at most one payload can be sealed per slot. */
+    slot: number;
+    /** Author index decoded from the canonical seal payload. */
+    authorIndex: number;
+    /** Exact VRF domain. */
+    input: ValidatorSealInput;
+    /** Blake2b-256 of the canonical encoded seal payload. */
+    payloadHash: HexString;
+}
+export declare const ValidatorSealDuty: S.Codec<ValidatorSealDuty>;
+/** Exact Safrole VRF domain selector; no arbitrary signing message. */
+export type ValidatorSealInput = 
+/** Ticket-based eligibility and seal domain. */
+{
+    tag: "TicketSeal";
+    value: {
+        entropy: HexString;
+        attempt: number;
+    };
+}
+/** Fallback slot eligibility and seal domain. */
+ | {
+    tag: "FallbackSeal";
+    value: {
+        entropy: HexString;
+    };
+};
+export declare const ValidatorSealInput: S.Codec<ValidatorSealInput>;
+/** Persisted seal intent exposed for complete guest recovery. */
+export interface ValidatorSealIntent {
+    /** Canonical decimal durable revision. */
+    revision: string;
+    /** Consumed slot and exact domain. */
+    duty: ValidatorSealDuty;
+    /** Complete pre-seal recovery material. */
+    recovery: ValidatorRecoveryRef;
+}
+export declare const ValidatorSealIntent: S.Codec<ValidatorSealIntent>;
 /** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;

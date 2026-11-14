@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import s from './TextArea.module.css';
+import s from './TextField.module.css';
 
 /** A labelled multi-line field. */
 export function TextArea(props: {

@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SITE_ID } from '@dotli/config';
-import type { ProtocolRequestEnvelope, ProtocolRequestMap, SharedWalletRequestMethod } from '@dotli/protocol';
+import type {
+  ProtocolRequestEnvelope,
+  ProtocolRequestMap,
+  SharedWalletRequestMethod,
+  WalletOwner,
+} from '@dotli/protocol';
 import { forgetLocalWallet, loadLocalWallet, saveLocalWallet } from '@dotli/storage';
 import { handleLocalWalletRequest } from '../src/local-wallet-handler.js';
 
@@ -49,7 +54,15 @@ async function corruptRecord(): Promise<void> {
   db.close();
 }
 
+const owner = { handle: vi.fn(), onRevoked: vi.fn(), releaseAll: vi.fn() } satisfies WalletOwner;
+const changed = vi.fn();
+
+function handle(envelope: ProtocolRequestEnvelope, origin: string): Promise<unknown> {
+  return handleLocalWalletRequest(envelope, origin, { owner: () => owner, changed });
+}
+
 beforeEach(async () => {
+  vi.clearAllMocks();
   await forgetLocalWallet();
 });
 
@@ -58,7 +71,7 @@ describe('handleLocalWalletRequest', () => {
     // Given: no record
 
     // When
-    const result = await handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), HOST);
+    const result = await handle(request('localWalletRead', { siteId: SITE_ID }), HOST);
 
     // Then
     expect(result).toEqual({ status: 'none' });
@@ -66,10 +79,10 @@ describe('handleLocalWalletRequest', () => {
 
   it('As a host page, I read back the entropy another app saved', async () => {
     // Given
-    await handleLocalWalletRequest(request('localWalletSave', { siteId: SITE_ID, entropy: ENTROPY }), HOST);
+    await handle(request('localWalletSave', { siteId: SITE_ID, entropy: ENTROPY }), HOST);
 
     // When
-    const result = await handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), HOST);
+    const result = await handle(request('localWalletRead', { siteId: SITE_ID }), HOST);
 
     // Then
     expect(result).toEqual({ status: 'ok', entropy: ENTROPY, identity: null });
@@ -80,7 +93,7 @@ describe('handleLocalWalletRequest', () => {
     await saveLocalWallet(ENTROPY);
 
     // When
-    await handleLocalWalletRequest(request('localWalletIdentity', { siteId: SITE_ID, identity: IDENTITY }), HOST);
+    await handle(request('localWalletIdentity', { siteId: SITE_ID, identity: IDENTITY }), HOST);
 
     // Then
     expect(await loadLocalWallet()).toEqual({ entropy: ENTROPY, identity: IDENTITY });
@@ -91,10 +104,51 @@ describe('handleLocalWalletRequest', () => {
     await saveLocalWallet(ENTROPY);
 
     // When
-    await handleLocalWalletRequest(request('localWalletForget', { siteId: SITE_ID }), HOST);
+    await handle(request('localWalletForget', { siteId: SITE_ID }), HOST);
 
     // Then
     expect(await loadLocalWallet()).toBeNull();
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it('As a host page, I tell sibling tabs about a save but not about an identity update', async () => {
+    // When
+    await handle(request('localWalletSave', { siteId: SITE_ID, entropy: ENTROPY }), HOST);
+    await handle(request('localWalletIdentity', { siteId: SITE_ID, identity: IDENTITY }), HOST);
+
+    // Then
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it('As a host page booting the local wallet, I ask the frame owner for the lease within my deadline', async () => {
+    // Given
+    owner.handle.mockResolvedValue('lease-1');
+    const envelope = {
+      ...request('localWalletOwner', { siteId: SITE_ID, operation: { action: 'acquire' } }),
+      deadlineMs: 42,
+    };
+
+    // When
+    const lease = await handle(envelope, HOST);
+
+    // Then
+    expect(lease).toBe('lease-1');
+    expect(owner.handle).toHaveBeenCalledWith({ action: 'acquire' }, 42);
+  });
+
+  it('As a host page, I cannot send a malformed owner operation', async () => {
+    // When
+    const result = handle(
+      request('localWalletOwner', {
+        siteId: SITE_ID,
+        operation: { action: 'release' } as ProtocolRequestMap['localWalletOwner']['operation'],
+      }),
+      HOST,
+    );
+
+    // Then
+    await expect(result).rejects.toThrow(/owner operation/);
+    expect(owner.handle).not.toHaveBeenCalled();
   });
 
   it('As a product origin, I am refused the wallet', async () => {
@@ -102,7 +156,7 @@ describe('handleLocalWalletRequest', () => {
     await saveLocalWallet(ENTROPY);
 
     // When
-    const read = handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), PRODUCT);
+    const read = handle(request('localWalletRead', { siteId: SITE_ID }), PRODUCT);
 
     // Then
     await expect(read).rejects.toThrow(/denied/);
@@ -113,7 +167,7 @@ describe('handleLocalWalletRequest', () => {
     await saveLocalWallet(ENTROPY);
 
     // When
-    const read = handleLocalWalletRequest(request('localWalletRead', { siteId: 'evil.li' }), HOST);
+    const read = handle(request('localWalletRead', { siteId: 'evil.li' }), HOST);
 
     // Then
     await expect(read).rejects.toThrow(/Invalid siteId/);
@@ -124,7 +178,7 @@ describe('handleLocalWalletRequest', () => {
     const entropy = new Uint8Array(5);
 
     // When
-    const save = handleLocalWalletRequest(request('localWalletSave', { siteId: SITE_ID, entropy }), HOST);
+    const save = handle(request('localWalletSave', { siteId: SITE_ID, entropy }), HOST);
 
     // Then
     await expect(save).rejects.toThrow(/entropy/);
@@ -137,7 +191,7 @@ describe('handleLocalWalletRequest', () => {
     await corruptRecord();
 
     // When
-    const result = await handleLocalWalletRequest(request('localWalletRead', { siteId: SITE_ID }), HOST);
+    const result = await handle(request('localWalletRead', { siteId: SITE_ID }), HOST);
 
     // Then
     expect(result).toEqual({ status: 'unreadable' });
