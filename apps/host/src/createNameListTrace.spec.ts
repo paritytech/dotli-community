@@ -106,7 +106,7 @@ describe('createNameListTrace', () => {
   });
 });
 
-/** A timeline that records each mark and measure in order, on a clock that ticks once per read. */
+/** A timeline that records each mark and measure in order, on a clock that ticks once per call. */
 function createFakeTimeline() {
   const entries: TimelineEntry[] = [];
   let tick = 0;

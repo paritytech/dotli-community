@@ -267,7 +267,7 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
       storedRead: () => undefined,
       readsOpened: () => undefined,
       labelsShown: () => undefined,
-      withReads: reads => reads,
+      withReads: source => source,
       ended: end => {
         traced.push(end.kind === 'ok' ? 'ok' : `error ${getErrorName(end.error) ?? 'unknown'}`);
         traceEnded.resolve(undefined);

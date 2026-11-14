@@ -12,7 +12,10 @@
 import { errors, expect, type Browser, type Page } from '@playwright/test';
 import { getErrorName } from '@dotli/shared';
 import {
+  isNameListReadDetail,
+  isNameListSyncSummary,
   NAME_LIST_MARKS,
+  NAME_LIST_READ_KINDS,
   NAME_LIST_READ_MEASURE,
   type NameListReadDetail,
   type NameListSyncSummary,
@@ -43,22 +46,20 @@ const RUNS = parseInt(process.env['PERF_RUNS'] ?? '1', 10);
 const SYNC_TIMEOUT_MS = parseInt(process.env['PERF_NAME_LIST_TIMEOUT_MS'] ?? '300000', 10);
 const SELECTED_BACKENDS = readBackends(process.env['PERF_BACKENDS']);
 
-const READ_KINDS: readonly NameListReadDetail['kind'][] = ['label_stores', 'new_labels', 'app_labels'];
-
 const COLUMNS: readonly { title: string; width: number }[] = [
   { title: 'backend', width: 22 },
   { title: 'step', width: 7 },
   { title: 'run', width: 4 },
-  { title: 'outcome', width: 14 },
-  { title: 'stored', width: 7 },
-  { title: 'reads', width: 7 },
-  { title: 'labels', width: 7 },
-  { title: 'total', width: 7 },
-  ...READ_KINDS.map(kind => ({ title: kind, width: 13 })),
-  { title: 'entries', width: 8 },
-  { title: 'labels', width: 7 },
-  { title: 'apps', width: 5 },
-  { title: 'reads', width: 5 },
+  { title: 'outcome', width: 26 },
+  { title: 't_stored', width: 8 },
+  { title: 't_reads', width: 8 },
+  { title: 't_labels', width: 8 },
+  { title: 't_total', width: 8 },
+  ...NAME_LIST_READ_KINDS.map(kind => ({ title: kind, width: 13 })),
+  { title: 'n_entries', width: 9 },
+  { title: 'n_labels', width: 8 },
+  { title: 'n_apps', width: 6 },
+  { title: 'n_reads', width: 7 },
 ];
 
 for (const backend of SELECTED_BACKENDS) {
@@ -143,39 +144,16 @@ async function readSyncTimeline(page: Page): Promise<SyncTimeline> {
   );
   // The host can reload itself between the wait and this read, and the new document has no end mark yet.
   const { summary } = recorded;
-  if (!isSyncSummary(summary)) {
+  if (!isNameListSyncSummary(summary)) {
     throw new Error(`The name list end mark '${NAME_LIST_MARKS.end}' held no sync summary after the wait`);
   }
   const reads = recorded.reads.map(({ detail, duration }) => {
-    if (!isReadDetail(detail)) {
+    if (!isNameListReadDetail(detail)) {
       throw new Error(`A '${NAME_LIST_READ_MEASURE}' measure held no read detail`);
     }
     return { detail, duration };
   });
   return { summary, marks: recorded.marks, reads };
-}
-
-/** Whether a detail read back from the page is a sync summary, checked on the fields this script prints. */
-function isSyncSummary(value: unknown): value is NameListSyncSummary {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'outcome' in value &&
-    (value.outcome === 'ok' || value.outcome === 'error') &&
-    'entries' in value &&
-    typeof value.entries === 'number' &&
-    'labels' in value &&
-    typeof value.labels === 'number' &&
-    'apps' in value &&
-    typeof value.apps === 'number' &&
-    'reads' in value &&
-    typeof value.reads === 'number'
-  );
-}
-
-/** Whether a detail read back from the page is a read's detail, checked on the kind this script groups by. */
-function isReadDetail(value: unknown): value is NameListReadDetail {
-  return typeof value === 'object' && value !== null && 'kind' in value && READ_KINDS.some(kind => kind === value.kind);
 }
 
 function printStep(leading: [Backend, Step, string], step: Settled<SyncTimeline>): void {
@@ -190,7 +168,7 @@ function printStep(leading: [Backend, Step, string], step: Settled<SyncTimeline>
     const time = at.get(name);
     return start === undefined || time === undefined ? '-' : formatSeconds(time - start);
   };
-  const readTimes = READ_KINDS.map(kind => {
+  const readTimes = NAME_LIST_READ_KINDS.map(kind => {
     const durations = reads.filter(read => read.detail.kind === kind).map(read => read.duration);
     return durations.length === 0 ? '-' : formatSeconds(durations.reduce((sum, duration) => sum + duration, 0));
   });
@@ -218,7 +196,9 @@ function printFailure(leading: [Backend, Step, string], error: unknown): void {
 }
 
 function printRow(cells: readonly string[]): void {
-  console.log(`  ${cells.map((cell, index) => cell.padEnd(COLUMNS[index]?.width ?? 0)).join(' ')}`);
+  console.log(
+    `  ${cells.map((cell, index) => cell.slice(0, COLUMNS[index]?.width).padEnd(COLUMNS[index]?.width ?? 0)).join(' ')}`,
+  );
 }
 
 function describeOutcome(summary: NameListSyncSummary): string {
@@ -247,13 +227,18 @@ async function settle<Value>(work: () => Promise<Value>): Promise<Settled<Value>
   }
 }
 
-/** Throws an `Error` naming a backend that is not one of `BACKENDS`. */
+/** Throws an `Error` naming a backend that is not one of `BACKENDS`, or that the list repeats. */
 function readBackends(raw: string | undefined): readonly Backend[] {
   if (raw === undefined) {
     return BACKENDS;
   }
-  return raw.split(',').map(name => {
-    const backend = BACKENDS.find(known => known === name.trim());
+  const names = raw.split(',').map(name => name.trim());
+  const repeated = names.find((name, index) => names.indexOf(name) !== index);
+  if (repeated !== undefined) {
+    throw new Error(`Backend '${repeated}' repeats in PERF_BACKENDS`);
+  }
+  return names.map(name => {
+    const backend = BACKENDS.find(known => known === name);
     if (backend === undefined) {
       throw new Error(`Unknown backend '${name}' in PERF_BACKENDS, expected one of ${BACKENDS.join(', ')}`);
     }

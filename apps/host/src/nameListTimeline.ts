@@ -18,9 +18,15 @@ export const NAME_LIST_MARKS = {
 /** The measure of one resolver read of a name list sync. */
 export const NAME_LIST_READ_MEASURE = 'dotli:name-list:read';
 
+/** The kinds of read a name list sync measures. */
+type NameListReadKind = 'label_stores' | 'new_labels' | 'app_labels';
+
+/** Every kind of read a name list sync measures. */
+export const NAME_LIST_READ_KINDS: readonly NameListReadKind[] = ['label_stores', 'new_labels', 'app_labels'];
+
 /** The `detail` of one read's measure. */
 export type NameListReadDetail = {
-  kind: 'label_stores' | 'new_labels' | 'app_labels';
+  kind: NameListReadKind;
   outcome: 'ok' | 'error';
   /** Stores known before the read, stores asked, or labels checked. */
   items: number;
@@ -46,3 +52,33 @@ export type NameListSyncSummary = {
   /** Resolver reads this sync measured. */
   reads: number;
 };
+
+/** Whether a value read back from a sync's end mark is a `NameListSyncSummary`. */
+export function isNameListSyncSummary(value: unknown): value is NameListSyncSummary {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'outcome' in value &&
+    (value.outcome === 'ok' || value.outcome === 'error') &&
+    'reason' in value &&
+    (value.reason === null || typeof value.reason === 'string') &&
+    'entries' in value &&
+    typeof value.entries === 'number' &&
+    'labels' in value &&
+    typeof value.labels === 'number' &&
+    'apps' in value &&
+    typeof value.apps === 'number' &&
+    'reads' in value &&
+    typeof value.reads === 'number'
+  );
+}
+
+/** Whether a value read back from a read's measure is a `NameListReadDetail`. */
+export function isNameListReadDetail(value: unknown): value is NameListReadDetail {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    NAME_LIST_READ_KINDS.some(kind => kind === value.kind)
+  );
+}
