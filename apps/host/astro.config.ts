@@ -24,6 +24,7 @@ import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { receivingWorker } from './receiving-build.ts';
 import { notificationWorker } from './notification-build.js';
+import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.js';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
@@ -260,6 +261,22 @@ function previewCoepHeaders(): Plugin {
   };
 }
 
+/** The identity backend proxy under `astro dev`, as the preview server and nginx serve it. It refuses non-shell hosts. */
+function identityProxy(): Plugin {
+  return {
+    name: 'dotli-identity-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
+          void handleNodeIdentityProxy(req, res);
+        } else {
+          next();
+        }
+      });
+    },
+  };
+}
+
 /** Skipped when metrics are off, since the SDK is a no-op, and locally, which keeps source maps for debugging. */
 function sentry(): PluginOption {
   if (process.env['VITE_METRICS'] !== 'true') {
@@ -292,9 +309,9 @@ export default defineConfig({
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     hostUpdateWorker(),
-    // Emits the classic receiver and matching WASM before Workbox precaching.
+    // Emit both independent notification handlers before Workbox precaching.
     receivingWorker(),
-    // Build the classic notification handler before Workbox imports it.
+
     notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
@@ -363,6 +380,7 @@ export default defineConfig({
       wasm(),
       // Serves /dotli-network.js under `astro dev`.
       runtimeNetworkConfigScript(),
+      identityProxy(),
       buildInfo('host'),
       previewCoepHeaders(),
       // After previewCoepHeaders, which needs the `/__preview` path this rewrites to `/`.

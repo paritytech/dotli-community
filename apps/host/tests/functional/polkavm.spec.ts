@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { CarReader } from '@ipld/car';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 // Node-loaded specs use the side-effect-free contract, not the browser config barrel.
 import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-version.js';
@@ -615,7 +616,7 @@ test('the canonical Doom App v2 artifact renders with exact manifest bytes', asy
   if (doomV2CarPath === undefined || doomV2ManifestPath === undefined) {
     throw new Error('Doom v2 qualification requires its CAR and manifest paths');
   }
-  const carBytes = new Uint8Array(await readFile(doomV2CarPath));
+  const carBytes = await readFile(doomV2CarPath);
   const manifest = await readFile(doomV2ManifestPath, 'utf8');
   const expectedPointerLock = expectedPointerCapture && !pointerLockUnavailable;
   const reader = await CarReader.fromBytes(carBytes);
@@ -624,155 +625,203 @@ test('the canonical Doom App v2 artifact renders with exact manifest bytes', asy
     throw new Error('Doom v2 CAR has no root');
   }
   const cid = root.toString();
-  await page.route(`**/ipfs/${cid}?format=car`, async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/vnd.ipld.car',
-      body: Buffer.from(carBytes),
+  // Large CARs exceed Chromium's DevTools pipe buffer when fulfilled inline.
+  // Redirect only the fixture request; deliver its unchanged bytes over HTTP.
+  const server = createServer((_request, response) => {
+    response.writeHead(200, {
+      'Content-Type': 'application/vnd.ipld.car',
+      'Content-Length': String(carBytes.length),
+      'Access-Control-Allow-Origin': '*',
     });
+    response.end(carBytes);
   });
-  await page.goto('http://localhost:5173/', {
-    waitUntil: 'domcontentloaded',
-  });
-  await waitForHostInitialization(page);
-  await installTruapiPortResponder(page);
-  await page.evaluate(
-    ({ artifactCid, executableManifest, schemaVersion }) => {
-      const url = new URL(
-        `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1`,
-      );
-      url.searchParams.set('executableManifest', executableManifest);
-      const iframe = document.createElement('iframe');
-      iframe.id = 'doom-v2-product';
-      iframe.src = url.toString();
-      document.body.replaceChildren(iframe);
-    },
-    {
-      artifactCid: cid,
-      executableManifest: manifest,
-      schemaVersion: SANDBOX_SCHEMA_VERSION,
-    },
-  );
+  try {
+    const listening = Promise.withResolvers<undefined>();
+    server.once('error', (error: Error) => {
+      listening.reject(error);
+    });
+    server.listen(0, '127.0.0.1', () => {
+      listening.resolve(undefined);
+    });
+    await listening.promise;
+    const address = server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral TCP listener');
+    }
+    await page.route(`**/ipfs/${cid}?format=car`, async route => {
+      await route.fulfill({
+        status: 302,
+        headers: {
+          Location: `http://127.0.0.1:${String(address.port)}/`,
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: '',
+      });
+    });
+    await page.goto('http://localhost:5173/', {
+      waitUntil: 'domcontentloaded',
+    });
+    await waitForHostInitialization(page);
+    // Complete the host's first-install compatibility probe before loading the CAR.
+    await expect
+      .poll(async () => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), {
+        timeout: 60_000,
+      })
+      .toBe('activated');
+    await installTruapiPortResponder(page);
+    await page.evaluate(
+      ({ artifactCid, executableManifest, schemaVersion }) => {
+        const url = new URL(
+          `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1`,
+        );
+        url.searchParams.set('executableManifest', executableManifest);
+        const iframe = document.createElement('iframe');
+        iframe.id = 'doom-v2-product';
+        iframe.src = url.toString();
+        document.body.replaceChildren(iframe);
+      },
+      {
+        artifactCid: cid,
+        executableManifest: manifest,
+        schemaVersion: SANDBOX_SCHEMA_VERSION,
+      },
+    );
 
-  const canvas = page.frameLocator('#doom-v2-product').locator('#dotli-polkavm-canvas');
-  await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true', {
-    timeout: 60_000,
-  });
-  await expect
-    .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')), {
+    const canvas = page.frameLocator('#doom-v2-product').locator('#dotli-polkavm-canvas');
+    await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true', {
       timeout: 60_000,
-    })
-    .toBeGreaterThan(2);
-  await expect(canvas).toHaveAttribute('data-polkavm-backend', expectedV2Backend);
-  if (expectedV2Profile !== undefined) {
-    await expect(canvas).toHaveAttribute('data-polkavm-profile', expectedV2Profile);
-  }
-  if (expectedV2Profile === 'tri2d') {
-    await expect.poll(async () => Number(await canvas.getAttribute('data-polkavm-tri2d-draws'))).toBeGreaterThan(0);
-  } else if (expectedV2Profile === 'webgpu-raster' || expectedV2Profile === 'webgpu') {
-    await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
-  }
-  if (expectedTruapi) {
-    await expect
-      .poll(async () => Number(await canvas.getAttribute('data-polkavm-host-frame-requests')))
-      .toBeGreaterThan(0);
-    await expect
-      .poll(async () => Number(await canvas.getAttribute('data-polkavm-host-frame-responses')))
-      .toBeGreaterThan(0);
-  }
-  if (expectedResize) {
-    const framesBeforeResize = Number(await canvas.getAttribute('data-polkavm-frames'));
-    await page.locator('#doom-v2-product').evaluate(iframe => {
-      iframe.style.width = '100vw';
-      iframe.style.height = '100vh';
     });
-    await page.setViewportSize({ width: 960, height: 640 });
     await expect
-      .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')))
-      .toBeGreaterThan(framesBeforeResize);
-    await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true');
-    if (expectedV2Profile === 'webgpu-raster' || expectedV2Profile === 'webgpu') {
+      .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')), {
+        timeout: 60_000,
+      })
+      .toBeGreaterThan(2);
+    await expect(canvas).toHaveAttribute('data-polkavm-backend', expectedV2Backend);
+    if (expectedV2Profile !== undefined) {
+      await expect(canvas).toHaveAttribute('data-polkavm-profile', expectedV2Profile);
+    }
+    if (expectedV2Profile === 'tri2d') {
+      await expect.poll(async () => Number(await canvas.getAttribute('data-polkavm-tri2d-draws'))).toBeGreaterThan(0);
+    } else if (expectedV2Profile === 'webgpu-raster' || expectedV2Profile === 'webgpu') {
       await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
     }
-  }
-  const framesBeforeInput = Number(await canvas.getAttribute('data-polkavm-frames'));
-  await canvas.click({ position: { x: 160, y: 100 } });
-  const productFrame = page.frames().find(frame => frame.url().includes('doom-v2.app.localhost'));
-  if (productFrame === undefined) {
-    throw new Error('PolkaVM product frame did not mount');
-  }
-  if (expectedPointerLock) {
-    // Doom owns capture: enter a level before expecting the guest to arm it.
-    for (const key of ['Escape', 'Enter', 'Enter', 'Enter']) {
+    if (expectedTruapi) {
+      await expect
+        .poll(async () => Number(await canvas.getAttribute('data-polkavm-host-frame-requests')))
+        .toBeGreaterThan(0);
+      await expect
+        .poll(async () => Number(await canvas.getAttribute('data-polkavm-host-frame-responses')))
+        .toBeGreaterThan(0);
+    }
+    if (expectedResize) {
+      const framesBeforeResize = Number(await canvas.getAttribute('data-polkavm-frames'));
+      await page.locator('#doom-v2-product').evaluate(iframe => {
+        iframe.style.width = '100vw';
+        iframe.style.height = '100vh';
+      });
+      await page.setViewportSize({ width: 960, height: 640 });
+      await expect
+        .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')))
+        .toBeGreaterThan(framesBeforeResize);
+      await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true');
+      if (expectedV2Profile === 'webgpu-raster' || expectedV2Profile === 'webgpu') {
+        await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
+      }
+    }
+    const framesBeforeInput = Number(await canvas.getAttribute('data-polkavm-frames'));
+    await canvas.click({ position: { x: 160, y: 100 } });
+    const productFrame = page.frames().find(frame => frame.url().includes('doom-v2.app.localhost'));
+    if (productFrame === undefined) {
+      throw new Error('PolkaVM product frame did not mount');
+    }
+    if (expectedPointerLock) {
+      // Doom owns capture: enter a level before expecting the guest to arm it.
+      for (const key of ['Escape', 'Enter', 'Enter', 'Enter']) {
+        await page.keyboard.press(key);
+      }
+      await expect(canvas).toHaveAttribute('data-polkavm-pointer-capture-armed', 'true', { timeout: 60_000 });
+      await canvas.click({ position: { x: 160, y: 100 } });
+      await expect
+        .poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null))
+        .toBe('dotli-polkavm-canvas');
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null)).toBeNull();
+      await canvas.click({ position: { x: 160, y: 100 } });
+      await expect.poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null)).toBeNull();
+      await page.keyboard.press('Escape');
+      await expect(canvas).toHaveAttribute('data-polkavm-pointer-capture-armed', 'true', { timeout: 60_000 });
+      await canvas.click({ position: { x: 160, y: 100 } });
+      await expect
+        .poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null))
+        .toBe('dotli-polkavm-canvas');
+    }
+    if (expectedMotion) {
+      if (expectedMotionSource === 'device') {
+        await productFrame.evaluate(() => {
+          window.dispatchEvent(
+            new DeviceMotionEvent('devicemotion', {
+              accelerationIncludingGravity: { x: 0, y: 0, z: 9.80665 },
+              rotationRate: { alpha: 0, beta: 0, gamma: 0 },
+            }),
+          );
+          window.dispatchEvent(
+            new DeviceMotionEvent('devicemotion', {
+              accelerationIncludingGravity: {
+                x: -9.80665 * 0.4,
+                y: 0,
+                z: 9,
+              },
+              rotationRate: { alpha: 0, beta: 0, gamma: 0 },
+            }),
+          );
+        });
+        await expect
+          .poll(async () =>
+            productFrame.evaluate(() => Number(Reflect.get(window, '__dotliMotionPermissionRequests') ?? 0)),
+          )
+          .toBeGreaterThan(0);
+      } else if (expectedPointerLock) {
+        await productFrame.evaluate(() => {
+          const target = document.querySelector('#dotli-polkavm-canvas');
+          if (!(target instanceof HTMLCanvasElement)) {
+            throw new Error('PolkaVM canvas is unavailable');
+          }
+          target.dispatchEvent(new PointerEvent('pointermove', { movementX: 1, movementY: 1 }));
+          target.dispatchEvent(new PointerEvent('pointermove', { movementX: 24, movementY: -12 }));
+        });
+      } else {
+        const bounds = await canvas.boundingBox();
+        if (bounds === null) {
+          throw new Error('PolkaVM canvas has no browser bounds');
+        }
+        await page.mouse.move(bounds.x + bounds.width / 3, bounds.y + bounds.height / 2);
+        await page.mouse.move(bounds.x + (bounds.width * 2) / 3, bounds.y + bounds.height / 2);
+      }
+      await expect
+        .poll(async () => Number(await canvas.getAttribute('data-polkavm-motion-samples')))
+        .toBeGreaterThan(0);
+      await expect(canvas).toHaveAttribute('data-polkavm-motion-source', expectedMotionSource);
+    }
+    for (const key of expectedInputKeys) {
       await page.keyboard.press(key);
     }
-    await expect(canvas).toHaveAttribute('data-polkavm-pointer-capture-armed', 'true', { timeout: 60_000 });
-    await canvas.click({ position: { x: 160, y: 100 } });
     await expect
-      .poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null))
-      .toBe('dotli-polkavm-canvas');
-    await page.keyboard.press('Escape');
-    await expect.poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null)).toBeNull();
-    await canvas.click({ position: { x: 160, y: 100 } });
-    await expect.poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null)).toBeNull();
-    await page.keyboard.press('Escape');
-    await expect(canvas).toHaveAttribute('data-polkavm-pointer-capture-armed', 'true', { timeout: 60_000 });
-    await canvas.click({ position: { x: 160, y: 100 } });
-    await expect
-      .poll(async () => productFrame.evaluate(() => document.pointerLockElement?.id ?? null))
-      .toBe('dotli-polkavm-canvas');
-  }
-  if (expectedMotion) {
-    if (expectedMotionSource === 'device') {
-      await productFrame.evaluate(() => {
-        window.dispatchEvent(
-          new DeviceMotionEvent('devicemotion', {
-            accelerationIncludingGravity: { x: 0, y: 0, z: 9.80665 },
-            rotationRate: { alpha: 0, beta: 0, gamma: 0 },
-          }),
-        );
-        window.dispatchEvent(
-          new DeviceMotionEvent('devicemotion', {
-            accelerationIncludingGravity: {
-              x: -9.80665 * 0.4,
-              y: 0,
-              z: 9,
-            },
-            rotationRate: { alpha: 0, beta: 0, gamma: 0 },
-          }),
-        );
-      });
-      await expect
-        .poll(async () =>
-          productFrame.evaluate(() => Number(Reflect.get(window, '__dotliMotionPermissionRequests') ?? 0)),
-        )
-        .toBeGreaterThan(0);
-    } else if (expectedPointerLock) {
-      await productFrame.evaluate(() => {
-        const target = document.querySelector('#dotli-polkavm-canvas');
-        if (!(target instanceof HTMLCanvasElement)) {
-          throw new Error('PolkaVM canvas is unavailable');
+      .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')))
+      .toBeGreaterThan(framesBeforeInput);
+  } finally {
+    if (server.listening) {
+      const closed = Promise.withResolvers<undefined>();
+      server.close(error => {
+        if (error !== undefined) {
+          closed.reject(error);
+        } else {
+          closed.resolve(undefined);
         }
-        target.dispatchEvent(new PointerEvent('pointermove', { movementX: 1, movementY: 1 }));
-        target.dispatchEvent(new PointerEvent('pointermove', { movementX: 24, movementY: -12 }));
       });
-    } else {
-      const bounds = await canvas.boundingBox();
-      if (bounds === null) {
-        throw new Error('PolkaVM canvas has no browser bounds');
-      }
-      await page.mouse.move(bounds.x + bounds.width / 3, bounds.y + bounds.height / 2);
-      await page.mouse.move(bounds.x + (bounds.width * 2) / 3, bounds.y + bounds.height / 2);
+      server.closeAllConnections();
+      await closed.promise;
     }
-    await expect.poll(async () => Number(await canvas.getAttribute('data-polkavm-motion-samples'))).toBeGreaterThan(0);
-    await expect(canvas).toHaveAttribute('data-polkavm-motion-source', expectedMotionSource);
   }
-  for (const key of expectedInputKeys) {
-    await page.keyboard.press(key);
-  }
-  await expect
-    .poll(async () => Number(await canvas.getAttribute('data-polkavm-frames')))
-    .toBeGreaterThan(framesBeforeInput);
 });
 
 test('touch and wheel gestures reach the guest without scrolling the host page', async ({ page }) => {

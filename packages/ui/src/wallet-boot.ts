@@ -3,11 +3,12 @@
 
 // Reads the shared local wallet once per page. Its presence is the page's wallet mode.
 
-import { SITE_ID } from '@dotli/config';
+import { getLocalWalletEnabled, SITE_ID } from '@dotli/config';
 import { readSharedLocalWallet, type LocalWalletReadResult } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { setWalletModeState } from './state/wallet-mode.js';
+import { watchLocalWalletChanges } from './wallet-handover.js';
 
 export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 
@@ -28,7 +29,16 @@ export function reportLocalWalletFailure(error: unknown, reason: LocalWalletFail
 
 /** Null boots the pairing host. A failed read cannot tell the mode, so it falls back to Polkadot App. */
 export function readWalletBoot(): Promise<LocalWalletBoot | null> {
-  read ??= readSharedLocalWallet(SITE_ID).then(
+  if (read !== null) {
+    return read;
+  }
+  if (!getLocalWalletEnabled(SITE_ID)) {
+    read = Promise.resolve(null);
+    return read;
+  }
+  // Before the read, so a sibling tab's save or forget right after it is still heard.
+  watchLocalWalletChanges();
+  read = readSharedLocalWallet(SITE_ID).then(
     result => {
       if (result.status === 'ok') {
         setWalletModeState({ mode: 'local', failure: null });

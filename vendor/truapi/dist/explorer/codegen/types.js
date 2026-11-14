@@ -2924,6 +2924,83 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-listen-error",
+        name: "HostJamPeerTransportListenError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportListenError = "NotGranted" | "Refused" | "Limit" | "Unreachable";',
+        description: "Failure to establish an execution-scoped JAM peer listener.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "The genesis grant or separate trusted execution-only consent is absent.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "The host does not support listeners, or the immutable policy is refused.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The listener or peer admission resource limit is exhausted.",
+            },
+            {
+                name: "Unreachable",
+                type: '{ tag: "Unreachable"; value?: undefined }',
+                description: "The requested local endpoint could not be bound.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-listen-request",
+        name: "HostJamPeerTransportListenRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportListenRequest {\n  genesis: HexString;\n  ip: HexString;\n  port: number;\n  allowedPeers: Array<HexString>;\n}",
+        description: "Establish one immutable listener before this execution opens any connection.",
+        fields: [
+            {
+                name: "genesis",
+                type: "HexString",
+                description: "Genesis covered by `RemotePermission::JamPeers` and the listener consent.",
+            },
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Loopback bind address, IPv6 or IPv4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Requested local UDP port.",
+            },
+            {
+                name: "allowed_peers",
+                type: "Array<HexString>",
+                description: "Only these mutually authenticated TLS Ed25519 identities may connect.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-listen-response",
+        name: "HostJamPeerTransportListenResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportListenResponse {\n  ip: HexString;\n  port: number;\n}",
+        description: "The bound execution-scoped listener endpoint.",
+        fields: [
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Bound address, IPv6 or IPv4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Bound local UDP port.",
+            },
+        ],
+    },
+    {
         id: "host-jam-peer-transport-open-error",
         name: "HostJamPeerTransportOpenError",
         category: "jam_peer_transport",
@@ -2957,7 +3034,7 @@ export const types = [
             {
                 name: "conn",
                 type: "number",
-                description: "Connection returned by `dial`.",
+                description: "Connection returned by `dial` or reported by `PeerAccepted`.",
             },
             {
                 name: "kind",
@@ -2977,6 +3054,83 @@ export const types = [
                 name: "stream",
                 type: "number",
                 description: "Execution-local stream id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-error",
+        name: "HostJamPeerTransportRecvChunkError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportRecvChunkError = "Closed" | "InvalidMaxBytes";',
+        description: "Failure to poll a bounded fragment.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already fully consumed.",
+            },
+            {
+                name: "InvalidMaxBytes",
+                type: '{ tag: "InvalidMaxBytes"; value?: undefined }',
+                description: "`max_bytes` must be between one and 256 KiB inclusive.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-request",
+        name: "HostJamPeerTransportRecvChunkRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvChunkRequest {\n  stream: number;\n  maxBytes: number;\n}",
+        description: "Poll a fragment without allocating the complete logical message.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-owned stream.",
+            },
+            {
+                name: "max_bytes",
+                type: "number",
+                description: "Maximum fragment bytes, between one and 256 KiB inclusive.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-chunk-response",
+        name: "HostJamPeerTransportRecvChunkResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvChunkResponse {\n  total?: number;\n  offset: number;\n  bytes: HexString;\n  complete: boolean;\n  fin: boolean;\n  reset: boolean;\n}",
+        description: "A bounded message fragment, or no arrival yet.",
+        fields: [
+            {
+                name: "total",
+                type: "number | undefined",
+                description: "Declared length, checked before allocation; `None` means no fragment.\n`Some(0)` with `complete` represents an actual framed empty message.",
+            },
+            {
+                name: "offset",
+                type: "number",
+                description: "Offset within this logical message (zero when there is no fragment).",
+            },
+            {
+                name: "bytes",
+                type: "HexString",
+                description: "At most the requested maximum; never includes the JAMNP-S length prefix.",
+            },
+            {
+                name: "complete",
+                type: "boolean",
+                description: "This fragment ends the logical message; false when none is available.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Clean peer FIN, reported only after all complete messages are drained.",
+            },
+            {
+                name: "reset",
+                type: "boolean",
+                description: "Peer reset or malformed/truncated framing; discard an incomplete message.",
             },
         ],
     },
@@ -3066,6 +3220,69 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-send-chunk-error",
+        name: "HostJamPeerTransportSendChunkError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportSendChunkError = "Closed" | "TooLarge" | "Limit" | "InvalidChunk";',
+        description: "Failure to queue a fragment of a single JAMNP-S message.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is closed, finished or unknown.",
+            },
+            {
+                name: "TooLarge",
+                type: '{ tag: "TooLarge"; value?: undefined }',
+                description: "The fragment exceeds 256 KiB or the logical message exceeds 64 MiB.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "Connection credit is exhausted; retry the same fragment unchanged.",
+            },
+            {
+                name: "InvalidChunk",
+                type: '{ tag: "InvalidChunk"; value?: undefined }',
+                description: "Incorrect offset, changed total, empty nonfinal fragment or premature FIN.\nThe stream is reset and cannot be reused.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-chunk-request",
+        name: "HostJamPeerTransportSendChunkRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportSendChunkRequest {\n  stream: number;\n  total: number;\n  offset: number;\n  bytes: HexString;\n  fin: boolean;\n}",
+        description: "Queue one bounded fragment. Only offset zero emits a length prefix.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-owned stream.",
+            },
+            {
+                name: "total",
+                type: "number",
+                description: "Exact logical message length, at most 64 MiB.",
+            },
+            {
+                name: "offset",
+                type: "number",
+                description: "Exact next byte offset, beginning at zero.",
+            },
+            {
+                name: "bytes",
+                type: "HexString",
+                description: "At most 256 KiB. Empty is allowed only for a zero-length message.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Finish only after the final fragment. A zero-length message still frames.",
+            },
+        ],
+    },
+    {
         id: "host-jam-peer-transport-send-error",
         name: "HostJamPeerTransportSendError",
         category: "jam_peer_transport",
@@ -3109,7 +3326,7 @@ export const types = [
             {
                 name: "fin",
                 type: "boolean",
-                description: "Finish the send side after this message.",
+                description: "Finish the send side after this message. With an empty message, send\nonly FIN; empty nonterminal messages retain their zero-length prefix.",
             },
         ],
     },
@@ -3314,6 +3531,362 @@ export const types = [
                 name: "time_zone",
                 type: "string | undefined",
                 description: "IANA time zone, or absent when the host cannot supply local time.",
+            },
+        ],
+    },
+    {
+        id: "host-media-add-participant-request",
+        name: "HostMediaAddParticipantRequest",
+        category: "media",
+        definition: "export interface HostMediaAddParticipantRequest {\n  operationId: MediaOperationId;\n  sessionId: MediaSessionId;\n  peer: MediaPeer;\n}",
+        description: "Admit an outgoing invitation, not a wait for the remote person's answer.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated peer in the same product and network.",
+            },
+        ],
+    },
+    {
+        id: "host-media-add-participant-response",
+        name: "HostMediaAddParticipantResponse",
+        category: "media",
+        definition: "export interface HostMediaAddParticipantResponse {\n  participant: MediaParticipantSnapshot;\n}",
+        description: "Admitted participant, or the current nonterminal participant for a duplicate peer.",
+        fields: [
+            {
+                name: "participant",
+                type: "MediaParticipantSnapshot",
+                description: "Authoritative participant, initially inviting for a new outbound offer.",
+            },
+        ],
+    },
+    {
+        id: "host-media-cancel-operation-request",
+        name: "HostMediaCancelOperationRequest",
+        category: "media",
+        definition: "export interface HostMediaCancelOperationRequest {\n  operationId: MediaOperationId;\n}",
+        description: "Cancel before commit, or recover the committed outcome if commit won.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Original key; unknown keys reserve a cancellation tombstone before reply.",
+            },
+        ],
+    },
+    {
+        id: "host-media-create-session-request",
+        name: "HostMediaCreateSessionRequest",
+        category: "media",
+        definition: "export interface HostMediaCreateSessionRequest {\n  operationId: MediaOperationId;\n  tracks: MediaLocalTracks;\n}",
+        description: "Create an owned session without connecting to any peer.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "tracks",
+                type: "MediaLocalTracks",
+                description: "Complete initial capture intent, subject to calling and device consent.",
+            },
+        ],
+    },
+    {
+        id: "host-media-create-session-response",
+        name: "HostMediaCreateSessionResponse",
+        category: "media",
+        definition: "export interface HostMediaCreateSessionResponse {\n  session: MediaSessionSnapshot;\n}",
+        description: "Successful session creation.",
+        fields: [
+            {
+                name: "session",
+                type: "MediaSessionSnapshot",
+                description: "Authoritative ready session.",
+            },
+        ],
+    },
+    {
+        id: "host-media-end-session-request",
+        name: "HostMediaEndSessionRequest",
+        category: "media",
+        definition: "export interface HostMediaEndSessionRequest {\n  sessionId: MediaSessionId;\n}",
+        description: "Idempotent owned-session teardown, never gated on permission or subscriptions.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Previously owned live or terminal session capability.",
+            },
+        ],
+    },
+    {
+        id: "host-media-error",
+        name: "HostMediaError",
+        category: "media",
+        definition: 'export type HostMediaError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidPeer"; value?: undefined }\n  | { tag: "NetworkMismatch"; value?: undefined }\n  | { tag: "ProductMismatch"; value?: undefined }\n  | { tag: "InvalidHandle"; value?: undefined }\n  | { tag: "SessionEnded"; value?: undefined }\n  | { tag: "IncomingExpired"; value?: undefined }\n  | { tag: "IncomingConsumed"; value?: undefined }\n  | { tag: "SubscriptionRequired"; value?: undefined }\n  | { tag: "CapacityExceeded"; value: { limit: number } }\n  | { tag: "InvalidState"; value?: undefined }\n  | { tag: "InvalidSurface"; value?: undefined }\n  | { tag: "StaleViewport"; value: { currentRevision: bigint } }\n  | { tag: "StaleLayout"; value: { currentRevision: bigint } }\n  | { tag: "SurfaceUnavailable"; value?: undefined }\n  | { tag: "DeviceUnavailable"; value?: undefined }\n  | { tag: "CaptureCancelled"; value?: undefined }\n  | { tag: "TimedOut"; value?: undefined }\n  | { tag: "EventOverflow"; value?: undefined }\n  | { tag: "InvalidOperation"; value?: undefined }\n  | { tag: "OperationConflict"; value?: undefined }\n  | { tag: "OperationCancelled"; value?: undefined }\n  | { tag: "ResourceExhausted"; value: { resource: MediaResource } }\n;',
+        description: "Bounded public domain errors. Permission denial and unsupported service use\nframework CallError variants. Never attach backend/device/transport strings.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "Calling connectivity is unavailable.",
+            },
+            {
+                name: "InvalidPeer",
+                type: '{ tag: "InvalidPeer"; value?: undefined }',
+                description: "Peer identity is malformed or unauthenticated.",
+            },
+            {
+                name: "NetworkMismatch",
+                type: '{ tag: "NetworkMismatch"; value?: undefined }',
+                description: "Peer belongs to another network namespace.",
+            },
+            {
+                name: "ProductMismatch",
+                type: '{ tag: "ProductMismatch"; value?: undefined }',
+                description: "Peer belongs to another canonical product.",
+            },
+            {
+                name: "InvalidHandle",
+                type: '{ tag: "InvalidHandle"; value?: undefined }',
+                description: "Random and unowned handles are indistinguishable.",
+            },
+            {
+                name: "SessionEnded",
+                type: '{ tag: "SessionEnded"; value?: undefined }',
+                description: "Owned session is terminal.",
+            },
+            {
+                name: "IncomingExpired",
+                type: '{ tag: "IncomingExpired"; value?: undefined }',
+                description: "Incoming offer expired or was cancelled.",
+            },
+            {
+                name: "IncomingConsumed",
+                type: '{ tag: "IncomingConsumed"; value?: undefined }',
+                description: "Incoming offer was already claimed.",
+            },
+            {
+                name: "SubscriptionRequired",
+                type: '{ tag: "SubscriptionRequired"; value?: undefined }',
+                description: "No runtime listener has an initial snapshot enqueued.",
+            },
+            {
+                name: "CapacityExceeded",
+                type: '{ tag: "CapacityExceeded"; value: { limit: number } }',
+                description: "Live endpoint capacity would be exceeded before any signaling.",
+            },
+            {
+                name: "InvalidState",
+                type: '{ tag: "InvalidState"; value?: undefined }',
+                description: "Mutation is invalid or superseded by a newer admitted intent.",
+            },
+            {
+                name: "InvalidSurface",
+                type: '{ tag: "InvalidSurface"; value?: undefined }',
+                description: "Invalid surface set, including conflicting reuse of a layout revision.",
+            },
+            {
+                name: "StaleViewport",
+                type: '{ tag: "StaleViewport"; value: { currentRevision: bigint } }',
+                description: "Submitted viewport transform is no longer current.",
+            },
+            {
+                name: "StaleLayout",
+                type: '{ tag: "StaleLayout"; value: { currentRevision: bigint } }',
+                description: "Submitted layout revision predates the committed or queued layout.",
+            },
+            {
+                name: "SurfaceUnavailable",
+                type: '{ tag: "SurfaceUnavailable"; value?: undefined }',
+                description: "No authorized rendering attachment is available.",
+            },
+            {
+                name: "DeviceUnavailable",
+                type: '{ tag: "DeviceUnavailable"; value?: undefined }',
+                description: "A required capture device is currently unavailable.",
+            },
+            {
+                name: "CaptureCancelled",
+                type: '{ tag: "CaptureCancelled"; value?: undefined }',
+                description: "User cancelled the trusted screen picker.",
+            },
+            {
+                name: "TimedOut",
+                type: '{ tag: "TimedOut"; value?: undefined }',
+                description: "Host operation or consent deadline elapsed; late work cannot commit.",
+            },
+            {
+                name: "EventOverflow",
+                type: '{ tag: "EventOverflow"; value?: undefined }',
+                description: "Listener queue overflowed; resubscribe for an atomic fresh snapshot.",
+            },
+            {
+                name: "InvalidOperation",
+                type: '{ tag: "InvalidOperation"; value?: undefined }',
+                description: "No operation exists for the queried key in this runtime.",
+            },
+            {
+                name: "OperationConflict",
+                type: '{ tag: "OperationConflict"; value?: undefined }',
+                description: "Same key was previously bound to a different request.",
+            },
+            {
+                name: "OperationCancelled",
+                type: '{ tag: "OperationCancelled"; value?: undefined }',
+                description: "Cancellation tombstone prevents the mutation from acting.",
+            },
+            {
+                name: "ResourceExhausted",
+                type: '{ tag: "ResourceExhausted"; value: { resource: MediaResource } }',
+                description: "A finite runtime budget would be exceeded before effects begin.",
+            },
+        ],
+    },
+    {
+        id: "host-media-get-operation-request",
+        name: "HostMediaGetOperationRequest",
+        category: "media",
+        definition: "export interface HostMediaGetOperationRequest {\n  operationId: MediaOperationId;\n}",
+        description: "Recover the exact outcome of a potentially lost mutation response.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Original mutation key; unknown keys return InvalidOperation.",
+            },
+        ],
+    },
+    {
+        id: "host-media-remove-participant-request",
+        name: "HostMediaRemoveParticipantRequest",
+        category: "media",
+        definition: "export interface HostMediaRemoveParticipantRequest {\n  sessionId: MediaSessionId;\n  participantId: MediaParticipantId;\n}",
+        description: "Idempotently remove a known participant, even after subscription or grant loss.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owning session capability.",
+            },
+            {
+                name: "participant_id",
+                type: "MediaParticipantId",
+                description: "Previously owned participant capability, live or terminal.",
+            },
+        ],
+    },
+    {
+        id: "host-media-respond-incoming-request",
+        name: "HostMediaRespondIncomingRequest",
+        category: "media",
+        definition: "export interface HostMediaRespondIncomingRequest {\n  incomingId: MediaIncomingId;\n  decision: MediaIncomingDecision;\n}",
+        description: "Decide a single-use offer; a peer address cannot substitute for its capability.",
+        fields: [
+            {
+                name: "incoming_id",
+                type: "MediaIncomingId",
+                description: "Owned, authenticated incoming capability.",
+            },
+            {
+                name: "decision",
+                type: "MediaIncomingDecision",
+                description: "Refusal or operation-correlated acceptance.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-local-tracks-request",
+        name: "HostMediaSetLocalTracksRequest",
+        category: "media",
+        definition: "export interface HostMediaSetLocalTracksRequest {\n  operationId: MediaOperationId;\n  sessionId: MediaSessionId;\n  tracks: MediaLocalTracks;\n}",
+        description: "Replace capture intent. Admission orders changes before asynchronous consent;\nnewer intent cancels older uncommitted work, whose late capture is released.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Idempotent runtime-wide mutation key.",
+            },
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "tracks",
+                type: "MediaLocalTracks",
+                description: "Complete replacement intent; all-off remains allowed without a listener.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-local-tracks-response",
+        name: "HostMediaSetLocalTracksResponse",
+        category: "media",
+        definition: "export interface HostMediaSetLocalTracksResponse {\n  session: MediaSessionSnapshot;\n}",
+        description: "Successful capture intent update; actual tracks may still be starting.",
+        fields: [
+            {
+                name: "session",
+                type: "MediaSessionSnapshot",
+                description: "Authoritative session with the newly committed intent.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-surfaces-request",
+        name: "HostMediaSetSurfacesRequest",
+        category: "media",
+        definition: "export interface HostMediaSetSurfacesRequest {\n  sessionId: MediaSessionId;\n  viewportRevision: bigint;\n  layoutRevision: bigint;\n  surfaces: Array<MediaSurface>;\n}",
+        description: "Atomically replace the complete session layout at one compositor frame.\nValidate every entry before queueing. A viewport change discards the entire\nstale queued set, and teardown overrides all pending layouts.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Owned live session capability.",
+            },
+            {
+                name: "viewport_revision",
+                type: "bigint",
+                description: "Current authorized attachment/transform revision.",
+            },
+            {
+                name: "layout_revision",
+                type: "bigint",
+                description: "Product-monotonic session revision; identical current retries succeed.",
+            },
+            {
+                name: "surfaces",
+                type: "Array<MediaSurface>",
+                description: "Complete set with unique surface keys; an empty set clears pictures.",
+            },
+        ],
+    },
+    {
+        id: "host-media-set-surfaces-response",
+        name: "HostMediaSetSurfacesResponse",
+        category: "media",
+        definition: "export interface HostMediaSetSurfacesResponse {\n  layoutRevision: bigint;\n}",
+        description: "Acknowledges an atomic queued commit, not immunity from viewport changes.",
+        fields: [
+            {
+                name: "layout_revision",
+                type: "bigint",
+                description: "Accepted product layout revision.",
             },
         ],
     },
@@ -5522,6 +6095,621 @@ export const types = [
         ],
     },
     {
+        id: "host-validator-audit-prove-request",
+        name: "HostValidatorAuditProveRequest",
+        category: "validator",
+        definition: "export interface HostValidatorAuditProveRequest {\n  handle: string;\n  parameters: HexString;\n  input: ValidatorAuditInput;\n}",
+        description: "Typed audit selection proof, never arbitrary-message signing.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "input",
+                type: "ValidatorAuditInput",
+                description: "Exact audit selection domain.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-audit-prove-response",
+        name: "HostValidatorAuditProveResponse",
+        category: "validator",
+        definition: "export interface HostValidatorAuditProveResponse {\n  signature: HexString;\n}",
+        description: "Bandersnatch audit selection proof.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-close-request",
+        name: "HostValidatorCloseRequest",
+        category: "validator",
+        definition: "export interface HostValidatorCloseRequest {\n  handle: string;\n}",
+        description: "Stop admission, drain persistence/signing/transport, reap and release ownership.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Opaque execution-local handle.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-commit-request",
+        name: "HostValidatorCommitRequest",
+        category: "validator",
+        definition: 'export type HostValidatorCommitRequest =\n  | { tag: "Begin"; value: { handle: string; recovery: ValidatorRecoveryRef } }\n  | { tag: "Chunk"; value: { handle: string; offset: number; bytes: HexString } }\n  | { tag: "Finish"; value: { handle: string } }\n  | { tag: "Checkpoint"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }\n  | { tag: "Supersede"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }\n  | { tag: "ArchiveBegin"; value: { handle: string; recovery: ValidatorRecoveryRef } }\n  | { tag: "ArchiveChunk"; value: { handle: string; offset: number; bytes: HexString } }\n  | { tag: "ArchiveFinish"; value: { handle: string } }\n;',
+        description: "Sequential bounded upload or a durable compare-and-append checkpoint.",
+        variants: [
+            {
+                name: "Begin",
+                type: '{ tag: "Begin"; value: { handle: string; recovery: ValidatorRecoveryRef } }',
+                description: "Start the sole in-progress upload; does not create a signing intent.",
+            },
+            {
+                name: "Chunk",
+                type: '{ tag: "Chunk"; value: { handle: string; offset: number; bytes: HexString } }',
+                description: "Append the next sequential chunk.",
+            },
+            {
+                name: "Finish",
+                type: '{ tag: "Finish"; value: { handle: string } }',
+                description: "Verify hash/size and fsync complete immutable blob and its directory.",
+            },
+            {
+                name: "Checkpoint",
+                type: '{ tag: "Checkpoint"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }',
+                description: "Commit a checkpoint referencing an already complete verified blob.",
+            },
+            {
+                name: "Supersede",
+                type: '{ tag: "Supersede"; value: { handle: string; revision: string; head: HexString; recovery: ValidatorRecoveryRef } }',
+                description: "Replace all retained recovery witnesses with one complete checkpoint.\n\nThe ready execution asserts authenticated recovery coverage of every\nretained vote target; consumed-slot guards remain in the host journal.\nThe host binds this assertion to the exact expected head and durably\nrebinds witness references before reclaiming their former blobs. It\nnever removes signing choices or verifies opaque consensus state itself.\nMay reference the existing latest blob, requiring no upload capacity.",
+            },
+            {
+                name: "ArchiveBegin",
+                type: '{ tag: "ArchiveBegin"; value: { handle: string; recovery: ValidatorRecoveryRef } }',
+                description: "Begin a separately quota-accounted immutable archive object.",
+            },
+            {
+                name: "ArchiveChunk",
+                type: '{ tag: "ArchiveChunk"; value: { handle: string; offset: number; bytes: HexString } }',
+                description: "Append a bounded sequential archive chunk.",
+            },
+            {
+                name: "ArchiveFinish",
+                type: '{ tag: "ArchiveFinish"; value: { handle: string } }',
+                description: "Verify and durably store the lossless archive object.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-commit-response",
+        name: "HostValidatorCommitResponse",
+        category: "validator",
+        definition: 'export type HostValidatorCommitResponse =\n  | { tag: "Upload"; value: { offset: number } }\n  | { tag: "Stored"; value: { recovery: ValidatorRecoveryRef } }\n  | { tag: "Committed"; value: { revision: string; head: HexString } }\n;',
+        description: "Upload progress or durably committed checkpoint.",
+        variants: [
+            {
+                name: "Upload",
+                type: '{ tag: "Upload"; value: { offset: number } }',
+                description: "Next upload offset expected by the host.",
+            },
+            {
+                name: "Stored",
+                type: '{ tag: "Stored"; value: { recovery: ValidatorRecoveryRef } }',
+                description: "Immutable complete blob is now referenceable.",
+            },
+            {
+                name: "Committed",
+                type: '{ tag: "Committed"; value: { revision: string; head: HexString } }',
+                description: "Durable checkpoint head.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-entropy-source-request",
+        name: "HostValidatorEntropySourceRequest",
+        category: "validator",
+        definition: "export interface HostValidatorEntropySourceRequest {\n  handle: string;\n  parameters: HexString;\n  ticketId: HexString;\n}",
+        description: "Typed `jam_entropy` signature over a ticket id.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "ticket_id",
+                type: "HexString",
+                description: "Entropy-source ticket id.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-entropy-source-response",
+        name: "HostValidatorEntropySourceResponse",
+        category: "validator",
+        definition: "export interface HostValidatorEntropySourceResponse {\n  signature: HexString;\n}",
+        description: "Entropy-source VRF signature.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-error",
+        name: "HostValidatorError",
+        category: "validator",
+        definition: 'export type HostValidatorError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotGranted"; value?: undefined }\n  | { tag: "Closed"; value?: undefined }\n  | { tag: "Busy"; value?: undefined }\n  | { tag: "Limit"; value?: undefined }\n  | { tag: "Invalid"; value?: undefined }\n  | { tag: "Stale"; value?: undefined }\n  | { tag: "Conflict"; value?: undefined }\n  | { tag: "RecoveryRequired"; value?: undefined }\n  | { tag: "Poisoned"; value?: undefined }\n  | { tag: "Unavailable"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Fail-closed custody errors. The runtime sanitizes private callback failures.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "The host has no protected validator backend.",
+            },
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution/account/artifact has no signing grant.",
+            },
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The execution-local handle is no longer owned.",
+            },
+            {
+                name: "Busy",
+                type: '{ tag: "Busy"; value?: undefined }',
+                description: "Another owner holds this identity.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "A transfer, storage, journal, or admission bound was exceeded.",
+            },
+            {
+                name: "Invalid",
+                type: '{ tag: "Invalid"; value?: undefined }',
+                description: "Malformed fields, noncanonical decimal u64, or invalid transfer order.",
+            },
+            {
+                name: "Stale",
+                type: '{ tag: "Stale"; value?: undefined }',
+                description: "Expected revision or head does not match durable custody state.",
+            },
+            {
+                name: "Conflict",
+                type: '{ tag: "Conflict"; value?: undefined }',
+                description: "The duty conflicts with a retained signing intent.",
+            },
+            {
+                name: "RecoveryRequired",
+                type: '{ tag: "RecoveryRequired"; value?: undefined }',
+                description: "Complete recovery material or replay acknowledgement is missing.",
+            },
+            {
+                name: "Poisoned",
+                type: '{ tag: "Poisoned"; value?: undefined }',
+                description: "Missing/corrupt/ambiguous durable state; no signing is allowed.",
+            },
+            {
+                name: "Unavailable",
+                type: '{ tag: "Unavailable"; value?: undefined }',
+                description: "A trusted host persistence or keyring operation failed.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Private platform bridge failure; runtime converts this to Poisoned and revokes.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-full-sign-request",
+        name: "HostValidatorFullSignRequest",
+        category: "validator",
+        definition: "export interface HostValidatorFullSignRequest {\n  handle: string;\n  parameters: HexString;\n  revision: string;\n  head: HexString;\n  duty: ValidatorFullDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Persist a typed full-duty intent before releasing its Ed25519 signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected custody digest.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorFullDuty",
+                description: "Exact typed signing domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound to this intent.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-full-sign-response",
+        name: "HostValidatorFullSignResponse",
+        category: "validator",
+        definition: "export interface HostValidatorFullSignResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Signature released only after the durable full-duty guard is recorded.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Ed25519 signature.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable custody digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-open-request",
+        name: "HostValidatorOpenRequest",
+        category: "validator",
+        definition: 'export type HostValidatorOpenRequest =\n  | { tag: "Acquire"; value: { genesis: HexString } }\n  | { tag: "Read"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }\n  | { tag: "Ready"; value: { handle: string; revision: string; head: HexString } }\n  | { tag: "Retained"; value: { handle: string; revision: string; head: HexString; offset: number } }\n  | { tag: "LookupIntent"; value: { handle: string; revision: string; head: HexString; stage: number; set: number; round: string } }\n  | { tag: "LookupSeal"; value: { handle: string; revision: string; head: HexString; slot: number } }\n  | { tag: "ArchiveRead"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }\n  | { tag: "ArchiveInfo"; value: { handle: string; hash: HexString } }\n  | { tag: "LookupFull"; value: { handle: string; revision: string; head: HexString; duty: ValidatorFullDuty } }\n;',
+        description: "Acquire custody, read recovery material, or acknowledge completed guest replay.",
+        variants: [
+            {
+                name: "Acquire",
+                type: '{ tag: "Acquire"; value: { genesis: HexString } }',
+                description: "Acquire an existing host-enrolled identity, never enroll/import a key.",
+            },
+            {
+                name: "Read",
+                type: '{ tag: "Read"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }',
+                description: "Read a bounded range of a retained recovery blob.",
+            },
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value: { handle: string; revision: string; head: HexString } }',
+                description: "Guest has replayed/revalidated the acquired head; not proof of consensus.",
+            },
+            {
+                name: "Retained",
+                type: '{ tag: "Retained"; value: { handle: string; revision: string; head: HexString; offset: number } }',
+                description: "Read one exact-head page; no full-history array is acquired.",
+            },
+            {
+                name: "LookupIntent",
+                type: '{ tag: "LookupIntent"; value: { handle: string; revision: string; head: HexString; stage: number; set: number; round: string } }',
+                description: "Look up every historical conflict for one GRANDPA duty key.",
+            },
+            {
+                name: "LookupSeal",
+                type: '{ tag: "LookupSeal"; value: { handle: string; revision: string; head: HexString; slot: number } }',
+                description: "Look up a consumed authoring slot, including archived history.",
+            },
+            {
+                name: "ArchiveRead",
+                type: '{ tag: "ArchiveRead"; value: { handle: string; recovery: ValidatorRecoveryRef; offset: number; maxBytes: number } }',
+                description: "Read an immutable lossless archive object, not a live recovery witness.",
+            },
+            {
+                name: "ArchiveInfo",
+                type: '{ tag: "ArchiveInfo"; value: { handle: string; hash: HexString } }',
+                description: "Authenticate an immutable archive object's hash and complete length.",
+            },
+            {
+                name: "LookupFull",
+                type: '{ tag: "LookupFull"; value: { handle: string; revision: string; head: HexString; duty: ValidatorFullDuty } }',
+                description: "Look up a full-duty conflict key, including archived history.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-open-response",
+        name: "HostValidatorOpenResponse",
+        category: "validator",
+        definition: 'export type HostValidatorOpenResponse =\n  | { tag: "Acquired"; value: { handle: string; ed25519: HexString; bandersnatch: HexString; p256: HexString; genesis: HexString; parameters: HexString; generation: string; revision: string; head: HexString; recovery?: ValidatorRecoveryRef; intentCount: number; sealCount: number; fullDutyCount: number; fullDuties: boolean; latestSealSlot?: number; historyRoot: HexString; authoring: boolean; unixMs: string; protection: ValidatorProtection; stages: HexString; maxRecoveryBytes: number; maxChunkBytes: number; maxStorageBytes: string; maxHistoryBytes: string; maxArchiveBytes: string } }\n  | { tag: "Read"; value: { bytes: HexString } }\n  | { tag: "Ready"; value?: undefined }\n  | { tag: "Retained"; value: { revision: string; head: HexString; offset: number; intents: Array<ValidatorIntent>; seals: Array<ValidatorSealIntent>; next?: number } }\n  | { tag: "Intent"; value: { revision: string; head: HexString; intent?: ValidatorIntent } }\n  | { tag: "Seal"; value: { revision: string; head: HexString; seal?: ValidatorSealIntent } }\n  | { tag: "ArchiveInfo"; value: { recovery: ValidatorRecoveryRef } }\n  | { tag: "Full"; value: { revision: string; head: HexString; intent?: ValidatorFullIntent } }\n;',
+        description: "Custody acquisition or bounded recovery result.",
+        variants: [
+            {
+                name: "Acquired",
+                type: '{ tag: "Acquired"; value: { handle: string; ed25519: HexString; bandersnatch: HexString; p256: HexString; genesis: HexString; parameters: HexString; generation: string; revision: string; head: HexString; recovery?: ValidatorRecoveryRef; intentCount: number; sealCount: number; fullDutyCount: number; fullDuties: boolean; latestSealSlot?: number; historyRoot: HexString; authoring: boolean; unixMs: string; protection: ValidatorProtection; stages: HexString; maxRecoveryBytes: number; maxChunkBytes: number; maxStorageBytes: string; maxHistoryBytes: string; maxArchiveBytes: string } }',
+                description: "Locked, intact custody state, not yet replay-ready.",
+            },
+            {
+                name: "Read",
+                type: '{ tag: "Read"; value: { bytes: HexString } }',
+                description: "Bounded bytes starting at the requested offset.",
+            },
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value?: undefined }',
+                description: "The exact head was acknowledged for replay.",
+            },
+            {
+                name: "Retained",
+                type: '{ tag: "Retained"; value: { revision: string; head: HexString; offset: number; intents: Array<ValidatorIntent>; seals: Array<ValidatorSealIntent>; next?: number } }',
+                description: "Exact-head bounded retained-history page.",
+            },
+            {
+                name: "Intent",
+                type: '{ tag: "Intent"; value: { revision: string; head: HexString; intent?: ValidatorIntent } }',
+                description: "Authenticated historical GRANDPA lookup; absence is not a storage error.",
+            },
+            {
+                name: "Seal",
+                type: '{ tag: "Seal"; value: { revision: string; head: HexString; seal?: ValidatorSealIntent } }',
+                description: "Authenticated historical consumed-slot lookup.",
+            },
+            {
+                name: "ArchiveInfo",
+                type: '{ tag: "ArchiveInfo"; value: { recovery: ValidatorRecoveryRef } }',
+                description: "Verified immutable archive metadata.",
+            },
+            {
+                name: "Full",
+                type: '{ tag: "Full"; value: { revision: string; head: HexString; intent?: ValidatorFullIntent } }',
+                description: "Exact-head retained full-duty lookup.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-seal-request",
+        name: "HostValidatorSealRequest",
+        category: "validator",
+        definition: "export interface HostValidatorSealRequest {\n  handle: string;\n  parameters: HexString;\n  revision: string;\n  head: HexString;\n  input: ValidatorSealInput;\n  recovery: ValidatorRecoveryRef;\n  payload: HexString;\n}",
+        description: "Compare-and-append one durable slot seal before releasing its signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected durable journal digest.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact seal VRF domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material uploaded before seal admission.",
+            },
+            {
+                name: "payload",
+                type: "HexString",
+                description: "Canonical encoded SealPayload, at most 256 KiB; decoded by the helper.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-seal-response",
+        name: "HostValidatorSealResponse",
+        category: "validator",
+        definition: "export interface HostValidatorSealResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Released only after intent fsync and durable-head barriers.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Canonical Bandersnatch block seal.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable journal digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-sign-request",
+        name: "HostValidatorSignRequest",
+        category: "validator",
+        definition: "export interface HostValidatorSignRequest {\n  handle: string;\n  revision: string;\n  head: HexString;\n  duty: ValidatorGrandpaDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Compare, persist a typed GRANDPA intent, then sign its exact JAM domain.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Opaque execution-local handle.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Expected canonical decimal u64 revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Expected previous journal digest.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorGrandpaDuty",
+                description: "Supported typed signing domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound to the intent.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-sign-response",
+        name: "HostValidatorSignResponse",
+        category: "validator",
+        definition: "export interface HostValidatorSignResponse {\n  signature: HexString;\n  revision: string;\n  head: HexString;\n}",
+        description: "Signature released only after every required durability barrier succeeds.",
+        fields: [
+            {
+                name: "signature",
+                type: "HexString",
+                description: "Deterministic Ed25519 signature over the exact 65-byte JAM domain.",
+            },
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal u64 durable revision.",
+            },
+            {
+                name: "head",
+                type: "HexString",
+                description: "Durable journal digest.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-ticket-prove-request",
+        name: "HostValidatorTicketProveRequest",
+        category: "validator",
+        definition: "export interface HostValidatorTicketProveRequest {\n  handle: string;\n  parameters: HexString;\n  ring: Array<HexString>;\n  index: number;\n  entropy: HexString;\n  attempt: number;\n}",
+        description: "Ring ticket proof over the guest's consensus-selected waiting set.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical parameters matching the enrolled digest.",
+            },
+            {
+                name: "ring",
+                type: "Array<HexString>",
+                description: "Ordered waiting-set public keys, at most 1023.",
+            },
+            {
+                name: "index",
+                type: "number",
+                description: "Enrolled key's position in the ring.",
+            },
+            {
+                name: "entropy",
+                type: "HexString",
+                description: "Epoch entropy.",
+            },
+            {
+                name: "attempt",
+                type: "number",
+                description: "Bounded ticket attempt under the enrolled parameters.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-ticket-prove-response",
+        name: "HostValidatorTicketProveResponse",
+        category: "validator",
+        definition: "export interface HostValidatorTicketProveResponse {\n  proof: HexString;\n}",
+        description: "Anonymous ring-VRF proof.",
+        fields: [
+            {
+                name: "proof",
+                type: "HexString",
+                description: "Canonical ring signature.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-vrf-output-request",
+        name: "HostValidatorVrfOutputRequest",
+        category: "validator",
+        definition: "export interface HostValidatorVrfOutputRequest {\n  handle: string;\n  parameters: HexString;\n  input: ValidatorSealInput;\n}",
+        description: "Deterministic eligibility output, not a signature.",
+        fields: [
+            {
+                name: "handle",
+                type: "string",
+                description: "Owned execution-local handle.",
+            },
+            {
+                name: "parameters",
+                type: "HexString",
+                description: "Canonical encoded parameters matching the enrolled digest, at most 1024 bytes.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact eligibility domain.",
+            },
+        ],
+    },
+    {
+        id: "host-validator-vrf-output-response",
+        name: "HostValidatorVrfOutputResponse",
+        category: "validator",
+        definition: "export interface HostValidatorVrfOutputResponse {\n  output: HexString;\n}",
+        description: "Bandersnatch eligibility result.",
+        fields: [
+            {
+                name: "output",
+                type: "HexString",
+                description: "Deterministic VRF output.",
+            },
+        ],
+    },
+    {
         id: "host-worker-begin-operation-request",
         name: "HostWorkerBeginOperationRequest",
         category: "worker",
@@ -5658,7 +6846,7 @@ export const types = [
         id: "jam-peer-transport-event",
         name: "JamPeerTransportEvent",
         category: "jam_peer_transport",
-        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n;',
+        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n  | { tag: "PeerAccepted"; value: { conn: number; ed25519: HexString; ip: HexString; port: number } }\n;',
         description: "Asynchronous transport notification.",
         variants: [
             {
@@ -5674,7 +6862,12 @@ export const types = [
             {
                 name: "Accepted",
                 type: '{ tag: "Accepted"; value: { conn: number; stream: number; kind: number } }',
-                description: "The peer opened a stream to us on a dialed connection.",
+                description: "The peer opened a stream on an outgoing or accepted connection.",
+            },
+            {
+                name: "PeerAccepted",
+                type: '{ tag: "PeerAccepted"; value: { conn: number; ed25519: HexString; ip: HexString; port: number } }',
+                description: "A mutually authenticated peer connected to the execution's listener.\nThis precedes every stream event for the connection.",
             },
         ],
     },
@@ -5728,6 +6921,1085 @@ export const types = [
                 name: "tx_ext_version",
                 type: "number",
                 description: "Version of the transaction extensions in `extensions`, as the runtime\nnumbers them.",
+            },
+        ],
+    },
+    {
+        id: "media-account",
+        name: "MediaAccount",
+        category: "media",
+        definition: 'export type MediaAccount =\n  | { tag: "Sr25519"; value: HexString }\n;',
+        description: "Explicit algorithm and public key for a product-scoped remote account.",
+        variants: [
+            {
+                name: "Sr25519",
+                type: '{ tag: "Sr25519"; value: HexString }',
+                description: "Product-derived sr25519 account; not a legacy wallet or transport address.",
+            },
+        ],
+    },
+    {
+        id: "media-audio-route",
+        name: "MediaAudioRoute",
+        category: "media",
+        definition: 'export type MediaAudioRoute = "Earpiece" | "Speaker" | "Headset" | "Other";',
+        description: "Sanitized audio route class, never a device identifier or inventory.",
+        variants: [
+            {
+                name: "Earpiece",
+                type: '{ tag: "Earpiece"; value?: undefined }',
+                description: "Handset earpiece.",
+            },
+            {
+                name: "Speaker",
+                type: '{ tag: "Speaker"; value?: undefined }',
+                description: "Loudspeaker.",
+            },
+            {
+                name: "Headset",
+                type: '{ tag: "Headset"; value?: undefined }',
+                description: "Headset output.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value?: undefined }',
+                description: "Any other route class.",
+            },
+        ],
+    },
+    {
+        id: "media-call-outcome",
+        name: "MediaCallOutcome",
+        category: "media",
+        definition: 'export type MediaCallOutcome = "LocalEnded" | "RemoteEnded" | "Refused" | "Busy" | "Unanswered" | "PermissionRevoked" | "IdentityLost" | "RuntimeClosed" | "ConnectivityLost" | "HostFailed";',
+        description: "Bounded terminal business outcome; never a raw backend error string.",
+        variants: [
+            {
+                name: "LocalEnded",
+                type: '{ tag: "LocalEnded"; value?: undefined }',
+                description: "Ended by the local product or trusted host controls.",
+            },
+            {
+                name: "RemoteEnded",
+                type: '{ tag: "RemoteEnded"; value?: undefined }',
+                description: "Ended by the remote endpoint.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Invitation refused.",
+            },
+            {
+                name: "Busy",
+                type: '{ tag: "Busy"; value?: undefined }',
+                description: "Remote endpoint busy.",
+            },
+            {
+                name: "Unanswered",
+                type: '{ tag: "Unanswered"; value?: undefined }',
+                description: "Invitation reached its answer deadline.",
+            },
+            {
+                name: "PermissionRevoked",
+                type: '{ tag: "PermissionRevoked"; value?: undefined }',
+                description: "Calling, microphone, or camera permission revoked.",
+            },
+            {
+                name: "IdentityLost",
+                type: '{ tag: "IdentityLost"; value?: undefined }',
+                description: "Product/account/network authority lost.",
+            },
+            {
+                name: "RuntimeClosed",
+                type: '{ tag: "RuntimeClosed"; value?: undefined }',
+                description: "Owning product runtime destroyed.",
+            },
+            {
+                name: "ConnectivityLost",
+                type: '{ tag: "ConnectivityLost"; value?: undefined }',
+                description: "Connection or reconnection deadline reached.",
+            },
+            {
+                name: "HostFailed",
+                type: '{ tag: "HostFailed"; value?: undefined }',
+                description: "Sanitized terminal host failure.",
+            },
+        ],
+    },
+    {
+        id: "media-camera-kind",
+        name: "MediaCameraKind",
+        category: "media",
+        definition: 'export type MediaCameraKind = "Front" | "Rear" | "Other";',
+        description: "Sanitized camera class, never a device identifier or model.",
+        variants: [
+            {
+                name: "Front",
+                type: '{ tag: "Front"; value?: undefined }',
+                description: "Front-facing camera.",
+            },
+            {
+                name: "Rear",
+                type: '{ tag: "Rear"; value?: undefined }',
+                description: "Rear-facing camera.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value?: undefined }',
+                description: "Any other camera class.",
+            },
+        ],
+    },
+    {
+        id: "media-capabilities",
+        name: "MediaCapabilities",
+        category: "media",
+        definition: "export interface MediaCapabilities {\n  contractVersions: Array<number>;\n  network: MediaNetwork;\n  maxRemoteParticipants: number;\n  maxSessions: number;\n  maxSurfacesPerSession: number;\n  incomingLifetimeMs: number;\n  operationTimeoutMs: number;\n  consentTimeoutMs: number;\n  reconnectTimeoutMs: number;\n  limits: MediaRuntimeLimits;\n}",
+        description: "Complete service discovery, with no permission prompt or capture side effect.\nMissing any mandatory capture, connectivity, picker, indicator, or unreadable\ncompositor facility makes the entire service unsupported, not partially ready.",
+        fields: [
+            {
+                name: "contract_versions",
+                type: "Array<number>",
+                description: "Sorted unique supported contract versions, including 1 for this contract.",
+            },
+            {
+                name: "network",
+                type: "MediaNetwork",
+                description: "Immutable host-configured network namespace for this runtime.",
+            },
+            {
+                name: "max_remote_participants",
+                type: "number",
+                description: "Live remote endpoint limit, at least five; excludes the local endpoint.",
+            },
+            {
+                name: "max_sessions",
+                type: "number",
+                description: "Live session limit, at least one.",
+            },
+            {
+                name: "max_surfaces_per_session",
+                type: "number",
+                description: "At least twice the endpoint limit including the local endpoint.",
+            },
+            {
+                name: "incoming_lifetime_ms",
+                type: "number",
+                description: "Incoming offer lifetime, 60,000 milliseconds in V1.",
+            },
+            {
+                name: "operation_timeout_ms",
+                type: "number",
+                description: "Non-consent operation deadline, 5,000 milliseconds in V1.",
+            },
+            {
+                name: "consent_timeout_ms",
+                type: "number",
+                description: "Host consent/picker deadline, 60,000 milliseconds in V1.",
+            },
+            {
+                name: "reconnect_timeout_ms",
+                type: "number",
+                description: "Connection/reconnection deadline, 30,000 milliseconds in V1.",
+            },
+            {
+                name: "limits",
+                type: "MediaRuntimeLimits",
+                description: "Actual finite budgets enforced by this runtime.",
+            },
+        ],
+    },
+    {
+        id: "media-event",
+        name: "MediaEvent",
+        category: "media",
+        definition: 'export type MediaEvent =\n  | { tag: "Snapshot"; value: { sequence: bigint; sessions: Array<MediaSessionSnapshot>; incoming: Array<MediaIncomingOffer>; viewport?: MediaViewport } }\n  | { tag: "SessionChanged"; value: { sequence: bigint; session: MediaSessionSnapshot } }\n  | { tag: "IncomingOffered"; value: { sequence: bigint; offer: MediaIncomingOffer } }\n  | { tag: "IncomingResolved"; value: { sequence: bigint; incomingId: MediaIncomingId; result: MediaIncomingResolution } }\n  | { tag: "ViewportChanged"; value: { sequence: bigint; viewport?: MediaViewport } }\n;',
+        description: "Runtime-wide events. Each listener starts with an atomic current snapshot;\nsubsequent sequence values strictly increase. Resubscription does not replay\nold ringing events. Overflow terminates the stream with EventOverflow.",
+        variants: [
+            {
+                name: "Snapshot",
+                type: '{ tag: "Snapshot"; value: { sequence: bigint; sessions: Array<MediaSessionSnapshot>; incoming: Array<MediaIncomingOffer>; viewport?: MediaViewport } }',
+                description: "Atomic initial state, including before any session exists.",
+            },
+            {
+                name: "SessionChanged",
+                type: '{ tag: "SessionChanged"; value: { sequence: bigint; session: MediaSessionSnapshot } }',
+                description: "Authoritative session revision, including terminal teardown exactly once.",
+            },
+            {
+                name: "IncomingOffered",
+                type: '{ tag: "IncomingOffered"; value: { sequence: bigint; offer: MediaIncomingOffer } }',
+                description: "Passive authenticated incoming offer; no consent or capture yet.",
+            },
+            {
+                name: "IncomingResolved",
+                type: '{ tag: "IncomingResolved"; value: { sequence: bigint; incomingId: MediaIncomingId; result: MediaIncomingResolution } }',
+                description: "An offer can no longer be accepted.",
+            },
+            {
+                name: "ViewportChanged",
+                type: '{ tag: "ViewportChanged"; value: { sequence: bigint; viewport?: MediaViewport } }',
+                description: "Transform changes hide stale pictures; detach/replace clears all layouts.",
+            },
+        ],
+    },
+    {
+        id: "media-fit",
+        name: "MediaFit",
+        category: "media",
+        definition: 'export type MediaFit = "Contain" | "Cover";',
+        description: "Picture scaling inside its clipped, rounded rectangle.",
+        variants: [
+            {
+                name: "Contain",
+                type: '{ tag: "Contain"; value?: undefined }',
+                description: "Preserve the full picture with letterboxing.",
+            },
+            {
+                name: "Cover",
+                type: '{ tag: "Cover"; value?: undefined }',
+                description: "Crop to fill the rectangle.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-decision",
+        name: "MediaIncomingDecision",
+        category: "media",
+        definition: 'export type MediaIncomingDecision =\n  | { tag: "Refuse"; value?: undefined }\n  | { tag: "AcceptNew"; value: { operationId: MediaOperationId; tracks: MediaLocalTracks } }\n  | { tag: "AcceptExisting"; value: { operationId: MediaOperationId; sessionId: MediaSessionId } }\n;',
+        description: "Incoming decisions atomically claim an offer once acceptance begins.",
+        variants: [
+            {
+                name: "Refuse",
+                type: '{ tag: "Refuse"; value?: undefined }',
+                description: "Cleanup requiring no permission, subscription, or new operation quota.",
+            },
+            {
+                name: "AcceptNew",
+                type: '{ tag: "AcceptNew"; value: { operationId: MediaOperationId; tracks: MediaLocalTracks } }',
+                description: "Atomically create a session and accept after required consent.",
+            },
+            {
+                name: "AcceptExisting",
+                type: '{ tag: "AcceptExisting"; value: { operationId: MediaOperationId; sessionId: MediaSessionId } }',
+                description: "Join only the offer's matching existing session; never merge calls.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-id",
+        name: "MediaIncomingId",
+        category: "media",
+        definition: "export type MediaIncomingId = HexString;",
+        description: "Host-minted, single-use authenticated incoming-offer capability.",
+    },
+    {
+        id: "media-incoming-offer",
+        name: "MediaIncomingOffer",
+        category: "media",
+        definition: "export interface MediaIncomingOffer {\n  incomingId: MediaIncomingId;\n  peer: MediaPeer;\n  requestedRemoteTracks: MediaRemoteState;\n  remainingMs: number;\n  existingSession?: MediaSessionId;\n}",
+        description: "Authenticated, expiring offer; passive delivery does not create a session.",
+        fields: [
+            {
+                name: "incoming_id",
+                type: "MediaIncomingId",
+                description: "Single-use capability bound to sender, nonce, destination, and authority.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated remote product account.",
+            },
+            {
+                name: "requested_remote_tracks",
+                type: "MediaRemoteState",
+                description: "Declared caller intent: only Off or Starting, not proof of live capture.",
+            },
+            {
+                name: "remaining_ms",
+                type: "number",
+                description: "Remaining host-monotonic lifetime measured at emission.",
+            },
+            {
+                name: "existing_session",
+                type: "MediaSessionId | undefined",
+                description: "Existing local session only for an authenticated offer from its group.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-resolution",
+        name: "MediaIncomingResolution",
+        category: "media",
+        definition: 'export type MediaIncomingResolution = "Accepted" | "Refused" | "Expired" | "Cancelled" | "AnsweredElsewhere";',
+        description: "Bounded reason an incoming offer no longer rings.",
+        variants: [
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value?: undefined }',
+                description: "Accepted locally.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Refused locally.",
+            },
+            {
+                name: "Expired",
+                type: '{ tag: "Expired"; value?: undefined }',
+                description: "Authoritative lifetime expired.",
+            },
+            {
+                name: "Cancelled",
+                type: '{ tag: "Cancelled"; value?: undefined }',
+                description: "Cancelled before completion.",
+            },
+            {
+                name: "AnsweredElsewhere",
+                type: '{ tag: "AnsweredElsewhere"; value?: undefined }',
+                description: "Claimed by another authorized host endpoint.",
+            },
+        ],
+    },
+    {
+        id: "media-incoming-response",
+        name: "MediaIncomingResponse",
+        category: "media",
+        definition: 'export type MediaIncomingResponse =\n  | { tag: "Refused"; value?: undefined }\n  | { tag: "Accepted"; value: { session: MediaSessionSnapshot; participant: MediaParticipantSnapshot } }\n;',
+        description: "Result of a successful incoming decision.",
+        variants: [
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "Offer refused without capture or signaling a new call.",
+            },
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value: { session: MediaSessionSnapshot; participant: MediaParticipantSnapshot } }',
+                description: "Offer accepted, returning both authoritative owned resources.",
+            },
+        ],
+    },
+    {
+        id: "media-local-state",
+        name: "MediaLocalState",
+        category: "media",
+        definition: "export interface MediaLocalState {\n  microphone: MediaTrackState;\n  camera: MediaTrackState;\n  screen: MediaTrackState;\n  cameraKind?: MediaCameraKind;\n  audioRoute?: MediaAudioRoute;\n}",
+        description: "Host-observed local media and sanitized selected device classes.",
+        fields: [
+            {
+                name: "microphone",
+                type: "MediaTrackState",
+                description: "Actual microphone state.",
+            },
+            {
+                name: "camera",
+                type: "MediaTrackState",
+                description: "Actual camera state.",
+            },
+            {
+                name: "screen",
+                type: "MediaTrackState",
+                description: "Actual screen-sharing state.",
+            },
+            {
+                name: "camera_kind",
+                type: "MediaCameraKind | undefined",
+                description: "Actual camera class, if selected.",
+            },
+            {
+                name: "audio_route",
+                type: "MediaAudioRoute | undefined",
+                description: "Actual audio route class, if selected.",
+            },
+        ],
+    },
+    {
+        id: "media-local-tracks",
+        name: "MediaLocalTracks",
+        category: "media",
+        definition: "export interface MediaLocalTracks {\n  microphone: boolean;\n  camera: boolean;\n  screen: boolean;\n  cameraPreference?: MediaCameraKind;\n  audioPreference?: MediaAudioRoute;\n}",
+        description: "Complete replacement capture intent. All false means receive-only.\nPreferences are advisory; screen capture always uses the trusted host picker.",
+        fields: [
+            {
+                name: "microphone",
+                type: "boolean",
+                description: "Request microphone capture.",
+            },
+            {
+                name: "camera",
+                type: "boolean",
+                description: "Request camera capture.",
+            },
+            {
+                name: "screen",
+                type: "boolean",
+                description: "Request screen capture without selecting a source on the product side.",
+            },
+            {
+                name: "camera_preference",
+                type: "MediaCameraKind | undefined",
+                description: "Advisory camera class preference.",
+            },
+            {
+                name: "audio_preference",
+                type: "MediaAudioRoute | undefined",
+                description: "Advisory audio route preference.",
+            },
+        ],
+    },
+    {
+        id: "media-network",
+        name: "MediaNetwork",
+        category: "media",
+        definition: "export interface MediaNetwork {\n  genesisHash: HexString;\n}",
+        description: "Host-configured network namespace; never inferred from a display label or URL.",
+        fields: [
+            {
+                name: "genesis_hash",
+                type: "HexString",
+                description: "Genesis hash identifying the authenticated signaling namespace.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-failure",
+        name: "MediaOperationFailure",
+        category: "media",
+        definition: 'export type MediaOperationFailure =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "Domain"; value: { error: HostMediaError } }\n  | { tag: "HostFailure"; value?: undefined }\n;',
+        description: "Retained sanitized failure; diagnostics never enter the operation history.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "User or authority denied the operation.",
+            },
+            {
+                name: "Domain",
+                type: '{ tag: "Domain"; value: { error: HostMediaError } }',
+                description: "Bounded Media domain failure.",
+            },
+            {
+                name: "HostFailure",
+                type: '{ tag: "HostFailure"; value?: undefined }',
+                description: "Host failure without a diagnostic string.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-id",
+        name: "MediaOperationId",
+        category: "media",
+        definition: "export type MediaOperationId = HexString;",
+        description: "Client-random operation correlation key, shared across runtime listeners.\nReusing a key with a different request is an operation conflict.",
+    },
+    {
+        id: "media-operation-kind",
+        name: "MediaOperationKind",
+        category: "media",
+        definition: 'export type MediaOperationKind = "CreateSession" | "AddParticipant" | "AcceptIncoming" | "SetLocalTracks";',
+        description: "Mutation category retained with a correlation key.",
+        variants: [
+            {
+                name: "CreateSession",
+                type: '{ tag: "CreateSession"; value?: undefined }',
+                description: "Session creation.",
+            },
+            {
+                name: "AddParticipant",
+                type: '{ tag: "AddParticipant"; value?: undefined }',
+                description: "Outbound invitation admission.",
+            },
+            {
+                name: "AcceptIncoming",
+                type: '{ tag: "AcceptIncoming"; value?: undefined }',
+                description: "Incoming acceptance, new or existing session.",
+            },
+            {
+                name: "SetLocalTracks",
+                type: '{ tag: "SetLocalTracks"; value?: undefined }',
+                description: "Complete local capture-intent replacement.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-result",
+        name: "MediaOperationResult",
+        category: "media",
+        definition: 'export type MediaOperationResult =\n  | { tag: "Session"; value: { sessionId: MediaSessionId } }\n  | { tag: "Participant"; value: { sessionId: MediaSessionId; participantId: MediaParticipantId } }\n  | { tag: "Incoming"; value: { incomingId: MediaIncomingId; sessionId: MediaSessionId; participantId: MediaParticipantId } }\n  | { tag: "Tracks"; value: { sessionId: MediaSessionId } }\n;',
+        description: "Exact committed resources, without guessing from concurrent session snapshots.",
+        variants: [
+            {
+                name: "Session",
+                type: '{ tag: "Session"; value: { sessionId: MediaSessionId } }',
+                description: "Created a session.",
+            },
+            {
+                name: "Participant",
+                type: '{ tag: "Participant"; value: { sessionId: MediaSessionId; participantId: MediaParticipantId } }',
+                description: "Admitted an outbound participant.",
+            },
+            {
+                name: "Incoming",
+                type: '{ tag: "Incoming"; value: { incomingId: MediaIncomingId; sessionId: MediaSessionId; participantId: MediaParticipantId } }',
+                description: "Accepted a specific incoming offer.",
+            },
+            {
+                name: "Tracks",
+                type: '{ tag: "Tracks"; value: { sessionId: MediaSessionId } }',
+                description: "Committed local intent for a session.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-snapshot",
+        name: "MediaOperationSnapshot",
+        category: "media",
+        definition: "export interface MediaOperationSnapshot {\n  operationId: MediaOperationId;\n  kind?: MediaOperationKind;\n  state: MediaOperationState;\n}",
+        description: "Authoritative runtime-wide correlation record, shared across all listeners.",
+        fields: [
+            {
+                name: "operation_id",
+                type: "MediaOperationId",
+                description: "Client-random key identifying the original request.",
+            },
+            {
+                name: "kind",
+                type: "MediaOperationKind | undefined",
+                description: "None only for cancellation-before-admission tombstones.",
+            },
+            {
+                name: "state",
+                type: "MediaOperationState",
+                description: "Authoritative current or terminal outcome.",
+            },
+        ],
+    },
+    {
+        id: "media-operation-state",
+        name: "MediaOperationState",
+        category: "media",
+        definition: 'export type MediaOperationState =\n  | { tag: "Pending"; value?: undefined }\n  | { tag: "Committed"; value: { result: MediaOperationResult } }\n  | { tag: "Failed"; value: { failure: MediaOperationFailure } }\n  | { tag: "Cancelled"; value?: undefined }\n;',
+        description: "Cancellation linearizes against commit; a committed result is never undone\nor misreported as cancelled. Terminal records last for the owning runtime.",
+        variants: [
+            {
+                name: "Pending",
+                type: '{ tag: "Pending"; value?: undefined }',
+                description: "Admitted and not yet settled.",
+            },
+            {
+                name: "Committed",
+                type: '{ tag: "Committed"; value: { result: MediaOperationResult } }',
+                description: "Effects committed before any cancellation won.",
+            },
+            {
+                name: "Failed",
+                type: '{ tag: "Failed"; value: { failure: MediaOperationFailure } }',
+                description: "Settled without committing the mutation.",
+            },
+            {
+                name: "Cancelled",
+                type: '{ tag: "Cancelled"; value?: undefined }',
+                description: "Cancellation won; delayed original requests and callbacks cannot act.",
+            },
+        ],
+    },
+    {
+        id: "media-participant-id",
+        name: "MediaParticipantId",
+        category: "media",
+        definition: "export type MediaParticipantId = HexString;",
+        description: "Host-minted remote endpoint capability within one owned session.",
+    },
+    {
+        id: "media-participant-snapshot",
+        name: "MediaParticipantSnapshot",
+        category: "media",
+        definition: "export interface MediaParticipantSnapshot {\n  participantId: MediaParticipantId;\n  peer: MediaPeer;\n  state: MediaParticipantState;\n  media: MediaRemoteState;\n  outcome?: MediaCallOutcome;\n}",
+        description: "Current state of one remote endpoint; the local endpoint has no participant ID.",
+        fields: [
+            {
+                name: "participant_id",
+                type: "MediaParticipantId",
+                description: "Runtime-scoped participant capability.",
+            },
+            {
+                name: "peer",
+                type: "MediaPeer",
+                description: "Authenticated remote product account.",
+            },
+            {
+                name: "state",
+                type: "MediaParticipantState",
+                description: "Authoritative endpoint state.",
+            },
+            {
+                name: "media",
+                type: "MediaRemoteState",
+                description: "Host-observed remote media state.",
+            },
+            {
+                name: "outcome",
+                type: "MediaCallOutcome | undefined",
+                description: "Terminal outcome, if any.",
+            },
+        ],
+    },
+    {
+        id: "media-participant-state",
+        name: "MediaParticipantState",
+        category: "media",
+        definition: 'export type MediaParticipantState = "Inviting" | "Connecting" | "Connected" | "Reconnecting" | "Left";',
+        description: "Authoritative state of one remote endpoint.",
+        variants: [
+            {
+                name: "Inviting",
+                type: '{ tag: "Inviting"; value?: undefined }',
+                description: "An outbound invitation is awaiting an answer.",
+            },
+            {
+                name: "Connecting",
+                type: '{ tag: "Connecting"; value?: undefined }',
+                description: "Accepted and establishing media connectivity.",
+            },
+            {
+                name: "Connected",
+                type: '{ tag: "Connected"; value?: undefined }',
+                description: "Media connectivity established.",
+            },
+            {
+                name: "Reconnecting",
+                type: '{ tag: "Reconnecting"; value?: undefined }',
+                description: "Recovering connectivity within the host deadline.",
+            },
+            {
+                name: "Left",
+                type: '{ tag: "Left"; value?: undefined }',
+                description: "Terminal for this participant capability.",
+            },
+        ],
+    },
+    {
+        id: "media-peer",
+        name: "MediaPeer",
+        category: "media",
+        definition: "export interface MediaPeer {\n  network: MediaNetwork;\n  productId: string;\n  account: MediaAccount;\n}",
+        description: "Authenticated destination. V1 permits only the caller's network and product.",
+        fields: [
+            {
+                name: "network",
+                type: "MediaNetwork",
+                description: "Network namespace returned by discovery.",
+            },
+            {
+                name: "product_id",
+                type: "string",
+                description: "Full canonical authenticated product identifier, including subdomains.",
+            },
+            {
+                name: "account",
+                type: "MediaAccount",
+                description: "Product account resolved and authenticated by the host.",
+            },
+        ],
+    },
+    {
+        id: "media-picture-kind",
+        name: "MediaPictureKind",
+        category: "media",
+        definition: 'export type MediaPictureKind = "Camera" | "Screen";',
+        description: "Host-owned picture kind, without a readable frame or stream handle.",
+        variants: [
+            {
+                name: "Camera",
+                type: '{ tag: "Camera"; value?: undefined }',
+                description: "Camera picture.",
+            },
+            {
+                name: "Screen",
+                type: '{ tag: "Screen"; value?: undefined }',
+                description: "Screen-sharing picture.",
+            },
+        ],
+    },
+    {
+        id: "media-picture-source",
+        name: "MediaPictureSource",
+        category: "media",
+        definition: 'export type MediaPictureSource =\n  | { tag: "Local"; value: { picture: MediaPictureKind } }\n  | { tag: "Remote"; value: { participantId: MediaParticipantId; picture: MediaPictureKind } }\n;',
+        description: "Selects an unreadable host-composited local preview or remote picture.",
+        variants: [
+            {
+                name: "Local",
+                type: '{ tag: "Local"; value: { picture: MediaPictureKind } }',
+                description: "Self-preview uses the same isolated compositor as remote pictures.",
+            },
+            {
+                name: "Remote",
+                type: '{ tag: "Remote"; value: { participantId: MediaParticipantId; picture: MediaPictureKind } }',
+                description: "Picture belonging to an owned participant in this session.",
+            },
+        ],
+    },
+    {
+        id: "media-placement",
+        name: "MediaPlacement",
+        category: "media",
+        definition: 'export type MediaPlacement = "BelowProduct" | "AboveProduct";',
+        description: "Placement relative to the complete product plane, always below trusted UI.",
+        variants: [
+            {
+                name: "BelowProduct",
+                type: '{ tag: "BelowProduct"; value?: undefined }',
+                description: "Below all product content; the product must be transparent there.",
+            },
+            {
+                name: "AboveProduct",
+                type: '{ tag: "AboveProduct"; value?: undefined }',
+                description: "Above all product content, not interleaved with arbitrary DOM z-indices.",
+            },
+        ],
+    },
+    {
+        id: "media-rect",
+        name: "MediaRect",
+        category: "media",
+        definition: "export interface MediaRect {\n  x: number;\n  y: number;\n  width: number;\n  height: number;\n}",
+        description: "Axis-aligned logical viewport rectangle. Negative positions permit clipping;\narithmetic overflow is rejected, and zero size draws nothing.",
+        fields: [
+            {
+                name: "x",
+                type: "number",
+                description: "Left edge relative to viewport origin.",
+            },
+            {
+                name: "y",
+                type: "number",
+                description: "Top edge relative to viewport origin.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Logical width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Logical height.",
+            },
+        ],
+    },
+    {
+        id: "media-remote-state",
+        name: "MediaRemoteState",
+        category: "media",
+        definition: "export interface MediaRemoteState {\n  microphone: MediaTrackState;\n  camera: MediaTrackState;\n  screen: MediaTrackState;\n}",
+        description: "Remote track states, without quality metrics or device metadata.",
+        fields: [
+            {
+                name: "microphone",
+                type: "MediaTrackState",
+                description: "Remote microphone state.",
+            },
+            {
+                name: "camera",
+                type: "MediaTrackState",
+                description: "Remote camera state.",
+            },
+            {
+                name: "screen",
+                type: "MediaTrackState",
+                description: "Remote screen-sharing state.",
+            },
+        ],
+    },
+    {
+        id: "media-resource",
+        name: "MediaResource",
+        category: "media",
+        definition: 'export type MediaResource = "Sessions" | "Participants" | "Incoming" | "Operations" | "Subscriptions";',
+        description: "Exhausted finite resource class, without exposing another runtime's state.",
+        variants: [
+            {
+                name: "Sessions",
+                type: '{ tag: "Sessions"; value?: undefined }',
+                description: "Runtime session issuance budget.",
+            },
+            {
+                name: "Participants",
+                type: '{ tag: "Participants"; value?: undefined }',
+                description: "Runtime participant issuance budget.",
+            },
+            {
+                name: "Incoming",
+                type: '{ tag: "Incoming"; value?: undefined }',
+                description: "Incoming issuance or pending-offer budget.",
+            },
+            {
+                name: "Operations",
+                type: '{ tag: "Operations"; value?: undefined }',
+                description: "Retained operation budget.",
+            },
+            {
+                name: "Subscriptions",
+                type: '{ tag: "Subscriptions"; value?: undefined }',
+                description: "Active subscription budget.",
+            },
+        ],
+    },
+    {
+        id: "media-runtime-limits",
+        name: "MediaRuntimeLimits",
+        category: "media",
+        definition: "export interface MediaRuntimeLimits {\n  maxIssuedSessions: number;\n  maxIssuedParticipants: number;\n  maxIssuedIncoming: number;\n  maxOperations: number;\n  maxPendingIncoming: number;\n  maxSubscriptions: number;\n  eventQueueCapacity: number;\n}",
+        description: "Finite runtime-lifetime retention and delivery budgets, reserved before effects.\nKnown cleanup never allocates quota; terminal and operation tombstones are not\nsilently evicted. Lower host budgets must still support the six-endpoint floor.",
+        fields: [
+            {
+                name: "max_issued_sessions",
+                type: "number",
+                description: "Total session IDs that may be issued in this runtime (core default 256).",
+            },
+            {
+                name: "max_issued_participants",
+                type: "number",
+                description: "Total participant IDs that may be issued (core default 2048).",
+            },
+            {
+                name: "max_issued_incoming",
+                type: "number",
+                description: "Total incoming IDs that may be issued (core default 4096).",
+            },
+            {
+                name: "max_operations",
+                type: "number",
+                description: "Retained operation keys, including cancellation tombstones (default 8192).",
+            },
+            {
+                name: "max_pending_incoming",
+                type: "number",
+                description: "Simultaneously pending incoming offers (core default 32).",
+            },
+            {
+                name: "max_subscriptions",
+                type: "number",
+                description: "Simultaneous runtime listeners (core default 8).",
+            },
+            {
+                name: "event_queue_capacity",
+                type: "number",
+                description: "Queued events per listener (core default 128); overflow terminates it.",
+            },
+        ],
+    },
+    {
+        id: "media-session-id",
+        name: "MediaSessionId",
+        category: "media",
+        definition: "export type MediaSessionId = HexString;",
+        description: "Host-minted, unguessable session capability, bound to one product runtime.",
+    },
+    {
+        id: "media-session-snapshot",
+        name: "MediaSessionSnapshot",
+        category: "media",
+        definition: "export interface MediaSessionSnapshot {\n  sessionId: MediaSessionId;\n  revision: bigint;\n  state: MediaSessionState;\n  requested: MediaLocalTracks;\n  actual: MediaLocalState;\n  participants: Array<MediaParticipantSnapshot>;\n  outcome?: MediaCallOutcome;\n}",
+        description: "Authoritative session state. Remote departure does not implicitly end it.",
+        fields: [
+            {
+                name: "session_id",
+                type: "MediaSessionId",
+                description: "Runtime-scoped session capability.",
+            },
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Strictly increasing per-session revision.",
+            },
+            {
+                name: "state",
+                type: "MediaSessionState",
+                description: "Aggregate endpoint state.",
+            },
+            {
+                name: "requested",
+                type: "MediaLocalTracks",
+                description: "Last committed complete local intent.",
+            },
+            {
+                name: "actual",
+                type: "MediaLocalState",
+                description: "Host-observed actual capture and routing state.",
+            },
+            {
+                name: "participants",
+                type: "Array<MediaParticipantSnapshot>",
+                description: "Remote endpoints, including their terminal outcomes.",
+            },
+            {
+                name: "outcome",
+                type: "MediaCallOutcome | undefined",
+                description: "Terminal session outcome, if any.",
+            },
+        ],
+    },
+    {
+        id: "media-session-state",
+        name: "MediaSessionState",
+        category: "media",
+        definition: 'export type MediaSessionState = "Ready" | "Negotiating" | "Connecting" | "Connected" | "Reconnecting" | "Ended";',
+        description: "Authoritative aggregate session state, independent of track interruption.",
+        variants: [
+            {
+                name: "Ready",
+                type: '{ tag: "Ready"; value?: undefined }',
+                description: "No nonterminal participants; the session remains explicitly owned.",
+            },
+            {
+                name: "Negotiating",
+                type: '{ tag: "Negotiating"; value?: undefined }',
+                description: "Invitations are outstanding.",
+            },
+            {
+                name: "Connecting",
+                type: '{ tag: "Connecting"; value?: undefined }',
+                description: "An accepted endpoint is connecting; takes precedence over negotiating.",
+            },
+            {
+                name: "Connected",
+                type: '{ tag: "Connected"; value?: undefined }',
+                description: "All accepted nonterminal endpoints are connected and no invite remains.",
+            },
+            {
+                name: "Reconnecting",
+                type: '{ tag: "Reconnecting"; value?: undefined }',
+                description: "An established endpoint is recovering; takes precedence over connecting.",
+            },
+            {
+                name: "Ended",
+                type: '{ tag: "Ended"; value?: undefined }',
+                description: "Terminal, with all capture, signaling, playback, and surfaces released.",
+            },
+        ],
+    },
+    {
+        id: "media-surface",
+        name: "MediaSurface",
+        category: "media",
+        definition: "export interface MediaSurface {\n  surfaceId: number;\n  source: MediaPictureSource;\n  rect: MediaRect;\n  clip: MediaRect;\n  cornerRadius: number;\n  placement: MediaPlacement;\n  depth: number;\n  fit: MediaFit;\n  mirrored: boolean;\n  visible: boolean;\n}",
+        description: "One unreadable sibling compositor layer. Layers do not receive product input\nand are excluded from product renderer/screenshot APIs. Off or interrupted\nsources never retain stale captured frames. Hiding pictures does not stop audio.",
+        fields: [
+            {
+                name: "surface_id",
+                type: "number",
+                description: "Product-chosen layout key, unique within the session's submitted set.",
+            },
+            {
+                name: "source",
+                type: "MediaPictureSource",
+                description: "Local or owned remote picture.",
+            },
+            {
+                name: "rect",
+                type: "MediaRect",
+                description: "Target logical viewport rectangle.",
+            },
+            {
+                name: "clip",
+                type: "MediaRect",
+                description: "Additional clipping rectangle, intersected with viewport and host region.",
+            },
+            {
+                name: "corner_radius",
+                type: "number",
+                description: "Clamped to half the smaller target dimension.",
+            },
+            {
+                name: "placement",
+                type: "MediaPlacement",
+                description: "Placement plane relative to all product content.",
+            },
+            {
+                name: "depth",
+                type: "number",
+                description: "Lower is behind higher; ties sort by session bytes then surface ID.",
+            },
+            {
+                name: "fit",
+                type: "MediaFit",
+                description: "Aspect-ratio treatment within the clip.",
+            },
+            {
+                name: "mirrored",
+                type: "boolean",
+                description: "Presentation only; does not change what peers receive.",
+            },
+            {
+                name: "visible",
+                type: "boolean",
+                description: "False draws no picture, without changing capture or audio playback.",
+            },
+        ],
+    },
+    {
+        id: "media-track-state",
+        name: "MediaTrackState",
+        category: "media",
+        definition: 'export type MediaTrackState = "Off" | "Starting" | "Live" | "Interrupted";',
+        description: "Actual track state, without exposing underlying capture or stream objects.",
+        variants: [
+            {
+                name: "Off",
+                type: '{ tag: "Off"; value?: undefined }',
+                description: "No sending or stale picture remains after an off intent commits.",
+            },
+            {
+                name: "Starting",
+                type: '{ tag: "Starting"; value?: undefined }',
+                description: "Requested but not yet live.",
+            },
+            {
+                name: "Live",
+                type: '{ tag: "Live"; value?: undefined }',
+                description: "Host-observed live track.",
+            },
+            {
+                name: "Interrupted",
+                type: '{ tag: "Interrupted"; value?: undefined }',
+                description: "Temporarily interrupted, distinct from permission revocation.",
+            },
+        ],
+    },
+    {
+        id: "media-viewport",
+        name: "MediaViewport",
+        category: "media",
+        definition: "export interface MediaViewport {\n  revision: bigint;\n  width: number;\n  height: number;\n  deviceScaleNumerator: number;\n  deviceScaleDenominator: number;\n}",
+        description: "One authorized rendering attachment shared by every session in a runtime.\nRevision never restarts after detach/replace. Product coordinates are logical\nviewport units (CSS pixels on web), not document or physical screen coordinates.",
+        fields: [
+            {
+                name: "revision",
+                type: "bigint",
+                description: "Runtime-monotonic transform/attachment revision.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Logical viewport width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Logical viewport height.",
+            },
+            {
+                name: "device_scale_numerator",
+                type: "number",
+                description: "Effective uniform physical-pixels/logical-unit ratio numerator.",
+            },
+            {
+                name: "device_scale_denominator",
+                type: "number",
+                description: "Positive scale denominator; products must not pre-scale rectangles.",
             },
         ],
     },
@@ -5820,7 +8092,7 @@ export const types = [
             {
                 name: "route",
                 type: "string",
-                description: "Validated product-relative route beginning with exactly one slash.",
+                description: "Original product destination (local path or supported deep-link URI).\nOpaque data for the product router, never host navigation authority.",
             },
         ],
     },
@@ -6813,7 +9085,7 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n;',
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n  | { tag: "Validator"; value: { genesis: HexString; account: HexString; execution: string } }\n;',
         description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
@@ -6845,6 +9117,16 @@ export const types = [
                 name: "JamPeers",
                 type: '{ tag: "JamPeers"; value: { genesis: HexString } }',
                 description: "Peer access over JAMNP-S QUIC/WebTransport, authorized for the full\ngenesis hash through the `JamPeerTransport` service.\n\nThe app names endpoints and pinned keys. Native QUIC negotiates the\ngenesis-derived ALPN; WebTransport negotiates HTTP/3. Neither proves\nchain membership. The guest must verify chain data itself. The grant\ncarries no host account, signing or submission authority and does not\nrestrict which framed protocol messages the guest sends.",
+            },
+            {
+                name: "Calling",
+                type: '{ tag: "Calling"; value?: undefined }',
+                description: "Host-owned Media calling, scoped to authenticated product/account/network.\n\nDistinct from browser-realm WebRtc. Receive-only sessions still require\nthis grant; microphone and camera additionally require device grants.\nScreen selection is exclusively a trusted host picker, not a permission\nto enumerate or name capture sources. Revocation ends affected sessions.",
+            },
+            {
+                name: "Validator",
+                type: '{ tag: "Validator"; value: { genesis: HexString; account: HexString; execution: string } }',
+                description: "Experimental host-custodied validator signing.\nScope is one trusted account and execution; artifacts need host consent.\nIndex 112 matches trait 112 and the TrUAPI 0.30 line, clear of the\npositional variants (JamPeers 5, Calling 6).",
             },
         ],
     },
@@ -7923,6 +10205,289 @@ export const types = [
                 name: "clip",
                 type: "AvatarRect",
                 description: "Visible region to which the avatar is clipped.",
+            },
+        ],
+    },
+    {
+        id: "validator-audit-input",
+        name: "ValidatorAuditInput",
+        category: "validator",
+        definition: 'export type ValidatorAuditInput =\n  | { tag: "Initial"; value: { entropy: HexString } }\n  | { tag: "Subsequent"; value: { entropy: HexString; report: HexString; tranche: number } }\n;',
+        description: "Exact Bandersnatch audit selection domain.",
+        variants: [
+            {
+                name: "Initial",
+                type: '{ tag: "Initial"; value: { entropy: HexString } }',
+                description: "Initial audit selection.",
+            },
+            {
+                name: "Subsequent",
+                type: '{ tag: "Subsequent"; value: { entropy: HexString; report: HexString; tranche: number } }',
+                description: "Subsequent audit selection.",
+            },
+        ],
+    },
+    {
+        id: "validator-audit-report",
+        name: "ValidatorAuditReport",
+        category: "validator",
+        definition: "export interface ValidatorAuditReport {\n  core: number;\n  report: HexString;\n}",
+        description: "One canonical audit announcement report.",
+        fields: [
+            {
+                name: "core",
+                type: "number",
+                description: "Core index under the enrolled parameters.",
+            },
+            {
+                name: "report",
+                type: "HexString",
+                description: "Work-report hash.",
+            },
+        ],
+    },
+    {
+        id: "validator-authority",
+        name: "ValidatorAuthority",
+        category: "validator",
+        definition: "export interface ValidatorAuthority {\n  productId: string;\n  account: HexString;\n  executionId: string;\n}",
+        description: "Runtime-owned authority, passed only to trusted platform callbacks.",
+        fields: [
+            {
+                name: "product_id",
+                type: "string",
+                description: "Verified product namespace from the host connection.",
+            },
+            {
+                name: "account",
+                type: "HexString",
+                description: "Current root account from runtime authority, not the guest.",
+            },
+            {
+                name: "execution_id",
+                type: "string",
+                description: "Canonical unsigned decimal runtime instance id.",
+            },
+        ],
+    },
+    {
+        id: "validator-full-duty",
+        name: "ValidatorFullDuty",
+        category: "validator",
+        definition: 'export type ValidatorFullDuty =\n  | { tag: "Assurance"; value: { anchor: HexString; statementHash: HexString } }\n  | { tag: "Guarantee"; value: { report: HexString } }\n  | { tag: "Announcement"; value: { anchor: HexString; tranche: number; reports: Array<ValidatorAuditReport> } }\n  | { tag: "Judgement"; value: { report: HexString; valid: boolean } }\n;',
+        description: "Full-validator signing domains, requiring explicit role-4 consent.",
+        variants: [
+            {
+                name: "Assurance",
+                type: '{ tag: "Assurance"; value: { anchor: HexString; statementHash: HexString } }',
+                description: "Availability assurance, guarded by anchor.",
+            },
+            {
+                name: "Guarantee",
+                type: '{ tag: "Guarantee"; value: { report: HexString } }',
+                description: "Work-report guarantee, guarded by report.",
+            },
+            {
+                name: "Announcement",
+                type: '{ tag: "Announcement"; value: { anchor: HexString; tranche: number; reports: Array<ValidatorAuditReport> } }',
+                description: "Audit announcement, guarded by its exact canonical message hash.",
+            },
+            {
+                name: "Judgement",
+                type: '{ tag: "Judgement"; value: { report: HexString; valid: boolean } }',
+                description: "Validity judgement; opposite validity for one report conflicts.",
+            },
+        ],
+    },
+    {
+        id: "validator-full-intent",
+        name: "ValidatorFullIntent",
+        category: "validator",
+        definition: "export interface ValidatorFullIntent {\n  revision: string;\n  duty: ValidatorFullDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Durable full-duty guard; never enumerated in retained-history pages.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorFullDuty",
+                description: "Exact typed domain that was signed.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound before signing.",
+            },
+        ],
+    },
+    {
+        id: "validator-grandpa-duty",
+        name: "ValidatorGrandpaDuty",
+        category: "validator",
+        definition: "export interface ValidatorGrandpaDuty {\n  stage: number;\n  set: number;\n  round: string;\n  target: HexString;\n  stateRoot: HexString;\n  slot: number;\n}",
+        description: "One supported GRANDPA signing domain. No arbitrary-byte signing exists.",
+        fields: [
+            {
+                name: "stage",
+                type: "number",
+                description: "0 prevote, 1 precommit, 2 proposal; all other values refuse.",
+            },
+            {
+                name: "set",
+                type: "number",
+                description: "Authority set identifier.",
+            },
+            {
+                name: "round",
+                type: "string",
+                description: "Canonical unsigned decimal u64, never a JSON number.",
+            },
+            {
+                name: "target",
+                type: "HexString",
+                description: "Target header hash.",
+            },
+            {
+                name: "state_root",
+                type: "HexString",
+                description: "Target posterior state root, independently computed by execution.",
+            },
+            {
+                name: "slot",
+                type: "number",
+                description: "Target slot.",
+            },
+        ],
+    },
+    {
+        id: "validator-intent",
+        name: "ValidatorIntent",
+        category: "validator",
+        definition: "export interface ValidatorIntent {\n  revision: string;\n  duty: ValidatorGrandpaDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Retained durable signing intent needed by guest recovery.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical unsigned decimal u64 journal revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorGrandpaDuty",
+                description: "Exact domain that was durably accepted.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete recovery material bound before signing.",
+            },
+        ],
+    },
+    {
+        id: "validator-protection",
+        name: "ValidatorProtection",
+        category: "validator",
+        definition: 'export type ValidatorProtection = "OsKeyringWrappedSoftware";',
+        description: "Honest protection classes offered by this experiment.",
+        variants: [
+            {
+                name: "OsKeyringWrappedSoftware",
+                type: '{ tag: "OsKeyringWrappedSoftware"; value?: undefined }',
+                description: "OS keyring wraps a software seed, which exists in trusted host memory.",
+            },
+        ],
+    },
+    {
+        id: "validator-recovery-ref",
+        name: "ValidatorRecoveryRef",
+        category: "validator",
+        definition: "export interface ValidatorRecoveryRef {\n  hash: HexString;\n  length: number;\n}",
+        description: "Content-addressed complete recovery material; hashes are Blake2b-256.",
+        fields: [
+            {
+                name: "hash",
+                type: "HexString",
+                description: "Complete blob hash.",
+            },
+            {
+                name: "length",
+                type: "number",
+                description: "Complete byte length, at most 64 MiB.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-duty",
+        name: "ValidatorSealDuty",
+        category: "validator",
+        definition: "export interface ValidatorSealDuty {\n  slot: number;\n  authorIndex: number;\n  input: ValidatorSealInput;\n  payloadHash: HexString;\n}",
+        description: "Canonical decoded seal domain retained by the durable helper.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Consumed slot; at most one payload can be sealed per slot.",
+            },
+            {
+                name: "author_index",
+                type: "number",
+                description: "Author index decoded from the canonical seal payload.",
+            },
+            {
+                name: "input",
+                type: "ValidatorSealInput",
+                description: "Exact VRF domain.",
+            },
+            {
+                name: "payload_hash",
+                type: "HexString",
+                description: "Blake2b-256 of the canonical encoded seal payload.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-input",
+        name: "ValidatorSealInput",
+        category: "validator",
+        definition: 'export type ValidatorSealInput =\n  | { tag: "TicketSeal"; value: { entropy: HexString; attempt: number } }\n  | { tag: "FallbackSeal"; value: { entropy: HexString } }\n;',
+        description: "Exact Safrole VRF domain selector; no arbitrary signing message.",
+        variants: [
+            {
+                name: "TicketSeal",
+                type: '{ tag: "TicketSeal"; value: { entropy: HexString; attempt: number } }',
+                description: "Ticket-based eligibility and seal domain.",
+            },
+            {
+                name: "FallbackSeal",
+                type: '{ tag: "FallbackSeal"; value: { entropy: HexString } }',
+                description: "Fallback slot eligibility and seal domain.",
+            },
+        ],
+    },
+    {
+        id: "validator-seal-intent",
+        name: "ValidatorSealIntent",
+        category: "validator",
+        definition: "export interface ValidatorSealIntent {\n  revision: string;\n  duty: ValidatorSealDuty;\n  recovery: ValidatorRecoveryRef;\n}",
+        description: "Persisted seal intent exposed for complete guest recovery.",
+        fields: [
+            {
+                name: "revision",
+                type: "string",
+                description: "Canonical decimal durable revision.",
+            },
+            {
+                name: "duty",
+                type: "ValidatorSealDuty",
+                description: "Consumed slot and exact domain.",
+            },
+            {
+                name: "recovery",
+                type: "ValidatorRecoveryRef",
+                description: "Complete pre-seal recovery material.",
             },
         ],
     },

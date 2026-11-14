@@ -27,6 +27,7 @@ export interface CacheSettings {
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';
 export const POLKAVM_APPS_KEY = 'dotli:experimental-polkavm-apps';
+export const LOCAL_WALLET_KEY = 'dotli:experimental-local-wallet';
 
 export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== 'undefined';
@@ -206,4 +207,29 @@ export function getPolkaVmAppsEnabled(siteId: SiteId): boolean {
 /** Persist the user's experimental PolkaVM App runtime preference. */
 export function setPolkaVmAppsEnabled(enabled: boolean): void {
   storage.setItem(POLKAVM_APPS_KEY, enabled ? '1' : '0');
+}
+
+/**
+ * Production keeps the experimental local signer opt-in. Test deployments and
+ * localhost enable it unless the user explicitly turns it off.
+ */
+export function defaultLocalWalletEnabled(siteId: SiteId): boolean {
+  return siteId !== 'dot.li';
+}
+
+/** Whether this browser may read or configure a local signing wallet. */
+export function getLocalWalletEnabled(siteId: SiteId): boolean {
+  const stored = storage.getItem(LOCAL_WALLET_KEY);
+  if (stored === '1') {
+    return true;
+  }
+  if (stored === '0') {
+    return false;
+  }
+  return defaultLocalWalletEnabled(siteId);
+}
+
+/** Persist the user's experimental local-wallet preference. */
+export function setLocalWalletEnabled(enabled: boolean): void {
+  storage.setItem(LOCAL_WALLET_KEY, enabled ? '1' : '0');
 }

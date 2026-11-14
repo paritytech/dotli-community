@@ -892,7 +892,346 @@
     return true;
   }
 
+  const VALIDATION_CHUNK = 4096;
+  const VALIDATION_LIMIT = 1024 * 1024 - 64;
+  const VALIDATION_SLICE = 4194304n;
+  const VALIDATION_EMPTY = new Uint8Array(0);
+  const VALIDATION_ASSETS = new Set([
+    "state.bin", "inputs.bin", "peer.json", "parameters.bin",
+    "genesis-header.bin", "genesis-root.bin",
+  ]);
+  const VALIDATION_IMPORTS = new Set([
+    "validation_read", "validation_log", "validation_report",
+    "validation_checkpoint_read", "validation_checkpoint_write",
+    "validation_checkpoint_commit", "validation_peer_request",
+    "validation_peer_read", "validation_peer_wait", "validation_peer_now_ms",
+  ]);
+
+  function validationRequire(condition, message) {
+    if (!condition) throw new Error(`host_validation: ${message}`);
+  }
+
+  // An independent child, never a second application runtime or TrUAPI client.
+  // Its only external effects are events consumed by the enclosing RV32 guest.
+  class TranslatedValidation {
+    constructor(runtime, imports, assets, now) {
+      this.runtime = runtime;
+      this.runtimeImports = imports;
+      this.assets = assets;
+      this.now = now;
+      this.program = null;
+      this.run = null;
+      this.remaining = 0n;
+      this.hostcalls = 0;
+      this.hostcallBytes = 0;
+    }
+
+    beginUpdate() {
+      this.remaining = VALIDATION_SLICE;
+      this.hostcalls = MAX_HOSTCALLS_PER_UPDATE;
+      this.hostcallBytes = MAX_HOSTCALL_BYTES;
+      if (this.run && this.peer) {
+        this.run.logBytes = 0;
+        this.run.reportBytes = 0;
+      }
+    }
+
+    load(bytes, version) {
+      validationRequire(version === 2, "unsupported contract version");
+      validationRequire(!this.program, "computation already loaded");
+      validationRequire(bytes.length > 0 && bytes.length <= 64 * 1024 * 1024, "program bounds");
+      const module = this.runtime instanceof WebAssembly.Module
+        ? this.runtime : new WebAssembly.Module(this.runtime);
+      const translator = new WebAssembly.Instance(module, this.runtimeImports).exports;
+      const check = (status) => {
+        if (status !== 0) {
+          const message = decoder.decode(new Uint8Array(
+            translator.memory.buffer,
+            translator.polkavm_browser_error_pointer(),
+            translator.polkavm_browser_error_length(),
+          ));
+          throw new Error(`host_validation translation: ${message}`);
+        }
+      };
+      const pointer = translator.polkavm_browser_staging_reserve(bytes.length);
+      validationRequire(pointer !== 0, "could not stage child program");
+      new Uint8Array(translator.memory.buffer, pointer, bytes.length).set(bytes);
+      validationRequire(typeof translator.polkavm_browser_translate_validation_staged === "function",
+        "runtime lacks the v2 child translator");
+      check(translator.polkavm_browser_translate_validation_staged());
+      const root = new WebAssembly.Module(new Uint8Array(
+        translator.memory.buffer,
+        translator.polkavm_browser_translation_pointer(),
+        translator.polkavm_browser_translation_length(),
+      ));
+      const metadata = readMetadata(root);
+      validationRequire(metadata.is64Bit, "requires RV64 bytecode");
+      validationRequire(metadata.exports.has("validate"), "requires validate export");
+      validationRequire(metadata.imports.every((name) => VALIDATION_IMPORTS.has(name)), "unknown child import");
+      const parts = WebAssembly.Module.customSections(root, "epoca.pvm.code-part")
+        .map((part) => new WebAssembly.Module(part));
+      this.metadata = metadata;
+      this.peer = metadata.imports.includes("validation_peer_request");
+      this.program = { module: root, parts };
+      return 0;
+    }
+
+    start(checkpoint) {
+      validationRequire(this.program, "computation not loaded");
+      validationRequire(!this.run, "invocation already active");
+      validationRequire(checkpoint.length <= VALIDATION_LIMIT, "checkpoint exceeds limit");
+      const instance = new WebAssembly.Instance(this.program.module, {});
+      const pvm = instance.exports;
+      const parts = this.program.parts.map((part) => new WebAssembly.Instance(part, { pvm }));
+      this.run = {
+        instance, parts, pvm, begun: false, callPending: false, event: 0, acknowledged: false,
+        committed: checkpoint.slice(), staged: new Uint8Array(VALIDATION_LIMIT), stagedLength: 0,
+        response: new Uint8Array(VALIDATION_LIMIT), responseLength: 0,
+        bytes: VALIDATION_EMPTY, work: 0n, started: this.now(), deadline: null,
+        logBytes: 0, reportBytes: 0,
+      };
+      return 0;
+    }
+
+    active() {
+      validationRequire(this.run, "invocation not started");
+      return this.run;
+    }
+
+    range(address, length, write = false) {
+      const { pvm } = this.active();
+      if (length === 0) return VALIDATION_EMPTY;
+      const { layout } = this.metadata;
+      const end = address + length;
+      validationRequire(end <= 0x100000000, "child memory bounds");
+      let physical;
+      if (address >= layout.stackLow && end <= layout.stackHigh) {
+        physical = layout.stackPhysical + address - layout.stackLow;
+      } else if (address >= layout.rwAddress &&
+        end <= Math.min(layout.heapBase + layout.heapLimit, layout.rwAddress + pvm.memory.buffer.byteLength - layout.rwPhysical)) {
+        physical = layout.rwPhysical + address - layout.rwAddress;
+      } else if (!write && address >= layout.roAddress && end <= layout.roAddress + layout.roSize) {
+        physical = layout.roPhysical + address - layout.roAddress;
+      } else {
+        throw new Error("host_validation: child memory bounds");
+      }
+      return new Uint8Array(pvm.memory.buffer, physical, length);
+    }
+
+    step() {
+      const run = this.active();
+      validationRequire(run.event !== 3 || run.acknowledged, "checkpoint requires durable ACK before execution");
+      validationRequire(run.event !== 5, "peer request requires response before execution");
+      validationRequire(run.event !== 4, "invocation already finished");
+      if (run.deadline !== null) {
+        if (this.now() < run.deadline) return 6;
+        run.deadline = null;
+      }
+      run.event = 0;
+      run.bytes = VALIDATION_EMPTY;
+      const { pvm } = run;
+      for (;;) {
+        if (this.remaining === 0n || this.hostcalls === 0 || this.hostcallBytes === 0) return 0;
+        if (!run.callPending) {
+          const before = this.remaining;
+          pvm.pvm_set_gas(before);
+          const status = run.begun
+            ? pvm.pvm_resume()
+            : pvm.pvm_begin(this.metadata.exports.get("validate"), before);
+          run.begun = true;
+          const after = pvm.gas.value;
+          validationRequire(after >= 0n && after <= before, "invalid translated gas debit");
+          this.remaining = after;
+          run.work += before - after;
+          validationRequire(run.work <= 0xffffffffffffffffn, "work counter overflow");
+          if (status === STATUS_OUT_OF_GAS) {
+            // The translator exhausts its gas global on a scheduling debit.
+            this.remaining = 0n;
+            return 0;
+          }
+          if (status === STATUS_FINISHED) {
+            run.bytes = new Uint8Array(8);
+            new DataView(run.bytes.buffer).setBigUint64(0, BigInt.asUintN(64, pvm.r7.value), true);
+            return (run.event = 4);
+          }
+          validationRequire(status === STATUS_ECALL, `child trapped or returned invalid status ${status}`);
+          run.callPending = true;
+        }
+        const event = this.dispatch(this.metadata.imports[pvm.ecall.value >>> 0]);
+        if (event === null) {
+          // Preserve this ECALL and its arguments. Resume it, not the guest,
+          // after the enclosing application grants the next update allowance.
+          this.remaining = 0n;
+          return 0;
+        }
+        run.callPending = false;
+        if (event) return (run.event = event);
+      }
+    }
+
+    dispatch(name) {
+      const run = this.active();
+      const reg = (index) => BigInt.asUintN(64, run.pvm[`r${index + 7}`].value);
+      const u32 = (index) => Number(reg(index) & 0xffffffffn);
+      const bounded = (index, maximum, minimum = 0) => {
+        const value = reg(index);
+        validationRequire(value >= BigInt(minimum) && value <= BigInt(maximum), `${name} bounds`);
+        return Number(value);
+      };
+      // Reserve all guest-memory traffic before any read, write, or side effect.
+      // Requested capacities are charged even at EOF, just as for the outer VM.
+      let bytes = 0;
+      switch (name) {
+        case "validation_read":
+          bytes = bounded(1, 32) + bounded(4, VALIDATION_CHUNK);
+          break;
+        case "validation_checkpoint_read":
+        case "validation_peer_read":
+          bytes = bounded(2, VALIDATION_CHUNK);
+          break;
+        case "validation_checkpoint_write":
+          bytes = bounded(1, VALIDATION_CHUNK, 1);
+          break;
+        case "validation_peer_request":
+          bytes = bounded(1, VALIDATION_LIMIT, 1);
+          break;
+        case "validation_log":
+        case "validation_report":
+          bytes = bounded(1, VALIDATION_CHUNK);
+          break;
+      }
+      if (this.remaining === 0n || this.hostcalls === 0 || bytes > this.hostcallBytes) return null;
+      this.hostcalls--;
+      this.hostcallBytes -= bytes;
+      this.remaining--;
+      run.work++;
+      validationRequire(run.work <= 0xffffffffffffffffn, "work counter overflow");
+      const result = (value) => { run.pvm.r7.value = BigInt.asIntN(64, BigInt(value)); };
+      const copy = (bytes, offset, destination, capacity) => {
+        validationRequire(offset <= bytes.length, `${name} offset bounds`);
+        const chunk = bytes.subarray(offset, offset + capacity);
+        this.range(destination, chunk.length, true).set(chunk);
+        result(chunk.length);
+      };
+      switch (name) {
+        case "validation_read": {
+          const length = bounded(1, 32);
+          const capacity = bounded(4, VALIDATION_CHUNK);
+          const assetName = new TextDecoder("utf-8", { fatal: true }).decode(this.range(u32(0), length));
+          validationRequire(VALIDATION_ASSETS.has(assetName), "refused asset name");
+          const asset = this.assets.get(assetName);
+          validationRequire(asset, "asset missing");
+          copy(asset, Math.min(u32(2), asset.length), u32(3), capacity);
+          break;
+        }
+        case "validation_checkpoint_read":
+          copy(run.committed, bounded(0, run.committed.length), u32(1), bounded(2, VALIDATION_CHUNK));
+          break;
+        case "validation_checkpoint_write": {
+          const length = bounded(1, VALIDATION_CHUNK, 1);
+          validationRequire(run.stagedLength + length <= VALIDATION_LIMIT, "checkpoint exceeds limit");
+          run.staged.set(this.range(u32(0), length), run.stagedLength);
+          run.stagedLength += length;
+          result(0);
+          break;
+        }
+        case "validation_checkpoint_commit":
+          validationRequire(run.stagedLength > 0, "commit without staged checkpoint");
+          run.acknowledged = false;
+          return 3;
+        case "validation_peer_request": {
+          const length = bounded(1, VALIDATION_LIMIT, 1);
+          validationRequire(run.stagedLength === 0, "peer request while checkpoint staged");
+          run.bytes = this.range(u32(0), length).slice();
+          run.responseLength = 0;
+          return 5;
+        }
+        case "validation_peer_read":
+          validationRequire(run.responseLength > 0, "peer read without response");
+          copy(run.response.subarray(0, run.responseLength), bounded(0, run.responseLength), u32(1), bounded(2, VALIDATION_CHUNK));
+          break;
+        case "validation_peer_wait": {
+          const milliseconds = bounded(0, 250, 1);
+          run.deadline = this.now() + milliseconds;
+          run.bytes = new Uint8Array(4);
+          new DataView(run.bytes.buffer).setUint32(0, milliseconds, true);
+          result(0);
+          return 6;
+        }
+        case "validation_peer_now_ms":
+          result(BigInt(Math.max(0, Math.floor(this.now() - run.started))));
+          break;
+        case "validation_log":
+        case "validation_report": {
+          const length = bounded(1, VALIDATION_CHUNK);
+          const counter = name === "validation_log" ? "logBytes" : "reportBytes";
+          validationRequire(run[counter] + length <= 1024 * 1024, "log/report exceeds limit");
+          run.bytes = this.range(u32(0), length).slice();
+          if (name === "validation_log") new TextDecoder("utf-8", { fatal: true }).decode(run.bytes);
+          run[counter] += length;
+          return name === "validation_log" ? 1 : 2;
+        }
+        default:
+          throw new Error(`host_validation: unknown child import ${name}`);
+      }
+      return 0;
+    }
+
+    read(offset, capacity) {
+      const run = this.active();
+      validationRequire(capacity <= VALIDATION_CHUNK, "event read exceeds chunk limit");
+      validationRequire(run.event !== 0, "no pending event");
+      const bytes = run.event === 3
+        ? (run.acknowledged ? run.committed : run.staged.subarray(0, run.stagedLength))
+        : run.bytes;
+      validationRequire(offset <= bytes.length, "event offset exceeds length");
+      return bytes.subarray(offset, offset + capacity);
+    }
+
+    ack() {
+      const run = this.active();
+      validationRequire(run.event === 3 && !run.acknowledged, "ACK without pending checkpoint");
+      run.committed = run.staged.slice(0, run.stagedLength);
+      run.stagedLength = 0;
+      run.pvm.r7.value = 0n;
+      run.acknowledged = true;
+      return 0;
+    }
+
+    peerWrite(bytes) {
+      const run = this.active();
+      validationRequire(run.event === 5, "peer response without pending request");
+      validationRequire(bytes.length > 0 && bytes.length <= VALIDATION_CHUNK, "peer response chunk bounds");
+      validationRequire(run.responseLength + bytes.length <= VALIDATION_LIMIT, "peer response exceeds limit");
+      run.response.set(bytes, run.responseLength);
+      run.responseLength += bytes.length;
+      return 0;
+    }
+
+    peerCommit() {
+      const run = this.active();
+      validationRequire(run.event === 5 && run.responseLength > 0, "peer commit without pending response");
+      run.pvm.r7.value = BigInt(run.responseLength);
+      run.event = 0;
+      return 0;
+    }
+
+    cancel() {
+      validationRequire(this.program, "computation not loaded");
+      this.run = null;
+    }
+
+    work() {
+      validationRequire(this.program, "computation not loaded");
+      return this.run?.work ?? 0n;
+    }
+  }
+
   class TranslatedPolkaVmRuntime {
+    static createValidation(runtime, imports, assets, now = () => performance.now()) {
+      return new TranslatedValidation(runtime, imports, assets, now);
+    }
+
     static async compile(bytes) {
       const module = await WebAssembly.compile(bytes);
       const parts = [];
@@ -935,6 +1274,7 @@
       mediatedInputKinds = [],
       fileInput = null,
       maxGasSlices = 1,
+      validationRuntime = null,
     ) {
       if (!TranslatedPolkaVmRuntime.isCompiledProgram(program)) {
         throw new TypeError("invalid translated PolkaVM compiled program");
@@ -956,6 +1296,13 @@
           new Uint8Array(asset.bytes),
         ]),
       );
+      this.validation = null;
+      if (this.metadata.imports.some((name) => name?.startsWith("host_validation_"))) {
+        validationRequire(validationRuntime, "child translator unavailable");
+        this.validation = TranslatedPolkaVmRuntime.createValidation(
+          validationRuntime.runtime, validationRuntime.imports, this.assets,
+        );
+      }
       this.emit = emit;
       this.audioEnabled = audioEnabled;
       if (
@@ -2056,6 +2403,7 @@
         return this.fileCacheStopped;
       }
       this.stopped = true;
+      this.validation = null;
       for (const [handle, registration] of this.mediatedInputRegistrations) {
         if (registration.descriptor?.delivery === "stream" && registration.file !== null) {
           this.#closeFileStream(registration);
@@ -2088,6 +2436,7 @@
     }
 
     #resetBudget(hostcalls, gas = this.maxGas) {
+      this.validation?.beginUpdate();
       this.hostcalls = hostcalls;
       this.updateAfterMs = null;
       this.gpuSubmits = 0;
@@ -2163,9 +2512,11 @@
           continue;
         }
         this.hostcalls--;
-        const yielded = this.coreVm
-          ? this.#handleCoreVmCall(name)
-          : this.#handleCooperativeCall(name);
+        const yielded = name.startsWith("host_validation_")
+          ? this.#handleValidationCall(name)
+          : this.coreVm
+            ? this.#handleCoreVmCall(name)
+            : this.#handleCooperativeCall(name);
         if (yielded && yieldOnFrame) {
           this.resumePending = true;
           this.continuationPending = false;
@@ -2181,6 +2532,43 @@
         }
         status = this.pvm.pvm_resume();
       }
+    }
+
+    #handleValidationCall(name) {
+      const a0 = this.#u32(this.#reg(7));
+      const a1 = this.#u32(this.#reg(8));
+      const a2 = this.#u32(this.#reg(9));
+      const child = this.validation;
+      let result = 0;
+      switch (name) {
+        case "host_validation_load":
+          validationRequire(a2 === 2 && a1 > 0 && a1 <= 64 * 1024 * 1024, "load bounds/version");
+          validationRequire(!child.program, "computation already loaded");
+          result = child.load(this.#read(a0, a1), a2);
+          break;
+        case "host_validation_start":
+          validationRequire(a1 <= VALIDATION_LIMIT, "checkpoint exceeds limit");
+          validationRequire(!child.run, "invocation already active");
+          result = child.start(a1 === 0 ? VALIDATION_EMPTY : this.#read(a0, a1));
+          break;
+        case "host_validation_step": result = child.step(); break;
+        case "host_validation_read": {
+          const bytes = child.read(a0, a2);
+          if (bytes.length > 0) this.#write(a1, bytes);
+          result = bytes.length;
+          break;
+        }
+        case "host_validation_ack": result = child.ack(); break;
+        case "host_validation_peer_write":
+          validationRequire(a1 > 0 && a1 <= VALIDATION_CHUNK, "peer response chunk bounds");
+          result = child.peerWrite(this.#read(a0, a1));
+          break;
+        case "host_validation_peer_commit": result = child.peerCommit(); break;
+        case "host_validation_cancel": child.cancel(); return;
+        case "host_validation_work": this.#setU64Result(child.work()); return;
+        default: throw new Error(`unsupported host_validation import ${name}`);
+      }
+      this.#setReg(7, result);
     }
 
     #reg(index) {
@@ -4686,6 +5074,7 @@ globalThis.createPolkaVmRuntime = (endpoint, options = {}) => {
         message.mediatedInputKinds ?? [],
         message.fileInput ?? null,
         MAX_TRANSLATED_GAS_SLICES_PER_UPDATE,
+        { runtime: message.runtime, imports: runtimeImports },
       );
       const relaunch = relaunchFile(message);
       if (relaunch !== null) {

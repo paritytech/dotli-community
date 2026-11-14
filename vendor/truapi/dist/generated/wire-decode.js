@@ -500,4 +500,102 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
     },
+    [W.JAM_PEER_TRANSPORT_LISTEN.trait * 256 + W.JAM_PEER_TRANSPORT_LISTEN.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportListenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportListenResponse, S.CallError(T.VersionedHostJamPeerTransportListenError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_SEND_CHUNK.trait * 256 + W.JAM_PEER_TRANSPORT_SEND_CHUNK.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportSendChunkRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportSendChunkResponse, S.CallError(T.VersionedHostJamPeerTransportSendChunkError)).dec(payload),
+    },
+    [W.JAM_PEER_TRANSPORT_RECV_CHUNK.trait * 256 + W.JAM_PEER_TRANSPORT_RECV_CHUNK.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportRecvChunkRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportRecvChunkResponse, S.CallError(T.VersionedHostJamPeerTransportRecvChunkError)).dec(payload),
+    },
+    [W.VALIDATOR_OPEN.trait * 256 + W.VALIDATOR_OPEN.method]: {
+        0: (payload) => T.VersionedHostValidatorOpenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorOpenResponse, S.CallError(T.VersionedHostValidatorOpenError)).dec(payload),
+    },
+    [W.VALIDATOR_COMMIT.trait * 256 + W.VALIDATOR_COMMIT.method]: {
+        0: (payload) => T.VersionedHostValidatorCommitRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorCommitResponse, S.CallError(T.VersionedHostValidatorCommitError)).dec(payload),
+    },
+    [W.VALIDATOR_SIGN.trait * 256 + W.VALIDATOR_SIGN.method]: {
+        0: (payload) => T.VersionedHostValidatorSignRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorSignResponse, S.CallError(T.VersionedHostValidatorSignError)).dec(payload),
+    },
+    [W.VALIDATOR_CLOSE.trait * 256 + W.VALIDATOR_CLOSE.method]: {
+        0: (payload) => T.VersionedHostValidatorCloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorCloseResponse, S.CallError(T.VersionedHostValidatorCloseError)).dec(payload),
+    },
+    [W.VALIDATOR_VRF_OUTPUT.trait * 256 + W.VALIDATOR_VRF_OUTPUT.method]: {
+        0: (payload) => T.VersionedHostValidatorVrfOutputRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorVrfOutputResponse, S.CallError(T.VersionedHostValidatorVrfOutputError)).dec(payload),
+    },
+    [W.VALIDATOR_TICKET_PROVE.trait * 256 + W.VALIDATOR_TICKET_PROVE.method]: {
+        0: (payload) => T.VersionedHostValidatorTicketProveRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorTicketProveResponse, S.CallError(T.VersionedHostValidatorTicketProveError)).dec(payload),
+    },
+    [W.VALIDATOR_ENTROPY_SOURCE.trait * 256 + W.VALIDATOR_ENTROPY_SOURCE.method]: {
+        0: (payload) => T.VersionedHostValidatorEntropySourceRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorEntropySourceResponse, S.CallError(T.VersionedHostValidatorEntropySourceError)).dec(payload),
+    },
+    [W.VALIDATOR_SEAL.trait * 256 + W.VALIDATOR_SEAL.method]: {
+        0: (payload) => T.VersionedHostValidatorSealRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorSealResponse, S.CallError(T.VersionedHostValidatorSealError)).dec(payload),
+    },
+    [W.VALIDATOR_FULL_SIGN.trait * 256 + W.VALIDATOR_FULL_SIGN.method]: {
+        0: (payload) => T.VersionedHostValidatorFullSignRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorFullSignResponse, S.CallError(T.VersionedHostValidatorFullSignError)).dec(payload),
+    },
+    [W.VALIDATOR_AUDIT_PROVE.trait * 256 + W.VALIDATOR_AUDIT_PROVE.method]: {
+        0: (payload) => T.VersionedHostValidatorAuditProveRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostValidatorAuditProveResponse, S.CallError(T.VersionedHostValidatorAuditProveError)).dec(payload),
+    },
+    [W.MEDIA_GET_CAPABILITIES.trait * 256 + W.MEDIA_GET_CAPABILITIES.method]: {
+        0: (payload) => T.VersionedHostMediaGetCapabilitiesRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaGetCapabilitiesResponse, S.CallError(T.VersionedHostMediaGetCapabilitiesError)).dec(payload),
+    },
+    [W.MEDIA_SESSION_SUBSCRIBE.trait * 256 + W.MEDIA_SESSION_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostMediaSessionSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostMediaSessionSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostMediaSessionSubscribeError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.MEDIA_CREATE_SESSION.trait * 256 + W.MEDIA_CREATE_SESSION.method]: {
+        0: (payload) => T.VersionedHostMediaCreateSessionRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaCreateSessionResponse, S.CallError(T.VersionedHostMediaCreateSessionError)).dec(payload),
+    },
+    [W.MEDIA_ADD_PARTICIPANT.trait * 256 + W.MEDIA_ADD_PARTICIPANT.method]: {
+        0: (payload) => T.VersionedHostMediaAddParticipantRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaAddParticipantResponse, S.CallError(T.VersionedHostMediaAddParticipantError)).dec(payload),
+    },
+    [W.MEDIA_RESPOND_INCOMING.trait * 256 + W.MEDIA_RESPOND_INCOMING.method]: {
+        0: (payload) => T.VersionedHostMediaRespondIncomingRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaRespondIncomingResponse, S.CallError(T.VersionedHostMediaRespondIncomingError)).dec(payload),
+    },
+    [W.MEDIA_REMOVE_PARTICIPANT.trait * 256 + W.MEDIA_REMOVE_PARTICIPANT.method]: {
+        0: (payload) => T.VersionedHostMediaRemoveParticipantRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaRemoveParticipantResponse, S.CallError(T.VersionedHostMediaRemoveParticipantError)).dec(payload),
+    },
+    [W.MEDIA_SET_LOCAL_TRACKS.trait * 256 + W.MEDIA_SET_LOCAL_TRACKS.method]: {
+        0: (payload) => T.VersionedHostMediaSetLocalTracksRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaSetLocalTracksResponse, S.CallError(T.VersionedHostMediaSetLocalTracksError)).dec(payload),
+    },
+    [W.MEDIA_SET_SURFACES.trait * 256 + W.MEDIA_SET_SURFACES.method]: {
+        0: (payload) => T.VersionedHostMediaSetSurfacesRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaSetSurfacesResponse, S.CallError(T.VersionedHostMediaSetSurfacesError)).dec(payload),
+    },
+    [W.MEDIA_END_SESSION.trait * 256 + W.MEDIA_END_SESSION.method]: {
+        0: (payload) => T.VersionedHostMediaEndSessionRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaEndSessionResponse, S.CallError(T.VersionedHostMediaEndSessionError)).dec(payload),
+    },
+    [W.MEDIA_GET_OPERATION.trait * 256 + W.MEDIA_GET_OPERATION.method]: {
+        0: (payload) => T.VersionedHostMediaGetOperationRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaGetOperationResponse, S.CallError(T.VersionedHostMediaGetOperationError)).dec(payload),
+    },
+    [W.MEDIA_CANCEL_OPERATION.trait * 256 + W.MEDIA_CANCEL_OPERATION.method]: {
+        0: (payload) => T.VersionedHostMediaCancelOperationRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostMediaCancelOperationResponse, S.CallError(T.VersionedHostMediaCancelOperationError)).dec(payload),
+    },
 };

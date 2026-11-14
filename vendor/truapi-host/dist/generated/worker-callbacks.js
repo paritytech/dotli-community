@@ -18,6 +18,8 @@ export const CALLBACK_NAMES = [
     "readCoreStorage",
     "writeCoreStorage",
     "clearCoreStorage",
+    "compareExchangeCoreStorage",
+    "coreStorageChanged",
     "featureSupported",
     "supportedChains",
     "scheduleGameReminder",
@@ -25,6 +27,8 @@ export const CALLBACK_NAMES = [
     "allowedHopEndpoints",
     "identityUsernameCandidates",
     "localizeTimestamps",
+    "mediaBackendCapabilities",
+    "mediaBackendCommand",
     "pickChatFiles",
     "readChatFile",
     "releaseChatFile",
@@ -56,10 +60,22 @@ export const CALLBACK_NAMES = [
     "scanCode",
     "confirmPermission",
     "confirmUserAction",
+    "validatorOpen",
+    "validatorCommit",
+    "validatorSign",
+    "validatorVrfOutput",
+    "validatorTicketProve",
+    "validatorEntropySource",
+    "validatorSeal",
+    "validatorFullSign",
+    "validatorAuditProve",
+    "validatorClose",
+    "validatorRevoke",
 ];
 export const SUBSCRIPTION_NAMES = [
     "subscribeChatRooms",
     "subscribeLocale",
+    "mediaBackendEvents",
     "subscribePocketCards",
     "lookupPreimage",
     "subscribeStorage",
@@ -71,6 +87,8 @@ function rawCallbacks(bridge) {
         readCoreStorage: (key) => bridge.callbackRequest("readCoreStorage", [key]),
         writeCoreStorage: (key, value) => bridge.callbackRequest("writeCoreStorage", [key, value]),
         clearCoreStorage: (key) => bridge.callbackRequest("clearCoreStorage", [key]),
+        compareExchangeCoreStorage: (key, expected, replacement, notifyOnSuccess) => bridge.callbackRequest("compareExchangeCoreStorage", [key, expected, replacement, notifyOnSuccess]),
+        coreStorageChanged: (key) => void bridge.callbackRequest("coreStorageChanged", [key]).catch(() => { }),
         featureSupported: (request) => bridge.callbackRequest("featureSupported", [request]),
         supportedChains: () => bridge.callbackRequest("supportedChains", []),
         allowedHopEndpoints: (bulletinGenesisHash) => bridge.callbackRequest("allowedHopEndpoints", [bulletinGenesisHash]),
@@ -104,10 +122,10 @@ function rawCallbacks(bridge) {
 }
 function subscriptionRawCallbacks(bridge) {
     return {
-        subscribeLocale: (sendItem, sendError) => bridge.startSubscription("subscribeLocale", null, sendItem, sendError),
-        lookupPreimage: (key, sendItem, sendError) => bridge.startSubscription("lookupPreimage", key, sendItem, sendError),
-        subscribeStorage: (key, sendItem, sendError) => bridge.startSubscription("subscribeStorage", key, sendItem, sendError),
-        subscribeTheme: (sendItem, sendError) => bridge.startSubscription("subscribeTheme", null, sendItem, sendError),
+        subscribeLocale: (sendItem, sendError) => bridge.startSubscription("subscribeLocale", [], sendItem, sendError),
+        lookupPreimage: (key, sendItem, sendError) => bridge.startSubscription("lookupPreimage", [key], sendItem, sendError),
+        subscribeStorage: (key, sendItem, sendError) => bridge.startSubscription("subscribeStorage", [key], sendItem, sendError),
+        subscribeTheme: (sendItem, sendError) => bridge.startSubscription("subscribeTheme", [], sendItem, sendError),
     };
 }
 function chatRawCallbacks(bridge) {
@@ -116,7 +134,7 @@ function chatRawCallbacks(bridge) {
         registerChatBot: (product, request) => bridge.callbackRequest("registerChatBot", [product, request]),
         postChatMessage: (product, request) => bridge.callbackRequest("postChatMessage", [product, request]),
         setChatRoomFooter: (product, request) => bridge.callbackRequest("setChatRoomFooter", [product, request]),
-        subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
+        subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", [product], sendItem, sendError),
     };
 }
 function coinageWalletRawCallbacks(bridge) {
@@ -143,6 +161,13 @@ function identityBackendRawCallbacks(bridge) {
         identityUsernameCandidates: (username, peopleChainGenesisHash) => bridge.callbackRequest("identityUsernameCandidates", [username, peopleChainGenesisHash]),
     };
 }
+function mediaRawCallbacks(bridge) {
+    return {
+        mediaBackendCapabilities: (product) => bridge.callbackRequest("mediaBackendCapabilities", [product]),
+        mediaBackendEvents: (product, runtimeId, sendItem, sendError) => bridge.startSubscription("mediaBackendEvents", [product, runtimeId], sendItem, sendError),
+        mediaBackendCommand: (product, runtimeId, command) => bridge.callbackRequest("mediaBackendCommand", [product, runtimeId, command]),
+    };
+}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -150,7 +175,7 @@ function permissionStatusRawCallbacks(bridge) {
 }
 function pocketRawCallbacks(bridge) {
     return {
-        subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", product, sendItem, sendError),
+        subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", [product], sendItem, sendError),
         removePocketCard: (product, request) => bridge.callbackRequest("removePocketCard", [product, request]),
     };
 }
@@ -164,6 +189,21 @@ function profileRawCallbacks(bridge) {
 function scannerRawCallbacks(bridge) {
     return {
         scanCode: (product, request) => bridge.callbackRequest("scanCode", [product, request]),
+    };
+}
+function validatorRawCallbacks(bridge) {
+    return {
+        validatorOpen: (authority, request) => bridge.callbackRequest("validatorOpen", [authority, request]),
+        validatorCommit: (authority, request) => bridge.callbackRequest("validatorCommit", [authority, request]),
+        validatorSign: (authority, request) => bridge.callbackRequest("validatorSign", [authority, request]),
+        validatorVrfOutput: (authority, request) => bridge.callbackRequest("validatorVrfOutput", [authority, request]),
+        validatorTicketProve: (authority, request) => bridge.callbackRequest("validatorTicketProve", [authority, request]),
+        validatorEntropySource: (authority, request) => bridge.callbackRequest("validatorEntropySource", [authority, request]),
+        validatorSeal: (authority, request) => bridge.callbackRequest("validatorSeal", [authority, request]),
+        validatorFullSign: (authority, request) => bridge.callbackRequest("validatorFullSign", [authority, request]),
+        validatorAuditProve: (authority, request) => bridge.callbackRequest("validatorAuditProve", [authority, request]),
+        validatorClose: (authority, request) => bridge.callbackRequest("validatorClose", [authority, request]),
+        validatorRevoke: (executionId) => void bridge.callbackRequest("validatorRevoke", [executionId]).catch(() => { }),
     };
 }
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
@@ -183,6 +223,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, gameRawCallbacks(bridge));
     if (capabilities.identityBackend)
         Object.assign(callbacks, identityBackendRawCallbacks(bridge));
+    if (capabilities.media)
+        Object.assign(callbacks, mediaRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)
@@ -191,37 +233,53 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, profileRawCallbacks(bridge));
     if (capabilities.scanner)
         Object.assign(callbacks, scannerRawCallbacks(bridge));
+    if (capabilities.validator)
+        Object.assign(callbacks, validatorRawCallbacks(bridge));
     return callbacks;
 }
-export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
+export function startRawSubscription(callbacks, name, args, sendItem, sendError) {
     switch (name) {
         case "subscribeChatRooms":
-            if (!(payload instanceof Uint8Array)) {
-                console.warn(`[truapi worker] ${name} requires payload`);
+            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+                sendError({ reason: "invalid subscription arguments" });
                 return undefined;
             }
-            return callbacks.subscribeChatRooms?.(payload, sendItem, sendError);
+            return callbacks.subscribeChatRooms?.(args[0], sendItem, sendError);
         case "subscribeLocale":
+            if (args.length !== 0) {
+                sendError({ reason: "invalid subscription arguments" });
+                return undefined;
+            }
             return callbacks.subscribeLocale(sendItem, sendError);
+        case "mediaBackendEvents":
+            if (args.length !== 2 || !(args[0] instanceof Uint8Array) || typeof args[1] !== "bigint") {
+                sendError({ reason: "invalid subscription arguments" });
+                return undefined;
+            }
+            return callbacks.mediaBackendEvents?.(args[0], args[1], sendItem, sendError);
         case "subscribePocketCards":
-            if (!(payload instanceof Uint8Array)) {
-                console.warn(`[truapi worker] ${name} requires payload`);
+            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+                sendError({ reason: "invalid subscription arguments" });
                 return undefined;
             }
-            return callbacks.subscribePocketCards?.(payload, sendItem, sendError);
+            return callbacks.subscribePocketCards?.(args[0], sendItem, sendError);
         case "lookupPreimage":
-            if (!(payload instanceof Uint8Array)) {
-                console.warn(`[truapi worker] ${name} requires payload`);
+            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
+                sendError({ reason: "invalid subscription arguments" });
                 return undefined;
             }
-            return callbacks.lookupPreimage(payload, sendItem, sendError);
+            return callbacks.lookupPreimage(args[0], sendItem, sendError);
         case "subscribeStorage":
-            if (typeof payload !== "string") {
-                console.warn(`[truapi worker] ${name} requires payload`);
+            if (args.length !== 1 || typeof args[0] !== "string") {
+                sendError({ reason: "invalid subscription arguments" });
                 return undefined;
             }
-            return callbacks.subscribeStorage(payload, sendItem, sendError);
+            return callbacks.subscribeStorage(args[0], sendItem, sendError);
         case "subscribeTheme":
+            if (args.length !== 0) {
+                sendError({ reason: "invalid subscription arguments" });
+                return undefined;
+            }
             return callbacks.subscribeTheme(sendItem, sendError);
     }
 }

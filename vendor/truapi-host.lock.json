@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "4f7a19c24b353c73468776ecf4c19cc44699eb78",
+  "upstreamBranch": "feat/media-on-jam-seity",
+  "upstreamRevision": "9608ac911400076f74bb56ad937cf0306be1a217",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.25.0",
-      "sourceArchiveSha256": "4008598c5b130ce33811306f029858af6f0881d6b379856aebe5427d5b0b1837",
-      "clientSha256": "d17ab623273faf2ec5f1cc41b94654bf1b0f13d9b403c0cfe100f671c2e735b6"
+      "sourceArchiveSha256": "9143fb223b2d90ab4389eac811f2477d99d9fa7d87b7cc57c1e69125650f688b",
+      "clientSha256": "1e6568c2df768602ea3e2c19e587dfd6e9e184d49e8513fe9daaf67073ef728b"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "74c75323d65be1d0323151c24268d669b2fcd7de8f7232524497831a6a4ae54b",
+      "sourceArchiveSha256": "4f4f283870c762190bd31038e2da3ef5f0105f301d0d929bf62a36a7fc9a34a5",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "08668b3ce50db4ceadf2cdc18f36e0f1d0eeefbf6bcd04368c99903ec0319e53",
+          "sha256": "6acd71e45ba47a6d221e2854709884561a74eb4bd32505c63636b68354175fa7",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "44452facf449d75ec841cca4675e4500e9621350c70994be503e7206377e6872",
+          "sha256": "96c98d33e2cc56b01aff3d0e77e7d7255295d80e06215a332b83ac976c031d38",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "4f7a19c24b353c73468776ecf4c19cc44699eb78",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011"
+  "wasmUpstreamRevision": "9608ac911400076f74bb56ad937cf0306be1a217",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217"
 }
