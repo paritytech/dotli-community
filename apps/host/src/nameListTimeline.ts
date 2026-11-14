@@ -53,15 +53,29 @@ export type NameListSyncSummary = {
   reads: number;
 };
 
+/** Every backend a summary may name. */
+const SUMMARY_BACKENDS = {
+  'smoldot-direct': true,
+  'smoldot-shared-worker': true,
+  'rpc-gateway': true,
+} satisfies Record<Backend, true>;
+
 /** Whether a value read back from a sync's end mark is a `NameListSyncSummary`. */
 export function isNameListSyncSummary(value: unknown): value is NameListSyncSummary {
   return (
     typeof value === 'object' &&
     value !== null &&
     'outcome' in value &&
-    (value.outcome === 'ok' || value.outcome === 'error') &&
+    isOutcome(value.outcome) &&
     'reason' in value &&
     (value.reason === null || typeof value.reason === 'string') &&
+    'backend' in value &&
+    typeof value.backend === 'string' &&
+    Object.hasOwn(SUMMARY_BACKENDS, value.backend) &&
+    'start' in value &&
+    (value.start === 'cold' || value.start === 'stored') &&
+    'stores' in value &&
+    typeof value.stores === 'number' &&
     'entries' in value &&
     typeof value.entries === 'number' &&
     'labels' in value &&
@@ -79,6 +93,16 @@ export function isNameListReadDetail(value: unknown): value is NameListReadDetai
     typeof value === 'object' &&
     value !== null &&
     'kind' in value &&
-    NAME_LIST_READ_KINDS.some(kind => kind === value.kind)
+    NAME_LIST_READ_KINDS.some(kind => kind === value.kind) &&
+    'outcome' in value &&
+    isOutcome(value.outcome) &&
+    'items' in value &&
+    typeof value.items === 'number' &&
+    'found' in value &&
+    typeof value.found === 'number'
   );
+}
+
+function isOutcome(value: unknown): value is 'ok' | 'error' {
+  return value === 'ok' || value === 'error';
 }

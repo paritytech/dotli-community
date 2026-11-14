@@ -50,7 +50,7 @@ const COLUMNS: readonly { title: string; width: number }[] = [
   { title: 'backend', width: 22 },
   { title: 'step', width: 7 },
   { title: 'run', width: 4 },
-  { title: 'outcome', width: 26 },
+  { title: 'outcome', width: 32 },
   { title: 't_stored', width: 8 },
   { title: 't_reads', width: 8 },
   { title: 't_labels', width: 8 },
@@ -174,7 +174,7 @@ function printStep(leading: [Backend, Step, string], step: Settled<SyncTimeline>
   });
   printRow([
     ...leading,
-    describeOutcome(summary),
+    describeOutcome(summary, leading),
     since(NAME_LIST_MARKS.stored),
     since(NAME_LIST_MARKS.reads),
     since(NAME_LIST_MARKS.labels),
@@ -201,7 +201,11 @@ function printRow(cells: readonly string[]): void {
   );
 }
 
-function describeOutcome(summary: NameListSyncSummary): string {
+/** The summary's outcome, or the backend and start it ran on when they are not the ones its row names. */
+function describeOutcome(summary: NameListSyncSummary, [backend, step]: [Backend, Step, string]): string {
+  if (summary.backend !== backend || summary.start !== step) {
+    return `ran ${summary.backend} ${summary.start}`;
+  }
   switch (summary.outcome) {
     case 'ok':
       return 'ok';
