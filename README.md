@@ -259,16 +259,16 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the GitHub-only `0.3.2-rc.10` release candidate. It adds translated `host_validation` v2: an RV32 app
-can run one embedded RV64 computation as a separate translated child module (separate memory and work budget);
-interpreter launches of such apps fail explicitly. rc.9 combined bounded WebGPU recovery, replacement-device resize
-limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and forward dispatch. Exact
-binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe offscreen resources,
-streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays separately pinned;
-these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization verifies the package's
-complete checksum inventory, including its session API and type declarations, but serves only the host's selected
-runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those
-artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
+The current pin is the GitHub-only `0.3.2-rc.11` release candidate. It adds translated `host_validation` v2: an RV32 app
+can run one embedded RV64 computation as a separate translated child module (separate memory, work budget and per-update
+host-call budget); interpreter launches of such apps fail explicitly. rc.9 combined bounded WebGPU recovery,
+replacement-device resize limits, foreground wake scheduling and 32/64-bit clocks with rc.8's register caching and
+forward dispatch. Exact binary32 intrinsics, direct translated float continuation, heap-backed fiber stacks, resize-safe
+offscreen resources, streamed file input, private caches and gas-sliced updates remain intact. The TrUAPI host SDK stays
+separately pinned; these runtime changes do not replace its Chat, profile, transport or Media APIs. Synchronization
+verifies the package's complete checksum inventory, including its session API and type declarations, but serves only the
+host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt`
+alongside those artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
