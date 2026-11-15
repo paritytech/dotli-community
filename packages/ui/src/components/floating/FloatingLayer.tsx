@@ -28,7 +28,7 @@ export type FloatingLayerProps = {
   role?: 'dialog' | 'menu' | 'tooltip' | undefined;
   label?: string | undefined;
   orientation?: 'horizontal' | undefined;
-  class?: string | undefined;
+  class?: JSX.ClassValue;
   testId?: string | undefined;
   /** Moves focus in on open. */
   onOpened?: (surface: HTMLElement) => void;

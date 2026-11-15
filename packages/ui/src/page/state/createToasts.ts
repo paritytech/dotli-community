@@ -33,25 +33,25 @@ export type ToastAction = {
 export type ToastInput = {
   text: string;
   label: string;
-  deeplink?: string;
+  deeplink?: string | undefined;
   /** Drawn in the toast's tile, which sizes it and colors it by tone. Its tone's icon without one. */
-  icon?: Component<IconProps>;
+  icon?: Component<IconProps> | undefined;
   /** Tints the icon tile. */
-  tone?: StatusTone;
+  tone?: StatusTone | undefined;
   /** 0 is persistent. */
   dismissMs: number;
-  onDismiss?: () => void;
-  action?: ToastAction;
+  onDismiss?: (() => void) | undefined;
+  action?: ToastAction | undefined;
 };
 
 export type ToastEntry = {
   id: number;
   text: string;
   label: string;
-  deeplink?: string;
-  icon?: Component<IconProps>;
+  deeplink?: string | undefined;
+  icon?: Component<IconProps> | undefined;
   tone: StatusTone;
-  action?: ToastAction;
+  action?: ToastAction | undefined;
   leaving: boolean;
 };
 

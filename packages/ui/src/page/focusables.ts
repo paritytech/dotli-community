@@ -23,6 +23,6 @@ export function focusables(root: HTMLElement): HTMLElement[] {
     )
     .filter(
       // Skip controls CSS hides, like the sheet close button on desktop.
-      el => typeof el.checkVisibility !== 'function' || el.checkVisibility(),
+      el => el.checkVisibility(),
     );
 }
