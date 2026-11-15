@@ -15,6 +15,7 @@
   max-height: 306px;
   padding: var(--sp-1_5);
   border-radius: var(--r-pop);
+  /* The list would inherit the alignment of what it drops from, which may centre its text. */
   text-align: left;
   background: var(--chrome-surface);
   -webkit-backdrop-filter: var(--chrome-blur);

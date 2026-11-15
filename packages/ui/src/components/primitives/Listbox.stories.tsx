@@ -221,7 +221,7 @@ export const Loading: Story = {
     </div>
   ),
   play: async ({ canvas, step }) => {
-    await step('Then both lists are busy and each shows a status beside it', async () => {
+    await step('Then both lists are busy and two statuses show', async () => {
       for (const list of canvas.getAllByRole('listbox')) {
         await expect(list).toHaveAttribute('aria-busy', 'true');
       }
