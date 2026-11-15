@@ -6,32 +6,46 @@ import type { JSX } from '@solidjs/web';
 import { CheckIcon } from '../icons/CheckIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
+import { Spinner } from './Spinner.js';
 import s from './Listbox.module.css';
 
 export const Listbox = Object.assign(ListboxRoot, { Option });
 
 /**
  * A list of options that drops below its nearest positioned ancestor and never takes focus, so the control that opened
- * it keeps its keys. The caller renders it only while it has options.
+ * it keeps its keys. While `loading` is set, a status row with that text follows the options. The caller renders it only
+ * while it has options or is loading.
  */
 function ListboxRoot(props: {
   id: string;
   label: string;
   align?: 'start' | 'end' | undefined;
+  loading?: string | undefined;
   testId?: string | undefined;
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <ul
-      id={props.id}
-      class={s['list']}
-      role="listbox"
-      aria-label={props.label}
-      data-testid={props.testId}
-      data-align={props.align ?? 'start'}
-    >
-      {props.children}
-    </ul>
+    <div class={s['surface']} data-align={props.align ?? 'start'}>
+      <ul
+        id={props.id}
+        class={s['list']}
+        role="listbox"
+        aria-label={props.label}
+        aria-busy={props.loading === undefined ? undefined : 'true'}
+        data-testid={props.testId}
+      >
+        {props.children}
+      </ul>
+      {/* Outside the list, since a listbox may own only options. */}
+      <Show when={props.loading}>
+        {text => (
+          <div class={s['status']} role="status">
+            <Spinner class={s['spinner']} />
+            {text()}
+          </div>
+        )}
+      </Show>
+    </div>
   );
 }
 

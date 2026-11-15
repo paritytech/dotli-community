@@ -32,6 +32,7 @@ type InputFrameProps = {
   inputLabel: string;
   listId: string;
   listLabel: string;
+  loading?: string | undefined;
   onKeyDown?: (event: KeyboardEvent) => void;
   children: JSX.Element;
 };
@@ -197,6 +198,49 @@ export const ActiveScrollsIntoView: Story = {
   },
 };
 
+/**
+ * As a dotli user typing a name while the names still load, I see a loading row after the matches so far, or alone when
+ * none match yet.
+ */
+export const Loading: Story = {
+  render: args => (
+    <div style={{ display: 'flex', gap: '72px', 'align-items': 'flex-start' }}>
+      <InputFrame
+        width="300px"
+        inputLabel="Name with matches"
+        listId="listbox-loading-matches"
+        listLabel="Suggested names"
+        loading="Loading names"
+      >
+        <Options
+          listId="listbox-loading-matches"
+          labels={['hosted', 'host-tools']}
+          active="host-tools"
+          detail=".paseo"
+          onPick={args.onPick}
+        />
+      </InputFrame>
+      <InputFrame
+        width="300px"
+        inputLabel="Name with no matches"
+        listId="listbox-loading-empty"
+        listLabel="Suggested names"
+        loading="Loading names"
+      >
+        {null}
+      </InputFrame>
+    </div>
+  ),
+  play: async ({ canvas, step }) => {
+    await step('Then both lists are busy and each shows a status beside it', async () => {
+      for (const list of canvas.getAllByRole('listbox')) {
+        await expect(list).toHaveAttribute('aria-busy', 'true');
+      }
+      await expect(canvas.getAllByRole('status')).toHaveLength(2);
+    });
+  },
+};
+
 /** As a phone user, I see a long option end in an ellipsis inside the list, which stays as wide as the input. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
@@ -227,7 +271,7 @@ function InputFrame(props: InputFrameProps): JSX.Element {
           props.onKeyDown?.(event);
         }}
       />
-      <Listbox id={props.listId} label={props.listLabel}>
+      <Listbox id={props.listId} label={props.listLabel} loading={props.loading}>
         {props.children}
       </Listbox>
     </div>

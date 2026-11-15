@@ -91,7 +91,8 @@ The tokens and global styles. The apps import it once.
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
   with `lazy()`.
 - **Listbox:** drops below its nearest positioned ancestor and never takes focus, so the control that opened it keeps
-  its keys. Its caller owns which option is active and which is chosen.
+  its keys. Its caller owns which option is active and which is chosen. While `loading` holds a text, a status row with
+  a spinner follows the options, outside the list, and the list is busy.
 - **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
   `ActionsContext`.
 - **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot
