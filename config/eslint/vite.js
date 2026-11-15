@@ -197,6 +197,8 @@ export const config = defineConfig([
       '@typescript-eslint/consistent-type-exports': 'error',
       'max-params': 'off',
       '@typescript-eslint/max-params': ['error', { max: 3 }],
+      // `modified` counts a whole `switch` as one branch, so a mapping over a union is not split to please the count.
+      complexity: ['error', { max: 12, variant: 'modified' }],
       'no-console': 'error',
       eqeqeq: ['error', 'always'],
       'no-var': 'error',
