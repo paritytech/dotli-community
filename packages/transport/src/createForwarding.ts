@@ -21,10 +21,7 @@ import { getUpstream, type Upstream } from './upstreams.js';
 
 type Params = {
   schema: Pick<Schema<unknown, Sections>, 'addressOf'>;
-  served: Pick<
-    ServedCalls<unknown>,
-    'register' | 'postFailed' | 'answerMalformed' | 'holdRequest' | 'releaseRequest' | 'run' | 'end'
-  >;
+  served: Pick<ServedCalls<unknown>, 'register'>;
   connection: Pick<Connection<unknown>, 'post'>;
   issues: IssueReport;
 };
@@ -36,23 +33,13 @@ type HandlerParams = {
   address: Address;
 };
 
-type ForwardRequestParams = HandlerParams & {
-  /** The peer's call id. */
-  id: number;
-  /** The peer's request, as its bytes. */
-  request: MessageBytes;
-};
-
-type ForwardSubscriptionParams = HandlerParams & {
-  /** The peer's call id. */
-  id: number;
-  /** The peer's start, as its bytes. */
-  start: MessageBytes;
+type ForwardParams = HandlerParams & {
+  /** The peer's call, whose message is its request or its start. */
+  opened: ServedCall<unknown>;
 };
 
 type AnswerEndParams = {
-  id: number;
-  address: Address;
+  opened: Pick<ServedCall<unknown>, 'fail'>;
   /** Ends the call here. Returns whether it was still open. */
   leave: () => boolean;
 };
@@ -95,26 +82,20 @@ export function createForwarding({ schema, served, connection, issues }: Params)
 
   /** Serves `method` by forwarding each call the peer opens to `upstream`, a request or a subscription by its leg. */
   function createForwardingHandler({ upstream, method, address }: HandlerParams): Served<unknown> {
-    function serve({ id, message }: ServedCall<unknown>): void {
-      const leg = decodeOr({
-        decoder: method.leg,
-        data: message,
-        onError: cause => {
-          served.answerMalformed({ id, cause, address });
-        },
-      });
+    function serve(opened: ServedCall<unknown>): void {
+      const leg = decodeOr({ decoder: method.leg, data: opened.message, onError: opened.refuseMalformed });
       if (leg === undefined) {
         return;
       }
       switch (leg.tag) {
         case 'request':
-          forwardRequest({ upstream, method, address, id, request: message });
+          forwardRequest({ upstream, method, address, opened });
           return;
         case 'start':
-          forwardSubscription({ upstream, method, address, id, start: message });
+          forwardSubscription({ upstream, method, address, opened });
           return;
         default:
-          issues.refuse('invalid', new Error(`A ${leg.tag} names call ${String(id)}, which is not open`));
+          issues.refuse('invalid', new Error(`A ${leg.tag} names call ${String(opened.id)}, which is not open`));
       }
     }
 
@@ -122,10 +103,11 @@ export function createForwarding({ schema, served, connection, issues }: Params)
   }
 
   /** Forwards a peer's request, and posts the upstream's answer back on its id. */
-  function forwardRequest({ upstream, method, address, id, request }: ForwardRequestParams): void {
+  function forwardRequest({ upstream, method, address, opened }: ForwardParams): void {
+    const { id } = opened;
     const call = upstream.open({
       address,
-      message: request,
+      message: opened.message,
       heard: {
         message(answer) {
           const leg = decodeOr({ decoder: method.leg, data: answer, onError: () => undefined });
@@ -135,23 +117,25 @@ export function createForwarding({ schema, served, connection, issues }: Params)
             return;
           }
           call.forget();
-          if (served.releaseRequest(id)) {
+          if (opened.release()) {
             connection.post({ data: encodeCarriedCall({ address, id, message: answer }), address });
           }
         },
-        ...answerEnd({ id, address, leave: () => served.releaseRequest(id) }),
+        ...answerEnd({ opened, leave: opened.release }),
       },
     });
-    served.holdRequest(id, () => {
+    opened.hold(() => {
       call.forget();
     });
   }
 
   /** Forwards a peer's subscription, and posts what the upstream sends back on its id until either side ends it. */
-  function forwardSubscription({ upstream, method, address, id, start }: ForwardSubscriptionParams): void {
+  function forwardSubscription({ upstream, method, address, opened }: ForwardParams): void {
+    const { id } = opened;
+
     /** Ends it here once. Returns whether it was still running. */
     function finish(): boolean {
-      return served.end(id, entry);
+      return opened.end(entry);
     }
 
     function stopWith(stop: MessageBytes): void {
@@ -189,7 +173,7 @@ export function createForwarding({ schema, served, connection, issues }: Params)
     };
     const call = upstream.open({
       address,
-      message: start,
+      message: opened.message,
       heard: {
         message(sent) {
           const leg = decodeOr({ decoder: method.leg, data: sent, onError: () => undefined });
@@ -211,26 +195,26 @@ export function createForwarding({ schema, served, connection, issues }: Params)
           }
           connection.post({ data: encodeCarriedCall({ address, id, message: sent }), address });
         },
-        ...answerEnd({ id, address, leave: finish }),
+        ...answerEnd({ opened, leave: finish }),
       },
     });
-    served.run(id, entry);
+    opened.run(entry);
   }
 
   /**
    * How a forwarded call answers the peer when the upstream ends it: with the upstream's failure, or `HostFailure` when
    * the upstream closed.
    */
-  function answerEnd({ id, address, leave }: AnswerEndParams): Pick<Heard, 'fail' | 'close'> {
+  function answerEnd({ opened, leave }: AnswerEndParams): Pick<Heard, 'fail' | 'close'> {
     return {
       fail(error) {
         if (leave()) {
-          served.postFailed({ id, failure: error, address });
+          opened.fail(error);
         }
       },
       close(error) {
         if (leave()) {
-          served.postFailed({ id, failure: hostFailure(error), address });
+          opened.fail(hostFailure(error));
         }
       },
     };

@@ -14,7 +14,10 @@ export type CallContext<Hello> = {
 /** A method's handler, as the peer's calls reach it. */
 export type Served<Hello> = (call: ServedCall<Hello>) => void;
 
-/** A message of the peer's call `id`, as its bytes, with what the handshake told of the peer. */
+/**
+ * A message of the peer's call `id`, as its bytes, with what the handshake told of the peer, and what its handler holds
+ * the call by.
+ */
 export type ServedCall<Hello> = {
   /** The peer's call id. */
   id: number;
@@ -22,6 +25,18 @@ export type ServedCall<Hello> = {
   message: MessageBytes;
   /** What the handshake told of the peer. */
   context: CallContext<Hello>;
+  /** Answers the call with a failure of the library's own. Never throws. */
+  fail: (failure: Failure) => void;
+  /** Answers the call as one whose message does not decode, and reports it. Never throws. */
+  refuseMalformed: (cause: Error) => void;
+  /** Keeps the call in flight as a request, with what drops it on a close. */
+  hold: (drop: () => void) => void;
+  /** Ends the request. Returns whether it was still in flight, so its one answer goes out. */
+  release: () => boolean;
+  /** Keeps `entry` as the subscription the call opened. */
+  run: (entry: Running) => void;
+  /** Ends the subscription `entry`. Returns whether it was still the one running on the call's id. */
+  end: (entry: Running) => boolean;
 };
 
 /** A subscription the peer opened, as its stop reaches it. */

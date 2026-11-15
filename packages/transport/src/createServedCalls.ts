@@ -3,8 +3,8 @@
 
 // The calls this side serves. Each method's handler decodes the peer's messages with the method's own codec, answers a
 // request with its `Result` and streams a subscription until one side ends it. The library's own outcomes, no handler,
-// a message that does not decode and a handler that throws, go back as a failure frame. Only calls the transport
-// admitted reach this side, once the handshake told who the peer is.
+// a message that does not decode and a handler that throws, go back as a failure frame. A call reaches its handler
+// only once the handshake told who the peer is, and one that came before it is refused.
 
 import { toError } from '@dotli/shared';
 import type { ResultPayload } from 'scale-ts';
@@ -36,8 +36,8 @@ export type RequestHandler<Payload, Response, Domain, Hello> = (
 
 /**
  * Serves one subscription method. It starts the subscription, sends on the sink, and returns what stops it, which runs
- * once on the peer's stop, an interrupt, a start that reuses its id, or a close. A throw on start interrupts with
- * `HostFailure`.
+ * once on the peer's stop, an interrupt, a value the wire cannot carry, a start that reuses its id, or a close. A throw
+ * on start interrupts with `HostFailure`.
  */
 export type SubscriptionHandler<Start, Value, Interrupt, Hello> = (
   start: Start,
@@ -68,17 +68,9 @@ type PostFailedParams = {
   address?: Address | undefined;
 };
 
-type AnswerMalformedParams = {
-  id: number;
-  /** Why the call's message does not decode. */
-  cause: Error;
-  address: Address;
-};
-
 type StartParams<Start, Hello> = {
-  id: number;
   start: Start;
-  context: CallContext<Hello>;
+  call: ServedCall<Hello>;
 };
 
 type HearParams<Hello> = {
@@ -101,14 +93,8 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
   ): () => void {
     const address = schema.addressOf(method);
 
-    function serve({ id, message: bytes, context }: ServedCall<Hello>): void {
-      const message = decodeOr({
-        decoder: method.wholeMessage,
-        data: bytes,
-        onError: cause => {
-          answerMalformed({ id, cause, address });
-        },
-      });
+    function serve({ id, message: bytes, context, refuseMalformed, hold, release, fail }: ServedCall<Hello>): void {
+      const message = decodeOr({ decoder: method.wholeMessage, data: bytes, onError: refuseMalformed });
       if (message === undefined) {
         return;
       }
@@ -118,20 +104,20 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
       }
       const payload = message.value;
       // A handler's late answer finds its id gone, so dropping it needs nothing more.
-      inFlight.set(id, () => undefined);
+      hold(() => undefined);
       // Run in the turn the call arrives, and a handler that throws answers like one that rejects.
       void new Promise<ResultPayload<Response, CallError<Domain>>>(resolve => {
         resolve(handler(payload, context));
       }).then(
         outcome => {
           // A closed transport dropped the call, and answers nothing.
-          if (inFlight.delete(id)) {
+          if (release()) {
             reply({ method, address, id, message: { tag: 'response', value: outcome } });
           }
         },
         (error: unknown) => {
-          if (inFlight.delete(id)) {
-            postFailed({ id, failure: hostFailure(toError(error)), address });
+          if (release()) {
+            fail(hostFailure(toError(error)));
           }
         },
       );
@@ -147,7 +133,8 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
     const address = schema.addressOf(method);
 
     /** Runs the handler, and keeps the subscription running until either side ends it. */
-    function startSubscription({ id, start, context }: StartParams<Start, Hello>): void {
+    function startSubscription({ start, call }: StartParams<Start, Hello>): void {
+      const { id, context } = call;
       let stop: (() => void) | null = null;
 
       /**
@@ -155,7 +142,7 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
        * first, so a stop function that disposes the transport cannot keep it from the peer.
        */
       function finish(send?: () => void): void {
-        if (!end(id, entry)) {
+        if (!call.end(entry)) {
           return;
         }
         send?.();
@@ -167,7 +154,7 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
       /** Ends it with a failure the peer hears. */
       function failWith(failure: Failure): void {
         finish(() => {
-          postFailed({ id, failure, address });
+          call.fail(failure);
         });
       }
 
@@ -194,7 +181,7 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
           finish();
         },
       };
-      running.set(id, entry);
+      call.run(entry);
 
       const sink: Sink<Value, Interrupt> = {
         send(value) {
@@ -228,22 +215,19 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
       }
     }
 
-    function serve({ id, message: bytes, context }: ServedCall<Hello>): void {
-      const message = decodeOr({
-        decoder: method.wholeMessage,
-        data: bytes,
-        onError: cause => {
-          answerMalformed({ id, cause, address });
-        },
-      });
+    function serve(call: ServedCall<Hello>): void {
+      const message = decodeOr({ decoder: method.wholeMessage, data: call.message, onError: call.refuseMalformed });
       if (message === undefined) {
         return;
       }
       if (message.tag !== 'start') {
-        issues.refuse('invalid', new Error(`A ${message.tag} names subscription ${String(id)}, which is not running`));
+        issues.refuse(
+          'invalid',
+          new Error(`A ${message.tag} names subscription ${String(call.id)}, which is not running`),
+        );
         return;
       }
-      startSubscription({ id, start: message.value, context });
+      startSubscription({ start: message.value, call });
     }
 
     return register({ method, address, served: serve });
@@ -263,11 +247,6 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
 
   function postFailed({ id, failure, address }: PostFailedParams): void {
     connection.post({ data: encodeFrame({ id, body: { tag: 'failed', value: failure } }), address });
-  }
-
-  function answerMalformed({ id, cause, address }: AnswerMalformedParams): void {
-    issues.refuse('malformed', cause);
-    postFailed({ id, failure: malformedFrame(cause), address });
   }
 
   /** Sends `message` on call `id`, or answers `HostFailure` for one the wire cannot carry. Never throws. */
@@ -299,10 +278,7 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
       issues.refuse('invalid', new Error(`A ${leg ?? 'message'} names call ${String(id)}, which is still in flight`));
       return;
     }
-    if (entry !== undefined) {
-      // A start on a running id subscribes anew, as truapi does: the running one stops with nothing sent.
-      entry.drop();
-    } else if (leg === 'stop') {
+    if (leg === 'stop') {
       // A stop for a subscription that is not running stops nothing, such as one that crossed this side's end.
       return;
     }
@@ -313,12 +289,53 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
       );
       return;
     }
-    const served = method === undefined ? undefined : handlers.get(method);
-    if (served === undefined) {
-      postFailed({ id, failure: unsupported(), address: method === undefined ? undefined : schema.addressOf(method) });
+    // A start on a running id subscribes anew, as truapi does: the running one stops with nothing sent.
+    entry?.drop();
+    serveOpening(method, { id, call, context });
+  }
+
+  /** Hands a message that opens call `id` to its method's handler, or answers `unsupported` when none serves it. */
+  function serveOpening(method: AnyMethod | undefined, { id, call, context }: HearParams<Hello>): void {
+    if (method === undefined) {
+      postFailed({ id, failure: unsupported() });
       return;
     }
-    served({ id, message: call.message, context });
+    const address = schema.addressOf(method);
+    const served = handlers.get(method);
+    if (served === undefined) {
+      postFailed({ id, failure: unsupported(), address });
+      return;
+    }
+    served({ id, message: call.message, context, ...createCallHandle(id, address) });
+  }
+
+  /** What a handler of call `id` holds the call by: its answers of the library's own, and its place in flight. */
+  function createCallHandle(id: number, address: Address): Omit<ServedCall<Hello>, 'id' | 'message' | 'context'> {
+    return {
+      fail(failure) {
+        postFailed({ id, failure, address });
+      },
+      refuseMalformed(cause) {
+        issues.refuse('malformed', cause);
+        postFailed({ id, failure: malformedFrame(cause), address });
+      },
+      hold(drop) {
+        inFlight.set(id, drop);
+      },
+      release() {
+        return inFlight.delete(id);
+      },
+      run(entry) {
+        running.set(id, entry);
+      },
+      end(entry) {
+        if (running.get(id) !== entry) {
+          return false;
+        }
+        running.delete(id);
+        return true;
+      },
+    };
   }
 
   function answerEarly(id: number, call: Call<MessageBytes>): void {
@@ -337,26 +354,6 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
     for (const entry of [...running.values()]) {
       entry.drop();
     }
-  }
-
-  function holdRequest(id: number, drop: () => void): void {
-    inFlight.set(id, drop);
-  }
-
-  function releaseRequest(id: number): boolean {
-    return inFlight.delete(id);
-  }
-
-  function run(id: number, entry: Running): void {
-    running.set(id, entry);
-  }
-
-  function end(id: number, entry: Running): boolean {
-    if (running.get(id) !== entry) {
-      return false;
-    }
-    running.delete(id);
-    return true;
   }
 
   return {
@@ -381,18 +378,6 @@ export function createServedCalls<Hello>({ schema, connection, issues }: Params)
     dropAll,
     /** Stores one handler per method, and returns what unregisters it. Throws for a method that already has one. */
     register,
-    /** Answers call `id` with a failure of the library's own. Never throws. */
-    postFailed,
-    /** Answers a call whose message does not decode, and reports it. Never throws. */
-    answerMalformed,
-    /** Keeps the peer's request `id` in flight, with what drops it on a close. */
-    holdRequest,
-    /** Ends the peer's request `id`. Returns whether it was still in flight, so its one answer goes out. */
-    releaseRequest,
-    /** Keeps `entry` as the subscription the peer opened on `id`. */
-    run,
-    /** Ends the subscription `entry` on `id`. Returns whether it was still the one running there. */
-    end,
   };
 }
 

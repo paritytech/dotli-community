@@ -11,7 +11,7 @@ export const sentryLogSink = {
 };
 
 function addBreadcrumbForLine({ level, message, attrs: attributes, args }: LogEntry): void {
-  const { flow, ...data } = attributes ?? {};
+  const { flow, ...data } = attributes;
   const errorArgument = args?.find(argument => argument instanceof Error);
   if (errorArgument !== undefined) {
     data['error'] = serializeError(errorArgument);
@@ -26,7 +26,6 @@ function addBreadcrumbForLine({ level, message, attrs: attributes, args }: LogEn
 
 function getBreadcrumbLevel(level: LogLevel): 'info' | 'warning' | 'error' {
   switch (level) {
-    case 'debug':
     case 'info':
       return 'info';
     case 'warn':

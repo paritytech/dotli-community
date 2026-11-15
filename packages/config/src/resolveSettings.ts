@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The settings a page runs with: the network, the chain backend and the cache switches. Per setting the link wins, then
-// the cross-subdomain store, then this origin's storage, then the default. The network never leaves this origin, as
-// every link carries it.
+// The settings a page runs with: the network, the chain backend and the cache switches. The network never leaves this
+// origin, as every link carries it.
+
+import { getKeys } from '@dotli/shared';
 
 import { BACKEND_KEY, getDefaultBackend, hasSharedWorker, parseBackend, type Backend } from './backend.js';
 import { CACHE_KEY, parseCacheSettings, type CacheSettings } from './cacheSettings.js';
@@ -45,6 +46,12 @@ export type SettingsSources = {
   preferLocal?: boolean;
 };
 
+/** The sources one setting is chosen from, with this origin's preference settled. */
+type ChoiceSources = Pick<SettingsSources, 'local' | 'shared'> & {
+  url: ParsedUrlSettings | undefined;
+  preferLocal: boolean;
+};
+
 /** Resolves each setting from the link, then the cross-subdomain store, then this origin's storage, then the default. */
 export function resolveSettings({
   local,
@@ -53,28 +60,39 @@ export function resolveSettings({
   sharedWorkerAvailable,
   preferLocal = false,
 }: SettingsSources): ResolvedSettings {
-  // On localhost the shared backend never applies, so a fresh origin starts on the default and parallel test workers
-  // stay apart. A cache this origin never chose still follows the shared one.
-  const wanted =
-    url?.backend ??
-    parseBackend(preferLocal ? null : (shared?.backend ?? null)) ??
-    parseBackend(local.getItem(BACKEND_KEY)) ??
-    getDefaultBackend();
+  const sources = { local, shared, url, preferLocal };
+  const wanted = chooseBackend(sources);
   const sharedWorkerFallback = hasSharedWorker(wanted) && !sharedWorkerAvailable;
-  const ownCache = local.getItem(CACHE_KEY);
-  const cache = parseCacheSettings(preferLocal ? (ownCache ?? shared?.cache ?? null) : (shared?.cache ?? ownCache));
   return {
     settings: {
       network: chooseNetwork(url?.network ?? null, local.getItem(NETWORK_KEY)),
       backend: sharedWorkerFallback ? 'smoldot-direct' : wanted,
-      cache: {
-        skipCidCache: url?.skipCidCache ?? cache.skipCidCache,
-        skipArchiveCache: url?.skipArchiveCache ?? cache.skipArchiveCache,
-        skipWorkerCache: url?.skipWorkerCache ?? cache.skipWorkerCache,
-      },
+      cache: chooseCache(sources),
     },
     sharedWorkerFallback,
   };
+}
+
+function chooseBackend({ local, shared, url, preferLocal }: ChoiceSources): Backend {
+  // Unlike the cache, the backend ignores the shared store whenever this origin's choice wins, so a fresh origin starts
+  // on the default.
+  return (
+    url?.backend ??
+    parseBackend(preferLocal ? null : (shared?.backend ?? null)) ??
+    parseBackend(local.getItem(BACKEND_KEY)) ??
+    getDefaultBackend()
+  );
+}
+
+/** Each cache switch the link sets, else the switches of the store that wins, else the defaults. */
+function chooseCache({ local, shared, url, preferLocal }: ChoiceSources): CacheSettings {
+  // A cache this origin never chose still follows the shared one.
+  const ownCache = local.getItem(CACHE_KEY);
+  const cache = parseCacheSettings(preferLocal ? (ownCache ?? shared?.cache ?? null) : (shared?.cache ?? ownCache));
+  for (const key of getKeys(cache)) {
+    cache[key] = url?.[key] ?? cache[key];
+  }
+  return cache;
 }
 
 /** The link's network, else the stored one, while this build still offers it, else the default. */

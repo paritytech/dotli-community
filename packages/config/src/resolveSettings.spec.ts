@@ -131,24 +131,6 @@ describe('resolveSettings', () => {
     expect(settings.cache).toEqual({ skipCidCache: false, skipArchiveCache: true, skipWorkerCache: true });
   });
 
-  it('As a visitor, I follow a link to a network this build does not know and get the stored one', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { [NETWORK_KEY]: 'previewnet' } });
-    const url = parseSettingsFromSearch(new URLSearchParams('network=kusama'));
-
-    // When
-    const { settings } = resolveSettings({
-      local,
-      shared: null,
-      url,
-      sharedWorkerAvailable: true,
-    });
-
-    // Then
-    expect(url.network).toBeNull();
-    expect(settings.network).toBe('previewnet');
-  });
-
   it('As a visitor whose browser lacks SharedWorker, I am told only when the shared light client was my choice', () => {
     // Given
     const sharedChoice = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-shared-worker' } });

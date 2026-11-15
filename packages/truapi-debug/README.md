@@ -15,7 +15,8 @@ The debug event bus and debug mode, with no UI. The host emits events, and the d
 
 - **Bus:** `debugBus` (`enableBuffering`, `emit`, `hasListeners`, `watch`, `subscribe`), `DebugBus`, `DebugBusEvent`.
 - **Events:** `DotliDebugEvent`, `TruapiDebugMessageEvent`.
-- **Debug mode:** `resolveDebugMode`, `isDebugModeOn`, `leaveDebugMode`, `DebugMode`, `DebugModePage`.
+- **Debug mode:** `resolveDebugMode`, `getDebugModeUrl`, `isDebugModeOn`, `leaveDebugMode`, `DebugMode`,
+  `DebugModePage`.
 
 ### `@dotli/truapi-debug/testing`
 
