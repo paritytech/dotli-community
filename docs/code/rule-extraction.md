@@ -1,21 +1,26 @@
 # Rule extraction
 
-A correction the owner makes in one session ends with that session, so the next session repeats the mistake. Rule
-extraction turns a durable correction into a durable rule. The rule is written into its owner doc and mirrored into a
-reviewer checklist, so it is enforced from then on.
+A correction the owner makes in one session ends with that session unless the repo keeps it. This procedure decides
+where it is kept.
 
-Code and workflow corrections become repo rules, never agent memory. This holds in a skill run and outside one.
+Code and workflow corrections go to the repo, never agent memory. This holds in a skill run and outside one.
+
+## Where a correction goes
+
+A correction has three possible homes:
+
+1. **A decision.** The default. A fresh `decision-keeper` files it as precedent. A later session meets it only when a
+   question it answers comes up, so it costs no context at start.
+2. **A check.** A lint rule or a test, where one can express the correction. It decides every case without being read.
+3. **A rule.** An owner doc and a checklist row, which every change is held to. Only when the owner says the
+   correction binds every change.
 
 ## When to run
 
-Run it in two cases:
+- **In an `architecture` skill run**, at the moments its "Decisions and the decision keeper" lists.
+- **Outside a skill run**, whenever the owner corrects a code or workflow choice.
 
-- At the end of a pass of the `architecture` skill (planning) or of an implementation, after the owner has accepted the
-  plan or the implementation.
-- Whenever the owner corrects a code or workflow choice outside a skill run. The rule goes to the repo through this
-  procedure, never to agent memory.
-
-Run it only when the session holds **substantive** corrections, meaning more general than the task at hand:
+Outside a skill run, run it only for **substantive** corrections, meaning more general than the task at hand:
 
 - "X should always go in Y, not Z." or "We don't do Z, we use W."
 - A direct edit that reverses a choice (renaming a type, moving a file, changing a pattern).
@@ -28,29 +33,20 @@ something to propose.
 
 ## Procedure
 
-1. **Re-read the session.** Collect each substantive, generalizable correction.
-2. **Form candidate rules.** One line each, prescriptive ("do X when Y" or "don't do Z"), tagged with a severity
-   (`blocking`, `major` or `minor`), with a target doc and heading from `## Where rules land` and a one-line why,
-   quoting the owner's rationale where given. Cap the list at five per session. If more surface, present the top five
-   and note that the rest are in the conversation.
-3. **Ask one candidate at a time** through `AskUserQuestion`:
-
-   > **Rule:** `<severity>`, <one-line rule> **Why:** <rationale, quoting the owner where possible> **Where:**
-   > `<doc § heading>` and the matching checklist row
-
-   The options are `Add as proposed`, `Add with my wording` and `Skip, not a general rule`.
-
-4. **On approval,** edit the owner doc named in `## Where rules land`:
-   - Add the rule under the matching heading or label. Each rule has exactly one owner doc.
+1. **Record it.** Send a fresh `decision-keeper` a `RECORD`: the question the correction answers, the options, the
+   owner's words verbatim and the source (a design path, a PR or the branch). Asking the owner is not needed, since the
+   keeper's change shows in the diff. Outside a skill run, name the files the keeper changed to the owner, who commits
+   them with the work.
+2. **Offer a check.** When a lint rule or a test can express the correction, propose it to the owner, through
+   `AskUserQuestion` or, in a skill run, a `QUESTION`. On approval, add it in the current change. Then send the keeper a
+   `RECORD` with the decision's ID and the check, so the decision is marked as enforced.
+3. **Promote it to a rule** only when the owner says it binds every change:
+   - Add the rule to the owner doc and heading `## Where rules land` names. Each rule has exactly one owner doc.
    - Add a one-line row to the mirror checklist, citing the owner as `(<doc> § <heading>)` and, for AGENTS.md
      `## Code style`, with the label.
-   - If the rule can be checked mechanically, tell the owner it is an ESLint candidate. Do not change a lint rule in
-     this run.
    - If the rule changes what a package owns or may import, update that package's `README.md` or `eslint.config.js` and
      the summary in `docs/code/placement.md` in the same commit.
    - Confirm what was added and where.
-5. **On `Add with my wording`,** ask the owner to dictate and add the rule in their phrasing.
-6. **On `Skip`,** drop the candidate and don't raise it again this session.
 
 ## Where rules land
 
@@ -84,6 +80,6 @@ There are three enforcement layers, weakest to strongest:
 2. **Checklist.** Cited by the reviewer, so a violation in a diff becomes a finding.
 3. **ESLint.** Mechanical and cannot be skipped.
 
-Move every mechanically checkable rule toward ESLint. A rule a linter could check is noted to the owner as an ESLint
-candidate, and this procedure changes no lint rule. Keep the doc and the checklist for judgment-call rules that a linter
+Move every mechanically checkable rule toward ESLint. A correction a linter could check becomes a lint rule once the
+owner approves it (§ Procedure, step 2). Keep the doc and the checklist for judgment-call rules that a linter
 cannot express. The reviewer is the safety net for everything in between.
