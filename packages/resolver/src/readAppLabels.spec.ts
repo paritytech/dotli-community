@@ -14,27 +14,35 @@ const dotns = getActiveServicesConfig().dotns;
 const BLOCK_HASH = '0x0b';
 
 describe('readAppLabels', () => {
-  it('As the name list, I read two labels and see only the one whose app has a contenthash', async () => {
-    // Given app.alpha with an inline contenthash, and app.beta with none
-    const { api } = createFakeApi({ [contenthashSlot('alpha')]: inlineBytesWord(4) });
+  it('As the name list, I read three labels and see the ones whose app subname or own name has a contenthash', async () => {
+    // Given app.alpha with an inline contenthash, beta with one on its own name only, and gamma with none
+    const { api } = createFakeApi({
+      [contenthashSlot('app.alpha')]: inlineBytesWord(4),
+      [contenthashSlot('beta')]: inlineBytesWord(4),
+    });
 
     // When the labels are read
-    const appLabels = await readAppLabels({ api, dotns, labels: ['alpha', 'beta'] });
+    const appLabels = await readAppLabels({ api, dotns, labels: ['alpha', 'beta', 'gamma'] });
 
-    // Then only alpha has an app
-    expect(appLabels).toEqual(new Set(['alpha']));
+    // Then alpha and beta have an app
+    expect(appLabels).toEqual(new Set(['alpha', 'beta']));
   });
 
   it('As the name list, I read a label whose contenthash is stored as long bytes and count it as an app without reading its data slots', async () => {
     // Given app.alpha with a contenthash longer than one word
-    const { api, batches } = createFakeApi({ [contenthashSlot('alpha')]: longBytesWord(40) });
+    const { api, batches } = createFakeApi({ [contenthashSlot('app.alpha')]: longBytesWord(40) });
 
     // When the label is read
     const appLabels = await readAppLabels({ api, dotns, labels: ['alpha'] });
 
-    // Then alpha has an app, and only its base slot was read
+    // Then alpha has an app, and only the base slots were read
     expect(appLabels).toEqual(new Set(['alpha']));
-    expect(batches).toEqual([{ contractAddress: dotns.DOTNS_CONTENT_RESOLVER, slotKeys: [contenthashSlot('alpha')] }]);
+    expect(batches).toEqual([
+      {
+        contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
+        slotKeys: [contenthashSlot('app.alpha'), contenthashSlot('alpha')],
+      },
+    ]);
   });
 
   it("As the name list, I read three labels and read every label's slot in one batch", async () => {
@@ -44,19 +52,22 @@ describe('readAppLabels', () => {
     // When the labels are read
     await readAppLabels({ api, dotns, labels: ['alpha', 'beta', 'gamma'] });
 
-    // Then one batch read the three contenthash slots of the ContentResolver
+    // Then one batch read the six contenthash slots of the ContentResolver
     expect(batches).toEqual([
       {
         contractAddress: dotns.DOTNS_CONTENT_RESOLVER,
-        slotKeys: [contenthashSlot('alpha'), contenthashSlot('beta'), contenthashSlot('gamma')],
+        slotKeys: ['alpha', 'beta', 'gamma'].flatMap(label => [
+          contenthashSlot(`app.${label}`),
+          contenthashSlot(label),
+        ]),
       },
     ]);
   });
 });
 
-/** The ContentResolver slot that holds the contenthash of `app.<label>.<tld>`. */
-function contenthashSlot(label: string): `0x${string}` {
-  return computeMappingSlot(computeNamehash(`app.${label}.${dotns.TLD}`), dotns.STORAGE_SLOTS.CONTENTHASH);
+/** The ContentResolver slot that holds the contenthash of `<name>.<tld>`. */
+function contenthashSlot(name: string): `0x${string}` {
+  return computeMappingSlot(computeNamehash(`${name}.${dotns.TLD}`), dotns.STORAGE_SLOTS.CONTENTHASH);
 }
 
 /** A `bytes` value of `length` bytes stored inline: its data, then `length * 2` in the lowest byte. */

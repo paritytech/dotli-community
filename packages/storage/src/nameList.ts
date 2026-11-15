@@ -15,7 +15,7 @@ export type NameListRecord = {
   network: Network;
   /** Each label store read so far, in the factory's order, with how many of its entries were read. */
   stores: readonly { address: string; read: number }[];
-  /** Labels whose `app.` subname has a contenthash. */
+  /** Labels whose `app.` subname or own name has a contenthash, so a product opens under them. */
   apps: readonly string[];
   /** Labels with no app yet, each with when it was last checked, in ms since the epoch. */
   pending: readonly { label: string; checkedAt: number }[];
