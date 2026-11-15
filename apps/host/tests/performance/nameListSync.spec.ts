@@ -7,7 +7,7 @@
 // Usage:
 //   npm run test:perf:names
 //   PERF_RUNS=3 PERF_BACKENDS=rpc-gateway,smoldot-direct npm run test:perf:names
-//   PERF_NAME_LIST_TIMEOUT_MS=600000 npm run test:perf:names
+//   PERF_NAME_LIST_TIMEOUT_MS=1800000 npm run test:perf:names
 
 import { errors, expect, type Browser, type Page } from '@playwright/test';
 import { getErrorName } from '@dotli/shared';
@@ -43,7 +43,7 @@ type RecordedTimeline = {
 type Settled<Value> = { kind: 'ok'; value: Value } | { kind: 'failed'; error: unknown };
 
 const RUNS = parseInt(process.env['PERF_RUNS'] ?? '1', 10);
-const SYNC_TIMEOUT_MS = parseInt(process.env['PERF_NAME_LIST_TIMEOUT_MS'] ?? '300000', 10);
+const SYNC_TIMEOUT_MS = parseInt(process.env['PERF_NAME_LIST_TIMEOUT_MS'] ?? '900000', 10);
 const SELECTED_BACKENDS = readBackends(process.env['PERF_BACKENDS']);
 
 const COLUMNS: readonly { title: string; width: number }[] = [
