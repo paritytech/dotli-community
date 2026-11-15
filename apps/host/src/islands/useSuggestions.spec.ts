@@ -2,20 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { createRoot, flush } from 'solid-js';
+import { createRoot, createSignal, flush } from 'solid-js';
 import { createNavComboboxState, type NavKey } from '../state/navComboboxState.js';
 import { useSuggestions } from './useSuggestions.js';
 
 const LABELS = ['ant', 'apple', 'avocado', 'banana'];
 
 /** The suggestions under a fresh owner, over a focused input holding `initial`, settled. */
-function mount(initial: string) {
+function mount(initial: string, { loading = false } = {}) {
   const combobox = createNavComboboxState();
   combobox.setText(initial);
   combobox.setFocused(true);
   const open = vi.fn();
+  const [syncing, setSyncing] = createSignal(loading);
   const { suggestions, dispose } = createRoot(d => ({
-    suggestions: useSuggestions({ labels: () => LABELS, suffix: () => '.dot', combobox, open }),
+    suggestions: useSuggestions({ labels: () => LABELS, loading: syncing, suffix: () => '.dot', combobox, open }),
     dispose: d,
   }));
   onTestFinished(dispose);
@@ -24,6 +25,10 @@ function mount(initial: string) {
     suggestions,
     open,
     listbox: () => combobox.listbox.get(),
+    finishLoading(): void {
+      setSyncing(false);
+      flush();
+    },
     type(next: string): void {
       combobox.setText(next);
       flush();
@@ -200,5 +205,65 @@ describe('useSuggestions', () => {
     // Then
     expect(view.suggestions.active()).toBeNull();
     expect(view.listbox()).toEqual({ active: null });
+  });
+
+  it('As a visitor typing a name no label matches while the labels load, I see the list open to show the loading', () => {
+    // Given the focused input, empty, while the labels load
+    const view = mount('', { loading: true });
+
+    // When
+    view.type('zebra');
+
+    // Then
+    expect(view.suggestions.loading()).toBe(true);
+    expect(view.listbox()).toEqual({ active: null });
+  });
+
+  it('As a visitor typing only a space while the labels load, I see no loading', () => {
+    // Given the focused input, empty, while the labels load
+    const view = mount('', { loading: true });
+
+    // When
+    view.type(' ');
+
+    // Then
+    expect(view.suggestions.loading()).toBe(false);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a visitor typing a name no label matches, I see the list close once the labels finish loading', () => {
+    // Given a name no label matches while the labels load
+    const view = mount('zebra', { loading: true });
+
+    // When
+    view.finishLoading();
+
+    // Then
+    expect(view.suggestions.loading()).toBe(false);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a visitor typing a name no label matches while the labels load, I press Escape and the loading hides', () => {
+    // Given
+    const view = mount('zebra', { loading: true });
+
+    // When
+    const taken = view.press('Escape');
+
+    // Then
+    expect(taken).toBe(true);
+    expect(view.suggestions.loading()).toBe(false);
+    expect(view.listbox()).toBeNull();
+  });
+
+  it('As a visitor typing a name no label matches while the labels load, I press Enter and the form keeps it', () => {
+    // Given
+    const view = mount('zebra', { loading: true });
+
+    // When
+    const taken = view.press('Enter');
+
+    // Then
+    expect(taken).toBe(false);
   });
 });

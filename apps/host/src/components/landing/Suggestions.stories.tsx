@@ -10,6 +10,8 @@ import { Suggestions } from './Suggestions.js';
 const LABELS = ['ant', 'apple', 'avocado'];
 
 type FrameProps = {
+  labels: readonly string[];
+  loading: boolean;
   active: string | null;
   onPick: (label: string) => void;
 };
@@ -19,7 +21,13 @@ function Frame(props: FrameProps): JSX.Element {
   return (
     <div style={{ position: 'relative', width: '480px' }}>
       <input type="text" aria-label="Name" data-testid="story-name-input" />
-      <Suggestions labels={() => LABELS} suffix={() => '.dot'} active={() => props.active} onPick={props.onPick} />
+      <Suggestions
+        labels={() => props.labels}
+        loading={() => props.loading}
+        suffix={() => '.dot'}
+        active={() => props.active}
+        onPick={props.onPick}
+      />
     </div>
   );
 }
@@ -27,7 +35,7 @@ function Frame(props: FrameProps): JSX.Element {
 const meta = {
   title: 'Host/Landing/Suggestions',
   component: Frame,
-  args: { active: 'apple', onPick: fn() },
+  args: { labels: LABELS, loading: false, active: 'apple', onPick: fn() },
   // Its ids are the page's, so each story keeps its own frame.
   tags: ['!autodocs'],
 } satisfies Meta<typeof Frame>;
@@ -61,6 +69,17 @@ export const ClickPicks: Story = {
     await step('Then avocado is picked and the input still has focus', async () => {
       await expect(args.onPick).toHaveBeenCalledWith('avocado');
       await expect(input).toHaveFocus();
+    });
+  },
+};
+
+/** As a visitor typing a name while the names still load, I see the list open with only a loading row. */
+export const NoMatchesWhileLoading: Story = {
+  args: { labels: [], loading: true, active: null },
+  play: async ({ canvas, step }) => {
+    await step('Then the list shows a status and no names', async () => {
+      await expect(await canvas.findByRole('status')).toBeInTheDocument();
+      await expect(canvas.queryAllByRole('option')).toEqual([]);
     });
   },
 };

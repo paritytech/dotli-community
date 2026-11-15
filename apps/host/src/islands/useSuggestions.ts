@@ -6,11 +6,14 @@
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, type Accessor } from 'solid-js';
 import { useStore } from '@dotli/stores-solid';
 import type { NavComboboxState, NavKey } from '../state/navComboboxState.js';
+import { typedName } from '../components/landing/dotUrl.js';
 import { matchLabels } from '../components/landing/matchLabels.js';
 
 type Params = {
   /** Every label the list may suggest. */
   labels: Accessor<readonly string[]>;
+  /** True while more labels may still come. */
+  loading: Accessor<boolean>;
   /** The TLD a typed name may end with. Null suggests nothing. */
   suffix: Accessor<string | null>;
   combobox: Pick<NavComboboxState, 'text' | 'focused' | 'showListbox' | 'handleKeys'>;
@@ -20,12 +23,14 @@ type Params = {
 
 /**
  * The suggestions for the name input, for the owner's lifetime. They show while the input has focus, and Escape hides
- * them until the text changes. Once settled, the arrow keys move the active label, wrapping around, Enter opens it,
- * and the input points at the list while it shows.
+ * them until the text changes. While labels still load and a name is typed, `loading` shows too, even with no match.
+ * Once settled, the arrow keys move the active label, wrapping around, Enter opens it, and the input points at the list
+ * while it shows.
  */
-export function useSuggestions({ labels, suffix, combobox, open }: Params): {
+export function useSuggestions({ labels, loading, suffix, combobox, open }: Params): {
   shown: Accessor<readonly string[]>;
   active: Accessor<string | null>;
+  loading: Accessor<boolean>;
 } {
   const text = useStore(combobox.text);
   const focused = useStore(combobox.focused);
@@ -39,14 +44,21 @@ export function useSuggestions({ labels, suffix, combobox, open }: Params): {
     text();
     return null;
   });
-  const shown = createMemo<readonly string[]>(() => (focused() && !escaped() ? matches() : []));
+  const visible = createMemo(() => focused() && !escaped());
+  const shown = createMemo<readonly string[]>(() => (visible() ? matches() : []));
+  const typed = createMemo(() => {
+    const tld = suffix();
+    return tld !== null && typedName(text(), tld) !== '';
+  });
+  const shownLoading = createMemo(() => visible() && typed() && loading());
+  const listShown = createMemo(() => shown().length > 0 || shownLoading());
   const active = createMemo(() => {
     const label = chosen();
     return label !== null && shown().includes(label) ? label : null;
   });
 
   createEffect(
-    () => (shown().length === 0 ? null : { active: active() }),
+    () => (listShown() ? { active: active() } : null),
     view => {
       combobox.showListbox(view);
     },
@@ -56,7 +68,15 @@ export function useSuggestions({ labels, suffix, combobox, open }: Params): {
   });
 
   function handleKey(key: NavKey): boolean {
+    if (!listShown()) {
+      return false;
+    }
+    if (key === 'Escape') {
+      setEscaped(true);
+      return true;
+    }
     const list = shown();
+    // The loading row alone has no option to move to or open.
     if (list.length === 0) {
       return false;
     }
@@ -75,13 +95,10 @@ export function useSuggestions({ labels, suffix, combobox, open }: Params): {
         }
         open(label);
         return true;
-      case 'Escape':
-        setEscaped(true);
-        return true;
     }
   }
   // Once in the browser, so a key the input gets before then stays with the form.
   onSettled(() => combobox.handleKeys(handleKey));
 
-  return { shown, active };
+  return { shown, active, loading: shownLoading };
 }

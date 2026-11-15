@@ -7,8 +7,10 @@ import { Listbox } from '@dotli/ui';
 import { getSuggestionId, SUGGESTIONS_ID } from './suggestionIds.js';
 
 export type SuggestionsProps = {
-  /** The names to suggest, as labels. None renders nothing. */
+  /** The names to suggest, as labels. None renders nothing unless `loading` is true. */
   labels: Accessor<readonly string[]>;
+  /** True while more names may still come, shown as a loading row after the labels. */
+  loading: Accessor<boolean>;
   /** The TLD shown after each label, with its leading dot. Null until the browser knows the visitor's network. */
   suffix: Accessor<string | null>;
   /** The label the arrow keys point at, or null. */
@@ -20,8 +22,13 @@ export type SuggestionsProps = {
 /** Suggested names as a listbox the name input controls. */
 export function Suggestions(props: SuggestionsProps): JSX.Element {
   return (
-    <Show when={props.labels().length > 0}>
-      <Listbox id={SUGGESTIONS_ID} label="Suggested names" testId="landing-suggestions">
+    <Show when={props.labels().length > 0 || props.loading()}>
+      <Listbox
+        id={SUGGESTIONS_ID}
+        label="Suggested names"
+        loading={props.loading() ? 'Loading names' : undefined}
+        testId="landing-suggestions"
+      >
         <For each={props.labels()}>
           {label => (
             <Listbox.Option

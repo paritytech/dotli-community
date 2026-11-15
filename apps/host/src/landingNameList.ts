@@ -40,6 +40,8 @@ export function createLandingNameList({
 }: Params) {
   const labels = atom<readonly string[]>([]);
   const labelsStore: ReadableAtom<readonly string[]> = labels;
+  const syncing = atom(false);
+  const syncingStore: ReadableAtom<boolean> = syncing;
   // A latch, since the page runs one sync and a second start must not queue another.
   let started = false;
   // The stop of the page's one sync, which a clear fires.
@@ -49,6 +51,8 @@ export function createLandingNameList({
   return {
     /** The app labels to suggest from: the stored ones once read, then each saved step's. */
     labels: labelsStore,
+    /** True while the page's one sync may still bring labels: from its start until it ends or a clear stops it. */
+    syncing: syncingStore,
     /** Starts the page's one sync once the settings are set. Again does nothing. */
     start,
     /**
@@ -79,11 +83,14 @@ export function createLandingNameList({
 
   async function clear(): Promise<void> {
     controller.abort();
+    syncing.set(false);
     await store.clear();
   }
 
   async function sync(current: SettingsState): Promise<void> {
     const trace = openTrace(current.backend);
+    // A sync after a clear saves nothing, so it brings no labels.
+    syncing.set(!signal.aborted);
     try {
       await runSync(current, trace);
     } catch (error) {
@@ -97,6 +104,8 @@ export function createLandingNameList({
       } else {
         report.defect(error, { step: 'sync', metric: nameListSyncMetric, message: '[dot.li name-list] sync failed:' });
       }
+    } finally {
+      syncing.set(false);
     }
   }
 

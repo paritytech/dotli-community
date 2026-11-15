@@ -286,6 +286,59 @@ describe('landing name list', () => {
     expect(reports.expected).toEqual([]);
   });
 
+  it.each<[string, Pick<HarnessParams, 'reads' | 'open'>]>([
+    ['succeeds', {}],
+    ['fails', { reads: { readLabelStores: () => Promise.reject(new TypeError('bad slot')) } }],
+    ['cannot load its reads', { open: 'failed' }],
+  ])('As a visitor whose sync %s, I see the names syncing from its start until it ends', async (_case, harness) => {
+    // Given
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, syncs, syncEnded } = setupNameList(harness);
+
+    // When
+    nameList.start();
+    await syncEnded;
+
+    // Then
+    expect(syncs).toEqual([true, false]);
+  });
+
+  it('As a visitor who clears the cache while the sync reads, I see the names stop syncing at the clear', async () => {
+    // Given a sync whose read of new labels never lands
+    const asked = Promise.withResolvers<undefined>();
+    const { nameList } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: () => {
+          asked.resolve(undefined);
+          return new Promise(() => undefined);
+        },
+      },
+    });
+    nameList.start();
+    await asked.promise;
+
+    // When
+    await nameList.clear();
+
+    // Then
+    expect(nameList.syncing.get()).toBe(false);
+  });
+
+  it('As a visitor who clears the cache before my settings are read, I never see the names syncing', async () => {
+    // Given no settings yet, and a cleared list
+    const { nameList, settings, syncs, traceEnded } = setupNameList({ settings: null });
+    await nameList.clear();
+
+    // When the sync starts once the boot sets the settings
+    nameList.start();
+    settings.set(SETTINGS);
+    await traceEnded;
+
+    // Then
+    expect(syncs).toEqual([]);
+  });
+
   it('As the suggestion island, I start twice and one sync runs', async () => {
     // Given
     const { nameList, opened, released } = setupNameList();
@@ -302,7 +355,7 @@ describe('landing name list', () => {
 
 /**
  * Builds the landing name list over a fake store, fake reads and its own settings, and logs each change of its labels,
- * each save and the release, in order.
+ * each save and the release, in order. Logs each change of `syncing` apart.
  */
 function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 'ready' }: HarnessParams = {}) {
   const events: string[] = [];
@@ -366,6 +419,14 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
   nameList.labels.listen(labels => {
     events.push(`labels ${labels.join(',')}`);
   });
+  const syncs: boolean[] = [];
+  const syncEnded = Promise.withResolvers<undefined>();
+  nameList.syncing.listen(syncing => {
+    syncs.push(syncing);
+    if (!syncing) {
+      syncEnded.resolve(undefined);
+    }
+  });
   return {
     nameList,
     settings: settingsStore,
@@ -376,6 +437,8 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
     released: released.promise,
     traced,
     traceEnded: traceEnded.promise,
+    syncs,
+    syncEnded: syncEnded.promise,
   };
 }
 
