@@ -71,7 +71,7 @@ describe('truapi debug panel: mount and dispose', () => {
     // Then
     expect(document.querySelectorAll(`#${PANEL_ID}`)).toHaveLength(1);
     expect(countRows()).toBe(1);
-    expect(readCounts()).toBe('1 events');
+    expect(readCounts()).toBe('1 event');
   });
 
   it('As a dotli developer, I dispose the panel and it leaves the page with every timer and subscription stopped', () => {

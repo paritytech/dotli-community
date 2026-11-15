@@ -4,10 +4,10 @@
 // A row's latency appears only once its reply lands, so without this a hung call looks like a fast one.
 // Scoped to TrUAPI because answering those calls is where the host actually stalls.
 
-import { isResponseTag } from './callTag.js';
+import { isRequestTag, isResponseTag } from './callTag.js';
 import { findFirstNewIndex } from './findFirstNewIndex.js';
 import { getCallKey } from './getCallKey.js';
-import type { StoredEvent } from './storedEvent.js';
+import type { StoredEvent, StoredTruapiEvent } from './storedEvent.js';
 
 /** The TrUAPI calls still awaiting a reply, followed snapshot by snapshot. */
 export type OpenCallTracker = ReturnType<typeof createOpenCallTracker>;
@@ -34,7 +34,7 @@ export function createOpenCallTracker() {
     changedKeys,
     /**
      * Follows the store to `events`, which must be a later snapshot of the same store than the last one passed.
-     * Returns whether any entry of `open()` changed. Never throws.
+     * Never throws.
      */
     update,
   };
@@ -47,55 +47,71 @@ export function createOpenCallTracker() {
     return changed;
   }
 
-  function update(events: readonly StoredEvent[]): boolean {
+  function update(events: readonly StoredEvent[]): void {
     const previous = seen;
     seen = events;
-    const touched = new Set<string>();
+    changed = refreshOpen(new Set([...forgetEvicted(previous, events), ...recordArrived(previous, events)]));
+  }
+
+  /** Forgets the calls of the events in `previous` that `events` no longer holds, and returns their keys. */
+  function forgetEvicted(previous: readonly StoredEvent[], events: readonly StoredEvent[]): string[] {
+    const touched: string[] = [];
     // Events leave only from the head (or all at once on clear), in order.
     const firstSeq = events[0]?.seq ?? Infinity;
     for (const event of previous) {
       if (event.seq >= firstSeq) {
         break;
       }
-      if (event.kind !== 'truapi') {
+      if (!isRequestOrReply(event)) {
         continue;
       }
       const key = getCallKey(event);
-      touched.add(key);
+      touched.push(key);
       if (isResponseTag(event.tag)) {
         forgetReply(key);
       } else {
         forgetRequest(key);
       }
     }
+    return touched;
+  }
+
+  /** Records the calls of the events `events` added since `previous`, and returns their keys. */
+  function recordArrived(previous: readonly StoredEvent[], events: readonly StoredEvent[]): string[] {
+    const touched: string[] = [];
     for (let index = findFirstNewIndex(previous, events); index < events.length; index++) {
       const event = events[index];
-      if (event?.kind !== 'truapi') {
+      if (event === undefined || !isRequestOrReply(event)) {
         continue;
       }
       const key = getCallKey(event);
-      touched.add(key);
+      touched.push(key);
       if (isResponseTag(event.tag)) {
         replies.set(key, (replies.get(key) ?? 0) + 1);
       } else {
         recordRequest(key, event.receivedAt);
       }
     }
+    return touched;
+  }
+
+  /** Brings the `open()` entry of each touched call up to date, and returns the keys whose entry changed. */
+  function refreshOpen(touched: ReadonlySet<string>): ReadonlySet<string> {
     const nextChanged = new Set<string>();
     for (const key of touched) {
-      const since = replies.has(key) ? undefined : requests.get(key)?.[0];
-      if (since === openByKey.get(key)) {
+      // A call with a reply, or with no request left, is not open.
+      const since = replies.has(key) ? null : (requests.get(key)?.[0] ?? null);
+      if (since === (openByKey.get(key) ?? null)) {
         continue;
       }
       nextChanged.add(key);
-      if (since === undefined) {
+      if (since === null) {
         openByKey.delete(key);
       } else {
         openByKey.set(key, since);
       }
     }
-    changed = nextChanged;
-    return nextChanged.size > 0;
+    return nextChanged;
   }
 
   function forgetReply(key: string): void {
@@ -123,4 +139,9 @@ export function createOpenCallTracker() {
     }
     times.push(receivedAt);
   }
+}
+
+/** Whether `event` is a TrUAPI request or its reply. A subscription's start, deliveries and stop wait on nothing. */
+function isRequestOrReply(event: StoredEvent): event is StoredTruapiEvent {
+  return event.kind === 'truapi' && (isRequestTag(event.tag) || isResponseTag(event.tag));
 }

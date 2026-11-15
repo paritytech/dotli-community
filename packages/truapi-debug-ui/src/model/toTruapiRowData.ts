@@ -6,8 +6,7 @@
 import { decodeChainAnnotations, type ChainAnnotations } from './decodeChainAnnotations.js';
 import { formatChainLabel } from './formatChainLabel.js';
 import { formatChainOutcome } from './formatChainOutcome.js';
-import { formatHexHeadAndTail } from './formatHexHeadAndTail.js';
-import { formatIdHead } from './formatIdHead.js';
+import { formatChainValue } from './formatChainValue.js';
 import { formatPayloadSummary } from './formatPayloadSummary.js';
 import { getTagKind, type TagKind } from './getTagKind.js';
 import type { StoredTruapiEvent } from './storedEvent.js';
@@ -33,21 +32,14 @@ export function toTruapiRowData(event: StoredTruapiEvent): TruapiRowData {
 function formatChainSummary(annotations: ChainAnnotations): string {
   const parts: string[] = [];
   if (annotations.operationId !== undefined) {
-    parts.push(`op ${formatRowValue(annotations.operationId)}`);
+    parts.push(`op ${formatChainValue(annotations.operationId)}`);
   }
   if (annotations.blockHash !== undefined) {
-    parts.push(`blk ${formatRowValue(annotations.blockHash)}`);
+    parts.push(`blk ${formatChainValue(annotations.blockHash)}`);
   }
   const outcome = formatChainOutcome(annotations);
   if (outcome !== undefined) {
     parts.push(outcome);
   }
   return parts.join(' · ');
-}
-
-function formatRowValue(value: string): string {
-  if (value.startsWith('0x') && value.length > 12) {
-    return formatHexHeadAndTail(value);
-  }
-  return formatIdHead(value);
 }

@@ -7,11 +7,11 @@ import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole, hasLightClient, parseBa
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { getSystemEventKey } from './getSystemEventKey.js';
 
-/** `endMs` is null while the chain is still in the phase. */
+/** A block still running ends at the end of the load. */
 export type ResolutionBlock = {
   phase: string;
   startMs: number;
-  endMs: number | null;
+  endMs: number;
   reason: string | null;
 };
 
@@ -61,10 +61,11 @@ type BuildRowsParams = {
   /** The load's events, up to its end. */
   events: readonly DotliDebugEvent[];
   startedAt: number;
-  endedAt: number;
+  /** The load's length. */
+  elapsedMs: number;
 };
 
-/** A running byte count at a moment, in ms. */
+/** A running byte count, `at` ms into the load. */
 type ByteCount = {
   at: number;
   total: number;
@@ -97,15 +98,17 @@ export function buildResolution(events: readonly DotliDebugEvent[], now: number)
     };
   }
   const startedAt = first.timestamp;
-  const endedAt = findLoadEnd(load, now);
+  const loadEnd = findLoadEnd(load);
+  const endedAt = loadEnd ?? now;
+  const elapsedMs = Math.max(0, endedAt - startedAt);
   // Chains keep reporting after the app is on screen, so bound the window at the load's end.
   const mine = load.filter(e => e.timestamp <= endedAt);
   return {
     flowId: first.flowId,
     startedAt,
-    elapsedMs: Math.max(0, endedAt - startedAt),
-    rows: buildRows({ events: mine, startedAt, endedAt }),
-    summary: buildSummary(mine, startedAt),
+    elapsedMs,
+    rows: buildRows({ events: mine, startedAt, elapsedMs }),
+    summary: buildSummary(mine, startedAt, loadEnd !== null),
   };
 }
 
@@ -123,13 +126,14 @@ function isLoadEndEvent(event: DotliDebugEvent): boolean {
   }
 }
 
-function findLoadEnd(load: readonly DotliDebugEvent[], now: number): number {
-  let last = 0;
+/** When the load ended, or null while no event has ended it. */
+function findLoadEnd(load: readonly DotliDebugEvent[]): number | null {
+  let last: number | null = null;
   let lastChainPhase = 0;
   let lastSandbox = 0;
   for (const event of load) {
     if (isLoadEndEvent(event)) {
-      last = Math.max(last, event.timestamp);
+      last = Math.max(last ?? event.timestamp, event.timestamp);
     }
     if (event.layer === 'chain' && event.event === 'phase') {
       lastChainPhase = Math.max(lastChainPhase, event.timestamp);
@@ -138,8 +142,8 @@ function findLoadEnd(load: readonly DotliDebugEvent[], now: number): number {
       lastSandbox = Math.max(lastSandbox, event.timestamp);
     }
   }
-  if (last === 0) {
-    return now;
+  if (last === null) {
+    return null;
   }
   // A cached load paints while every chain is still connecting and before the sandbox reports its cache
   // answer, so both may extend the window, capped so the chart settles.
@@ -147,80 +151,63 @@ function findLoadEnd(load: readonly DotliDebugEvent[], now: number): number {
   return Math.max(last, Math.min(lastChainPhase, grace), Math.min(lastSandbox, grace));
 }
 
-function buildRows({ events, startedAt, endedAt }: BuildRowsParams): ResolutionRow[] {
-  // Keyed by the chain name a payload carries, which may name no role.
-  const byChain = new Map<string, ResolutionRow>();
-  for (const role of CHAIN_ROLES) {
-    byChain.set(role, {
+function buildRows({ events, startedAt, elapsedMs }: BuildRowsParams): ResolutionRow[] {
+  // In role order, so the rows come out in that order. An event whose chain names no role has no row.
+  return CHAIN_ROLES.map(role => {
+    const chainEvents = events.filter(event => event.layer === 'chain' && readField(event, 'chain') === role);
+    const phases = chainEvents.filter(event => event.event === 'phase');
+    return {
       role,
       label: CHAIN_ROLE_LABELS[role],
-      blocks: [],
-      peers: null,
-      warpAt: null,
-      warpTarget: null,
-      dbCache: null,
+      blocks: buildBlocks(phases, startedAt, elapsedMs),
+      peers: findMostPeers(chainEvents),
+      warpAt: findLastNumber(phases, 'warpAt'),
+      warpTarget: findLastNumber(phases, 'warpTarget'),
+      dbCache: findDbCache(chainEvents),
+    };
+  });
+}
+
+/** A block for each phase the chain entered, running until the next one, and the last until `span`, the load's length. */
+function buildBlocks(phases: readonly DotliDebugEvent[], startedAt: number, span: number): ResolutionBlock[] {
+  const starts: Omit<ResolutionBlock, 'endMs'>[] = [];
+  for (const event of phases) {
+    const phase = readString(readField(event, 'phase')) ?? 'unknown';
+    // A warp update within the same phase keeps the block running instead of splitting it.
+    if (starts.at(-1)?.phase === phase) {
+      continue;
+    }
+    starts.push({
+      phase,
+      startMs: Math.max(0, event.timestamp - startedAt),
+      reason: readString(readField(event, 'reason')),
     });
   }
+  return starts.map((block, index) => ({
+    ...block,
+    endMs: starts[index + 1]?.startMs ?? Math.max(block.startMs, span),
+  }));
+}
 
+/** The most peers any of `events` reports, or null when none reports a count. */
+function findMostPeers(events: readonly DotliDebugEvent[]): number | null {
+  const counts = events.map(event => readNumber(readField(event, 'peers'))).filter(count => count !== null);
+  return counts.length === 0 ? null : counts.reduce((most, count) => Math.max(most, count), 0);
+}
+
+/** The last number any of `events` reports under `name`, or null when none does. */
+function findLastNumber(events: readonly DotliDebugEvent[], name: string): number | null {
+  let last: number | null = null;
   for (const event of events) {
-    if (event.layer !== 'chain') {
-      continue;
-    }
-    const payload: Record<string, unknown> = event.payload;
-    const row = byChain.get(readString(payload['chain']) ?? '');
-    if (row === undefined) {
-      continue;
-    }
-    const peers = readNumber(payload['peers']);
-    if (peers !== null) {
-      row.peers = Math.max(row.peers ?? 0, peers);
-    }
-    switch (event.event) {
-      case 'bytes':
-        // A byte count belongs to the whole load, not to a chain's row.
-        continue;
-      case 'dbcache': {
-        const cache = readString(payload['dbCache']);
-        if (cache === 'hit' || cache === 'miss') {
-          // First answer wins, so a later report cannot change the load's cache result.
-          row.dbCache ??= cache;
-        }
-        continue;
-      }
-      case 'peers':
-        // A peer change never opens a block of its own.
-        continue;
-      case 'phase':
-        break;
-    }
-    const phase = readString(payload['phase']) ?? 'unknown';
-    const at = Math.max(0, event.timestamp - startedAt);
-    const previous = row.blocks.at(-1);
-    // A warp update within the same phase keeps the block running instead of splitting it.
-    if (previous?.phase !== phase) {
-      if (previous !== undefined) {
-        previous.endMs = at;
-      }
-      row.blocks.push({
-        phase,
-        startMs: at,
-        endMs: null,
-        reason: readString(payload['reason']),
-      });
-    }
-    row.warpAt = readNumber(payload['warpAt']) ?? row.warpAt;
-    row.warpTarget = readNumber(payload['warpTarget']) ?? row.warpTarget;
+    last = readNumber(readField(event, name)) ?? last;
   }
+  return last;
+}
 
-  const span = Math.max(0, endedAt - startedAt);
-  for (const row of byChain.values()) {
-    const last = row.blocks.at(-1);
-    if (last !== undefined) {
-      last.endMs ??= Math.max(last.startMs, span);
-    }
-  }
-  // Filled in role order, so the rows come out in that order.
-  return [...byChain.values()];
+/** The chain's first cache answer, so a later report cannot change the load's cache result. */
+function findDbCache(events: readonly DotliDebugEvent[]): ResolutionRow['dbCache'] {
+  const answers = events.filter(event => event.event === 'dbcache').map(event => readField(event, 'dbCache'));
+  return answers.find(answer => answer === 'hit' || answer === 'miss') ?? null;
 }
 
 function createEmptySummary(): ResolutionSummary {
@@ -243,98 +230,73 @@ function createEmptySummary(): ResolutionSummary {
   };
 }
 
-function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): ResolutionSummary {
-  const summary = createEmptySummary();
-
-  let previousBytes: ByteCount | null = null;
-  // The sandbox writing its document is the real paint. `render:iframe_ready` is only the frame attach.
+function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number, ended: boolean): ResolutionSummary {
+  let summary = createEmptySummary();
+  const byteCounts: ByteCount[] = [];
   let paintedMs: number | null = null;
+  let frameReadyMs: number | null = null;
+  let bootReadyMs: number | null = null;
 
   for (const event of mine) {
     const payload: Record<string, unknown> = event.payload;
-    const key = getSystemEventKey(event);
+    const at = Math.max(0, event.timestamp - startedAt);
     // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- only some events change a resolution, every other one changes nothing
-    switch (key) {
+    switch (getSystemEventKey(event)) {
       case 'resolve:started':
-        summary.backend = toChainBackend(payload['source']) ?? summary.backend;
-        summary.label = readString(payload['label']) ?? summary.label;
+        summary = applyResolveSource(summary, payload);
         break;
-      case 'resolve:completed':
-        summary.backend = toChainBackend(payload['source']) ?? summary.backend;
-        summary.label = readString(payload['label']) ?? summary.label;
-        summary.cid = readString(payload['cid']);
-        summary.resolveMs = readNumber(payload['durationMs']);
-        summary.outcome = summary.cid === null ? 'empty' : 'resolved';
-        break;
-      case 'resolve:failed':
-        summary.outcome = 'failed';
-        summary.failureReason = readString(payload['reason']);
-        summary.label = readString(payload['label']) ?? summary.label;
-        break;
-      case 'boot:failed':
-        summary.outcome = 'failed';
-        summary.failureReason = readString(payload['reason']);
-        break;
-      case 'render:iframe_ready':
-        summary.renderedMs = Math.max(0, event.timestamp - startedAt);
-        break;
-      case 'boot:ready':
-        // Fallback for a load whose render event never reached the recorder.
-        summary.renderedMs ??= Math.max(0, event.timestamp - startedAt);
-        break;
-      case 'boot:started': {
-        // Authoritative, because a load served from the CID cache emits no resolve event.
-        const backend = readString(payload['chainBackend']);
-        if (backend === 'rpc-gateway') {
-          summary.backend = 'rpc-gateway';
-        } else if (backend?.startsWith('smoldot') === true) {
-          summary.backend = 'smoldot';
-        }
-        // A cache the user turned off never reports a result.
-        if (payload['skipCidCache'] === true) {
-          summary.cidCache = 'skipped';
-        }
-        if (payload['skipArchiveCache'] === true) {
-          summary.archiveCache = 'skipped';
-        }
+      case 'resolve:completed': {
+        const cid = readString(payload['cid']);
+        summary = {
+          ...applyResolveSource(summary, payload),
+          cid,
+          resolveMs: readNumber(payload['durationMs']),
+          outcome: getResolvedOutcome(cid),
+        };
         break;
       }
+      case 'resolve:failed':
+        summary = {
+          ...summary,
+          outcome: 'failed',
+          failureReason: readString(payload['reason']),
+          label: readString(payload['label']) ?? summary.label,
+        };
+        break;
+      case 'boot:failed':
+        summary = { ...summary, outcome: 'failed', failureReason: readString(payload['reason']) };
+        break;
+      case 'render:iframe_ready':
+        frameReadyMs = at;
+        break;
+      case 'boot:ready':
+        bootReadyMs ??= at;
+        break;
+      case 'boot:started':
+        summary = applyBootStarted(summary, payload);
+        break;
       case 'boot:cid_cache_checked':
-        summary.cidCache = payload['hit'] === true ? 'hit' : 'miss';
-        // A cache hit resolves the name without a `resolve:completed` event.
-        if (payload['hit'] === true) {
-          summary.cid ??= readString(payload['cid']);
-          summary.label ??= readString(payload['label']);
-          summary.resolveMs ??= Math.max(0, event.timestamp - startedAt);
-        }
+        summary = applyCidCacheChecked(summary, payload, at);
         break;
       case 'boot:block_cache':
-        summary.archiveCache =
-          readNumber(payload['misses']) === 0 && (readNumber(payload['hits']) ?? 0) > 0 ? 'hit' : 'miss';
+        summary = { ...summary, archiveCache: getBlockCacheResult(payload) };
         break;
       case 'sandbox:document_written':
-        summary.appBytes = readNumber(payload['bytes']);
-        summary.appFileCount = readNumber(payload['fileCount']);
-        paintedMs = Math.max(0, event.timestamp - startedAt);
+        summary = {
+          ...summary,
+          appBytes: readNumber(payload['bytes']),
+          appFileCount: readNumber(payload['fileCount']),
+        };
+        paintedMs = at;
         break;
       case 'failover:chain_backend':
-        summary.backend = readFailoverBackend(payload['to']) ?? summary.backend;
+        summary = { ...summary, backend: readTransport(payload['to']) ?? summary.backend };
         break;
       case 'chain:bytes': {
         const total = readNumber(payload['received']);
-        if (total === null) {
-          break;
+        if (total !== null) {
+          byteCounts.push({ at, total });
         }
-        summary.totalBytes = total;
-        if (summary.firstByteMs === null && total > 0) {
-          summary.firstByteMs = Math.max(0, event.timestamp - startedAt);
-        }
-        const current = { at: event.timestamp, total };
-        const rate = previousBytes === null ? null : getByteRate(previousBytes, current);
-        if (rate !== null) {
-          summary.peakBytesPerSecond = Math.max(summary.peakBytesPerSecond ?? 0, rate);
-        }
-        previousBytes = current;
         break;
       }
       default:
@@ -342,15 +304,89 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
     }
   }
 
-  // A cached resolution emits no `resolve:completed`, so the product being on screen ends the load.
-  if (summary.outcome === 'running' && mine.some(isLoadEndEvent)) {
-    summary.outcome = summary.cid === null ? 'empty' : 'resolved';
+  return {
+    ...summary,
+    // A cached resolution emits no `resolve:completed`, so the product being on screen ends the load.
+    outcome: summary.outcome === 'running' && ended ? getResolvedOutcome(summary.cid) : summary.outcome,
+    // The sandbox writing its document is the real paint. `render:iframe_ready` is only the frame attach, and
+    // `boot:ready` stands in for a load whose render event never reached the recorder.
+    renderedMs: paintedMs ?? frameReadyMs ?? bootReadyMs,
+    ...getByteFigures(byteCounts),
+  };
+}
+
+/** `summary` with the transport and name a resolve event reports, where it reports them. */
+function applyResolveSource(summary: ResolutionSummary, payload: Record<string, unknown>): ResolutionSummary {
+  return {
+    ...summary,
+    backend: toChainBackend(payload['source']) ?? summary.backend,
+    label: readString(payload['label']) ?? summary.label,
+  };
+}
+
+function getResolvedOutcome(cid: string | null): ResolutionSummary['outcome'] {
+  return cid === null ? 'empty' : 'resolved';
+}
+
+/** `summary` with the transport a load starts on and the caches the user turned off. */
+function applyBootStarted(summary: ResolutionSummary, payload: Record<string, unknown>): ResolutionSummary {
+  return {
+    ...summary,
+    // Authoritative, because a load served from the CID cache emits no resolve event.
+    backend: readTransport(payload['chainBackend']) ?? summary.backend,
+    // A cache the user turned off never reports a result.
+    cidCache: payload['skipCidCache'] === true ? 'skipped' : summary.cidCache,
+    archiveCache: payload['skipArchiveCache'] === true ? 'skipped' : summary.archiveCache,
+  };
+}
+
+/** `summary` with the CID cache's answer, checked `at` ms into the load. */
+function applyCidCacheChecked(
+  summary: ResolutionSummary,
+  payload: Record<string, unknown>,
+  at: number,
+): ResolutionSummary {
+  if (payload['hit'] !== true) {
+    return { ...summary, cidCache: 'miss' };
   }
-  summary.renderedMs = paintedMs ?? summary.renderedMs;
-  if (previousBytes !== null) {
-    summary.averageBytesPerSecond = getByteRate({ at: startedAt, total: 0 }, previousBytes);
+  // A cache hit resolves the name without a `resolve:completed` event.
+  return {
+    ...summary,
+    cidCache: 'hit',
+    cid: summary.cid ?? readString(payload['cid']),
+    label: summary.label ?? readString(payload['label']),
+    resolveMs: summary.resolveMs ?? at,
+  };
+}
+
+/** A hit only when the block cache served at least one block and missed none. */
+function getBlockCacheResult(payload: Record<string, unknown>): 'hit' | 'miss' {
+  return readNumber(payload['misses']) === 0 && (readNumber(payload['hits']) ?? 0) > 0 ? 'hit' : 'miss';
+}
+
+/** The load's byte figures from its running byte counts, in event order, all null when it has none. */
+function getByteFigures(
+  counts: readonly ByteCount[],
+): Pick<ResolutionSummary, 'totalBytes' | 'firstByteMs' | 'peakBytesPerSecond' | 'averageBytesPerSecond'> {
+  const last = counts.at(-1);
+  if (last === undefined) {
+    return { totalBytes: null, firstByteMs: null, peakBytesPerSecond: null, averageBytesPerSecond: null };
   }
-  return summary;
+  const firstByte = counts.find(count => count.total > 0);
+  let peak: number | null = null;
+  for (const [index, count] of counts.entries()) {
+    const previous = counts[index - 1];
+    const rate = previous === undefined ? null : getByteRate(previous, count);
+    if (rate !== null) {
+      peak = Math.max(peak ?? 0, rate);
+    }
+  }
+  return {
+    totalBytes: last.total,
+    firstByteMs: firstByte?.at ?? null,
+    peakBytesPerSecond: peak,
+    averageBytesPerSecond: getByteRate({ at: 0, total: 0 }, last),
+  };
 }
 
 /** Bytes per second between two counts, or `null` when no time passed between them. */
@@ -363,13 +399,19 @@ function toChainBackend(value: unknown): ResolutionSummary['backend'] {
   return value === 'smoldot' || value === 'rpc-gateway' ? value : null;
 }
 
-/** The summary's transport for a failover target, or `null` for a backend this build does not know. */
-function readFailoverBackend(value: unknown): ResolutionSummary['backend'] {
+/** The summary's transport for a backend, or `null` for a backend this build does not know. */
+function readTransport(value: unknown): ResolutionSummary['backend'] {
   const backend = parseBackend(readString(value));
   if (backend === null) {
     return null;
   }
   return hasLightClient(backend) ? 'smoldot' : 'rpc-gateway';
+}
+
+/** The field `name` of the payload of `event`, unchecked. */
+function readField(event: DotliDebugEvent, name: string): unknown {
+  const payload: Record<string, unknown> = event.payload;
+  return payload[name];
 }
 
 function readString(value: unknown): string | null {

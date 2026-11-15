@@ -220,7 +220,7 @@ export function seedMixedTraffic({ advance = () => undefined }: { advance?: (ms:
     layer: 'boot',
     event: 'started',
     flowId: 'flow-boot-1',
-    payload: { chainBackend: 'smoldot', skipCidCache: false, skipArchiveCache: false },
+    payload: { chainBackend: 'smoldot-direct', skipCidCache: false, skipArchiveCache: false },
   });
 }
 
@@ -445,7 +445,7 @@ function seedFilterTraffic(): void {
   emitTruapi({ tag: 'alpha_response', requestId: 'a1', productId: 'b.dot', direction: 'incoming' });
   emitTruapi({ tag: 'beta_request', requestId: 'b1', productId: 'a.dot', direction: 'incoming' });
   emitTruapi({ tag: 'gamma_request', requestId: 'c1', productId: null, direction: 'outgoing' });
-  emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-1', payload: { chainBackend: 'smoldot' } });
+  emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-1', payload: { chainBackend: 'smoldot-direct' } });
 }
 
 function dispatchPointer(target: Element, { type, x = 0, y = 0 }: PointerParams): void {

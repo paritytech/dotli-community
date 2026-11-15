@@ -34,7 +34,7 @@ function computeOpenCalls(events: readonly StoredEvent[]): Map<string, number> {
     const key = `${event.productId ?? 'dotli'}::${event.requestId}`;
     if (event.tag.endsWith('_response')) {
       answered.add(key);
-    } else if (!requestedAt.has(key)) {
+    } else if (event.tag.endsWith('_request') && !requestedAt.has(key)) {
       requestedAt.set(key, event.receivedAt);
     }
   }
@@ -116,6 +116,21 @@ describe('createOpenCallTracker()', () => {
     expect(open).toEqual(new Map([['app.dot::r2', nth(store.list(), 0).receivedAt]]));
   });
 
+  it('As the debug panel, I follow a live subscription that never gets a reply and no call is open', () => {
+    // Given
+    const store = createEventStore({ capacity: 10 });
+    const tracker = createOpenCallTracker();
+    for (const tag of ['x_start', 'x_receive', 'x_receive']) {
+      store.insertTruapi(buildTruapiEvent({ tag, requestId: 'follow-1' }));
+    }
+
+    // When
+    const open = readOpenAfterUpdate(tracker, store);
+
+    // Then
+    expect(open).toEqual(new Map());
+  });
+
   it('As the debug panel, I update over a random walk and the open calls equal a full recompute at each step', () => {
     // Given
     const store = createEventStore({ capacity: 25 });
@@ -156,11 +171,11 @@ describe('createOpenCallTracker()', () => {
   });
 
   it.each([
-    { earlier: [], tag: 'x_request', changed: true },
-    { earlier: ['x_request'], tag: 'x_receive', changed: false },
-    { earlier: ['x_request', 'x_receive'], tag: 'x_response', changed: true },
+    { earlier: [], tag: 'x_request', changed: ['app.dot::r1'] },
+    { earlier: ['x_request'], tag: 'x_receive', changed: [] },
+    { earlier: ['x_request', 'x_receive'], tag: 'x_response', changed: ['app.dot::r1'] },
   ])(
-    'As the debug panel, I update after a $tag and learn whether the open calls changed ($changed)',
+    'As the debug panel, I update after a $tag and learn which open calls changed ($changed)',
     ({ earlier, tag, changed }) => {
       // Given
       const store = createEventStore({ capacity: 10 });
@@ -172,10 +187,10 @@ describe('createOpenCallTracker()', () => {
 
       // When
       store.insertTruapi(buildTruapiEvent({ tag, requestId: 'r1' }));
-      const changedOnUpdate = tracker.update(store.list().slice());
+      tracker.update(store.list().slice());
 
       // Then
-      expect(changedOnUpdate).toBe(changed);
+      expect([...tracker.changedKeys()]).toEqual(changed);
     },
   );
 

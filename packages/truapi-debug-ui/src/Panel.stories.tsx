@@ -180,7 +180,7 @@ export const SystemRows: Story = {
       const row = getRowByTag('boot.started');
       const cells = within(row);
       await expect(row).toHaveAttribute('data-system');
-      await expect(cells.getByTestId('td-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
+      await expect(cells.getByTestId('td-summary')).toHaveTextContent('Host boot started (chain: smoldot-direct).');
       await expect(cells.queryByTestId('td-arrow-out')).toBeNull();
       await expect(cells.queryByTestId('td-arrow-in')).toBeNull();
     });
@@ -257,29 +257,32 @@ export const HideLeavesDebugMode: Story = {
   },
 };
 
-/** As a developer using the debug panel, I clear the TrUAPI tab and the list, counts and selection empty while the Resolution view still shows the load. */
+/** As a developer using the debug panel, I clear the TrUAPI tab and the list, counts and selection empty at once while the Resolution view still shows the load. */
 export const ClearEventsKeepsResolution: Story = {
-  parameters: { debugPanel: { capacity: 2 } },
-  play: async ({ userEvent, step }) => {
-    await step('Given a full list with a selected row', async () => {
-      seedMixedTraffic();
-      await waitFor(() => expect(readCounts()).toBe('2 events (+1 dropped)'));
-      await userEvent.click(listRows()[0] ?? getPanel());
-    });
-    await step('When I clear the TrUAPI tab', async () => {
-      await userEvent.click(getPart('td-clear'));
-    });
-    await step('Then the list, the counts and the selection are empty', async () => {
-      await waitFor(() => expect(listRows()).toHaveLength(0));
-      await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
-      await expect(readCounts()).toBe('0 events');
-      await expect(getPart('td-detail-empty')).toBeInTheDocument();
-    });
-    await step('Then the Resolution view still shows the load', async () => {
-      await userEvent.click(getPart('td-section', { value: 'resolution' }));
-      await expect(within(getPart('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
-    });
-  },
+  parameters: { debugPanel: { mount: false } },
+  play: async ({ step }) =>
+    withFakeClock(async clock => {
+      getDebugPanel().mount({ capacity: 2 });
+      await step('Given a full list with a selected row', async () => {
+        seedMixedTraffic();
+        clock.passFrame();
+        await expect(readCounts()).toBe('2 events (+1 dropped)');
+        (listRows()[0] ?? getPanel()).click();
+      });
+      await step('When I clear the TrUAPI tab', () => {
+        getPart('td-clear').click();
+      });
+      await step('Then the list, the counts and the selection are empty before the next frame', async () => {
+        await expect(listRows()).toHaveLength(0);
+        await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
+        await expect(readCounts()).toBe('0 events');
+        await expect(getPart('td-detail-empty')).toBeInTheDocument();
+      });
+      await step('Then the Resolution view still shows the load', async () => {
+        getPart('td-section', { value: 'resolution' }).click();
+        await expect(within(getPart('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
+      });
+    }),
 };
 
 /** As a developer using the debug panel, I clear the Resolution tab and its view empties while the events are kept. */
@@ -623,9 +626,9 @@ export const SystemDetailExplains: Story = {
         flowId: 'flow-b flow-boot-1',
         group: '1 event',
       });
-      await expect(getPart('td-detail-summary')).toHaveTextContent('Host boot started (chain: smoldot).');
+      await expect(getPart('td-detail-summary')).toHaveTextContent('Host boot started (chain: smoldot-direct).');
       await expect(getPart('td-detail-explanation')).toBeInTheDocument();
-      await expect(getPart('td-detail-pre')).toHaveTextContent('"smoldot"');
+      await expect(getPart('td-detail-pre')).toHaveTextContent('"smoldot-direct"');
     });
   },
 };
