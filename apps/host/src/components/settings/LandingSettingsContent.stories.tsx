@@ -30,13 +30,16 @@ function clearButton(): HTMLButtonElement {
 function networkRadio(value: string): HTMLInputElement {
   return query(document, `input[name="dotli-network"][value="${value}"]`, HTMLInputElement);
 }
+function transportRadio(value: string): HTMLInputElement {
+  return query(document, `input[name="dotli-backend"][value="${value}"]`, HTMLInputElement);
+}
 function selectedCategory(): string | null | undefined {
   return document
     .querySelector('[data-testid="landing-settings-categories"] [aria-pressed="true"]')
     ?.getAttribute('data-testid');
 }
 
-type Category = 'network' | 'advanced';
+type Category = 'network' | 'provider' | 'advanced';
 
 async function showCategory(click: (el: Element) => Promise<void>, category: Category): Promise<void> {
   await click(query(document, `[data-testid="landing-settings-category-${category}"]`));
@@ -95,6 +98,33 @@ export const SavesANetwork: Story = {
       await expect(settingsAsked.apply).toHaveBeenCalledWith(
         expect.objectContaining({ network: 'previewnet' }),
         expect.objectContaining({ network: 'paseo-next-v2' }),
+      );
+    });
+  },
+};
+
+/** As a visitor on the landing page, I pick another transport in Provider and Save and apply asks the page to save it. */
+export const SavesATransport: Story = {
+  tags: ['!autodocs'],
+  play: async ctx => {
+    const click = ctx.userEvent.click;
+    await open(ctx);
+    await ctx.step('When I open Provider', async () => {
+      await showCategory(click, 'provider');
+    });
+    await ctx.step('Then the saved transport is checked and nothing is to save', async () => {
+      await expect(transportRadio('smoldot-direct').checked).toBe(true);
+      await expect(applyButton()).toBeDisabled();
+    });
+    await ctx.step('When I pick the RPC gateway and press Save and apply', async () => {
+      await click(transportRadio('rpc-gateway'));
+      await click(applyButton());
+    });
+    await ctx.step('Then the page was asked to save the picked transport against the saved one', async () => {
+      await waitFor(() => expect(settingsAsked.apply).toHaveBeenCalledTimes(1));
+      await expect(settingsAsked.apply).toHaveBeenCalledWith(
+        expect.objectContaining({ backend: 'rpc-gateway', network: 'paseo-next-v2' }),
+        expect.objectContaining({ backend: 'smoldot-direct' }),
       );
     });
   },

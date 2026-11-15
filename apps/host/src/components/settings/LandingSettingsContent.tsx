@@ -3,7 +3,7 @@
 
 import { createSignal, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { Network } from '@dotli/config';
+import type { Backend, Network } from '@dotli/config';
 import { ReloadIcon, TrashIcon } from '@dotli/ui/icons';
 import {
   Button,
@@ -19,13 +19,15 @@ import {
   usePopover,
 } from '@dotli/ui';
 import { NetworkChoices } from './NetworkChoices.js';
+import { TransportChoices } from './TransportChoices.js';
 import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from './settings.js';
 import s from './LandingSettingsContent.module.css';
 
-type Category = 'network' | 'advanced';
+type Category = 'network' | 'provider' | 'advanced';
 
 const CATEGORIES: readonly SegmentOption<Category>[] = [
   { value: 'network', label: 'Network', testId: 'landing-settings-category-network' },
+  { value: 'provider', label: 'Provider', testId: 'landing-settings-category-provider' },
   { value: 'advanced', label: 'Advanced', testId: 'landing-settings-category-advanced' },
 ];
 
@@ -56,13 +58,14 @@ export function LandingSettingsContent(props: LandingSettingsContentProps): JSX.
 }
 
 /**
- * One opening's panel, on Network each time. The network choice stays a draft across categories until Save and apply,
- * and closing drops the draft.
+ * One opening's panel, on Network each time. The network and transport choices stay a draft across categories until
+ * Save and apply, and closing drops the draft.
  */
 function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: SavedSettings }): JSX.Element {
   const popover = usePopover();
   const saved = untrack(() => props.saved);
   const [network, setNetwork] = createSignal<Network>(saved.network);
+  const [backend, setBackend] = createSignal<Backend>(saved.backend);
   const [category, setCategory] = createSignal<Category>('network');
   const [clearing, setClearing] = createSignal(false);
 
@@ -73,7 +76,7 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
 
   function apply(): void {
     void props.onApply(
-      { backend: saved.backend, network: network(), cache: saved.cache },
+      { backend: backend(), network: network(), cache: saved.cache },
       { backend: saved.backend, network: saved.network, cache: saved.cache },
     );
   }
@@ -100,6 +103,13 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
         <Show when={category() === 'network'}>
           <NetworkChoices networks={saved.enabledNetworks} value={network()} onChoose={setNetwork} />
         </Show>
+        <Show when={category() === 'provider'}>
+          <TransportChoices
+            value={backend()}
+            sharedWorkerAvailable={saved.sharedWorkerAvailable}
+            onChoose={setBackend}
+          />
+        </Show>
         <Show when={category() === 'advanced'}>
           <Stack>
             <SectionLabel text="Cache" />
@@ -120,7 +130,7 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
       <SurfaceFoot
         hint={
           <Hint icon={ReloadIcon} testId="landing-settings-apply-warning">
-            Network changes reload the page
+            Network and transport changes reload the page
           </Hint>
         }
       >
@@ -129,7 +139,11 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
             variant="primary"
             block={popover.sheet()}
             onClick={apply}
-            disabled={network() === saved.network || clearing() || isResetRunning(props.reset())}
+            disabled={
+              (network() === saved.network && backend() === saved.backend) ||
+              clearing() ||
+              isResetRunning(props.reset())
+            }
           >
             {isResetRunning(props.reset()) ? 'Resetting…' : 'Save and apply'}
           </Button>
