@@ -130,7 +130,7 @@ export const UnderButton: Story = {
   },
 };
 
-/** As a dotli user, I open a list from a button at the end of a row and it lines up with the button's end. */
+/** As a dotli user, I open a list from a button at a row's end and see its chosen option active, with both fills. */
 export const AlignEnd: Story = {
   render: args => (
     <div style={{ display: 'flex', 'justify-content': 'flex-end', width: '260px' }}>
@@ -142,6 +142,7 @@ export const AlignEnd: Story = {
           <Options
             listId="listbox-align-end"
             labels={['Most relevant', 'Recently opened', 'Name']}
+            active="Recently opened"
             chosen="Recently opened"
             onPick={args.onPick}
           />
