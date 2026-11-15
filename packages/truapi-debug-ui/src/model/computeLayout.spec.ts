@@ -171,4 +171,32 @@ describe('debug panel timeline of chain operations', () => {
     // Then the first product's box has ended and the second product's box still waits
     expect(segments.map(segment => segment.pending)).toEqual([false, true]);
   });
+
+  it('As a dotli developer whose first follow subscription was evicted, I see lifecycle ticks only on the rail still kept', () => {
+    // Given two follows of one chain that each deliver a new block, the first follow-start evicted
+    const genesisHash = `0x${'ab'.repeat(32)}`;
+    const store = createEventStore({ capacity: 3 });
+    for (const requestId of ['follow-0', 'follow-1']) {
+      store.insertTruapi(
+        buildTruapiEvent({ tag: 'remote_chain_head_follow_start', requestId, value: { genesisHash } }),
+      );
+    }
+    for (const requestId of ['follow-0', 'follow-1']) {
+      store.insertTruapi(
+        buildTruapiEvent({
+          tag: 'remote_chain_head_follow_receive',
+          requestId,
+          direction: 'incoming',
+          value: { tag: 'NewBlock', value: { blockHash: '0x02', parentBlockHash: '0x01' } },
+        }),
+      );
+    }
+    const events = store.list();
+
+    // When the timeline lays the events out
+    const { ticks } = computeLayout(events, computeGlobalYPositions(events));
+
+    // Then only the kept subscription's delivery has a tick
+    expect(ticks.map(tick => tick.seq)).toEqual([events.at(-1)?.seq]);
+  });
 });

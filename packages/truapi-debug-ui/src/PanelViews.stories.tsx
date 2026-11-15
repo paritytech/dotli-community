@@ -425,7 +425,12 @@ export const ResolutionTicks: Story = {
       getPart('td-section', { value: 'resolution' }).click();
       await expect(within(getPart('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
       await step('When a load starts', () => {
-        emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot', payload: { chainBackend: 'smoldot' } });
+        emitSystem({
+          layer: 'boot',
+          event: 'started',
+          flowId: 'flow-boot',
+          payload: { chainBackend: 'smoldot-direct' },
+        });
         emitSystem({
           layer: 'resolve',
           event: 'started',
@@ -478,7 +483,12 @@ export const ResolutionChart: Story = {
       const getOutcome = (): Element | null =>
         getResolutionView().querySelector('[data-fact="outcome"] [data-testid="td-res-value"]');
       await step('When the relay connects, then syncs', () => {
-        emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot', payload: { chainBackend: 'smoldot' } });
+        emitSystem({
+          layer: 'boot',
+          event: 'started',
+          flowId: 'flow-boot',
+          payload: { chainBackend: 'smoldot-direct' },
+        });
         emitSystem({
           layer: 'chain',
           event: 'phase',
@@ -532,7 +542,12 @@ export const ResolutionRedrawKeepsNodes: Story = {
       let block: HTMLElement | null = null;
       let width = 0;
       await step('Given an in-flight load with a closed block and an open one', async () => {
-        emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot', payload: { chainBackend: 'smoldot' } });
+        emitSystem({
+          layer: 'boot',
+          event: 'started',
+          flowId: 'flow-boot',
+          payload: { chainBackend: 'smoldot-direct' },
+        });
         emitSystem({
           layer: 'chain',
           event: 'phase',

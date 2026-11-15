@@ -39,18 +39,7 @@ describe('serializeError', () => {
     expect(serialized).toBe('kaboom');
   });
 
-  it('As an operator reading a failure, I serialize an Error without a message and read its name (DOTLI-1K)', () => {
-    // Given
-    const error = new Error('');
-
-    // When
-    const serialized = serializeError(error);
-
-    // Then
-    expect(serialized).toBe('Error');
-  });
-
-  it('As an operator reading a failure, I serialize an Error subclass without a message and read its own name', () => {
+  it('As an operator reading a failure, I serialize an Error subclass without a message and read its own name (DOTLI-1K)', () => {
     // Given
     class AlreadyDestroyedError extends Error {
       override name = 'AlreadyDestroyedError';

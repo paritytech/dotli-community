@@ -8,6 +8,7 @@
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';
 import { getProtocolClient, getProtocolOrigin } from '@dotli/protocol';
 import { createReporter, defineCount } from '@dotli/metrics';
+import { createAsyncTaskPool } from '@dotli/shared';
 
 const bootReport = createReporter({ flow: 'boot' });
 const storageReport = createReporter({ flow: 'storage' });
@@ -23,6 +24,10 @@ const sharedModeReadMetric = defineCount<'error' | 'ok'>('shared_mode.read');
  * leaves the other subdomains on the old setting.
  */
 const sharedModeWriteMetric = defineCount<'error' | 'ok'>('shared_mode.write');
+
+// The page's writes of the shared settings, one at a time in the order asked, so an earlier write never lands over a
+// later one and a reload can wait for them.
+const sharedWrites = createAsyncTaskPool({ poolSize: 1 });
 
 export type SharedChannel = {
   /** The value under `key`, or null when none is stored. Rejects when the store cannot be reached. */
@@ -74,37 +79,19 @@ export async function readSharedSettings({
 }
 
 /**
- * Mirrors the settings other subdomains share, and settles once every write did. Never rejects, as this origin keeps
- * its own copy, so a failed write is reported here.
+ * Mirrors the settings other subdomains share once the page's earlier writes of them are done, and settles once every
+ * write did. Never rejects, as this origin keeps its own copy, so a failed write is reported here.
  */
-export async function writeSharedSettings(
+export function writeSharedSettings(
   shared: SharedSettings,
   { channel = getSharedChannel() }: Params = {},
 ): Promise<void> {
-  const entries: [string, string | null][] = [
-    [BACKEND_KEY, shared.backend],
-    [CACHE_KEY, shared.cache],
-  ];
-  await Promise.all(
-    entries.flatMap(([key, value]) =>
-      value === null
-        ? []
-        : [
-            channel.write(key, value).then(
-              () => {
-                sharedModeWriteMetric.count({ outcome: 'ok' });
-              },
-              (error: unknown) => {
-                storageReport.defect(error, {
-                  step: 'shared_mode_write',
-                  metric: sharedModeWriteMetric,
-                  message: `[dot.li shared-mode] write of ${key} failed:`,
-                });
-              },
-            ),
-          ],
-    ),
-  );
+  return sharedWrites.call(() => writeEntries(shared, channel));
+}
+
+/** Resolves once no write of the shared settings is queued or running. Never rejects. */
+export function settleSharedWrites(): Promise<void> {
+  return sharedWrites.settle();
 }
 
 /**
@@ -149,6 +136,34 @@ export function createDevHttpChannel({ origin, fetch = fetchFromPage }: CreateDe
       }
     },
   };
+}
+
+/** Writes each shared setting that has a value, and reports each write that fails. */
+async function writeEntries(shared: SharedSettings, channel: SharedChannel): Promise<void> {
+  const entries: [string, string | null][] = [
+    [BACKEND_KEY, shared.backend],
+    [CACHE_KEY, shared.cache],
+  ];
+  await Promise.all(
+    entries.flatMap(([key, value]) =>
+      value === null
+        ? []
+        : [
+            channel.write(key, value).then(
+              () => {
+                sharedModeWriteMetric.count({ outcome: 'ok' });
+              },
+              (error: unknown) => {
+                storageReport.defect(error, {
+                  step: 'shared_mode_write',
+                  metric: sharedModeWriteMetric,
+                  message: `[dot.li shared-mode] write of ${key} failed:`,
+                });
+              },
+            ),
+          ],
+    ),
+  );
 }
 
 function createIframeChannel(): SharedChannel {

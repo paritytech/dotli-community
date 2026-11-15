@@ -60,49 +60,50 @@ const SUMMARY_BACKENDS = {
   'rpc-gateway': true,
 } satisfies Record<Backend, true>;
 
+/** How each field of a summary is checked. Every check rejects `undefined`, so a missing field fails it. */
+const SUMMARY_FIELD_CHECKS = {
+  outcome: isOutcome,
+  reason: value => value === null || typeof value === 'string',
+  backend: value => typeof value === 'string' && Object.hasOwn(SUMMARY_BACKENDS, value),
+  start: value => value === 'cold' || value === 'stored',
+  stores: isCount,
+  entries: isCount,
+  labels: isCount,
+  apps: isCount,
+  reads: isCount,
+} satisfies Record<keyof NameListSyncSummary, (value: unknown) => boolean>;
+
+/** How each field of a read detail is checked. Every check rejects `undefined`, so a missing field fails it. */
+const READ_DETAIL_FIELD_CHECKS = {
+  kind: value => NAME_LIST_READ_KINDS.some(kind => kind === value),
+  outcome: isOutcome,
+  items: isCount,
+  found: isCount,
+} satisfies Record<keyof NameListReadDetail, (value: unknown) => boolean>;
+
 /** Whether a value read back from a sync's end mark is a `NameListSyncSummary`. */
 export function isNameListSyncSummary(value: unknown): value is NameListSyncSummary {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'outcome' in value &&
-    isOutcome(value.outcome) &&
-    'reason' in value &&
-    (value.reason === null || typeof value.reason === 'string') &&
-    'backend' in value &&
-    typeof value.backend === 'string' &&
-    Object.hasOwn(SUMMARY_BACKENDS, value.backend) &&
-    'start' in value &&
-    (value.start === 'cold' || value.start === 'stored') &&
-    'stores' in value &&
-    typeof value.stores === 'number' &&
-    'entries' in value &&
-    typeof value.entries === 'number' &&
-    'labels' in value &&
-    typeof value.labels === 'number' &&
-    'apps' in value &&
-    typeof value.apps === 'number' &&
-    'reads' in value &&
-    typeof value.reads === 'number'
-  );
+  return passesFieldChecks(value, SUMMARY_FIELD_CHECKS);
 }
 
 /** Whether a value read back from a read's measure is a `NameListReadDetail`. */
 export function isNameListReadDetail(value: unknown): value is NameListReadDetail {
+  return passesFieldChecks(value, READ_DETAIL_FIELD_CHECKS);
+}
+
+/** Whether `value` is an object whose every field passes its check in `checks`. */
+function passesFieldChecks(value: unknown, checks: Record<string, (field: unknown) => boolean>): boolean {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'kind' in value &&
-    NAME_LIST_READ_KINDS.some(kind => kind === value.kind) &&
-    'outcome' in value &&
-    isOutcome(value.outcome) &&
-    'items' in value &&
-    typeof value.items === 'number' &&
-    'found' in value &&
-    typeof value.found === 'number'
+    Object.entries(checks).every(([field, check]) => check(Reflect.get(value, field)))
   );
 }
 
 function isOutcome(value: unknown): value is 'ok' | 'error' {
   return value === 'ok' || value === 'error';
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number';
 }

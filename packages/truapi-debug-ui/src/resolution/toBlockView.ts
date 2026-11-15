@@ -28,12 +28,11 @@ const COLOURED_PHASES = new Set(['connecting', 'syncing', 'ready', 'stalled']);
 
 /** Where a phase block sits on a chart `span` ms wide, and its tooltip. `open` blocks run to now. Never throws. */
 export function toBlockView({ block, open, span }: Params): BlockView {
-  const end = block.endMs ?? span;
   const left = (block.startMs / span) * 100;
-  const width = Math.max(0.4, ((end - block.startMs) / span) * 100);
+  const width = Math.max(0.4, ((block.endMs - block.startMs) / span) * 100);
   const title = [
-    `${block.phase} for ${formatMs(end - block.startMs)}`,
-    `from ${formatMs(block.startMs)} to ${open ? 'now' : formatMs(end)}`,
+    `${block.phase} for ${formatMs(block.endMs - block.startMs)}`,
+    `from ${formatMs(block.startMs)} to ${open ? 'now' : formatMs(block.endMs)}`,
     block.reason,
   ]
     .filter((line): line is string => line !== null)

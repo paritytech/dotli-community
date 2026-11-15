@@ -1,29 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainAnnotations } from './decodeChainAnnotations.js';
+import type { ChainAnnotations, ChainOutcome } from './decodeChainAnnotations.js';
 import { formatChainDisplay } from './formatChainDisplay.js';
 import { formatCount } from './formatCount.js';
 import { formatHexHeadAndTail } from './formatHexHeadAndTail.js';
 import { formatIdHead } from './formatIdHead.js';
 import { toEnumValue, toRecord, toStringValue, peelVersion } from './shape.js';
 
-type Params = {
-  annotations: ChainAnnotations;
-  /** The payload with its version peeled. */
-  inner: unknown;
-  /** What was looked up, opening the sentence. */
-  label: string;
-};
-
 /** One sentence on what a decoded chain message says, or null for a message it has no sentence for. Never throws. */
 export function summariseChainMessage(annotations: ChainAnnotations, payload: unknown): string | null {
   const inner = peelVersion(payload);
+  // A payload that is no record reads as one whose fields are all missing.
+  const record = toRecord(inner) ?? {};
 
   switch (annotations.kind) {
     case 'follow-start': {
-      const record = toRecord(inner);
-      const withRuntime = record?.['withRuntime'] === true;
+      const withRuntime = record['withRuntime'] === true;
       return `Subscribe to chain head${withRuntime ? ' (with runtime)' : ''}${formatChainSuffix(annotations.genesisHash)}.`;
     }
     case 'follow-receive':
@@ -31,22 +24,21 @@ export function summariseChainMessage(annotations: ChainAnnotations, payload: un
     case 'head-header-request':
       return `Fetch header of block ${formatBlock(annotations.blockHash)}${formatFollowSuffix(annotations.followSubscriptionId)}.`;
     case 'head-header-response':
-      return summariseHeaderResponse(annotations, inner);
+      return summariseHeaderResponse(annotations, record);
     case 'head-body-request':
       return `Fetch body of block ${formatBlock(annotations.blockHash)}${formatFollowSuffix(annotations.followSubscriptionId)}.`;
     case 'head-body-response':
       return summariseOperationStarter(annotations, 'Body fetch');
     case 'head-storage-request':
-      return summariseStorageRequest(annotations, inner);
+      return summariseStorageRequest(annotations, record);
     case 'head-storage-response':
       return summariseOperationStarter(annotations, 'Storage query');
     case 'head-call-request':
-      return summariseCallRequest(annotations, inner);
+      return summariseCallRequest(annotations, record);
     case 'head-call-response':
       return summariseOperationStarter(annotations, 'Runtime call');
     case 'head-unpin-request': {
-      const record = toRecord(inner);
-      const hashes = toArrayValue(record?.['hashes']);
+      const hashes = toArrayValue(record['hashes']);
       return `Release ${formatCount(hashes.length, 'pinned block')}${formatFollowSuffix(annotations.followSubscriptionId)}.`;
     }
     case 'head-unpin-response':
@@ -62,18 +54,17 @@ export function summariseChainMessage(annotations: ChainAnnotations, payload: un
     case 'spec-genesis-hash-request':
       return `Look up genesis hash${formatChainSuffix(annotations.genesisHash)}.`;
     case 'spec-genesis-hash-response':
-      return summariseStringResponse({ annotations, inner, label: 'Genesis hash' });
+      return summariseStringResponse(annotations, record, 'Genesis hash');
     case 'spec-chain-name-request':
       return `Look up chain name${formatChainSuffix(annotations.genesisHash)}.`;
     case 'spec-chain-name-response':
-      return summariseStringResponse({ annotations, inner, label: 'Chain name' });
+      return summariseStringResponse(annotations, record, 'Chain name');
     case 'spec-properties-request':
       return `Look up chain properties${formatChainSuffix(annotations.genesisHash)}.`;
     case 'spec-properties-response':
-      return summariseStringResponse({ annotations, inner, label: 'Properties' });
+      return summariseStringResponse(annotations, record, 'Properties');
     case 'tx-broadcast-request': {
-      const record = toRecord(inner);
-      const transaction = toStringValue(record?.['transaction']);
+      const transaction = toStringValue(record['transaction']);
       const bytes = transaction === undefined ? null : countHexBytes(transaction);
       return `Broadcast transaction${bytes === null ? '' : ` (${String(bytes)} bytes)`}${formatChainSuffix(annotations.genesisHash)}.`;
     }
@@ -91,34 +82,35 @@ function summariseFollowEvent(inner: unknown): string | null {
   if (followEvent === undefined) {
     return null;
   }
-  const eventValue = toRecord(followEvent.value);
+  // A follow event with no value reads as one whose fields are all missing.
+  const eventValue = toRecord(followEvent.value) ?? {};
   switch (followEvent.tag) {
     case 'Initialized': {
-      const hashes = toArrayValue(eventValue?.['finalizedBlockHashes']);
+      const hashes = toArrayValue(eventValue['finalizedBlockHashes']);
       return `Initialised with ${formatCount(hashes.length, 'finalized block')}.`;
     }
     case 'NewBlock': {
-      const block = toStringValue(eventValue?.['blockHash']);
-      const parent = toStringValue(eventValue?.['parentBlockHash']);
+      const block = toStringValue(eventValue['blockHash']);
+      const parent = toStringValue(eventValue['parentBlockHash']);
       return `New block ${formatBlock(block)} (parent ${formatBlock(parent)}).`;
     }
     case 'BestBlockChanged': {
-      const block = toStringValue(eventValue?.['bestBlockHash']);
+      const block = toStringValue(eventValue['bestBlockHash']);
       return `Best block now ${formatBlock(block)}.`;
     }
     case 'Finalized': {
-      const finalized = toArrayValue(eventValue?.['finalizedBlockHashes']);
-      const pruned = toArrayValue(eventValue?.['prunedBlockHashes']);
+      const finalized = toArrayValue(eventValue['finalizedBlockHashes']);
+      const pruned = toArrayValue(eventValue['prunedBlockHashes']);
       return `Finalized ${formatCount(finalized.length, 'block')}, pruned ${String(pruned.length)}.`;
     }
     case 'OperationBodyDone': {
-      const extrinsics = toArrayValue(eventValue?.['value']);
+      const extrinsics = toArrayValue(eventValue['value']);
       return `Body returned: ${formatCount(extrinsics.length, 'extrinsic')}${formatOperationSuffix(eventValue)}.`;
     }
     case 'OperationCallDone':
       return `Runtime call result ready${formatOperationSuffix(eventValue)}.`;
     case 'OperationStorageItems': {
-      const items = toArrayValue(eventValue?.['items']);
+      const items = toArrayValue(eventValue['items']);
       return `Storage batch: ${formatCount(items.length, 'item')}${formatOperationSuffix(eventValue)}.`;
     }
     case 'OperationStorageDone':
@@ -128,7 +120,7 @@ function summariseFollowEvent(inner: unknown): string | null {
     case 'OperationInaccessible':
       return `Block unavailable, retry${formatOperationSuffix(eventValue)}.`;
     case 'OperationError': {
-      const error = toStringValue(eventValue?.['error']);
+      const error = toStringValue(eventValue['error']);
       return `Operation failed: ${error ?? 'unknown'}${formatOperationSuffix(eventValue)}.`;
     }
     case 'Stop':
@@ -137,9 +129,8 @@ function summariseFollowEvent(inner: unknown): string | null {
   return null;
 }
 
-function summariseStorageRequest(annotations: ChainAnnotations, inner: unknown): string {
-  const record = toRecord(inner);
-  const items = toArrayValue(record?.['items']);
+function summariseStorageRequest(annotations: ChainAnnotations, record: Record<string, unknown>): string {
+  const items = toArrayValue(record['items']);
   const types = new Set<string>();
   for (const item of items) {
     const type = toStringValue(toRecord(item)?.['type']);
@@ -151,31 +142,29 @@ function summariseStorageRequest(annotations: ChainAnnotations, inner: unknown):
   return `Query ${formatCount(items.length, 'storage item')}${typeSuffix} on block ${formatBlock(annotations.blockHash)}${formatFollowSuffix(annotations.followSubscriptionId)}.`;
 }
 
-function summariseCallRequest(annotations: ChainAnnotations, inner: unknown): string {
-  const record = toRecord(inner);
-  const functionName = toStringValue(record?.['function']);
+function summariseCallRequest(annotations: ChainAnnotations, record: Record<string, unknown>): string {
+  const functionName = toStringValue(record['function']);
   return `Invoke runtime api ${functionName ?? '?'} on block ${formatBlock(annotations.blockHash)}${formatFollowSuffix(annotations.followSubscriptionId)}.`;
 }
 
-function summariseHeaderResponse(annotations: ChainAnnotations, inner: unknown): string | null {
+function summariseHeaderResponse(annotations: ChainAnnotations, record: Record<string, unknown>): string {
   if (annotations.outcome === 'error') {
     return `Header fetch failed: ${annotations.errorMessage ?? 'unknown'}.`;
   }
-  const record = toRecord(inner);
-  const value = record?.['value'];
+  const value = record['value'];
   if (value === null) {
     return 'Block not found (header null).';
   }
-  const bytes = countHexBytes(toStringValue(value) ?? '');
+  const hex = toStringValue(value);
+  const bytes = hex === undefined ? null : countHexBytes(hex);
   const bytesLabel = bytes === null ? '?' : String(bytes);
   return `Header returned (${bytesLabel} bytes).`;
 }
 
 function summariseBroadcastResponse(annotations: ChainAnnotations): string | null {
-  if (annotations.outcome === undefined) {
-    return null;
-  }
-  switch (annotations.outcome) {
+  // Typed so `case undefined` covers an absent outcome, which exact optional property types keep apart.
+  const outcome: ChainOutcome | undefined = annotations.outcome;
+  switch (outcome) {
     case 'started':
       return `Broadcast accepted. Tracking id: ${annotations.operationId ?? '?'}.`;
     case 'limit-reached':
@@ -183,15 +172,15 @@ function summariseBroadcastResponse(annotations: ChainAnnotations): string | nul
     case 'error':
       return `Broadcast error: ${annotations.errorMessage ?? 'unknown'}.`;
     case 'ok':
+    case undefined:
       return null;
   }
 }
 
 function summariseOperationStarter(annotations: ChainAnnotations, label: string): string | null {
-  if (annotations.outcome === undefined) {
-    return null;
-  }
-  switch (annotations.outcome) {
+  // Typed so `case undefined` covers an absent outcome, which exact optional property types keep apart.
+  const outcome: ChainOutcome | undefined = annotations.outcome;
+  switch (outcome) {
     case 'started':
       return `${label} accepted. Operation id: ${annotations.operationId ?? '?'}. Result will stream through the follow subscription.`;
     case 'limit-reached':
@@ -199,31 +188,36 @@ function summariseOperationStarter(annotations: ChainAnnotations, label: string)
     case 'error':
       return `${label} rejected: ${annotations.errorMessage ?? 'unknown'}.`;
     case 'ok':
+    case undefined:
       return null;
   }
 }
 
 function summariseSimpleResponse(annotations: ChainAnnotations, label: string): string | null {
-  if (annotations.outcome === undefined) {
-    return null;
-  }
-  switch (annotations.outcome) {
+  // Typed so `case undefined` covers an absent outcome, which exact optional property types keep apart.
+  const outcome: ChainOutcome | undefined = annotations.outcome;
+  switch (outcome) {
     case 'ok':
       return `${label} acknowledged.`;
     case 'error':
       return `${label} failed: ${annotations.errorMessage ?? 'unknown'}.`;
     case 'started':
     case 'limit-reached':
+    case undefined:
       return null;
   }
 }
 
-function summariseStringResponse({ annotations, inner, label }: Params): string | null {
+/** A lookup's answer as one sentence, opened by `label`, what was looked up. */
+function summariseStringResponse(
+  annotations: ChainAnnotations,
+  record: Record<string, unknown>,
+  label: string,
+): string | null {
   if (annotations.outcome === 'error') {
     return `${label} lookup failed: ${annotations.errorMessage ?? 'unknown'}.`;
   }
-  const record = toRecord(inner);
-  const value = toStringValue(record?.['value']);
+  const value = toStringValue(record['value']);
   if (value === undefined) {
     return `${label} lookup returned.`;
   }
@@ -249,8 +243,8 @@ function abbreviateId(id: string | undefined): string {
   return formatIdHead(id);
 }
 
-function formatOperationSuffix(eventValue: Record<string, unknown> | undefined): string {
-  return ` (op ${abbreviateId(toStringValue(eventValue?.['operationId']))})`;
+function formatOperationSuffix(eventValue: Record<string, unknown>): string {
+  return ` (op ${abbreviateId(toStringValue(eventValue['operationId']))})`;
 }
 
 function toArrayValue(value: unknown): unknown[] {

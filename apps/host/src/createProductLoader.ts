@@ -482,7 +482,7 @@ export function createProductLoader(params: Params) {
 
   /** One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown. */
   function describe(error: unknown): ErrorDescription {
-    return describeError(error, { readBackend: () => params.backend });
+    return describeError(error, { backend: params.backend });
   }
 
   /** Shows the failure screen for `label`. Throws what the screen throws. */

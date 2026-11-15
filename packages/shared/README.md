@@ -76,9 +76,10 @@ Small helpers every package may use. Imports no UI framework.
 - **Task pool:** the one place for async queues and concurrency limits. It is also the one place for retries and abort.
 - **State machine:** transitions run synchronously, one at a time. Each state handles the events it names and ignores
   the rest. Effects a transition emits run in order after it. An event sent from inside a transition runs right after it
-  and its effects. Async work enters as a promise that resolves to its event. A lifecycle nested in a state, such as one
-  entry of a keyed set, is a value in that state. `nest` runs it through its own handlers. The state it emits is stored
-  back, or dropped when it leaves.
+  and its effects. An effect emitted to run after the drain waits until no event is queued, and an event it sends is
+  handled before it returns. Async work enters as a promise that resolves to its event. A lifecycle nested in a state,
+  such as one entry of a keyed set, is a value in that state. `nest` runs it through its own handlers. The state it
+  emits is stored back, or dropped when it leaves.
 - **Timing:** a deadline waits on active runtime. One the page was frozen past starts a whole span again on waking, and
   a freeze that ends before its due time still counts. `withTimeout` races work against one.
 - **Safe storage:** blocked or full web storage reads as empty and drops writes. No module wraps storage itself.

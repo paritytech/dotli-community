@@ -15,8 +15,11 @@ export type MachineTypes<State extends { kind: string }, Event extends { kind: s
 export type Transition<Machine extends AnyMachine> = {
   /** Sets the state at once. Throws once the transition has ended. */
   emitState: (next: Machine['state']) => void;
-  /** Queues an effect, run after the transition. Throws once the transition has ended. */
-  emitSideEffect: (effect: Machine['effect']) => void;
+  /**
+   * Queues an effect, run after the transition, or with `{ after: 'drain' }` once no event is queued, so an event it
+   * sends is handled at once. Throws once the transition has ended.
+   */
+  emitSideEffect: (effect: Machine['effect'], options?: { after: 'drain' }) => void;
   /**
    * Sends an event to the machine, handled after this transition and its effects. Still works once the transition has
    * ended. Never throws while `onError` keeps its contract.
@@ -109,7 +112,8 @@ type NestParams<
  * A handler moves the state at once with `emitState` and queues side effects with `emitSideEffect`. Once the handler
  * returns, its transition ends and `onEffect` runs the effects in the order they were emitted. An effect that throws
  * goes to `onError`, and the next effect still runs. A handler's throw goes to `onError` after its effects. An event
- * its state has no handler for is ignored.
+ * its state has no handler for is ignored. An effect emitted with `{ after: 'drain' }` waits until every queued event
+ * is handled, still before the outer `update` returns, and an event it sends is handled before it returns.
  *
  * A handler returns nothing and sends async work as `update(promise)`. Transitions never overlap. An event sent from
  * inside a transition or an effect runs right after that transition and its effects, before the outer `update`
@@ -178,27 +182,30 @@ export function createStateMachine<Machine extends AnyMachine>({
       return;
     }
     const queued = [event];
+    const afterDrain: Machine['effect'][] = [];
     drain = { kind: 'draining', queued };
     try {
       let next = queued.shift();
       while (next !== undefined) {
-        runTransition(next);
+        afterDrain.push(...runTransition(next));
         next = queued.shift();
       }
     } finally {
       drain = { kind: 'idle' };
     }
+    // Run with the drain idle, so an event one sends is handled in a drain of its own before the effect returns.
+    runEffects(afterDrain);
   }
 
   /**
-   * Runs the handler for `event` in the current state, then its effects. Never throws while `onError` keeps its
-   * contract.
+   * Runs the handler for `event` in the current state, then its effects, and returns the effects it emitted to run
+   * after the drain. Never throws while `onError` keeps its contract.
    */
-  function runTransition(event: Machine['event']): void {
+  function runTransition(event: Machine['event']): readonly Machine['effect'][] {
     const from = current.get();
     const handle = getHandler(handlers, from, event);
     if (handle === null) {
-      return;
+      return [];
     }
     const transition = createTransition<Machine>({
       setState: next => {
@@ -209,11 +216,14 @@ export function createStateMachine<Machine extends AnyMachine>({
     try {
       handle(from, event, transition.emits);
     } catch (error) {
-      runEffects(transition.end());
+      const { effects, afterDrain } = transition.end();
+      runEffects(effects);
       onError(error);
-      return;
+      return afterDrain;
     }
-    runEffects(transition.end());
+    const { effects, afterDrain } = transition.end();
+    runEffects(effects);
+    return afterDrain;
   }
 
   function runEffects(effects: readonly Machine['effect'][]): void {
@@ -289,27 +299,32 @@ function createTransition<Machine extends AnyMachine>({
   setState: (next: Machine['state']) => void;
   update: (event: Update<Machine>) => void;
 }) {
-  // An open transition takes emits and holds the effects it has queued.
-  let phase: { kind: 'open'; effects: Machine['effect'][] } | { kind: 'ended' } = { kind: 'open', effects: [] };
+  // An open transition takes emits and holds the effects it has queued, apart from those that wait for the drain.
+  let phase: { kind: 'open'; effects: Machine['effect'][]; afterDrain: Machine['effect'][] } | { kind: 'ended' } = {
+    kind: 'open',
+    effects: [],
+    afterDrain: [],
+  };
 
   const emits: Transition<Machine> = {
     emitState(next) {
       getOpenPhase(`emitState(${next.kind})`);
       setState(next);
     },
-    emitSideEffect(effect) {
-      getOpenPhase('emitSideEffect').effects.push(effect);
+    emitSideEffect(effect, options) {
+      const open = getOpenPhase('emitSideEffect');
+      (options?.after === 'drain' ? open.afterDrain : open.effects).push(effect);
     },
     update,
   };
 
   return {
     emits,
-    /** Ends the transition and returns its effects in the order they were emitted. */
+    /** Ends the transition and returns its effects of each timing, in the order they were emitted. */
     end() {
-      const { effects } = getOpenPhase('end');
+      const { effects, afterDrain } = getOpenPhase('end');
       phase = { kind: 'ended' };
-      return effects;
+      return { effects, afterDrain };
     },
   };
 

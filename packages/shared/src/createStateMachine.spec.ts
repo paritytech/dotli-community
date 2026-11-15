@@ -356,6 +356,50 @@ describe('createStateMachine', () => {
     expect(log).toEqual(['effect:a', 'effect:b', 'handle:fromEffect']);
   });
 
+  it('As a handler, I emit an effect after the drain and it runs once every queued event is handled', () => {
+    // Given a handler that emits an effect after the drain, then an ordinary one, then sends an event
+    const { machine, log } = createEffectMachine({
+      handle: (_state, { name }, transition) => {
+        if (name === 'start') {
+          transition.emitSideEffect(noted('late'), { after: 'drain' });
+          transition.emitSideEffect(noted('early'));
+          transition.update(named('queued'));
+          return;
+        }
+        log.push(`handle:${name}`);
+      },
+    });
+
+    // When
+    machine.update(named('start'));
+
+    // Then
+    expect(log).toEqual(['effect:early', 'handle:queued', 'effect:late']);
+  });
+
+  it('As an after-drain effect runner, I send an event and it is handled before my send returns', () => {
+    // Given a handler that emits an effect after the drain, and a runner that sends an event on it
+    const { machine, log } = createEffectMachine({
+      handle: (_state, { name }, transition) => {
+        if (name === 'start') {
+          transition.emitSideEffect(noted('late'), { after: 'drain' });
+          return;
+        }
+        log.push(`handle:${name}`);
+      },
+      runEffect: () => {
+        machine.update(named('fromLate'));
+        log.push('sent');
+      },
+    });
+
+    // When
+    machine.update(named('start'));
+
+    // Then
+    expect(log).toEqual(['effect:late', 'handle:fromLate', 'sent']);
+  });
+
   it('As a unit, I type one group for two states with HandlersOf and it handles the event in each', () => {
     // Given one group in the slots of both states, which moves idle to busy
     const handled: string[] = [];

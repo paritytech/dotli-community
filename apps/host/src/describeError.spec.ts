@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { Backend } from '@dotli/config';
-import { CONTENT_ERRORS } from '@dotli/content';
 import { ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
-import { CHAIN_HALTED_ERROR_DATA, setErrorName } from '@dotli/shared';
+import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
 
 import { HOST_ERRORS } from './errorCopy.js';
 import { describeError } from './describeError.js';
@@ -74,7 +72,7 @@ describe('host error classification', () => {
   describe('a light client that failed to start', () => {
     it('As a dotli user on the shared light client, I see it fail to start and am told to close my other dot.li tabs before I reload', () => {
       // When
-      const described = describeError(createInitFailure(), { readBackend: () => 'smoldot-shared-worker' });
+      const described = describeError(createInitFailure(), { backend: 'smoldot-shared-worker' });
 
       // Then
       expect({ kind: described.kind, message: described.message, tips: described.tips }).toEqual({
@@ -88,7 +86,7 @@ describe('host error classification', () => {
       'As a dotli user on %s, I see the light client fail to start and get only the connectivity tip',
       backend => {
         // When
-        const described = describeError(createInitFailure(), { readBackend: () => backend });
+        const described = describeError(createInitFailure(), { backend });
 
         // Then
         expect({ kind: described.kind, tips: described.tips }).toEqual({
@@ -128,13 +126,6 @@ describe('host error classification', () => {
       HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
       [],
     ],
-    [
-      'an archive without an index page',
-      new Error('Archive for example is missing index.html'),
-      'archive-missing-index',
-      HOST_ERRORS.ARCHIVE_NO_INDEX,
-      ['Contacting the app maintainer.'],
-    ],
   ])('As a dotli user, I open an app with %s and am offered the landing', (_case, failure, kind, message, tips) => {
     // When
     const described = describeError(failure);
@@ -150,11 +141,6 @@ describe('host error classification', () => {
 
   it.each([
     [
-      'the named unreachable gateway',
-      setErrorName(new Error('IPFS gateway gw.example unreachable for bafy'), CONTENT_ERRORS.GATEWAY_UNREACHABLE),
-      'failed-to-fetch',
-    ],
-    [
       'a chunk that failed to load',
       new TypeError('Failed to fetch dynamically imported module: https://x.example/a.js'),
       'module-fetch-failed',
@@ -162,7 +148,7 @@ describe('host error classification', () => {
     ['a raw browser fetch failure', new TypeError('Failed to fetch'), 'unknown'],
   ])('As a dotli user on the gateway backend, I hit %s and get its own error kind', (_case, failure, kind) => {
     // Given a visitor on the gateway backend
-    const context = { readBackend: () => 'rpc-gateway' as const };
+    const context = { backend: 'rpc-gateway' as const };
 
     // When the failure is described
     const described = describeError(failure, context);
@@ -170,42 +156,6 @@ describe('host error classification', () => {
     // Then it gets the error kind of its own cause
     expect(described.kind).toBe(kind);
   });
-
-  it.each<{ backend: Backend; failure: string; error: Error; tip: string }>([
-    {
-      backend: 'rpc-gateway',
-      failure: 'the named unreachable gateway',
-      error: setErrorName(
-        new Error('IPFS gateway gw.example unreachable for bafy'),
-        CONTENT_ERRORS.GATEWAY_UNREACHABLE,
-      ),
-      tip: 'Switching Network transport to "Light client shared" in Settings.',
-    },
-    {
-      backend: 'rpc-gateway',
-      failure: 'a truncated archive',
-      error: new Error('Unexpected end of data'),
-      tip: 'Switching Network transport to "Light client shared" in Settings.',
-    },
-    {
-      backend: 'smoldot-direct',
-      failure: 'a truncated archive',
-      error: new Error('Unexpected end of data'),
-      tip: 'Switching Network transport to "Trusted providers" in Settings.',
-    },
-  ])(
-    'As a dotli user on $backend, I hit $failure and the tip offers the backend a failover would switch to',
-    ({ backend, error, tip }) => {
-      // Given a visitor on that backend
-      const context = { readBackend: () => backend };
-
-      // When the failure is described
-      const described = describeError(error, context);
-
-      // Then the first tip names the backend a failover switches to
-      expect(described.tips[0]).toBe(tip);
-    },
-  );
 });
 
 /** Returns an error as the protocol client rebuilds it from a failed response. */

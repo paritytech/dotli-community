@@ -3,13 +3,13 @@
 
 // The failure screen on this page: what its buttons do here.
 
-import { getSettings, type Backend } from '@dotli/config';
+import { getActiveServicesConfig, getSettings, type Backend } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
+import { getEndpointHost } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
 import { openLanding } from './getLandingUrl.js';
 import { markAndReload } from './createContinuation.js';
-import { getTrustedProviderHosts } from './describeError.js';
 import { pageSettingsActions } from './createSettingsActions.js';
 import { settingsIntent } from './createSettingsIntent.js';
 import { sessionErrorSightings } from './createSessionErrorSightings.js';
@@ -66,4 +66,12 @@ function resetProtocolOnReload(): void {
       message: '[dot.li] protocol purge not stored before the reload:',
     });
   }
+}
+
+/** The name resolves over the Asset Hub RPC and the bytes come from the IPFS gateway. Some networks host both. */
+function getTrustedProviderHosts(): string[] {
+  const { assethub, bulletin } = getActiveServicesConfig();
+  // The first entries, since the gateway backend dials each list in order.
+  const hosts = [getEndpointHost(assethub.rpcs.at(0)), getEndpointHost(bulletin.ipfsGateways.at(0))];
+  return [...new Set(hosts.filter((host): host is string => host !== undefined))];
 }

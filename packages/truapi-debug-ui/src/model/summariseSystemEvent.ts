@@ -2,8 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { withActiveTld } from '@dotli/config';
+import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { formatLatency } from './formatLatency.js';
 import { getSystemEventKey } from './getSystemEventKey.js';
 import type { StoredSystemEvent } from './storedEvent.js';
+
+type MonitorStopReason = Extract<DotliDebugEvent, { layer: 'main'; event: 'monitor_stopped' }>['payload']['reason'];
+
+// Built from a table of every reason the event names, so a new reason fails the check until it has its words.
+const MONITOR_STOP_REASONS = new Map<unknown, string>(
+  Object.entries({
+    bridge_ready: 'bridge traffic established',
+    max_duration: 'max duration reached',
+  } satisfies Record<MonitorStopReason, string>),
+);
 
 /** One sentence on a host event, read from its layer, name and payload. Never throws. */
 export function summariseSystemEvent(event: StoredSystemEvent): string {
@@ -17,17 +29,14 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
       return `Warming protocol iframe (${formatValue(payload['subMode'])}).`;
     case 'boot:topbar_ready':
       return 'Top bar initialised.';
-    case 'boot:url_parsed': {
-      const label = typeof payload['label'] === 'string' ? payload['label'] : null;
-      const localhostHost = typeof payload['localhostHost'] === 'string' ? payload['localhostHost'] : null;
-      if (localhostHost !== null) {
-        return `URL parsed: localhost proxy to ${localhostHost}.`;
+    case 'boot:url_parsed':
+      if (typeof payload['localhostHost'] === 'string') {
+        return `URL parsed: localhost proxy to ${payload['localhostHost']}.`;
       }
-      if (label !== null) {
-        return `URL parsed: label=${label}.`;
+      if (typeof payload['label'] === 'string') {
+        return `URL parsed: label=${payload['label']}.`;
       }
       return 'URL parsed: landing page (no subdomain).';
-    }
     case 'boot:cid_cache_checked':
       return payload['hit'] === true
         ? `CID cache hit for ${formatValue(payload['label'])}: ${formatValue(payload['cid'])}.`
@@ -81,17 +90,16 @@ export function summariseSystemEvent(event: StoredSystemEvent): string {
     case 'chain:bytes':
       return `Light client has received ${formatValue(payload['received'])} bytes so far.`;
     case 'chain:dbcache':
+      return `${formatValue(payload['chain'])} cache ${formatValue(payload['dbCache'])}.`;
     case 'chain:peers':
-      return key;
+      return `${formatValue(payload['chain'])} has ${formatValue(payload['peers'])} peers.`;
 
     case 'main:stall_detected':
       return `Main thread blocked for ${formatMilliseconds(payload['durationMs'])}.`;
     case 'main:heartbeat':
       return `Main thread alive (uptime ${formatValue(payload['uptimeSec'])}s).`;
     case 'main:monitor_stopped':
-      return payload['reason'] === 'bridge_ready'
-        ? 'Main-thread monitor stopped (bridge traffic established).'
-        : 'Main-thread monitor stopped (max duration reached).';
+      return `Main-thread monitor stopped (${MONITOR_STOP_REASONS.get(payload['reason']) ?? formatValue(payload['reason'])}).`;
 
     case 'sandbox:document_written':
       return `Sandbox ready in ${formatMilliseconds(payload['totalMs'])}: dApp HTML written, product transport will start here.`;
@@ -113,11 +121,5 @@ function formatValue(value: unknown): string {
 }
 
 function formatMilliseconds(duration: unknown): string {
-  if (typeof duration !== 'number' || !Number.isFinite(duration)) {
-    return '?';
-  }
-  if (duration < 1000) {
-    return `${String(Math.round(duration))}ms`;
-  }
-  return `${(duration / 1000).toFixed(2)}s`;
+  return typeof duration === 'number' && Number.isFinite(duration) ? formatLatency(duration) : '?';
 }

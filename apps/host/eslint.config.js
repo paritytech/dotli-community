@@ -25,4 +25,11 @@ export default defineConfig([
       'turbo/no-undeclared-env-vars': 'off',
     },
   },
+  {
+    // Node runs this script directly from the shell, so it imports `.ts` paths.
+    files: ['tests/performance/compare.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
 ]);

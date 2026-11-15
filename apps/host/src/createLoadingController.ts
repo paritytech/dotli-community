@@ -132,7 +132,7 @@ type ScreenEvent =
   | { kind: 'domainSet'; domain: string }
   | { kind: 'stageSet'; stage: LoadingStage }
   | { kind: 'warningSet'; message: string | null }
-  | { kind: 'phaseEntered'; index: number }
+  | { kind: 'phaseEntered'; stage: LoadingStage }
   | { kind: 'progressNudged'; fraction: number; stage: LoadingStage }
   | { kind: 'progressReleased' }
   | { kind: 'tickStopped' }
@@ -284,8 +284,9 @@ export function createLoadingController({
           stopTyping(state.typing);
           emitSideEffect({ kind: 'drawn', view: { step, explanation: '', explanationOpacity: 1, srText } });
         },
-        phaseEntered(state, { index }, transition) {
+        phaseEntered(state, { stage }, transition) {
           const { phases, band } = state;
+          const index = phases.findIndex(step => step.stage === stage);
           const phase = phases[index];
           if (phase === undefined || (band.kind === 'banded' && index <= band.index)) {
             return;
@@ -485,9 +486,9 @@ export function createLoadingController({
     setLoadingStage: (stage: LoadingStage): void => {
       screen.update({ kind: 'stageSet', stage });
     },
-    /** Enters the step at `index`. Does nothing if that step is already active or past. Never throws. */
-    advancePhase: (index: number): void => {
-      screen.update({ kind: 'phaseEntered', index });
+    /** Enters the step of `stage`. Does nothing if that step is already active or past, or no step is of `stage`. */
+    advancePhase: (stage: LoadingStage): void => {
+      screen.update({ kind: 'phaseEntered', stage });
     },
     /**
      * Moves the bar to `fraction` of the running step's band. Monotonic and clamped, and ignored unless `stage` is

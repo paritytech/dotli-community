@@ -8,16 +8,13 @@
 
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createStateMachine, log, nest, type HandlerOf, type Transition } from '@dotli/shared';
-import type { ReadableAtom } from 'nanostores';
 import type { HostBridge } from './bridge.js';
 import { createModalSteps, showView } from './authModalSteps.js';
-import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
+import type { BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn } from './createInPageSignIn.js';
-import { authViews } from './session/authViews.js';
-import type { DotliAuthState } from './session/types.js';
+import { authViews, type LoginStep } from './session/authViews.js';
 import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import {
-  getRound,
   getShownPhrase,
   isLeaseDisabled,
   isLeaseHeld,
@@ -43,12 +40,6 @@ import { runAuthCommand } from './runAuthCommand.js';
 
 const report = createReporter({ flow: 'wallet' });
 
-/**
- * Count. The sign-in modal's lease failed other than by its own abort. Tagged `outcome` (error) and `reason` (the
- * error's name).
- */
-const authModalLeaseMetric = defineCount<'error'>('auth.modal_lease');
-
 /** Count. A transition of the sign-in modal's machine threw. Tagged `outcome` (error) and `reason` (the error's name). */
 const authModalTransitionMetric = defineCount<'error'>('auth_modal.transition');
 
@@ -64,10 +55,11 @@ type Params = {
    * chunk fails to load.
    */
   bridge: () => Promise<AuthBridge>;
-  /** The auth step at build. The controller follows later ones through `subscribeAuthSteps`. */
-  auth: ReadableAtom<DotliAuthState>;
-  /** Hears every auth step, an equal one included, which the controller follows until it is disposed. */
-  subscribeAuthSteps: AuthState['subscribeSteps'];
+  /**
+   * The page's auth state. The controller starts from its step at build, then hears every later step, an equal one
+   * included, until it is disposed.
+   */
+  authState: Pick<AuthState, 'store' | 'subscribeSteps'>;
   /** The sign-in window, or null for a page that pairs in place. */
   handoff: SessionHandoff | null;
   /** Whether the page runs on a local wallet now. Never throws. */
@@ -81,14 +73,18 @@ type Params = {
   elsewhere: () => boolean;
 };
 
+type CloseParams = Pick<CloseAuthModalParams, 'cancel'> & {
+  /** The lease the modal is left on, by default closed, or still disabled for a disabled modal. */
+  lease?: ModalLease;
+};
+
 export type AuthController = ReturnType<typeof createAuthController>;
 
 /** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
 export function createAuthController({
   coordinator,
   bridge,
-  auth,
-  subscribeAuthSteps,
+  authState,
   handoff,
   isLocalWallet,
   loadRecoveryPhrase,
@@ -160,7 +156,7 @@ export function createAuthController({
       kind: 'live',
       lease: { kind: 'closed' },
       round: { kind: 'idle' },
-      auth: auth.get(),
+      auth: authState.store.get(),
       view: { kind: 'spinner' },
     },
     handlers: {
@@ -192,6 +188,7 @@ export function createAuthController({
           }
           route.resumeAfterReread(next, round, transition);
         },
+        /** The bridge chunk did not load, so the saved session could not be read again. */
         rereadFailed(state, { round, error }, transition) {
           transition.emitSideEffect({ kind: 'rereadLogged', error });
           // A modal closed or moved on meanwhile stays as it is.
@@ -201,30 +198,32 @@ export function createAuthController({
           showRereadMissed(state, round, transition);
         },
         closeAsked(state, { params }, transition) {
-          close(state, params, transition);
+          transition.emitState(close(state, params, transition));
+          if (params.skipTruapiCancel !== true) {
+            // A user close stops the core's pairing poll, which then resolves as Rejected.
+            modalSteps.run({ step: 'cancel_login' }, transition);
+          }
         },
         disableAsked(state, _event, transition) {
-          const { emitState, emitSideEffect } = transition;
+          const disabled: ModalLease = { kind: 'disabled' };
           if (!isLeaseHeld(state.lease)) {
-            emitState({ ...state, lease: { kind: 'disabled' } });
+            transition.emitState({ ...state, lease: disabled });
             return;
           }
           // The route's wait goes on and its own outcome ends the core's login, so only the modal is released.
           if (isWaiting(state.round)) {
-            emitState({ ...state, lease: { kind: 'disabled' }, view: { kind: 'spinner' } });
-            emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
+            transition.emitState({ ...state, lease: disabled, view: { kind: 'spinner' } });
+            transition.emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
             return;
           }
-          emitState({ ...state, lease: { kind: 'disabled' }, round: { kind: 'idle' }, view: { kind: 'spinner' } });
-          emitSideEffect({ kind: 'roundEnded', reason: 'page' });
-          emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
+          transition.emitState(close(state, { lease: disabled }, transition));
           modalSteps.run({ step: 'cancel_login' }, transition);
         },
-        disposeAsked(state, _event, { emitState, emitSideEffect }) {
-          emitState({ kind: 'disposed' });
-          emitSideEffect({ kind: 'stepsUnfollowed' });
-          emitSideEffect({ kind: 'roundEnded', reason: 'page' });
-          emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
+        disposeAsked(state, _event, transition) {
+          // A login left running opens no modal once disposed, so it is not cancelled.
+          close(state, {}, transition);
+          transition.emitState({ kind: 'disposed' });
+          transition.emitSideEffect({ kind: 'stepsUnfollowed' });
         },
         logoutAsked(_state, _event, transition) {
           // The route's sign-out window opens first, before any wait, since a browser opens a window only in the
@@ -244,11 +243,6 @@ export function createAuthController({
           const step = authViews.getLoginStep(authStep);
           const failure = step?.step === 'failed' ? step.kind : null;
           transition.emitSideEffect({ kind: 'authLogged', tag: authStep.tag, failure });
-          // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends
-          // both.
-          if (step !== null && isLeaseHeld(state.lease) && state.view.kind === 'phrase') {
-            return;
-          }
           if (authViews.getSignedInSession(authStep) !== null) {
             // Only becoming signed in counts, so a session the core reports again leaves a phrase round started while
             // signed in open. The route's wait goes on until its own outcome, so closing the modal now would lose that
@@ -257,27 +251,18 @@ export function createAuthController({
               return;
             }
             // A sign-in by another route ends a sign-in the page still waits on, such as a blocked window's.
-            close(state, { skipTruapiCancel: true, cancel: 'signed_in' }, transition);
+            transition.emitState(close(state, { cancel: 'signed_in' }, transition));
             return;
           }
-          switch (step?.step) {
-            case 'pairing':
-              route.pairing(state, step.pairing, transition);
-              return;
-            case 'authenticating':
-              // The core's own states must not cover the route's wait.
-              if (!isWaiting(state.round)) {
-                showView(state, { kind: 'authenticating' }, transition);
-              }
-              return;
-            case 'failed':
-              if (!isWaiting(state.round)) {
-                modalSteps.showFailure(state, { failure: step.kind, reason: step.reason }, transition);
-              }
-              return;
-            case undefined:
-              return;
+          if (step === null) {
+            return;
           }
+          // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends
+          // both.
+          if (isLeaseHeld(state.lease) && state.view.kind === 'phrase') {
+            return;
+          }
+          showLoginStep(state, step, transition);
         },
         /** Puts the modal on screen once the queue grants its lease, unless the scope was replaced or disposed. */
         leaseGranted(state, { scope, signal, release }, { emitState, emitSideEffect }) {
@@ -320,9 +305,6 @@ export function createAuthController({
         case 'modalShown':
           authModalState.update({ open: true });
           return;
-        case 'leaseQueued':
-          queueLease(effect.scope);
-          return;
         case 'leaseReleased':
           releaseLeaseHold(effect.lease);
           authModalState.reset();
@@ -331,7 +313,9 @@ export function createAuthController({
           effect.release();
           return;
         case 'rereadLogged':
-          log.error('[dot.li auth] saved session re-read failed:', effect.error);
+          // The getter resolves to the chunk boot already awaited, so a failure here is a wiring fault boot reported
+          // first.
+          log.error('[dot.li auth] the bridge chunk did not load to read the saved session again:', effect.error);
           return;
         case 'roundEnded':
           route.end(effect.reason);
@@ -356,54 +340,24 @@ export function createAuthController({
     },
   });
 
-  const unlisten = subscribeAuthSteps(state => {
+  const unlisten = authState.subscribeSteps(state => {
     machine.update({ kind: 'authStepped', state });
   });
 
-  /** Takes the modal off screen and ends the route's round, cancelling the core's login unless `params` says not to. */
+  /**
+   * Ends the route's round and releases the modal's lease, and returns the state that takes the modal off screen for
+   * the caller to emit. The core's login is left to the caller.
+   */
   function close(
     state: LiveModal,
-    { skipTruapiCancel, cancel = 'page' }: CloseAuthModalParams,
+    { cancel = 'page', lease }: CloseParams,
     transition: Transition<AuthModalMachine>,
-  ): void {
-    // A disabled lease stays disabled, so a close never brings back a broken modal island.
-    const lease: ModalLease = isLeaseDisabled(state.lease) ? state.lease : { kind: 'closed' };
-    transition.emitState({ ...state, lease, round: { kind: 'idle' }, view: { kind: 'spinner' } });
+  ): LiveModal {
     transition.emitSideEffect({ kind: 'roundEnded', reason: cancel });
     transition.emitSideEffect({ kind: 'leaseReleased', lease: state.lease });
-    if (skipTruapiCancel !== true) {
-      // A user close stops the core's pairing poll, which then resolves as Rejected.
-      modalSteps.run({ step: 'cancel_login' }, transition);
-    }
-  }
-
-  /** Waits for the screen in the blocking-modal queue, holding it until the lease is released or its scope ends. */
-  function queueLease(scope: BlockingModalScope): void {
-    void scope
-      .enqueue(
-        signal =>
-          new Promise<void>(release => {
-            // A scope disposed while the modal is open frees the queue with no event.
-            signal.addEventListener(
-              'abort',
-              () => {
-                release();
-              },
-              { once: true },
-            );
-            machine.update({ kind: 'leaseGranted', scope, signal, release });
-          }),
-      )
-      .catch((error: unknown) => {
-        // Closing the modal disposes its lease, which rejects with an AbortError.
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          report.defect(error, {
-            step: 'auth_modal_lease',
-            metric: authModalLeaseMetric,
-            message: '[dot.li auth] authentication modal lease failed:',
-          });
-        }
-      });
+    // A disabled lease stays disabled, so a close never brings back a broken modal island.
+    const next: ModalLease = lease ?? (isLeaseDisabled(state.lease) ? state.lease : { kind: 'closed' });
+    return { ...state, lease: next, round: { kind: 'idle' }, view: { kind: 'spinner' } };
   }
 
   /**
@@ -431,6 +385,26 @@ export function createAuthController({
     );
   }
 
+  /** Shows the core's login step on the modal. */
+  function showLoginStep(state: LiveModal, step: LoginStep, transition: Transition<AuthModalMachine>): void {
+    switch (step.step) {
+      case 'pairing':
+        route.pairing(state, step.pairing, transition);
+        return;
+      case 'authenticating':
+        // The core's own states must not cover the route's wait.
+        if (!isWaiting(state.round)) {
+          showView(state, { kind: 'authenticating' }, transition);
+        }
+        return;
+      case 'failed':
+        if (!isWaiting(state.round)) {
+          modalSteps.showFailure(state, { failure: step.kind, reason: step.reason }, transition);
+        }
+        return;
+    }
+  }
+
   return {
     /**
      * Opens the sign-in window and waits for it, asking it to resume a sign-in made elsewhere when one waits, or with
@@ -453,28 +427,20 @@ export function createAuthController({
     },
     /** Whether the modal's phrase view takes `phrase`. Never throws. */
     isValidPhrase(phrase: string): boolean {
-      const round = getRound(machine.state.get());
-      return round !== null && (getShownPhrase(round)?.toEntropy(phrase) ?? null) !== null;
+      return (getShownPhrase(machine.state.get())?.toEntropy(phrase) ?? null) !== null;
     },
     /**
      * Uses the wallet of a phrase the modal's phrase view took, which reloads the page. Rejects in these cases:
      * - the wallet could not be saved, which the switch reported
-     * - the phrase import has not loaded, which is reported here
-     * - the controller was disposed, which is reported here
+     * - no phrase view is on show, as its import has not loaded or the controller was disposed, which is reported here
      * - the phrase is not valid, which is the user's input and goes unreported
      */
     async importPhraseInPage(phrase: string): Promise<void> {
-      const round = getRound(machine.state.get());
-      if (round === null) {
-        // A disposed controller shows no phrase view, so a call here is a fault of the page and not of the input.
-        const error = new Error('The sign-in controller was disposed');
-        reportLocalWalletFailure(error, 'phrase-load');
-        throw error;
-      }
-      const loaded = getShownPhrase(round);
+      const loaded = getShownPhrase(machine.state.get());
       if (loaded === null) {
-        // The phrase view shows only once its check loaded, so this is a fault of the page and not of the input.
-        const error = new Error('The recovery phrase import was not loaded');
+        // The phrase view shows only once its check loaded, and a disposed controller shows none, so a call here is a
+        // fault of the page and not of the input.
+        const error = new Error('No recovery phrase view is on show');
         reportLocalWalletFailure(error, 'phrase-load');
         throw error;
       }

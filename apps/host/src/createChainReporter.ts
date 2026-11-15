@@ -12,7 +12,7 @@ import type { Timers } from '@dotli/shared';
 import type { DebugBus } from '@dotli/truapi-debug';
 import { createChainPhaseTracker } from './createChainPhaseTracker.js';
 import { getChainTelemetryName } from './getChainTelemetryName.js';
-import { networkMonitorState, type ChainPhase } from './state/networkMonitorState.js';
+import { networkMonitorState, type ChainPhase, type NetworkMonitor } from './state/networkMonitorState.js';
 
 type Params = {
   /** The debug panel's flow for this page load. */
@@ -21,6 +21,8 @@ type Params = {
   timers: Pick<Timers, 'now'>;
   /** Where the chain events go. */
   debugBus: DebugBus;
+  /** The network monitor each chain's phase and peers feed, the page's own by default. */
+  monitor?: Pick<NetworkMonitor, 'recordPeerCount' | 'recordChainPhase'>;
 };
 
 // Sampled rather than emitted per step, or a long warp crowds the debug panel's ring buffer.
@@ -42,12 +44,12 @@ type Reported = {
 };
 
 /** Builds the report of each chain's phase and peers, and of the load's byte totals. */
-export function createChainReporter({ flowId, timers, debugBus }: Params) {
+export function createChainReporter({ flowId, timers, debugBus, monitor = networkMonitorState }: Params) {
   const reported = new Map<ChainRole, Reported>();
   const trackPhase = createChainPhaseTracker();
 
   return {
-    /** Reports the phase `event` leaves its chain in, and its peer count. Never throws. */
+    /** Reports the phase `event` leaves its chain in, and its peer count. */
     record(event: ChainSyncEvent): void {
       const phase = trackPhase(event.chain, event.kind);
       if (event.kind === 'peers' && event.peers !== undefined) {
@@ -57,7 +59,7 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
         recordPhase(event, phase);
       }
     },
-    /** Reports the chain's database cache, when `detail` names it. Never throws. */
+    /** Reports the chain's database cache, when `detail` names it. */
     recordDetail(detail: ChainDetail): void {
       if (detail.dbCache === undefined) {
         return;
@@ -70,7 +72,7 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
         payload: { chain: detail.chain, dbCache: detail.dbCache },
       });
     },
-    /** Reports `received`, the load's byte total so far. Never throws. */
+    /** Reports `received`, the load's byte total so far. */
     recordBytes(received: number): void {
       debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: timers.now(), payload: { received } });
     },
@@ -100,12 +102,12 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
       });
     }
     // Every chain, including those the loading screen has no stall wording for.
-    networkMonitorState.recordPeerCount(role, peers);
+    monitor.recordPeerCount(role, peers);
   }
 
   function recordPhase(event: ChainSyncEvent, phase: ChainPhase): void {
     const role = event.chain;
-    networkMonitorState.recordChainPhase(role, phase);
+    monitor.recordChainPhase(role, phase);
     const chain = getReported(role);
     const now = timers.now();
     const warpMoved =
@@ -122,12 +124,10 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
       chain.warpAt = event.at;
       chain.warpEmittedAt = now;
     }
-    const { peers } = chain;
+    const peersField = chain.peers === null ? {} : { peers: chain.peers };
+    const reasonField = event.reason === undefined ? {} : { reason: event.reason };
     if (phaseChanged) {
-      report.log.event(`${getChainTelemetryName(event.chain)} ${phase}`, {
-        ...(peers === null ? {} : { peers }),
-        ...(event.reason === undefined ? {} : { reason: event.reason }),
-      });
+      report.log.event(`${getChainTelemetryName(role)} ${phase}`, { ...peersField, ...reasonField });
     }
     debugBus.emit({
       layer: 'chain',
@@ -137,10 +137,10 @@ export function createChainReporter({ flowId, timers, debugBus }: Params) {
       payload: {
         chain: role,
         phase,
-        ...(peers === null ? {} : { peers }),
+        ...peersField,
         ...(event.at === undefined ? {} : { warpAt: event.at }),
         ...(event.target === undefined ? {} : { warpTarget: event.target }),
-        ...(event.reason === undefined ? {} : { reason: event.reason }),
+        ...reasonField,
       },
     });
   }

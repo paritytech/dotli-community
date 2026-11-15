@@ -29,7 +29,7 @@ export function AnchoredContent(props: {
   state: Anchored;
   role: 'dialog' | 'menu';
   placement: Placement | undefined;
-  class: string;
+  class: JSX.ClassValue;
   testId?: string | undefined;
   trapFocus?: boolean | undefined;
   onOpened: (surface: HTMLElement) => void;
@@ -37,7 +37,7 @@ export function AnchoredContent(props: {
   children: JSX.Element;
   sheetTestId: string;
   sheetBody?: BottomSheetProps['body'];
-  sheetClass?: string | undefined;
+  sheetClass?: JSX.ClassValue;
   onSheetPointerMove?: ((event: PointerEvent) => void) | undefined;
   sheetFocus: (wrapper: HTMLDivElement) => HTMLElement | undefined;
   sheetChildren: (wrapper: () => HTMLDivElement | undefined) => JSX.Element;

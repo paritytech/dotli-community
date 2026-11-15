@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { createDeferred } from '@dotli/shared';
 import { bindReports } from '../testing/bindReports.js';
 import { createDevHttpChannel, readSharedSettings, writeSharedSettings, type SharedChannel } from './sharedMode.js';
 import { createMemorySharedChannel } from './sharedMode.fake.js';
@@ -174,5 +175,31 @@ describe('writeSharedSettings', () => {
       }),
     );
     expect(counted('shared_mode.write')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+  });
+
+  it('As a visitor, I save twice and my second save is written only once my first is done', async () => {
+    // Given a store that holds the first write until it is let through
+    const log: string[] = [];
+    const held = createDeferred<undefined>();
+    const store = createMemorySharedChannel();
+    const channel: SharedChannel = {
+      ...store,
+      write(_key, value) {
+        log.push(`start ${value}`);
+        const gate = log.length === 1 ? held.promise : Promise.resolve();
+        return gate.then(() => {
+          log.push(`end ${value}`);
+        });
+      },
+    };
+
+    // When
+    const first = writeSharedSettings({ backend: 'smoldot-direct', cache: null }, { channel });
+    const second = writeSharedSettings({ backend: 'rpc-gateway', cache: null }, { channel });
+    held.resolve(undefined);
+    await Promise.all([first, second]);
+
+    // Then
+    expect(log).toEqual(['start smoldot-direct', 'end smoldot-direct', 'start rpc-gateway', 'end rpc-gateway']);
   });
 });

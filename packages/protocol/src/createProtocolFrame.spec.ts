@@ -1229,7 +1229,7 @@ describe('frame liveness check', () => {
     expect(rebuilt.isConnected).toBe(true);
     expect(frame.storeHeld.get()).toBe(true);
     expect(metrics.counted('protocol.frame_lost')).toEqual([]);
-    expect(lines.filter(line => line.attrs?.['outcome'] === 'lost')).toEqual([]);
+    expect(lines.filter(line => line.attrs['outcome'] === 'lost')).toEqual([]);
   });
 
   it('As a dotli integrator, I check the rebuilt frame after a config change dropped a frame under check, and the rebuilt frame is asked at once', async () => {

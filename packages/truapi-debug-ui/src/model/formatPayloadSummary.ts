@@ -4,7 +4,7 @@
 import { formatBigInt } from './formatBigInt.js';
 import { formatHexPreview } from './formatHexPreview.js';
 import { isUint8ArrayLike } from './isUint8ArrayLike.js';
-import { toRecord } from './shape.js';
+import { toEnumValue, toRecord } from './shape.js';
 
 /** A payload as one short line for its row, at most a few keys and 80 characters. Never throws. */
 export function formatPayloadSummary(payload: unknown): string {
@@ -18,46 +18,36 @@ export function formatPayloadSummary(payload: unknown): string {
   if (record === undefined) {
     return truncateText(stringifyPrimitive(payload), 80);
   }
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(record)) {
-    if (parts.length >= 3) {
-      parts.push('…');
-      break;
-    }
-    parts.push(`${key}=${formatInline(value)}`);
+  const entries = Object.entries(record);
+  const shown = entries.slice(0, 3);
+  const parts = shown.map(([key, value]) => `${key}=${formatInline(value)}`);
+  if (entries.length > shown.length) {
+    parts.push('…');
   }
   return truncateText(parts.join(' '), 80);
 }
 
+/** A field's value, in fewer characters than a whole payload gets. */
 function formatInline(value: unknown): string {
-  if (value === null) {
-    return 'null';
-  }
-  if (value === undefined) {
-    return 'undef';
-  }
   if (isUint8ArrayLike(value)) {
     return `bytes[${String(value.length)}]`;
-  }
-  if (typeof value === 'bigint') {
-    return formatBigInt(value);
   }
   if (typeof value === 'string') {
     return `"${truncateText(value, 24)}"`;
   }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
   const record = toRecord(value);
-  if (record === undefined) {
-    return '?';
-  }
+  return record === undefined ? stringifyPrimitive(value) : formatRecordShape(record);
+}
+
+/** A record as its enum tag when it is a `{ tag, value }` pair, else as its key count, empty or not. */
+function formatRecordShape(record: Record<string, unknown>): string {
   const keys = Object.keys(record);
   if (keys.length === 0) {
     return '{}';
   }
-  if (keys.length === 2 && 'tag' in record && 'value' in record) {
-    return `{${stringifyPrimitive(record['tag'])}}`;
+  const enumValue = toEnumValue(record);
+  if (keys.length === 2 && enumValue !== undefined && 'value' in record) {
+    return `{${enumValue.tag}}`;
   }
   return `{${String(keys.length)} keys}`;
 }
@@ -77,8 +67,11 @@ function stringifyPrimitive(value: unknown): string {
   if (typeof value === 'string') {
     return value;
   }
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
+  }
+  if (typeof value === 'bigint') {
+    return formatBigInt(value);
   }
   if (typeof value === 'symbol') {
     return value.toString();

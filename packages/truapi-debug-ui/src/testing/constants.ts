@@ -10,5 +10,5 @@ export const VIEWPORT = { width: 1024, height: 768 };
 export const BOOT_STARTED: BuildSystemEventParams = {
   layer: 'boot',
   event: 'started',
-  payload: { chainBackend: 'smoldot', skipCidCache: false, skipArchiveCache: false },
+  payload: { chainBackend: 'smoldot-direct', skipCidCache: false, skipArchiveCache: false },
 };

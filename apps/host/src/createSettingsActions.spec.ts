@@ -52,6 +52,23 @@ describe('applyAndReset', () => {
     expect(saved.at(-1)?.cache.skipArchiveCache).toBe(true);
   });
 
+  it('As a user, I save my settings and the page reloads only once their write for my other subdomains settled', async () => {
+    // Given a write for the other subdomains that settles after the reset asks for it
+    const { params, steps } = setupReset({
+      settleSharedWrites: () =>
+        Promise.resolve().then(() => {
+          steps.push('shared writes settled');
+        }),
+    });
+    const { applyAndReset } = createSettingsActions(params);
+
+    // When
+    await applyAndReset({ ...PRIOR, backend: 'rpc-gateway' }, PRIOR);
+
+    // Then
+    expect(steps).toEqual(['shared writes settled', 'reload']);
+  });
+
   it('As a user, I turn the dotNS cache off and the cached names are cleared before the reload', async () => {
     // Given
     const { params, steps } = setupReset();
@@ -163,7 +180,7 @@ describe('applyAndReset', () => {
     expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'pending_reset' }]);
   });
 
-  it('As a user whose origin wipe and purge request both fail, I Clear all and each failed step is counted once with one warning that the purge request was not stored', async () => {
+  it('As a user whose origin wipe and purge request both fail, I Clear all and the reset is counted once under the wipe, with one warning that the purge request was not stored', async () => {
     // Given a wipe that left something behind, and no session storage for the purge request
     const refused = new Error('Pending reset not scheduled');
     const { params, steps, captures, metrics } = setupReset({
@@ -187,12 +204,10 @@ describe('applyAndReset', () => {
     // When
     await applyAndReset({ ...PRIOR, backend: 'rpc-gateway' }, PRIOR, { forceFullWipe: true });
 
-    // Then both steps are counted in order, only the purge left a breadcrumb and a warning, and the page reloads
+    // Then the reset is counted under its first failed step, only the purge left a breadcrumb and a warning, and the
+    // page reloads
     expect(steps).toEqual(['reload']);
-    expect(metrics.counted('settings.apply')).toEqual([
-      { outcome: 'error', reason: 'wipe' },
-      { outcome: 'error', reason: 'pending_reset' },
-    ]);
+    expect(metrics.counted('settings.apply')).toEqual([{ outcome: 'error', reason: 'wipe' }]);
     expect(captures.expected).toHaveBeenCalledTimes(1);
     expect(warnings).toHaveLength(1);
   });
@@ -358,6 +373,7 @@ function setupReset(overrides: Partial<SettingsActionsParams> = {}): ResetStand 
     save(draft) {
       saved.push(draft);
     },
+    settleSharedWrites: () => Promise.resolve(),
     url: {
       read: () => page,
       replace(url) {

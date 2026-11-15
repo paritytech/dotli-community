@@ -39,7 +39,7 @@ export function PopoverSurface(props: {
       state={props.state}
       role="dialog"
       placement={props.placement}
-      class={[s['surface'], props.class].filter(Boolean).join(' ')}
+      class={[s['surface'], props.class]}
       testId={props.testId}
       trapFocus
       onOpened={surface => {

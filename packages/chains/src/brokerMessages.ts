@@ -18,6 +18,7 @@ import {
   UNWATCH,
   WATCH_EVENT,
 } from './jsonRpcMethods.js';
+import { readStrings } from './readStrings.js';
 
 type JsonRpcId = string | number | null;
 
@@ -172,6 +173,35 @@ export function getEventType(result: unknown): string {
     return '?';
   }
   return typeof result['event'] === 'string' ? result['event'] : 'unknown';
+}
+
+/**
+ * A raw `newBlock` or `initialized` follow event for the debug log, tagged with `sessionTag`, or null for any other
+ * message.
+ */
+export function describeFollowEvent(message: SubscriptionMessage, sessionTag: string): string | null {
+  const result = message.params?.result;
+  if (!isRecord(result)) {
+    return null;
+  }
+  const rawSubscription = message.params?.subscription;
+  const token = typeof rawSubscription === 'string' ? rawSubscription.slice(0, 12) : '?';
+  switch (result['event']) {
+    case 'newBlock':
+      return `raw newBlock [${sessionTag}] hash=${String(result['blockHash']).slice(0, 18)}… parent=${String(result['parentBlockHash']).slice(0, 18)}… token=${token}…`;
+    case 'initialized': {
+      const hashes = result['finalizedBlockHashes'];
+      const hashList = Array.isArray(hashes)
+        ? readStrings(hashes)
+            .map(hash => hash.slice(0, 18) + '…')
+            .join(', ')
+        : '?';
+      return `raw initialized [${sessionTag}] blocks=[${hashList}] token=${token}…`;
+    }
+    default:
+      // Only the events that move the follow's blocks are worth a raw line.
+      return null;
+  }
 }
 
 export function describeResponse(response: JsonRpcResponse): string {

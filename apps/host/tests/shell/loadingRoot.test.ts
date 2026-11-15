@@ -30,7 +30,7 @@ describe('A full-page screen ends the loading screen', () => {
       const onStall = vi.fn();
       controller.onProgressStall(onStall);
       controller.initPhases(PHASES);
-      controller.advancePhase(0);
+      controller.advancePhase('relay');
       const before = readProgress();
       await timers.advance(1_000);
       const crawled = readProgress();
@@ -59,7 +59,7 @@ describe('A full-page screen ends the loading screen', () => {
       // When the screen shows, and the load starts behind it
       show();
       controller.initPhases(PHASES);
-      controller.advancePhase(0);
+      controller.advancePhase('relay');
       const frozen = readProgress();
       await timers.advance(PROGRESS_STALL_MS * 5);
 

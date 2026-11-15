@@ -117,7 +117,6 @@ export type AuthModalEffect =
   | { kind: 'modalReset'; productLabel: string | null; reason: string | null }
   | { kind: 'viewShown'; view: AuthModalView }
   | { kind: 'modalShown' }
-  | { kind: 'leaseQueued'; scope: BlockingModalScope }
   | { kind: 'leaseReleased'; lease: ModalLease }
   | { kind: 'leaseRefused'; release: () => void }
   | { kind: 'rereadLogged'; error: unknown }
@@ -181,16 +180,6 @@ export function isLeaseDisabled(lease: ModalLease): boolean {
   }
 }
 
-/** The round the modal holds, or null once it is disposed. */
-export function getRound(state: AuthModalState): SignInRound | null {
-  switch (state.kind) {
-    case 'live':
-      return state.round;
-    case 'disposed':
-      return null;
-  }
-}
-
 /** Gives up the place `lease` holds in the blocking-modal queue: ends its screen time and disposes its scope. */
 export function releaseLeaseHold(lease: ModalLease): void {
   switch (lease.kind) {
@@ -246,8 +235,12 @@ export function isPhraseRound(round: SignInRound): boolean {
   }
 }
 
-/** The phrase check the phrase view on show uses, or null while `round` shows none. */
-export function getShownPhrase(round: SignInRound): InPagePhrase | null {
+/** The phrase check the phrase view on show uses, or null while the modal shows none, as after it is disposed. */
+export function getShownPhrase(state: AuthModalState): InPagePhrase | null {
+  if (state.kind === 'disposed') {
+    return null;
+  }
+  const { round } = state;
   switch (round.kind) {
     case 'phraseShown':
       return round.phrase;

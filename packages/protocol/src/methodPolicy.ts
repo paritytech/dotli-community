@@ -58,7 +58,8 @@ const POLICIES = {
   'storage.authClear': definePolicy('authStorageClear', STORE_OPTIONS),
   'storage.authChanges': definePolicy('sharedAuthChanges', STORE_OPTIONS),
   'storage.modeRead': definePolicy('modeStorageRead', STORE_OPTIONS),
-  'storage.modeWrite': definePolicy('modeStorageWrite', STORE_OPTIONS),
+  // A settings reset waits on it before its reload, so a frame that does not answer must not hold the reload long.
+  'storage.modeWrite': definePolicy('modeStorageWrite', { ...STORE_OPTIONS, budgetMs: 5_000 }),
   'storage.modeClear': definePolicy('modeStorageClear', STORE_OPTIONS),
   'storage.authClearIf': definePolicy('authStorageClearIf', STORE_OPTIONS),
   // Boot waits on it, so a protocol frame that does not load or answer must not hold the page for the default budget.

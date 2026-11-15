@@ -55,7 +55,7 @@ export function getOffered(stored: SessionResult): Offered | null {
     return { stored, offer: { wallet: 'local', account } };
   }
   if (session !== null) {
-    const account = session.uiState === null ? null : getOfferedAccount(parseUiStateCache(session.uiState));
+    const account = getOfferedAccount(parseUiStateCache(session.uiState));
     return { stored, offer: { wallet: 'paired', account } };
   }
   return null;

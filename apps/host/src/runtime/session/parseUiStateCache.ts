@@ -5,7 +5,6 @@
 // page's session layer, so a page without one can read it.
 
 import { createReporter } from '@dotli/metrics';
-import { getErrorName } from '@dotli/shared';
 import { sharedSessionUiCacheMetric } from './sharedSessionUiCacheMetric.js';
 
 const report = createReporter({ flow: 'storage' });
@@ -19,40 +18,52 @@ export type TruapiSessionUiState = {
   primaryUsername?: string;
 };
 
-/** The cache can be stale from another code version or corrupt, so a malformed blob degrades to null. Never throws. */
-export function parseUiStateCache(raw: string): TruapiSessionUiState | null {
+const OPTIONAL_STRING_FIELDS: readonly Exclude<keyof TruapiSessionUiState, 'connected'>[] = [
+  'publicKey',
+  'identityAccountId',
+  'liteUsername',
+  'fullUsername',
+  'primaryUsername',
+];
+
+/**
+ * The cached account, null when there is no cache or it is signed out. The cache can be stale from another code version
+ * or corrupt, so a malformed blob degrades to null too.
+ */
+export function parseUiStateCache(raw: string | null): TruapiSessionUiState | null {
+  if (raw === null) {
+    return null;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (error) {
-    // A stale cache, which the next session report rewrites, rather than a failure.
-    report.log.event('Session UI cache unreadable', { error: getErrorName(error) ?? 'unknown' });
-    sharedSessionUiCacheMetric.count({ outcome: 'invalid', reason: 'json' });
-    return null;
+  } catch {
+    return refuseCache('json');
   }
   if (typeof parsed !== 'object' || parsed === null) {
+    return refuseCache('shape');
+  }
+  if (Reflect.get(parsed, 'connected') !== true) {
     return null;
   }
-  // An object read field by field, and every field is checked below before it is used.
-  const state = parsed as Record<string, unknown>;
-  if (
-    state['connected'] !== true ||
-    !isOptionalString(state['publicKey']) ||
-    !isOptionalString(state['identityAccountId']) ||
-    !isOptionalString(state['liteUsername']) ||
-    !isOptionalString(state['fullUsername']) ||
-    !isOptionalString(state['primaryUsername'])
-  ) {
-    return null;
+  const uiState: TruapiSessionUiState = { connected: true };
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    const value: unknown = Reflect.get(parsed, field);
+    if (!isOptionalString(value)) {
+      return refuseCache('shape');
+    }
+    if (value !== undefined) {
+      uiState[field] = value;
+    }
   }
-  return {
-    connected: true,
-    ...(state['publicKey'] !== undefined ? { publicKey: state['publicKey'] } : {}),
-    ...(state['identityAccountId'] !== undefined ? { identityAccountId: state['identityAccountId'] } : {}),
-    ...(state['liteUsername'] !== undefined ? { liteUsername: state['liteUsername'] } : {}),
-    ...(state['fullUsername'] !== undefined ? { fullUsername: state['fullUsername'] } : {}),
-    ...(state['primaryUsername'] !== undefined ? { primaryUsername: state['primaryUsername'] } : {}),
-  };
+  return uiState;
+}
+
+/** Records a cache that does not parse and returns null. A stale cache, which the next session report rewrites. */
+function refuseCache(reason: 'json' | 'shape'): null {
+  report.log.event('Session UI cache unreadable', { reason });
+  sharedSessionUiCacheMetric.count({ outcome: 'invalid', reason });
+  return null;
 }
 
 function isOptionalString(value: unknown): value is string | undefined {

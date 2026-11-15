@@ -390,7 +390,7 @@ export const ArrowsRestyleChangedRows: Story = {
     ),
 };
 
-/** As a developer using the debug panel, I type a filter that keeps the selected event visible and the detail pane is left alone. */
+/** As a developer using the debug panel, I type a filter that hides the selected event and the detail pane is left alone. */
 export const FilterKeepsDetail: Story = {
   play: async ({ userEvent, step }) => {
     const { mount, emitSystem } = getDebugPanel();
@@ -405,8 +405,8 @@ export const FilterKeepsDetail: Story = {
       await userEvent.click(explanation?.querySelector('summary') ?? getPanel());
       await expect(explanation).toHaveAttribute('open');
     });
-    await step('When I type a filter that keeps it visible', async () => {
-      await userEvent.type(getPart('td-tag-input'), 'boo');
+    await step('When I type a filter that hides it', async () => {
+      await userEvent.type(getPart('td-tag-input'), 'host_sign');
     });
     await step('Then the detail pane is left alone', async () => {
       await expect(listRows()).toHaveLength(1);

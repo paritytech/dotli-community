@@ -4,7 +4,7 @@
 // Rows are keyed by seq and must never be rebuilt under streaming traffic, because a browser drops a click
 // whose target node is replaced between pointerdown and click.
 
-import { createEffect, createMemo, createSignal, flush, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { formatMemberDelta } from './model/formatMemberDelta.js';
 import type { EventStore } from './model/createEventStore.js';
@@ -93,60 +93,67 @@ export function EventList(props: {
       moveMark(selectedKey, { from: previous?.key ?? null, to: selection?.key ?? null });
     },
   );
-
-  const tracker = createOpenCallTracker();
-  const [tickedAt, setTickedAt] = createSignal(0);
+  // A row selected from the keyboard or another pane comes into view. One already in view, or a hidden list, stays put.
   createEffect(
-    () => props.active && !props.collapsed,
-    live => {
-      if (!live) {
-        return;
+    () => props.selection?.seq ?? null,
+    seq => {
+      if (seq !== null) {
+        list?.querySelector(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });
       }
-      const tick = setInterval(() => {
-        if (tracker.open().size > 0) {
-          flush(() => setTickedAt(Date.now()));
-        }
-      }, PENDING_TICK_MS);
-      return () => {
-        clearInterval(tick);
-      };
     },
   );
 
-  // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge. Coming
-  // back reads the clock, since the snapshot time and the last tick can be as old as the moment the list was hidden.
+  const live = (): boolean => props.active && !props.collapsed;
+  const tracker = createOpenCallTracker();
   const waiting = work.createKeyedSignals<string, number>();
+
+  /** Rewrites every badge as of `now`, clearing those of calls no longer open. */
+  function rewriteWaiting(now: number): void {
+    const open = tracker.open();
+    for (const key of [...waiting.keys()]) {
+      if (!open.has(key)) {
+        waiting.write(key, undefined);
+      }
+    }
+    for (const [key, since] of open) {
+      waiting.write(key, now - since);
+    }
+  }
+
+  createEffect(live, isLive => {
+    if (!isLive) {
+      return;
+    }
+    const tick = setInterval(() => {
+      if (tracker.open().size > 0) {
+        flush(() => {
+          rewriteWaiting(Date.now());
+        });
+      }
+    }, PENDING_TICK_MS);
+    return () => {
+      clearInterval(tick);
+    };
+  });
+
+  // Traffic writes only the calls it opened or closed, as of the snapshot that brought it.
   createEffect(
-    () =>
-      props.active && !props.collapsed
-        ? {
-            events: props.allEvents,
-            tick: tickedAt(),
-            now: Math.max(props.refreshedAt, tickedAt()),
-          }
-        : null,
+    () => (live() ? { events: props.allEvents, takenAt: props.refreshedAt } : null),
     (input, previous = null) => {
       if (input === null) {
         return;
       }
       tracker.update(input.events);
-      const open = tracker.open();
-      // `previous` is null when the list was off screen.
-      if (input.tick !== previous?.tick) {
-        const now = previous === null ? Date.now() : input.now;
-        for (const key of [...waiting.keys()]) {
-          if (!open.has(key)) {
-            waiting.write(key, undefined);
-          }
-        }
-        for (const [key, since] of open) {
-          waiting.write(key, now - since);
-        }
+      // Back on screen, every badge is rewritten from the clock, since the snapshot can be as old as the moment the
+      // list was hidden.
+      if (previous === null) {
+        rewriteWaiting(Date.now());
         return;
       }
+      const open = tracker.open();
       for (const key of tracker.changedKeys()) {
         const since = open.get(key);
-        waiting.write(key, since === undefined ? undefined : input.now - since);
+        waiting.write(key, since === undefined ? undefined : input.takenAt - since);
       }
     },
   );
@@ -196,18 +203,12 @@ export function EventList(props: {
         event.preventDefault();
         const selected = props.selection;
         const currentIndex = selected === null ? -1 : events.findIndex(e => e.seq === selected.seq);
-        let nextIndex: number;
-        if (event.key === 'ArrowDown') {
-          nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, events.length - 1);
-        } else {
-          nextIndex = currentIndex < 0 ? events.length - 1 : Math.max(currentIndex - 1, 0);
-        }
+        const nextIndex = stepIndex(event.key, currentIndex, events.length);
         const nextSeq = events[nextIndex]?.seq;
         if (nextIndex === currentIndex || nextSeq === undefined) {
           return;
         }
         props.onSelect(nextSeq);
-        list?.querySelector(`[data-seq="${String(nextSeq)}"]`)?.scrollIntoView({ block: 'nearest' });
       }}
     >
       <For
@@ -227,6 +228,14 @@ export function EventList(props: {
 
 function getRowId(seq: EventSeq): string {
   return `td-row-${String(seq)}`;
+}
+
+/** The row an arrow key selects, stopping at either end. With none selected, Down starts at the top and Up at the bottom. */
+function stepIndex(key: 'ArrowDown' | 'ArrowUp', currentIndex: number, count: number): number {
+  if (key === 'ArrowDown') {
+    return currentIndex < 0 ? 0 : Math.min(currentIndex + 1, count - 1);
+  }
+  return currentIndex < 0 ? count - 1 : Math.max(currentIndex - 1, 0);
 }
 
 /** Clears the mark on `from` and sets it on `to`, touching nothing when they are the same key. */

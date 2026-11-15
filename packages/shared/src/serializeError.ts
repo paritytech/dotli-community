@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-const CYCLE_MARKER = '[cycle]';
-const UNKNOWN_OBJECT = '[object Object]';
 const AGGREGATE_CAP = 3;
 
 /** Serialize any thrown value into a one-line string. Never returns an empty string. */
@@ -11,54 +9,33 @@ export function serializeError(value: unknown): string {
 }
 
 function serialize(value: unknown, onStack: WeakSet<object>): string {
-  if (value === null) {
-    return 'null';
+  switch (typeof value) {
+    case 'string':
+      return value.length > 0 ? value : 'Unknown error';
+    case 'undefined':
+      return 'undefined';
+    case 'number':
+    case 'bigint':
+    case 'boolean':
+    case 'symbol':
+      return value.toString();
+    case 'function':
+      return `[function ${value.name || 'anonymous'}]`;
+    case 'object':
+      return value === null ? 'null' : serializeObject(value, onStack);
   }
-  if (value === undefined) {
-    return 'undefined';
-  }
-  if (typeof value === 'string') {
-    return value.length > 0 ? value : 'Unknown error';
-  }
-  if (typeof value === 'number' || typeof value === 'bigint') {
-    return value.toString();
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
-  }
-  if (typeof value === 'symbol') {
-    return value.toString();
-  }
-  if (typeof value === 'function') {
-    return `[function ${value.name || 'anonymous'}]`;
-  }
-  if (typeof value !== 'object') {
-    return UNKNOWN_OBJECT;
-  }
+}
 
+function serializeObject(value: object, onStack: WeakSet<object>): string {
   if (onStack.has(value)) {
-    return CYCLE_MARKER;
+    return '[cycle]';
   }
   onStack.add(value);
 
   try {
     if (value instanceof Error) {
-      const headline = value.message.length > 0 ? value.message : value.name || 'Error';
-      const errors = 'errors' in value ? value.errors : undefined;
-      if (Array.isArray(errors) && errors.length > 0) {
-        const shown = errors
-          .slice(0, AGGREGATE_CAP)
-          .map(branch => serialize(branch, onStack))
-          .join('; ');
-        const suffix = errors.length > AGGREGATE_CAP ? ', ...' : '';
-        return `${headline} [${shown}${suffix}]`;
-      }
-      if (value.cause !== undefined) {
-        return `${headline} (cause: ${serialize(value.cause, onStack)})`;
-      }
-      return headline;
+      return serializeErrorChain(value, onStack);
     }
-
     if ('message' in value && typeof value.message === 'string' && value.message.length > 0) {
       return value.message;
     }
@@ -71,8 +48,26 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
     } catch {
       /* fall through to the fallback marker */
     }
-    return UNKNOWN_OBJECT;
+    return '[object Object]';
   } finally {
     onStack.delete(value);
   }
+}
+
+/** The error's headline, then its aggregated branches or else its cause. */
+function serializeErrorChain(error: Error, onStack: WeakSet<object>): string {
+  const headline = error.message.length > 0 ? error.message : error.name || 'Error';
+  const errors = 'errors' in error ? error.errors : undefined;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const shown = errors
+      .slice(0, AGGREGATE_CAP)
+      .map(branch => serialize(branch, onStack))
+      .join('; ');
+    const suffix = errors.length > AGGREGATE_CAP ? ', ...' : '';
+    return `${headline} [${shown}${suffix}]`;
+  }
+  if (error.cause !== undefined) {
+    return `${headline} (cause: ${serialize(error.cause, onStack)})`;
+  }
+  return headline;
 }

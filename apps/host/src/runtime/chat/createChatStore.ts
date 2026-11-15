@@ -128,14 +128,8 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
   }
 
   return {
-    /** The followed product's rooms and the open room's messages, kept current with every write. */
     view: chatView.view,
-    /**
-     * Points the view at `next`, or at nothing for null, after which a read still running reaches no view and none due
-     * after it runs. Idempotent. Never throws: a read that fails shows in the view's failed flags.
-     */
     follow: chatView.follow,
-    /** Resolves once no view read is queued or running. Never rejects, as a failed read is reported and shown. */
     settle: chatView.settle,
 
     /**

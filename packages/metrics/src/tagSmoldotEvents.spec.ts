@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { isSmoldotEvent } from './isSmoldotEvent.js';
+import { tagSmoldotEvents } from './tagSmoldotEvents.js';
 
-describe('isSmoldotEvent', () => {
+/** The smoldot tag the event leaves with, undefined when it is left untagged. */
+function readSmoldotTag(event: Parameters<typeof tagSmoldotEvents>[0]) {
+  return tagSmoldotEvents(event).tags?.['smoldot'];
+}
+
+describe('tagSmoldotEvents', () => {
   it.each([
     {
       origin: 'a smoldot CrashError',
@@ -64,10 +69,10 @@ describe('isSmoldotEvent', () => {
     },
   ])('As an operator, I read $origin and see it tagged as a smoldot event', ({ event }) => {
     // When
-    const tagged = isSmoldotEvent(event);
+    const tagged = readSmoldotTag(event);
 
     // Then
-    expect(tagged).toBe(true);
+    expect(tagged).toBe('true');
   });
 
   it('As an operator, I read an unrelated browser error and see it left untagged', () => {
@@ -87,17 +92,17 @@ describe('isSmoldotEvent', () => {
     };
 
     // When
-    const tagged = isSmoldotEvent(event);
+    const tagged = readSmoldotTag(event);
 
     // Then
-    expect(tagged).toBe(false);
+    expect(tagged).toBeUndefined();
   });
 
   it('As an operator, I read an event without an exception and see it left untagged', () => {
     // When
-    const tagged = [isSmoldotEvent({}), isSmoldotEvent({ exception: { values: [] } })];
+    const tagged = [readSmoldotTag({}), readSmoldotTag({ exception: { values: [] } })];
 
     // Then
-    expect(tagged).toEqual([false, false]);
+    expect(tagged).toEqual([undefined, undefined]);
   });
 });

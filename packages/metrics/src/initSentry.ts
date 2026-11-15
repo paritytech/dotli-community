@@ -6,7 +6,7 @@ import { bindLogSink } from '@dotli/shared';
 
 import { bindCaptureSink } from './captureException.js';
 import { sentryLogSink } from './sentryLogSink.js';
-import { tagSmoldotEvents } from './isSmoldotEvent.js';
+import { tagSmoldotEvents } from './tagSmoldotEvents.js';
 import { m } from './metrics.js';
 import { sentryCaptureSink } from './sentryCaptureSink.js';
 

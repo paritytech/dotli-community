@@ -11,10 +11,7 @@ import { sessionElsewhereState } from './state/sessionElsewhereState.js';
 import { walletModeState } from './state/walletModeState.js';
 
 /** What the slot's `init` takes: the controller's params, less the page stores the slot reads itself. */
-type InitParams = Omit<
-  Parameters<typeof createAuthController>[0],
-  'auth' | 'subscribeAuthSteps' | 'isLocalWallet' | 'elsewhere'
->;
+type InitParams = Omit<Parameters<typeof createAuthController>[0], 'authState' | 'isLocalWallet' | 'elsewhere'>;
 
 /**
  * Builds the slot that holds a page's auth controller, which every member but `init` and `disableModal` needs. A store
@@ -42,8 +39,7 @@ export function createAuthControlSlot() {
     controller?.dispose();
     const started = createAuthController({
       ...params,
-      auth: authState.store,
-      subscribeAuthSteps: authState.subscribeSteps,
+      authState,
       isLocalWallet: walletModeState.isLocal,
       elsewhere: () => sessionElsewhereState.store.get(),
     });

@@ -14,7 +14,7 @@ import type { Placement } from './FloatingLayer.js';
 import s from './DropdownMenu.module.css';
 
 export type MenuState = Anchored & {
-  /** The opening came from a key, so it lands on the first item. */
+  /** The last opening came from a key, so it lands on the first item. Set on every opening. */
   keyboard: { value: boolean };
 };
 
@@ -122,6 +122,7 @@ export function useDropdownMenu(): { open: Accessor<boolean>; setOpen: (open: bo
   return {
     open: state.open,
     setOpen(next) {
+      state.keyboard.value = false;
       state.setOpen(next);
     },
   };
