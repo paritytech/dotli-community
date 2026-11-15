@@ -15,8 +15,8 @@ import s from './Landing.module.css';
 
 <div class={s['landing']} data-testid="landing">
   <div class={s['corner']} id="landing-auth">
-    <LandingSettings client:idle />
     <LandingAuth client:load />
+    <LandingSettings client:idle />
   </div>
   <div class={s['center']}>
     <div class={s['content']}>
