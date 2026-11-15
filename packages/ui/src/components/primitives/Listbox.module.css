@@ -76,6 +76,8 @@
 .text {
   flex: 1;
   min-width: 0;
+  /* Taller than the glyphs, or the overflow the ellipsis needs cuts off their descenders. */
+  line-height: var(--lh-tight);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
