@@ -3,14 +3,7 @@
 
 import { createMemo, createSignal, For, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import {
-  BACKEND_FACTS,
-  hasSharedWorker,
-  type Backend,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  type Network,
-  type Settings,
-} from '@dotli/config';
+import { BACKEND_FACTS, hasSharedWorker, type Backend, type Network, type Settings } from '@dotli/config';
 import { ReloadIcon, TerminalIcon, TrashIcon } from '@dotli/ui/icons';
 import {
   Button,
@@ -30,6 +23,7 @@ import {
   Well,
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
+import { NetworkChoices } from './NetworkChoices.js';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
 import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from './settings.js';
 import s from './SettingsContent.module.css';
@@ -148,27 +142,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
         </Show>
         <Show when={category() === 'network'}>
           <Show when={networks.length > 1}>
-            <Stack>
-              <SectionLabel text="Network" />
-              <Stack role="radiogroup" aria-label="Network">
-                <For each={networks}>
-                  {value => (
-                    <Choice
-                      title={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
-                      description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
-                      selected={network() === value}
-                      radio={{
-                        name: 'dotli-network',
-                        value,
-                        onChoose: () => {
-                          setNetwork(value);
-                        },
-                      }}
-                    />
-                  )}
-                </For>
-              </Stack>
-            </Stack>
+            <NetworkChoices networks={networks} value={network()} onChoose={setNetwork} />
           </Show>
           <Stack>
             <SectionLabel text="Network transport" />
