@@ -170,16 +170,18 @@ export const ResetDisablesClear: Story = {
   },
 };
 
-/** As a visitor on a deployment with one network, I still see the network choice on the landing page. */
-export const ShowsASingleNetwork: Story = {
+/** As a visitor on a deployment with one network, I open the landing settings on Provider, with no Network category. */
+export const HidesASingleNetwork: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     givenSettings({ ...DEFAULT_SETTINGS, enabledNetworks: ['paseo-next-v2'] });
   },
   play: async ctx => {
     await open(ctx);
-    await ctx.step('Then the one network is offered and checked', async () => {
-      await expect(networkRadio('paseo-next-v2').checked).toBe(true);
+    await ctx.step('Then it is on Provider, and neither the Network category nor a network is offered', async () => {
+      await expect(selectedCategory()).toBe('landing-settings-category-provider');
+      await expect(document.querySelector('[data-testid="landing-settings-category-network"]')).toBeNull();
+      await expect(document.querySelector('input[name="dotli-network"]')).toBeNull();
     });
   },
 };

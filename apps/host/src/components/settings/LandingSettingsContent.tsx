@@ -58,15 +58,16 @@ export function LandingSettingsContent(props: LandingSettingsContentProps): JSX.
 }
 
 /**
- * One opening's panel, on Network each time. The network and transport choices stay a draft across categories until
- * Save and apply, and closing drops the draft.
+ * One opening's panel, on its first category each time. Network shows only on a deployment with more than one network.
+ * The network and transport choices stay a draft across categories until Save and apply, and closing drops the draft.
  */
 function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: SavedSettings }): JSX.Element {
   const popover = usePopover();
   const saved = untrack(() => props.saved);
   const [network, setNetwork] = createSignal<Network>(saved.network);
   const [backend, setBackend] = createSignal<Backend>(saved.backend);
-  const [category, setCategory] = createSignal<Category>('network');
+  const categories = saved.enabledNetworks.length > 1 ? CATEGORIES : CATEGORIES.filter(c => c.value !== 'network');
+  const [category, setCategory] = createSignal<Category>(categories[0]?.value ?? 'provider');
   const [clearing, setClearing] = createSignal(false);
 
   function clearCache(): void {
@@ -94,7 +95,7 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
       <div class={s['sections']}>
         <SegmentedControl<Category>
           label="Settings category"
-          options={CATEGORIES}
+          options={categories}
           value={category()}
           onChange={setCategory}
           block

@@ -18,7 +18,7 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
   - the settings view
   - the account view
   - the permissions view
-  - the network view
+  - the network view, which the landing page shows too
 - **Building blocks:** domain views (account, chat, permission, appearance, signing, chain) and their icons. They take
   props and read no store. They report intent through callbacks.
 - **Startup:** the protocol iframe and the TrUAPI bridge. On a page with a sign-in modal, also the auth controller.
