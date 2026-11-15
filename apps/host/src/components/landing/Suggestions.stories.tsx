@@ -41,7 +41,7 @@ export const ActiveSelected: Story = {
     await step('Then three names show and only apple is selected', async () => {
       await expect(await canvas.findAllByRole('option')).toHaveLength(3);
       const selected = canvas.getAllByRole('option', { selected: true });
-      await expect(selected.map(o => o.dataset['label'])).toEqual(['apple']);
+      await expect(selected.map(o => o.textContent)).toEqual(['apple.dot']);
     });
   },
 };
@@ -55,10 +55,7 @@ export const ClickPicks: Story = {
       input.focus();
     });
     await step('When I click avocado', async () => {
-      const option = (await canvas.findAllByTestId('landing-suggestion')).find(o => o.dataset['label'] === 'avocado');
-      if (option === undefined) {
-        throw new Error('No avocado option in the suggestions');
-      }
+      const option = await canvas.findByRole('option', { name: 'avocado.dot' });
       await (await trustedInput()).click(option);
     });
     await step('Then avocado is picked and the input still has focus', async () => {

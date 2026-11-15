@@ -3,8 +3,8 @@
 
 import { For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { Listbox } from '@dotli/ui';
 import { getSuggestionId, SUGGESTIONS_ID } from './suggestionIds.js';
-import s from './Suggestions.module.css';
 
 export type SuggestionsProps = {
   /** The names to suggest, as labels. None renders nothing. */
@@ -21,36 +21,23 @@ export type SuggestionsProps = {
 export function Suggestions(props: SuggestionsProps): JSX.Element {
   return (
     <Show when={props.labels().length > 0}>
-      <ul
-        id={SUGGESTIONS_ID}
-        class={s['list']}
-        role="listbox"
-        aria-label="Suggested names"
-        data-testid="landing-suggestions"
-      >
+      <Listbox id={SUGGESTIONS_ID} label="Suggested names" testId="landing-suggestions">
         <For each={props.labels()}>
           {label => (
-            <li
+            <Listbox.Option
               id={getSuggestionId(label)}
-              class={s['option']}
-              role="option"
-              aria-selected={props.active() === label ? 'true' : 'false'}
-              data-testid="landing-suggestion"
-              data-label={label}
-              onMouseDown={e => {
-                // The input keeps focus, so its keys still drive the list. A touch tap fires this too.
-                e.preventDefault();
-              }}
-              onClick={() => {
+              detail={props.suffix() ?? undefined}
+              active={props.active() === label}
+              onPick={() => {
                 props.onPick(label);
               }}
+              testId="landing-suggestion"
             >
               {label}
-              <span class={s['suffix']}>{props.suffix() ?? ''}</span>
-            </li>
+            </Listbox.Option>
           )}
         </For>
-      </ul>
+      </Listbox>
     </Show>
   );
 }
