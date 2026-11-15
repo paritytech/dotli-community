@@ -3,19 +3,11 @@
 
 import { createMemo, createSignal, For, Show, untrack, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import {
-  BACKEND_FACTS,
-  hasSharedWorker,
-  type Backend,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  type Network,
-  type Settings,
-} from '@dotli/config';
+import type { Backend, Network, Settings } from '@dotli/config';
 import { ReloadIcon, TerminalIcon, TrashIcon } from '@dotli/ui/icons';
 import {
   Button,
   Chip,
-  Choice,
   Hint,
   Row,
   SectionLabel,
@@ -30,19 +22,11 @@ import {
   Well,
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
+import { NetworkChoices } from './NetworkChoices.js';
+import { TransportChoices } from './TransportChoices.js';
 import type { ThemePreference } from '../../runtime/state/themeState.js';
 import { isResetRunning, type ApplySettings, type SavedSettings, type SettingsResetStatus } from './settings.js';
 import s from './SettingsContent.module.css';
-
-/** The order the transport choices are listed in. */
-const TRANSPORT_ORDER: readonly Backend[] = ['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway'];
-
-/** What the transport choice for each backend says. */
-const TRANSPORT_FACTS = {
-  'smoldot-direct': { description: 'Verified in your browser, separate for each tab', recommended: true },
-  'smoldot-shared-worker': { description: 'Verified in your browser, shared across tabs', recommended: false },
-  'rpc-gateway': { description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
-} satisfies Record<Backend, { description: string; recommended: boolean }>;
 
 type Category = 'general' | 'network' | 'advanced';
 
@@ -119,7 +103,6 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
   }
 
   const networks = saved.enabledNetworks;
-  const unavailable = (value: Backend): boolean => hasSharedWorker(value) && !saved.sharedWorkerAvailable;
 
   return (
     <Surface width="lg" padded>
@@ -148,55 +131,13 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
         </Show>
         <Show when={category() === 'network'}>
           <Show when={networks.length > 1}>
-            <Stack>
-              <SectionLabel text="Network" />
-              <Stack role="radiogroup" aria-label="Network">
-                <For each={networks}>
-                  {value => (
-                    <Choice
-                      title={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
-                      description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
-                      selected={network() === value}
-                      radio={{
-                        name: 'dotli-network',
-                        value,
-                        onChoose: () => {
-                          setNetwork(value);
-                        },
-                      }}
-                    />
-                  )}
-                </For>
-              </Stack>
-            </Stack>
+            <NetworkChoices networks={networks} value={network()} onChoose={setNetwork} />
           </Show>
-          <Stack>
-            <SectionLabel text="Network transport" />
-            <Stack role="radiogroup" aria-label="Network transport">
-              <For each={TRANSPORT_ORDER}>
-                {value => (
-                  <Choice
-                    title={BACKEND_FACTS[value].label}
-                    description={
-                      unavailable(value)
-                        ? 'Unavailable in this browser or private window'
-                        : TRANSPORT_FACTS[value].description
-                    }
-                    chip={TRANSPORT_FACTS[value].recommended ? <Chip tone="ok">Recommended</Chip> : undefined}
-                    selected={backend() === value}
-                    radio={{
-                      name: 'dotli-backend',
-                      value,
-                      disabled: unavailable(value),
-                      onChoose: () => {
-                        setBackend(value);
-                      },
-                    }}
-                  />
-                )}
-              </For>
-            </Stack>
-          </Stack>
+          <TransportChoices
+            value={backend()}
+            sharedWorkerAvailable={saved.sharedWorkerAvailable}
+            onChoose={setBackend}
+          />
         </Show>
         <Show when={category() === 'advanced'}>
           <Stack>

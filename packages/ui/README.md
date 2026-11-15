@@ -33,6 +33,7 @@ The UI that more than one dotli app shows. It has no domain and no data source.
 | `Accordion`, `AccordionProps`, `Button`, `ButtonLink`, `ButtonVariant`, `Chip`, `IconButton`, `IconTile`                      | Primitives.                                     |
 | `Choice`, `SegmentedControl`, `SegmentOption`, `StepSlider`, `StepSliderProps`, `StepSliderStop`, `Spinner`                   | Primitives.                                     |
 | `StatusDot`, `Surface`, `SurfaceHead`, `SurfaceFoot`, `Hint`, `Switch`, `Well`, `Callout`, `Row`, `Stack`, `SectionLabel`     | Primitives.                                     |
+| `Listbox`                                                                                                                     | Primitives.                                     |
 | `Modal`, `Popover`, `usePopover`, `Tooltip`, `LayerTracker`, `ModalFocusFallback`, `TrackedLayer`                             | Floating layers.                                |
 | `ActionGroup`, `ActionItem`, `ActionItemProps`, `ActionsContext`, `ActionGroupMorph`, `MoreIds`                               | The action group.                               |
 | `ActionAlert`, `ActionBar`, `ActionEntry`                                                                                     | The action group.                               |
@@ -89,6 +90,9 @@ The tokens and global styles. The apps import it once.
 - **Responsive popovers:** `Popover` and `DropdownMenu` anchor on a wide screen and become a bottom sheet on a phone.
   The sheet loads in its own chunk, preloaded when the browser is idle on a phone. Heavy content is the app's to load
   with `lazy()`.
+- **Listbox:** drops below its nearest positioned ancestor and never takes focus, so the control that opened it keeps
+  its keys. Its caller owns which option is active and which is chosen. While `loading` holds a text, a status row with
+  a spinner follows the options, outside the list, and the list is busy.
 - **Action group:** moves the lowest priority items into a More menu when they do not fit. Items join through
   `ActionsContext`.
 - **Icons as components:** every `icon` prop takes a component, except in `Choice` and `SegmentedControl`, whose slot

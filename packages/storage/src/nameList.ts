@@ -15,7 +15,7 @@ export type NameListRecord = {
   network: Network;
   /** Each label store read so far, in the factory's order, with how many of its entries were read. */
   stores: readonly { address: string; read: number }[];
-  /** Labels whose `app.` subname has a contenthash. */
+  /** Labels whose `app.` subname or own name has a contenthash, so a product opens under them. */
   apps: readonly string[];
   /** Labels with no app yet, each with when it was last checked, in ms since the epoch. */
   pending: readonly { label: string; checkedAt: number }[];
@@ -27,7 +27,7 @@ type Params = {
 };
 
 // Module scope is the page, so each action's fault is captured once per page.
-const reportFailure: (action: 'read' | 'write', error: unknown) => void = createCacheReporter({
+const reportFailure: (action: 'read' | 'write' | 'clear', error: unknown) => void = createCacheReporter({
   cache: 'name_list',
   tag: '[dot.li name-list]',
 });
@@ -63,11 +63,29 @@ export function createNameList({ idb = pageIdb }: Params = {}) {
     }
   }
 
+  async function clear(): Promise<void> {
+    try {
+      const db = await idb.connect();
+      await runIdbTransaction({
+        db,
+        stores: STORE,
+        mode: 'readwrite',
+        body: transaction => {
+          transaction.objectStore(STORE).clear();
+        },
+      });
+    } catch (error) {
+      reportFailure('clear', error);
+    }
+  }
+
   return {
     /** `null` covers both a miss and a storage error, which is reported here. */
     get,
     /** Resolves once the write commits. A failure, such as a full quota, is reported here. */
     set,
+    /** Empties every network's list and resolves once the clear commits. A failure is reported here. */
+    clear,
   };
 }
 

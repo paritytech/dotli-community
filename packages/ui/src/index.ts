@@ -9,6 +9,7 @@ export { Button, ButtonLink } from './components/primitives/Button.js';
 export { Chip } from './components/primitives/Chip.js';
 export { IconButton } from './components/primitives/IconButton.js';
 export { IconTile } from './components/primitives/IconTile.js';
+export { Listbox } from './components/primitives/Listbox.js';
 export { Choice } from './components/primitives/Choice.js';
 export { SectionLabel, Stack } from './components/primitives/SectionLabel.js';
 export type { SegmentOption } from './components/primitives/SegmentedControl.js';

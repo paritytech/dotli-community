@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import type { Network } from '@dotli/config';
 import { bindRecordingSentry, recordReports } from '@dotli/metrics/testing';
 import type { LabelStoreCursor } from '@dotli/resolver';
-import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
+import { CHAIN_HALTED_ERROR_DATA, getErrorName } from '@dotli/shared';
 import type { NameListRecord } from '@dotli/storage';
 import { atom } from 'nanostores';
 import { createLandingNameList } from './landingNameList.js';
@@ -33,6 +33,8 @@ const SETTINGS: SettingsState = {
 };
 
 const NOW = 1_700_000_000_000;
+
+const ADDRESS = `0x${'0'.repeat(40)}`;
 
 describe('landing name list', () => {
   it('As a returning visitor, I open the landing page and see my stored app labels before the sync reads anything', async () => {
@@ -172,6 +174,171 @@ describe('landing name list', () => {
     expect(events).not.toContain('released');
   });
 
+  it("As a visitor whose reads fail to load, I see the sync's trace end with the error", async () => {
+    // Given reads whose chunk fails to load
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, traced, traceEnded } = setupNameList({ open: 'failed' });
+
+    // When
+    nameList.start();
+    await traceEnded;
+
+    // Then
+    expect(traced).toEqual(['error TypeError']);
+  });
+
+  it('As a visitor whose sync read fails, I see its trace end with the error', async () => {
+    // Given a read that fails in the code
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, traced, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.reject(new TypeError('bad slot')),
+      },
+    });
+
+    // When
+    nameList.start();
+    await traceEnded;
+
+    // Then
+    expect(traced).toEqual(['error TypeError']);
+  });
+
+  it('As a visitor who clears the cache while the sync reads, I see no save land after the clear and no failure reported', async () => {
+    // Given a sync whose read of new labels is held until the clear is done
+    const reports = recordReports({ onFinished: onTestFinished });
+    const asked = Promise.withResolvers<readonly LabelStoreCursor[]>();
+    const held = Promise.withResolvers<{ stores: LabelStoreCursor[]; labels: string[] }>();
+    const { nameList, events, traced, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: (stores: readonly LabelStoreCursor[]) => {
+          asked.resolve(stores);
+          return held.promise;
+        },
+      },
+    });
+
+    // When the visitor clears while the read is in flight, and the read lands after it
+    nameList.start();
+    const stores = await asked.promise;
+    await nameList.clear();
+    held.resolve({ stores: stores.map(store => ({ ...store, read: store.read + 1 })), labels: ['alpha'] });
+    await traceEnded;
+
+    // Then
+    expect(events.filter(event => event.startsWith('saved') || event === 'cleared')).toEqual(['cleared']);
+    expect(traced).toEqual(['error AbortError']);
+    expect(reports.exceptions).toEqual([]);
+    expect(reports.expected).toEqual([]);
+    expect(events).toContain('released');
+  });
+
+  it('As a visitor who clears the cache while the sync reads, I see a read that then fails reported as a defect', async () => {
+    // Given a sync whose read of new labels is held until the clear is done
+    const reports = recordReports({ onFinished: onTestFinished });
+    const asked = Promise.withResolvers<undefined>();
+    const held = Promise.withResolvers<{ stores: LabelStoreCursor[]; labels: string[] }>();
+    const { nameList, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: () => {
+          asked.resolve(undefined);
+          return held.promise;
+        },
+      },
+    });
+
+    // When the read fails in the code after the visitor clears
+    nameList.start();
+    await asked.promise;
+    await nameList.clear();
+    held.reject(new TypeError('bad slot'));
+    await traceEnded;
+
+    // Then
+    expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
+  });
+
+  it('As a visitor who clears the cache twice before my settings are read, I see the later sync save nothing and report nothing', async () => {
+    // Given no settings yet, and reads that would save a step
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { nameList, settings, events, traced, traceEnded } = setupNameList({
+      settings: null,
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: (stores: readonly LabelStoreCursor[]) =>
+          Promise.resolve({ stores: stores.map(store => ({ ...store, read: store.read + 1 })), labels: ['alpha'] }),
+      },
+    });
+
+    // When the visitor clears twice, then the sync starts once the boot sets the settings
+    await nameList.clear();
+    await nameList.clear();
+    nameList.start();
+    settings.set(SETTINGS);
+    await traceEnded;
+
+    // Then
+    expect(events.filter(event => event.startsWith('saved') || event === 'cleared')).toEqual(['cleared', 'cleared']);
+    expect(traced).toEqual(['error AbortError']);
+    expect(reports.exceptions).toEqual([]);
+    expect(reports.expected).toEqual([]);
+  });
+
+  it.each<[string, Pick<HarnessParams, 'reads' | 'open'>]>([
+    ['succeeds', {}],
+    ['fails', { reads: { readLabelStores: () => Promise.reject(new TypeError('bad slot')) } }],
+    ['cannot load its reads', { open: 'failed' }],
+  ])('As a visitor whose sync %s, I see the names syncing from its start until it ends', async (_case, harness) => {
+    // Given
+    recordReports({ onFinished: onTestFinished });
+    const { nameList, syncs, syncEnded } = setupNameList(harness);
+
+    // When
+    nameList.start();
+    await syncEnded;
+
+    // Then
+    expect(syncs).toEqual([true, false]);
+  });
+
+  it('As a visitor who clears the cache while the sync reads, I see the names stop syncing at the clear', async () => {
+    // Given a sync whose read of new labels never lands
+    const asked = Promise.withResolvers<undefined>();
+    const { nameList } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: () => {
+          asked.resolve(undefined);
+          return new Promise(() => undefined);
+        },
+      },
+    });
+    nameList.start();
+    await asked.promise;
+
+    // When
+    await nameList.clear();
+
+    // Then
+    expect(nameList.syncing.get()).toBe(false);
+  });
+
+  it('As a visitor who clears the cache before my settings are read, I never see the names syncing', async () => {
+    // Given no settings yet, and a cleared list
+    const { nameList, settings, syncs, traceEnded } = setupNameList({ settings: null });
+    await nameList.clear();
+
+    // When the sync starts once the boot sets the settings
+    nameList.start();
+    settings.set(SETTINGS);
+    await traceEnded;
+
+    // Then
+    expect(syncs).toEqual([]);
+  });
+
   it('As the suggestion island, I start twice and one sync runs', async () => {
     // Given
     const { nameList, opened, released } = setupNameList();
@@ -188,7 +355,7 @@ describe('landing name list', () => {
 
 /**
  * Builds the landing name list over a fake store, fake reads and its own settings, and logs each change of its labels,
- * each save and the release, in order.
+ * each save and the release, in order. Logs each change of `syncing` apart.
  */
 function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 'ready' }: HarnessParams = {}) {
   const events: string[] = [];
@@ -196,6 +363,8 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
   const opened: SettingsState[] = [];
   const opening = Promise.withResolvers<undefined>();
   const released = Promise.withResolvers<undefined>();
+  const traced: string[] = [];
+  const traceEnded = Promise.withResolvers<undefined>();
   const settingsStore = atom<SettingsState | null>(settings);
   const fakeReads = {
     readLabelStores: () => Promise.resolve([]),
@@ -217,6 +386,10 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
         events.push(`saved ${record.apps.join(',')}`);
         return Promise.resolve();
       },
+      clear: () => {
+        events.push('cleared');
+        return Promise.resolve();
+      },
     },
     openReads: (current: SettingsState) => {
       opened.push(current);
@@ -231,10 +404,28 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
       }
     },
     settings: settingsStore,
+    openTrace: () => ({
+      storedRead: () => undefined,
+      readsOpened: () => undefined,
+      labelsShown: () => undefined,
+      withReads: source => source,
+      ended: end => {
+        traced.push(end.kind === 'ok' ? 'ok' : `error ${getErrorName(end.error) ?? 'unknown'}`);
+        traceEnded.resolve(undefined);
+      },
+    }),
     now: () => NOW,
   });
   nameList.labels.listen(labels => {
     events.push(`labels ${labels.join(',')}`);
+  });
+  const syncs: boolean[] = [];
+  const syncEnded = Promise.withResolvers<undefined>();
+  nameList.syncing.listen(syncing => {
+    syncs.push(syncing);
+    if (!syncing) {
+      syncEnded.resolve(undefined);
+    }
   });
   return {
     nameList,
@@ -244,6 +435,10 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
     opened,
     opening: opening.promise,
     released: released.promise,
+    traced,
+    traceEnded: traceEnded.promise,
+    syncs,
+    syncEnded: syncEnded.promise,
   };
 }
 

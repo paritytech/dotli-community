@@ -1,0 +1,132 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.surface {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: max(100%, 200px);
+  max-width: var(--w-pop-md);
+  max-height: 312px;
+  padding: var(--sp-1_5);
+  border-radius: var(--r-pop);
+  /* The list would inherit the alignment of what it drops from, which may centre its text. */
+  text-align: left;
+  background: var(--chrome-surface);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  transition:
+    opacity var(--dur-fast),
+    transform var(--dur-fast);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .surface {
+    backdrop-filter: var(--chrome-blur);
+  }
+}
+@starting-style {
+  .surface {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.surface[data-align='end'] {
+  right: 0;
+  left: auto;
+}
+/* The options scroll on their own, so the status row stays in view below them. */
+.list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-3);
+  height: 40px;
+  padding: 0 var(--sp-3);
+  color: var(--text-secondary);
+  font: var(--fw-regular) var(--fs-title) / var(--lh-tight) var(--font-sans);
+}
+.status > .spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: inherit;
+  font: var(--fw-regular) var(--fs-title) / 1 var(--font-sans);
+  cursor: pointer;
+}
+.option[aria-checked='true'] {
+  background-color: var(--chrome-info-fill);
+}
+/* A layer over the chosen fill, so the arrow keys or the pointer landing on the chosen option still show. */
+.option[aria-selected='true'] {
+  background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
+}
+@media (hover: hover) {
+  .option:hover {
+    background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
+  }
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  /* Taller than the glyphs, or the overflow the ellipsis needs cuts off their descenders. */
+  line-height: var(--lh-tight);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.detail {
+  color: var(--text-secondary);
+}
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--chrome-text-muted);
+}
+.check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chrome-info);
+}
+/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width
+   and the text ellipsizes. */
+@media (max-width: 560px) {
+  .surface {
+    width: max(100%, 200px);
+    min-width: 0;
+    max-width: none;
+    max-height: 342px;
+  }
+  .option {
+    height: var(--h-control);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface {
+    transition: none;
+  }
+}

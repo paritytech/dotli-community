@@ -28,8 +28,9 @@ type ReadStoreNamesParams = {
 type StoreNames = { cursor: LabelStoreCursor; names: string[] };
 
 // A store holds up to a few thousand entries, so one read takes a slice of each, and its caller can save what it read
-// before the next slice.
-const MAX_ENTRIES_PER_READ = 256;
+// before the next slice. A read holds its block pinned while a follow serves a few keys per round trip, and a server
+// may end a follow whose block stays pinned too long, so a slice stays small.
+const MAX_ENTRIES_PER_READ = 32;
 
 /**
  * Each store's cursor moved past a slice of its new entries, and the second-level labels under `dotns.TLD` among those

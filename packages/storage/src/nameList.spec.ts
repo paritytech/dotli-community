@@ -59,9 +59,48 @@ describe('name list round-trip', () => {
     // Then
     expect(await list.get(PASEO)).toEqual(newer);
   });
+
+  it("As the landing page, I clear the name lists and no network's list is left", async () => {
+    // Given lists saved for two networks
+    await list.set(SYNCED);
+    await list.set({ ...SYNCED, network: 'previewnet' });
+
+    // When
+    await list.clear();
+
+    // Then
+    expect(await list.get(PASEO)).toBeNull();
+    expect(await list.get('previewnet')).toBeNull();
+  });
+
+  it('As the landing page, I clear while a save is still opening its connection and no list is left', async () => {
+    // Given a save started and not awaited
+    const saving = list.set(SYNCED);
+
+    // When
+    await list.clear();
+    await saving;
+
+    // Then the save asked first, so it committed before the clear
+    expect(await list.get(PASEO)).toBeNull();
+  });
 });
 
 describe('name list failure reporting', () => {
+  it('As the landing page, I clear lists whose commit aborts and the clear resolves and is reported', async () => {
+    // Given a database that refuses every commit
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const refusing = createNameList({ idb: createMemoryIdb({ onTransaction: abortAtCommit }) });
+
+    // When
+    await refusing.clear();
+
+    // Then
+    expect(sentry.counted('cache.storage')).toEqual([
+      expect.objectContaining({ outcome: 'error', surface: 'name_list', step: 'clear' }),
+    ]);
+  });
+
   it('As the landing page, I save a list whose commit aborts and the save resolves and is reported', async () => {
     // Given a database that refuses every commit, as a full quota does
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });

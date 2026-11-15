@@ -11,6 +11,7 @@ import type { ChatStore } from './runtime/chat/createChatStore.js';
 import type * as DebugPanelHostNamespace from './debugPanelHost.js';
 import type * as HostWebNamespace from '@parity/truapi-host/web';
 import type * as HostWorkerNamespace from '@parity/truapi-host/worker-runtime?worker';
+import type * as LandingSettingsContentNamespace from './components/settings/LandingSettingsContent.js';
 import type * as LocalWalletCoreNamespace from './runtime/localWalletCore.js';
 import type * as PermissionsContentNamespace from './components/permissions/PermissionsContent.js';
 import type * as PhraseScreenNamespace from './components/account/PhraseScreen.js';
@@ -79,6 +80,10 @@ export function loadPermissionsContent(): Promise<typeof PermissionsContentNames
 /** The settings view. Rejects when its chunk fails to load. */
 export function loadSettingsContent(): Promise<typeof SettingsContentNamespace> {
   return import('./components/settings/SettingsContent.js');
+}
+/** The landing page's settings view. Rejects when its chunk fails to load. */
+export function loadLandingSettingsContent(): Promise<typeof LandingSettingsContentNamespace> {
+  return import('./components/settings/LandingSettingsContent.js');
 }
 
 /** Sandbox checker builds only. Rejects when its chunk fails to load. */

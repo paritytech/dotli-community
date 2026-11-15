@@ -4,7 +4,7 @@
 // Revive contract slots read straight from `chainHead_v1_storage`, with no runtime call or metadata. `trie_id` is
 // never cached, because a redeploy would then return stale data.
 
-import type { StorageItemResponse, SubstrateClient } from '@polkadot-api/substrate-client';
+import type { SubstrateClient } from '@polkadot-api/substrate-client';
 import { DisjointError } from '@polkadot-api/substrate-client';
 import { createReporter, defineCount } from '@dotli/metrics';
 import {
@@ -142,12 +142,9 @@ type FollowEffect =
 
 type FollowMachine = MachineTypes<FollowState, FollowEvent, FollowEffect>;
 
-// A server refuses operations past its per-follow limit, so each follow stays well under a common one.
-const MAX_STORAGE_OPERATIONS = 8;
-
-// Bounds the request and reply of each call, and splits a large batch into calls that run side by side in the operation
-// pool.
-const MAX_BATCH_KEYS = 256;
+// A server refuses operations past its per-follow limit: a full node runs 16 at once and smoldot 32. Each read is one
+// operation, so the pool fits the smaller limit.
+const MAX_STORAGE_OPERATIONS = 16;
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
 export function createRawApi({ client, now = () => performance.now() }: Params): Api {
@@ -362,68 +359,21 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     return runOperation(() => follow.storage(hash, 'value', key, childTrie));
   }
 
-  // Resolves the values by key. A key the server did not return is absent, which reads as unset. Each call retries and
-  // queues for an operation slot on its own, and the tail a server discarded from a call goes out again once it ends.
-  // papi rejects a call whose every key was discarded, so each round reads at least one key.
-  async function readStorageBatch(
+  // smoldot-light before 4.0.0, which the light client runs, takes one of the follow's operation slots for each key of a
+  // storage call but gives back only one when the call ends, so a call of several keys leaks slots until the follow
+  // refuses every read. Each key is read in a call of its own, and resolves `null` when unset. Every read settles
+  // before the values resolve, so the block the caller pins outlives each of them.
+  async function readStorageValues(
     hash: string,
     keys: readonly string[],
     childTrie: string | null,
-  ): Promise<Map<string, string>> {
-    const values = new Map<string, string>();
-    const calls: (readonly string[])[] = [];
-    for (let start = 0; start < keys.length; start += MAX_BATCH_KEYS) {
-      calls.push(keys.slice(start, start + MAX_BATCH_KEYS));
-    }
-    // Every call settles before the batch does, so the block the caller pins outlives each of them.
-    const settled = await Promise.allSettled(
-      calls.map(async callKeys => {
-        let pending = callKeys;
-        while (pending.length > 0) {
-          const asked = pending;
-          const { items, discarded } = await runOperation(() => subscribeStorage(hash, asked, childTrie));
-          for (const { key, value } of items) {
-            if (value !== undefined) {
-              values.set(key, value);
-            }
-          }
-          pending = asked.slice(asked.length - discarded);
-        }
-      }),
-    );
-    for (const result of settled) {
+  ): Promise<(string | null)[]> {
+    const settled = await Promise.allSettled(keys.map(key => readStorage(hash, key, childTrie)));
+    return settled.map(result => {
       if (result.status === 'rejected') {
         throw result.reason;
       }
-    }
-    return values;
-  }
-
-  // papi reports the discarded count once, before any items, and may split the items over several events. Each
-  // attempt keeps its own items, so a retried attempt drops what a failed one received.
-  function subscribeStorage(
-    hash: string,
-    keys: readonly string[],
-    childTrie: string | null,
-  ): Promise<{ items: StorageItemResponse[]; discarded: number }> {
-    return new Promise((resolve, reject) => {
-      const items: StorageItemResponse[] = [];
-      let discarded = 0;
-      follow.storageSubscription(
-        hash,
-        keys.map(key => ({ key, type: 'value' })),
-        childTrie,
-        received => {
-          items.push(...received);
-        },
-        reject,
-        () => {
-          resolve({ items, discarded });
-        },
-        count => {
-          discarded = count;
-        },
-      );
+      return result.value;
     });
   }
 
@@ -460,30 +410,21 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       return valueHex === null ? null : fromHex(valueHex);
     },
     async resolveTrieIds(contractAddresses, atHash) {
-      const accounts = contractAddresses.map(address => ({ address, key: getAccountInfoKey(address) }));
-      const accountInfos = await readStorageBatch(
-        atHash,
-        accounts.map(({ key }) => key),
-        null,
+      const accountInfos = await readStorageValues(atHash, contractAddresses.map(getAccountInfoKey), null);
+      return new Map(
+        contractAddresses.map((address, index) => {
+          const accountInfoHex = accountInfos[index] ?? null;
+          return [address, accountInfoHex === null ? null : decodeTrieId(accountInfoHex)];
+        }),
       );
-      const trieIds = new Map<string, Uint8Array | null>();
-      for (const { address, key } of accounts) {
-        const accountInfoHex = accountInfos.get(key);
-        trieIds.set(address, accountInfoHex === undefined ? null : decodeTrieId(accountInfoHex));
-      }
-      return trieIds;
     },
     async readSlots(contractAddress, slotKeys, { atHash, trieId }) {
       const trie = trieId ?? (await resolveTrieId(contractAddress, atHash));
       if (trie === null) {
         return slotKeys.map(() => null);
       }
-      const childKeys = slotKeys.map(slotKey => getChildSlotKey(slotKey));
-      const values = await readStorageBatch(atHash, childKeys, toHex(trie));
-      return childKeys.map(childKey => {
-        const valueHex = values.get(childKey);
-        return valueHex === undefined ? null : fromHex(valueHex);
-      });
+      const values = await readStorageValues(atHash, slotKeys.map(getChildSlotKey), toHex(trie));
+      return values.map(valueHex => (valueHex === null ? null : fromHex(valueHex)));
     },
     onStop(callback) {
       if (machine.state.get().kind === 'stopped') {
