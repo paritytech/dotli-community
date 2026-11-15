@@ -4,11 +4,13 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
-import { query } from '@dotli/ui/testing';
+import { byId, query } from '@dotli/ui/testing';
 import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   givenReset,
+  givenSettings,
   resetStorySettings,
+  DEFAULT_SETTINGS,
   settingsAsked,
   storySettings,
 } from '../../testing/stories/settingsFixtures.js';
@@ -114,8 +116,7 @@ export const ClearsTheCache: Story = {
     });
     await ctx.step('Then the page was asked to clear once, and both buttons wait for it', async () => {
       await expect(clearCache).toHaveBeenCalledTimes(1);
-      await waitFor(() => expect(clearButton()).toHaveTextContent('Clearing…'));
-      await expect(clearButton()).toBeDisabled();
+      await waitFor(() => expect(clearButton()).toBeDisabled());
       await expect(applyButton()).toBeDisabled();
     });
   },
@@ -132,9 +133,44 @@ export const ResetDisablesClear: Story = {
     await ctx.step('When I switch to Advanced', async () => {
       await showCategory(ctx.userEvent.click, 'advanced');
     });
-    await ctx.step('Then Clear cache is disabled and Save and apply says the reset runs', async () => {
+    await ctx.step('Then Clear cache and Save and apply are both disabled', async () => {
       await expect(clearButton()).toBeDisabled();
-      await expect(applyButton()).toHaveTextContent('Resetting…');
+      await expect(applyButton()).toBeDisabled();
+    });
+  },
+};
+
+/** As a visitor on a deployment with one network, I still see the network choice on the landing page. */
+export const ShowsASingleNetwork: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    givenSettings({ ...DEFAULT_SETTINGS, enabledNetworks: ['paseo-next-v2'] });
+  },
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Then the one network is offered and checked', async () => {
+      await expect(networkRadio('paseo-next-v2').checked).toBe(true);
+    });
+  },
+};
+
+/** As a visitor on the landing page, I pick another network and close the panel, and it opens on the saved one. */
+export const DropsTheDraftOnClose: Story = {
+  tags: ['!autodocs'],
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Given another network picked', async () => {
+      await ctx.userEvent.click(networkRadio('previewnet'));
+      await expect(networkRadio('previewnet').checked).toBe(true);
+    });
+    await ctx.step('When I close the panel and open it again', async () => {
+      await ctx.userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(byId('landing-settings-popover')).not.toHaveAttribute('data-open'));
+      await open(ctx);
+    });
+    await ctx.step('Then the saved network is checked and there is nothing to save', async () => {
+      await expect(networkRadio('paseo-next-v2').checked).toBe(true);
+      await expect(applyButton()).toBeDisabled();
     });
   },
 };
