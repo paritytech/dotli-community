@@ -88,8 +88,8 @@ export function createLandingNameList({
       await runSync(current, trace);
     } catch (error) {
       trace.ended({ kind: 'error', error });
-      // The user cleared the list, so the stopped sync is no failure.
-      if (signal.aborted) {
+      // The user's stop, since the user cleared the list. Any other error, even one after the clear, is a failure.
+      if (signal.aborted && error === signal.reason) {
         return;
       }
       if (isExpectedReadError(error)) {

@@ -234,6 +234,32 @@ describe('landing name list', () => {
     expect(events).toContain('released');
   });
 
+  it('As a visitor who clears the cache while the sync reads, I see a read that then fails reported as a defect', async () => {
+    // Given a sync whose read of new labels is held until the clear is done
+    const reports = recordReports({ onFinished: onTestFinished });
+    const asked = Promise.withResolvers<undefined>();
+    const held = Promise.withResolvers<{ stores: LabelStoreCursor[]; labels: string[] }>();
+    const { nameList, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: () => {
+          asked.resolve(undefined);
+          return held.promise;
+        },
+      },
+    });
+
+    // When the read fails in the code after the visitor clears
+    nameList.start();
+    await asked.promise;
+    await nameList.clear();
+    held.reject(new TypeError('bad slot'));
+    await traceEnded;
+
+    // Then
+    expect(reports.exceptions.map(report => report.step)).toEqual(['sync']);
+  });
+
   it('As a visitor who clears the cache twice before my settings are read, I see the later sync save nothing and report nothing', async () => {
     // Given no settings yet, and reads that would save a step
     const reports = recordReports({ onFinished: onTestFinished });
