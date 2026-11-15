@@ -17,6 +17,7 @@ import {
   type ProtocolServing,
   type SubscriptionEnd,
 } from '@dotli/protocol';
+import { isRecord } from '@dotli/shared';
 import type { Failure, ResultPayload, Sink } from '@dotli/transport';
 
 import { answerAdmitted } from './answerAdmitted.js';
@@ -58,8 +59,8 @@ type ServeStoreParams = {
 };
 
 type AnswerKeyedParams<T> = {
-  /** The store's keys, which check the call's key and place it for the site. */
-  keys: StoreKeys;
+  /** The store, whose keys check the call's key and place it for the site. */
+  store: StoreKeys;
   /** The call, naming its site and key. */
   payload: { siteId: string; key: string };
   /** Answers with the call's stored key. What it throws fails the call. */
@@ -68,13 +69,6 @@ type AnswerKeyedParams<T> = {
 
 /** A shared auth key a tab wrote or cleared, as the other tabs hear it. */
 type SessionChange = Extract<SharedAuthChange, { tag: 'session' }>['value'];
-
-/** One store's read, write and clear. Both stores share their codecs, so they share these types. */
-type StoreMethods = {
-  read: typeof storageMethods.authRead;
-  write: typeof storageMethods.authWrite;
-  clear: typeof storageMethods.authClear;
-};
 
 /** One store's keys: which a call may name, and where each lives for a site. */
 type StoreKeys = {
@@ -86,6 +80,13 @@ type StoreKeys = {
   build: (siteId: SiteId, key: string) => string;
 };
 
+/** One store: its keys, and the methods that read, write and clear it. Both stores share their codecs, so their types. */
+type Store = StoreKeys & {
+  read: typeof storageMethods.authRead;
+  write: typeof storageMethods.authWrite;
+  clear: typeof storageMethods.authClear;
+};
+
 /**
  * Each tab's iframe tells the other tabs' iframes over this channel when it writes a shared-auth key or the local
  * wallet record changes.
@@ -94,9 +95,23 @@ const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
 
 const { storage: storageMethods } = protocolSchema.sections;
 
-const AUTH_KEYS: StoreKeys = { name: 'auth', isValid: isValidSharedAuthKey, build: buildSharedAuthStorageKey };
+const AUTH_STORE: Store = {
+  name: 'auth',
+  isValid: isValidSharedAuthKey,
+  build: buildSharedAuthStorageKey,
+  read: storageMethods.authRead,
+  write: storageMethods.authWrite,
+  clear: storageMethods.authClear,
+};
 
-const MODE_KEYS: StoreKeys = { name: 'mode', isValid: isValidSharedModeKey, build: buildSharedModeStorageKey };
+const MODE_STORE: Store = {
+  name: 'mode',
+  isValid: isValidSharedModeKey,
+  build: buildSharedModeStorageKey,
+  read: storageMethods.modeRead,
+  write: storageMethods.modeWrite,
+  clear: storageMethods.modeClear,
+};
 
 /**
  * Serves the shared stores on `serving` and relays other tabs' changes until disposed. A call that fails is answered
@@ -108,16 +123,12 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
   channel?.addEventListener('message', relay);
 
   const unregister = [
-    ...serveStore(
-      { read: storageMethods.authRead, write: storageMethods.authWrite, clear: storageMethods.authClear },
-      AUTH_KEYS,
-      { onChange: broadcastSession },
-    ),
+    ...serveStore(AUTH_STORE, { onChange: broadcastSession }),
     // The read and the clear run in one task on the one store every tab's frame shares, which two calls from a page
     // could not do, so a value another tab wrote between them stays.
     serving.handleRequest(storageMethods.authClearIf, payload =>
       answerKeyed({
-        keys: AUTH_KEYS,
+        store: AUTH_STORE,
         payload,
         use(key) {
           const store = readStorage();
@@ -130,10 +141,7 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
         },
       }),
     ),
-    ...serveStore(
-      { read: storageMethods.modeRead, write: storageMethods.modeWrite, clear: storageMethods.modeClear },
-      MODE_KEYS,
-    ),
+    ...serveStore(MODE_STORE),
     serving.handleSubscription(storageMethods.authChanges, (_start, _context, sink) => {
       subscribers.add(sink);
       return () => {
@@ -184,19 +192,15 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
     }
   }
 
-  /** Serves the store under `keys`. */
-  function serveStore(
-    methods: StoreMethods,
-    keys: StoreKeys,
-    { onChange = (): void => undefined }: ServeStoreParams = {},
-  ): (() => void)[] {
+  /** Serves `store`'s read, write and clear. */
+  function serveStore(store: Store, { onChange = (): void => undefined }: ServeStoreParams = {}): (() => void)[] {
     return [
-      serving.handleRequest(methods.read, payload =>
-        answerKeyed({ keys, payload, use: key => readStorage().getItem(key) }),
+      serving.handleRequest(store.read, payload =>
+        answerKeyed({ store, payload, use: key => readStorage().getItem(key) }),
       ),
-      serving.handleRequest(methods.write, payload =>
+      serving.handleRequest(store.write, payload =>
         answerKeyed({
-          keys,
+          store,
           payload,
           use(key) {
             const store = readStorage();
@@ -210,9 +214,9 @@ export function createSharedStoreHandler({ serving, readStorage, channel = openS
           },
         }),
       ),
-      serving.handleRequest(methods.clear, payload =>
+      serving.handleRequest(store.clear, payload =>
         answerKeyed({
-          keys,
+          store,
           payload,
           use(key): undefined {
             readStorage().removeItem(key);
@@ -247,31 +251,30 @@ function openSharedAuthChannel(): SharedAuthChannel | null {
  * Answers with what `use` returns for the call's stored key once its site and key check. Rejects with an
  * `InvalidInputError` when either does not check, and with what `use` throws.
  */
-function answerKeyed<T>({ keys, payload, use }: AnswerKeyedParams<T>): Promise<ResultPayload<T, Failure>> {
+function answerKeyed<T>({ store, payload, use }: AnswerKeyedParams<T>): Promise<ResultPayload<T, Failure>> {
   return answerAdmitted(payload, site => {
-    if (!keys.isValid(payload.key)) {
-      throw new InvalidInputError(`Invalid shared ${keys.name} key: ${payload.key}`);
+    if (!store.isValid(payload.key)) {
+      throw new InvalidInputError(`Invalid shared ${store.name} key: ${payload.key}`);
     }
-    return use(keys.build(site, payload.key));
+    return use(store.build(site, payload.key));
   });
 }
 
 function isBroadcastMessage(data: unknown): data is SharedAuthChange {
-  if (typeof data !== 'object' || data === null || !('tag' in data) || !('value' in data)) {
+  if (!isRecord(data)) {
     return false;
   }
-  const { value } = data;
-  if (typeof value !== 'object' || value === null || !('siteId' in value) || typeof value.siteId !== 'string') {
+  const { tag, value } = data;
+  if (!isRecord(value) || typeof value['siteId'] !== 'string') {
     return false;
   }
-  if (data.tag === 'wallet') {
-    return true;
+  switch (tag) {
+    case 'wallet':
+      return true;
+    case 'session':
+      return typeof value['key'] === 'string' && (value['value'] === null || typeof value['value'] === 'string');
+    default:
+      // Another tab's message is unknown data, so any other tag is no change.
+      return false;
   }
-  return (
-    data.tag === 'session' &&
-    'key' in value &&
-    typeof value.key === 'string' &&
-    'value' in value &&
-    (value.value === null || typeof value.value === 'string')
-  );
 }

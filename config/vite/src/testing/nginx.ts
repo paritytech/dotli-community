@@ -17,22 +17,12 @@ const REPO = join(import.meta.dirname, '../../../..');
  * Returns the headers an nginx file sends, following its snippet includes. `file` is relative to the repo root.
  * `default_type` counts as the Content-Type. Throws on an `add_header` it cannot read, so a value written another way
  * cannot drift unseen, and when the file cannot be read. With `location`, only that exact-match location block counts,
- * so two blocks in one file are held apart.
+ * so two blocks in one file are held apart. It throws too when that block is missing, has no end or nests a block, so
+ * a misspelt location cannot read as one that sends nothing.
  */
 export function readNginxHeaders(file: string, { location }: Params = {}): Record<string, string> {
   const headers: Record<string, string> = {};
-  let inLocation = location === undefined;
-  for (const line of readFileSync(join(REPO, file), 'utf8').split('\n')) {
-    if (location !== undefined && line.trim() === `location = ${location} {`) {
-      inLocation = true;
-      continue;
-    }
-    if (location !== undefined && inLocation && line.trim() === '}') {
-      break;
-    }
-    if (!inLocation) {
-      continue;
-    }
+  for (const line of selectLocation(readFileSync(join(REPO, file), 'utf8').split('\n'), location)) {
     const include = /^\s*include \/etc\/nginx\/snippets\/(\S+);/.exec(line);
     if (include?.[1] !== undefined) {
       Object.assign(headers, readNginxHeaders(`nginx/snippets/${include[1]}`));
@@ -51,4 +41,26 @@ export function readNginxHeaders(file: string, { location }: Params = {}): Recor
     headers[header[1]] = header[2];
   }
   return headers;
+}
+
+/**
+ * Returns the lines that count: every line, or with `location` only those inside its exact-match block. Throws when
+ * the file holds no such block, when the block has no end, or when it nests a block, which its first `}` would cut
+ * short.
+ */
+function selectLocation(lines: string[], location: string | undefined): string[] {
+  if (location === undefined) {
+    return lines;
+  }
+  const start = lines.findIndex(line => line.trim() === `location = ${location} {`);
+  const end = lines.findIndex((line, index) => index > start && line.trim() === '}');
+  if (start === -1 || end === -1) {
+    throw new Error(`No whole block for location = ${location}`);
+  }
+  const block = lines.slice(start + 1, end);
+  const nested = block.find(line => line.trimEnd().endsWith('{'));
+  if (nested !== undefined) {
+    throw new Error(`location = ${location}: cannot read the nested block "${nested.trim()}"`);
+  }
+  return block;
 }

@@ -47,7 +47,7 @@ type Params = {
  * malformed escape with 404. Never throws. `astro dev` answers unknown paths with 404, which breaks product deep links
  * and `/__preview`. `serving` tells the bare host from the others.
  */
-export function spaFallback(pages: FallbackPages, serving: LocalServing): Plugin {
+export function spaFallback(pages: FallbackPages, serving: Pick<LocalServing, 'getRoute'>): Plugin {
   return {
     name: 'dotli-spa-fallback',
     apply: 'serve',
@@ -89,9 +89,7 @@ export function spaFallback(pages: FallbackPages, serving: LocalServing): Plugin
  * page. A malformed escape names no file, so it is a 404.
  */
 export function getFallbackAction({ request, pages, isPublicFile, getRoute }: Params): FallbackAction {
-  const isPageLoad =
-    (request.method === 'GET' || request.method === 'HEAD') && (request.accept ?? '').includes('text/html');
-  if (!isPageLoad) {
+  if (!isPageLoad(request)) {
     return { kind: 'pass' };
   }
   const [path = '/', query] = (request.url ?? '/').split('?');
@@ -115,4 +113,9 @@ export function getFallbackAction({ request, pages, isPublicFile, getRoute }: Pa
     return { kind: 'rewrite', url: appendQuery(pages.session) };
   }
   return isPublicFile(decoded) ? { kind: 'pass' } : { kind: 'rewrite', url: appendQuery('/') };
+}
+
+/** Whether a request loads a page: a GET or HEAD that accepts HTML. */
+function isPageLoad({ method, accept }: PageRequest): boolean {
+  return (method === 'GET' || method === 'HEAD') && (accept ?? '').includes('text/html');
 }
