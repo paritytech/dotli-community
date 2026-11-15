@@ -53,7 +53,6 @@
   flex: none;
   align-items: center;
   gap: var(--sp-3);
-  box-sizing: border-box;
   height: 40px;
   padding: 0 var(--sp-3);
   color: var(--text-secondary);
@@ -69,7 +68,6 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  box-sizing: border-box;
   height: 40px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
@@ -77,24 +75,16 @@
   font: var(--fw-regular) var(--fs-title) / 1 var(--font-sans);
   cursor: pointer;
 }
+.option[aria-checked='true'] {
+  background-color: var(--chrome-info-fill);
+}
+/* A layer over the chosen fill, so the arrow keys or the pointer landing on the chosen option still show. */
 .option[aria-selected='true'] {
-  background: var(--chrome-fill);
+  background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
 }
 @media (hover: hover) {
   .option:hover {
-    background: var(--chrome-fill);
-  }
-}
-.option[aria-checked='true'] {
-  background: var(--chrome-info-fill);
-}
-/* Both fills, so the arrow keys landing on the chosen option still show. */
-.option[aria-checked='true'][aria-selected='true'] {
-  background: linear-gradient(var(--chrome-fill), var(--chrome-fill)), var(--chrome-info-fill);
-}
-@media (hover: hover) {
-  .option[aria-checked='true']:hover {
-    background: linear-gradient(var(--chrome-fill), var(--chrome-fill)), var(--chrome-info-fill);
+    background-image: linear-gradient(var(--chrome-fill), var(--chrome-fill));
   }
 }
 .text {

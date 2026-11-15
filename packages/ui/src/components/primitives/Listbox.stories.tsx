@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, type Component } from 'solid-js';
+import { createSignal, createUniqueId, For, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
@@ -18,7 +18,6 @@ type StoryArgs = {
 };
 
 type OptionsProps = {
-  listId: string;
   labels: readonly string[];
   active?: string | undefined;
   chosen?: string | undefined;
@@ -60,7 +59,6 @@ export const UnderInput: Story = {
       listLabel="Suggested names"
     >
       <Options
-        listId="listbox-under-input"
         labels={[
           'browse',
           'browser-tests',
@@ -86,7 +84,7 @@ export const UnderInput: Story = {
 export const ClickKeepsFocus: Story = {
   render: args => (
     <InputFrame width="300px" inputLabel="Name" listId="listbox-click" listLabel="Suggested names">
-      <Options listId="listbox-click" labels={['ant', 'apple', 'avocado']} detail=".dot" onPick={args.onPick} />
+      <Options labels={['ant', 'apple', 'avocado']} detail=".dot" onPick={args.onPick} />
     </InputFrame>
   ),
   play: async ({ args, canvas, step }) => {
@@ -113,7 +111,6 @@ export const UnderButton: Story = {
       </Button>
       <Listbox id="listbox-under-button" label="Network">
         <Options
-          listId="listbox-under-button"
           labels={['Polkadot', 'Kusama', 'Paseo testnet']}
           active="Kusama"
           chosen="Polkadot"
@@ -141,7 +138,6 @@ export const AlignEnd: Story = {
         </IconButton>
         <Listbox id="listbox-align-end" label="Sort" align="end">
           <Options
-            listId="listbox-align-end"
             labels={['Most relevant', 'Recently opened', 'Name']}
             active="Recently opened"
             chosen="Recently opened"
@@ -158,7 +154,6 @@ export const LongText: Story = {
   render: args => (
     <InputFrame width="236px" inputLabel="Name" listId="listbox-long-text" listLabel="Long text">
       <Options
-        listId="listbox-long-text"
         labels={[
           'news',
           'browse-default-relevant-sort00',
@@ -212,13 +207,7 @@ export const Loading: Story = {
         listLabel="Suggested names"
         loading="Loading names"
       >
-        <Options
-          listId="listbox-loading-matches"
-          labels={['hosted', 'host-tools']}
-          active="host-tools"
-          detail=".paseo"
-          onPick={args.onPick}
-        />
+        <Options labels={['hosted', 'host-tools']} active="host-tools" detail=".paseo" onPick={args.onPick} />
       </InputFrame>
       <InputFrame
         width="300px"
@@ -247,7 +236,6 @@ export const Phone: Story = {
   render: args => (
     <InputFrame width="256px" inputLabel="Name" listId="listbox-phone" listLabel="Phone">
       <Options
-        listId="listbox-phone"
         labels={['browse', 'browse-default-relevant-sort00', 'browse-default-relevant-sort01']}
         active="browse-default-relevant-sort00"
         detail=".paseo"
@@ -280,11 +268,12 @@ function InputFrame(props: InputFrameProps): JSX.Element {
 
 /** One option per label. */
 function Options(props: OptionsProps): JSX.Element {
+  const idPrefix = createUniqueId();
   return (
     <For each={props.labels}>
       {(label, index) => (
         <Listbox.Option
-          id={`${props.listId}-${String(index())}`}
+          id={`${idPrefix}-${String(index())}`}
           active={label === props.active}
           chosen={label === props.chosen}
           icon={props.icon}
@@ -318,7 +307,7 @@ function ManyOptionsFrame(props: StoryArgs): JSX.Element {
         setActive(index => (index + step + MANY_OPTIONS.length) % MANY_OPTIONS.length);
       }}
     >
-      <Options listId="listbox-many" labels={MANY_OPTIONS} active={MANY_OPTIONS[active()]} onPick={props.onPick} />
+      <Options labels={MANY_OPTIONS} active={MANY_OPTIONS[active()]} onPick={props.onPick} />
     </InputFrame>
   );
 }
