@@ -113,8 +113,8 @@ Each of these is the easy axis arguing it is the simple axis:
 
 ## For Claude
 
-Run the probe at step 2 of the `architecture` skill, after the frame and **before** brainstorming spends effort
-designing a change whose cost is unmeasured. Report it in three lines:
+Run the probe at step 2 of the `architecture` skill, after the frame and **before** the design spends effort
+on a change whose cost is unmeasured. Report it in three lines:
 
 ```
 Radius:  <N files, M layers> - <symbols measured>

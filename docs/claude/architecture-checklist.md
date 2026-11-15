@@ -8,7 +8,7 @@ section when flagging. Severity:
 - **minor**: comment, prose and naming.
 
 Severity only orders the work. Every finding is fixed in this branch, unless a minor one is closed with a reason that
-holds (.claude/skills/architecture/SKILL.md § Step 8: Fix).
+holds (.claude/skills/architecture/SKILL.md § Step 6: Review and fix).
 
 This file is the citable index. The rules and their reasons live in the docs each row cites. It lists only rules ESLint
 does not enforce. The imports each package may make are in its `eslint.config.js`, and `config/eslint/vite.js` refuses
@@ -99,7 +99,7 @@ are defined in `docs/code/glossary.md`.
   surfaces the frame never mentioned. The gap is not itself a defect. The finding is that it was never surfaced for a
   decision. Propose staging it into reviewable PRs, and check whether the step 2 size probe (`architecture` skill)
   recorded the radius at all. Never blocking, since at review time that cost is already sunk.
-- **minor** (.claude/skills/architecture/SKILL.md § Reviewing and fixing): A `TODO` or follow-up comment covering braid
+- **minor** (.claude/skills/architecture/SKILL.md § Step 6: Review and fix): A `TODO` or follow-up comment covering braid
   the diff adds is a finding, fixed in this branch.
 
 When you cite a rule, quote `file:line`, state the rule in one line with its doc and section, and suggest the concrete
