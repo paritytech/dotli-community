@@ -72,6 +72,18 @@ describe('name list round-trip', () => {
     expect(await list.get(PASEO)).toBeNull();
     expect(await list.get('previewnet')).toBeNull();
   });
+
+  it('As the landing page, I clear while a save is still opening its connection and no list is left', async () => {
+    // Given a save started and not awaited
+    const saving = list.set(SYNCED);
+
+    // When
+    await list.clear();
+    await saving;
+
+    // Then the save asked first, so it committed before the clear
+    expect(await list.get(PASEO)).toBeNull();
+  });
 });
 
 describe('name list failure reporting', () => {
