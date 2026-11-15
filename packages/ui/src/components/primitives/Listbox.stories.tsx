@@ -279,6 +279,7 @@ function ManyOptionsFrame(props: StoryArgs): JSX.Element {
   );
 }
 
+/** Asserts the option sits fully inside the list's visible box. */
 async function expectInside(option: Element, list: Element): Promise<void> {
   const inner = option.getBoundingClientRect();
   const outer = list.getBoundingClientRect();

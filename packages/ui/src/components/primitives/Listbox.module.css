@@ -97,7 +97,8 @@
   height: 16px;
   color: var(--chrome-info);
 }
-/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width and the text ellipsizes. */
+/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width
+   and the text ellipsizes. */
 @media (max-width: 560px) {
   .list {
     width: max(100%, 200px);

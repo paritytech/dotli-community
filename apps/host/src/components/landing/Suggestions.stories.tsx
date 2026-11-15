@@ -41,7 +41,7 @@ export const ActiveSelected: Story = {
     await step('Then three names show and only apple is selected', async () => {
       await expect(await canvas.findAllByRole('option')).toHaveLength(3);
       const selected = canvas.getAllByRole('option', { selected: true });
-      await expect(selected.map(o => o.textContent)).toEqual(['apple.dot']);
+      await expect(selected).toEqual([canvas.getByRole('option', { name: 'apple.dot' })]);
     });
   },
 };
