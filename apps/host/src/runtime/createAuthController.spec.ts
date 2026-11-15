@@ -190,8 +190,7 @@ function startController({
       rereadSession,
       walletSwitch,
     }),
-    auth,
-    subscribeAuthSteps: steps.subscribe,
+    authState: { store: auth, subscribeSteps: steps.subscribe },
     handoff,
     isLocalWallet: () => local,
     loadRecoveryPhrase,
@@ -997,7 +996,7 @@ describe('auth controller: blocking-modal lease', () => {
 
     // Then nothing reached the core or the modal, and the import was refused as the page's fault
     expect(valid).toBe(false);
-    expect(imported).toEqual(new Error('The sign-in controller was disposed'));
+    expect(imported).toEqual(new Error('No recovery phrase view is on show'));
     expect(calls).toEqual({ logins: [], logouts: 0, cancels: 0 });
     expect(getAuthModalState()).toEqual(CLOSED_MODAL);
     expect(exceptions).toMatchObject([[imported, { step: 'local_wallet' }]]);
@@ -1307,7 +1306,7 @@ describe('auth controller: the sign-in window', () => {
     const imported = controller.importPhraseInPage(PHRASE);
 
     // Then the import rejects and the load failure is reported and counted
-    await expect(imported).rejects.toThrow('The recovery phrase import was not loaded');
+    await expect(imported).rejects.toThrow('No recovery phrase view is on show');
     expect(exceptions).toMatchObject([[expect.any(Error), { step: 'local_wallet', tags: { reason: 'phrase-load' } }]]);
     expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'phrase-load' }]);
   });

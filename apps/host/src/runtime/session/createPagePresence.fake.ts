@@ -14,10 +14,18 @@ export type FakeSessionPresence = {
 type Params = {
   /** What the first read answers, absent by default. */
   state?: Presence;
+  /** Runs on each set once it made the state present, and the set answers with it. Answers at once by default. */
+  onSet?: (() => Promise<void>) | undefined;
 };
 
-/** An in-memory presence: set the `state` to stage a read, and read `calls` to see what a flow did. Never rejects. */
-export function createFakeSessionPresence({ state = 'absent' }: Params = {}): FakeSessionPresence {
+/**
+ * An in-memory presence: set the `state` to stage a read, and read `calls` to see what a flow did. Rejects only when
+ * `onSet` does.
+ */
+export function createFakeSessionPresence({
+  state = 'absent',
+  onSet = () => Promise.resolve(),
+}: Params = {}): FakeSessionPresence {
   const fake: FakeSessionPresence = {
     state,
     calls: [],
@@ -28,7 +36,7 @@ export function createFakeSessionPresence({ state = 'absent' }: Params = {}): Fa
     set() {
       fake.calls.push('set');
       fake.state = 'present';
-      return Promise.resolve();
+      return onSet();
     },
     clear() {
       fake.calls.push('clear');

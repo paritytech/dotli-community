@@ -5,15 +5,15 @@
 // resets through it when a URL changes the settings, before any island has loaded.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createDeferred, pageLocalStorage } from '@dotli/shared';
-import { atom, computed } from 'nanostores';
+import { createAsyncTaskPool, pageLocalStorage } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { markAndReload, type Continuation } from './createContinuation.js';
 import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { blockCache, cidCache } from '@dotli/storage';
 
-import type { SettingsResetStatus } from './components/settings/settings.js';
+import { isResetRunning, type SettingsResetStatus } from './components/settings/settings.js';
 import { pendingResets, type PendingResetTarget } from './runtime/createPendingResets.js';
-import { writeSharedSettings } from './runtime/sharedMode.js';
+import { settleSharedWrites, writeSharedSettings } from './runtime/sharedMode.js';
 import { wipeOriginState, type WipeFailure } from './wipeOriginState.js';
 
 const storageReport = createReporter({ flow: 'storage' });
@@ -21,8 +21,8 @@ const uiReport = createReporter({ flow: 'ui' });
 
 /**
  * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
- * screen's backend switch. Tagged `outcome` and, on error, `reason` (the step that failed: `wipe`, `cid_cache`,
- * `block_cache` or `pending_reset`, or `fault` for a step that threw), as the reload follows either way.
+ * screen's backend switch, counted once. Tagged `outcome` and, on error, `reason` (the first step that failed: `wipe`,
+ * `cid_cache`, `block_cache` or `pending_reset`, or `fault` for a step that threw), as the reload follows either way.
  */
 const settingsApplyMetric = defineCount<'error' | 'ok'>('settings.apply');
 
@@ -40,14 +40,16 @@ export type SettingsActionsParams = {
   reload: (reason: Continuation) => void;
   /** Stores the settings on this origin and for the other subdomains, so the reload boots with them. */
   save: (settings: Settings) => void;
+  /** Resolves once the settings written for the other subdomains are stored or failed. Never rejects. */
+  settleSharedWrites: () => Promise<void>;
   /** The page URL, which carries the settings into the reload. */
   url: SettingsUrl;
 };
 
-export type SettingsUrl = {
-  /** Returns the page URL's path, query and fragment. Never throws. */
+type SettingsUrl = {
+  /** Returns the page URL's path, query and fragment. Must not throw. */
   read: () => Pick<Location, 'pathname' | 'search' | 'hash'>;
-  /** Swaps the URL in place, without a navigation or a history entry. Never throws. */
+  /** Swaps the URL in place, without a navigation or a history entry. Must not throw. */
   replace: (url: string) => void;
 };
 
@@ -58,20 +60,11 @@ type ApplyAndResetParams = {
   reason?: Continuation;
 };
 
-type ApplyParams = {
-  next: Settings;
-  prior: Settings;
-  forceFullWipe: boolean;
-};
-
 export type SettingsActions = ReturnType<typeof createSettingsActions>;
-
-/** `running` never returns to `idle`, since the reload follows it. */
-type Reset = { kind: 'idle' } | { kind: 'running'; fullWipe: boolean; done: Promise<void> };
 
 type ApplyStep = 'wipe' | 'cid_cache' | 'block_cache' | 'pending_reset';
 
-/** Builds the settings actions over the given steps. Never throws. */
+/** Builds the settings actions over the given steps. */
 export function createSettingsActions({
   clearCidCache,
   clearBlockCache,
@@ -79,115 +72,105 @@ export function createSettingsActions({
   schedulePendingReset,
   reload,
   save,
+  settleSharedWrites: settleShared,
   url,
 }: SettingsActionsParams) {
-  const resetState = atom<Reset>({ kind: 'idle' });
-  const reset = computed(resetState, (state): SettingsResetStatus => {
-    if (state.kind === 'idle') {
-      return 'idle';
-    }
-    return state.fullWipe ? 'clearing' : 'applying';
-  });
-
-  async function apply({ next, prior, forceFullWipe }: ApplyParams): Promise<void> {
-    const failed: ApplyStep[] = [];
-    /** Counts a step that failed and reported its failure itself. */
-    function countFailure(step: ApplyStep): void {
-      failed.push(step);
-      settingsApplyMetric.count({ outcome: 'error', reason: step });
-    }
-
-    if (forceFullWipe) {
-      if ((await wipeOrigin()).length > 0) {
-        countFailure('wipe');
-      }
-      save(next);
-      // Forces the cross-origin frames to purge regardless of their persisted prefs.
-      try {
-        schedulePendingReset(['protocol', 'sandbox']);
-      } catch (error: unknown) {
-        failed.push('pending_reset');
-        // No session storage, as in a private window, is the browser's limit rather than a fault.
-        storageReport.expected(error, {
-          step: 'settings_apply',
-          metric: settingsApplyMetric,
-          reason: 'pending_reset',
-          message: '[dot.li settings] purge request not stored:',
-        });
-      }
-    } else {
-      save(next);
-      if (next.cache.skipCidCache && !prior.cache.skipCidCache && !(await clearCidCache())) {
-        countFailure('cid_cache');
-      }
-      if (next.cache.skipArchiveCache && !prior.cache.skipArchiveCache && !(await clearBlockCache())) {
-        countFailure('block_cache');
-      }
-    }
-
-    // The URL carries the settings too, so the reload boots with them. Defaults drop off.
-    const location = url.read();
-    const search = new URLSearchParams(location.search);
-    if (writeSettingsToSearch(next, search)) {
-      const query = search.toString();
-      url.replace(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
-    }
-    if (failed.length === 0) {
-      settingsApplyMetric.count({ outcome: 'ok' });
-    }
-  }
+  const resetStatus = atom<SettingsResetStatus>('idle');
+  const reset: ReadableAtom<SettingsResetStatus> = resetStatus;
+  // One reset at a time, so a call made during a reset waits for it, then finds it started.
+  const resets = createAsyncTaskPool({ poolSize: 1 });
 
   function applyAndReset(
     next: Settings,
     prior: Settings,
     { forceFullWipe = false, reason = 'settings_change' }: ApplyAndResetParams = {},
   ): Promise<void> {
-    const state = resetState.get();
-    if (state.kind === 'running') {
-      return state.done;
-    }
-    const finished = createDeferred<undefined>();
-    resetState.set({ kind: 'running', fullWipe: forceFullWipe, done: finished.promise });
-    void runReset({ next, prior, forceFullWipe }, reason).then(
-      () => {
-        finished.resolve(undefined);
-      },
-      (error: unknown) => {
-        finished.reject(error);
-      },
-    );
-    return finished.promise;
+    return resets.call(async () => {
+      // A reset ends in a reload, so one that started never runs again.
+      if (isResetRunning(resetStatus.get())) {
+        return;
+      }
+      resetStatus.set(forceFullWipe ? 'clearing' : 'applying');
+      try {
+        await (forceFullWipe ? wipeAndSave(next) : saveAndClear(next, prior));
+      } catch (error: unknown) {
+        // The reset's one count, as a throw ends its steps before they count it. The error's class is in the capture.
+        uiReport.defect(error, {
+          step: 'settings_apply',
+          metric: settingsApplyMetric,
+          message: '[dot.li settings] Save & Apply failed:',
+          reason: 'fault',
+        });
+      } finally {
+        // The unload would drop a write for the other subdomains still on its way.
+        await settleShared();
+        // The settings the user chose take effect only on the reload, so it runs whatever failed.
+        reload(reason);
+      }
+    });
   }
 
-  async function runReset(params: ApplyParams, reason: Continuation): Promise<void> {
+  /** Wipes every cache, then saves, since the wipe would erase the saved settings. Counts the reset once. */
+  async function wipeAndSave(next: Settings): Promise<void> {
+    const failed: ApplyStep | null = (await wipeOrigin()).length > 0 ? 'wipe' : null;
+    save(next);
+    writeSettingsToUrl(next);
     try {
-      await apply(params);
+      // Forces the cross-origin frames to purge regardless of their persisted prefs.
+      schedulePendingReset(['protocol', 'sandbox']);
     } catch (error: unknown) {
-      // Beside the steps that count themselves. The error's class is in the capture.
-      uiReport.defect(error, {
+      // No session storage, as in a private window, is the browser's limit rather than a fault. This report is the
+      // reset's count, under the first step that failed.
+      storageReport.expected(error, {
         step: 'settings_apply',
         metric: settingsApplyMetric,
-        message: '[dot.li settings] Save & Apply failed:',
-        reason: 'fault',
+        reason: failed ?? 'pending_reset',
+        message: '[dot.li settings] purge request not stored:',
       });
-    } finally {
-      // The settings the user chose take effect only on the reload, so it runs whatever failed.
-      reload(reason);
+      return;
+    }
+    countReset(failed);
+  }
+
+  /** Saves, then deletes only the caches the user just turned off. Counts the reset once. */
+  async function saveAndClear(next: Settings, prior: Settings): Promise<void> {
+    save(next);
+    let failed: ApplyStep | null = null;
+    if (next.cache.skipCidCache && !prior.cache.skipCidCache && !(await clearCidCache())) {
+      failed = 'cid_cache';
+    }
+    if (next.cache.skipArchiveCache && !prior.cache.skipArchiveCache && !(await clearBlockCache())) {
+      failed ??= 'block_cache';
+    }
+    writeSettingsToUrl(next);
+    countReset(failed);
+  }
+
+  /** Counts the reset under the first step that failed, which reported its failure itself, or as ok. */
+  function countReset(failed: ApplyStep | null): void {
+    settingsApplyMetric.count(failed === null ? { outcome: 'ok' } : { outcome: 'error', reason: failed });
+  }
+
+  /** Writes `settings` into the page URL, which carries them into the reload too. Defaults drop off. */
+  function writeSettingsToUrl(settings: Settings): void {
+    const location = url.read();
+    const search = new URLSearchParams(location.search);
+    if (writeSettingsToSearch(settings, search)) {
+      const query = search.toString();
+      url.replace(`${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
     }
   }
 
   return {
     /**
-     * Applies `next` over `prior` and reloads. Deletes only caches the user just turned off. The persisted
-     * `skipWorkerCache` flag makes the protocol iframe purge itself on its next boot. Settings persist before the
-     * deletes so the reload boots with them. Rejects only as `reload` throws: a step that fails is counted, and the rest of
-     * the reset and the reload still run. The reload carries `reason`. A call while a reset runs saves and reloads nothing and
-     * resolves when the running one does.
+     * Applies `next` over `prior` and reloads. A save stores the settings, then deletes only the caches the user just
+     * turned off. A full wipe deletes every cache, then stores the settings and asks the other origins to purge on
+     * their next boot. The reload carries `reason`. Rejects only as `reload` throws: a step that fails is counted, and
+     * the rest of the reset and the reload still run. A call while a reset runs saves and reloads nothing, and
+     * resolves once the running one settles.
      */
     applyAndReset,
-    /**
-     * The running reset, `idle` until one starts. It never returns to `idle`, since the reload follows. Never throws.
-     */
+    /** The running reset, `idle` until one starts. It never returns to `idle`, since the reload follows. */
     reset,
   };
 }
@@ -200,6 +183,7 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
   schedulePendingReset: pendingResets.schedule,
   reload: markAndReload,
   save: saveSettings,
+  settleSharedWrites,
   url: {
     read: () => window.location,
     replace(url) {

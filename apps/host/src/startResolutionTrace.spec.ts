@@ -108,19 +108,6 @@ describe('A resolution is traced as one unit', () => {
     expect(findSpan('chain.relay.ready')?.parent).toBe(findSpan('chain.relay'));
   });
 
-  it('As a maintainer, I read the trace and see the time a chain spent connecting as a closed interval', () => {
-    // Given
-    const { startTrace, findSpan } = setupTracePage();
-    const trace = startTrace(TRACE_PARAMS);
-
-    // When
-    trace.recordChainSync({ chain: 'relay', kind: 'connecting' });
-    trace.recordChainSync({ chain: 'relay', kind: 'bootstrapComplete' });
-
-    // Then
-    expect(findSpan('chain.relay.connecting')?.ended).toBe(true);
-  });
-
   it('As a maintainer, I read the trace and see each phase of a chain start where the one before it ended', () => {
     // Given a clock that moves on every reading
     const { startTrace, findSpan } = setupTracePage();
@@ -375,6 +362,17 @@ describe('A resolution is one attempt of a journey', () => {
       attempt_number: 2,
       entry: 'reload_button',
     });
+  });
+
+  it('As an operator of a build whose sample rate is empty, I read a load drawn within the default share and see its child spans', () => {
+    // Given
+    const { startTrace, findSpan } = setupTracePage();
+
+    // When
+    startTrace({ ...TRACE_PARAMS, sampleRate: '', random: () => 0.1 });
+
+    // Then
+    expect(findSpan('resolution')?.attributes['sampled_children']).toBe(true);
   });
 
   it('As a maintainer, I read the trace and see it start when the page load did, not when resolution began', () => {

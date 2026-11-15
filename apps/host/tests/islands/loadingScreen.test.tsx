@@ -83,7 +83,7 @@ describe('Loading screen island', () => {
   it('As the shell, the island keeps following the load that started before it mounted', async () => {
     // Given a crawling bar
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 10_000, stage: 'relay' }]);
-    ctl.advancePhase(0);
+    ctl.advancePhase('relay');
 
     // When
     await mountScreen();

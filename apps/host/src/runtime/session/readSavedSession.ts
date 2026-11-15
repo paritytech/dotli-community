@@ -77,5 +77,5 @@ function getSessionToShow(
   if (raw === null) {
     return null;
   }
-  return (cached === null ? null : parseUiStateCache(cached)) ?? { connected: true };
+  return parseUiStateCache(cached) ?? { connected: true };
 }

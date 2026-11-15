@@ -82,6 +82,8 @@ export type ResolutionTraceParams = {
   now?: () => number;
   /** Draws a number in [0, 1) that decides whether the load gets child spans. The page's own by default. */
   random?: () => number;
+  /** The share of loads that get child spans, as the build sets it. Unset or empty means the default share. */
+  sampleRate?: string;
 };
 
 /** Share of loads that get child spans. The root always carries every measurement, so nothing is lost. */
@@ -101,12 +103,13 @@ export function startResolutionTrace({
   timers = realTimers,
   now: readClock = readPageClock,
   random = () => Math.random(),
+  sampleRate = import.meta.env.VITE_RESOLUTION_SAMPLE_RATE,
 }: ResolutionTraceParams) {
   // Monotonic deltas from one wall-clock start, so a system clock that steps mid-load cannot reorder the tree.
   const epochStart = timers.now() - readSinceStart();
 
   // Decided at the start, since Sentry fixes a trace's sampling when its root opens.
-  const sampled = random() < readSampleRate();
+  const sampled = random() < parseSampleRate(sampleRate);
 
   const root = m.open('resolution', {
     root: true,
@@ -192,16 +195,7 @@ export function startResolutionTrace({
 
   function recordChainSync(event: ChainSyncEvent): void {
     const state = getChainState(event.chain);
-    const phase = PHASE_BY_MILESTONE[event.kind];
-    // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
-    if (phase !== undefined && phase !== 'stalled' && phase !== state.phase) {
-      // One clock reading, so the next phase starts where this one ended.
-      const switchedAt = readEpochTime();
-      state.phaseSpan?.end(switchedAt);
-      state.phase = phase;
-      // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
-      state.phaseSpan = state.span?.child(`chain.${state.name}.${phase}`, { startTime: switchedAt }) ?? null;
-    }
+    enterPhase(state, PHASE_BY_MILESTONE[event.kind]);
     switch (event.kind) {
       case 'peers':
         if (typeof event.peers === 'number') {
@@ -234,6 +228,20 @@ export function startResolutionTrace({
         // Only the phase they name, if any, is recorded.
         break;
     }
+  }
+
+  /** Ends the chain's phase span and opens the next one, when `phase` moves the chain to another phase. */
+  function enterPhase(state: ChainState, phase: ChainPhase | undefined): void {
+    // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
+    if (phase === undefined || phase === 'stalled' || phase === state.phase) {
+      return;
+    }
+    // One clock reading, so the next phase starts where this one ended.
+    const switchedAt = readEpochTime();
+    state.phaseSpan?.end(switchedAt);
+    state.phase = phase;
+    // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
+    state.phaseSpan = state.span?.child(`chain.${state.name}.${phase}`, { startTime: switchedAt }) ?? null;
   }
 
   function recordChainDetail(event: ChainDetail): void {
@@ -298,7 +306,7 @@ export function startResolutionTrace({
     warned = true;
   }
 
-  function finish(outcome: ResolutionOutcome, details?: FinishDetails): void {
+  function finish(outcome: ResolutionOutcome, { reason, errorKind, failedStep }: FinishDetails = {}): void {
     if (finished) {
       return;
     }
@@ -308,18 +316,7 @@ export function startResolutionTrace({
     const totalMs = readSinceStart();
     const endedAt = epochStart + totalMs;
 
-    nameSpan?.end(endedAt);
-    for (const state of chains.values()) {
-      state.phaseSpan?.end(endedAt);
-      state.span?.setAttributes(getChainAttributes(state));
-      state.span?.end(endedAt);
-    }
-    contentSpan?.setAttributes({
-      bytes: contentBytes,
-      ...(contentTotal !== null ? { total_bytes: contentTotal } : {}),
-    });
-    contentSpan?.end(endedAt);
-
+    endChildSpans(endedAt);
     root.setAttributes({
       outcome,
       total_ms: totalMs,
@@ -334,13 +331,27 @@ export function startResolutionTrace({
       ...(handoffMs !== null ? { handoff_ms: handoffMs } : {}),
       loading_phase: loadingPhase,
       warning_shown: warned,
-      ...(details?.reason !== undefined ? { failure_reason: details.reason.slice(0, 200) } : {}),
-      ...(details?.errorKind !== undefined ? { error_kind: details.errorKind } : {}),
-      ...(details?.failedStep !== undefined ? { failed_step: details.failedStep } : {}),
+      ...(reason !== undefined ? { failure_reason: reason.slice(0, 200) } : {}),
+      ...(errorKind !== undefined ? { error_kind: errorKind } : {}),
+      ...(failedStep !== undefined ? { failed_step: failedStep } : {}),
       // An unsampled load still answers "which chain was slow".
       ...getChainSummary(chains),
     });
     root.end(endedAt);
+  }
+
+  function endChildSpans(endedAt: number): void {
+    nameSpan?.end(endedAt);
+    for (const state of chains.values()) {
+      state.phaseSpan?.end(endedAt);
+      state.span?.setAttributes(getChainAttributes(state));
+      state.span?.end(endedAt);
+    }
+    contentSpan?.setAttributes({
+      bytes: contentBytes,
+      ...(contentTotal !== null ? { total_bytes: contentTotal } : {}),
+    });
+    contentSpan?.end(endedAt);
   }
 
   // Otherwise a tab closed mid-resolution never sends its root span. A browser reload, a typed URL and a closed tab
@@ -403,9 +414,13 @@ function getBrowserPage(): TracedPage {
   };
 }
 
-function readSampleRate(): number {
-  const raw = Number(import.meta.env.VITE_RESOLUTION_SAMPLE_RATE ?? '');
-  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_SAMPLE_RATE;
+function parseSampleRate(raw: string | undefined): number {
+  // Checked first, since `Number('')` reads as a valid rate of 0.
+  if (raw === undefined || raw.trim() === '') {
+    return DEFAULT_SAMPLE_RATE;
+  }
+  const rate = Number(raw);
+  return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : DEFAULT_SAMPLE_RATE;
 }
 
 function getChainAttributes(state: ChainState): Record<string, SpanValue> {

@@ -398,7 +398,7 @@ export function startLoadProgress({
         case 'barOpened':
           loading.initPhases(bands);
           loading.setLoadingDomain(label);
-          loading.advancePhase(0);
+          loading.advancePhase(bands[0].stage);
           return;
         case 'chainSyncRecorded':
           trace.recordChainSync(effect.sync);
@@ -435,7 +435,7 @@ export function startLoadProgress({
           loading.stopStatusTick();
           return;
         case 'barMovedToDownload':
-          moveBarToDownload(bands, loading);
+          moveBarToDownload(loading);
           return;
         case 'warningShown':
           trace.markWarningShown();

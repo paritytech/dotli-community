@@ -5,7 +5,7 @@
 // write that changes them.
 
 import { createReporter, defineCount } from '@dotli/metrics';
-import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
+import { createStateMachine, isShallowEqual, type MachineTypes, type Transition } from '@dotli/shared';
 import type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord } from '@dotli/storage';
 import { computed } from 'nanostores';
 import { reportFailedChatStorage } from './reportFailedChatStorage.js';
@@ -71,14 +71,12 @@ type Params = {
   repo: ChatViewRepo;
 };
 
-const NO_VIEW: ChatView = {
-  productId: null,
-  contacts: null,
-  contactsFailed: false,
-  roomId: null,
-  messages: null,
-  messagesFailed: false,
-};
+/** What the panel shows of the product and room it follows. */
+type ChatShown = Pick<ChatView, 'contacts' | 'contactsFailed' | 'messages' | 'messagesFailed'>;
+
+const NO_SHOWN: ChatShown = { contacts: null, contactsFailed: false, messages: null, messagesFailed: false };
+
+const NO_VIEW: ChatView = { productId: null, roomId: null, ...NO_SHOWN };
 
 /**
  * One kind of read: none running, one running, or one running with another due after it. One read of each kind at a
@@ -94,7 +92,7 @@ type ViewState =
   | {
       kind: 'following';
       follow: ChatFollow;
-      view: ChatView;
+      shown: ChatShown;
       /** Messages arrived while the room list was off screen, so a return to it reads it again. */
       missedMessages: boolean;
       reads: Reads;
@@ -104,7 +102,7 @@ type ViewState =
 type ReadRequest = { read: 'contacts'; productId: string } | { read: 'messages'; productId: string; roomId: string };
 
 /** What a read shows, while the panel still shows what it read. */
-type ReadShown = Partial<Pick<ChatView, 'contacts' | 'contactsFailed' | 'messages' | 'messagesFailed'>>;
+type ReadShown = Partial<ChatShown>;
 
 /** Why a read failed, reported under its step. */
 type ReadFailure = { step: 'chat_contacts_read' | 'chat_messages_read'; error: unknown };
@@ -118,32 +116,21 @@ type ViewEffect = { kind: 'readFailed'; failure: ReadFailure };
 
 type ViewMachine = MachineTypes<ViewState, ViewEvent, ViewEffect>;
 
+type GetFollowShownParams = {
+  /** Whether the next follow stays on the shown product. */
+  sameProduct: boolean;
+  /** Whether the next follow stays in the shown room. */
+  sameRoom: boolean;
+};
+
+/** What a failed read of each kind shows, and the step it is reported under. */
+const READ_FAILURES = {
+  contacts: { shown: { contactsFailed: true }, step: 'chat_contacts_read' },
+  messages: { shown: { messagesFailed: true }, step: 'chat_messages_read' },
+} satisfies Record<ReadRequest['read'], { shown: ReadShown; step: ReadFailure['step'] }>;
+
 /** Builds the chat panel's view over `repo`. Building one reads nothing and never throws. */
 export function createChatView({ repo }: Params) {
-  /**
-   * Ends the read of the kind `request` names, and starts the one due after it for what the panel follows now. Shows
-   * `shown` while the panel still shows what `request` read. A failure is reported even for a read the panel left.
-   */
-  const endRead: HandlerOf<ViewMachine, 'unfollowed' | 'following', 'readEnded'> = (
-    state,
-    { request, shown, failure },
-    { emitState, emitSideEffect, update },
-  ) => {
-    const current = getReadRequest(state.kind === 'following' ? state.follow : null, request.read);
-    const due = state.reads[request.read] === 'rereading' ? current : null;
-    const reads: Reads = { ...state.reads, [request.read]: due === null ? 'idle' : 'reading' };
-    if (state.kind === 'following' && current !== null && isShallowEqual(current, request)) {
-      emitState({ ...state, reads, view: { ...state.view, ...shown } });
-    } else {
-      emitState({ ...state, reads });
-    }
-    if (due !== null) {
-      update(runRead(due));
-    }
-    if (failure !== null) {
-      emitSideEffect({ kind: 'readFailed', failure });
-    }
-  };
   const machine = createStateMachine<ViewMachine>({
     initial: { kind: 'unfollowed', reads: { contacts: 'idle', messages: 'idle' } },
     handlers: {
@@ -156,12 +143,18 @@ export function createChatView({ repo }: Params) {
           transition.emitState({
             kind: 'following',
             follow: next,
-            view: { ...NO_VIEW, productId: next.productId, roomId: next.roomId },
+            shown: NO_SHOWN,
             missedMessages: false,
             reads: askRead(withContacts, getReadRequest(next, 'messages'), transition),
           });
         },
-        readEnded: endRead,
+        // No follow shows the read and none is due after it. A failure is still reported.
+        readEnded(state, { request, failure }, { emitState, emitSideEffect }) {
+          emitState({ ...state, reads: { ...state.reads, [request.read]: 'idle' } });
+          if (failure !== null) {
+            emitSideEffect({ kind: 'readFailed', failure });
+          }
+        },
       },
       following: {
         followed(state, { next }, transition) {
@@ -183,14 +176,7 @@ export function createChatView({ repo }: Params) {
           transition.emitState({
             ...state,
             follow: next,
-            view: {
-              productId: next.productId,
-              contacts: sameProduct ? state.view.contacts : null,
-              contactsFailed: sameProduct && state.view.contactsFailed,
-              roomId: next.roomId,
-              messages: sameRoom ? state.view.messages : null,
-              messagesFailed: sameRoom && state.view.messagesFailed,
-            },
+            shown: getFollowShown(state.shown, { sameProduct, sameRoom }),
             missedMessages: state.missedMessages && !readsContacts,
             reads: askRead(withContacts, getReadRequest(next, 'messages'), transition),
           });
@@ -217,7 +203,25 @@ export function createChatView({ repo }: Params) {
                 : state.reads,
           });
         },
-        readEnded: endRead,
+        /**
+         * Shows what the read found while the panel still shows what it read, and starts the read due after it for what
+         * the panel follows now. A failure is reported even for a read the panel left.
+         */
+        readEnded(state, { request, shown, failure }, { emitState, emitSideEffect, update }) {
+          const current = getReadRequest(state.follow, request.read);
+          const due = state.reads[request.read] === 'rereading' ? current : null;
+          emitState({
+            ...state,
+            reads: { ...state.reads, [request.read]: due === null ? 'idle' : 'reading' },
+            shown: isShallowEqual<ReadRequest | null>(current, request) ? { ...state.shown, ...shown } : state.shown,
+          });
+          if (due !== null) {
+            update(runRead(due));
+          }
+          if (failure !== null) {
+            emitSideEffect({ kind: 'readFailed', failure });
+          }
+        },
       },
     },
     onEffect: effect => {
@@ -231,7 +235,14 @@ export function createChatView({ repo }: Params) {
       });
     },
   });
-  const view = computed(machine.state, current => (current.kind === 'following' ? current.view : NO_VIEW));
+  const view = computed(machine.state, (current): ChatView => {
+    switch (current.kind) {
+      case 'unfollowed':
+        return NO_VIEW;
+      case 'following':
+        return { productId: current.follow.productId, roomId: current.follow.roomId, ...current.shown };
+    }
+  });
   view.eq = isShallowEqual;
 
   return {
@@ -269,51 +280,49 @@ export function createChatView({ repo }: Params) {
 
   /** Reads what `request` names, ending in the event that carries what it shows. */
   function runRead(request: ReadRequest): Promise<ViewEvent> {
+    return read(request).then(
+      (shown): ViewEvent => ({ kind: 'readEnded', request, shown, failure: null }),
+      (error: unknown): ViewEvent => {
+        const { shown, step } = READ_FAILURES[request.read];
+        return { kind: 'readEnded', request, shown, failure: { step, error } };
+      },
+    );
+  }
+
+  /** What a read of `request` shows. Rejects when the store fails. */
+  async function read(request: ReadRequest): Promise<ReadShown> {
     switch (request.read) {
       case 'contacts': {
         const { productId } = request;
-        return Promise.all([
+        const [rooms, bots, lastMessageTimes] = await Promise.all([
           repo.listRooms(productId),
           repo.listBots(productId),
           repo.readLatestMessageTimestamps(productId),
-        ]).then(
-          ([rooms, bots, lastMessageTimes]) => ({
-            kind: 'readEnded',
-            request,
-            shown: { contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false },
-            failure: null,
-          }),
-          (error: unknown) => ({
-            kind: 'readEnded',
-            request,
-            shown: { contactsFailed: true },
-            failure: { step: 'chat_contacts_read', error },
-          }),
-        );
+        ]);
+        return { contacts: { rooms, bots, lastMessageTimes }, contactsFailed: false };
       }
       case 'messages':
-        return repo.listMessages(request.productId, request.roomId).then(
-          messages => ({ kind: 'readEnded', request, shown: { messages, messagesFailed: false }, failure: null }),
-          (error: unknown) => ({
-            kind: 'readEnded',
-            request,
-            shown: { messagesFailed: true },
-            failure: { step: 'chat_messages_read', error },
-          }),
-        );
+        return { messages: await repo.listMessages(request.productId, request.roomId), messagesFailed: false };
     }
   }
 }
 
 /** The read of kind `read` that `follow` shows, or null when it shows none. */
-function getReadRequest(follow: ChatFollow | null, read: keyof Reads): ReadRequest | null {
-  if (follow === null) {
-    return null;
-  }
+function getReadRequest(follow: ChatFollow, read: keyof Reads): ReadRequest | null {
   switch (read) {
     case 'contacts':
       return { read, productId: follow.productId };
     case 'messages':
       return follow.roomId === null ? null : { read, productId: follow.productId, roomId: follow.roomId };
   }
+}
+
+/** What the next follow shows: what `shown` holds of the same product and room, until their reads land. */
+function getFollowShown(shown: ChatShown, { sameProduct, sameRoom }: GetFollowShownParams): ChatShown {
+  return {
+    contacts: sameProduct ? shown.contacts : null,
+    contactsFailed: sameProduct && shown.contactsFailed,
+    messages: sameRoom ? shown.messages : null,
+    messagesFailed: sameRoom && shown.messagesFailed,
+  };
 }

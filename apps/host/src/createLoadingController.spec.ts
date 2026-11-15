@@ -73,7 +73,7 @@ describe('The loading controller drives the loading store', () => {
     controller.initPhases(phases);
 
     // When
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     vi.advanceTimersByTime(5_000);
 
     // Then about halfway across the band
@@ -100,7 +100,7 @@ describe('The loading controller drives the loading store', () => {
     controller.initPhases([{ label: 'a', base: 0, target: 90, expectedMs: 1_000, stage: 'content' }]);
 
     // When
-    controller.advancePhase(0);
+    controller.advancePhase('content');
     vi.advanceTimersByTime(10 * 60_000);
 
     // Then
@@ -236,7 +236,7 @@ describe('The loading controller drives the loading store', () => {
     controller.onProgressStall(onStall);
 
     // When
-    controller.advancePhase(0);
+    controller.advancePhase('content');
     vi.advanceTimersByTime(PROGRESS_STALL_MS - 1);
 
     // Then
@@ -271,7 +271,7 @@ describe('The loading controller drives the loading store', () => {
     // Given
     const { controller } = setupController();
     controller.initPhases([{ label: 'a', base: 0, target: 50, expectedMs: 5_000, stage: 'relay' }]);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
 
     // When
     controller.dismissLoading();
@@ -299,7 +299,7 @@ describe('The loading controller drives the loading store', () => {
     const onStall = vi.fn();
     controller.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     controller.onProgressStall(onStall);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     vi.advanceTimersByTime(1_000);
 
     // When
@@ -317,7 +317,7 @@ describe('The loading controller drives the loading store', () => {
     // Given a load whose screen has gone
     const { controller } = setupController();
     controller.initPhases(ROOT_PHASES);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     controller.hideLoading();
     const hidden = loadingState.get();
 
@@ -344,13 +344,13 @@ describe('The loading controller drives the loading store', () => {
     ]);
     const onStall = vi.fn();
     controller.onProgressStall(onStall);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     controller.hideLoading();
 
     // When late signals arrive: content bytes, a progress fraction and a
     // phase change
     controller.setLoadingStage('preparing');
-    controller.advancePhase(1);
+    controller.advancePhase('content');
     controller.nudgePhaseProgress(0.5, 'content');
     const afterSignals = loadingState.get();
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
@@ -377,7 +377,7 @@ describe('The loading controller drives the loading store', () => {
     // Given a crawling bar, a rotating explanation and an armed stall watch
     const { controller, pageContent } = setupController();
     controller.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     vi.advanceTimersByTime(1_000);
 
     // When
@@ -406,7 +406,7 @@ describe('The loading controller drives the loading store', () => {
     // Given an explanation mid-turn
     const { controller } = setupController();
     controller.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS / 2);
     const midTurn = readExplanation();
 
@@ -432,7 +432,7 @@ describe('The loading controller drives the loading store', () => {
     // Given an explanation half typed
     const { controller } = setupController();
     controller.initPhases(ROOT_PHASES);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS + TYPE_MS / 2);
     const halfTyped = readExplanation();
 
@@ -453,12 +453,12 @@ describe('The loading controller drives the loading store', () => {
       { label: 'a', base: 5, target: 50, expectedMs: 60_000, stage: 'relay' },
       { label: 'b', base: 50, target: 90, expectedMs: 60_000, stage: 'content' },
     ]);
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
     controller.dismissLoading();
     const step = readStep();
 
     // When
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // Then only the fade's timer runs, and the story stays where it was
     expect(readProgress()).toBe(100);
@@ -476,7 +476,7 @@ describe('The loading controller drives the loading store', () => {
       stalledAt.push(readShownPercent());
       throw new Error('the stall warning broke');
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When the bar parks past the stall time, and then some
     vi.advanceTimersByTime(PROGRESS_STALL_MS + 3_000);
@@ -497,7 +497,7 @@ describe('The loading bar reports when it stops moving', () => {
     controller.onProgressStall(percent => {
       stalls.push(percent);
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     for (let tenth = 1; tenth <= 6; tenth += 1) {
@@ -517,7 +517,7 @@ describe('The loading bar reports when it stops moving', () => {
     controller.onProgressStall(percent => {
       stalls.push(percent);
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     vi.advanceTimersByTime(PROGRESS_STALL_MS + 100);
@@ -537,7 +537,7 @@ describe('The loading bar reports when it stops moving', () => {
     const removeListener = controller.onProgressStall(percent => {
       stalls.push(percent);
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     removeListener();
@@ -556,7 +556,7 @@ describe('The loading bar reports when it stops moving', () => {
     controller.onProgressStall(percent => {
       stalls.push(percent);
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     removeEarlier();
@@ -572,7 +572,7 @@ describe('The loading bar never stands still', () => {
     // Given
     const { controller } = setupController();
     controller.initPhases(STALL_PHASES);
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     const seen: number[] = [readShownPercent()];
@@ -589,7 +589,7 @@ describe('The loading bar never stands still', () => {
     // Given
     const { controller } = setupController();
     controller.initPhases(STALL_PHASES);
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When
     vi.advanceTimersByTime(10 * 60_000);
@@ -602,7 +602,7 @@ describe('The loading bar never stands still', () => {
     // Given
     const { controller } = setupController();
     controller.initPhases(STALL_PHASES);
-    controller.advancePhase(1);
+    controller.advancePhase('content');
     vi.advanceTimersByTime(9_000);
     const crept = readShownPercent();
 
@@ -617,11 +617,11 @@ describe('The loading bar never stands still', () => {
     // Given the release heard during the step before the counting one
     const { controller } = setupController();
     controller.initPhases(STALL_PHASES);
-    controller.advancePhase(0);
+    controller.advancePhase('starting');
     controller.releasePhaseProgress();
 
     // When
-    controller.advancePhase(1);
+    controller.advancePhase('content');
     vi.advanceTimersByTime(nth(STALL_PHASES, 1).expectedMs);
 
     // Then the crawl, not the 1% floor, carried the bar most of the way
@@ -694,7 +694,7 @@ describe('The loading screen reports a collaborator that throws', () => {
     controller.initPhases(ROOT_PHASES);
 
     // When
-    controller.advancePhase(0);
+    controller.advancePhase('relay');
 
     // Then
     expect(counted('loading_screen.transition')).toEqual([expect.objectContaining({ outcome: 'error' })]);
@@ -773,7 +773,7 @@ describe('Restarting the loading phases', () => {
     controller.onProgressStall(percent => {
       stalls.push(percent);
     });
-    controller.advancePhase(1);
+    controller.advancePhase('content');
 
     // When the phases start again and the stall time passes
     controller.initPhases(STALL_PHASES);

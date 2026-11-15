@@ -3,7 +3,7 @@
 
 // This tab's debug mode: whether it is on, and the reloads into and out of it.
 
-import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
+import { getDebugModeUrl, isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
 /** Returns whether this tab runs in debug mode. Never throws. */
 export function isTruapiDebugEnabled(): boolean {
@@ -12,9 +12,7 @@ export function isTruapiDebugEnabled(): boolean {
 
 /** Reloads this tab with the debug panel on. */
 export function openInDebugMode(): void {
-  const url = new URL(window.location.href);
-  url.searchParams.set('debug', 'true');
-  window.location.assign(url.toString());
+  window.location.assign(getDebugModeUrl(window.location.href));
 }
 
 /** Turns debug mode off for this tab and reloads it without the panel. */

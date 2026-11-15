@@ -46,10 +46,14 @@ export type WalletBoot = ReturnType<typeof createWalletBoot>;
 /** A wallet read the frame answered, whatever it found. */
 type AnsweredWallet = Exclude<WalletRead, { status: 'failed' }>;
 
-const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
-const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
+type NoteKeptParams = Pick<Reconciled, 'presence'> & {
+  session: Extract<Reconciled['session'], { status: 'ok' }>;
+  wallet: AnsweredWallet;
+};
 
-/** Builds the restore on load. Building it never throws. */
+const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
+
+/** Builds the restore on load. */
 export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   const reader: PresenceReader = getLoadReader(role);
   // One pass at a time, so a caller that asks during a pass waits for it, and takes its answer once it is kept.
@@ -63,7 +67,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
   // What the rule left for the page, once a pass kept it.
   let kept: Reconciled | null = null;
 
-  return {
+  const walletBoot = {
     /**
      * What the restore rule left of the stored sign-in. Kept for the page once the frame answered both the session and
      * the wallet read, so the rule runs before boot picks a wallet mode and before any core or session state reads the
@@ -84,12 +88,11 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
      * and rejects, with that rejection as the cause.
      */
     async read(): Promise<LocalWalletBoot | null> {
-      return getLocalWallet((await passes.call(pass)).wallet, bootsOnStored);
+      return (await walletBoot.restore()).local;
     },
     /**
      * The sign-in window serves a site from here on, so a stored local wallet picks the mode and the wallet mode is
-     * reported again. Called before anything boots a core, as a core already booted keeps the mode it read. Never
-     * throws.
+     * reported again. Called before anything boots a core, as a core already booted keeps the mode it read.
      */
     serveSites(): void {
       bootsOnStored = true;
@@ -98,6 +101,7 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       }
     },
   };
+  return walletBoot;
 
   /**
    * Answers with the kept answer, or applies the restore rule over what the passes so far found and keeps what it left
@@ -118,49 +122,67 @@ export function createWalletBoot({ reconcile, report, flag, role }: Params) {
       });
       throw new Error('The restore rule failed', { cause: error });
     }
-    const firstAnswer = wallet === null;
+    // Until a wallet read is answered, each pass reports the mode it found.
+    const walletAnswered = wallet !== null;
     const passWallet = wallet ?? reconciled.wallet;
+    const { presence, session } = reconciled;
+    // A read the frame could not answer leaves nothing kept for the page.
+    const isKept = passWallet.status !== 'failed' && session.status !== 'failed';
     dead ??= reconciled.dead;
     const restored: Reconciled = { ...reconciled, wallet: passWallet, dead };
+
     // What the pass found is written before anything is reported, so a listener that calls back in sees it whole.
     if (passWallet.status !== 'failed') {
       wallet = passWallet;
-      if (reconciled.session.status !== 'failed') {
-        kept = restored;
-      }
     }
-    if (firstAnswer) {
-      if (passWallet.status === 'failed') {
+    if (isKept) {
+      kept = restored;
+    }
+
+    if (!walletAnswered) {
+      reportMode(passWallet);
+    }
+    if (isKept) {
+      noteKept({ presence, session, wallet: passWallet });
+    }
+    return restored;
+  }
+
+  /** Reports the mode `passWallet` tells, with why a wallet that could not be read or decrypted is not used. */
+  function reportMode(passWallet: WalletRead): void {
+    switch (passWallet.status) {
+      case 'failed':
         // The environment's failure, so each pass that met it is a breadcrumb and a count.
         walletReport.expected(passWallet.error, {
           step: 'local_wallet',
           metric: walletLocalActivateMetric,
           reason: 'read',
         });
-      }
-      if (passWallet.status === 'unreadable') {
+        break;
+      case 'unreadable':
         reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
-      }
-      // It tells the mode even when a read failed, so cores can boot, and core storage reports a failed session.
-      report(getWalletMode(passWallet, bootsOnStored));
+        break;
+      case 'none':
+      case 'ok':
+        break;
     }
-    const { presence, session } = reconciled;
-    // A read the frame could not answer leaves nothing kept for the page.
-    if (passWallet.status === 'failed' || session.status === 'failed') {
-      return restored;
-    }
+    // It tells the mode even when a read failed, so cores can boot, and core storage reports a failed session.
+    report(getWalletMode(passWallet, bootsOnStored));
+  }
+
+  /** Logs what a kept answer leaves the page without, and renews the flag on a sign-in it found. */
+  function noteKept({ presence, session, wallet: keptWallet }: NoteKeptParams): void {
     if (presence === 'unknown' && isFlagShared(role)) {
       walletReport.log.event('signed-in flag unreadable, keeping the stored sign-in');
       sessionPresenceMetric.count({ outcome: 'unreadable', reason: reader });
     }
-    if (passWallet.status === 'ok' && !bootsOnStored) {
+    if (keptWallet.status === 'ok' && !bootsOnStored) {
       walletReport.log.event('local wallet kept as data, page pairs');
     }
     // Renewed rather than set, since a sign-out elsewhere may have deleted it since the read.
-    if (presence === 'present' && (session.blob !== null || passWallet.status === 'ok')) {
+    if (presence === 'present' && (session.blob !== null || keptWallet.status === 'ok')) {
       flag.renew();
     }
-    return restored;
   }
 }
 
@@ -172,7 +194,7 @@ function getLocalWallet(wallet: WalletRead, bootsOnStored: boolean): LocalWallet
 /** The mode `wallet` picks, with why a wallet that could not be read or no longer decrypts is not used. */
 function getWalletMode(wallet: WalletRead, bootsOnStored: boolean): WalletModeState {
   if (wallet.status === 'failed') {
-    return { mode: 'app', failure: UNAVAILABLE };
+    return { mode: 'app', failure: 'Local wallet could not be read, so this page uses Polkadot App' };
   }
   return {
     mode: getLocalWallet(wallet, bootsOnStored) === null ? 'app' : 'local',

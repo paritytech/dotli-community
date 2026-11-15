@@ -34,13 +34,16 @@ import {
   SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
   SYSTEM_HANDSHAKE,
 } from '@parity/truapi/wire-table';
-import { describeWireFrame, getWireFrameId, getWireFrameKey, type WireFrameId } from './debugWireDescribe.js';
+import { describeWireFrame, type WireFrameId } from './debugWireDescribe.js';
 import { blockHash, genesisHash } from '../testing/fixtures.js';
 
 type Leg = 'start' | 'receive' | 'interrupt' | 'stop' | 'request' | 'response';
 
 /** SCALE decodes zeros as every field's zero value (variant 0, empty, false) and ignores the bytes it does not need. */
 const ZERO_PAYLOAD = new Uint8Array(512);
+
+/** The key an undecoded frame carries, a number the panel only checks the type of. */
+const ANY_WIRE_ID: unknown = expect.any(Number);
 
 /** What a decoded zero payload looks like per leg: version 1, and for a response the Ok side of the result. */
 const DECODED = {
@@ -93,6 +96,11 @@ const SIGN_RAW = {
   },
 };
 
+/** The id of a method's `messageType` leg on the wire. */
+function getFrameId(ids: MethodIds, messageType: number): WireFrameId {
+  return { traitId: ids.trait, methodId: ids.method, messageType };
+}
+
 /** A zero payload whose envelope is `version`, behind the Ok byte on a response. */
 function buildVersionedZeroPayload(leg: 'request' | 'response', version: number): Uint8Array {
   const payload = new Uint8Array(ZERO_PAYLOAD.length);
@@ -113,7 +121,7 @@ function listChainFrames(): { leg: Leg; frame: WireFrameId }[] {
     .flatMap(([, ids]) =>
       LEGS[ids.kind].map(([messageType, leg]) => ({
         leg,
-        frame: getWireFrameId(ids, messageType),
+        frame: getFrameId(ids, messageType),
       })),
     );
 }
@@ -132,7 +140,7 @@ describe('describeWireFrame', () => {
     });
 
     // When it is described
-    const described = describeWireFrame(getWireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START), bytes);
+    const described = describeWireFrame(getFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START), bytes);
 
     // Then it carries the chain tag and the decoded payload
     expect(described).toEqual({
@@ -147,7 +155,7 @@ describe('describeWireFrame', () => {
   it('As a dotli integrator, I describe a non-chain frame and it is named from the wire table without decoding', () => {
     // Given: a system handshake frame (not in the codec registry).
     const bytes = new Uint8Array([1, 2, 3]);
-    const frame = getWireFrameId(SYSTEM_HANDSHAKE, MESSAGE_TYPE_REQUEST);
+    const frame = getFrameId(SYSTEM_HANDSHAKE, MESSAGE_TYPE_REQUEST);
 
     // When it is described
     const described = describeWireFrame(frame, bytes);
@@ -155,7 +163,7 @@ describe('describeWireFrame', () => {
     // Then: mechanical name, raw payload preserved for the detail pane.
     expect(described).toEqual({
       tag: 'system_handshake_request',
-      value: { wireId: getWireFrameKey(frame), bytes },
+      value: { wireId: ANY_WIRE_ID, bytes },
     });
   });
 
@@ -164,7 +172,7 @@ describe('describeWireFrame', () => {
     const bytes = new Uint8Array(48);
 
     // When it is described
-    const described = describeWireFrame(getWireFrameId(LOCAL_STORAGE_READ, MESSAGE_TYPE_REQUEST), bytes);
+    const described = describeWireFrame(getFrameId(LOCAL_STORAGE_READ, MESSAGE_TYPE_REQUEST), bytes);
 
     // Then: named, but neither decoded value nor raw bytes escape the tap.
     expect(described).toEqual({ tag: 'local_storage_read_request', value: { redacted: true, byteLength: 48 } });
@@ -179,13 +187,13 @@ describe('describeWireFrame', () => {
     const described = describeWireFrame(frame, bytes);
 
     // Then it carries the mechanical tag and its raw bytes
-    expect(described).toEqual({ tag: 'wire_250_7_0', value: { wireId: getWireFrameKey(frame), bytes } });
+    expect(described).toEqual({ tag: 'wire_250_7_0', value: { wireId: ANY_WIRE_ID, bytes } });
   });
 
   it('As a dotli integrator, I describe a chain frame whose codec fails to decode and get its raw bytes', () => {
     // Given: garbage bytes on a chain discriminant.
     const bytes = new Uint8Array([0xff, 0xff, 0xff]);
-    const frame = getWireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST);
+    const frame = getFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST);
 
     // When it is described
     const described = describeWireFrame(frame, bytes);
@@ -193,7 +201,7 @@ describe('describeWireFrame', () => {
     // Then: the tag still resolves and the payload keeps the raw form instead of throwing.
     expect(described).toEqual({
       tag: 'remote_chain_head_header_request',
-      value: { wireId: getWireFrameKey(frame), bytes },
+      value: { wireId: ANY_WIRE_ID, bytes },
     });
   });
 
@@ -226,7 +234,7 @@ describe('describeWireFrame', () => {
       const bytes = encodePayload(codec, value);
 
       // When it is described
-      const described = describeWireFrame(getWireFrameId(ids, MESSAGE_TYPE_RESPONSE), bytes);
+      const described = describeWireFrame(getFrameId(ids, MESSAGE_TYPE_RESPONSE), bytes);
 
       // Then it carries the chain tag and the decoded result
       expect(described).toEqual({ tag, value });
@@ -238,7 +246,7 @@ describe('describeWireFrame', () => {
     const bytes = encodePayload(VersionedHostSignRawRequest, SIGN_RAW);
 
     // When it is described with wallet frames decoded
-    const described = describeWireFrame(getWireFrameId(SIGNING_SIGN_RAW, MESSAGE_TYPE_REQUEST), bytes, {
+    const described = describeWireFrame(getFrameId(SIGNING_SIGN_RAW, MESSAGE_TYPE_REQUEST), bytes, {
       decodeWalletFrames: true,
     });
 
@@ -273,7 +281,7 @@ describe('describeWireFrame', () => {
     },
   ])('As $user, I watch $frame cross and see it redacted', ({ ids, messageType, bytes, decodeWalletFrames }) => {
     // Given the frame's id on the wire
-    const frame = getWireFrameId(ids, messageType);
+    const frame = getFrameId(ids, messageType);
 
     // When the frame is described
     const described = describeWireFrame(frame, bytes, { decodeWalletFrames });
@@ -285,8 +293,8 @@ describe('describeWireFrame', () => {
   it('As a dotli integrator, I describe every wallet frame the tap decodes and each finds its codec', () => {
     // Given the frames a local signing host serves itself, each leg carrying its codec's zero value in its version
     const frames = WALLET_FRAMES.flatMap(({ ids, version }) => [
-      { version, leg: 'request' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_REQUEST) },
-      { version, leg: 'response' as const, frame: getWireFrameId(ids, MESSAGE_TYPE_RESPONSE) },
+      { version, leg: 'request' as const, frame: getFrameId(ids, MESSAGE_TYPE_REQUEST) },
+      { version, leg: 'response' as const, frame: getFrameId(ids, MESSAGE_TYPE_RESPONSE) },
     ]);
 
     // When each is described with wallet frames decoded
@@ -323,7 +331,7 @@ describe('chain-family drift guard', () => {
     // would leave its payload as raw bytes. Control legs are never decoded.
     expect(described.map(({ tag }) => tag).filter(tag => !tag.startsWith('remote_chain_'))).toEqual([]);
     expect(controlLegs.map(({ tag, value }) => ({ tag, value }))).toEqual(
-      controlLegs.map(({ tag, frame }) => ({ tag, value: { wireId: getWireFrameKey(frame), bytes: ZERO_PAYLOAD } })),
+      controlLegs.map(({ tag }) => ({ tag, value: { wireId: ANY_WIRE_ID, bytes: ZERO_PAYLOAD } })),
     );
     expect(dataLegs.map(({ tag, value }) => ({ tag, value }))).toMatchObject(
       dataLegs.map(({ tag, leg }) => ({ tag, value: DECODED[leg] })),

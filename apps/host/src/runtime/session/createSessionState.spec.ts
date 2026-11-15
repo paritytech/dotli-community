@@ -684,7 +684,7 @@ describe('session state', () => {
       // A cache from another code version is discarded instead of being laundered into a typed session state with
       // non-string fields.
       cache: JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }),
-      counted: [],
+      counted: [{ outcome: 'invalid', reason: 'shape' }],
     },
     {
       label: 'a corrupt cached account',
@@ -708,7 +708,7 @@ describe('session state', () => {
       onTestFinished(session.start());
       await waitForAuth(() => events.length === 1);
 
-      // Then a bare connected state is published, and only a corrupt cache is counted
+      // Then a bare connected state is published, and only a cache that does not parse is counted
       expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
       expect(captures.exception).not.toHaveBeenCalled();
       expect(captures.expected).not.toHaveBeenCalled();

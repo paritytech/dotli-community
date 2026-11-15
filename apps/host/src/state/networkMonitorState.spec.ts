@@ -3,13 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ChainActivity } from '@dotli/chains';
-import {
-  classifyGap,
-  createNetworkMonitorState,
-  MAX_BARS,
-  type ChainStatus,
-  type NetworkMonitor,
-} from './networkMonitorState.js';
+import { createNetworkMonitorState, type ChainStatus, type NetworkMonitor } from './networkMonitorState.js';
 import { describeLiveNetwork } from '../networkVerdict.js';
 import { buildChainActivity } from '../testing/buildChainActivity.js';
 import { getRelayGenesis } from '../testing/getRelayGenesis.js';
@@ -30,21 +24,23 @@ beforeEach(() => {
 
 describe('Block arrival colouring works', () => {
   it.each([
-    { gapMs: 6000, blockTimeMs: 6000, health: 'onTime' },
-    { gapMs: 9000, blockTimeMs: 6000, health: 'onTime' },
-    { gapMs: 9001, blockTimeMs: 6000, health: 'late' },
-    { gapMs: 18_000, blockTimeMs: 6000, health: 'late' },
-    { gapMs: 18_001, blockTimeMs: 6000, health: 'veryLate' },
-    { gapMs: 6000, blockTimeMs: 2000, health: 'late' },
-    { gapMs: 6001, blockTimeMs: 2000, health: 'veryLate' },
+    { gapMs: 9000, health: 'onTime' },
+    { gapMs: 9001, health: 'late' },
+    { gapMs: 18_000, health: 'late' },
+    { gapMs: 18_001, health: 'veryLate' },
   ])(
-    'As a user, I get a block $gapMs ms after the last on a $blockTimeMs ms chain and see it read $health',
-    ({ gapMs, blockTimeMs, health }) => {
+    'As a user, I get a block $gapMs ms after the last on a 6000 ms chain and see it read $health',
+    async ({ gapMs, health }) => {
+      // Given a chain outside the known roles, judged against a 6000 ms block time
+      use(EXTRA);
+      monitor.recordBestBlock(EXTRA, 100);
+      await timers.advance(gapMs);
+
       // When
-      const judged = classifyGap(gapMs, blockTimeMs);
+      monitor.recordBestBlock(EXTRA, 101);
 
       // Then
-      expect(judged).toBe(health);
+      expect(getChainByKey(EXTRA).bars).toEqual([{ number: 101, health, gapMs }]);
     },
   );
 });
@@ -184,13 +180,17 @@ describe('The network monitor tracks blocks', () => {
     const genesis = getRelayGenesis();
 
     // When
-    for (let blockNumber = 0; blockNumber < MAX_BARS + 15; blockNumber += 1) {
+    const counts: number[] = [];
+    for (let blockNumber = 1; blockNumber <= 400; blockNumber += 1) {
       await timers.advance(6000);
       monitor.recordBestBlock(genesis, blockNumber);
+      if (blockNumber % 200 === 0) {
+        counts.push(nth(monitor.getNetworkStatus(), 0).bars.length);
+      }
     }
 
-    // Then
-    expect(monitor.getNetworkStatus()[0]?.bars.length).toBe(MAX_BARS);
+    // Then the strip holds as many bars after 400 blocks as after 200
+    expect(counts[1]).toBe(counts[0]);
   });
 
   it('As a user on a chain that republishes its head, I get one block three times and see one bar', async () => {
