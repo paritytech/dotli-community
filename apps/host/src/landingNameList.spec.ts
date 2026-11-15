@@ -34,6 +34,8 @@ const SETTINGS: SettingsState = {
 
 const NOW = 1_700_000_000_000;
 
+const ADDRESS = `0x${'0'.repeat(40)}`;
+
 describe('landing name list', () => {
   it('As a returning visitor, I open the landing page and see my stored app labels before the sync reads anything', async () => {
     // Given a stored list and reads that are still opening
@@ -200,6 +202,62 @@ describe('landing name list', () => {
 
     // Then
     expect(traced).toEqual(['error TypeError']);
+  });
+
+  it('As a visitor who clears the cache while the sync reads, I see no save land after the clear and no failure reported', async () => {
+    // Given a sync whose read of new labels is held until the clear is done
+    const reports = recordReports({ onFinished: onTestFinished });
+    const asked = Promise.withResolvers<readonly LabelStoreCursor[]>();
+    const held = Promise.withResolvers<{ stores: LabelStoreCursor[]; labels: string[] }>();
+    const { nameList, events, traced, traceEnded } = setupNameList({
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: (stores: readonly LabelStoreCursor[]) => {
+          asked.resolve(stores);
+          return held.promise;
+        },
+      },
+    });
+
+    // When the visitor clears while the read is in flight, and the read lands after it
+    nameList.start();
+    const stores = await asked.promise;
+    await nameList.clear();
+    held.resolve({ stores: stores.map(store => ({ ...store, read: store.read + 1 })), labels: ['alpha'] });
+    await traceEnded;
+
+    // Then
+    expect(events.filter(event => event.startsWith('saved') || event === 'cleared')).toEqual(['cleared']);
+    expect(traced).toEqual(['error AbortError']);
+    expect(reports.exceptions).toEqual([]);
+    expect(reports.expected).toEqual([]);
+    expect(events).toContain('released');
+  });
+
+  it('As a visitor who clears the cache twice before my settings are read, I see the later sync save nothing and report nothing', async () => {
+    // Given no settings yet, and reads that would save a step
+    const reports = recordReports({ onFinished: onTestFinished });
+    const { nameList, settings, events, traced, traceEnded } = setupNameList({
+      settings: null,
+      reads: {
+        readLabelStores: () => Promise.resolve([ADDRESS]),
+        readNewLabels: (stores: readonly LabelStoreCursor[]) =>
+          Promise.resolve({ stores: stores.map(store => ({ ...store, read: store.read + 1 })), labels: ['alpha'] }),
+      },
+    });
+
+    // When the visitor clears twice, then the sync starts once the boot sets the settings
+    await nameList.clear();
+    await nameList.clear();
+    nameList.start();
+    settings.set(SETTINGS);
+    await traceEnded;
+
+    // Then
+    expect(events.filter(event => event.startsWith('saved') || event === 'cleared')).toEqual(['cleared', 'cleared']);
+    expect(traced).toEqual(['error AbortError']);
+    expect(reports.exceptions).toEqual([]);
+    expect(reports.expected).toEqual([]);
   });
 
   it('As the suggestion island, I start twice and one sync runs', async () => {

@@ -42,12 +42,20 @@ export function createLandingNameList({
   const labelsStore: ReadableAtom<readonly string[]> = labels;
   // A latch, since the page runs one sync and a second start must not queue another.
   let started = false;
+  // The stop of the page's one sync, which a clear fires.
+  const controller = new AbortController();
+  const { signal } = controller;
 
   return {
     /** The app labels to suggest from: the stored ones once read, then each saved step's. */
     labels: labelsStore,
     /** Starts the page's one sync once the settings are set. Again does nothing. */
     start,
+    /**
+     * Stops the page's sync so none of its saves lands after the clear, then empties every network's stored list.
+     * Resolves once the clear commits. Again is safe.
+     */
+    clear,
   };
 
   function start(): void {
@@ -69,12 +77,21 @@ export function createLandingNameList({
     });
   }
 
+  async function clear(): Promise<void> {
+    controller.abort();
+    await store.clear();
+  }
+
   async function sync(current: SettingsState): Promise<void> {
     const trace = openTrace(current.backend);
     try {
       await runSync(current, trace);
     } catch (error) {
       trace.ended({ kind: 'error', error });
+      // The user cleared the list, so the stopped sync is no failure.
+      if (signal.aborted) {
+        return;
+      }
       if (isExpectedReadError(error)) {
         report.expected(error, { step: 'sync', metric: nameListSyncMetric });
       } else {
@@ -105,6 +122,8 @@ export function createLandingNameList({
         reads: trace.withReads(reads),
         now,
         save: async record => {
+          // A save past this check asked for the connection before a later clear did, so it commits first.
+          signal.throwIfAborted();
           // Saved first, so a `labels` listener that throws never loses the chunk.
           await store.set(record);
           labels.set(record.apps);
