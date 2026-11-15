@@ -249,6 +249,10 @@ function setupNameList({ stored = null, settings = SETTINGS, reads = {}, open = 
         events.push(`saved ${record.apps.join(',')}`);
         return Promise.resolve();
       },
+      clear: () => {
+        events.push('cleared');
+        return Promise.resolve();
+      },
     },
     openReads: (current: SettingsState) => {
       opened.push(current);
