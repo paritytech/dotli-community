@@ -26,7 +26,7 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
 - **Session:** sign-in and sign-out with Polkadot App or a local wallet. It also owns the signed-in flag and the wallet
   mode.
 - **Name suggestions:** the landing page keeps a dotNS name list and suggests the names that publish an app under its
-  input. Its settings can clear the list and reload.
+  input. The landing page's settings can clear the list and reload.
 - **Stores:**
   - auth
   - product
