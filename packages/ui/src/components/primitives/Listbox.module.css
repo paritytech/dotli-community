@@ -1,0 +1,114 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.list {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: max(100%, 200px);
+  max-width: var(--w-pop-md);
+  max-height: 306px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: var(--sp-1_5);
+  border-radius: var(--r-pop);
+  list-style: none;
+  text-align: left;
+  background: var(--chrome-surface);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  transition:
+    opacity var(--dur-fast),
+    transform var(--dur-fast);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .list {
+    backdrop-filter: var(--chrome-blur);
+  }
+}
+@starting-style {
+  .list {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.list[data-align='end'] {
+  right: 0;
+  left: auto;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: inherit;
+  font: var(--fw-regular) var(--fs-title) / 1 var(--font-sans);
+  cursor: pointer;
+}
+.option[aria-selected='true'] {
+  background: var(--chrome-fill);
+}
+@media (hover: hover) {
+  .option:hover {
+    background: var(--chrome-fill);
+  }
+}
+.option[aria-checked='true'] {
+  background: var(--chrome-info-fill);
+}
+/* Both fills, so the arrow keys landing on the chosen option still show. */
+.option[aria-checked='true'][aria-selected='true'] {
+  background: linear-gradient(var(--chrome-fill), var(--chrome-fill)), var(--chrome-info-fill);
+}
+@media (hover: hover) {
+  .option[aria-checked='true']:hover {
+    background: linear-gradient(var(--chrome-fill), var(--chrome-fill)), var(--chrome-info-fill);
+  }
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.detail {
+  color: var(--text-secondary);
+}
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--chrome-text-muted);
+}
+.check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chrome-info);
+}
+/* On a phone --w-pop-md is wider than a narrow screen, so the list keeps to its control's width and the text ellipsizes. */
+@media (max-width: 560px) {
+  .list {
+    width: max(100%, 200px);
+    min-width: 0;
+    max-width: none;
+    max-height: 336px;
+  }
+  .option {
+    height: var(--h-control);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .list {
+    transition: none;
+  }
+}
