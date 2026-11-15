@@ -1,20 +1,20 @@
 ---
 name: document-review
 description: >-
-  Use to refine a design or plan document in `docs/_plans/` before going on to the next workflow step. Applies when the
-  document exists and needs improving, such as vague language, dead weight, unstated assumptions or scope creep.
+  Use to refine a design in `docs/_plans/` before going on to the next workflow step. Applies when the design exists and
+  needs improving, such as vague language, dead weight, unstated assumptions or scope creep.
 ---
 
 # Document Review
 
-Improve design or plan documents through structured review.
+Improve a design document through structured review.
 
 ## Step 1: Get the Document
 
 **If a document path is provided:** read it, then go on to Step 2.
 
-**If no document is specified:** ask which document to review, or look for the most recent one in `docs/_plans/`:
-`<topic>-design.md` for designs, `<topic>-plan.md` for plans.
+**If no document is specified:** ask which document to review, or look for the most recent `<topic>-design.md` in
+`docs/_plans/`.
 
 ## Step 2: Assess
 
@@ -32,17 +32,17 @@ These questions surface issues. Don't fix yet, just note what you find.
 
 Score the document against these criteria:
 
-| Criterion        | What to check                                                                                   |
-| ---------------- | ----------------------------------------------------------------------------------------------- |
-| **Clarity**      | The problem statement is clear, with no vague language ("probably", "consider", "try to")       |
-| **Completeness** | Required sections present, constraints stated, open questions flagged                           |
-| **Specificity**  | Concrete enough for the next step: a design concrete enough to plan, a plan enough to implement |
-| **YAGNI**        | No hypothetical features, the simplest approach chosen                                          |
+| Criterion        | What to check                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| **Clarity**      | The problem statement is clear, with no vague language ("probably", "consider", "try to") |
+| **Completeness** | Required sections present, constraints stated, open questions flagged                     |
+| **Specificity**  | Decisions settled enough to build in slices, with no task list or code                    |
+| **YAGNI**        | No hypothetical features, the simplest approach chosen                                    |
 
-If invoked within a workflow (after `superpowers:brainstorming` or `superpowers:writing-plans`, through the
-`architecture` skill), also check:
+If invoked within the `architecture` skill, also check:
 
 - **User intent fidelity.** The document reflects what was discussed, and its assumptions are validated.
+- **Size.** At most about 60 lines, with no tasks, code snippets or per-file steps.
 
 ## Step 4: Identify the Critical Improvement
 

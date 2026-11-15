@@ -4,11 +4,12 @@
 
 Start every non-trivial change (`docs/code/glossary.md`) with the `architecture` skill.
 
-- `architecture`: decides what the change is and where it goes, then runs the lifecycle from design to review.
-- `document-review`: refines a design or plan in `docs/_plans/` before the next step.
+- `architecture`: decides what the change is and where it goes, then builds it in slices the owner steers.
+- `document-review`: refines a design in `docs/_plans/` before the next step.
 - `reviewer`: audits a branch or PR against the `docs/claude/` checklists.
 
-Code and workflow corrections become repo rules, never agent memory (docs/code/rule-extraction.md § When to run).
+Code and workflow corrections go to the repo, never agent memory. Each one goes to the `decision-keeper` agent first
+(docs/code/rule-extraction.md § When to run).
 
 ## Project agent
 
@@ -21,8 +22,8 @@ change. While this session's file exists, read the agent ID from it and route ea
 
 - `p:` at the start sends the message to the agent and `m:` keeps it here. Strip the prefix.
 - A reply to the agent's open `QUESTION`, `APPROVAL` or `BLOCKED` goes to the agent.
-- Anything about that change goes to the agent: its design, plan, code, progress, a correction, a pause or a stop.
-- Everything else is handled here as usual, without reading the change's plan.
+- Anything about that change goes to the agent: its design, a slice, code, progress, a correction, a pause or a stop.
+- Everything else is handled here as usual, without reading the change's design.
 - When unsure, ask the owner once whether it is for the project or for here.
 
 Relay with `SendMessage` to the agent ID, as `OWNER: <the owner's words verbatim>`, plus the paths of any file the owner
