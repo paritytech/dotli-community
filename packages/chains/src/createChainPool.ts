@@ -179,37 +179,42 @@ type PoolState =
 
 type PoolKind = PoolState['kind'];
 
-/** Each `key` is a chain's lowercase genesis hash, and each `lanes` the lanes the event is about. */
+/**
+ * Each `key` is a chain's lowercase genesis hash, and each `lanes` the lanes the event is about. Each `watched` says
+ * whether the pool had a watcher when the event was sent.
+ */
 type PoolEvent =
   | { kind: 'chainAsked'; key: string }
-  | { kind: 'leased'; key: string; lanes: ChainLanes; holder: string }
+  | { kind: 'leased'; key: string; lanes: ChainLanes; holder: string; watched: boolean }
   | { kind: 'released'; key: string; lanes: ChainLanes; holder: string }
   | { kind: 'askEnded'; key: string }
   | { kind: 'closeDue'; key: string }
   | { kind: 'laneStatus'; key: string; lanes: ChainLanes; status: ConnectionStatus }
   | { kind: 'laneHalted'; key: string; lanes: ChainLanes; error: unknown }
-  | { kind: 'syncDue'; key: string }
+  | { kind: 'syncDue'; key: string; watched: boolean }
   | { kind: 'followChanged'; key: string; follow: WatchFollow; following: boolean }
   | { kind: 'followRefused'; key: string; follow: WatchFollow }
   | { kind: 'bestBlock'; key: string; follow: WatchFollow; blockNumber: number }
   | { kind: 'retryDue'; key: string }
   | { kind: 'followFailed'; key: string; lanes: ChainLanes; error: unknown }
   | { kind: 'modeAsked'; mode: PoolKind }
-  | { kind: 'watchersChanged' }
+  | { kind: 'watchersChanged'; watched: boolean }
   | { kind: 'closeAsked' };
 
 /** What happened to a chain or the pool. The runner reads the activity from the state the transition left. */
 type PoolEffect =
   | { kind: 'status'; key: string; status: ConnectionStatus }
-  | { kind: 'activity' | 'built' | 'followed' | 'unfollowed'; key: string }
-  | { kind: 'leased' | 'released'; key: string; holder: string }
-  | { kind: 'closed'; key: string; halt: Halt }
-  | { kind: 'bestBlock'; key: string; blockNumber: number }
+  | { kind: 'activity' | 'built' | 'followed'; key: string }
+  | { kind: 'leaseCounted'; key: string; holder: string; change: 'leased' | 'released' }
+  | { kind: 'chainClosed'; key: string; halt: Halt }
+  | { kind: 'bestBlockFound'; key: string; blockNumber: number }
   | { kind: 'modeSet'; mode: PoolKind; chains: number }
-  | { kind: 'buildFailed' | 'followFailed'; key: string; error: unknown }
+  | { kind: 'buildFailed' | 'followOpenFailed'; key: string; error: unknown }
   | { kind: 'stopTimer'; timer: unknown }
-  | { kind: 'endWatch'; watch: Watch }
-  | { kind: 'disconnectLanes'; lanes: ChainLanes };
+  | { kind: 'endWatch'; key: string; watch: Watch }
+  | { kind: 'disconnectLanes'; lanes: ChainLanes }
+  | { kind: 'lanesModeDue'; key: string; lanes: ChainLanes; action: 'pause' | 'resume' }
+  | { kind: 'haltLanes'; key: string; lanes: ChainLanes; error: unknown };
 
 type PoolMachine = MachineTypes<PoolState, PoolEvent, PoolEffect>;
 type EntryMachine = MachineTypes<Entry, PoolEvent, PoolEffect>;
@@ -254,11 +259,13 @@ export function createChainPool({
     }
     emitSideEffect({ kind: 'activity', key });
   };
+  // Calls no lanes method, since the lanes are halted only once the entry reads closed.
   const closeOnHalt: HandlerOf<EntryMachine, LiveKind, 'laneHalted'> = (entry, { key, error }, transition) => {
-    closeEntry({ key, entry, halt: { error } }, transition);
+    emitClosed({ key, entry, halt: { error } }, transition);
   };
   const closeQuietly: HandlerOf<EntryMachine, LiveKind, 'closeDue'> = (entry, { key }, transition) => {
-    closeEntry({ key, entry, halt: null }, transition);
+    emitClosed({ key, entry, halt: null }, transition);
+    transition.emitSideEffect({ kind: 'disconnectLanes', lanes: entry.chain.lanes });
   };
   // Sent as an event, so a failure that a halt of the chain caused finds the chain closed by that queued halt and goes
   // unreported.
@@ -267,28 +274,29 @@ export function createChainPool({
     { key, error },
     { emitSideEffect },
   ) => {
-    emitSideEffect({ kind: 'followFailed', key, error });
+    emitSideEffect({ kind: 'followOpenFailed', key, error });
   };
   const holdEntry: HandlerOf<EntryMachine, 'unheld' | 'expiring', 'leased'> = (
-    entry,
-    { key, holder },
+    { chain, status },
+    { key, holder, watched },
     { emitState, emitSideEffect, update },
   ) => {
-    const { chain, status } = entry;
     emitState({ kind: 'held', chain, status, leases: 1, watch: { kind: 'off', chain } });
-    emitSideEffect({ kind: 'leased', key, holder });
-    update({ kind: 'syncDue', key });
-    if (entry.kind === 'expiring') {
-      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
-    }
+    emitSideEffect({ kind: 'leaseCounted', key, holder, change: 'leased' });
+    update({ kind: 'syncDue', key, watched });
   };
 
   // A watch with no watcher left stops its follow, or its wait to follow again.
-  const leaveWhenUnwatched: HandlerOf<WatchMachine, 'open' | 'refused', 'syncDue'> = (watch, { key }, transition) => {
-    if (watchers.size > 0) {
+  const leaveWhenUnwatched: HandlerOf<WatchMachine, 'open' | 'refused', 'syncDue'> = (
+    watch,
+    { key, watched },
+    { emitState, emitSideEffect },
+  ) => {
+    if (watched) {
       return;
     }
-    stopWatch(watch, key, transition);
+    emitState({ kind: 'off', chain: watch.chain });
+    emitSideEffect({ kind: 'endWatch', key, watch });
   };
 
   // The watchers' follow runs exactly while the chain is held and watched.
@@ -312,8 +320,8 @@ export function createChainPool({
     store: (entry, _event, watch) => ({ ...entry, watch }),
     handlers: {
       off: {
-        syncDue({ chain }, { key }, transition) {
-          if (watchers.size === 0) {
+        syncDue({ chain }, { key, watched }, transition) {
+          if (!watched) {
             return;
           }
           if (chain.followGate.waitMs() > 0) {
@@ -335,10 +343,10 @@ export function createChainPool({
         followRefused(watch, { key }, transition) {
           watch.chain.followGate.noteHalt();
           waitToRetry(watch.chain, key, transition);
-          transition.emitSideEffect({ kind: 'endWatch', watch });
+          transition.emitSideEffect({ kind: 'endWatch', key, watch });
         },
         bestBlock(_watch, { key, blockNumber }, { emitSideEffect }) {
-          emitSideEffect({ kind: 'bestBlock', key, blockNumber });
+          emitSideEffect({ kind: 'bestBlockFound', key, blockNumber });
         },
       },
       refused: {
@@ -389,13 +397,13 @@ export function createChainPool({
     store: (state, { key }, entry) => ({ ...state, entries: new Map(state.entries).set(key, entry) }),
     handlers: {
       held: {
-        leased(entry, { key, holder }, { emitState, emitSideEffect, update }) {
+        leased(entry, { key, holder, watched }, { emitState, emitSideEffect, update }) {
           emitState({ ...entry, leases: entry.leases + 1 });
-          emitSideEffect({ kind: 'leased', key, holder });
-          update({ kind: 'syncDue', key });
+          emitSideEffect({ kind: 'leaseCounted', key, holder, change: 'leased' });
+          update({ kind: 'syncDue', key, watched });
         },
         released(entry, { key, holder }, transition) {
-          transition.emitSideEffect({ kind: 'released', key, holder });
+          transition.emitSideEffect({ kind: 'leaseCounted', key, holder, change: 'released' });
           if (entry.leases > 1) {
             transition.emitState({ ...entry, leases: entry.leases - 1 });
             return;
@@ -403,12 +411,21 @@ export function createChainPool({
           const { chain, status } = entry;
           const unheld: UnheldEntry = { kind: 'unheld', chain, status };
           transition.emitState(unheld);
-          transition.emitSideEffect({ kind: 'endWatch', watch: entry.watch });
+          transition.emitSideEffect({ kind: 'endWatch', key, watch: entry.watch });
           idle(key, unheld, transition);
         },
         laneStatus: storeStatus,
-        laneHalted: closeOnHalt,
-        closeDue: closeQuietly,
+        laneHalted(entry, event, transition) {
+          // The follow's session ends with the halted lanes, so only a wait to follow again is stopped here.
+          if (entry.watch.kind === 'refused') {
+            transition.emitSideEffect({ kind: 'endWatch', key: event.key, watch: entry.watch });
+          }
+          closeOnHalt(entry, event, transition);
+        },
+        closeDue(entry, event, transition) {
+          transition.emitSideEffect({ kind: 'endWatch', key: event.key, watch: entry.watch });
+          closeQuietly(entry, event, transition);
+        },
         followFailed: reportFollowFailure,
         syncDue: handleWatch,
         followChanged: handleWatch,
@@ -432,10 +449,19 @@ export function createChainPool({
           emitState({ kind: 'unheld', chain, status });
           emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
         },
-        leased: holdEntry,
+        leased(entry, event, transition) {
+          transition.emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+          holdEntry(entry, event, transition);
+        },
         laneStatus: storeStatus,
-        laneHalted: closeOnHalt,
-        closeDue: closeQuietly,
+        laneHalted(entry, event, transition) {
+          transition.emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+          closeOnHalt(entry, event, transition);
+        },
+        closeDue(entry, event, transition) {
+          transition.emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
+          closeQuietly(entry, event, transition);
+        },
         followFailed: reportFollowFailure,
       },
       closed: null,
@@ -466,7 +492,7 @@ export function createChainPool({
           },
           onHalt: error => {
             if (lanes !== null) {
-              haltLanes({ kind: 'laneHalted', key, lanes, error });
+              transition.update({ kind: 'laneHalted', key, lanes, error });
             }
           },
         });
@@ -474,6 +500,7 @@ export function createChainPool({
         transition.emitSideEffect({ kind: 'buildFailed', key, error });
         return;
       }
+      // A context that cannot reach the chain builds no lanes.
       if (lanes === null) {
         return;
       }
@@ -489,15 +516,23 @@ export function createChainPool({
       transition.emitSideEffect({ kind: 'built', key });
     },
     modeAsked(state, { mode }, { emitState, emitSideEffect }) {
+      // A repeated pause or resume changes nothing.
       if (state.kind === mode) {
         return;
       }
       emitState({ ...state, kind: mode });
-      emitSideEffect({ kind: 'modeSet', mode, chains: [...state.entries.values()].filter(isLive).length });
+      const live = [...state.entries].filter((pair): pair is [string, LiveEntry] => isLive(pair[1]));
+      emitSideEffect({ kind: 'modeSet', mode, chains: live.length });
+      // After the drain, one chain at a time, since a consumer that hears an earlier chain may close or release a later
+      // one.
+      const action = mode === 'paused' ? 'pause' : 'resume';
+      for (const [key, entry] of live) {
+        emitSideEffect({ kind: 'lanesModeDue', key, lanes: entry.chain.lanes, action }, { after: 'drain' });
+      }
     },
-    watchersChanged({ entries }, _event, { update }) {
+    watchersChanged({ entries }, { watched }, { update }) {
       for (const key of entries.keys()) {
-        update({ kind: 'syncDue', key });
+        update({ kind: 'syncDue', key, watched });
       }
     },
     closeAsked({ entries }, _event, { update }) {
@@ -510,7 +545,11 @@ export function createChainPool({
     askEnded: handleEntry,
     closeDue: handleEntry,
     laneStatus: handleEntry,
-    laneHalted: handleEntry,
+    laneHalted(state, event, transition) {
+      handleEntry(state, event, transition);
+      // Once the pool is idle, so a lease taken again from inside the halt builds the chain anew at once.
+      transition.emitSideEffect({ ...event, kind: 'haltLanes' }, { after: 'drain' });
+    },
     syncDue: handleEntry,
     followChanged: handleEntry,
     followRefused: handleEntry,
@@ -613,32 +652,12 @@ export function createChainPool({
     },
 
     pause() {
-      if (machine.state.get().kind === 'paused') {
-        return;
-      }
       machine.update({ kind: 'modeAsked', mode: 'paused' });
-      // Each chain is read as the loop comes to it, since a consumer that hears an earlier chain may close a later one.
-      for (const key of [...machine.state.get().entries.keys()]) {
-        const entry = findLive(key);
-        if (entry !== null) {
-          runOnLanes(key, entry.chain.lanes, 'pause');
-        }
-      }
     },
 
     resume() {
-      if (machine.state.get().kind === 'running') {
-        return;
-      }
+      // Each transport reports its own status as it opens, some inside this call, so none is set here.
       machine.update({ kind: 'modeAsked', mode: 'running' });
-      // Each transport reports its own status as it opens, some inside this call, so none is set here. Each chain is
-      // read as the loop comes to it, since a consumer that hears an earlier chain may close a later one.
-      for (const key of [...machine.state.get().entries.keys()]) {
-        const entry = machine.state.get().entries.get(key);
-        if (entry?.kind === 'held') {
-          runOnLanes(key, entry.chain.lanes, 'resume');
-        }
-      }
     },
 
     status(genesisHash) {
@@ -671,7 +690,7 @@ export function createChainPool({
       function unwatch(): void {
         unsubscribe();
         if (watchers.size === 0) {
-          machine.update({ kind: 'watchersChanged' });
+          machine.update({ kind: 'watchersChanged', watched: false });
         }
       }
       const unsubscribe = watchers.subscribe(hear);
@@ -680,7 +699,7 @@ export function createChainPool({
           watchers.deliver(hear, { kind: 'activity', activity: getActivity(key) });
         }
       }
-      machine.update({ kind: 'watchersChanged' });
+      machine.update({ kind: 'watchersChanged', watched: true });
       return unwatch;
     },
   };
@@ -694,11 +713,10 @@ export function createChainPool({
       case 'activity':
         watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
         return;
-      case 'leased':
-      case 'released': {
+      case 'leaseCounted': {
         const activity = getActivity(effect.key);
         const held = `(${String(activity.consumers)} held)`;
-        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} ${effect.kind} by ${effect.holder} ${held}`);
+        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} ${effect.change} by ${effect.holder} ${held}`);
         watchers.emit({ kind: 'activity', activity });
         return;
       }
@@ -706,7 +724,7 @@ export function createChainPool({
         log.debug(`${POOL_TAG} ${getShortKey(effect.key)} opening`);
         watchers.emit({ kind: 'activity', activity: getActivity(effect.key) });
         return;
-      case 'closed':
+      case 'chainClosed':
         log.debug(
           `${POOL_TAG} ${getShortKey(effect.key)} closing`,
           effect.halt === null ? 'on release or unload' : effect.halt.error,
@@ -716,10 +734,7 @@ export function createChainPool({
       case 'followed':
         log.debug(`${POOL_TAG} ${getShortKey(effect.key)} held, the network panel follows it`);
         return;
-      case 'unfollowed':
-        log.debug(`${POOL_TAG} ${getShortKey(effect.key)} the network panel stops following it`);
-        return;
-      case 'bestBlock':
+      case 'bestBlockFound':
         watchers.emit({ kind: 'bestBlock', genesisHash: effect.key, blockNumber: effect.blockNumber });
         return;
       case 'modeSet':
@@ -734,7 +749,7 @@ export function createChainPool({
           message: `${POOL_TAG} building ${getShortKey(effect.key)} failed:`,
         });
         return;
-      case 'followFailed':
+      case 'followOpenFailed':
         protocolReport.defect(effect.error, {
           step: 'chain_pool_watch_follow',
           metric: chainLaneOpenMetric,
@@ -745,10 +760,22 @@ export function createChainPool({
         timers.clearTimeout(effect.timer);
         return;
       case 'endWatch':
-        endWatch(effect.watch);
+        endWatch(effect.key, effect.watch);
         return;
       case 'disconnectLanes':
         effect.lanes.disconnectAll();
+        return;
+      case 'lanesModeDue': {
+        const entry = findLive(effect.key);
+        // A chain an earlier one's consumer closed is left alone. A resume reopens only a chain a lease holds now, and
+        // another opens under its next lease.
+        if (entry?.chain.lanes === effect.lanes && (effect.action === 'pause' || entry.kind === 'held')) {
+          runOnLanes(effect.key, effect.lanes, effect.action);
+        }
+        return;
+      }
+      case 'haltLanes':
+        haltLanes(effect);
         return;
     }
   }
@@ -772,11 +799,8 @@ export function createChainPool({
     return { genesisHash: key, consumers: entry.leases, status, following: watch.kind === 'open' && watch.following };
   }
 
-  /**
-   * Closes a live entry, quietly on release or unload, or on its halt. A halt calls no lanes method here, since its
-   * lanes are halted only once the entry reads closed.
-   */
-  function closeEntry(
+  /** Moves a live entry to closed, and tells its status and its close. */
+  function emitClosed(
     { key, entry, halt }: { key: string; entry: LiveEntry; halt: Halt },
     { emitState, emitSideEffect }: Transition<EntryMachine>,
   ): void {
@@ -785,29 +809,13 @@ export function createChainPool({
     if (status !== 'disconnected') {
       emitSideEffect({ kind: 'status', key, status: 'disconnected' });
     }
-    emitSideEffect({ kind: 'closed', key, halt });
-    if (entry.kind === 'expiring') {
-      emitSideEffect({ kind: 'stopTimer', timer: entry.countdown });
-    }
-    const watch = entry.kind === 'held' ? entry.watch : null;
-    if (halt === null) {
-      // Each its own effect, so a failure leaves the rest of the chain closed.
-      if (watch !== null) {
-        emitSideEffect({ kind: 'endWatch', watch });
-      }
-      emitSideEffect({ kind: 'disconnectLanes', lanes: chain.lanes });
-      return;
-    }
-    // This path disconnects no follow and no lane, so only a refused watch has a timer to stop.
-    if (watch?.kind === 'refused') {
-      emitSideEffect({ kind: 'endWatch', watch });
-    }
+    emitSideEffect({ kind: 'chainClosed', key, halt });
   }
 
   /** Closes an unheld entry at once, keeps it, or counts it down to its close, as `destroyDelay` says. */
   function idle(key: string, entry: UnheldEntry, transition: Transition<EntryMachine>): void {
     if (destroyDelay <= 0) {
-      closeEntry({ key, entry, halt: null }, transition);
+      closeQuietly(entry, { kind: 'closeDue', key }, transition);
       return;
     }
     // `setTimeout` clamps a non-finite delay to about 1 ms, which would close the entry at once.
@@ -821,24 +829,18 @@ export function createChainPool({
   }
 
   /** Stops the watchers' follow, or its wait to follow again. */
-  function endWatch(watch: Watch): void {
+  function endWatch(key: string, watch: Watch): void {
     switch (watch.kind) {
       case 'off':
         return;
       case 'open':
         watch.follow.disconnect();
+        log.debug(`${POOL_TAG} ${getShortKey(key)} the network panel stops following it`);
         return;
       case 'refused':
         timers.clearTimeout(watch.retry);
         return;
     }
-  }
-
-  /** Turns the watch off, and stops its follow or its wait to follow again. */
-  function stopWatch(watch: Watch, key: string, { emitState, emitSideEffect }: Transition<WatchMachine>): void {
-    emitState({ kind: 'off', chain: watch.chain });
-    emitSideEffect({ kind: 'unfollowed', key });
-    emitSideEffect({ kind: 'endWatch', watch });
   }
 
   /** Holds the watchers' follow as refused until its gate's wait ends. */
@@ -858,7 +860,6 @@ export function createChainPool({
     key: string,
     { emitState, emitSideEffect, update }: Transition<WatchMachine>,
   ): void {
-    emitSideEffect({ kind: 'followed', key });
     // Names the chain, so the follow's debug log says which one refused it.
     const sessionId = `watch:${getShortKey(key)}:${sessionCounter.toString(36)}`;
     sessionCounter += 1;
@@ -884,33 +885,19 @@ export function createChainPool({
     }
     const open: Watch = { kind: 'open', chain, follow, following: false };
     emitState(open);
+    // Logged once the follow's session is open, so its end logs the stop.
+    emitSideEffect({ kind: 'followed', key });
     try {
       follow.start();
     } catch (error) {
       emitState({ kind: 'off', chain });
-      emitSideEffect({ kind: 'endWatch', watch: open });
+      emitSideEffect({ kind: 'endWatch', key, watch: open });
       update({ kind: 'followFailed', key, lanes: chain.lanes, error });
     }
   }
 
-  /**
-   * Tells the pool its chain's lanes halted, then halts them once the pool closed the chain, so a lease taken again from
-   * inside that halt builds the chain anew. Reports a halt that throws.
-   */
-  function haltLanes(event: Extract<PoolEvent, { kind: 'laneHalted' }>): void {
-    machine.update(event);
-    // A halt heard inside a pool transition, such as a follow whose new lane could not be built, waits in the pool's
-    // queue, and a lease taken now could not build the chain. Its lanes halt once that transition is done.
-    if (findLive(event.key)?.chain.lanes === event.lanes) {
-      queueMicrotask(() => {
-        haltLanesNow(event);
-      });
-      return;
-    }
-    haltLanesNow(event);
-  }
-
-  function haltLanesNow({ key, lanes, error: haltError }: Extract<PoolEvent, { kind: 'laneHalted' }>): void {
+  /** Halts a closed chain's lanes, so each of its sessions hears the halt. Reports a halt that throws. */
+  function haltLanes({ key, lanes, error: haltError }: Extract<PoolEffect, { kind: 'haltLanes' }>): void {
     try {
       lanes.halt(haltError);
     } catch (error) {
@@ -932,7 +919,7 @@ export function createChainPool({
         metric: chainPoolCloseMetric,
         message: `${POOL_TAG} ${action} of ${getShortKey(key)} failed:`,
       });
-      haltLanes({ kind: 'laneHalted', key, lanes, error });
+      machine.update({ kind: 'laneHalted', key, lanes, error });
     }
   }
 
@@ -985,18 +972,14 @@ export function createChainPool({
       machine.update({ kind: 'askEnded', key });
       throw error;
     }
-    machine.update({ kind: 'leased', key, lanes, holder });
+    machine.update({ kind: 'leased', key, lanes, holder, watched: watchers.size > 0 });
     // A halt while the session opens may not reach it, and a session on a closed chain would never hear one.
     const openingHalt = phase.halt;
     if (openingHalt !== null || findLive(key)?.chain.lanes !== lanes) {
       phase = { kind: 'released' };
       connection.disconnect();
       machine.update({ kind: 'released', key, lanes, holder });
-      const closed = machine.state.get().entries.get(key);
-      return {
-        kind: 'halted',
-        error: closed?.kind === 'closed' && closed.chain.lanes === lanes ? closed.halt?.error : openingHalt?.error,
-      };
+      return { kind: 'halted', error: getHaltError(key, lanes, openingHalt) };
     }
     phase = { kind: 'open' };
     return {
@@ -1013,6 +996,18 @@ export function createChainPool({
         },
       },
     };
+  }
+
+  /**
+   * Returns the error a session that opened on halted `lanes` hears: the halt that closed its chain, or else the one
+   * heard while it opened.
+   */
+  function getHaltError(key: string, lanes: ChainLanes, openingHalt: Halt): unknown {
+    const closed = machine.state.get().entries.get(key);
+    if (closed?.kind === 'closed' && closed.chain.lanes === lanes) {
+      return closed.halt?.error;
+    }
+    return openingHalt?.error;
   }
 }
 

@@ -1334,6 +1334,28 @@ describe('createChainPool pausing', () => {
     expect(captured).toMatchObject([{ step: 'chain_pool_resume' }]);
   });
 
+  it("As a dotli page, I end a chain's last lease while my resume reaches an earlier chain, and that chain stays closed", () => {
+    // Given two leased chains, the first of which throws when it reopens, and whose halt ends the second one's lease
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    recordReports({ onFinished: onTestFinished });
+    const { createTransport, built } = createReopenFailingTransports('0xaa');
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    let other: JsonRpcConnection | null = null;
+    remoteLease(pool, '0xaa', {
+      onHalt: () => {
+        other?.disconnect();
+      },
+    });
+    other = remoteLease(pool, '0xbb', { onHalt: () => undefined });
+    pool.pause();
+
+    // When
+    pool.resume();
+
+    // Then
+    expect(must(built[1], 'transport').opened).toBe(1);
+  });
+
   it('As a dotli page, I lease a chain that fails to reopen after the resume and get a chain built in its place', () => {
     // Given a chain released before the pause, whose transport throws when it reopens
     const captured = recordReports({ onFinished: onTestFinished }).exceptions;

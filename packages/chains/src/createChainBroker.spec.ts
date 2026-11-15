@@ -1163,6 +1163,37 @@ describe('broker warnings', () => {
     ]);
   });
 
+  it('As a session that unwatches without an id, I leave no warning for an event the node sent before it read the unwatch', () => {
+    // Given a session that watched a transaction and unwatched it without an id
+    const harness = createProviderHarness();
+    const broker = createChainBroker({ provider: harness.provider });
+    const messages: unknown[] = [];
+    const connection = broker.connect({
+      sessionId: 'a',
+      onMessage: message => messages.push(message),
+      wireMode: 'object',
+    });
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x01'] });
+    harness.emit({ jsonrpc: '2.0', id: readUpstreamRequest(harness.sent.at(-1)).id, result: 'up-tx' });
+    connection.send({
+      jsonrpc: '2.0',
+      method: 'transactionWatch_v1_unwatch',
+      params: [readAnswer(messages[0]).result],
+    });
+
+    // When the node still delivers an event it queued before it read the unwatch
+    const warnings = collectWarningsDuring(() => {
+      harness.emit({
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: 'up-tx', result: { event: 'validated' } },
+      });
+    });
+
+    // Then
+    expect(warnings).toEqual([]);
+  });
+
   it('As a dotli maintainer, I see no warning when many watches a session unwatched still deliver events while a follow waits on its answer', () => {
     // Given a follow in flight, and a session that unwatches more watches than the early buffer keeps tokens for
     const harness = createProviderHarness();
