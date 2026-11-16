@@ -27,19 +27,22 @@ export default {
       astro: true,
       playwright: true,
       // The pages load these through `<script src>`. The PWA integration builds the service worker. `sentryCheck.ts`
-      // is a manual CLI check. The functional suite's global setup bundles the `wire` scripts for its pages.
+      // is a manual CLI check. The functional suite's global setup bundles the `wire` scripts for its pages. The Astro
+      // plugin takes the first `srcDir` in the Astro config as the pages' root, which is the service worker's, so the
+      // pages are named here.
       entry: [
-        'src/main.ts',
-        'src/landing.ts',
-        'src/session.ts',
-        'src/host-sw.ts',
+        'src/pages/**/*.astro',
+        'src/shell/main.ts',
+        'src/shell/landing.ts',
+        'src/shell/session.ts',
+        'src/shell/host-sw.ts',
         'sentryCheck.ts',
         'tests/functional/wire/*.ts',
       ],
     },
     'apps/sandbox': {
       // The service worker is the PWA plugin's source, named in vite.config.ts.
-      entry: ['src/app-sw.ts'],
+      entry: ['src/serviceWorker/app-sw.ts'],
     },
   },
 } satisfies KnipConfig;

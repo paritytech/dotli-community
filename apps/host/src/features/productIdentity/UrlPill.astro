@@ -1,0 +1,22 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Empty and hidden until the page fills it from the url-pill store, finding the pill and the name by their ids.
+// The pill is a native button, so a keyboard reaches it and presses it.
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { UrlPillShieldIsland } from './UrlPillShieldIsland.jsx';
+import { TerminalIcon } from '@dotli/ui/icons';
+import s from './UrlPill.module.css';
+---
+
+<div class={s['url']} id="topbar-url" hidden>
+  <button type="button" class={s['pill']} id="url-pill">
+    <UrlPillShieldIsland client:idle />
+    <TerminalIcon class={s['localhostIcon']} size={12} />
+    <span class={s['text']} data-testid="url-pill-text">
+      <span class={s['domain']} id="url-pill-domain"></span>
+      <span class={s['tld']} id="url-pill-tld"></span>
+    </span>
+  </button>
+</div>

@@ -5,7 +5,7 @@
   "version": "0.6.0",
   "type": "module",
   "sideEffects": [
-    "./src/boot.ts",
+    "./src/boot/boot.ts",
     "./src/main.ts"
   ],
   "scripts": {

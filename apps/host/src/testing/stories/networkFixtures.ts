@@ -5,11 +5,11 @@
 
 import { createSignal, onCleanup } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import type { BlockHealth } from '../../state/networkMonitorState.js';
-import type { ChainBar } from '../../components/chains/chain.js';
-import type { ChainView, NetworkView, TransferView } from '../../components/chains/chains.js';
-import type { LiveVerdict, NetworkHealth } from '../../networkVerdict.js';
-import type { NetworkItemProps } from '../../components/chains/NetworkItem.js';
+import type { BlockHealth } from '../../features/network/networkMonitorState.js';
+import type { ChainBar } from '../../features/network/chain.js';
+import type { ChainView, NetworkView, TransferView } from '../../features/network/chains.js';
+import type { LiveVerdict, NetworkHealth } from '../../features/network/networkVerdict.js';
+import type { NetworkItemProps } from '../../features/network/NetworkItem.js';
 
 const NO_TRANSFER: TransferView = { bytesPerSecond: null, fetched: null, total: null };
 

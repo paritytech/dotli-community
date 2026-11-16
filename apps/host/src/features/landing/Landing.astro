@@ -1,0 +1,39 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Static but for its six islands. The logo renders here with no directive, so it ships no code.
+import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { LandingAuthIsland } from './LandingAuthIsland.jsx';
+import { LandingNetworkIsland } from './LandingNetworkIsland.jsx';
+import { LandingSettingsIsland } from './LandingSettingsIsland.jsx';
+import { LandingNavIsland } from './LandingNavIsland.jsx';
+import { LandingSuggestIsland } from './LandingSuggestIsland.jsx';
+import { LandingRecentsIsland } from './LandingRecentsIsland.jsx';
+import s from './Landing.module.css';
+---
+
+<div class={s['landing']} data-testid="landing">
+  <div class={s['corner']} id="landing-auth">
+    <LandingAuthIsland client:load />
+    <LandingNetworkIsland client:idle />
+    <LandingSettingsIsland client:idle />
+  </div>
+  <div class={s['center']}>
+    <div class={s['content']}>
+      <LogoSymbol height={54} />
+      {/* Sized and spaced as the guide's vertical lockup. */}
+      <h1 class={s['title']}>
+        <LogoWordmark height={25} testId="landing-wordmark" />
+        <span class={s['beta']}>β</span>
+      </h1>
+      <p class={s['subtitle']}>The decentralized web, in your browser.</p>
+      <div class={s['nav']}>
+        <LandingNavIsland client:load />
+        <LandingSuggestIsland client:idle />
+      </div>
+      <LandingRecentsIsland client:load />
+    </div>
+  </div>
+</div>

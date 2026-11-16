@@ -38,26 +38,26 @@ import {
 } from '@dotli/protocol';
 import { createTransport, createWindowProvider, ok } from '@dotli/transport';
 
-import { connectSharedWorker } from './connectSharedWorker.js';
-import { createEngine, type ProtocolEngine } from './createEngine.js';
-import { createFrameBoot } from './createFrameBoot.js';
-import { createRefusalReporter } from './createRefusalReporter.js';
-import { createSharedStoreHandler } from './createSharedStoreHandler.js';
-import { createTelemetryHandler } from './createTelemetryHandler.js';
-import { disposeOnPageHide } from './disposeOnPageHide.js';
-import { FRAME_LOG_TAG } from './frameLogTag.js';
-import { loadGatewayChains, loadLightClientService } from './lazy.js';
-import { toWorkerName } from './parseWorkerNetwork.js';
-import { readResolveBudgetCap } from './readResolveBudgetCap.js';
-import { readSessionTuning } from './readSessionTuning.js';
-import { registerWorkerRelay } from './registerWorkerRelay.js';
-import { serveEngineScope } from './serveEngineMethods.js';
-import { serveLocalWallet } from './serveLocalWallet.js';
-import { servePoolControl } from './servePoolControl.js';
-import { shareNetBytes } from './shareNetBytes.js';
-import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
-import { toLightClientDb } from './toLightClientDb.js';
-import { withRefusalReports } from './withRefusalReports.js';
+import { connectSharedWorker } from './frame/connectSharedWorker.js';
+import { createEngine, type ProtocolEngine } from './engine/createEngine.js';
+import { createFrameBoot } from './frame/createFrameBoot.js';
+import { createRefusalReporter } from './sharedStore/createRefusalReporter.js';
+import { createSharedStoreHandler } from './sharedStore/createSharedStoreHandler.js';
+import { createTelemetryHandler } from './telemetry/createTelemetryHandler.js';
+import { disposeOnPageHide } from './frame/disposeOnPageHide.js';
+import { FRAME_LOG_TAG } from './kit/frameLogTag.js';
+import { loadGatewayChains, loadLightClientService } from './frame/lazy.js';
+import { toWorkerName } from './sharedWorker/parseWorkerNetwork.js';
+import { readResolveBudgetCap } from './frame/readResolveBudgetCap.js';
+import { readSessionTuning } from './frame/readSessionTuning.js';
+import { registerWorkerRelay } from './frame/registerWorkerRelay.js';
+import { serveEngineScope } from './engine/serveEngineMethods.js';
+import { serveLocalWallet } from './sharedStore/serveLocalWallet.js';
+import { servePoolControl } from './engine/servePoolControl.js';
+import { shareNetBytes } from './telemetry/shareNetBytes.js';
+import { SHARED_WORKER_MODE } from './kit/sharedWorkerMode.js';
+import { toLightClientDb } from './lightClient/toLightClientDb.js';
+import { withRefusalReports } from './kit/withRefusalReports.js';
 
 const report = createReporter({ flow: 'protocol' });
 
@@ -228,7 +228,7 @@ async function startMode(backend: Backend, network: Network): Promise<boolean> {
 
 async function initSharedWorkerMode(network: Network): Promise<void> {
   // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
-  const worker = new SharedWorker(new URL('./protocolSharedWorker.ts', import.meta.url), {
+  const worker = new SharedWorker(new URL('./sharedWorker/protocolSharedWorker.ts', import.meta.url), {
     type: 'module',
     name: toWorkerName(network),
   });

@@ -5,9 +5,9 @@
 // page's session does.
 
 import { createSignal, flush } from 'solid-js';
-import type { AccountSession } from '../../components/account/account.js';
-import type { Account } from '../../components/account/account.js';
-import type { SessionKnowledge } from '../../runtime/session/authViews.js';
+import type { AccountSession } from '../../features/account/panel/account.js';
+import type { Account } from '../../features/account/panel/account.js';
+import type { SessionKnowledge } from '../../features/account/session/authViews.js';
 
 type AccountShape = {
   loggedIn: boolean;

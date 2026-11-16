@@ -3,10 +3,10 @@
 
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
-import { LandingAuth } from '../../src/islands/LandingAuth.js';
-import { LandingNav } from '../../src/islands/LandingNav.js';
-import { LandingRecents } from '../../src/islands/LandingRecents.js';
-import type { RecentLabels } from '../../src/createRecentLabels.js';
+import { LandingAuthIsland } from '../../src/features/landing/LandingAuthIsland.js';
+import { LandingNavIsland } from '../../src/features/landing/LandingNavIsland.js';
+import { LandingRecentsIsland } from '../../src/features/landing/LandingRecentsIsland.js';
+import type { RecentLabels } from '../../src/features/landing/createRecentLabels.js';
 
 type Params = {
   /** Where the recents come from, since the page's own read the storage frame, which happy-dom would try to fetch. */
@@ -21,9 +21,9 @@ export function mountLandingPage({ recents }: Params) {
     '<div data-testid="landing"><div id="landing-auth"></div><div data-slot="content"><div data-slot="nav"></div><div data-slot="recents"></div></div></div>';
   document.body.append(view);
   const unmounts = [
-    render(() => <LandingAuth />, findSlot('#landing-auth')),
-    render(() => <LandingNav />, findSlot('[data-slot="nav"]')),
-    render(() => <LandingRecents recents={recents} />, findSlot('[data-slot="recents"]')),
+    render(() => <LandingAuthIsland />, findSlot('#landing-auth')),
+    render(() => <LandingNavIsland />, findSlot('[data-slot="nav"]')),
+    render(() => <LandingRecentsIsland recents={recents} />, findSlot('[data-slot="recents"]')),
   ];
   flush();
   return {

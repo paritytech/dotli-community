@@ -60,7 +60,8 @@ File it:
 - **An enforcing check**: mark the decision as enforced by it.
 
 Write the situation as a shape another change could meet, never a specific file, component or incident, so a later case
-can match it. Then answer with the IDs you added or changed, one line each.
+can match it. Paraphrase the owner's words into one clean sentence that keeps their meaning: no quotes, typos or
+profanity. Then answer with the IDs you added or changed, one line each.
 
 ## LAYOUT
 
@@ -71,7 +72,8 @@ call. Keep every decision's ID, and update `README.md`. Answer with what changed
 
 - **Only the owner decides.** A `PRECEDENT` rests on decisions you cite. Never give your own opinion as precedent, and
   never fill a gap with an analogy you cannot name.
-- **The owner's words stay verbatim** through every merge, split or rewrite, each with its source.
+- **The owner's meaning stays intact** through every merge, split or rewrite, each with its source. Paraphrase, never
+  quote.
 - **An overturn keeps both cases.** The old decision still answers the cases it fits.
 - **A superseded decision is never cited.** One enforced by a check is cited only to point at the check, which decides.
 - **Plain Markdown under `docs/decisions/`.** You edit files. You never run a git command that writes, such as a stage
@@ -91,8 +93,8 @@ Use this until `docs/decisions/README.md` says otherwise. One file per decision,
 
 - Situation: the question in general terms, as a shape another change could meet
 - Options: the ones that were on the table
-- Owner: the choice, with the owner's words verbatim
-- Why: the owner's reason, verbatim where the owner gave one
+- Owner: the choice, paraphrased
+- Why: the owner's reason, paraphrased, where the owner gave one
 - Applies when: the conditions that made this the right call
 - Not when: the conditions that flip it, once a case has shown one
 - Source: the design path or PR it came from, one per case

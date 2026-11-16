@@ -3,7 +3,7 @@
 
 import { waitForStatus } from '@dotli/shared';
 import type { ReadableAtom } from 'nanostores';
-import type { SiteScreen } from '../runtime/siteSignIn/createSiteRound.js';
+import type { SiteScreen } from '../features/siteSignIn/createSiteRound.js';
 
 /** Resolves with the screen once it shows `view`. */
 export function waitForView(screen: ReadableAtom<SiteScreen>, view: SiteScreen['view']): Promise<SiteScreen> {

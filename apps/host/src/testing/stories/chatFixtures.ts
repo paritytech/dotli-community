@@ -10,12 +10,12 @@ import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRender
 import { isShallowEqual } from '@dotli/shared';
 import { atom, type WritableAtom } from 'nanostores';
 import { useStore } from '@dotli/stores-solid';
-import { chatUnreadLabel } from '../../components/chat/unread.js';
-import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
-import { ChatReplyUndeliveredError } from '../../runtime/chat/chatReplyUndeliveredError.js';
-import type { ChatRenderSink } from '../../components/chat/chat.js';
-import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../components/chat/chat.js';
-import type { ChatButtonProps } from '../../components/chat/ChatButton.js';
+import { chatUnreadLabel } from '../../features/chat/unread.js';
+import type { ChatMessageRecord } from '../../features/chat/createChatStore.js';
+import { ChatReplyUndeliveredError } from '../../features/chat/chatReplyUndeliveredError.js';
+import type { ChatRenderSink } from '../../features/chat/chat.js';
+import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../features/chat/chat.js';
+import type { ChatButtonProps } from '../../features/chat/ChatButton.js';
 
 const PRODUCT = 'chatty.dot';
 

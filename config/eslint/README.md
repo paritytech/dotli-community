@@ -24,6 +24,7 @@ Shared ESLint flat configs and the helpers that turn package layering into impor
 | `dynamicImportBan(pattern, message)`  | Refuses `import()` of a matching module.                        |
 | `fixedConfigOnly`                     | Limits a zone of files to the configuration's fixed entry.      |
 | `restrictedSyntax`                    | The shared syntax bans, for a package with its own rule.        |
+| `featureBoundaries()`                 | Keeps an app's features behind their index, and kit below them. |
 
 ## Usage
 

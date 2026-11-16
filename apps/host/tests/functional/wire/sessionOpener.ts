@@ -7,8 +7,8 @@
 // output.
 
 import { isValidNetwork } from '@dotli/config/networks';
-import { listenToMessages } from '../../../src/runtime/sessionHandoff/listenToMessages.js';
-import { createSessionHandoff } from '../../../src/runtime/sessionHandoff/createSessionHandoff.js';
+import { listenToMessages } from '../../../src/features/signInWindow/listenToMessages.js';
+import { createSessionHandoff } from '../../../src/features/signInWindow/createSessionHandoff.js';
 
 const net = new URLSearchParams(location.search).get('net') ?? '';
 if (!isValidNetwork(net)) {

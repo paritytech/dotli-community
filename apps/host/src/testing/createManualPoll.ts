@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ManualTimers } from '@dotli/shared/testing';
-import type { Poll } from '../pagePoll.js';
+import type { Poll } from '../kit/pagePoll.js';
 
 type Params = {
   /** The spec's clock, which fires the ticks as the spec moves it on. */

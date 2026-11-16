@@ -15,6 +15,16 @@ The per-product origin that loads and renders a product's files inside the host'
 
 ## Design
 
+The page entry composes the source, which is grouped by runtime responsibility:
+
+- boot, the runner and the load
+- the host link
+- the page's side of the archive
+- the service worker
+- the screens
+- the checker
+- a kit of shared helpers
+
 - **Runner:** runs the load, and again on each retry up to a limit. It refuses to run as a top-level page.
 - **Load:** fetches and verifies content while the service worker registers. It then hands the archive to the worker and
   writes the page. It never throws, so the caller learns which step failed.

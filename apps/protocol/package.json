@@ -6,7 +6,7 @@
   "type": "module",
   "sideEffects": [
     "./src/main.ts",
-    "./src/protocolSharedWorker.ts"
+    "./src/sharedWorker/protocolSharedWorker.ts"
   ],
   "scripts": {
     "build": "vite build",

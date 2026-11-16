@@ -1,0 +1,958 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The product loader on a page. The name source, the frame and the recent list sit in other frames or origins, and the
+// CID cache and the failure screen reload or write the page, so all five are fakes. The URL pill, the product state,
+// the journey, the resolution trace and the debug panel's events are the page's own. The trace keeps only its last
+// step, so the step sequence is not asserted.
+
+import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { flush } from 'solid-js';
+import type { Backend } from '@dotli/config';
+import { bindCaptureSink, m, type CaptureContext, type SpanValue } from '@dotli/metrics';
+import { ProtocolVersionMismatchError } from '@dotli/protocol';
+import type { SandboxLoadOutcome } from '@dotli/sandbox-wire';
+import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
+import { createListenerSet, noop, waitForStatus } from '@dotli/shared';
+import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
+import type { CachedManifests } from '@dotli/storage';
+import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
+import { pageScreen } from '@dotli/ui';
+import { beginAttempt } from '../../../features/productLoad/index.js';
+import { rethrow } from '../../../testing/rethrow.js';
+import type { LoadFailure } from '../../../features/productLoad/index.js';
+import { pageLoading } from '../../../features/productLoad/index.js';
+import type { NameSource } from '../../../features/productLoad/index.js';
+import { createLoadTelemetry } from '../../../features/productLoad/index.js';
+import { createProductLoader } from '../../createProductLoader.js';
+import type { PageCidCache } from '../../../features/productLoad/index.js';
+import type { ProductFrame } from '../../../features/productLoad/index.js';
+import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../../features/productLoad/index.js';
+import { productState } from '../../../features/page/productState.js';
+import { urlPillState } from '../../../features/productIdentity/urlPillState.js';
+
+type Params = {
+  backend?: Backend;
+  /** Contenthashes by name. */
+  published?: Record<string, string>;
+  cached?: { cid: string; manifests: CachedManifests };
+  skipCidCache?: boolean;
+  /** What the worker manifest read answers. An empty manifest without it. */
+  workerManifest?: ManifestResult<ExecutableManifest>;
+  resolveError?: Error;
+  /** Thrown as the failure screen shows. */
+  failToShow?: Error;
+  /** The sandbox never says anything. It speaks at once without it. */
+  silentSandbox?: boolean;
+  /** A protocol frame refused this page's wire version before the load asked, so its listener hears it at once. */
+  latchedMismatch?: ProtocolVersionMismatchError;
+  /** What the product's core fails to boot with. It boots without it. */
+  coreBootError?: Error;
+  /** Thrown as the loader subscribes to the sandbox's outcomes. */
+  outcomesUnfollowable?: Error;
+};
+
+const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
+const NO_CACHED_MANIFESTS: CachedManifests = { root: null, app: null };
+
+describe('createProductLoader', () => {
+  it('As a visitor, I open a name for the first time and get its app subname content rendered', async () => {
+    // Given
+    const { loader, ports, listEvents } = setupLoader({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-app'));
+    expect(listEvents()).toContain('boot:ready');
+  });
+
+  it('As an operator, I see a load whose content loaded before its render resolved traced as handed off, then rendered', async () => {
+    // Given content the sandbox reported before the loader follows it
+    const { loader, readResolution, reportContent } = setupLoader({
+      published: { 'app.doom': 'bafy-app', doom: 'bafy-base' },
+    });
+    await reportContent('loaded');
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readResolution()).toMatchObject({ outcome: 'rendered' });
+    expect(typeof readResolution()?.['handoff_ms']).toBe('number');
+  });
+
+  it('As a visitor, I open a name for the first time and see its URL pill as verified', async () => {
+    // Given
+    const { loader } = setupLoader({ published: { 'app.doom': 'bafy-app', doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(urlPillState.store.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'verified' });
+  });
+
+  it('As a visitor, I open a name for the first time and it is remembered for next time', async () => {
+    // Given
+    const { loader, stored, recents, countForgotten } = setupLoader({
+      published: { 'app.doom': 'bafy-app', doom: 'bafy-base' },
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(stored).toEqual(['doom bafy-app']);
+    expect(recents).toEqual(['doom']);
+    expect(countForgotten()).toBe(1);
+  });
+
+  it.each([
+    [
+      'a worker manifest that includes chat',
+      'on',
+      createWorkerManifest({ kind: 'worker', entrypoint: 'index.js', includes: { chat: true } }),
+      true,
+    ],
+    ['an app manifest', 'off', createWorkerManifest({ kind: 'app' }), false],
+    ['an empty manifest', 'off', { kind: 'empty' } as const, false],
+  ])(
+    'As a visitor, I open a product with %s and get it rendered with chat %s',
+    async (_name, _chat, manifest, chatOn) => {
+      // Given
+      const { loader, ports } = setupLoader({ published: { doom: 'bafy-base' }, workerManifest: manifest });
+
+      // When
+      await loader.load('doom');
+
+      // Then
+      await expect(ports.product.render.mock.calls[0]?.[0].chat).resolves.toBe(chatOn);
+    },
+  );
+
+  it('As a visitor, I return to a cached app and see it without a name read while it is checked against the network', async () => {
+    // Given
+    const { loader, names, ports, revalidated, debug } = setupLoader({
+      cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS },
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(names.resolveProduct).not.toHaveBeenCalled();
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-cached'));
+    expect(revalidated).toEqual([['doom', 'bafy-cached', true]]);
+    expect(debug.at(-1)?.payload).toMatchObject({ label: 'doom', path: 'fast' });
+  });
+
+  it('As an operator, I see a visitor return to a cached app in one fast path span, ended at the handoff', async () => {
+    // Given
+    const { loader } = setupLoader({ cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } });
+    const spans = recordSpans();
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readFastPaths(spans)).toEqual([{ outcome: undefined, ended: true }]);
+  });
+
+  it('As an operator, I see a cached app that fails to render end its fast path span with an error', async () => {
+    // Given
+    const { loader, ports } = setupLoader({ cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } });
+    ports.product.render.mockRejectedValueOnce(new Error('the frame did not render'));
+    const spans = recordSpans();
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(readFastPaths(spans)).toEqual([{ outcome: 'error', ended: true }]);
+  });
+
+  it('As a visitor whose cached copy no longer passes, I open it and see why, and the copy is checked without reloading me', async () => {
+    // Given
+    const { loader, ports, failures, revalidated, captured } = setupLoader({
+      cached: { cid: 'bafy-cached', manifests: { root: '{"$v":2}', app: null } },
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(ports.product.render).not.toHaveBeenCalled();
+    expect(failures.map(failure => failure.error.kind)).toEqual(['manifest-unsupported-version']);
+    expect(productState.store.get().status).toBe('error');
+    expect(revalidated).toEqual([['doom', 'bafy-cached', false]]);
+    expect(captured[0]?.step).toBe('cached_launch_gate');
+    expect(captured[0]?.tags).toMatchObject({ smoldotdb_hub_cache: 'n/a' });
+  });
+
+  it('As a visitor, I open a name with nothing published and see the no-content screen, and my journey ends', async () => {
+    // Given
+    const { loader, ports, failures, readResolution } = setupLoader();
+
+    // When the load ends, and the name is opened again
+    await loader.load('doom');
+    flush();
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(document.querySelector('[data-testid="error-page-domain"]')?.textContent).toContain('doom');
+    expect(productState.store.get().status).toBe('error');
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'no_content' });
+    expect(ports.product.render).not.toHaveBeenCalled();
+    expect(failures).toEqual([]);
+  });
+
+  it('As a visitor, I open a name whose read fails and see the failure screen, and the operator gets one report naming the step', async () => {
+    // Given
+    const cause = new Error('Asset Hub went quiet');
+    const { loader, failures, captured, readResolution } = setupLoader({ resolveError: cause });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(captured.map(context => context.step)).toEqual(['name_resolve']);
+    expect(captured[0]?.tags).toMatchObject({
+      cid_cache: 'miss',
+      chain_backend: 'smoldot-direct',
+      smoldotdb_hub_cache: 'unknown',
+    });
+    expect(readResolution()).toMatchObject({ outcome: 'error' });
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom', backend: 'smoldot-direct' })]);
+    expect(productState.store.get().status).toBe('error');
+  });
+
+  it('As a visitor whose failure screen itself fails, I open a name and the load rejects with that failure', async () => {
+    // Given
+    const screenFailure = new Error('the failure screen threw');
+    const { loader } = setupLoader({ resolveError: new Error('Asset Hub went quiet'), failToShow: screenFailure });
+
+    // When
+    const loaded = loader.load('doom');
+
+    // Then
+    await expect(loaded).rejects.toBe(screenFailure);
+  });
+
+  it('As a visitor, I open a name for the first time and its wallet core boots while the name resolves', async () => {
+    // Given a name with an app published
+    const { loader, ports, names } = setupLoader({ published: { 'app.doom': 'bafy-app' } });
+
+    // When the name is loaded
+    await loader.load('doom');
+
+    // Then the core was held before the name was resolved
+    expect(ports.core.acquirePageCore).toHaveBeenCalledBefore(vi.mocked(names.resolveProduct));
+  });
+
+  it('As a visitor whose wallet core cannot boot, I open a name and see the failure screen at the render, and the app is never asked to render', async () => {
+    // Given a wallet core that fails to boot and an app published
+    const cause = new Error('the wallet core did not boot');
+    const { loader, ports, failures, captured } = setupLoader({
+      published: { 'app.doom': 'bafy-app' },
+      coreBootError: cause,
+    });
+
+    // When the name is loaded
+    await loader.load('doom');
+
+    // Then only the render handoff is reported, the failure screen shows, and the app is neither rendered nor halted
+    expect(captured.map(context => context.step)).toEqual(['render_handoff']);
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(ports.product.render).not.toHaveBeenCalled();
+    expect(ports.product.halt).not.toHaveBeenCalled();
+  });
+
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and the mounted app frame halts", async () => {
+    // Given
+    const { loader, ports } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: new Error('the sandbox outcomes cannot be followed'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and see the failure screen, and the operator gets one report naming the step", async () => {
+    // Given
+    const cause = new Error('the sandbox outcomes cannot be followed');
+    const { loader, failures, captured } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: cause,
+    });
+
+    // When
+    const loaded = loader.load('doom');
+
+    // Then
+    await expect(loaded).resolves.toBeUndefined();
+    expect(captured.map(context => context.step)).toEqual(['render_handoff']);
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+  });
+
+  it("As a visitor whose app's content outcomes cannot be followed, I open a name and a protocol frame refusing the page later reaches no listener", async () => {
+    // Given
+    const { loader, countMismatchListeners } = setupLoader({
+      published: { 'app.doom': 'bafyDoom' },
+      outcomesUnfollowable: new Error('the sandbox outcomes cannot be followed'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(countMismatchListeners()).toBe(0);
+  });
+
+  it.each<{ outcome: string; params: Params; steps: string[] }>([
+    {
+      outcome: 'fails to resolve',
+      params: { resolveError: new Error('Asset Hub went quiet') },
+      steps: ['name_resolve'],
+    },
+    { outcome: 'has nothing published', params: {}, steps: [] },
+    {
+      outcome: 'has a cached copy that no longer passes',
+      params: { cached: { cid: 'bafy-cached', manifests: { root: '{"$v":2}', app: null } } },
+      steps: ['cached_launch_gate'],
+    },
+  ])(
+    'As a visitor whose wallet core cannot boot, I open a name that $outcome and see only that outcome reported',
+    async ({ params, steps }) => {
+      // Given a wallet core that fails to boot and a name that ends one of three ways
+      const { loader, failures, captured } = setupLoader({
+        ...params,
+        coreBootError: new Error('the wallet core did not boot'),
+      });
+
+      // When the name is loaded
+      await loader.load('doom');
+
+      // Then only that outcome is reported
+      expect(captured.map(context => context.step)).toEqual(steps);
+      expect(failures).toHaveLength(steps.length);
+    },
+  );
+
+  it.each<{ outcome: string; params: Params }>([
+    { outcome: 'renders from the network', params: { published: { 'app.doom': 'bafy-app' } } },
+    { outcome: 'renders from the cache', params: { cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } } },
+    { outcome: 'has nothing published', params: {} },
+    { outcome: 'fails to resolve', params: { resolveError: new Error('Asset Hub went quiet') } },
+  ])(
+    'As a visitor, I open a name that $outcome and the core held for it is let go once the load ends',
+    async ({ params }) => {
+      // Given a name that ends one of four ways
+      const { loader, ports, releaseCore } = setupLoader(params);
+
+      // When the name is loaded
+      await loader.load('doom');
+
+      // Then the held core is released once and was held once
+      expect(releaseCore).toHaveBeenCalledTimes(1);
+      expect(ports.core.acquirePageCore).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('As a visitor, I see the sandbox report the content loaded and my journey ends', async () => {
+    // Given
+    const { loader, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+
+    // When the content loads, and the name is opened again
+    await reportContent('loaded');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'rendered', loading_phase: 'content' });
+  });
+
+  it('As a visitor, I meet a download failure in the sandbox and my journey goes on, with the trace naming the failed step', async () => {
+    // Given
+    const { loader, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+
+    // When the download fails, and the name is opened again
+    await reportContent('failed', 'archive_fetch');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(2);
+    expect(readResolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
+  });
+
+  it('As a visitor whose app failed in the sandbox, I retry it there and once it loads my journey ends, with the trace keeping the first failure', async () => {
+    // Given a load whose content failed in the sandbox
+    const { loader, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+    await reportContent('failed', 'archive_fetch');
+
+    // When the retry in the sandbox loads, and the name is opened again
+    await reportContent('loaded');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
+  });
+
+  it('As a visitor whose app frame fails to come up after its sandbox said it loaded, I see the failure screen and my journey goes on', async () => {
+    // Given a frame whose render rejects after the sandbox reported its content loaded
+    const { loader, ports, failures, reportContent, readResolution } = setupLoader({
+      published: { doom: 'bafy-base' },
+    });
+    ports.product.render.mockImplementation(async () => {
+      await reportContent('loaded');
+      throw new Error('The checker panel failed to load');
+    });
+
+    // When the name is opened, and opened again
+    await loader.load('doom');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(failures).toHaveLength(1);
+    expect(readResolution()).toMatchObject({ outcome: 'error' });
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+    expect(nextAttempt.attemptNumber).toBe(2);
+  });
+
+  it('As a visitor whose app frame throws as it is asked to render, I open a name and see the failure screen, and the frame halts', async () => {
+    // Given a frame whose render throws before it hands back a promise
+    const cause = new Error('the frame threw at the render');
+    const { loader, ports, failures } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(() => {
+      throw cause;
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor whose app frame fails to render and then throws as it halts, I open a name and still see the failure screen', async () => {
+    // Given a frame whose render rejects and whose halt throws
+    const cause = new Error('the frame failed to render');
+    const { loader, ports, failures } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(() => Promise.reject(cause));
+    ports.product.halt.mockImplementation(() => {
+      throw new Error('the frame threw as it halted');
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then the load fails with the render's error and shows its screen
+    expect(failures).toEqual([expect.objectContaining({ cause, label: 'doom' })]);
+    expect(productState.store.get().status).toBe('error');
+  });
+
+  it('As a visitor whose sandbox said its content loaded while the app frame came up, I see the app and my journey ends', async () => {
+    // Given a frame whose render resolves after the sandbox reported its content loaded
+    const { loader, ports, reportContent, readResolution } = setupLoader({ published: { doom: 'bafy-base' } });
+    ports.product.render.mockImplementation(async () => {
+      await reportContent('loaded');
+    });
+
+    // When the name is opened, and opened again
+    await loader.load('doom');
+    const nextAttempt = beginAttempt('doom');
+
+    // Then
+    expect(nextAttempt.attemptNumber).toBe(1);
+    expect(readResolution()).toMatchObject({ outcome: 'rendered' });
+  });
+
+  it('As a visitor, I open an app whose frame never starts and see the failure screen after its deadline instead of a loading bar for good', async () => {
+    // Given
+    const { loader, ports, failures, reportContent, timers, captured, readResolution, countOutcomeFollowers } =
+      setupLoader({
+        published: { doom: 'bafy-base' },
+        silentSandbox: true,
+      });
+    await loader.load('doom');
+
+    // When
+    await timers.advance(30_000);
+    await reportContent('loaded');
+
+    // Then
+    expect(failures.map(failure => failure.error.kind)).toEqual(['sandbox-silent']);
+    expect(captured).toContainEqual(expect.objectContaining({ step: 'content' }));
+    expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'sandbox-silent' });
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+    expect(countOutcomeFollowers()).toBe(0);
+  });
+
+  it.each([
+    ['for the first time', {}],
+    ['from the CID cache', { cached: { cid: 'bafy-cached', manifests: NO_CACHED_MANIFESTS } }],
+  ])(
+    'As a visitor whose protocol frame refused this page, I open a name %s and see the reload screen, and the load ends there',
+    async (_path, given) => {
+      // Given
+      const {
+        loader,
+        ports,
+        failures,
+        recents,
+        countForgotten,
+        reportContent,
+        listEvents,
+        readResolution,
+        distributions,
+        timers,
+      } = setupLoader({
+        published: { doom: 'bafy-base' },
+        latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+        silentSandbox: true,
+        ...given,
+      });
+
+      // When
+      await loader.load('doom');
+      await reportContent('loaded');
+      await timers.advance(30_000);
+
+      // Then
+      expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
+      expect(ports.product.halt).toHaveBeenCalledTimes(1);
+      expect(countForgotten()).toBe(0);
+      expect(recents).toEqual([]);
+      expect(listEvents()).not.toContain('boot:ready');
+      expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
+      expect(listEvents().filter(event => event === 'boot:failed')).toEqual(['boot:failed']);
+      expect(
+        distributions.filter(
+          metric => metric.name === 'dotli.e2e.slow_path' && metric.attributes?.['outcome'] === 'ok',
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it('As a visitor whose protocol frame refused this page and whose failure screen throws, I open a name and the load rejects with that failure', async () => {
+    // Given
+    const screenFailure = new Error('the failure screen threw');
+    const { loader } = setupLoader({
+      published: { doom: 'bafy-base' },
+      latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+      failToShow: screenFailure,
+    });
+
+    // When
+    const loaded = loader.load('doom');
+
+    // Then
+    await expect(loaded).rejects.toBe(screenFailure);
+  });
+
+  it('As a visitor with the app open, I meet a protocol frame rebuilt from a newer release and the app goes down under the reload screen', async () => {
+    // Given
+    const { loader, ports, failures, refuseWire, reportContent, readResolution } = setupLoader({
+      published: { doom: 'bafy-base' },
+    });
+    await loader.load('doom');
+
+    // When
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await reportContent('loaded');
+    await waitForStatus(productState.store, product => product.status === 'error');
+
+    // Then
+    expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
+    expect(ports.product.halt).toHaveBeenCalledTimes(1);
+    expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
+  });
+
+  it('As a visitor with the app open whose frame throws as it halts, I meet a protocol frame from a newer release and still see the reload screen', async () => {
+    // Given an app on screen whose frame throws as it halts
+    const { loader, ports, failures, refuseWire } = setupLoader({ published: { doom: 'bafy-base' } });
+    await loader.load('doom');
+    ports.product.halt.mockImplementation(() => {
+      throw new Error('the frame threw as it halted');
+    });
+
+    // When
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await waitForStatus(productState.store, product => product.status === 'error');
+
+    // Then
+    expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
+  });
+
+  it('As an operator, I see a failure screen that throws after the app was on screen captured and counted', async () => {
+    // Given a loader whose failure screen throws, and an app that was on screen
+    const { loader, refuseWire, captured, counted } = setupLoader({
+      published: { doom: 'bafy-base' },
+      failToShow: new TypeError('the failure screen threw'),
+    });
+    await loader.load('doom');
+
+    // When the frame refuses the wire and the failure screen throws
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+    await waitForStatus(productState.store, product => product.status === 'error');
+
+    // Then the throw is captured once and counted with its error name
+    expect(captured.filter(context => context.step === 'failure_screen')).toEqual([
+      expect.objectContaining({ step: 'failure_screen' }),
+    ]);
+    // The page sets its journey as defaults on every count
+    expect(counted('resolve.failure_screen')).toEqual([
+      expect.objectContaining({ outcome: 'error', reason: 'TypeError' }),
+    ]);
+  });
+
+  it('As a visitor whose app frame never starts, I see the load fail and a protocol frame refusing the page later reaches no listener', async () => {
+    // Given
+    const { loader, timers, countMismatchListeners } = setupLoader({
+      published: { doom: 'bafy-base' },
+      silentSandbox: true,
+    });
+    await loader.load('doom');
+
+    // When
+    await timers.advance(30_000);
+
+    // Then
+    expect(countMismatchListeners()).toBe(0);
+  });
+
+  it('As a visitor on a gateway, I open an app and am shown it as trusted', async () => {
+    // Given
+    const { loader, debug } = setupLoader({ backend: 'rpc-gateway', published: { doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(urlPillState.store.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'trusted' });
+    expect(debug.find(event => event.event === 'phase')?.payload).toEqual({
+      label: 'doom',
+      phase: 'asset-hub-syncing',
+    });
+  });
+
+  it('As a visitor with the CID cache turned off, I open a name and it is resolved with nothing cached', async () => {
+    // Given
+    const { loader, cidCache, stored, ports } = setupLoader({ skipCidCache: true, published: { doom: 'bafy-base' } });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(cidCache.get).not.toHaveBeenCalled();
+    expect(stored).toEqual([]);
+    expect(ports.product.render).toHaveBeenCalledWith(getRenderedDoom('bafy-base'));
+  });
+
+  it('As an operator, I see a load with the CID cache turned off whose name fails to resolve reported with the cache skipped', async () => {
+    // Given
+    const { loader, captured, readResolution } = setupLoader({
+      skipCidCache: true,
+      resolveError: new Error('Asset Hub went quiet'),
+    });
+
+    // When
+    await loader.load('doom');
+
+    // Then
+    expect(captured[0]?.tags).toMatchObject({ cid_cache: 'skipped' });
+    expect(readResolution()).toMatchObject({ cid_cache: 'skipped' });
+  });
+
+  it('As a visitor, I load the same name twice at once and the second load waits for the first and loads nothing more', async () => {
+    // Given
+    const { loader, names, ports } = setupLoader({ published: { doom: 'bafy-base' } });
+
+    // When
+    await Promise.all([loader.load('doom'), loader.load('doom')]);
+
+    // Then
+    expect(names.resolveProduct).toHaveBeenCalledTimes(1);
+    expect(ports.product.render).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor whose page core is not set up, I open a name and the load rejects with that error and shows no screen', async () => {
+    // Given
+    const error = new Error('the page core is not set up');
+    const { loader, ports, failures } = setupLoader();
+    vi.mocked(ports.core.setPageProduct).mockImplementation(() => {
+      throw error;
+    });
+
+    // When
+    const first = loader.load('doom');
+    const second = loader.load('doom');
+
+    // Then
+    await expect(first).rejects.toBe(error);
+    await expect(second).resolves.toBeUndefined();
+    expect(failures).toEqual([]);
+    expect(ports.core.setPageProduct).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Builds a loader on a fresh page, with every report it sends recorded: the captures, the debug panel's events, the
+ * resolution span's attributes as the trace sets them, and every distribution. Restored when the case ends.
+ */
+function setupLoader(params: Params = {}) {
+  localStorage.clear();
+  sessionStorage.clear();
+  resetAllStoresForTests();
+  const captured: CaptureContext[] = [];
+  const debug: DotliDebugEvent[] = [];
+  const bus = createDebugBus();
+  bus.enableBuffering();
+  const unwatch = bus.watch(event => {
+    if ('layer' in event) {
+      debug.push(event);
+    }
+  });
+  const unbindSink = bindCaptureSink({
+    exception(_error, context) {
+      captured.push(context);
+    },
+    expected: () => undefined,
+  });
+  const recording = bindRecordingSentry();
+  onTestFinished(() => {
+    // The load starts the page's loading screen, and the no-content case leaves a screen mounted.
+    pageLoading.stopStatusTick();
+    pageScreen.clear();
+    recording.restore();
+    unbindSink();
+    unwatch();
+  });
+  const timers = createManualTimers();
+  const failures: LoadFailure[] = [];
+  const sandboxOutcomes = createListenerSet<SandboxLoadReport>({ onListenerError: rethrow });
+  let latestOutcome: SandboxLoadReport | null = null;
+  const stored: string[] = [];
+  const revalidated: [string, string, boolean][] = [];
+  const recents: string[] = [];
+  let forgotten = 0;
+  const mismatchListeners = new Set<(error: ProtocolVersionMismatchError) => void>();
+  const published = params.published ?? {};
+  const releaseCore = vi.fn();
+  const names: NameSource = {
+    resolveProduct: vi.fn((label: string, { onPhase }: Parameters<NameSource['resolveProduct']>[1] = {}) => {
+      onPhase?.('asset-hub-syncing');
+      return params.resolveError !== undefined
+        ? Promise.reject(params.resolveError)
+        : Promise.resolve(published[`app.${label}`] ?? published[label] ?? null);
+    }),
+    readManifests: vi.fn(() => Promise.resolve(NO_MANIFESTS)),
+    readWorkerManifest: vi.fn(() => Promise.resolve(params.workerManifest ?? { kind: 'empty' as const })),
+  };
+  const ports = {
+    product: {
+      render: vi.fn<ProductFrame['render']>(() => Promise.resolve()),
+      halt: vi.fn(),
+    },
+    core: {
+      setPageProduct: vi.fn(),
+      acquirePageCore: vi.fn(() =>
+        params.coreBootError !== undefined
+          ? Promise.reject(params.coreBootError)
+          : Promise.resolve({ release: releaseCore }),
+      ),
+    },
+    sandbox: {
+      subscribeOutcomes: (listener: (report: SandboxLoadReport) => void) => {
+        if (params.outcomesUnfollowable !== undefined) {
+          throw params.outcomesUnfollowable;
+        }
+        if (latestOutcome !== null) {
+          sandboxOutcomes.deliver(listener, latestOutcome);
+        }
+        return sandboxOutcomes.subscribe(listener);
+      },
+      expectHeardWithin: (onSilent: Parameters<SandboxLoad['expectHeardWithin']>[0]) => {
+        if (params.silentSandbox !== true) {
+          return noop;
+        }
+        const timer = timers.setTimeout(() => {
+          onSilent(new SandboxSilentError());
+        }, 30_000);
+        return () => {
+          timers.clearTimeout(timer);
+        };
+      },
+    },
+    content: { onProgress: () => () => undefined },
+  };
+  const cidCache = {
+    get: vi.fn<PageCidCache['get']>(() => Promise.resolve(params.cached ?? null)),
+    storeLater({ label, cid }) {
+      stored.push(`${label} ${cid}`);
+    },
+    revalidateLater({ label, servedCid, onScreen }) {
+      revalidated.push([label, servedCid, onScreen]);
+    },
+  } satisfies PageCidCache;
+  const loader = createProductLoader({
+    backend: params.backend ?? 'smoldot-direct',
+    skipCidCache: params.skipCidCache ?? false,
+    report: createLoadTelemetry({
+      backend: params.backend ?? 'smoldot-direct',
+      flowId: 'boot-1',
+      startedAt: 0,
+      blockRelay: ports.content,
+      timers,
+      now: timers.now,
+      debugBus: bus,
+    }).report,
+    names,
+    productFrame: ports.product,
+    bridge: ports.core,
+    sandboxLoad: ports.sandbox,
+    cidCache,
+    bitswap: { get: () => new Promise<Uint8Array>(() => undefined) },
+    recents: {
+      record(label) {
+        recents.push(label);
+        return Promise.resolve();
+      },
+    },
+    failureScreen: {
+      show(failure) {
+        failures.push(failure);
+        if (params.failToShow !== undefined) {
+          throw params.failToShow;
+        }
+      },
+      forget() {
+        forgotten += 1;
+      },
+    },
+    onProtocolVersionMismatch(listener) {
+      if (params.latchedMismatch !== undefined) {
+        listener(params.latchedMismatch);
+        return () => undefined;
+      }
+      mismatchListeners.add(listener);
+      return () => {
+        mismatchListeners.delete(listener);
+      };
+    },
+    timers,
+  });
+  return {
+    loader,
+    /** The page's clock and timers, which only the case moves. */
+    timers,
+    names,
+    ports,
+    /** The release of the core lease the core port handed the load. */
+    releaseCore,
+    cidCache,
+    failures,
+    stored,
+    revalidated,
+    /** The labels recorded in the recent list. */
+    recents,
+    captured,
+    debug,
+    /** Every distribution the page sent. */
+    distributions: recording.distributions,
+    /** The attributes of each count named `dotli.<name>`, in order. */
+    counted: recording.counted,
+    /** Returns the resolution span's attributes as the trace last set them, or undefined before it starts. */
+    readResolution: () => recording.spans.filter(span => span.name === 'dotli.resolution').at(-1)?.attributes,
+    /** Returns each debug panel event as `layer:event`, in order. */
+    listEvents: () => debug.map(event => `${event.layer}:${event.event}`),
+    /** Returns how often the failure screen forgot the previous attempt's failure. */
+    countForgotten: () => forgotten,
+    /** Returns how many followers still hear the sandbox's outcomes. */
+    countOutcomeFollowers: () => sandboxOutcomes.size,
+    /** Returns how many listeners still hear a protocol frame refuse this page's wire. */
+    countMismatchListeners: () => mismatchListeners.size,
+    /** A protocol frame rebuilt from a newer release refusing this page's wire. */
+    refuseWire,
+    /** The sandbox reporting an outcome of its content. Resolves after the load has handled it. */
+    reportContent,
+  };
+
+  function refuseWire(error: ProtocolVersionMismatchError): void {
+    const listeners = [...mismatchListeners];
+    mismatchListeners.clear();
+    for (const listener of listeners) {
+      listener(error);
+    }
+  }
+
+  function reportContent(outcome: SandboxLoadOutcome, failedStep?: string): Promise<void> {
+    const report = { outcome, failedStep };
+    latestOutcome = report;
+    sandboxOutcomes.emit(report);
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Binds a Sentry that records each span opened apart from the active one, with its attributes and whether it ended.
+ * Restored when the case ends. It replaces the recording `setupLoader` bound, so a case that calls it cannot read the
+ * resolution's spans.
+ */
+function recordSpans() {
+  const spans: { name: string; attributes: Record<string, SpanValue>; ended: boolean }[] = [];
+  onTestFinished(
+    m.bind({
+      startSpan: (_options, fn) => fn(undefined),
+      startInactiveSpan: ({ name, attributes }) => {
+        const span = { name, attributes: { ...attributes }, ended: false };
+        spans.push(span);
+        return {
+          setAttributes(next) {
+            Object.assign(span.attributes, next);
+          },
+          end() {
+            span.ended = true;
+          },
+        };
+      },
+      setMeasurement: noop,
+      metrics: { count: noop, distribution: noop, gauge: noop },
+      setTag: noop,
+      addBreadcrumb: noop,
+    }),
+  );
+  return spans;
+}
+
+/** Returns each fast path span's outcome and whether it ended, in order. */
+function readFastPaths(spans: ReturnType<typeof recordSpans>) {
+  return spans
+    .filter(span => span.name === 'dotli.e2e.fast_path')
+    .map(({ attributes, ended }) => ({ outcome: attributes['outcome'], ended }));
+}
+
+function createWorkerManifest(
+  value: { kind: 'app' } | { kind: 'worker'; entrypoint: string; includes: { chat?: boolean } },
+): ManifestResult<ExecutableManifest> {
+  return { kind: 'ok', value: { $v: 1, appVersion: [1, 0, 0], ...value }, raw: '' };
+}
+
+/** The product `doom` the frame is asked to render from `cid`, with any chat flag. */
+function getRenderedDoom(cid: string): Record<string, unknown> {
+  const chat: unknown = expect.any(Promise);
+  return { mode: 'subdomain', label: 'doom', cid, chat, facts: {} };
+}

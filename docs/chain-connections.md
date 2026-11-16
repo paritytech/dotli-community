@@ -209,7 +209,7 @@ users: when its stream ends, it halts, and the pool's healing lease builds it
 again.
 
 The host pool's transport on the smoldot backends (`createFrameChainTransport`
-in `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts`) wraps one remote
+in `apps/host/src/features/chains/createFrameChainTransport.ts`) wraps one remote
 connection. It reports `connecting`, then `connected` as soon as the
 connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
@@ -219,7 +219,7 @@ reason, `'chain'` or `'frame'`.
 ## Pausing a hidden page
 
 A hidden page has no use for its network. `createNetworkPause`
-(`apps/host/src/runtime/createNetworkPause.ts`) follows the document's
+(`apps/host/src/features/network/createNetworkPause.ts`) follows the document's
 visibility. It waits a grace of 60 s after the page hides, then pauses. A
 return to the page resumes at once. A wake from a sleep, which it finds by a
 late tick, resumes nothing, since a visible page was never paused. It only
@@ -505,19 +505,19 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Healing lease, the pool's redial and its gate | `packages/chains/src/createHealingLease.ts`, `packages/chains/src/createChainRedial.ts`, `packages/chains/src/createRedialGate.ts` |
 | smoldot transport | `packages/chains/src/createLightClient.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
-| Host error page classification | `apps/host/src/describeError.ts` |
-| Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/runtime/hostCallbacks/createHostChainPool.ts`, `apps/host/src/runtime/hostCallbacks/createChainConnect.ts`, `apps/host/src/runtime/hostCallbacks/getHostChainProvider.ts` |
-| Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts` |
-| Settings probe | `apps/host/src/runtime/createFinalizedBlockQuery.ts` (`createFinalizedBlockQuery`) |
-| Network panel | `apps/host/src/state/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
-| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `apps/host/src/runtime/hostCallbacks/createHostBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
-| Protocol engine, a scope per tab | `apps/protocol/src/createEngine.ts` |
-| Watched chains (healing leases) | `apps/protocol/src/observeChains.ts` (`observeChains`) |
-| SharedWorker ports and heartbeat | `apps/protocol/src/createWorkerLifecycle.ts` |
+| Host error page classification | `apps/host/src/features/productLoad/failure/describeError.ts` |
+| Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/features/chains/createHostChainPool.ts`, `apps/host/src/features/productRuntime/callbacks/createChainConnect.ts`, `apps/host/src/features/chains/getHostChainProvider.ts` |
+| Host pool's transport on the smoldot backends | `apps/host/src/features/chains/createFrameChainTransport.ts` |
+| Settings probe | `apps/host/src/features/debugPanel/createFinalizedBlockQuery.ts` (`createFinalizedBlockQuery`) |
+| Network panel | `apps/host/src/features/network/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
+| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `apps/host/src/features/chains/createHostBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
+| Protocol engine, a scope per tab | `apps/protocol/src/engine/createEngine.ts` |
+| Watched chains (healing leases) | `apps/protocol/src/lightClient/observeChains.ts` (`observeChains`) |
+| SharedWorker ports and heartbeat | `apps/protocol/src/sharedWorker/createWorkerLifecycle.ts` |
 | Pausable transport | `packages/chains/src/createPausableTransport.ts` |
-| The page's network pause | `apps/host/src/runtime/createNetworkPause.ts` |
+| The page's network pause | `apps/host/src/features/network/createNetworkPause.ts` |
 | The host's remote pool control (`frame.pause` sender) | `packages/protocol/src/createRemotePoolControl.ts` |
-| The `frame.pause` server, in the frame and the worker | `apps/protocol/src/servePoolControl.ts` |
+| The `frame.pause` server, in the frame and the worker | `apps/protocol/src/engine/servePoolControl.ts` |
 
 ## Known limits
 

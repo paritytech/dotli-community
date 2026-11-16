@@ -112,7 +112,7 @@ above the linter: semantics, data flow and naming.
   concept, or a file not named after its main export in camelCase.
 - **minor** (docs/code/style.md § One concept per file, named after its export): A helper, table, constant or piece of
   state split into its own file although only one module's main export uses it.
-- **minor** (docs/code/style.md § Named exports and one explicit barrel): A nested barrel.
+- **minor** (docs/code/style.md § Named exports and one explicit barrel): A nested barrel, other than an app feature's one `index.ts`.
 - **minor** (docs/code/style.md § Tests): Three or more inputs of one behaviour as separate tests instead of `it.each`,
   an event stream asserted event by event, or a cache hit asserted with `toEqual`.
 - **minor** (docs/code/style.md § Main export before its helpers): Private helpers above the main export.
@@ -222,7 +222,7 @@ above the linter: semantics, data flow and naming.
 - **major** (docs/code/style.md § Tests): A test shaped as that section's "A test never looks like this" list says, such
   as a regression test that passes without its fix or a story play that checks only copy.
 - **major** (docs/code/placement.md § Inside a package): A unit test that does not sit beside its module as
-  `src/foo.spec.ts`, or a DOM-mocked test outside `<pkg>/tests/`.
+  `src/foo.spec.ts`, or a DOM-mocked test outside `<pkg>/tests/` and an app feature's `__tests__/functional/`.
 - **major** (AGENTS.md § Code style, Tests:): A component's behaviour tested anywhere but a play function in its
   Storybook story.
 - **major** (AGENTS.md § Code style, Tests:): A module mock or a global override where a fake passed through a parameter

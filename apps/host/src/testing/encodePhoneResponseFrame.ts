@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { CallErrorValue } from '@parity/truapi/scale';
-import { PHONE_METHODS, type PhoneMethod } from '../runtime/phoneMethods.js';
+import { PHONE_METHODS, type PhoneMethod } from '../features/signing/phoneMethods.js';
 import { encodeResponseFrame } from './encodeResponseFrame.js';
 
 /** How the phone answered: the method's response, its domain error, or a call error as it is. */

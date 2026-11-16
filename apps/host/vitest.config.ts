@@ -20,31 +20,20 @@ export default defineConfig({
         test: {
           name: 'host:unit',
           include: ['src/**/*.spec.{ts,tsx}'],
-          exclude: ['src/islands/**', 'src/runtime/**'],
+          // The Playwright suites in __tests__ also end in .spec.ts.
+          exclude: ['src/**/__tests__/**'],
           environment: 'node',
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: 'host:runtime',
-          include: ['src/runtime/**/*.spec.ts'],
-          environment: 'node',
-          // The runtime's specs read metrics through a recorder nobody else binds.
+          // Specs read metrics through a recorder nobody else binds.
           setupFiles: ['@dotli/metrics/testing/setup'],
         },
-      },
-      {
-        extends: true,
-        test: { name: 'host:islands', include: ['src/islands/**/*.spec.{ts,tsx}'], environment: 'node' },
-        // The islands' bindings run Solid, and Node's own conditions pick its server build, whose effects never re-run.
+        // Island bindings run Solid, and Node's own conditions pick its server build, whose effects never re-run.
         ssr: { resolve: { conditions: ['browser', 'development'] } },
       },
       {
         extends: true,
         test: {
           name: 'host:functional',
-          include: ['tests/{components,islands,shell}/**/*.test.{ts,tsx}'],
+          include: ['src/**/__tests__/functional/**/*.test.{ts,tsx}'],
           environment: 'happy-dom',
           setupFiles: ['tests/setup.ts'],
         },

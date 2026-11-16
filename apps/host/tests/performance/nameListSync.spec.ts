@@ -19,7 +19,7 @@ import {
   NAME_LIST_READ_MEASURE,
   type NameListReadDetail,
   type NameListSyncSummary,
-} from '../../src/nameListTimeline.js';
+} from '../../src/features/landing/nameListTimeline.js';
 import { PORT } from '../env.js';
 import { BACKENDS, type Backend } from '../functional/fixtures/settings.js';
 import { setupTest } from '../functional/helpers/context.js';

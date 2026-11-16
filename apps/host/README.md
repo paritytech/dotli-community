@@ -37,6 +37,49 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
 
 ## Design
 
+### Layout
+
+The source is grouped by what it is for:
+
+- **Pages:** the three Astro pages. They compose features.
+- **Shell:** the entries and their boot. It also holds the routes and the service worker. Chrome that composes several
+  features sits there too.
+- **Kit:** helpers several features use. It imports no feature at runtime.
+- **Features:** one user flow each, behind one index. A feature holds its own views, islands and stores, with their
+  logic and tests.
+
+The features:
+
+| Group             | Features                                                            |
+| ----------------- | ------------------------------------------------------------------- |
+| Opening a product | landing, product load, product identity, topbar, page               |
+| Signing in        | account, sign-in window, site sign-in                               |
+| Around a product  | signing, permissions, network, settings, chat, notifications, debug |
+
+- **Product runtime:** the TrUAPI side whole. It holds the core connection and the host callbacks. The runtime bridge
+  sits there too.
+- **Chains:** the page's chain pool and the reads every flow shares, below product runtime.
+- **Debug panel:** the panel's view of the page, above product runtime, loaded only in debug mode.
+
+No feature imports another in a cycle, so each sits above the features it reads.
+
+The page feature holds the state that every flow placing chrome reads:
+
+- the shown product
+- the topbar's state and slots
+- the product frame's box
+- topbar auto-hide
+
+```mermaid
+flowchart TD
+  pages --> shell
+  pages --> features
+  shell --> features
+  features -->|index only| features
+  shell --> kit
+  features --> kit
+```
+
 ### Pages and boot
 
 - Three Astro pages, each with its own entry:
@@ -65,8 +108,9 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
   - the signed-in flag
   - the restore rule
   - the session lease
-- **Runtime state** (auth, product, permissions, theme, wallet mode) lives with the runtime.
-- **Page chrome state** (topbar, URL pill, product card, chat panel, network) lives with the page.
+- **Flow state** (auth, permissions, theme, wallet mode, URL pill, product card, chat panel, network) lives with the
+  feature that owns it.
+- **Page state** (the shown product, the topbar, the product frame's box) lives in the page feature.
 - Each state is an entity object with a read-only store. It exposes getters and setters. Modules follow the code style
   guide.
 

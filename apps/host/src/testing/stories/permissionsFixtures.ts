@@ -11,9 +11,9 @@ import {
   type EnforceablePermissionName,
   type PermissionStatus,
   type PermissionTargets,
-} from '../../runtime/permissionPolicy.js';
-import type { PermissionsNotice } from '../../components/permissions/permissions.js';
-import type { PermissionsItemProps } from '../../components/permissions/PermissionsItem.js';
+} from '../../features/permissions/policy/permissionPolicy.js';
+import type { PermissionsNotice } from '../../features/permissions/panel/permissions.js';
+import type { PermissionsItemProps } from '../../features/permissions/panel/PermissionsItem.js';
 
 const [notice, setNotice] = createSignal<PermissionsNotice | undefined>('loading');
 const [statuses, setStatuses] = createSignal<readonly PermissionStatus[] | undefined>(undefined);

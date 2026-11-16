@@ -1,0 +1,48 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Binds the topbar's static markup to the topbar and network health stores.
+
+import { networkHealthState } from '../network/index.js';
+import { topbarState } from '../page/index.js';
+import { pageTopbarAutoHide } from '../page/index.js';
+import { TOPBAR_REVEAL_SHORTCUT } from './topbarRevealShortcut.js';
+import { bindTopbarStatus } from './bindTopbarStatus.js';
+import { bindPillBox } from './bindPillBox.js';
+import { watchTopbarOffset } from './watchTopbarOffset.js';
+
+/**
+ * Binds `bar` to the topbar auto-hide, the frame's offset, the topbar store, the network health store and the pill's
+ * published box until the returned unbind. Throws only as `bar` or the stores do.
+ */
+export function bindTopbar(bar: HTMLElement): () => void {
+  const releaseBar = pageTopbarAutoHide.registerBar(bar);
+  const unwatchOffset = watchTopbarOffset();
+  const unbindStatus = bindTopbarStatus(bar, networkHealthState.store);
+  const unbindPillBox = bindPillBox(bar);
+  bar.addEventListener('mouseenter', pageTopbarAutoHide.reveal);
+  bar.addEventListener('mouseleave', pageTopbarAutoHide.scheduleHide);
+
+  function render(): void {
+    const { visible, autoHide } = topbarState.get();
+    bar.toggleAttribute('data-hidden', !visible);
+    if (autoHide) {
+      bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
+    } else {
+      bar.removeAttribute('aria-keyshortcuts');
+    }
+  }
+  const offTopbar = topbarState.store.subscribe(render);
+
+  function unbind(): void {
+    offTopbar();
+    bar.removeEventListener('mouseenter', pageTopbarAutoHide.reveal);
+    bar.removeEventListener('mouseleave', pageTopbarAutoHide.scheduleHide);
+    unbindStatus();
+    unbindPillBox();
+    unwatchOffset();
+    releaseBar();
+  }
+
+  return unbind;
+}

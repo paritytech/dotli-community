@@ -12,7 +12,8 @@ const NETWORK_SPECS = /resolution\.spec\.ts$/;
 
 export default defineConfig({
   ...baseConfig,
-  testDir: '.',
+  testDir: '../../src',
+  testMatch: '**/__tests__/functional/**/*.spec.ts',
   globalSetup: './globalSetup.ts',
   timeout: 900_000,
   // One preview server per worker: its metrics buffer and mode-sync store are process-wide, and tests must not

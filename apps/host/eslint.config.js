@@ -5,9 +5,11 @@
 
 import { defineConfig, globalIgnores } from 'eslint/config';
 import { config } from '@config/eslint/astro';
+import { featureBoundaries } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
+  ...featureBoundaries(),
   // The functional suite's global setup builds the wire bundle here.
   globalIgnores(['tests/functional/.wire/']),
   {
@@ -20,7 +22,7 @@ export default defineConfig([
   {
     // The Playwright suites read env knobs straight from the shell, never through a turbo task, so turbo has no
     // cache to key on them.
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'src/**/__tests__/**/*.ts', 'src/**/__tests__/**/*.tsx'],
     rules: {
       'turbo/no-undeclared-env-vars': 'off',
     },

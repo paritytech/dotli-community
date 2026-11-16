@@ -11,7 +11,7 @@ const SOURCE = 'https://publicsuffix.org/list/public_suffix_list.dat';
 const OUTPUT = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
-  'apps/host/src/runtime/siteSignIn/public-suffix-list.dat',
+  'apps/host/src/features/siteSignIn/public-suffix-list.dat',
 );
 const SECTIONS = ['===BEGIN ICANN DOMAINS===', '===BEGIN PRIVATE DOMAINS===', '===END PRIVATE DOMAINS==='];
 

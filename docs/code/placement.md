@@ -122,21 +122,54 @@ flowchart TD
 | Shared `tsconfig` bases                                                                                                        | `config/typescript` (`@config/typescript`)                |
 | A build plugin or option shared by the host, sandbox and protocol builds, or the tests' CSS-modules naming                     | `config/vite` (`@config/vite`)                            |
 
-## Inside the host
+## Inside an app
 
-- The host's domain building blocks (account, chat, permission, settings and chain views, and their icons) sit in
-  `apps/host/src/components/<domain>/` beside the flows that compose them.
-- The host's side of TrUAPI and the session lives in `apps/host/src/runtime/`.
+An app's `src/` is grouped by what the code is for, never by its kind. No folder is named for a kind of file, such as
+`components/` or `state/`.
+
+The host has user flows:
+
+- `src/features/<feature>/` holds one user flow whole. Its views, islands and stores sit there with their logic and
+  tests.
+- `src/pages/` holds the Astro pages. They compose features.
+- `src/shell/` holds the entries and their boot. It also holds the routes and the service worker. Chrome that composes
+  several features sits there too.
+- `src/kit/` holds helpers several features use. It imports no feature at runtime.
+- A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file. A type-only
+  import and a test may reach past it. So may an `import()`, which names the chunk it loads. Astro markup imports an
+  Astro component or an island by its own module, since Astro hydrates the module the markup imports, so an index never
+  lists a page's islands.
+- An island is named with an `Island` suffix, so it never shares a name with the view it renders.
+- The `page` feature holds the state every flow that places chrome reads, such as the shown product and the topbar's
+  slots.
+- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection and the host callback
+  adapters. The runtime composition root sits there too. It reaches the other features through their `index.ts`. They
+  never import it at runtime. They take what they need from it as a parameter, such as the core lease, or import only its
+  types.
+- Infrastructure that `productRuntime` and the flows both read, such as the page's chain pool, is its own low feature.
+- Features import each other in one direction only. Two features that need each other move the shared part down or
+  take it as a parameter.
+- A feature is flat. Past about 30 source files it splits into sub-flow folders named for what they do. Sub-flow folders
+  of one feature import each other freely.
+
+The sandbox and the protocol app have no user flows. They group their files by runtime responsibility in folders
+straight in `src/`, with a `kit/` for shared helpers, no `features/` level and no `index.ts`. Their `main.ts` composes
+the folders.
 
 ## Inside a package
 
 These hold in every app and package. The `src/index.ts` entry and the `./testing` entry are for packages alone.
 
 - Each package exposes only `src/index.ts`. Never import another package's internal modules.
-- On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk.
+- On-demand modules load through an `import()` to stay a separate chunk. A package keeps its loaders in `src/lazy.ts`.
+  In an app with features, the caller writes the `import()` of a feature's module where it needs it, and
+  `src/kit/lazy.ts` keeps the loaders of packages. A feature's `index.ts` never re-exports a module an `import()`
+  loads. The one exception is a module that only code already in a lazy chunk imports from the index.
 - Styles go in a CSS module beside the component.
 - A unit test sits beside its module: `src/foo.ts` gets `src/foo.spec.ts`.
-- Functional tests live in `<pkg>/tests/` as `*.test.ts`.
+- Functional tests live in `<pkg>/tests/` as `*.test.ts`. In an app with features, a feature's functional tests live in
+  its `__tests__/functional/` and its end-to-end specs in its `__tests__/e2e/`. Specs that span features live in
+  `src/shell/__tests__/`. The suites' configs, setup, shared fixtures and helpers stay in the app's `tests/`.
 - Test-only modules live in `src`: `<name>.fake.ts` beside the module it fakes, shared fixtures in `src/testing/`. Never
   export them from `src/index.ts`. Another package reaches them through a `./testing` package entry.
 - A constant two modules share lives in a leaf module, and a protocol constant is defined once.
@@ -163,8 +196,8 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
   bus.
 - Shared Vite plugins live in `config/vite/src/` as `@config/vite`.
 - Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
-  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
-  loads first, not import rules.
+  the debug panel) loads through `lazy()` or an `import()`. The startup size budgets in CI guard what a page loads
+  first, not import rules.
 
 ## No home found
 
