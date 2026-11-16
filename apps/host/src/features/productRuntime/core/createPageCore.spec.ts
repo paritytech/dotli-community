@@ -11,7 +11,7 @@ import { createBlockingModalCoordinator } from '../../../kit/createBlockingModal
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import { createPageCore, type CoreContext } from './createPageCore.js';
-import { toProductId } from '../../productLoad/index.js';
+import { toProductId } from '../../../kit/getAskedProductId.js';
 import { encodeGarbagePhoneRequestFrame } from '../../../testing/encodeGarbagePhoneRequestFrame.js';
 import { encodePhoneRequestFrame } from '../../../testing/encodePhoneRequestFrame.js';
 import { encodePhoneResponseFrame } from '../../../testing/encodePhoneResponseFrame.js';

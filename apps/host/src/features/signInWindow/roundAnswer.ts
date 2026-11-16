@@ -13,10 +13,10 @@ import type { SiteSignRequest } from '../siteSignIn/index.js';
 import type { SignInIntent } from './parseWindowRequest.js';
 import type { Responder, ResponderState } from './createResponder.js';
 import { dispatchRound, type Round } from './dispatchRound.js';
-import type { Party } from './openerRule.js';
+import type { Party } from '../../kit/openerRule.js';
 import type { SessionRequest } from './readSessionRequest.js';
-import type { RefusalReason } from './sessionMessages.js';
-import type { SessionRoute } from './sessionRoute.js';
+import type { RefusalReason } from '../../kit/sessionMessages.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 import { SITE_ROUTE_METRICS, type SiteRoute } from '../siteSignIn/index.js';
 
 const report = createReporter({ flow: 'wallet' });

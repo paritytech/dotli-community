@@ -4,7 +4,7 @@
 import { base64urlnopad, utf8 } from '@scure/base';
 import { describe, expect, it } from 'vitest';
 import { isRecord } from '@dotli/shared';
-import { createCancelledMessage } from '../signInWindow/index.js';
+import { createCancelledMessage } from '../../kit/sessionMessages.js';
 import { probeSeal, sealRedirect } from './siteSeal.js';
 
 type Envelope = {

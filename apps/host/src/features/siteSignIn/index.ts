@@ -26,7 +26,6 @@ export type { SiteSignRequest } from './parseSiteSignRequest.js';
 export { parseSiteCall, parseSiteSignRequest } from './parseSiteSignRequest.js';
 export type { RedirectFields } from './readRedirectFields.js';
 export { readRedirectFields } from './readRedirectFields.js';
-export { siteRevokeMetric } from './siteRevokeMetric.js';
 export { isUnsentGrantForgotten } from './siteRoundGrants.js';
 export type { SiteRoute } from './siteRouteMetrics.js';
 export { SITE_ROUTE_METRICS } from './siteRouteMetrics.js';

@@ -6,7 +6,7 @@ import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getSettings, setSettings } from '@dotli/config';
 import { fromHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
-import { createChainConnect } from './createChainConnect.js';
+import { createChainConnect } from '../productRuntime/index.js';
 import { createHostChainPool } from './createHostChainPool.js';
 import {
   createFakeHostChainSources,

@@ -6,7 +6,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { loadVerify } from '@dotli/content';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import type { PreimageBlock, PreimageFetch } from './createBlockFetch.js';
+import type { PreimageBlock, PreimageFetch } from '../../chains/index.js';
 import { createPreimageAdapters } from './createPreimageAdapters.js';
 import { yielded } from '../../../testing/fixtures.js';
 

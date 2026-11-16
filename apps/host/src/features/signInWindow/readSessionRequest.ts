@@ -8,8 +8,8 @@
 
 import { isRecord } from '@dotli/shared';
 import { base64urlnopad, utf8 } from '@scure/base';
-import { PROTOCOL_VERSION } from './sessionMessages.js';
-import type { SessionRoute } from './sessionRoute.js';
+import { PROTOCOL_VERSION } from '../../kit/sessionMessages.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 
 /**
  * What a session request is before its party is known: the round to answer, the version and the network as the page

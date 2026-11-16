@@ -17,7 +17,7 @@ import { authState } from '../../session/authState.js';
 import { topbarState } from '../../../page/topbarState.js';
 import { pageTopbarAutoHide } from '../../../page/createTopbarAutoHide.js';
 import { AuthModalIsland } from '../../signIn/AuthModalIsland.js';
-import { createProductFrameView } from '../../../productLoad/frame/createProductFrameView.js';
+import { createProductFrameView } from '../../../productLoad/index.js';
 import { productFrameLayout } from '../../../page/createProductFrameLayout.js';
 import { topbarSurfaces } from '../../../page/topbarSurfaces.js';
 import { authModalState } from '../../signIn/authModalState.js';

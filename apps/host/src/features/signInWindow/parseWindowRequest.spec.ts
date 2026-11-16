@@ -5,7 +5,7 @@ import { must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { parseWindowRequest } from './parseWindowRequest.js';
 import { readSessionRequest } from './readSessionRequest.js';
-import type { SessionRoute } from './sessionRoute.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 
 describe('window requests', () => {
   it('As a user signing out, I open the sign-out window with a notified other than true and it reads as false', () => {

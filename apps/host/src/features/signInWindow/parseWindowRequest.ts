@@ -9,7 +9,7 @@
 import type { Network } from '@dotli/config';
 import { isValidNetwork } from '@dotli/config/networks';
 import { createSessionRequestParams, type SessionRequest } from './readSessionRequest.js';
-import { PROTOCOL_VERSION } from './sessionMessages.js';
+import { PROTOCOL_VERSION } from '../../kit/sessionMessages.js';
 
 /**
  * What a round asks the window for. `resume` takes a sign-in the page knows exists elsewhere, which the window sends at

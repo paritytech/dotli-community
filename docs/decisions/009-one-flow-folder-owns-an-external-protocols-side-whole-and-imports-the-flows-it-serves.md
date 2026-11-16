@@ -22,12 +22,16 @@
   - an app's source is grouped into one folder per flow, and the app answers an external protocol through callbacks
     that serve different flows
   - the protocol's side goes in one flow folder: its core connection, the chain or network access it gives the remote
-    side, every callback adapter, the assembly of the callback object and the runtime composition root
+    side, every callback adapter, the assembly of the callback object and the runtime composition root. The chain or
+    network access here means only the callbacks the folder answers the remote side with. Shared connection
+    infrastructure that other flows read lives in its own low flow folder (D-013).
   - that folder imports the other flows only through their `index.ts`, and the other flows expose plain actions and
     stores that know no callback signature or wire shape
   - a flow that needs the protocol side imports only its types, or receives a facade as a parameter. It never imports
     that folder at runtime, so the runtime imports run one way.
-- Not when: no case yet.
+- Not when: the infrastructure is shared beyond the protocol's callbacks, such as a pool of connections, their
+  providers, a content-fetch client or reads of another network, and other flows need it. It moves to its own low flow
+  folder instead, and a wrapper a flow needs comes in as a parameter (D-013).
 - Source: the change that regroups the host, sandbox and protocol apps by flow, design
   `docs/_plans/app-flow-folders-design.md`.
-- Status: active
+- Status: active, narrowed by D-013

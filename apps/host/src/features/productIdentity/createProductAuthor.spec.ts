@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseH160Address, type H160Address } from '../../kit/h160Address.js';
 import { createProductAuthor, type AuthorReadStep, type ProductAuthorResult } from './createProductAuthor.js';
 import { parsePolkadotAccount, type PolkadotAccount } from '../../kit/polkadotAccount.js';
-import type { PeopleUsernames } from '../productRuntime/index.js';
+import type { PeopleUsernames } from '../chains/index.js';
 
 type Reads = {
   /** The loaded product's owner. */

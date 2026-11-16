@@ -19,7 +19,7 @@ import { createReporter } from '@dotli/metrics';
 import { createDeferred, listen, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import { base64urlnopad } from '@scure/base';
-import { getOpenerParty, type OpenerParty } from '../features/signInWindow/index.js';
+import { getOpenerParty, type OpenerParty } from '../kit/openerRule.js';
 import type { PageRole } from '../features/account/index.js';
 import { startPageResponder, type Responder } from '../features/signInWindow/index.js';
 import { parseWindowRequest, type SignInIntent } from '../features/signInWindow/index.js';
@@ -31,7 +31,7 @@ import {
   type SIGNED_OUT_RESULT,
   type SignInRound,
 } from '../features/signInWindow/index.js';
-import { getRoute } from '../features/signInWindow/index.js';
+import { getRoute } from '../kit/sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from '../features/signInWindow/index.js';
 import { closeWindow } from '../features/signInWindow/index.js';
 import { reportWalletFailure } from '../features/account/index.js';

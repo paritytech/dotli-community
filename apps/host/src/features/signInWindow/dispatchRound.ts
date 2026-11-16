@@ -9,9 +9,9 @@ import type { Network } from '@dotli/config';
 import { parseSiteRequest, type SiteRequest } from '../siteSignIn/index.js';
 import { parseSiteSignRequest, type SiteSignRequest } from '../siteSignIn/index.js';
 import { parseWindowRequest, type WindowRequest } from './parseWindowRequest.js';
-import type { Party } from './openerRule.js';
+import type { Party } from '../../kit/openerRule.js';
 import type { SessionRequest } from './readSessionRequest.js';
-import { PROTOCOL_VERSION, type RefusalReason } from './sessionMessages.js';
+import { PROTOCOL_VERSION, type RefusalReason } from '../../kit/sessionMessages.js';
 
 /** What the window runs for a round: the request of the opener's party, or a refusal with its reason. */
 export type Round =

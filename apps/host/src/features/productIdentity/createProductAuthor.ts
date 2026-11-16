@@ -8,7 +8,7 @@ import { createReporter } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { H160Address } from '../../kit/h160Address.js';
 import type { PolkadotAccount } from '../../kit/polkadotAccount.js';
-import type { PeopleUsernames } from '../productRuntime/index.js';
+import type { PeopleUsernames } from '../chains/index.js';
 import { productAuthorMetric } from '../productLoad/index.js';
 
 const resolveReport = createReporter({ flow: 'resolve' });

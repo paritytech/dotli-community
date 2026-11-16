@@ -14,7 +14,7 @@ import {
   type BlockingModalScope,
 } from '../../../kit/createBlockingModalCoordinator.js';
 import { createBridge, type Bridge } from './createBridge.js';
-import { toProductId } from '../../productLoad/index.js';
+import { toProductId } from '../../../kit/getAskedProductId.js';
 import type { CoreContext } from './createPageCore.js';
 import { createFakeProvider } from './createPageCore.fake.js';
 import { createPermissionAuthorizations } from '../../permissions/index.js';

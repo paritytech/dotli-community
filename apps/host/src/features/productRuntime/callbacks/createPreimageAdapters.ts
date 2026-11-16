@@ -8,8 +8,8 @@ import { createCidFromHash, loadVerify as loadContentVerify } from '@dotli/conte
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createAsyncTaskPool, createLazyLoad, serializeError, log, noop, toHex } from '@dotli/shared';
 import { reportLazyMiss } from '../../../kit/reportLazyMiss.js';
-import { fetchContentBlock, type PreimageBlock, type PreimageFetch } from './createBlockFetch.js';
-import { createResultStream } from '../callbacks/createResultStream.js';
+import { fetchContentBlock, type PreimageBlock, type PreimageFetch } from '../../chains/index.js';
+import { createResultStream } from './createResultStream.js';
 
 const report = createReporter({ flow: 'content' });
 

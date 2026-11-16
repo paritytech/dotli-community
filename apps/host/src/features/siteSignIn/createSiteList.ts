@@ -9,7 +9,7 @@ import { atom, type ReadableAtom } from 'nanostores';
 import { createAsyncTaskPool, isShallowEqual } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { reportWalletFailure } from '../account/index.js';
-import { siteRevokeMetric } from './siteRevokeMetric.js';
+import { siteRevokeMetric } from '../../kit/siteRevokeMetric.js';
 
 /** Count. A read of the site list that failed. Tagged `outcome` `error` and `reason` `read`. */
 const siteListMetric = defineCount<'error'>('session_pages.site_list');

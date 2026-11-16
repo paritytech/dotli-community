@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getActiveServicesConfig } from '@dotli/config';
-import type { H160Address } from '../../../kit/h160Address.js';
-import { loadPolkadotApi } from '../../../kit/lazy.js';
+import type { H160Address } from '../../kit/h160Address.js';
+import { loadPolkadotApi } from '../../kit/lazy.js';
 import { getHostChainProvider } from './getHostChainProvider.js';
-import { parsePolkadotAccount, type PolkadotAccount } from '../../../kit/polkadotAccount.js';
+import { parsePolkadotAccount, type PolkadotAccount } from '../../kit/polkadotAccount.js';
 
 /**
  * Reads the Polkadot account an Asset Hub contract address was mapped from, null when it was not mapped. Rejects when

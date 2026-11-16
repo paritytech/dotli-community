@@ -9,7 +9,7 @@ import { getSandboxLabel } from '@dotli/resolver';
 import { removeContractParams, SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
 import { ERRORS } from '../../../kit/errors.js';
 import { pendingResets } from '../../../kit/createPendingResets.js';
-import { getAskedProductId, toProductId } from '../resolve/getAskedProductId.js';
+import { getAskedProductId, toProductId } from '../../../kit/getAskedProductId.js';
 import type { FrameProduct, ProductFramePage } from './createProductFrame.js';
 
 type PageLocation = ReturnType<ProductFramePage['location']>;

@@ -8,13 +8,13 @@ import { atom } from 'nanostores';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { createResponder, type Responder, type ResponderState } from './createResponder.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
-import { getOpenerParty } from './openerRule.js';
+import { getOpenerParty } from '../../kit/openerRule.js';
 import {
   createHelloMessage,
   type CancelledMessage,
   type RefusedMessage,
   type ResultMessage,
-} from './sessionMessages.js';
+} from '../../kit/sessionMessages.js';
 
 /** One message the window posted to its opener, without the round it answers. */
 export type SiteRoundPost =

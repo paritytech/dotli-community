@@ -53,8 +53,11 @@ The features:
 - **Opening a product:** landing, product load, product identity, topbar and page.
 - **Signing in:** account, sign-in window and site sign-in.
 - **Around a product:** signing, permissions, network, settings, chat, notifications and debug.
-- **Product runtime:** the TrUAPI side whole. It holds the core connection and the product's chains. The host callbacks
-  and the runtime bridge sit there too.
+- **Product runtime:** the TrUAPI side whole. It holds the core connection, the host callbacks and the runtime bridge.
+- **Chains:** the page's chain pool and the reads every flow shares, below product runtime.
+- **Debug panel:** the panel's view of the page, above product runtime, loaded only in debug mode.
+
+No feature imports another in a cycle, so each sits above the features it reads.
 
 The page feature holds the state that every flow placing chrome reads:
 

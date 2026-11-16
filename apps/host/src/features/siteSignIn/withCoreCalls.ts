@@ -4,8 +4,7 @@
 /** Runs TrUAPI calls over one leased connection to the page core, and tells their failures apart. */
 
 import { createTransport, type CallErrorValue, type TrUApiTransport, type UnsupportedCallError } from '@parity/truapi';
-import { ownCoreConnection } from '../productRuntime/index.js';
-import type { CoreConnection } from '../productRuntime/index.js';
+import type { CoreLease } from '../productRuntime/index.js';
 
 /** A call error whose domain error sits in a versioned envelope, as every TrUAPI method's does. */
 export type SiteCallError = CallErrorValue<{ tag: string; value: { tag: string } }> | UnsupportedCallError;
@@ -18,11 +17,7 @@ export type SiteCallErrorKind = 'rejected' | 'unsupported' | 'failed';
 /** Where the calls get their connection to the page core. */
 export type CoreCallsParams = {
   /** Takes a lease on the page's core, whose `connect` opens one connection. Rejects when no lease can be taken. */
-  acquire: () => Promise<{
-    /** Opens one connection to the core. Rejects with the core's refusal when the connection cannot be made. */
-    connect(): Promise<CoreConnection>;
-    release(): void;
-  }>;
+  acquire: () => Promise<Pick<CoreLease, 'connect' | 'own' | 'release'>>;
 };
 
 type Params = CoreCallsParams & {
@@ -41,7 +36,7 @@ export async function withCoreCalls<T>(
   const lease = await acquire();
   try {
     const connection = await lease.connect();
-    const provider = ownCoreConnection(connection);
+    const provider = lease.own(connection);
     const transport = createTransport(provider, { requestTimeoutMs });
     try {
       return await use({ transport });

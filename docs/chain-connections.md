@@ -209,7 +209,7 @@ users: when its stream ends, it halts, and the pool's healing lease builds it
 again.
 
 The host pool's transport on the smoldot backends (`createFrameChainTransport`
-in `apps/host/src/features/productRuntime/chains/createFrameChainTransport.ts`) wraps one remote
+in `apps/host/src/features/chains/createFrameChainTransport.ts`) wraps one remote
 connection. It reports `connecting`, then `connected` as soon as the
 connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
@@ -506,11 +506,11 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | smoldot transport | `packages/chains/src/createLightClient.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
 | Host error page classification | `apps/host/src/features/productLoad/failure/describeError.ts` |
-| Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/features/productRuntime/chains/createHostChainPool.ts`, `apps/host/src/features/productRuntime/chains/createChainConnect.ts`, `apps/host/src/features/productRuntime/chains/getHostChainProvider.ts` |
-| Host pool's transport on the smoldot backends | `apps/host/src/features/productRuntime/chains/createFrameChainTransport.ts` |
-| Settings probe | `apps/host/src/features/debug/createFinalizedBlockQuery.ts` (`createFinalizedBlockQuery`) |
+| Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/features/chains/createHostChainPool.ts`, `apps/host/src/features/productRuntime/callbacks/createChainConnect.ts`, `apps/host/src/features/chains/getHostChainProvider.ts` |
+| Host pool's transport on the smoldot backends | `apps/host/src/features/chains/createFrameChainTransport.ts` |
+| Settings probe | `apps/host/src/features/debugPanel/createFinalizedBlockQuery.ts` (`createFinalizedBlockQuery`) |
 | Network panel | `apps/host/src/features/network/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
-| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `apps/host/src/features/productRuntime/chains/createHostBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
+| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `apps/host/src/features/chains/createHostBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine/createEngine.ts` |
 | Watched chains (healing leases) | `apps/protocol/src/lightClient/observeChains.ts` (`observeChains`) |
 | SharedWorker ports and heartbeat | `apps/protocol/src/sharedWorker/createWorkerLifecycle.ts` |

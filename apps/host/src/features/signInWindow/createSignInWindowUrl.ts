@@ -5,7 +5,7 @@
 
 import type { Network } from '@dotli/config';
 import { createWindowRequestParams, type SignInIntent } from './parseWindowRequest.js';
-import { createRequestUrl } from './sessionRoute.js';
+import { createRequestUrl } from '../../kit/sessionRoute.js';
 
 type CreateSignInWindowUrlParams = {
   intent: SignInIntent;

@@ -11,7 +11,7 @@ import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } f
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { createSessionHandoff } from './createSessionHandoff.js';
 import { readRequestParams } from './readSessionRequest.js';
-import { createHelloMessage, createRefusedMessage, createResultMessage, READY } from './sessionMessages.js';
+import { createHelloMessage, createRefusedMessage, createResultMessage, READY } from '../../kit/sessionMessages.js';
 
 type Params = {
   /** Whether the browser blocks every window. */

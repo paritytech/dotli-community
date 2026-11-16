@@ -10,7 +10,7 @@ import { SIGNED_OUT_RESULT } from './roundAnswer.js';
 import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } from './listenToMessages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { recordNotified } from '../../testing/recordNotified.js';
-import { getOpenerParty, type OpenerParty } from './openerRule.js';
+import { getOpenerParty, type OpenerParty } from '../../kit/openerRule.js';
 import { createResponder } from './createResponder.js';
 
 type OpenWindowParams = {

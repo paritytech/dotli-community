@@ -25,8 +25,9 @@ import type { BlockingModalCoordinator, BlockingModalScope } from '../../../kit/
 import type { BootCoreRuntime, BootedCoreRuntime } from './createCoreRuntimeBoot.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import { connectCore } from './connectCore.js';
+import { ownCoreConnection, type CoreProvider } from './ownCoreConnection.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from '../../signing/index.js';
-import { getAskedProductId } from '../../productLoad/index.js';
+import { getAskedProductId } from '../../../kit/getAskedProductId.js';
 
 const report = createReporter({ flow: 'wallet' });
 const hearDownFailed = report.listener('page_core.down');
@@ -88,6 +89,11 @@ export type CoreLease = {
    * the core refuses the connection, which takes the core down.
    */
   connect(params?: ConnectParams): Promise<CoreConnection>;
+  /**
+   * Takes over `connection` as a provider that shows every frame to the debug panel, and whose dispose closes the
+   * connection. Never throws.
+   */
+  own(connection: CoreConnection): CoreProvider;
   /**
    * Hears once that this core went down, was refused or turned stale, when its replacement is already the one a
    * request gets. Called at once for a core that is already down. Returns the unsubscribe. Never throws.
@@ -642,6 +648,7 @@ export function createPageCore({
             machine.update({ kind: 'wentDown', coreId: core.id, reason });
           },
         }),
+      own: ownCoreConnection,
       subscribeDown(listener) {
         // A listener runs inside the state's write, which a throw would reach.
         function hearDown(): void {

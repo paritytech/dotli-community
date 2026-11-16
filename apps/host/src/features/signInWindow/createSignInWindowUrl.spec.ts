@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createSignInWindowUrl, createSignOutWindowUrl } from './createSignInWindowUrl.js';
 import { parseWindowRequest } from './parseWindowRequest.js';
 import { readRequestParams, readSessionRequest } from './readSessionRequest.js';
-import { getRoute } from './sessionRoute.js';
+import { getRoute } from '../../kit/sessionRoute.js';
 
 /** The params a window reads from a request URL's fragment. */
 function readUrlParams(url: string) {

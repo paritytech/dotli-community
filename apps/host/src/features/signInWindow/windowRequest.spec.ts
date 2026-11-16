@@ -5,7 +5,7 @@ import { createSafeStorage, type SafeStorage } from '@dotli/shared';
 import { createMemoryStorage, must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { createSignInWindowUrl } from './createSignInWindowUrl.js';
-import { createRequestUrl } from './sessionRoute.js';
+import { createRequestUrl } from '../../kit/sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './windowRequest.js';
 
 const KEY = 'dotli:s:request';

@@ -17,10 +17,10 @@ import type { SignInIntent } from './parseWindowRequest.js';
 import type { SessionResult } from './parseSessionResult.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
-import { getOpenerParty } from './openerRule.js';
+import { getOpenerParty } from '../../kit/openerRule.js';
 import { createResponder } from './createResponder.js';
 import { createWindowFlow, type PhraseCheck, type WindowFlow, type WindowFlowParams } from './createWindowFlow.js';
-import { createHelloMessage } from './sessionMessages.js';
+import { createHelloMessage } from '../../kit/sessionMessages.js';
 import { getEndedLoginView } from './windowScreen.js';
 import { getLoginFailureView } from '../account/index.js';
 

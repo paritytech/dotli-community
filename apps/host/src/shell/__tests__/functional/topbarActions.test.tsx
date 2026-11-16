@@ -10,7 +10,7 @@ import { flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { TopbarActionsIsland } from '../../TopbarActionsIsland.js';
-import { createProductFrameView } from '../../../features/productLoad/frame/createProductFrameView.js';
+import { createProductFrameView } from '../../../features/productLoad/index.js';
 import { productFrameLayout } from '../../../features/page/createProductFrameLayout.js';
 import { topbarSurfaces } from '../../../features/page/topbarSurfaces.js';
 import { byId } from '@dotli/ui/testing';

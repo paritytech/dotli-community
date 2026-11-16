@@ -9,7 +9,7 @@ import { atom } from 'nanostores';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../../chat/createChatConnections.js';
 import { createChatStore } from '../../../chat/createChatStore.js';
-import { toProductId } from '../../../productLoad/resolve/getAskedProductId.js';
+import { toProductId } from '../../../../kit/getAskedProductId.js';
 import { authState } from '../../../account/session/authState.js';
 import { productState } from '../../../page/productState.js';
 import { createMemoryChatRepo } from '../../../chat/createChatStore.fake.js';

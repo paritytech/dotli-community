@@ -8,12 +8,12 @@ import { must } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
-import { getOpenerParty } from './openerRule.js';
+import { getOpenerParty } from '../../kit/openerRule.js';
 import { createResponder } from './createResponder.js';
 import { readSessionRequest, type SessionRequest } from './readSessionRequest.js';
 import { answerSignIn, answerSignOut, SIGNED_OUT_RESULT } from './roundAnswer.js';
-import { createHelloMessage } from './sessionMessages.js';
-import type { SessionRoute } from './sessionRoute.js';
+import { createHelloMessage } from '../../kit/sessionMessages.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 
 type Params = {
   /** Whether a page opened the window, false for a window with no opener. */

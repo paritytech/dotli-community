@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { CountMetric } from '@dotli/metrics';
-import type { SessionRoute } from '../signInWindow/index.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 import { siteSignInMetric } from './siteSignInMetric.js';
 import { siteTransactionMetric } from './siteTransactionMetric.js';
 

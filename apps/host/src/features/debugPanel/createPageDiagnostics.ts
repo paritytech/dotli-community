@@ -3,7 +3,7 @@
 
 // The diagnostics report: build, transport, permissions, package versions and chain heights.
 
-import { formatAppVersion } from './formatAppVersion.js';
+import { formatAppVersion } from '../debug/index.js';
 import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
 import {
   getCacheSettings,

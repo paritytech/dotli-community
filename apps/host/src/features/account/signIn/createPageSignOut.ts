@@ -15,7 +15,7 @@ import type { SessionHandoff } from '../../signInWindow/index.js';
 import type { SignInFlag } from '../session/signInFlag.js';
 import { reportWalletFailure } from '../session/walletFailure.js';
 import type { WalletSwitchOutcome } from '../session/createWalletSwitch.js';
-import { siteRevokeMetric } from '../../siteSignIn/index.js';
+import { siteRevokeMetric } from '../../../kit/siteRevokeMetric.js';
 
 const report = createReporter({ flow: 'wallet' });
 

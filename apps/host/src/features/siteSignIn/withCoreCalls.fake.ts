@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createFakeProvider, type FakeCoreProvider } from '../productRuntime/core/createPageCore.fake.js';
+import { ownCoreConnection } from '../productRuntime/core/ownCoreConnection.js';
 
 type Params = {
   /** The core's provider, a fresh fake one by default. */
@@ -19,7 +20,7 @@ export function createFakeCoreLease({ provider = createFakeProvider() }: Params 
     productId: asProductId('dotli-product'),
     close: vi.fn(),
   };
-  const lease = { connect: vi.fn(() => Promise.resolve(connection)), release: vi.fn() };
+  const lease = { connect: vi.fn(() => Promise.resolve(connection)), own: ownCoreConnection, release: vi.fn() };
   const acquire = vi.fn(() => Promise.resolve(lease));
   return { acquire, lease, connection };
 }

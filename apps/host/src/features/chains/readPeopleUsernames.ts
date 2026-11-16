@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getActiveServicesConfig } from '@dotli/config';
-import { loadPolkadotApi } from '../../../kit/lazy.js';
+import { loadPolkadotApi } from '../../kit/lazy.js';
 import { getHostChainProvider } from './getHostChainProvider.js';
-import type { PolkadotAccount } from '../../../kit/polkadotAccount.js';
+import type { PolkadotAccount } from '../../kit/polkadotAccount.js';
 
 export type PeopleUsernames = {
   /** The full username, null when the account has only a lite one. */

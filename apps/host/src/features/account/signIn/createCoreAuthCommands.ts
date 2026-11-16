@@ -26,7 +26,6 @@ import {
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import type { CoreConnection, CoreLease, PageCore } from '../../productRuntime/index.js';
 import { LoginRequestError } from './loginRequestError.js';
-import { ownCoreConnection } from '../../productRuntime/index.js';
 import { readSignInOutcome } from './readSignInOutcome.js';
 import { requestCoreLogin } from './requestCoreLogin.js';
 import type { HostCoreStorage } from '../session/createCoreStorage.js';
@@ -397,7 +396,7 @@ export function createCoreAuthCommands({ auth, core, session, isLocalWallet, sto
    * the request or the close threw.
    */
   async function requestLogin({ reason, lease, connection }: RequestLoginParams): Promise<DotliAuthState> {
-    const provider = ownCoreConnection(connection);
+    const provider = lease.own(connection);
     try {
       await requestCoreLogin(provider, { reason });
       return auth.get();

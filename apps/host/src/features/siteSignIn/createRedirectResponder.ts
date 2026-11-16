@@ -17,7 +17,7 @@ import {
   createRefusedMessage,
   createResultMessage,
   type PageMessage,
-} from '../signInWindow/index.js';
+} from '../../kit/sessionMessages.js';
 
 type Params = {
   /** The vetted origin of the return address. */

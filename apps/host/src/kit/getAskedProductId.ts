@@ -4,7 +4,7 @@
 // The product id a product asks the core for. The core parses it into the id the product runs under.
 
 import { withActiveTld } from '@dotli/config';
-import type { PageProduct } from '../../productRuntime/index.js';
+import type { PageProduct } from '../features/productRuntime/index.js';
 
 /** The product id a product asks for: the one it names, else the one its label derives. Never throws. */
 export function getAskedProductId({ label, productId }: Pick<PageProduct, 'label' | 'productId'>): string {

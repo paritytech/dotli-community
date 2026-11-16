@@ -8,7 +8,7 @@ import { sessionElsewhereState } from '../session/sessionElsewhereState.js';
 import { signingOutState } from '../signIn/signingOutState.js';
 import { walletModeState } from '../session/walletModeState.js';
 import { getProtocolOrigin } from '@dotli/protocol';
-import { getRouteUrl } from '../../signInWindow/index.js';
+import { getRouteUrl } from '../../../kit/sessionRoute.js';
 import { useStore } from '@dotli/stores-solid';
 import { AccountItem } from './AuthButton.js';
 import { authModalState } from '../signIn/authModalState.js';

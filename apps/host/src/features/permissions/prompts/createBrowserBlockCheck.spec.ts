@@ -11,7 +11,7 @@ import {
 } from '../../../kit/createBlockingModalCoordinator.js';
 import { createBrowserBlockCheck } from './createBrowserBlockCheck.js';
 import type { BrowserPermissions, BrowserPermissionStatus } from '../policy/createBrowserPermissions.js';
-import { toProductId } from '../../productLoad/index.js';
+import { toProductId } from '../../../kit/getAskedProductId.js';
 import { createFakePrompts, type FakePrompt, type FakePrompts } from './hostPrompts.fake.js';
 import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../policy/permissionPolicy.js';
 import type { ProductPermissions } from '../policy/productPermissions.js';

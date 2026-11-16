@@ -16,7 +16,7 @@ import type { CoreCallbacksParams } from '../callbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../../account/index.js';
 import type { CoreContext, PageProduct } from './createPageCore.js';
 import { createTruapiRuntimeConfig } from './createTruapiRuntimeConfig.js';
-import { getAskedProductId } from '../../productLoad/index.js';
+import { getAskedProductId } from '../../../kit/getAskedProductId.js';
 import { ERRORS } from '../../../kit/errors.js';
 import type { LocalWalletBoot } from '../../account/index.js';
 

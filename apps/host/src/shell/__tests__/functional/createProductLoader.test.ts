@@ -20,20 +20,16 @@ import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageScreen } from '@dotli/ui';
-import { beginAttempt } from '../../../features/productLoad/progress/journey.js';
+import { beginAttempt } from '../../../features/productLoad/index.js';
 import { rethrow } from '../../../testing/rethrow.js';
-import type { LoadFailure } from '../../../features/productLoad/failure/presentLoadFailure.js';
-import { pageLoading } from '../../../features/productLoad/progress/createLoadingController.js';
-import type { NameSource } from '../../../features/productLoad/resolve/createNameSource.js';
-import { createLoadTelemetry } from '../../../features/productLoad/progress/createLoadTelemetry.js';
+import type { LoadFailure } from '../../../features/productLoad/index.js';
+import { pageLoading } from '../../../features/productLoad/index.js';
+import type { NameSource } from '../../../features/productLoad/index.js';
+import { createLoadTelemetry } from '../../../features/productLoad/index.js';
 import { createProductLoader } from '../../createProductLoader.js';
-import type { PageCidCache } from '../../../features/productLoad/resolve/createPageCidCache.js';
-import type { ProductFrame } from '../../../features/productLoad/frame/createProductFrame.js';
-import {
-  SandboxSilentError,
-  type SandboxLoad,
-  type SandboxLoadReport,
-} from '../../../features/productLoad/resolve/watchSandboxLoad.js';
+import type { PageCidCache } from '../../../features/productLoad/index.js';
+import type { ProductFrame } from '../../../features/productLoad/index.js';
+import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../../features/productLoad/index.js';
 import { productState } from '../../../features/page/productState.js';
 import { urlPillState } from '../../../features/productIdentity/urlPillState.js';
 

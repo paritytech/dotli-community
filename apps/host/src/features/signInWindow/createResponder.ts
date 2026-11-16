@@ -10,7 +10,7 @@
 import { createReporter, defineCount } from '@dotli/metrics';
 import { createDeferred, listen, log } from '@dotli/shared';
 import { atom, type ReadableAtom } from 'nanostores';
-import type { OpenerParty, Party, SessionOpenerVerdict } from './openerRule.js';
+import type { OpenerParty, Party, SessionOpenerVerdict } from '../../kit/openerRule.js';
 import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
 import {
   createCancelledMessage,
@@ -23,7 +23,7 @@ import {
   type PageMessage,
   type PayloadMessage,
   type RefusalReason,
-} from './sessionMessages.js';
+} from '../../kit/sessionMessages.js';
 
 const report = createReporter({ flow: 'wallet' });
 

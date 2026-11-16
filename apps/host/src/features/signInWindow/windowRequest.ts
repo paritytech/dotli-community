@@ -9,7 +9,7 @@
 
 import { isRecord, type SafeStorage } from '@dotli/shared';
 import { readRequestParams, readSessionRequest, type SessionRequest } from './readSessionRequest.js';
-import { getRoute, type SessionRoute } from './sessionRoute.js';
+import { getRoute, type SessionRoute } from '../../kit/sessionRoute.js';
 
 type TakeWindowRequestParams = {
   pathname: string;

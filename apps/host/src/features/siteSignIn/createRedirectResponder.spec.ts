@@ -7,7 +7,7 @@ import { catchError } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ResponderState } from '../signInWindow/index.js';
 import { createRedirectResponder, type RedirectResponder } from './createRedirectResponder.js';
-import type { PageMessage } from '../signInWindow/index.js';
+import type { PageMessage } from '../../kit/sessionMessages.js';
 
 const ORIGIN = 'https://site.example';
 const RETURN_TO = 'https://site.example/back';

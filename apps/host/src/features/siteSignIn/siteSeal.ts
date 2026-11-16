@@ -10,7 +10,7 @@
 
 import { base64urlnopad } from '@scure/base';
 
-import { PROTOCOL_VERSION } from '../signInWindow/index.js';
+import { PROTOCOL_VERSION } from '../../kit/sessionMessages.js';
 
 /** Whether this browser can seal to a site's key, or why not. */
 export type SealProbe = 'ok' | 'unsupported' | 'bad_key';

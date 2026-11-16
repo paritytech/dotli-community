@@ -7,7 +7,7 @@ import { createRoot, createSignal, flush } from 'solid-js';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections } from './createChatConnections.js';
 import { createChatStore, type ChatStore } from './createChatStore.js';
-import { toProductId } from '../productLoad/index.js';
+import { toProductId } from '../../kit/getAskedProductId.js';
 import { authState } from '../account/index.js';
 import { productState } from '../page/index.js';
 import { createRecordingConnection } from './createChatConnections.fake.js';

@@ -12,7 +12,7 @@ import { render } from '@solidjs/web';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../createChatConnections.js';
 import { createChatStore, type ChatStore } from '../../createChatStore.js';
-import { toProductId } from '../../../productLoad/resolve/getAskedProductId.js';
+import { toProductId } from '../../../../kit/getAskedProductId.js';
 import { authState } from '../../../account/session/authState.js';
 import { productState } from '../../../page/productState.js';
 import { createMemoryChatRepo } from '../../createChatStore.fake.js';

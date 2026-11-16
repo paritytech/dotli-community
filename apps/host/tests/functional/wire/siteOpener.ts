@@ -8,8 +8,8 @@
 // other route signs in with neither.
 
 import { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config/networks';
-import { PROTOCOL_VERSION } from '../../../src/features/signInWindow/sessionMessages.js';
-import { createRequestUrl } from '../../../src/features/signInWindow/sessionRoute.js';
+import { PROTOCOL_VERSION } from '../../../src/kit/sessionMessages.js';
+import { createRequestUrl } from '../../../src/kit/sessionRoute.js';
 
 const query = new URLSearchParams(location.search);
 const net = query.get('net') ?? '';

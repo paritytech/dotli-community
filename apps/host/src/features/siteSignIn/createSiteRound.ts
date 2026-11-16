@@ -13,7 +13,7 @@ import { computed, type ReadableAtom } from 'nanostores';
 import { createStateMachine, isShallowEqual, type HandlerOf, type MachineTypes, type Transition } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder, ResponderState } from '../signInWindow/index.js';
-import type { RefusalReason } from '../signInWindow/index.js';
+import type { RefusalReason } from '../../kit/sessionMessages.js';
 import { reportWalletFailure } from '../account/index.js';
 import { MainAccountError, type MainAccount } from './mainAccount.js';
 import type { DisplayAccount } from './toDisplayAccount.js';

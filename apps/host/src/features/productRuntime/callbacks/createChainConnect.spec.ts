@@ -12,10 +12,10 @@ import {
   createFakeSocketChain,
   type FakeHostChainSources,
   type FakeRemoteChains,
-} from './createHostChainPool.fake.js';
+} from '../../chains/createHostChainPool.fake.js';
 import { createChainConnect } from './createChainConnect.js';
 import { ERRORS } from '../../../kit/errors.js';
-import { createHostChainPool, type FrameStatusSource } from './createHostChainPool.js';
+import { createHostChainPool, type FrameStatusSource } from '../../chains/index.js';
 import { yielded } from '../../../testing/fixtures.js';
 
 type Params = {

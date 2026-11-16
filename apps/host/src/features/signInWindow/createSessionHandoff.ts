@@ -15,7 +15,7 @@ import { createSignInWindowUrl, createSignOutWindowUrl } from './createSignInWin
 import type { SignInIntent } from './parseWindowRequest.js';
 import type { MessageEventLike, WindowHandle } from './listenToMessages.js';
 import { parseSessionResult, type SessionResult } from './parseSessionResult.js';
-import { createHelloMessage, parsePageMessage, PROTOCOL_VERSION, type PageMessage } from './sessionMessages.js';
+import { createHelloMessage, parsePageMessage, PROTOCOL_VERSION, type PageMessage } from '../../kit/sessionMessages.js';
 
 const report = createReporter({ flow: 'wallet' });
 

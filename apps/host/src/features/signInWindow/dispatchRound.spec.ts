@@ -6,10 +6,10 @@ import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { dispatchRound, type Round } from './dispatchRound.js';
-import type { Party } from './openerRule.js';
+import type { Party } from '../../kit/openerRule.js';
 import { readSessionRequest } from './readSessionRequest.js';
-import type { RefusalReason } from './sessionMessages.js';
-import type { SessionRoute } from './sessionRoute.js';
+import type { RefusalReason } from '../../kit/sessionMessages.js';
+import type { SessionRoute } from '../../kit/sessionRoute.js';
 
 type RoundCase = {
   role: string;

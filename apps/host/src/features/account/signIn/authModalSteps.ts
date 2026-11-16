@@ -9,7 +9,7 @@ import type { Transition } from '@dotli/shared';
 import type { AuthModalView } from './authModalState.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from '../../../kit/createBlockingModalCoordinator.js';
 import { getLoginFailureView } from './getLoginFailureView.js';
-import { toProductId } from '../../productLoad/index.js';
+import { toProductId } from '../../../kit/getAskedProductId.js';
 import {
   isLeaseDisabled,
   isLeaseHeld,

@@ -7,7 +7,7 @@
  * before it passed, so a key the browser cannot seal to, or an address of no site, is never fetched.
  */
 
-import { getOpenerParty } from '../signInWindow/index.js';
+import { getOpenerParty } from '../../kit/openerRule.js';
 import type { RedirectFields } from './readRedirectFields.js';
 import type { ReturnVerdict } from './checkReturnTo.js';
 import type { SealProbe } from './siteSeal.js';

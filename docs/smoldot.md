@@ -21,7 +21,7 @@ to the protocol iframe.
 | Origin | Purpose | Triggered by |
 |---|---|---|
 | Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/sharedWorker/protocolSharedWorker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission, over the protocol iframe when Light Client is selected | `apps/host/src/features/productRuntime/chains/createChainConnect.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission, over the protocol iframe when Light Client is selected | `apps/host/src/features/productRuntime/callbacks/createChainConnect.ts` |
 
 Both protocol submodes build their light client with `createLightClient` from
 `packages/chains/src/createLightClient.ts`. RPC Gateway mode routes Rust-core

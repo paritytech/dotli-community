@@ -7,7 +7,7 @@ import { createRecordingConnection } from './createChatConnections.fake.js';
 import { createMemoryChatRepo } from './createChatStore.fake.js';
 import { createChatConnections } from './createChatConnections.js';
 import { createChatStore, type ChatStore } from './createChatStore.js';
-import { toProductId } from '../productLoad/index.js';
+import { toProductId } from '../../kit/getAskedProductId.js';
 import { productState } from '../page/index.js';
 import { authState } from '../account/index.js';
 import { recordNotified } from '../../testing/recordNotified.js';

@@ -16,7 +16,7 @@ import { createReporter } from '@dotli/metrics';
 import type { Reconciled } from '../account/index.js';
 import { reportWalletFailure } from '../account/index.js';
 import { sessionWindowSignoutResultMetric } from './sessionWindowSignoutResultMetric.js';
-import { siteRevokeMetric } from '../siteSignIn/index.js';
+import { siteRevokeMetric } from '../../kit/siteRevokeMetric.js';
 
 const report = createReporter({ flow: 'wallet' });
 

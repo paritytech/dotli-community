@@ -20,7 +20,7 @@ import {
   type Timers,
   type Transition,
 } from '@dotli/shared';
-import { ownCoreConnection, type CoreProvider } from '../../productRuntime/index.js';
+import type { CoreProvider } from '../../productRuntime/index.js';
 import { CoreRedialError } from '../../../kit/coreRedialError.js';
 import type { CoreConnection, CoreLease, PageCore, PageProduct } from '../../productRuntime/index.js';
 import { createPermissionResponseGate } from './createPermissionResponseGate.js';
@@ -349,7 +349,7 @@ export function createProductFrame({
               // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
               () => lease.connect({ executionKind: chatCapable ? 'Worker' : 'App' }),
               connection => {
-                const coreProvider = ownCoreConnection(connection);
+                const coreProvider = lease.own(connection);
                 attempt.core.hold(() => {
                   coreProvider.dispose();
                 });

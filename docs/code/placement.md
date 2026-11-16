@@ -140,9 +140,12 @@ The host has user flows:
 - An island is named with an `Island` suffix, so it never shares a name with the view it renders.
 - The `page` feature holds the state every flow that places chrome reads, such as the shown product and the topbar's
   slots.
-- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection and the product's chain
-  access. The host callback adapters and the runtime composition root sit there too. It reaches the other features
-  through their `index.ts`, and they reach it only through the runtime facade or a type-only import.
+- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection, the host callback adapters
+  and the runtime composition root. It reaches the other features through their `index.ts`, and they reach it only
+  through the runtime facade, a parameter such as the core lease, or a type-only import.
+- Infrastructure that `productRuntime` and the flows both read, such as the page's chain pool, is its own low feature.
+- Features import each other in one direction only. Two features that need each other move the shared part down or
+  take it as a parameter.
 - A feature is flat. Past about 30 source files it splits into sub-flow folders named for what they do. Sub-flow folders
   of one feature import each other freely.
 

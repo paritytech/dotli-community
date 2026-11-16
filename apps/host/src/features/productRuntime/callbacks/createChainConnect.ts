@@ -13,7 +13,7 @@ import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import type { ChainPool } from '@dotli/chains';
 import { isRecord, toHex } from '@dotli/shared';
 import { ERRORS } from '../../../kit/errors.js';
-import { hostChainPool } from './createHostChainPool.js';
+import { hostChainPool } from '../../chains/index.js';
 
 type Params = {
   /** The pool the connections lease. The page's host chain pool by default. */

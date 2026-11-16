@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { readRequestParams } from './readSessionRequest.js';
+import { readRequestParams } from '../features/signInWindow/index.js';
 import { createRequestUrl, getRoute, type SessionRoute } from './sessionRoute.js';
 
 const ORIGIN = 'https://dot.li';

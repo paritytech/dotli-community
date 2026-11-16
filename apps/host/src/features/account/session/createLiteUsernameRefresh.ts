@@ -9,7 +9,7 @@ import type { LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../../../kit/lazy.js';
 import { parsePolkadotAccount } from '../../../kit/polkadotAccount.js';
-import { readPeopleUsernames } from '../../productRuntime/index.js';
+import { readPeopleUsernames } from '../../chains/index.js';
 import { siteWallet } from './siteWallet.js';
 import { reportLocalWalletFailure, walletLocalActivateMetric, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './createWalletBoot.js';
