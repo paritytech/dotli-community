@@ -3,6 +3,18 @@
 
 /* The name ellipsizes before the segments give up any width. */
 
+/* The name, with the browser's own block under it. */
+.label-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.browser-line {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
+}
 .label {
   display: flex;
   align-items: center;

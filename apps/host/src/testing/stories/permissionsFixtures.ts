@@ -18,6 +18,7 @@ import type { PermissionsItemProps } from '../../features/permissions/panel/Perm
 const [notice, setNotice] = createSignal<PermissionsNotice | undefined>('loading');
 const [statuses, setStatuses] = createSignal<readonly PermissionStatus[] | undefined>(undefined);
 const [pending, setPending] = createSignal(false);
+const [browserBlocked, setBrowserBlocked] = createSignal<readonly EnforceablePermissionName[]>([]);
 
 // A held change stays pending until the story releases it.
 let held: PromiseWithResolvers<undefined> | null = null;
@@ -48,6 +49,7 @@ export const storyPermissions: PermissionsItemProps = {
   notice,
   statuses,
   pending,
+  browserBlocked,
   onOpen: () => {
     permissionsAsked.opens += 1;
   },
@@ -102,6 +104,12 @@ export function givenApp(granted: Partial<Record<EnforceablePermissionName, Perm
   write(ALL_PERMISSIONS.map(({ name }) => granted[name] ?? 'ask'));
 }
 
+/** The browser itself blocks `names`, as the panel last read it. */
+export function givenBrowserBlocks(names: readonly EnforceablePermissionName[]): void {
+  setBrowserBlocked(names);
+  flush();
+}
+
 /** No statuses to show, and why. */
 export function givenNotice(next: PermissionsNotice): void {
   setNotice(next);
@@ -139,4 +147,5 @@ export function resetStoryPermissions(): void {
   refused = [];
   asked = [];
   setPending(false);
+  setBrowserBlocked([]);
 }

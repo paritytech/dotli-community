@@ -4,7 +4,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { atom } from 'nanostores';
-import type { PermissionStatus, PermissionTargets } from '../policy/permissionPolicy.js';
+import type { BrowserPermissionStatus } from '../policy/createBrowserPermissions.js';
+import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../policy/permissionPolicy.js';
 import type { ChangeOutcome, PendingPermissions } from '../policy/productPermissions.js';
 import type { ProductPermissionsState } from '../policy/productPermissionsState.js';
 import type { MenuPermission } from './permissions.js';
@@ -26,7 +27,13 @@ function mount() {
     refresh: vi.fn(() => Promise.resolve()),
     change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),
   };
-  const browser = { request: vi.fn(() => null) };
+  // The browser blocks the camera only.
+  const browser = {
+    request: vi.fn(() => null),
+    read: vi.fn((name: EnforceablePermissionName) =>
+      Promise.resolve<BrowserPermissionStatus>(name === 'Camera' ? 'denied' : 'prompt'),
+    ),
+  };
   const { panel, dispose } = createRoot(d => ({
     panel: usePermissionsPanel({
       permissions: PERMISSIONS,
@@ -209,6 +216,23 @@ describe('usePermissionsPanel', () => {
     // Then
     expect(panel.statuses()).toEqual(['ask', 'ask']);
     expect(panel.pending()).toBe(false);
+    dispose();
+  });
+
+  it('As the permissions panel, I open and say which browser-gated devices the browser itself blocks', async () => {
+    // Given the browser blocks the camera
+    const { panel, dispose, given } = mount();
+    given(LOADED, read(['ask', 'ask']));
+
+    // When
+    panel.onOpen();
+    await vi.waitFor(() => {
+      flush();
+      expect(panel.browserBlocked()).not.toHaveLength(0);
+    });
+
+    // Then
+    expect(panel.browserBlocked()).toEqual(['Camera']);
     dispose();
   });
 });

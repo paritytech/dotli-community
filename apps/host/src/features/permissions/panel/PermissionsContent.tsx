@@ -61,6 +61,8 @@ export type PermissionsContentProps = {
   statuses: Accessor<readonly PermissionStatus[] | undefined>;
   /** A change made in the panel is pending, so the rows wait. */
   pending: Accessor<boolean>;
+  /** The permissions the browser itself blocks, as last read, which their rows say. */
+  browserBlocked: Accessor<readonly EnforceablePermissionName[]>;
   /** The panel opened. Another tab of the same app may have changed them since the last read. */
   onOpen: () => void;
   /** Writes `targets` for the app. Resolves with the permissions that still failed, and never rejects. */
@@ -203,6 +205,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
                                 perm={perm}
                                 status={statusOf(list(), perm)}
                                 changedFrom={changedFrom(list(), perm)}
+                                blockedInBrowser={props.browserBlocked().includes(perm.name)}
                                 disabled={props.pending()}
                                 choose={(name, status) => {
                                   apply({ [name]: status });

@@ -9,6 +9,7 @@ import { ALL_PERMISSIONS, type PermissionStatus } from '../policy/permissionPoli
 import { expectPhone, openSurface, TopbarFrame } from '../../../testing/stories/topbarFrame.js';
 import {
   givenApp,
+  givenBrowserBlocks,
   givenNotice,
   holdChanges,
   changesSettled,
@@ -41,8 +42,12 @@ function segment(name: string, status: PermissionStatus): HTMLElement {
   return within(row(name)).getByTestId(`permissions-popover-segment-${status}`);
 }
 
+/** The pressed status of `name`'s row, whose browser-gated rows offer no Allow. */
 function statusOf(name: string): PermissionStatus | undefined {
-  return STATUSES.find(status => segment(name, status).getAttribute('aria-pressed') === 'true');
+  return STATUSES.find(
+    status =>
+      within(row(name)).queryByTestId(`permissions-popover-segment-${status}`)?.getAttribute('aria-pressed') === 'true',
+  );
 }
 
 function reset(): HTMLButtonElement {
@@ -123,7 +128,7 @@ type Story = StoryObj<typeof meta>;
 export const Open: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenApp({ Camera: 'granted', ChainSubmit: 'denied' });
+    givenApp({ Notifications: 'granted', Camera: 'denied', ChainSubmit: 'denied' });
   },
   play: async ctx => {
     await open(ctx);
@@ -136,9 +141,10 @@ export const Open: Story = {
       await openAdvanced(ctx.userEvent);
     });
     await ctx.step('Then each permission shows its status pressed', async () => {
-      await expect(statusOf('Camera')).toBe('granted');
+      await expect(statusOf('Notifications')).toBe('granted');
+      await expect(statusOf('Camera')).toBe('denied');
       await expect(statusOf('ChainSubmit')).toBe('denied');
-      await expect(statusOf('Notifications')).toBe('ask');
+      await expect(statusOf('Microphone')).toBe('ask');
     });
   },
 };
@@ -259,13 +265,13 @@ export const RowMarksModified: Story = {
   play: async ctx => {
     await open(ctx);
     await openAdvanced(ctx.userEvent);
-    await ctx.step('When I allow Location', async () => {
-      await ctx.userEvent.click(segment('Location', 'granted'));
+    await ctx.step('When I block Location', async () => {
+      await ctx.userEvent.click(segment('Location', 'denied'));
     });
     await ctx.step('Then only Location was asked for, Secure shows modified and only Location is marked', async () => {
       await expect(permissionsAsked.changes).toHaveBeenCalledTimes(1);
-      await expect(permissionsAsked.changes).toHaveBeenCalledWith({ Location: 'granted' });
-      await waitFor(() => expect(statusOf('Location')).toBe('granted'));
+      await expect(permissionsAsked.changes).toHaveBeenCalledWith({ Location: 'denied' });
+      await waitFor(() => expect(statusOf('Location')).toBe('denied'));
       await expectPreset('secure', true);
       await expect(slider()).toHaveAttribute('data-marked');
       await expect(within(row('Location')).getByTestId('permissions-popover-row-modified')).toHaveAccessibleName(
@@ -280,7 +286,7 @@ export const RowMarksModified: Story = {
 export const RepressModifiedReapplies: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenApp({ Camera: 'granted' });
+    givenApp({ Notifications: 'granted' });
   },
   play: async ctx => {
     await open(ctx);
@@ -323,7 +329,7 @@ export const PendingLocksRows: Story = {
       await expect(byId('permissions-popover')).toHaveAttribute('data-open');
       await expect(slider()).not.toHaveAttribute('aria-disabled');
     });
-    await ctx.step('When I press Deny on Camera anyway', async () => {
+    await ctx.step('When I press Block on Camera anyway', async () => {
       await ctx.userEvent.click(segment('Camera', 'denied'));
     });
     await ctx.step('Then nothing more was asked for', async () => {
@@ -348,22 +354,22 @@ export const PendingLocksRows: Story = {
 };
 
 /**
- * As a user whose move the core refuses for Camera, the panel names Camera, and a failure of a move made before I
- * closed and reopened the panel never shows.
+ * As a user whose move the core refuses for Sign transactions, the panel names it, and a failure of a move made before
+ * I closed and reopened the panel never shows.
  */
 export const FailedChangeNamesPermissions: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     givenApp();
-    refuseChanges(['Camera']);
+    refuseChanges(['ChainSubmit']);
   },
   play: async ctx => {
     await open(ctx);
     await ctx.step('When I press Trusted', async () => {
       await ctx.userEvent.click(stop('trusted'));
     });
-    await ctx.step('Then the panel names Camera and shows Trusted modified', async () => {
-      await waitFor(() => expect(errorLine()).toHaveTextContent("Couldn't change Camera."));
+    await ctx.step('Then the panel names Sign transactions and shows Trusted modified', async () => {
+      await waitFor(() => expect(errorLine()).toHaveTextContent("Couldn't change Sign transactions."));
       await expectPreset('trusted', true);
     });
     const release = holdChanges();
@@ -378,7 +384,7 @@ export const FailedChangeNamesPermissions: Story = {
       await waitFor(() => expect(byId('permissions-popover')).toHaveAttribute('data-open'));
       release();
     });
-    await ctx.step('Then the move settles with Camera kept, and no error shows', async () => {
+    await ctx.step('Then the move settles with Sign transactions kept, and no error shows', async () => {
       await expectPreset('unlimited', true);
       await waitFor(() => expect(byId('permissions-popover-list')).not.toHaveAttribute('data-pending'));
       await changesSettled();
@@ -392,15 +398,18 @@ export const OlderFailureNeverShows: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
     givenApp();
-    refuseChanges(['Camera']);
+    refuseChanges(['ChainSubmit']);
   },
   play: async ctx => {
     await open(ctx);
     const releaseOlder = holdChanges();
-    await ctx.step('Given I press Unlimited, which the core will refuse for Camera, and it stays pending', async () => {
-      await ctx.userEvent.click(stop('unlimited'));
-      await waitFor(() => expect(byId('permissions-popover-list')).toHaveAttribute('data-pending'));
-    });
+    await ctx.step(
+      'Given I press Unlimited, which the core will refuse for Sign transactions, and it stays pending',
+      async () => {
+        await ctx.userEvent.click(stop('unlimited'));
+        await waitFor(() => expect(byId('permissions-popover-list')).toHaveAttribute('data-pending'));
+      },
+    );
     refuseChanges([]);
     const releaseNewer = holdChanges();
     await ctx.step('When I press Secure, which lands, and then Unlimited fails', async () => {
@@ -447,13 +456,13 @@ export const KeyboardKeepsFocus: Story = {
   play: async ctx => {
     await open(ctx);
     await openAdvanced(ctx.userEvent);
-    await ctx.step('When I press Allow on Camera from the keyboard', async () => {
-      segment('Camera', 'granted').focus();
+    await ctx.step('When I press Allow on Notifications from the keyboard', async () => {
+      segment('Notifications', 'granted').focus();
       await ctx.userEvent.keyboard('{Enter}');
     });
-    await ctx.step('Then Camera is allowed and focus stayed on Allow', async () => {
-      await waitFor(() => expect(statusOf('Camera')).toBe('granted'));
-      await expect(segment('Camera', 'granted')).toHaveFocus();
+    await ctx.step('Then Notifications is allowed and focus stayed on Allow', async () => {
+      await waitFor(() => expect(statusOf('Notifications')).toBe('granted'));
+      await expect(segment('Notifications', 'granted')).toHaveFocus();
     });
   },
 };
@@ -462,8 +471,7 @@ export const KeyboardKeepsFocus: Story = {
 export const ReopenReadsAgain: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenApp();
-    readAll('granted');
+    givenApp(UNLIMITED.statuses);
   },
   play: async ctx => {
     await open(ctx);
@@ -515,7 +523,7 @@ export const ResetDisabledAtSecure: Story = {
 export const ResetKeepsFocus: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    givenApp({ Camera: 'granted' });
+    givenApp({ Notifications: 'granted' });
   },
   play: async ctx => {
     await open(ctx);
@@ -533,6 +541,31 @@ export const ResetKeepsFocus: Story = {
         await expect(byId('permissions-popover')).toHaveAttribute('data-open');
         await expect(byId('permissions-popover')).toHaveFocus();
         await expectPreset('secure', false);
+      },
+    );
+  },
+};
+
+/**
+ * As a user, a device the browser asks for itself offers Browser decides and Block, and its row says when my browser
+ * blocks it.
+ */
+export const BrowserGatedRows: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    givenApp();
+    givenBrowserBlocks(['Camera']);
+  },
+  play: async ctx => {
+    await open(ctx);
+    await openAdvanced(ctx.userEvent);
+    await ctx.step(
+      'Then Camera offers no Allow and says the browser blocks it, while Microphone says nothing',
+      async () => {
+        await expect(within(row('Camera')).queryByTestId('permissions-popover-segment-granted')).toBeNull();
+        await expect(statusOf('Camera')).toBe('ask');
+        await expect(within(row('Camera')).getByTestId('permissions-popover-row-browser-blocked')).toBeVisible();
+        await expect(within(row('Microphone')).queryByTestId('permissions-popover-row-browser-blocked')).toBeNull();
       },
     );
   },

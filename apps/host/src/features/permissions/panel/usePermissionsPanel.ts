@@ -1,11 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { ReadableAtom } from 'nanostores';
 import { getKeys } from '@dotli/shared';
 import { useStore } from '@dotli/stores-solid';
-import { isPermissionGranted, type PermissionTargets } from '../policy/permissionPolicy.js';
-import type { BrowserPermissions } from '../policy/createBrowserPermissions.js';
+import {
+  isBrowserConsented,
+  isPermissionGranted,
+  type EnforceablePermissionName,
+  type PermissionTargets,
+} from '../policy/permissionPolicy.js';
+import { isBrowserBlocked, type BrowserPermissions } from '../policy/createBrowserPermissions.js';
 import type { ProductPermissions } from '../policy/productPermissions.js';
 import {
   getRead,
@@ -28,8 +34,8 @@ export type PermissionsBinding = {
   product: ReadableAtom<ShownProduct>;
   /** The product's permissions as last read or written, and the intents that change them. */
   store: Pick<ProductPermissions, 'state' | 'pending' | 'refresh' | 'change'>;
-  /** The browser's own permissions, asked inside the user's click. */
-  browser: Pick<BrowserPermissions, 'request'>;
+  /** The browser's own permissions, asked inside the user's click and read when the panel opens. */
+  browser: Pick<BrowserPermissions, 'request' | 'read'>;
 };
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
@@ -37,6 +43,9 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
   const product = useStore(binding.product);
   const state = useStore(binding.store.state, { initial: INITIAL_STATE });
   const pendingChange = useStore(binding.store.pending, { initial: null });
+  // Read on each opening, as the browser tells no page when its user changes a block.
+  const [browserBlocked, setBrowserBlocked] = createSignal<readonly EnforceablePermissionName[]>([]);
+  const consented = binding.permissions.map(({ name }) => name).filter(isBrowserConsented);
 
   const notice = (): PermissionsNotice | undefined => {
     const current = product();
@@ -77,8 +86,12 @@ export function usePermissionsPanel(binding: PermissionsBinding): PermissionsIte
       });
     },
     pending: () => pendingTargets() !== undefined,
+    browserBlocked,
     onOpen: () => {
       void binding.store.refresh();
+      void Promise.all(consented.map(name => binding.browser.read(name))).then(read => {
+        setBrowserBlocked(consented.filter((_, i) => isBrowserBlocked(read[i] ?? 'unknown')));
+      });
     },
     onChange: async targets => {
       const read = getRead(binding.store.state.get());

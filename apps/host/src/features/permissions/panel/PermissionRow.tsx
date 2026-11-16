@@ -5,7 +5,11 @@ import { Show } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import { Row, SegmentedControl, type SegmentOption } from '@dotli/ui';
 import { permissionIcon } from './permissionIcons.js';
-import type { EnforceablePermissionName, PermissionStatus } from '../policy/permissionPolicy.js';
+import {
+  isBrowserConsented,
+  type EnforceablePermissionName,
+  type PermissionStatus,
+} from '../policy/permissionPolicy.js';
 import type { PermissionEntry } from './permissions.js';
 import s from './PermissionRow.module.css';
 
@@ -14,6 +18,12 @@ const STATUS_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
   { value: 'ask', label: 'Ask', testId: 'permissions-popover-segment-ask' },
   { value: 'granted', label: 'Allow', testId: 'permissions-popover-segment-granted' },
   { value: 'denied', label: 'Deny', testId: 'permissions-popover-segment-denied' },
+];
+
+// The browser asks for these itself, so dot.li offers only to block them.
+const BROWSER_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
+  { value: 'ask', label: 'Browser decides', testId: 'permissions-popover-segment-ask' },
+  { value: 'denied', label: 'Block', testId: 'permissions-popover-segment-denied' },
 ];
 
 export type PermissionRowProps = {
@@ -25,6 +35,8 @@ export type PermissionRowProps = {
   disabled?: boolean;
   /** The shown preset's name, when the status differs from that preset's. */
   changedFrom?: string | undefined;
+  /** The browser itself blocks the permission, whatever dot.li allows. */
+  blockedInBrowser?: boolean;
 };
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
@@ -36,31 +48,38 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
     <Row
       testId="permissions-popover-row"
       label={
-        <span
-          class={s['label']}
-          data-modified={props.changedFrom === undefined ? undefined : ''}
-          title={modifiedText()}
-        >
-          <Icon class={s['icon']} />
-          <span class={s['name']} id={`permissions-popover-name-${props.perm.name}`}>
-            {props.perm.label}
+        <span class={s['labelStack']}>
+          <span
+            class={s['label']}
+            data-modified={props.changedFrom === undefined ? undefined : ''}
+            title={modifiedText()}
+          >
+            <Icon class={s['icon']} />
+            <span class={s['name']} id={`permissions-popover-name-${props.perm.name}`}>
+              {props.perm.label}
+            </span>
+            <Show when={modifiedText()}>
+              {text => (
+                <span
+                  class={s['modified']}
+                  role="img"
+                  aria-label={text()}
+                  data-testid="permissions-popover-row-modified"
+                />
+              )}
+            </Show>
           </span>
-          <Show when={modifiedText()}>
-            {text => (
-              <span
-                class={s['modified']}
-                role="img"
-                aria-label={text()}
-                data-testid="permissions-popover-row-modified"
-              />
-            )}
+          <Show when={props.blockedInBrowser === true}>
+            <span class={s['browserLine']} data-testid="permissions-popover-row-browser-blocked">
+              Blocked in browser
+            </span>
           </Show>
         </span>
       }
     >
       <SegmentedControl
         label={props.perm.label}
-        options={STATUS_OPTIONS}
+        options={isBrowserConsented(props.perm.name) ? BROWSER_OPTIONS : STATUS_OPTIONS}
         value={props.status}
         disabled={props.disabled === true}
         onChange={status => {
