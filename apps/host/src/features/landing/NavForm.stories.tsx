@@ -26,6 +26,7 @@ function Hydrated(props: HydratedProps): JSX.Element {
   });
   onSettled(() => combobox.handleKeys(props.onKey));
   onCleanup(
+    // eslint-disable-next-line solid/reactivity -- a store listener is an event handler, it reads the current prop per call.
     combobox.text.listen(text => {
       props.onText(text);
     }),
