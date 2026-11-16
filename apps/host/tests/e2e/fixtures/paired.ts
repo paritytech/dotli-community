@@ -45,7 +45,7 @@ async function visiblePlaygroundFrame(page: Page, previous: Frame | undefined): 
  * Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. With `previous`, the
  * frame that replaced it, as after a device grant rebuilds the product.
  */
-export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, previous?: Frame): Promise<Frame> {
+async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, previous?: Frame): Promise<Frame> {
   const seen: { frame: Frame | null } = { frame: null };
   await expect
     .poll(

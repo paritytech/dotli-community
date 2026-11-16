@@ -32,7 +32,7 @@ export type HostDialog = {
  * A paired phone's approval turns the dialog into the waiting step instead, which is sent to the background, so the
  * product's own result tells how the request ended.
  */
-export async function answerHostDialogs(page: Page, dialogs: readonly HostDialog[], timeoutMs = 60_000): Promise<void> {
+async function answerHostDialogs(page: Page, dialogs: readonly HostDialog[], timeoutMs = 60_000): Promise<void> {
   for (const { title, answer } of dialogs) {
     const dialog = page.getByRole('dialog', { name: title, exact: true });
     const button = dialog.getByRole('button', { name: answer, exact: true });
