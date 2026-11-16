@@ -5,11 +5,11 @@
   "version": "0.6.0",
   "type": "module",
   "sideEffects": [
-    "./src/boot.ts",
-    "./src/landing.ts",
-    "./src/main.ts",
-    "./src/session.ts",
-    "./src/startPage.ts"
+    "./src/shell/boot.ts",
+    "./src/shell/landing.ts",
+    "./src/shell/main.ts",
+    "./src/shell/session.ts",
+    "./src/shell/startPage.ts"
   ],
   "scripts": {
     "build": "astro build",

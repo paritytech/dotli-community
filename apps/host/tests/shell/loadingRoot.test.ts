@@ -6,9 +6,13 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import { pageScreen, prefersReducedMotion, showErrorPage } from '@dotli/ui';
 import { createManualPoll } from '../../src/testing/createManualPoll.js';
-import { showNoContentError } from '../../src/showNoContentError.js';
-import { createLoadingController, PROGRESS_STALL_MS, type LoadingPhase } from '../../src/createLoadingController.js';
-import { loadingState } from '../../src/state/loadingState.js';
+import { showNoContentError } from '../../src/features/productLoad/failure/showNoContentError.js';
+import {
+  createLoadingController,
+  PROGRESS_STALL_MS,
+  type LoadingPhase,
+} from '../../src/features/productLoad/progress/createLoadingController.js';
+import { loadingState } from '../../src/features/productLoad/progress/loadingState.js';
 
 // One long clock-driven band, so the crawl moves the bar on every tick.
 const PHASES: LoadingPhase[] = [{ label: 'Connecting', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }];

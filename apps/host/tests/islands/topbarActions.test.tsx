@@ -9,10 +9,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { TopbarActions } from '../../src/islands/TopbarActions.js';
-import { createProductFrameView } from '../../src/createProductFrameView.js';
-import { productFrameLayout } from '../../src/createProductFrameLayout.js';
-import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
+import { TopbarActionsIsland } from '../../src/shell/TopbarActionsIsland.js';
+import { createProductFrameView } from '../../src/features/productLoad/frame/createProductFrameView.js';
+import { productFrameLayout } from '../../src/features/page/createProductFrameLayout.js';
+import { topbarSurfaces } from '../../src/features/page/topbarSurfaces.js';
 import { byId } from '@dotli/ui/testing';
 import { resetViewport, setPhoneViewport } from '../happyDom.js';
 
@@ -46,7 +46,7 @@ afterEach(() => {
 describe('TopbarActions island', () => {
   it('As a dApp user, an open popover of the bar keeps the auto-hiding bar up, and closing it lets the bar go', async () => {
     // Given
-    mount({ island: () => <TopbarActions /> });
+    mount({ island: () => <TopbarActionsIsland /> });
 
     // When
     byId('chains-button').click();
@@ -77,7 +77,7 @@ describe('TopbarActions island', () => {
       hideLoading: () => undefined,
       setTitle: () => undefined,
     }).attachFrame(frame);
-    mount({ island: () => <TopbarActions /> });
+    mount({ island: () => <TopbarActionsIsland /> });
     const trigger = byId('chains-button');
     trigger.focus();
     trigger.click();

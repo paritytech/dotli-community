@@ -8,12 +8,12 @@ import { asProductId } from '@parity/truapi';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { ProductButton } from '../../src/islands/ProductButton.js';
-import { toProductId } from '../../src/runtime/getAskedProductId.js';
-import { productState } from '../../src/runtime/state/productState.js';
-import { productCardState } from '../../src/state/productCardState.js';
-import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
-import { urlPillState } from '../../src/state/urlPillState.js';
+import { ProductButtonIsland } from '../../src/features/productIdentity/ProductButtonIsland.js';
+import { toProductId } from '../../src/features/productLoad/resolve/getAskedProductId.js';
+import { productState } from '../../src/features/page/productState.js';
+import { productCardState } from '../../src/features/productIdentity/productCardState.js';
+import { topbarSurfaces } from '../../src/features/page/topbarSurfaces.js';
+import { urlPillState } from '../../src/features/productIdentity/urlPillState.js';
 
 let unmount: (() => void) | undefined;
 
@@ -31,7 +31,7 @@ describe('ProductButton island', () => {
     const source = vi.fn(() => Promise.resolve({ kind: 'none' as const }));
     const host = document.createElement('div');
     document.body.append(host);
-    unmount = render(() => <ProductButton />, host);
+    unmount = render(() => <ProductButtonIsland />, host);
     flush();
     urlPillState.showProduct('app', '.dot.li');
     productState.setLoaded({ label: 'app', productId: asProductId(toProductId('app')), details: { cid: 'bafy' } });

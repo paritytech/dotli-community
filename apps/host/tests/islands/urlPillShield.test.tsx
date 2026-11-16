@@ -10,12 +10,12 @@ import { asProductId } from '@parity/truapi';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { UrlPillShield } from '../../src/islands/UrlPillShield.js';
-import { toProductId } from '../../src/runtime/getAskedProductId.js';
-import { productState } from '../../src/runtime/state/productState.js';
-import { productCardState } from '../../src/state/productCardState.js';
-import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
-import { urlPillState } from '../../src/state/urlPillState.js';
+import { UrlPillShieldIsland } from '../../src/features/productIdentity/UrlPillShieldIsland.js';
+import { toProductId } from '../../src/features/productLoad/resolve/getAskedProductId.js';
+import { productState } from '../../src/features/page/productState.js';
+import { productCardState } from '../../src/features/productIdentity/productCardState.js';
+import { topbarSurfaces } from '../../src/features/page/topbarSurfaces.js';
+import { urlPillState } from '../../src/features/productIdentity/urlPillState.js';
 
 let unmount: (() => void) | undefined;
 
@@ -24,7 +24,7 @@ function mountIsland(): void {
   pill.type = 'button';
   pill.id = 'url-pill';
   document.body.append(pill);
-  unmount = render(() => <UrlPillShield />, pill);
+  unmount = render(() => <UrlPillShieldIsland />, pill);
   flush();
 }
 

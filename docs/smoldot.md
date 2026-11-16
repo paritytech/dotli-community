@@ -21,7 +21,7 @@ to the protocol iframe.
 | Origin | Purpose | Triggered by |
 |---|---|---|
 | Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/sharedWorker/protocolSharedWorker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission, over the protocol iframe when Light Client is selected | `apps/host/src/runtime/hostCallbacks/createChainConnect.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission, over the protocol iframe when Light Client is selected | `apps/host/src/features/productRuntime/chains/createChainConnect.ts` |
 
 Both protocol submodes build their light client with `createLightClient` from
 `packages/chains/src/createLightClient.ts`. RPC Gateway mode routes Rust-core
@@ -111,7 +111,7 @@ These exports are owner-only and must not be imported outside `apps/protocol/`,
 except for the host resolver described below:
 
 - `@dotli/chains`: `createLightClient`, `createLightClientDeps`, and `loadProvider`, which loads them lazily.
-- `@dotli/resolver`: `createDotnsResolver`, which the iframe and the SharedWorker build on the broker's local sessions through `startLightClientService`. The host builds one on its own chain pool for rpc-gateway (`loadRpcResolver` in `apps/host/src/main.ts`).
+- `@dotli/resolver`: `createDotnsResolver`, which the iframe and the SharedWorker build on the broker's local sessions through `startLightClientService`. The host builds one on its own chain pool for rpc-gateway (`loadRpcResolver` in `apps/host/src/shell/main.ts`).
 
 ## Adding a new chain
 

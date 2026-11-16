@@ -10,17 +10,17 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
-import type { AuthCommands } from '../../src/runtime/runAuthCommand.js';
-import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
-import { authControl } from '../../src/runtime/authControl.js';
-import { authState } from '../../src/runtime/state/authState.js';
-import { topbarState } from '../../src/state/topbarState.js';
-import { pageTopbarAutoHide } from '../../src/createTopbarAutoHide.js';
-import { AuthModal } from '../../src/islands/AuthModal.js';
-import { createProductFrameView } from '../../src/createProductFrameView.js';
-import { productFrameLayout } from '../../src/createProductFrameLayout.js';
-import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
-import { authModalState } from '../../src/state/authModalState.js';
+import type { AuthCommands } from '../../src/features/account/signIn/runAuthCommand.js';
+import { createBlockingModalCoordinator } from '../../src/kit/createBlockingModalCoordinator.js';
+import { authControl } from '../../src/features/account/signIn/authControl.js';
+import { authState } from '../../src/features/account/session/authState.js';
+import { topbarState } from '../../src/features/page/topbarState.js';
+import { pageTopbarAutoHide } from '../../src/features/page/createTopbarAutoHide.js';
+import { AuthModalIsland } from '../../src/features/account/signIn/AuthModalIsland.js';
+import { createProductFrameView } from '../../src/features/productLoad/frame/createProductFrameView.js';
+import { productFrameLayout } from '../../src/features/page/createProductFrameLayout.js';
+import { topbarSurfaces } from '../../src/features/page/topbarSurfaces.js';
+import { authModalState } from '../../src/features/account/signIn/authModalState.js';
 
 /** What the controller asked of the bridge chunk's commands. */
 const asked = { logins: 0, cancels: 0 };
@@ -62,7 +62,7 @@ function mountIsland(): void {
   authState.set({ tag: 'Disconnected' });
   const slot = document.createElement('div');
   document.body.append(slot);
-  unmount = render(() => <AuthModal placement="topbar-end" />, slot);
+  unmount = render(() => <AuthModalIsland placement="topbar-end" />, slot);
   flush();
 }
 

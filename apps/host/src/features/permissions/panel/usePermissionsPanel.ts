@@ -1,0 +1,98 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { ReadableAtom } from 'nanostores';
+import { getKeys } from '@dotli/shared';
+import { useStore } from '@dotli/stores-solid';
+import { isPermissionGranted, type PermissionTargets } from '../policy/permissionPolicy.js';
+import type { BrowserPermissions } from '../policy/createBrowserPermissions.js';
+import type { ProductPermissions } from '../policy/productPermissions.js';
+import {
+  getRead,
+  isUnreadable,
+  type PermissionsRead,
+  type ProductPermissionsState,
+} from '../policy/productPermissionsState.js';
+import type { PermissionsNotice } from './permissions.js';
+import type { PermissionsContentProps } from './PermissionsContent.js';
+import type { PermissionsItemProps } from './PermissionsItem.js';
+
+const INITIAL_STATE: ProductPermissionsState = { status: 'none' };
+
+/** The product on show, as the panel reads it. */
+export type ShownProduct = { status: 'none' } | { status: 'error' } | { status: 'loaded'; label: string };
+
+/** The page's product and permissions, and the intents that change them. */
+export type PermissionsBinding = {
+  permissions: PermissionsContentProps['permissions'];
+  product: ReadableAtom<ShownProduct>;
+  /** The product's permissions as last read or written, and the intents that change them. */
+  store: Pick<ProductPermissions, 'state' | 'pending' | 'refresh' | 'change'>;
+  /** The browser's own permissions, asked inside the user's click. */
+  browser: Pick<BrowserPermissions, 'request'>;
+};
+
+/** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
+export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {
+  const product = useStore(binding.product);
+  const state = useStore(binding.store.state, { initial: INITIAL_STATE });
+  const pendingChange = useStore(binding.store.pending, { initial: null });
+
+  const notice = (): PermissionsNotice | undefined => {
+    const current = product();
+    if (current.status === 'none') {
+      return 'loading';
+    }
+    if (current.status === 'error') {
+      return 'no-app';
+    }
+    return isUnreadable(state(), current.label) ? 'unavailable' : undefined;
+  };
+
+  const shownRead = (): PermissionsRead | undefined => {
+    const current = product();
+    const read = getRead(state());
+    return current.status === 'loaded' && read?.label === current.label ? read : undefined;
+  };
+
+  // A pending change of another app, such as the one shown before, says nothing about this one.
+  const pendingTargets = (): PermissionTargets | undefined => {
+    const read = shownRead();
+    const change = pendingChange();
+    return read !== undefined && change !== null && change.label === read.label ? change.targets : undefined;
+  };
+
+  return {
+    permissions: binding.permissions,
+    notice,
+    statuses: () => {
+      const read = shownRead();
+      const targets = pendingTargets();
+      if (read === undefined || targets === undefined) {
+        return read?.statuses;
+      }
+      return read.statuses.map((status, i) => {
+        const name = binding.permissions[i]?.name;
+        return name === undefined ? status : (targets[name] ?? status);
+      });
+    },
+    pending: () => pendingTargets() !== undefined,
+    onOpen: () => {
+      void binding.store.refresh();
+    },
+    onChange: async targets => {
+      const read = getRead(binding.store.state.get());
+      if (read === undefined) {
+        return [];
+      }
+      // The browser accepts a request only inside the user's gesture, so it goes out before the first await.
+      for (const name of getKeys(targets)) {
+        const status = targets[name];
+        if (status !== undefined && isPermissionGranted(status)) {
+          void binding.browser.request(name);
+        }
+      }
+      return (await binding.store.change(read.label, targets)).failed;
+    },
+  };
+}

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { PHONE_METHODS, type PhoneMethod } from '../runtime/phoneMethods.js';
+import { PHONE_METHODS, type PhoneMethod } from '../features/signing/phoneMethods.js';
 import { encodeRequestFrame } from './encodeRequestFrame.js';
 
 type Params = {

@@ -10,15 +10,15 @@ import { asProductId } from '@parity/truapi';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { createChatConnections } from '../../src/runtime/chat/createChatConnections.js';
-import { createChatStore, type ChatStore } from '../../src/runtime/chat/createChatStore.js';
-import { toProductId } from '../../src/runtime/getAskedProductId.js';
-import { authState } from '../../src/runtime/state/authState.js';
-import { productState } from '../../src/runtime/state/productState.js';
-import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
-import { topbarState } from '../../src/state/topbarState.js';
-import { ChatDock } from '../../src/islands/ChatDock.js';
-import { chatPanelState } from '../../src/state/chatPanelState.js';
+import { createChatConnections } from '../../src/features/chat/createChatConnections.js';
+import { createChatStore, type ChatStore } from '../../src/features/chat/createChatStore.js';
+import { toProductId } from '../../src/features/productLoad/resolve/getAskedProductId.js';
+import { authState } from '../../src/features/account/session/authState.js';
+import { productState } from '../../src/features/page/productState.js';
+import { createMemoryChatRepo } from '../../src/features/chat/createChatStore.fake.js';
+import { topbarState } from '../../src/features/page/topbarState.js';
+import { ChatDockIsland } from '../../src/features/chat/ChatDockIsland.js';
+import { chatPanelState } from '../../src/features/chat/chatPanelState.js';
 import { appears, byId, byTestId } from '@dotli/ui/testing';
 
 const LABEL = 'chatty';
@@ -32,7 +32,7 @@ let unmount: (() => void) | undefined;
 function mountIsland(): void {
   const slot = document.createElement('div');
   document.body.append(slot);
-  unmount = render(() => <ChatDock chat={chat} />, slot);
+  unmount = render(() => <ChatDockIsland chat={chat} />, slot);
   flush();
 }
 

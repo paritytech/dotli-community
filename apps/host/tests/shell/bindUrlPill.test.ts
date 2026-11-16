@@ -5,8 +5,8 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { bindUrlPill } from '../../src/bindUrlPill.js';
-import { urlPillState } from '../../src/state/urlPillState.js';
+import { bindUrlPill } from '../../src/features/productIdentity/bindUrlPill.js';
+import { urlPillState } from '../../src/features/productIdentity/urlPillState.js';
 import { byId, byTestId } from '@dotli/ui/testing';
 
 describe('URL bar', () => {

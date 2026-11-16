@@ -9,9 +9,9 @@ import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
 import type { ModalView } from '@dotli/ui';
 import { appears } from '@dotli/ui/testing';
-import { Overlays } from '../../src/islands/Overlays.js';
-import { createHostPrompts } from '../../src/createHostPrompts.js';
-import { productFrameLayout } from '../../src/createProductFrameLayout.js';
+import { OverlaysIsland } from '../../src/shell/OverlaysIsland.js';
+import { createHostPrompts } from '../../src/features/permissions/prompts/createHostPrompts.js';
+import { productFrameLayout } from '../../src/features/page/createProductFrameLayout.js';
 
 const REVIEW: ModalView<'no' | 'yes' | 'dismissed'> = {
   title: 'Question',
@@ -55,7 +55,7 @@ describe('dialog focus', () => {
 function mountOverlays(): void {
   const root = document.createElement('div');
   document.body.append(root);
-  const disposeOverlays = render(() => createComponent(Overlays, {}), root);
+  const disposeOverlays = render(() => createComponent(OverlaysIsland, {}), root);
   onTestFinished(() => {
     disposeOverlays();
     resetAllStoresForTests();

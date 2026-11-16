@@ -7,15 +7,15 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { asProductId } from '@parity/truapi';
 import { atom } from 'nanostores';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { createChatConnections } from '../../src/runtime/chat/createChatConnections.js';
-import { createChatStore } from '../../src/runtime/chat/createChatStore.js';
-import { toProductId } from '../../src/runtime/getAskedProductId.js';
-import { authState } from '../../src/runtime/state/authState.js';
-import { productState } from '../../src/runtime/state/productState.js';
-import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
-import type { NetworkHealth } from '../../src/networkVerdict.js';
-import { chatPanelState } from '../../src/state/chatPanelState.js';
-import { bindTopbarStatus } from '../../src/bindTopbarStatus.js';
+import { createChatConnections } from '../../src/features/chat/createChatConnections.js';
+import { createChatStore } from '../../src/features/chat/createChatStore.js';
+import { toProductId } from '../../src/features/productLoad/resolve/getAskedProductId.js';
+import { authState } from '../../src/features/account/session/authState.js';
+import { productState } from '../../src/features/page/productState.js';
+import { createMemoryChatRepo } from '../../src/features/chat/createChatStore.fake.js';
+import type { NetworkHealth } from '../../src/features/network/networkVerdict.js';
+import { chatPanelState } from '../../src/features/chat/chatPanelState.js';
+import { bindTopbarStatus } from '../../src/features/topbar/bindTopbarStatus.js';
 import { byId } from '@dotli/ui/testing';
 
 describe('bindTopbarStatus', () => {

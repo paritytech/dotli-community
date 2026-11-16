@@ -12,7 +12,7 @@ import {
   RELOAD_BTN_LABEL,
   ERROR_TITLES,
   TRY_ANYWAY_BTN_LABEL,
-} from '../../src/errorCopy.js';
+} from '../../src/features/productLoad/failure/errorCopy.js';
 import { test } from './helpers/sharedModeReset.js';
 import {
   errorResolveResponse,

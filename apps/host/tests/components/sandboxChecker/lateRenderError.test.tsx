@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { waitForDom } from '@dotli/shared/testing';
-import { mountViolationPanel } from '../../../src/components/sandboxChecker/mount.js';
+import { mountViolationPanel } from '../../../src/features/debug/mount.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);

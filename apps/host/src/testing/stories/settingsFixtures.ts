@@ -7,14 +7,14 @@
 import { createSignal, flush, untrack } from 'solid-js';
 import { fn } from 'storybook/test';
 import type { CacheSettings } from '@dotli/config';
-import type { ThemePreference } from '../../runtime/state/themeState.js';
+import type { ThemePreference } from '../../features/settings/themeState.js';
 import {
   isResetRunning,
   type ApplySettings,
   type SavedSettings,
   type SettingsResetStatus,
-} from '../../components/settings/settings.js';
-import type { SettingsItemProps } from '../../components/settings/SettingsItem.js';
+} from '../../features/settings/settings.js';
+import type { SettingsItemProps } from '../../features/settings/SettingsItem.js';
 
 export const DEFAULT_CACHE: CacheSettings = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
 

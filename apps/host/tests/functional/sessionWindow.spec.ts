@@ -21,7 +21,7 @@ import {
 } from '@playwright/test';
 import { DOMAIN, NETWORK, PORT, TIMEOUT_MS } from '../env.js';
 import { getProductFrame } from '../productFrame.js';
-import { createRequestUrl } from '../../src/runtime/sessionHandoff/sessionRoute.js';
+import { createRequestUrl } from '../../src/features/signInWindow/sessionRoute.js';
 import { seedSettings } from './fixtures/settings.js';
 import { isProtocolFrameUrl, ROOT_ORIGIN, waitForFrame } from './helpers/frames.js';
 import {

@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The shell around a product, on its `<label>.<BASE_DOMAIN>` host. The bare host's root serves landing.astro instead.
-import PageHead from '../components/PageHead.astro';
-import Topbar from '../components/Topbar.astro';
-import { AuthModal } from '../islands/AuthModal.jsx';
-import { LoadingScreen } from '../islands/LoadingScreen.jsx';
-import { Overlays } from '../islands/Overlays.jsx';
-import { TopbarReveal } from '../islands/TopbarReveal.jsx';
+import PageHead from '../shell/PageHead.astro';
+import Topbar from '../features/topbar/Topbar.astro';
+import { AuthModalIsland } from '../features/account/index.js';
+import { LoadingScreenIsland } from '../features/productLoad/index.js';
+import { OverlaysIsland } from '../shell/OverlaysIsland.jsx';
+import { TopbarRevealIsland } from '../features/topbar/index.js';
 import s from './index.module.css';
 ---
 
@@ -19,18 +19,18 @@ import s from './index.module.css';
   </head>
   <body class={s['page']} data-host>
     <Topbar />
-    <AuthModal client:idle placement="topbar-end" />
+    <AuthModalIsland client:idle placement="topbar-end" />
 
     {/* Outside `#app`, whose content the product replaces. */}
-    <LoadingScreen client:load />
+    <LoadingScreenIsland client:load />
 
     <div id="app" class={s['app']}></div>
     {/* After the app frame, so it is one Tab past it. */}
-    <TopbarReveal client:idle />
+    <TopbarRevealIsland client:idle />
     {/* Marked, so a full-page screen keeps it. */}
     <div data-overlays>
-      <Overlays client:idle={{ timeout: 1000 }} />
+      <OverlaysIsland client:idle={{ timeout: 1000 }} />
     </div>
-    <script src="../main.ts"></script>
+    <script src="../shell/main.ts"></script>
   </body>
 </html>

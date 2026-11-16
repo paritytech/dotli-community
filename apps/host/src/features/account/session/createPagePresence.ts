@@ -1,0 +1,171 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Whether some sign-in exists on the root domain, as a presence-only flag. Safari keeps the wallet and the paired
+// session per origin, so this flag is how a page learns about a sign-out it never saw.
+
+import { BASE_DOMAIN, isLocalhost } from '@dotli/config';
+import { createReporter, defineCount } from '@dotli/metrics';
+import { listen } from '@dotli/shared';
+import { pageRole, isFlagShared } from './pageRole.js';
+import { getSharedChannel, type SharedChannel } from '../../../kit/sharedMode.js';
+import { reportWalletFailure } from './walletFailure.js';
+import {
+  createCookiePresence,
+  listenForCookieFlagChange,
+  type CookieChanges,
+  type CookieJar,
+} from './createCookiePresence.js';
+import { createStorePresence } from './createStorePresence.js';
+import { getFlagWriteReport, type FlagWrite } from './sessionFlagWriteMetric.js';
+import type { Presence, SessionPresence } from './types.js';
+
+const report = createReporter({ flow: 'wallet' });
+
+/**
+ * Count. A read of the signed-in flag threw, so presence answered unknown. Counted once for each read that threw,
+ * whoever read it, so one page may count several. Expected. Tagged `outcome` (error) and `reason` (the error's
+ * name).
+ */
+const sessionPresenceReadMetric = defineCount<'error'>('session.presence_read');
+
+type Params = {
+  /** Whether the page shares the root domain's flag. A preview its preview host frames does not. */
+  isShared: () => boolean;
+  /** Served from a local root such as `localhost`, where the flag lives in the dev HTTP store. */
+  localhost: boolean;
+  /** The dev HTTP store the flag lives in on a local root. Reached on first use only. */
+  channel: () => SharedChannel;
+  /** The cookie jar the flag lives in on a real domain. */
+  jar: CookieJar;
+  /** The domain the flag cookie is set on. The root domain by default. */
+  domain?: string;
+};
+
+/** Where the page's flag lives. */
+type FlagStore = 'none' | 'store' | 'cookie';
+
+const documentJar: CookieJar = {
+  read: () => document.cookie,
+  write(cookie) {
+    document.cookie = cookie;
+  },
+};
+
+/**
+ * A page that keeps its sign-in in another site's partition, which no other page signs out, so its flag reads as
+ * unknown and the restore rule never drops what it stored. Writing would only touch a flag that partition does not
+ * share. Decided by the page's role, not by a failed probe.
+ */
+const unsharedPresence: SessionPresence = {
+  read: () => Promise.resolve('unknown'),
+  set: () => Promise.resolve(),
+  clear: () => Promise.resolve(),
+  renew: () => Promise.resolve(),
+};
+
+/**
+ * The page's flag, built on first use, so creating it reads no page globals. It never rejects and records each failure
+ * once. A read that fails is unknown, so a restore never fails on the flag, and an unreadable flag is the environment's
+ * failure, so the miss is counted as expected. A write that fails is reported and settles, so awaiting a write never
+ * rejects. Each call reaches the flag in the caller's turn.
+ */
+export function createPagePresence({
+  isShared,
+  localhost,
+  channel,
+  jar,
+  domain = BASE_DOMAIN,
+}: Params): SessionPresence {
+  let inner: SessionPresence | undefined;
+
+  function pickPresence(): SessionPresence {
+    switch (getFlagStore(isShared(), localhost)) {
+      case 'none':
+        return unsharedPresence;
+      case 'store':
+        return createStorePresence(channel());
+      case 'cookie':
+        return createCookiePresence({ jar, domain });
+    }
+  }
+
+  function getPresence(): SessionPresence {
+    inner ??= pickPresence();
+    return inner;
+  }
+
+  /** The write `name` of the flag, which reports its own failure and never rejects. */
+  function write(name: FlagWrite): () => Promise<void> {
+    return () =>
+      callSettled(
+        () => getPresence()[name](),
+        error => {
+          reportWalletFailure(error, { what: `signed-in flag ${name}`, ...getFlagWriteReport(name) });
+        },
+      );
+  }
+
+  return {
+    read: () =>
+      callSettled(
+        () => getPresence().read(),
+        (error): Presence => {
+          report.expected(error, { step: 'presence_read', metric: sessionPresenceReadMetric });
+          return 'unknown';
+        },
+      ),
+    set: write('set'),
+    clear: write('clear'),
+    renew: write('renew'),
+  };
+}
+
+/** The cookie on a real domain, the dev HTTP store on a local root, and none on a page whose role shares no flag. */
+export const sessionPresence: SessionPresence = createPagePresence({
+  isShared: () => isFlagShared(pageRole.get()),
+  localhost: isLocalhost,
+  channel: getSharedChannel,
+  jar: documentJar,
+});
+
+/**
+ * The flag's own change events, where it is a cookie: none for the dev HTTP store or a role that shares no flag.
+ * Returns the unsubscribe.
+ */
+export function listenForSessionFlagChange(listener: () => void): () => void {
+  const cookie = getFlagStore(isFlagShared(pageRole.get()), isLocalhost) === 'cookie';
+  return listenForCookieFlagChange(cookie ? getDocumentCookieChanges() : null, listener);
+}
+
+/** Where the page's flag lives: none for a page that shares no flag, the dev HTTP store on a local root, else the cookie. */
+function getFlagStore(isShared: boolean, localhost: boolean): FlagStore {
+  if (!isShared) {
+    return 'none';
+  }
+  return localhost ? 'store' : 'cookie';
+}
+
+/** Runs `call` in the caller's turn and answers with `fallback` for a throw or a rejection. */
+function callSettled<T>(call: () => Promise<T>, fallback: (error: unknown) => T): Promise<T> {
+  return new Promise<T>(resolve => {
+    resolve(call());
+  }).catch(fallback);
+}
+
+/** Safari since 18.4 and every current Chromium and Firefox have them, on a secure page only. */
+function getDocumentCookieChanges(): CookieChanges | null {
+  if (typeof cookieStore === 'undefined') {
+    return null;
+  }
+  return {
+    subscribe: listener =>
+      listen({
+        target: cookieStore,
+        type: 'change',
+        handler: event => {
+          listener([...event.changed, ...event.deleted].map(cookie => cookie.name ?? ''));
+        },
+      }),
+  };
+}

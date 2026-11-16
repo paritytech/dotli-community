@@ -8,13 +8,13 @@ import { render, type JSX } from '@solidjs/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { must, resetAllStoresForTests } from '@dotli/shared/testing';
-import { createMemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
+import { createMemorySharedChannel } from '../../src/kit/sharedMode.fake.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
-import { LandingAuth } from '../../src/islands/LandingAuth.js';
-import { LandingNav } from '../../src/islands/LandingNav.js';
-import { LandingPart } from '../../src/islands/LandingPart.js';
-import { LandingRecents } from '../../src/islands/LandingRecents.js';
-import { createRecentLabels } from '../../src/createRecentLabels.js';
+import { LandingAuthIsland } from '../../src/features/landing/LandingAuthIsland.js';
+import { LandingNavIsland } from '../../src/features/landing/LandingNavIsland.js';
+import { LandingPartIsland } from '../../src/features/landing/LandingPartIsland.js';
+import { LandingRecentsIsland } from '../../src/features/landing/LandingRecentsIsland.js';
+import { createRecentLabels } from '../../src/features/landing/createRecentLabels.js';
 import { appears, byTestId } from '@dotli/ui/testing';
 
 type Params = {
@@ -33,12 +33,12 @@ let unmounts: (() => void)[] = [];
  * The three islands, settled as hydration leaves them: the name form and the one recent name the shared store holds
  * shown, or the error page. `nav` takes the name form's place.
  */
-async function mountIslands({ nav = LandingNav }: Params = {}): Promise<void> {
+async function mountIslands({ nav = LandingNavIsland }: Params = {}): Promise<void> {
   const shared = createMemorySharedChannel({ entries: { dotli_recent: '["alpha"]' } });
   const islands = [
-    [LandingAuth, SLOTS.auth, {}],
+    [LandingAuthIsland, SLOTS.auth, {}],
     [nav, SLOTS.nav, {}],
-    [LandingRecents, SLOTS.recents, { recents: createRecentLabels({ channel: shared }) }],
+    [LandingRecentsIsland, SLOTS.recents, { recents: createRecentLabels({ channel: shared }) }],
   ] as const;
   for (const [island, id, props] of islands) {
     // As in Astro, an island an error page already removed never hydrates.
@@ -106,7 +106,7 @@ describe('landing page islands', () => {
     const failure = new Error('landing render failed');
     const reload = vi.fn();
     const failingNav = (): JSX.Element =>
-      LandingPart({
+      LandingPartIsland({
         reload,
         get children(): JSX.Element {
           throw failure;

@@ -9,8 +9,8 @@
 
 import { base64urlnopad, utf8 } from '@scure/base';
 import { isValidNetwork } from '@dotli/config/networks';
-import { PROTOCOL_VERSION } from '../../../src/runtime/sessionHandoff/sessionMessages.js';
-import { createRequestUrl } from '../../../src/runtime/sessionHandoff/sessionRoute.js';
+import { PROTOCOL_VERSION } from '../../../src/features/signInWindow/sessionMessages.js';
+import { createRequestUrl } from '../../../src/features/signInWindow/sessionRoute.js';
 
 const X25519 = { name: 'X25519' } as const;
 const KEPT_KEY = 'site-redirect:round';

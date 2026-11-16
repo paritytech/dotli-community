@@ -9,10 +9,10 @@ import { noop } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
-import { pageLoading } from '../../src/createLoadingController.js';
-import { createLoadTelemetry } from '../../src/createLoadTelemetry.js';
-import { describeError } from '../../src/describeError.js';
-import { beginAttempt } from '../../src/journey.js';
+import { pageLoading } from '../../src/features/productLoad/progress/createLoadingController.js';
+import { createLoadTelemetry } from '../../src/features/productLoad/progress/createLoadTelemetry.js';
+import { describeError } from '../../src/features/productLoad/failure/describeError.js';
+import { beginAttempt } from '../../src/features/productLoad/progress/journey.js';
 import { bindReports } from '../../src/testing/bindReports.js';
 
 describe('createLoadTelemetry', () => {

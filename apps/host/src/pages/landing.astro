@@ -5,10 +5,10 @@
 // The bare host's root. No topbar and no loading screen, and the landing page renders at build time, so it is the first
 // paint. With no `#app`, an error page takes over the whole body.
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
-import { AuthModal } from '../islands/AuthModal.jsx';
-import { Overlays } from '../islands/Overlays.jsx';
-import Landing from '../components/Landing.astro';
-import PageHead from '../components/PageHead.astro';
+import { AuthModalIsland } from '../features/account/index.js';
+import { OverlaysIsland } from '../shell/OverlaysIsland.jsx';
+import Landing from '../features/landing/Landing.astro';
+import PageHead from '../shell/PageHead.astro';
 ---
 
 <!doctype html>
@@ -18,11 +18,11 @@ import PageHead from '../components/PageHead.astro';
   </head>
   <body data-landing>
     <Landing />
-    <AuthModal client:idle placement="center" />
+    <AuthModalIsland client:idle placement="center" />
     {/* Marked, so a full-page screen keeps it. */}
     <div data-overlays>
-      <Overlays client:idle={{ timeout: 1000 }} />
+      <OverlaysIsland client:idle={{ timeout: 1000 }} />
     </div>
-    <script src="../landing.ts"></script>
+    <script src="../shell/landing.ts"></script>
   </body>
 </html>

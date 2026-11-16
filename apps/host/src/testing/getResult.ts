@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { SiteRoundPost } from '../runtime/sessionHandoff/createResponder.fake.js';
+import type { SiteRoundPost } from '../features/signInWindow/createResponder.fake.js';
 
 /** The one result the site got. Throws when the site got anything else. */
 export function getResult(posts: SiteRoundPost[]): Extract<SiteRoundPost, { type: 'dotli:s:result' }> {

@@ -7,13 +7,13 @@
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel } from '@dotli/sandbox-wire';
-import type { FrameHostParams, FrameProduct } from '../../src/runtime/createProductFrame.js';
-import { answerConnection, createFakePageCore } from '../../src/runtime/createPageCore.fake.js';
-import { createProductFrame } from '../../src/runtime/createProductFrame.js';
-import { createPermissionAuthorizations } from '../../src/runtime/createPermissionAuthorizations.js';
+import type { FrameHostParams, FrameProduct } from '../../src/features/productLoad/frame/createProductFrame.js';
+import { answerConnection, createFakePageCore } from '../../src/features/productRuntime/core/createPageCore.fake.js';
+import { createProductFrame } from '../../src/features/productLoad/frame/createProductFrame.js';
+import { createPermissionAuthorizations } from '../../src/features/permissions/policy/createPermissionAuthorizations.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
-import { createProductFrameView } from '../../src/createProductFrameView.js';
-import { productFrameLayout } from '../../src/createProductFrameLayout.js';
+import { createProductFrameView } from '../../src/features/productLoad/frame/createProductFrameView.js';
+import { productFrameLayout } from '../../src/features/page/createProductFrameLayout.js';
 import { nth } from '@dotli/shared/testing';
 import { rethrow } from '../../src/testing/rethrow.js';
 

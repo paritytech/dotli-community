@@ -1,0 +1,325 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
+import { withActiveTld } from '@dotli/config';
+import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
+import { modals } from '@dotli/ui';
+import { SignIcon } from '../panel/SignIcon.js';
+import { createHostPrompts } from './createHostPrompts.js';
+import type { BrowserBlockAnswer, GrantAnswer } from './hostPrompts.js';
+import type { EnforceablePermissionName } from '../policy/permissionPolicy.js';
+
+afterEach(() => {
+  resetAllStoresForTests();
+});
+
+/** The prompts over the modal store, so a spec answers their dialogs in place of the overlays. */
+const prompts = createHostPrompts({ present: modals.open, notify: () => undefined });
+
+describe('host prompts', () => {
+  it('As a dotli user, I sign a review that carries an icon and see the icon while the review settles with my choice', async () => {
+    // When
+    const answer = prompts.confirmReview({
+      dialog: {
+        title: 'Sign Transaction',
+        icon: SignIcon,
+        fields: [],
+        buttons: [
+          { label: 'Cancel', variant: 'danger', result: 'rejected' },
+          { label: 'Sign', variant: 'primary', result: 'accepted' },
+        ],
+        dismissOnBackdrop: true,
+        dismissResult: 'dismissed',
+      },
+      signal: createLiveSignal(),
+    });
+    const shownIcon = shownModal().view.icon;
+    chooseModalButton('Sign');
+
+    // Then
+    expect(shownIcon).toBe(SignIcon);
+    await expect(answer).resolves.toBe('accepted');
+  });
+
+  it('As a dotli user, I approve a review and its dialog hands its place to the next step', async () => {
+    // Given
+    const heard: string[] = [];
+    const closed: string[] = [];
+    const answer = prompts.confirmReview({
+      dialog: {
+        title: 'Sign Transaction',
+        fields: [],
+        buttons: [
+          { label: 'Cancel', variant: 'danger', result: 'rejected' },
+          { label: 'Sign', variant: 'primary', result: 'accepted' },
+        ],
+        dismissOnBackdrop: false,
+      },
+      signal: createLiveSignal(),
+      handoff(result) {
+        heard.push(result);
+        return {
+          view: {
+            title: 'Waiting',
+            fields: [],
+            buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+            dismissOnBackdrop: false,
+          },
+          signal: createLiveSignal(),
+          closed: how => closed.push(how),
+        };
+      },
+    });
+
+    // When
+    chooseModalButton('Sign');
+    const handedTo = shownModal().view.title;
+    chooseModalButton('Wait in background');
+
+    // Then
+    await expect(answer).resolves.toBe('accepted');
+    expect(heard).toEqual(['accepted']);
+    expect(handedTo).toBe('Waiting');
+    expect(closed).toEqual(['background']);
+    expect(() => shownModal()).toThrow();
+  });
+
+  it('As a dotli user, I allow a review with no glyph and see no icon on it', async () => {
+    // When
+    const answer = prompts.confirmReview({
+      dialog: {
+        title: 'Resource Allocation',
+        fields: [],
+        buttons: [{ label: 'Allow', variant: 'primary', result: 'accepted' }],
+        dismissOnBackdrop: false,
+      },
+      signal: createLiveSignal(),
+    });
+    const shownIcon = shownModal().view.icon;
+    chooseModalButton('Allow');
+
+    // Then
+    expect(shownIcon).toBeUndefined();
+    await expect(answer).resolves.toBe('accepted');
+  });
+});
+
+describe('permission request', () => {
+  it.each<{
+    story: string;
+    permission: EnforceablePermissionName;
+    allowOnce: boolean;
+    answer: () => void;
+    expected: GrantAnswer;
+  }>([
+    {
+      story: 'Allow',
+      permission: 'Camera',
+      allowOnce: false,
+      answer: pressButton('Allow'),
+      expected: 'granted',
+    },
+    {
+      story: 'Deny',
+      permission: 'Camera',
+      allowOnce: false,
+      answer: pressButton('Deny'),
+      expected: 'denied',
+    },
+    { story: 'a backdrop click', permission: 'Camera', allowOnce: false, answer: dismissModal, expected: 'dismissed' },
+    {
+      story: 'Allow once',
+      permission: 'ChainSubmit',
+      allowOnce: true,
+      answer: pressButton('Allow once'),
+      expected: 'granted-once',
+    },
+    {
+      story: 'Always allow',
+      permission: 'ChainSubmit',
+      allowOnce: true,
+      answer: pressButton('Always allow'),
+      expected: 'granted',
+    },
+  ])(
+    'As a dotli user, I answer a permission prompt with $story and the app gets $expected',
+    async ({ permission, allowOnce, answer, expected }) => {
+      // Given
+      const decision = prompts.askPermission({ label: 'myapp', permission, signal: createLiveSignal(), allowOnce });
+
+      // When
+      answer();
+
+      // Then
+      await expect(decision).resolves.toBe(expected);
+    },
+  );
+
+  it('As a dotli user, I get a device permission prompt and it names the app on the active network and says granting reloads it', () => {
+    // When
+    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), allowOnce: false });
+    const { view } = shownModal();
+
+    // Then
+    expect(view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
+    expect(view.notice).toBe('Granting this permission will reload the application.');
+  });
+
+  it('As a dotli user, I get a prompt for an app permission and it says nothing of a reload', () => {
+    // When
+    void prompts.askPermission({
+      label: 'myapp',
+      permission: 'ChainSubmit',
+      signal: createLiveSignal(),
+      allowOnce: true,
+    });
+
+    // Then
+    expect(shownModal().view.notice).toBeUndefined();
+  });
+
+  it('As a dotli integrator, I abort a queued dialog and it goes down unanswered', async () => {
+    // Given
+    const controller = new AbortController();
+    const decision = prompts.askPermission({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: controller.signal,
+      allowOnce: false,
+    });
+
+    // When
+    controller.abort();
+
+    // Then
+    await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
+    expect(() => shownModal()).toThrow();
+  });
+
+  it('As a dotli user, I allow a permission and the approve hook runs inside my click', () => {
+    // Given
+    const onApprove = vi.fn();
+    void prompts.askPermission({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: createLiveSignal(),
+      allowOnce: false,
+      onApprove,
+    });
+
+    // When
+    chooseModalButton('Allow');
+
+    // Then
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+
+  it.each<{ story: string; answer: () => void }>([
+    { story: 'Deny', answer: pressButton('Deny') },
+    { story: 'a backdrop click', answer: dismissModal },
+  ])(
+    'As a dotli user, I deny or dismiss a permission with $story and the approve hook never runs',
+    async ({ answer }) => {
+      // Given
+      const onApprove = vi.fn();
+      const decision = prompts.askPermission({
+        label: 'myapp',
+        permission: 'Camera',
+        signal: createLiveSignal(),
+        allowOnce: false,
+        onApprove,
+      });
+
+      // When
+      answer();
+      await decision;
+
+      // Then
+      expect(onApprove).not.toHaveBeenCalled();
+    },
+  );
+
+  it('As a dotli user, I allow once and the approve hook runs', () => {
+    // Given
+    const onApprove = vi.fn();
+    void prompts.askPermission({
+      label: 'myapp',
+      permission: 'ChainSubmit',
+      signal: createLiveSignal(),
+      allowOnce: true,
+      onApprove,
+    });
+
+    // When
+    chooseModalButton('Allow once');
+
+    // Then
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+});
+
+describe('browser block', () => {
+  it.each<{ story: string; answer: () => void; expected: BrowserBlockAnswer; retries: number }>([
+    { story: 'Restrict', answer: pressButton('Restrict access for product'), expected: 'restrict', retries: 0 },
+    { story: 'Retry', answer: pressButton('Retry'), expected: 'retry', retries: 1 },
+    { story: 'a backdrop click', answer: dismissModal, expected: 'dismissed', retries: 0 },
+  ])(
+    'As a dotli user, I answer a browser block with $story and the runtime gets $expected',
+    async ({ answer, expected, retries }) => {
+      // Given
+      const onRetry = vi.fn();
+      const decision = prompts.askBrowserBlock({
+        label: 'myapp',
+        permission: 'Camera',
+        signal: createLiveSignal(),
+        retried: false,
+        onRetry,
+      });
+
+      // When
+      answer();
+
+      // Then
+      expect(onRetry).toHaveBeenCalledTimes(retries);
+      await expect(decision).resolves.toBe(expected);
+    },
+  );
+
+  it('As a dotli user, I see a browser block that names the app on the active network', () => {
+    // When
+    void prompts.askBrowserBlock({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: createLiveSignal(),
+      retried: false,
+      onRetry: () => undefined,
+    });
+
+    // Then
+    expect(shownModal().view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
+  });
+});
+
+describe('host prompt test id', () => {
+  it("As a dotli developer, I open any host prompt and it carries the host's own test id", () => {
+    // When
+    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), allowOnce: false });
+
+    // Then
+    expect(shownModal().view.testId).toBe('host-prompt');
+  });
+});
+
+/** Returns a signal that never aborts. */
+function createLiveSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
+/** Returns an answer that presses the shown dialog's button `label`. */
+function pressButton(label: string): () => void {
+  return () => {
+    chooseModalButton(label);
+  };
+}

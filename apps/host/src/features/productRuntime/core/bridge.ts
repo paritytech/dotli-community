@@ -1,0 +1,393 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The page's TrUAPI chunk: the bridge over the page's own core runtime, session and frame host, asking the page's
+// dialogs, showing its notifications and drawing around the frame with its layout.
+
+import type { ProductAccountId } from '@parity/truapi';
+import { getActiveServicesConfig, getNetwork, loadStack } from '@dotli/config';
+import { m } from '@dotli/metrics';
+import type { LocalWalletReadResult } from '@dotli/protocol';
+import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn, markHandled } from '@dotli/shared';
+import { siteGrants } from '@dotli/storage';
+import { hostPrompts } from '../../permissions/index.js';
+import { loadHostRuntimeChunk, loadPolkadotApi, loadTxFillers } from '../../../kit/lazy.js';
+import { loadLocalWalletCore } from '../../account/index.js';
+import { pageNotifications } from '../../notifications/index.js';
+import { getProductFrameContainer, productFrameView } from '../../productLoad/index.js';
+import { productState } from '../../page/index.js';
+import { networkMonitorState } from '../../network/index.js';
+import { createBrowserBlockCheck } from '../../permissions/index.js';
+import { createBridge } from './createBridge.js';
+import type { AuthCommands } from '../../account/index.js';
+import { createCoreAuthCommands } from '../../account/index.js';
+import { createCoreRuntimeBoot } from './createCoreRuntimeBoot.js';
+import { getHostAssetHubProvider, getHostChainProvider } from '../chains/getHostChainProvider.js';
+import { hostChainPool } from '../chains/createHostChainPool.js';
+import { hostBitswapClient } from '../chains/createHostBitswapClient.js';
+import { readOriginalAccount } from '../chains/readOriginalAccount.js';
+import { readPeopleUsernames } from '../chains/readPeopleUsernames.js';
+import { wireDescriber } from '../../debug/index.js';
+import { pagePermissions, productPermissions } from '../../permissions/index.js';
+import { isSiteGrantForgotten, pageRole } from '../../account/index.js';
+import { authViews } from '../../account/index.js';
+import { coreStorage, signInFlag, type SessionRead } from '../../account/index.js';
+import { createHostCallbacks } from '../callbacks/createHostCallbacks.js';
+import { createPromptAsks } from '../callbacks/createPromptAsks.js';
+import { browserPermissions } from '../../permissions/index.js';
+import { LANDING_PRODUCT, type CoreLease } from './createPageCore.js';
+import { getWindowAsks } from '../callbacks/getWindowAsks.js';
+import { listenForSessionFlagChange, sessionPresence } from '../../account/index.js';
+import { listenForSiteWalletChange } from '../../account/index.js';
+import { watchPresence } from '../../account/index.js';
+import { reconcilePage } from '../../account/index.js';
+import { createSessionLease } from '../../account/index.js';
+import { sessionState } from '../../account/index.js';
+import { siteWallet } from '../../account/index.js';
+import { createMainAccountSource, type MainAccountSource } from '../../siteSignIn/index.js';
+import { createSiteChain } from '../../siteSignIn/index.js';
+import { createSiteAccountReader } from '../../siteSignIn/index.js';
+import { createSiteTxSigner } from '../../siteSignIn/index.js';
+import { createPageSignOut } from '../../account/index.js';
+import { applySessionResult } from '../../signInWindow/index.js';
+import { getPageSignInHandoff } from '../../signInWindow/index.js';
+import type { WindowFlowParams } from '../../signInWindow/index.js';
+import type { SessionResult } from '../../signInWindow/index.js';
+import type { WindowSignOutParams } from '../../signInWindow/index.js';
+import { authState } from '../../account/index.js';
+import { signingOutState } from '../../account/index.js';
+import { walletModeState } from '../../account/index.js';
+import { pageWalletBoot } from '../../account/index.js';
+import { walletSwitch } from '../../account/index.js';
+
+/** Dynamic import of the container chunk. */
+const BRIDGE_CHUNK_LOAD = 'bridge.chunk_load';
+
+// One load serves the frame and every core.
+const hostRuntime = createLazyLoad({
+  async load() {
+    const chunkLoadStart = performance.now();
+    const runtime = await loadHostRuntimeChunk();
+    m.measure(BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
+    return runtime;
+  },
+});
+// Preloaded so it is ready when the first product renders.
+// The render or the core boot that asks next loads it again and reports its own failure.
+void markHandled(hostRuntime());
+
+// Each core boots on the wallet read from the shared store and the published host runtime, with callbacks that ask
+// the page.
+const bootRuntime = createCoreRuntimeBoot({
+  readWallet: pageWalletBoot.read,
+  async loadHostRuntime() {
+    const { web, HostWorker } = await hostRuntime();
+    return { createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime, HostWorker };
+  },
+  loadStack: () => loadStack(getNetwork()),
+  createCallbacks: options =>
+    createHostCallbacks({
+      ...options,
+      prompts: hostPrompts,
+      notifications: pageNotifications(),
+      createAsks:
+        pageRole.get() === 'signin-window'
+          ? getWindowAsks
+          : createPromptAsks({
+              prompts: hostPrompts,
+              permissions: { registry: pagePermissions, product: productPermissions },
+              browser: browserPermissions,
+            }),
+    }),
+  loadLocalWalletCore,
+});
+
+// The page's own sign-out and the restore rule's visible checks run here one at a time.
+const signOuts = createAsyncTaskPool({ poolSize: 1 });
+
+const bridge = createBridge({
+  bootRuntime,
+  subscribeStoredSession: coreStorage.subscribeStoredSession,
+  createIframeHost: async params =>
+    (await hostRuntime()).web.createIframeHost({ ...params, container: getProductFrameContainer() }),
+  subscribePermissionChanges: productPermissions.subscribeChanges,
+  permissions: pagePermissions,
+  frameView: productFrameView,
+  notify: hostPrompts.notify,
+  watchChains: () => {
+    // The watch lasts the page's life, so its stop goes unused.
+    hostChainPool.watch({
+      onActivity: networkMonitorState.recordChainActivity,
+      onBestBlock: networkMonitorState.recordBestBlock,
+    });
+  },
+  watchBrowserBlocks: scope => {
+    // The check lasts the page's life, so its stop goes unused.
+    createBrowserBlockCheck({
+      products: productState.store,
+      statuses: pagePermissions.getStatuses,
+      browser: browserPermissions,
+      scope,
+      prompts: hostPrompts,
+      record: productPermissions.recordPromptDecision,
+    }).start();
+  },
+  session: sessionState,
+});
+
+const { initBridge, setPageProduct, startProductFrame } = bridge;
+
+// Whether the window already serves a site, which it decides once per page.
+let servingSite = false;
+
+/**
+ * The session window serves a site's round, with dot.li's own pairing, and boots on a stored local wallet. With an
+ * `account`, a transaction's, its core runs under that account's product id. With null, a sign-in's, its core runs as
+ * dot.li's own product. Called before anything boots a core. Once per page, so a second call does nothing.
+ */
+function serveSite(account: ProductAccountId | null): void {
+  if (servingSite) {
+    return;
+  }
+  servingSite = true;
+  if (account !== null) {
+    // dot.li's own pairing, as the site never names the window's product.
+    setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  }
+  pageWalletBoot.serveSites();
+}
+
+// The main account source lives as long as the page, so nothing disposes it.
+/**
+ * The main account a site's round runs for, as the session window's core reports it. It holds a lease of its own, so
+ * the core stays up for a local wallet as for a paired session.
+ */
+const mainAccount: MainAccountSource = createMainAccountSource({
+  acquire: () => bridge.core.acquire(),
+  coreReport: sessionState.coreReport,
+});
+
+/** Reads the key of the account a site names on the page's own core, for the session window. */
+const siteAccountReader = createSiteAccountReader({ acquire: () => bridge.core.acquire() });
+
+/** Signs a site's transaction as the account the site names on the page's own core, for the session window. */
+const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });
+
+/** Asset Hub for the session window, where a site's call is decoded and built into its signed transaction. */
+const siteChain = createSiteChain({
+  genesis: () => getActiveServicesConfig().assethub.genesis,
+  provider: genesis => getHostChainProvider(genesis),
+  loadApi: loadPolkadotApi,
+  loadFillers: loadTxFillers,
+});
+
+function endSession(blob: string): Promise<void> {
+  return bridge.endSession(fromHex(blob));
+}
+
+const coreCommands = createCoreAuthCommands({
+  auth: authState.store,
+  core: bridge.core,
+  session: sessionState,
+  isLocalWallet: walletModeState.isLocal,
+  storedSession: coreStorage,
+});
+
+const pageSignOut = createPageSignOut({
+  isLocalWallet: walletModeState.isLocal,
+  copy: coreStorage,
+  flag: signInFlag,
+  endSession,
+  cores: bridge.core,
+  session: sessionState,
+  leaveLocalWallet: forget => walletSwitch.usePolkadotApp(forget),
+  // Read per sign-out, as the page's role may be chosen after this is built.
+  forgetGrants: () => (isSiteGrantForgotten(pageRole.get()) ? siteGrants.forgetAll() : Promise.resolve()),
+  wallet: siteWallet,
+  presence: sessionPresence,
+  reportSigningOut: signingOutState.set,
+  signOutWindow: () => getPageSignInHandoff(pageRole.get()),
+  signOuts,
+  runOnCore: end => coreCommands.logout(end),
+});
+
+/** The page's sign-in on its core, and its sign-out. */
+const authCommands: AuthCommands = {
+  login: params => coreCommands.login(params),
+  logout: () => pageSignOut.signOut(),
+  cancelLogin: () => {
+    coreCommands.cancelLogin();
+  },
+};
+
+/** Writes the sign-in window's result into this page's copy, where this page's cores pick it up. */
+function applyWindowResult(result: SessionResult): Promise<'applied' | 'reloading'> {
+  return applySessionResult(result, {
+    installSession: (blob, uiState) => coreStorage.installSession(blob, uiState),
+    readWallet: () => siteWallet.read(),
+    saveWallet: (entropy, identity) => siteWallet.save(entropy, identity),
+    reload: () => {
+      window.location.reload();
+    },
+  });
+}
+
+// Reads wait for the restore rule: before it ran, the copy may hold a session the flag says is gone, and the wallet
+// mode still reads its default.
+async function readRestoredSession(): Promise<SessionRead> {
+  await pageWalletBoot.restore();
+  return coreStorage.readSession();
+}
+
+async function readRestoredWallet(): Promise<LocalWalletReadResult> {
+  await pageWalletBoot.restore();
+  return siteWallet.read();
+}
+
+/** The main store for the sign-in window, written through the page's flag keeper. */
+const windowStore: Pick<WindowFlowParams, 'store' | 'wallet' | 'signIns'> = {
+  signIns: signInFlag,
+  store: {
+    readSession: readRestoredSession,
+    readUiCache: () => coreStorage.readUiCache(),
+    writeUiCache: value => coreStorage.writeUiCache(value),
+  },
+  wallet: {
+    read: readRestoredWallet,
+    save: (entropy, identity) => siteWallet.save(entropy, identity),
+    forget: () => siteWallet.forget(),
+  },
+};
+
+const sessionLease = createSessionLease({
+  copy: {
+    readSession: readRestoredSession,
+    subscribeStoredSession: coreStorage.subscribeStoredSession,
+  },
+  isLocalWallet: walletModeState.isLocal,
+  core: bridge.core,
+});
+
+/**
+ * Starts the page's session lease, for the landing page. It has no product frame to hold a core, so its core hears the
+ * phone end the session.
+ */
+function startSessionLease(): () => void {
+  return sessionLease.start();
+}
+
+/**
+ * Leases the core of the page's product, dialing it when none serves that product, so it boots before the product
+ * renders. Rejects with the boot's error, or `CoreRedialError` when a replacement could not boot. Throws before
+ * `initBridge`.
+ */
+function acquirePageCore(): Promise<CoreLease> {
+  return bridge.core.acquire();
+}
+
+/** The main store's restore and a core of its own, for the sign-out window. */
+const windowSignOut: Pick<WindowSignOutParams, 'restore' | 'endSession'> = {
+  restore: pageWalletBoot.restore,
+  endSession,
+};
+
+// A repeated boot call must not start a second watch, which would read the flag and sign out twice, so later calls
+// share the first start.
+let stopSession: (() => void) | null = null;
+
+/**
+ * Starts the session state at once at boot, since the auth button spins until the saved session is read. Started from
+ * here, so the session state and the TrUAPI codecs it reads stay in this chunk. A second call returns the first one's
+ * stop.
+ */
+function startSessionState(): () => void {
+  if (stopSession !== null) {
+    return stopSession;
+  }
+  const stopState = sessionState.start();
+  const stopWatch = watchPresence({
+    subscribeRecheck(handler) {
+      const stops = [
+        listenForPageReturn({ visibility: document, target: window, handler }),
+        listenForSessionFlagChange(handler),
+        listenForSiteWalletChange(handler),
+      ];
+
+      function unsubscribe(): void {
+        for (const stop of stops) {
+          stop();
+        }
+      }
+
+      return unsubscribe;
+    },
+    isSignedIn: () => authViews.getSignedInSession(authState.store.get()) !== null,
+    signOuts,
+    reconcile: () => reconcilePage('visible'),
+    readPageWalletVersion: async () =>
+      walletModeState.isLocal() ? ((await pageWalletBoot.read())?.version ?? null) : null,
+    followWallet: () => {
+      window.location.reload();
+    },
+    signOutLocally: () => pageSignOut.signOutLocally(),
+    readFlag: () => sessionPresence.read(),
+    reportFlag: presence => {
+      sessionState.reportFlag(presence);
+    },
+  });
+  const stopReread = listenForPageReturn({
+    visibility: document,
+    target: window,
+    handler: () => {
+      void sessionState.retryRead();
+    },
+  });
+  stopSession = stopSessionState;
+  return stopSession;
+
+  function stopSessionState(): void {
+    stopState();
+    stopWatch();
+    stopReread();
+    stopSession = null;
+  }
+}
+
+/** Reads the saved session again while it cannot be reached, and settles once the page shows it. Never rejects. */
+function rereadSession(): Promise<void> {
+  return sessionState.retryRead();
+}
+
+/** The bridge chunk's API, which the page loads on demand. */
+export const hostBridge = {
+  initBridge,
+  setPageProduct,
+  startProductFrame,
+  serveSite,
+  mainAccount,
+  siteAccountReader,
+  siteTxSigner,
+  siteChain,
+  authCommands,
+  pageSignOut,
+  applyWindowResult,
+  windowStore,
+  startSessionLease,
+  acquirePageCore,
+  windowSignOut,
+  startSessionState,
+  rereadSession,
+  // Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
+  walletSwitch,
+  // The pool behind these leases and the reads over them already ships in this chunk, so callers take them from here.
+  getHostAssetHubProvider,
+  getHostChainProvider,
+  hostChainPool,
+  hostBitswapClient,
+  readOriginalAccount,
+  readPeopleUsernames,
+  // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
+  wireDescriber,
+};
+
+export type HostBridge = typeof hostBridge;

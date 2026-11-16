@@ -14,10 +14,13 @@ vi.hoisted(() => {
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
-import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
-import { createLoadingController, type LoadingController } from '../../src/createLoadingController.js';
+import { LoadingScreenIsland } from '../../src/features/productLoad/progress/LoadingScreenIsland.js';
+import {
+  createLoadingController,
+  type LoadingController,
+} from '../../src/features/productLoad/progress/createLoadingController.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { loadingState } from '../../src/state/loadingState.js';
+import { loadingState } from '../../src/features/productLoad/progress/loadingState.js';
 import { pageScreen, prefersReducedMotion } from '@dotli/ui';
 import { byId, settle } from '@dotli/ui/testing';
 
@@ -30,7 +33,7 @@ async function mountScreen(): Promise<HTMLElement> {
     () => {
       slot.remove();
     },
-    render(() => <LoadingScreen />, slot),
+    render(() => <LoadingScreenIsland />, slot),
   );
   await settle();
   return slot;

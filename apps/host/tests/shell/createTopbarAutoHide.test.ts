@@ -6,13 +6,13 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { flush } from 'solid-js';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
-import { topbarState } from '../../src/state/topbarState.js';
+import { topbarState } from '../../src/features/page/topbarState.js';
 import {
   createTopbarAutoHide,
   getBrowserTopbarPage,
   HIDE_DELAY_MS,
   type TopbarAutoHide,
-} from '../../src/createTopbarAutoHide.js';
+} from '../../src/features/page/createTopbarAutoHide.js';
 import { byId } from '@dotli/ui/testing';
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };

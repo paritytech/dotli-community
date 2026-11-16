@@ -20,18 +20,22 @@ import type { CachedManifests } from '@dotli/storage';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageScreen } from '@dotli/ui';
-import { beginAttempt } from '../../src/journey.js';
+import { beginAttempt } from '../../src/features/productLoad/progress/journey.js';
 import { rethrow } from '../../src/testing/rethrow.js';
-import type { LoadFailure } from '../../src/presentLoadFailure.js';
-import { pageLoading } from '../../src/createLoadingController.js';
-import type { NameSource } from '../../src/createNameSource.js';
-import { createLoadTelemetry } from '../../src/createLoadTelemetry.js';
-import { createProductLoader } from '../../src/createProductLoader.js';
-import type { PageCidCache } from '../../src/createPageCidCache.js';
-import type { ProductFrame } from '../../src/runtime/createProductFrame.js';
-import { SandboxSilentError, type SandboxLoad, type SandboxLoadReport } from '../../src/watchSandboxLoad.js';
-import { productState } from '../../src/runtime/state/productState.js';
-import { urlPillState } from '../../src/state/urlPillState.js';
+import type { LoadFailure } from '../../src/features/productLoad/failure/presentLoadFailure.js';
+import { pageLoading } from '../../src/features/productLoad/progress/createLoadingController.js';
+import type { NameSource } from '../../src/features/productLoad/resolve/createNameSource.js';
+import { createLoadTelemetry } from '../../src/features/productLoad/progress/createLoadTelemetry.js';
+import { createProductLoader } from '../../src/shell/createProductLoader.js';
+import type { PageCidCache } from '../../src/features/productLoad/resolve/createPageCidCache.js';
+import type { ProductFrame } from '../../src/features/productLoad/frame/createProductFrame.js';
+import {
+  SandboxSilentError,
+  type SandboxLoad,
+  type SandboxLoadReport,
+} from '../../src/features/productLoad/resolve/watchSandboxLoad.js';
+import { productState } from '../../src/features/page/productState.js';
+import { urlPillState } from '../../src/features/productIdentity/urlPillState.js';
 
 type Params = {
   backend?: Backend;

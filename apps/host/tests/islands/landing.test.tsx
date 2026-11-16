@@ -8,9 +8,9 @@
 import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
-import { authState } from '../../src/runtime/state/authState.js';
-import { createRecentLabels } from '../../src/createRecentLabels.js';
+import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/kit/sharedMode.fake.js';
+import { authState } from '../../src/features/account/session/authState.js';
+import { createRecentLabels } from '../../src/features/landing/createRecentLabels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';
 import { setPageUrl } from '../happyDom.js';
