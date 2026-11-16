@@ -16,7 +16,7 @@ One file per decision, `<NNN>-<slug>.md`, with `NNN` zero-padded and increasing.
 - the decision as its title
 - the situation, in general terms
 - the options
-- the owner's choice, verbatim
+- the owner's choice, paraphrased
 - the reason
 - when it applies, and when it does not
 - the source of each case
