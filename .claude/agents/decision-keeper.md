@@ -51,8 +51,8 @@ The message holds one of:
 File it:
 
 - **A new situation**: add a decision.
-- **A situation the store holds, the same choice**: add the owner's words and the source to that decision, so it holds
-  both cases.
+- **A situation the store holds, the same choice**: add the owner's choice, paraphrased, and the source to that
+  decision, so it holds both cases.
 - **A situation the store holds, a different choice**: an overturn names the old ID, and an answer after `ASK_OWNER` may
   match a decision you named as close. Write the condition that made this case different under the old decision's "Not
   when", and add the new decision. When the owner reversed the old one outright, mark it superseded by the new one
