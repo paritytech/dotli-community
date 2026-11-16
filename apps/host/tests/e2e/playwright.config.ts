@@ -50,7 +50,8 @@ if (localProductUrl !== undefined) {
 export default defineConfig({
   ...baseConfig,
   webServer,
-  testDir: '.',
+  testDir: '../../src',
+  testMatch: '**/__tests__/e2e/**/*.spec.ts',
   // Beside results.json, since the CI upload step doesn't cover the default packageJsonDir/test-results.
   outputDir: 'test-results',
   timeout: 60_000,

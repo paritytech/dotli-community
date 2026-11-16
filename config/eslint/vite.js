@@ -40,6 +40,9 @@ const testOnlyFiles = [
 ];
 
 // Shared fixtures that drive a page, which functional tests run under happy-dom and story plays in a real browser.
+// An app feature's functional and end-to-end tests, which run in happy-dom or Playwright.
+const featureTestFiles = ['**/src/**/__tests__/**/*.ts', '**/src/**/__tests__/**/*.tsx'];
+
 const domTestingFiles = ['**/src/testing/**/*.dom.ts', '**/src/testing/**/*.dom.tsx'];
 
 const storyFiles = ['**/src/**/*.stories.tsx'];
@@ -56,7 +59,7 @@ const storyTestOnlyModuleImport = {
 const storyImportPatterns = [tsExtensionImport, storyTestOnlyModuleImport];
 
 const noDomMessage =
-  'Unit specs run under Node with no DOM. Test a component with a story play, or DOM wiring with a functional test in tests/.';
+  "Unit specs run under Node with no DOM. Test a component with a story play, or DOM wiring with a functional test in tests/ or in a feature's __tests__ folder.";
 
 const domToolingImports = {
   patterns: [
@@ -260,7 +263,7 @@ export const config = defineConfig([
   {
     // Test doubles and best-effort Playwright steps are deliberate no-ops. A test's helpers and table rows take their
     // inputs positionally.
-    files: ['tests/**/*.ts', 'tests/**/*.tsx'],
+    files: ['tests/**/*.ts', 'tests/**/*.tsx', ...featureTestFiles],
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
@@ -287,6 +290,16 @@ export const config = defineConfig([
     // No unit spec runs these, so they may read the DOM. A spec that called one would fail under Node.
     files: [...domTestingFiles, ...storyFixtureFiles],
     rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
+    },
+  },
+  {
+    // A feature's functional and end-to-end tests run in happy-dom or a browser and never ship, so they read the DOM
+    // and reach fakes, fixtures and `./testing` entries.
+    files: featureTestFiles,
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [tsExtensionImport] }],
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',
     },

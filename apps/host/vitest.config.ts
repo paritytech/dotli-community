@@ -32,7 +32,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'host:functional',
-          include: ['tests/{components,islands,shell}/**/*.test.{ts,tsx}'],
+          include: ['src/**/__tests__/functional/**/*.test.{ts,tsx}'],
           environment: 'happy-dom',
           setupFiles: ['tests/setup.ts'],
         },

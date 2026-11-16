@@ -20,7 +20,7 @@ export default defineConfig([
   {
     // The Playwright suites read env knobs straight from the shell, never through a turbo task, so turbo has no
     // cache to key on them.
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'src/**/__tests__/**/*.ts'],
     rules: {
       'turbo/no-undeclared-env-vars': 'off',
     },
