@@ -25,7 +25,7 @@ certificates.
 
 ### Local machine
 
-- `make`, `ssh`, `rsync`, and Node 26 with npm 12+.
+- `make`, `ssh`, `rsync`, and Node 26.3+ with npm 11.16+.
 - SSH agent loaded with the key the remote accepts (`ssh-add`).
 - This repo checked out and on the branch/commit you want to deploy.
 

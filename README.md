@@ -96,7 +96,7 @@ the topbar. Chat needs a login. Messages stay on the device.
 
 ### Prerequisites
 
-- **Node 26** (see `.nvmrc`) and **npm 12+**.
+- **Node 26** (see `.nvmrc`, 26.3+ or 24.16+) and **npm 11.16+**.
 - **No funded account** is needed to browse. Polkadot App is needed only to log in and sign.
 - **Network:** Paseo testnet by default. Edit `packages/config` for another chain.
 - **Tooling:** npm workspaces and [Turborepo](https://turbo.build).
