@@ -413,12 +413,12 @@ describe('product permissions store', () => {
     const timers = createManualTimers();
     startPermissions(timers);
     const core = createFakeCore();
-    let cameraAttempts = 0;
+    let nfcAttempts = 0;
     core.failWrite = name => {
       if (name !== 'NFC') {
         return null;
       }
-      cameraAttempts += 1;
+      nfcAttempts += 1;
       return new Error('core down');
     };
     await loadProduct();
@@ -432,7 +432,7 @@ describe('product permissions store', () => {
     // Then
     await expect(older).resolves.toEqual({ failed: ['NFC'] });
     await expect(newer).resolves.toEqual({ failed: [] });
-    expect(cameraAttempts).toBe(1);
+    expect(nfcAttempts).toBe(1);
     expect(core.writes).toEqual([{ name: 'Notifications', status: 'Authorized' }]);
   });
 

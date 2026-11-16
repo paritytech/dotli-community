@@ -91,6 +91,10 @@ export function createPermissionAuthorizations() {
   }
 
   async function getFramePermissions(label: string): Promise<EnforceablePermissionName[]> {
+    // A gate with nothing to read lets no device in, although an unread status shows as `ask`.
+    if (getProvider(label) === null) {
+      return [];
+    }
     const names = ALL_PERMISSIONS.map(({ name }) => name).filter(hasFrameDirective);
     const answered = await getStatuses(label, names);
     return names.filter((name, index) => isFrameDirectiveOn(name, answered[index] ?? 'ask'));
@@ -117,7 +121,7 @@ export function createPermissionAuthorizations() {
     getStatus,
     /** Sets `label`'s status of `permission`. A no-op while no connection of `label` is open. */
     setStatus,
-    /** The permissions whose directive `label`'s statuses put in the frame, as with no connection open. */
+    /** The permissions whose directive `label`'s statuses put in the frame, none while no connection is open. */
     getFramePermissions,
     /** The iframe `allow` attribute for `label`'s device permissions, plus the directives every product gets. */
     getAllowAttribute,

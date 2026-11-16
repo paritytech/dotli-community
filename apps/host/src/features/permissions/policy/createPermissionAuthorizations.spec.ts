@@ -202,4 +202,15 @@ describe('getAllowAttribute', () => {
       'clipboard-write; display-capture; microphone; geolocation; accelerometer; gyroscope; bluetooth; nfc; clipboard-read; publickey-credentials-get',
     );
   });
+
+  it('As a dApp user, I open an app before its core connection is registered and its frame lets no gated device in', async () => {
+    // Given no connection of `otherapp`
+    const { permissions } = createHarness();
+
+    // When
+    const allow = await permissions.getAllowAttribute('otherapp');
+
+    // Then
+    expect(allow).toBe('clipboard-write; display-capture');
+  });
 });

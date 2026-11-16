@@ -547,8 +547,7 @@ export const ResetKeepsFocus: Story = {
 };
 
 /**
- * As a user, a device the browser asks for itself offers Browser decides and Block, and its row says when my browser
- * blocks it.
+ * As a user, a device the browser asks for itself says when my browser blocks it, and I can block it in dot.li too.
  */
 export const BrowserGatedRows: Story = {
   tags: ['!autodocs'],
@@ -559,14 +558,16 @@ export const BrowserGatedRows: Story = {
   play: async ctx => {
     await open(ctx);
     await openAdvanced(ctx.userEvent);
-    await ctx.step(
-      'Then Camera offers no Allow and says the browser blocks it, while Microphone says nothing',
-      async () => {
-        await expect(within(row('Camera')).queryByTestId('permissions-popover-segment-granted')).toBeNull();
-        await expect(statusOf('Camera')).toBe('ask');
-        await expect(within(row('Camera')).getByTestId('permissions-popover-row-browser-blocked')).toBeVisible();
-        await expect(within(row('Microphone')).queryByTestId('permissions-popover-row-browser-blocked')).toBeNull();
-      },
-    );
+    await ctx.step('Then Camera says the browser blocks it, while Microphone says nothing', async () => {
+      await expect(within(row('Camera')).getByTestId('permissions-popover-row-browser-blocked')).toBeVisible();
+      await expect(within(row('Microphone')).queryByTestId('permissions-popover-row-browser-blocked')).toBeNull();
+    });
+    await ctx.step('When I press Block on Camera', async () => {
+      await ctx.userEvent.click(segment('Camera', 'denied'));
+    });
+    await ctx.step('Then the block is asked for and shows pressed', async () => {
+      await expect(permissionsAsked.changes).toHaveBeenCalledWith({ Camera: 'denied' });
+      await waitFor(() => expect(statusOf('Camera')).toBe('denied'));
+    });
   },
 };

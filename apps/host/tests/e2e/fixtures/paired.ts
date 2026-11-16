@@ -23,10 +23,10 @@ const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
 // a worker's first frame is asked, and a host that stops asking fails that worker's first test.
 const accountShared = new WeakSet<Page>();
 
-/** The first frame other than `previous` that shows the playground's heading, or null. */
-async function visiblePlaygroundFrame(page: Page, previous: Frame | undefined): Promise<Frame | null> {
+/** The first frame that shows the playground's heading, or null. */
+async function visiblePlaygroundFrame(page: Page): Promise<Frame | null> {
   for (const frame of page.frames()) {
-    if (frame === page.mainFrame() || frame === previous || frame.isDetached()) {
+    if (frame === page.mainFrame() || frame.isDetached()) {
       continue;
     }
     const visible = await frame
@@ -41,16 +41,13 @@ async function visiblePlaygroundFrame(page: Page, previous: Frame | undefined): 
   return null;
 }
 
-/**
- * Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. With `previous`, the
- * frame that replaced it, as after a device grant rebuilds the product.
- */
-async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number, previous?: Frame): Promise<Frame> {
+/** Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. */
+async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const seen: { frame: Frame | null } = { frame: null };
   await expect
     .poll(
       async () => {
-        seen.frame = await visiblePlaygroundFrame(page, previous);
+        seen.frame = await visiblePlaygroundFrame(page);
         return seen.frame !== null;
       },
       { timeout: timeoutMs, message: `host-playground iframe not visible within ${String(timeoutMs)}ms` },

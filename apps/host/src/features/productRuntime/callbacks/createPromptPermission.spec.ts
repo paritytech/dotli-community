@@ -80,20 +80,17 @@ describe('device permission prompts', () => {
     expect(page.listPending()).toEqual([]);
   });
 
-  it.each<BrowserPermissionStatus>(['prompt', 'granted', 'unknown'])(
-    'As a product developer, I ask for the camera while the browser reads it %s and it is granted once without a dot.li prompt',
-    async status => {
-      // Given
-      const browser = createFakeBrowser({ read: () => Promise.resolve(status) });
+  it('As a product developer, I ask for the camera while the browser cannot say its status and it is granted once without a dot.li prompt', async () => {
+    // Given
+    const browser = createFakeBrowser({ read: () => Promise.resolve('unknown') });
 
-      // When
-      const answer = await createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
+    // When
+    const answer = await createPrompts({ browser }).devicePermission(PRODUCT, 'Camera');
 
-      // Then
-      expect(answer).toBe('AllowOnce');
-      expect(page.listPending()).toEqual([]);
-    },
-  );
+    // Then
+    expect(answer).toBe('AllowOnce');
+    expect(page.listPending()).toEqual([]);
+  });
 
   it('As a product developer, I ask for a camera my user blocked in the browser and the ask rejects with nothing stored', async () => {
     // Given

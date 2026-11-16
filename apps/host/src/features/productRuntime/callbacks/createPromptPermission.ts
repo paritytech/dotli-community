@@ -10,7 +10,7 @@ import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
 import type { HostDevicePermissionRequest, RemotePermissionRequest } from '@parity/truapi';
 import type { BrowserPermissions, BrowserPermissionStatus } from '../../permissions/index.js';
-import { isBrowserBlocked, isBrowserConsented } from '../../permissions/index.js';
+import { isBrowserBlocked } from '../../permissions/index.js';
 import type { PermissionAuthorizations } from '../../permissions/index.js';
 import { hasFrameDirective, type EnforceablePermissionName, type PermissionStatus } from '../../permissions/index.js';
 import { throwIfModalAborted } from '../../../kit/throwIfModalAborted.js';
@@ -57,8 +57,8 @@ type PromptRequest = {
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
  * page's prompt queue. A device whose consent is the browser's own prompt is allowed once with no dialog. Rejects when
- * the prompts go past the rate limit, the user dismisses the dialog, the browser blocks such a device, or the
- * permission guards a request this host does not serve.
+ * the prompts go past the rate limit, the user dismisses the dialog, the browser blocks such a device
+ * (`ERRORS.BROWSER_BLOCKED_DEVICE`), or the permission guards a request this host does not serve.
  */
 export function createPromptPermission({ core, prompts, permissions, browser }: Params): Permissions {
   const { label } = core.product;
@@ -85,14 +85,17 @@ export function createPromptPermission({ core, prompts, permissions, browser }: 
         return 'AllowOnce';
       case 'refuse':
         throw new Error(ERRORS.UNSERVED_REQUEST);
+      case 'browser':
+        return answerForBrowser(rule.name);
       case 'prompt':
-        return isBrowserConsented(rule.name)
-          ? answerForBrowser(rule.name)
-          : decidePromptPermission({ name: rule.name, kind });
+        return decidePromptPermission({ name: rule.name, kind });
     }
   }
 
-  /** The browser's own prompt is the consent, so no dialog shows and the product hears at once. */
+  /**
+   * The browser's own prompt is the consent, so no dialog shows and the product hears at once. Rejects with
+   * `ERRORS.BROWSER_BLOCKED_DEVICE` when the browser blocks `name`.
+   */
   async function answerForBrowser(name: EnforceablePermissionName): Promise<PermissionDecision> {
     if (isBrowserBlocked(await browser.read(name))) {
       // A rejection, unlike Deny, is not stored, so the user's choice stays with the browser.
