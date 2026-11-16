@@ -175,8 +175,8 @@ Before presenting it, check every mechanism the design relies on in the code tha
 - the call or library does what the design says
 - its cost is what the design says
 
-`document-review` is optional, one pass by you. The owner approves the design, and no code is written before that. An
-agent that runs in a worktree writes its design and review files under its own worktree.
+`document-review` is optional. Its asks go to the owner as `QUESTION`s. The owner approves the design, and no code is
+written before that. An agent that runs in a worktree writes its design and review files under its own worktree.
 
 ## Step 5: Slices
 
