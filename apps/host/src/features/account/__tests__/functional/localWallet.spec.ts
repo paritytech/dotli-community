@@ -38,7 +38,9 @@ test('As a developer, I switch every app to a local wallet through the sign-in w
     await landing.goto(LANDING_URL);
     await expect(landing.getByTestId('user-badge')).toHaveAttribute('data-wallet', 'local', { timeout: TIMEOUT_MS });
     await openWalletTab(page);
-    await expect(page.getByTestId('td-wallet-account')).toHaveText(/^0x[0-9a-f]{64}$/, { timeout: TIMEOUT_MS });
+    await expect(page.getByTestId('td-wallet-account')).toHaveText(/^0x[0-9a-f]{6}…[0-9a-f]{4}$/, {
+      timeout: TIMEOUT_MS,
+    });
 
     // When: going back to Polkadot App signs out, through the sign-out window, and the page boots again
     const [signOut] = await Promise.all([
