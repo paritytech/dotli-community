@@ -149,7 +149,7 @@ when the diff would be tiny. Staging the change, decomplecting first and accepti
 Place the change with `docs/code/placement.md`:
 
 - § Which package or app, for the package or app.
-- § Inside the host and § Inside a package, for the folder and file.
+- § Inside an app and § Inside a package, for the folder and file.
 - § Cut rules, for where one concern ends and the next begins.
 
 If nothing fits, ask the keeper, then the owner (docs/code/placement.md § No home found). Never invent a package or a

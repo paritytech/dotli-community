@@ -122,21 +122,42 @@ flowchart TD
 | Shared `tsconfig` bases                                                                                                        | `config/typescript` (`@config/typescript`)                |
 | A build plugin or option shared by the host, sandbox and protocol builds, or the tests' CSS-modules naming                     | `config/vite` (`@config/vite`)                            |
 
-## Inside the host
+## Inside an app
 
-- The host's domain building blocks (account, chat, permission, settings and chain views, and their icons) sit in
-  `apps/host/src/components/<domain>/` beside the flows that compose them.
-- The host's side of TrUAPI and the session lives in `apps/host/src/runtime/`.
+An app's `src/` is grouped by what the code is for, never by its kind. No folder is named for a kind of file, such as
+components, runtime, state or islands.
+
+The host has user flows:
+
+- `src/features/<feature>/` holds one user flow whole: its views, islands, stores, logic and tests.
+- `src/pages/` holds the Astro pages, which compose features.
+- `src/shell/` holds the entries, boot, routes, the service worker and the composition of pages.
+- `src/kit/` holds helpers several features use. It imports no feature.
+- A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file, apart from
+  type-only imports.
+- The TrUAPI side lives whole in one feature, `productRuntime`: the core connection, the product's chain access, the
+  host callback adapters, their assembly and the runtime composition root. It reaches the other features through their
+  `index.ts`. They reach it only through the runtime facade or a type-only import.
+- A feature is flat. Past about 30 source files it splits into sub-flow folders named for what they do. Sub-flow folders
+  of one feature import each other freely.
+
+The sandbox and the protocol app have no user flows. They group their files by runtime responsibility in folders
+straight in `src/`, with a `kit/` for shared helpers, no `features/` level and no `index.ts`. Their `main.ts` composes
+the folders.
 
 ## Inside a package
 
 These hold in every app and package. The `src/index.ts` entry and the `./testing` entry are for packages alone.
 
 - Each package exposes only `src/index.ts`. Never import another package's internal modules.
-- On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk.
+- On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk. In an app with features, a feature
+  keeps the loaders of its own modules in its `lazy.ts` and exports them through its `index.ts`, which never re-exports
+  a module a loader loads. `src/kit/lazy.ts` keeps the loaders of packages.
 - Styles go in a CSS module beside the component.
 - A unit test sits beside its module: `src/foo.ts` gets `src/foo.spec.ts`.
-- Functional tests live in `<pkg>/tests/` as `*.test.ts`.
+- Functional tests live in `<pkg>/tests/` as `*.test.ts`. In an app with features, a feature's functional tests live in
+  its `__tests__/functional/` and its end-to-end specs in its `__tests__/e2e/`. Specs that span features live in
+  `src/shell/__tests__/`. The suites' configs, setup, shared fixtures and helpers stay in the app's `tests/`.
 - Test-only modules live in `src`: `<name>.fake.ts` beside the module it fakes, shared fixtures in `src/testing/`. Never
   export them from `src/index.ts`. Another package reaches them through a `./testing` package entry.
 - A constant two modules share lives in a leaf module, and a protocol constant is defined once.

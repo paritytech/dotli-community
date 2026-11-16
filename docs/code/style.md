@@ -937,7 +937,8 @@ Why: a reader opening the file sees what it offers before how it works.
 ### Named exports and one explicit barrel
 
 Use named exports only. Each package has one `index.ts` that lists every public name. Type exports and value exports go
-on separate lines, grouped by source module. No `export *` and no nested barrels.
+on separate lines, grouped by source module. No `export *` and no nested barrels, except that each feature folder of
+an app has one `index.ts` in the same form, its public surface for the rest of the app.
 
 Why: the barrel is the package's API, readable in one place.
 
