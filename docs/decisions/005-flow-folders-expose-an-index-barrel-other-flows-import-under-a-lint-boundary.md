@@ -25,4 +25,8 @@
     (D-011).
 - Source: the change that regroups the host, sandbox and protocol apps by flow, design
   `docs/_plans/app-flow-folders-design.md`.
-- Status: active
+- Status: enforced by the ESLint rule `app/feature-boundary`, defined by the helper `featureBoundaries()` in
+  `config/eslint/featureBoundaries.js` and turned on in the host app's ESLint config. The rule decides. It reports a
+  value import into another feature that is not that feature's `index.ts`. It allows type-only imports, Astro components
+  imported by path, and test code (specs, stories, fakes, `__tests__`, `src/testing`). It also reports kit or a feature
+  importing the shell or the pages, and kit importing a feature by value.

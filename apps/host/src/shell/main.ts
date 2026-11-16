@@ -16,7 +16,7 @@ import { loadingState } from '../features/productLoad/index.js';
 import { networkPause } from '../features/network/index.js';
 import { cidCache } from '@dotli/storage';
 import { DEBUG, getNetwork, isLocalhost, LOCAL_ROOT } from '@dotli/config';
-import { leaveForLanding, readLocalhostUrl, readShellRoute } from './shellRoute.js';
+import { leaveForLanding, readLocalhostUrl, readShellRoute } from '../kit/shellRoute.js';
 import { getShellPageRole } from '../features/account/index.js';
 import { bindTopbar } from '../features/topbar/index.js';
 import { bindUrlPill } from '../features/productIdentity/index.js';

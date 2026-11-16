@@ -5,9 +5,11 @@
 
 import { defineConfig, globalIgnores } from 'eslint/config';
 import { config } from '@config/eslint/astro';
+import { featureBoundaries } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
+  ...featureBoundaries(),
   // The functional suite's global setup builds the wire bundle here.
   globalIgnores(['tests/functional/.wire/']),
   {

@@ -7,16 +7,13 @@
 // and a result or refusal only for the round this page started. A sign-out opens the sign-out window and drops the
 // signed-in flag in the click's turn, and answers that window's read to whoever asks.
 
-import { getNetwork, type Network } from '@dotli/config';
+import type { Network } from '@dotli/config';
 import { createReporter, defineCount } from '@dotli/metrics';
-import { getProtocolOrigin } from '@dotli/protocol';
-import { createDeferred, listenForPageReturn } from '@dotli/shared';
-import { getSignInSurface, type PageRole } from '../account/index.js';
-import { sessionPresence } from '../account/index.js';
+import { createDeferred } from '@dotli/shared';
 import type { SessionPresence } from '../account/index.js';
 import { createSignInWindowUrl, createSignOutWindowUrl } from './createSignInWindowUrl.js';
 import type { SignInIntent } from './parseWindowRequest.js';
-import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
+import type { MessageEventLike, WindowHandle } from './listenToMessages.js';
 import { parseSessionResult, type SessionResult } from './parseSessionResult.js';
 import { createHelloMessage, parsePageMessage, PROTOCOL_VERSION, type PageMessage } from './sessionMessages.js';
 
@@ -120,8 +117,6 @@ type OpenRoundParams<Word> = {
 
 // One name, so a second open reuses the window instead of stacking another.
 const WINDOW_NAME = 'dotli-session';
-
-let pageHandoff: SessionHandoff | undefined;
 
 /** The page's side of the session window, with no window open. Building one opens and hears nothing. */
 export function createSessionHandoff({ open, listen, onReturn, randomId, windowOrigin, network, presence }: Params) {
@@ -315,25 +310,6 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
       round.handle.close();
     },
   };
-}
-
-/** The page's handoff when `role` signs in through the sign-in window, else null for a page that pairs in place. */
-export function getPageSignInHandoff(role: PageRole): SessionHandoff | null {
-  return getSignInSurface(role) === 'window' ? getPageSessionHandoff() : null;
-}
-
-/** The page's one handoff, built on first use, so importing the module reads no page globals. */
-function getPageSessionHandoff(): SessionHandoff {
-  pageHandoff ??= createSessionHandoff({
-    open: (url, name) => window.open(url, name),
-    listen: listenToMessages,
-    onReturn: listener => listenForPageReturn({ visibility: document, target: window, handler: listener }),
-    randomId: () => crypto.randomUUID(),
-    windowOrigin: getProtocolOrigin(),
-    network: getNetwork,
-    presence: sessionPresence,
-  });
-  return pageHandoff;
 }
 
 /** What a sign-in round makes of the window's word, or null for a result that is no sign-in. */

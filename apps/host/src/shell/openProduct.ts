@@ -28,7 +28,7 @@ import { pageNotifications } from '../features/notifications/index.js';
 import { PAGE_START } from './pageStart.js';
 import { reportLazyMiss } from '../kit/reportLazyMiss.js';
 import { productState } from '../features/page/index.js';
-import type { ShellRoute } from './shellRoute.js';
+import type { ShellRoute } from '../kit/shellRoute.js';
 import type { Shell } from './startShell.js';
 import { startSandboxContent } from '../features/productLoad/index.js';
 import { productCardState } from '../features/productIdentity/index.js';

@@ -129,15 +129,20 @@ components, runtime, state or islands.
 
 The host has user flows:
 
-- `src/features/<feature>/` holds one user flow whole: its views, islands, stores, logic and tests.
-- `src/pages/` holds the Astro pages, which compose features.
-- `src/shell/` holds the entries, boot, routes, the service worker and the composition of pages.
+- `src/features/<feature>/` holds one user flow whole. Its views, islands and stores sit there with their logic and
+  tests.
+- `src/pages/` holds the Astro pages. They compose features.
+- `src/shell/` holds the entries and boot, the routes and the service worker. Chrome that composes several features
+  sits there too.
 - `src/kit/` holds helpers several features use. It imports no feature.
-- A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file, apart from
-  type-only imports.
-- The TrUAPI side lives whole in one feature, `productRuntime`: the core connection, the product's chain access, the
-  host callback adapters, their assembly and the runtime composition root. It reaches the other features through their
-  `index.ts`. They reach it only through the runtime facade or a type-only import.
+- A feature's `index.ts` is its public surface. Other features, `shell/` and `pages/` import only that file. A type-only
+  import, an Astro component and a test may reach past it.
+- An island is named with an `Island` suffix, so it never shares a name with the view it renders.
+- The `page` feature holds the state every flow that places chrome reads, such as the shown product and the topbar's
+  slots.
+- The TrUAPI side lives whole in the `productRuntime` feature. It holds the core connection and the product's chain
+  access. The host callback adapters and the runtime composition root sit there too. It reaches the other features
+  through their `index.ts`, and they reach it only through the runtime facade or a type-only import.
 - A feature is flat. Past about 30 source files it splits into sub-flow folders named for what they do. Sub-flow folders
   of one feature import each other freely.
 

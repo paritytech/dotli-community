@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { WindowShell } from './SessionWindow.js';
-export { SessionWindowIsland } from './SessionWindowIsland.js';
 export { applySessionResult } from './applySessionResult.js';
 export type { Responder, ResponderState } from './createResponder.js';
 export { startPageResponder } from './createResponder.js';
 export type { PageCancelReason, SessionHandoff, SignInOutcome } from './createSessionHandoff.js';
-export { getPageSignInHandoff } from './createSessionHandoff.js';
+export { getPageSignInHandoff } from './getPageSignInHandoff.js';
 export type { WindowFlow, WindowFlowParams } from './createWindowFlow.js';
 export { createWindowFlow } from './createWindowFlow.js';
 export { getWindowSettings } from './getWindowSettings.js';

@@ -5,7 +5,7 @@ import { DEBUG } from '@dotli/config';
 import { createReporter } from '@dotli/metrics';
 import { debugBus } from '@dotli/truapi-debug';
 import { bootTracker } from './createBootTracker.js';
-import { getLocalTargetPath, type LocalTarget } from './shellRoute.js';
+import { getLocalTargetPath, type LocalTarget } from '../kit/shellRoute.js';
 import { pageTopbarAutoHide } from '../features/page/index.js';
 import { pageNotifications } from '../features/notifications/index.js';
 import { PAGE_START } from './pageStart.js';

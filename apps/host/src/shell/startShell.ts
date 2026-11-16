@@ -16,7 +16,7 @@ import { loadDebugPanelHost } from '../features/debug/index.js';
 import { listenForSandboxDebugEvents } from '../features/debug/index.js';
 import { reportSandboxHandlerFailure } from './reportSandboxHandlerFailure.js';
 import type { PageRole } from '../features/account/index.js';
-import { isLocalTarget, type ShellRoute } from './shellRoute.js';
+import { isLocalTarget, type ShellRoute } from '../kit/shellRoute.js';
 import { startDebugPanel } from '../features/debug/index.js';
 import { startMainThreadMonitor } from '../features/debug/index.js';
 import { startShellState as startChromeState } from './startShellState.js';

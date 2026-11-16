@@ -8,7 +8,7 @@
 import { DEBUG } from '@dotli/config';
 import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { createReporter } from '@dotli/metrics';
-import { getLandingUrl, type LandingPage } from '../kit/getLandingUrl.js';
+import { getLandingUrl, type LandingPage } from './getLandingUrl.js';
 import { parseDotLabel } from './parseDotLabel.js';
 
 const report = createReporter({ flow: 'boot' });

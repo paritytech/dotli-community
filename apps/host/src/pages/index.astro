@@ -4,11 +4,11 @@
 
 // The shell around a product, on its `<label>.<BASE_DOMAIN>` host. The bare host's root serves landing.astro instead.
 import PageHead from '../shell/PageHead.astro';
-import Topbar from '../features/topbar/Topbar.astro';
-import { AuthModalIsland } from '../features/account/index.js';
-import { LoadingScreenIsland } from '../features/productLoad/index.js';
+import Topbar from '../shell/Topbar.astro';
+import { AuthModalIsland } from '../features/account/signIn/AuthModalIsland.jsx';
+import { LoadingScreenIsland } from '../features/productLoad/progress/LoadingScreenIsland.jsx';
 import { OverlaysIsland } from '../shell/OverlaysIsland.jsx';
-import { TopbarRevealIsland } from '../features/topbar/index.js';
+import { TopbarRevealIsland } from '../features/topbar/TopbarRevealIsland.jsx';
 import s from './index.module.css';
 ---
 

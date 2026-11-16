@@ -5,10 +5,10 @@
 // On a phone it is drawn over the sheets resting on it and stays live while one is open (`data-over-sheets`),
 // so a control pressed there hands the open sheet over to its own.
 // `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
-import { TopbarActionsIsland } from '../../shell/TopbarActionsIsland.jsx';
-import { ProductButtonIsland } from '../productIdentity/index.js';
-import TopbarLogo from './TopbarLogo.astro';
-import UrlPill from '../productIdentity/UrlPill.astro';
+import { TopbarActionsIsland } from './TopbarActionsIsland.jsx';
+import { ProductButtonIsland } from '../features/productIdentity/ProductButtonIsland.jsx';
+import TopbarLogo from '../features/topbar/TopbarLogo.astro';
+import UrlPill from '../features/productIdentity/UrlPill.astro';
 import s from './Topbar.module.css';
 ---
 

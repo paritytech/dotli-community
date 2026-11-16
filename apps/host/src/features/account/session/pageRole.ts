@@ -4,7 +4,7 @@
 // What a page is to sign-in, chosen once by its entry. Every page boots the same host, and the role alone tells them
 // apart: where a sign-in runs, which wallet boots, how the signed-in flag is kept and how the restore rule counts.
 
-import type { ShellRoute } from '../../../shell/shellRoute.js';
+import type { ShellRoute } from '../../../kit/shellRoute.js';
 import type { PresenceReader } from './restoreRule.js';
 
 /**

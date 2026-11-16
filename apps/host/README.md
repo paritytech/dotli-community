@@ -37,6 +37,42 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
 
 ## Design
 
+### Layout
+
+The source is grouped by what it is for:
+
+- **Pages:** the three Astro pages. They compose features.
+- **Shell:** the entries and boot, the routes and the service worker. It also holds the chrome that composes several
+  features.
+- **Kit:** helpers several features use. It imports no feature.
+- **Features:** one user flow each, behind one index. A feature holds its own views, islands and stores, with their
+  logic and tests.
+
+The features:
+
+- **Opening a product:** landing, product load, product identity, topbar and page.
+- **Signing in:** account, sign-in window and site sign-in.
+- **Around a product:** signing, permissions, network, settings, chat, notifications and debug.
+- **Product runtime:** the TrUAPI side whole. It holds the core connection and the product's chains. The host callbacks
+  and the runtime bridge sit there too.
+
+The page feature holds the state that every flow placing chrome reads:
+
+- the shown product
+- the topbar's state and slots
+- the product frame's box
+- topbar auto-hide
+
+```mermaid
+flowchart TD
+  pages --> shell
+  pages --> features
+  shell --> features
+  features -->|index only| features
+  shell --> kit
+  features --> kit
+```
+
 ### Pages and boot
 
 - Three Astro pages, each with its own entry:
@@ -65,8 +101,9 @@ product by `.dot` name inside a sandbox iframe. See the root [README](../../READ
   - the signed-in flag
   - the restore rule
   - the session lease
-- **Runtime state** (auth, product, permissions, theme, wallet mode) lives with the runtime.
-- **Page chrome state** (topbar, URL pill, product card, chat panel, network) lives with the page.
+- **Flow state** (auth, permissions, theme, wallet mode, URL pill, product card, chat panel, network) lives with the
+  feature that owns it.
+- **Page state** (the shown product, the topbar, the product frame's box) lives in the page feature.
 - Each state is an entity object with a read-only store. It exposes getters and setters. Modules follow the code style
   guide.
 

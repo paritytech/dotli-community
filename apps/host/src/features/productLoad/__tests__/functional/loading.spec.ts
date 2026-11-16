@@ -204,7 +204,7 @@ test('As a user who opens Settings from a failure before the topbar is ready, I 
   const islandReleased = new Promise<void>(resolve => {
     releaseIsland = resolve;
   });
-  await page.route('**/assets/TopbarActions.*.js', async route => {
+  await page.route('**/assets/TopbarActionsIsland.*.js', async route => {
     await islandReleased;
     await route.continue();
   });

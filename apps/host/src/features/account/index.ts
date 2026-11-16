@@ -42,7 +42,6 @@ export type { CoreReport, DotliAuthState, Presence, SessionPresence } from './se
 export { reportLocalWalletFailure, reportWalletFailure } from './session/walletFailure.js';
 export { walletModeState } from './session/walletModeState.js';
 export { watchPresence } from './session/watchPresence.js';
-export { AuthModalIsland } from './signIn/AuthModalIsland.js';
 export type { SignInAction, SignInParts, StatusMark } from './signIn/SignInViews.js';
 export { ContinueScreen, SIGN_IN_CLOSE_ID, StatusScreen } from './signIn/SignInViews.js';
 export { authControl } from './signIn/authControl.js';

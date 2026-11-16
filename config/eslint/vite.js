@@ -323,6 +323,8 @@ export const config = defineConfig([
  * worker, which serves every tab. They import `@dotli/config/fixed`, never the bare entry, whose overridable readers
  * would miss the overrides.
  */
+export { featureBoundaries } from './featureBoundaries.js';
+
 export const fixedConfigOnly = {
   regex: '^@dotli/config$',
   message:
