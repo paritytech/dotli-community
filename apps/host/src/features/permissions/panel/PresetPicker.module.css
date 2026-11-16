@@ -21,7 +21,7 @@
 }
 .title {
   color: var(--chrome-text);
-  font: var(--fw-semibold) var(--fs-title) / var(--lh-tight) var(--font-sans);
+  font: var(--fw-semibold) var(--fs-body) / var(--lh-tight) var(--font-sans);
 }
 /* The row's own selector outranks the Spinner's default size and margin. */
 .name > .spinner {
@@ -42,9 +42,6 @@
   }
   .readout {
     gap: var(--sp-1);
-  }
-  .title {
-    font-size: var(--fs-title-lg);
   }
   .line {
     font-size: 13px;

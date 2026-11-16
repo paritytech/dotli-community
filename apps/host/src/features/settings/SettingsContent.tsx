@@ -169,19 +169,19 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
                 {RESET_LABELS[props.reset()].clear}
               </Button>
             </div>
+            <Show when={!props.debugMode()}>
+              <div data-testid="mode-debug-row">
+                <Button
+                  block
+                  onClick={props.onDebugMode}
+                  title="Reload this tab with the debug panel and its diagnostics"
+                >
+                  <TerminalIcon class={s['icon']} />
+                  Open in debug mode
+                </Button>
+              </div>
+            </Show>
           </Stack>
-          <Show when={!props.debugMode()}>
-            <div data-testid="mode-debug-row">
-              <Button
-                block
-                onClick={props.onDebugMode}
-                title="Reload this tab with the debug panel and its diagnostics"
-              >
-                <TerminalIcon class={s['icon']} />
-                Open in debug mode
-              </Button>
-            </div>
-          </Show>
         </Show>
       </div>
       <SurfaceFoot

@@ -4,6 +4,7 @@
 /* Pressed is a raised fill, never coloured text, to keep AAA contrast and every option's width. */
 
 :where(.seg) {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   flex: none;
@@ -21,7 +22,30 @@
 .seg[data-block] > .option {
   flex: 1;
 }
+/* Shown once placed, so it appears in place and slides only between options. */
+.pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  pointer-events: none;
+  transition:
+    transform var(--dur) var(--ease-out),
+    width var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out);
+}
+.pill[data-placed] {
+  display: block;
+}
+.seg[aria-disabled='true'] > .pill {
+  opacity: 0.5;
+}
+/* Positioned, so it paints over the pill. */
 .option {
+  position: relative;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -36,10 +60,7 @@
   color: var(--chrome-text-muted);
   font: var(--fw-medium) var(--fs-caption) / 1 var(--font-sans);
   cursor: pointer;
-  transition:
-    background var(--dur-fast),
-    color var(--dur-fast),
-    box-shadow var(--dur-fast);
+  transition: color var(--dur-fast);
 }
 .option:hover {
   color: var(--chrome-text);
@@ -63,6 +84,10 @@
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
 }
+.pill[data-placed] ~ .option[aria-pressed='true'] {
+  background: transparent;
+  box-shadow: none;
+}
 .option > svg {
   flex: none;
 }
@@ -78,6 +103,9 @@
   gap: var(--sp-1);
   padding: var(--sp-1);
   border-radius: var(--r-sm);
+}
+.seg[data-size='lg'] > .pill {
+  border-radius: var(--r-xs);
 }
 .seg[data-size='lg'] > .option {
   flex-direction: column;
@@ -97,12 +125,16 @@
     height: var(--h-tile);
     border-radius: var(--r-sm);
   }
+  .seg[data-size='lg'] > .pill {
+    border-radius: var(--r-sm);
+  }
   .seg[data-size='lg'] > .option > svg {
     width: 20px;
     height: 20px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .pill,
   .option {
     transition: none;
   }
