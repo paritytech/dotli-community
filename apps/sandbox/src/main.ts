@@ -5,32 +5,32 @@
 // page's real browser APIs. No name resolution happens here.
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
-import './boot.js';
+import './boot/boot.js';
 import '@dotli/ui/styles.css';
 import { BASE_DOMAIN, getActiveServicesConfig, hasLightClient, setActiveNetwork } from '@dotli/config';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
 import { getEndpointHost } from '@dotli/shared';
 
-import { createDecryptIfNeeded } from './createDecryptIfNeeded.js';
-import { SANDBOX_TIMEOUTS } from './timeouts.js';
+import { createDecryptIfNeeded } from './archive/createDecryptIfNeeded.js';
+import { SANDBOX_TIMEOUTS } from './kit/timeouts.js';
 import { createReloadOffer, listenForChunkFailures, showNotification, toasts } from '@dotli/ui';
-import { loadPageUi, loadSandboxChecker } from './lazy.js';
-import { createFallbackScreen } from './createFallbackScreen.js';
-import { createSandboxUi } from './createSandboxUi.js';
-import { showPasswordPrompt } from './showPasswordPrompt.js';
-import { createHostMessages } from './createHostMessages.js';
-import { getHostUrls } from './getHostUrls.js';
-import { stripContractParams } from './stripContractParams.js';
-import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './createBitswapBridge.js';
-import { loadProduct, type SandboxParams } from './loadProduct.js';
-import { purgeSandboxOriginState } from './purgeSandboxOriginState.js';
-import { runSandbox } from './runSandbox.js';
-import { waitForRecoverAccepted } from './waitForRecoverAccepted.js';
-import { listenForArchiveFailures } from './listenForArchiveFailures.js';
-import { offerReloadNotice } from './offerReloadNotice.js';
-import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
-import { storeArchiveInServiceWorker } from './storeArchiveInServiceWorker.js';
+import { loadPageUi, loadSandboxChecker } from './boot/lazy.js';
+import { createFallbackScreen } from './screens/createFallbackScreen.js';
+import { createSandboxUi } from './screens/createSandboxUi.js';
+import { showPasswordPrompt } from './screens/showPasswordPrompt.js';
+import { createHostMessages } from './hostLink/createHostMessages.js';
+import { getHostUrls } from './hostLink/getHostUrls.js';
+import { stripContractParams } from './boot/stripContractParams.js';
+import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './hostLink/createBitswapBridge.js';
+import { loadProduct, type SandboxParams } from './boot/loadProduct.js';
+import { purgeSandboxOriginState } from './boot/purgeSandboxOriginState.js';
+import { runSandbox } from './boot/runSandbox.js';
+import { waitForRecoverAccepted } from './hostLink/waitForRecoverAccepted.js';
+import { listenForArchiveFailures } from './archive/listenForArchiveFailures.js';
+import { offerReloadNotice } from './screens/offerReloadNotice.js';
+import { registerAppServiceWorker, type AppServiceWorker } from './archive/registerAppServiceWorker.js';
+import { storeArchiveInServiceWorker } from './archive/storeArchiveInServiceWorker.js';
 
 listenForChunkFailures({
   target: window,

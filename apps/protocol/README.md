@@ -33,6 +33,9 @@ The `?mode=` query picks the backend:
 
 ## Design
 
+The source is grouped by runtime responsibility: the frame, the SharedWorker, the shared stores, the engine, the light
+client, telemetry, and a kit of shared helpers. The page entry composes them.
+
 - **Shared origin:** it sits under `/p/` beside the host's pages. It removes only its own keys and databases.
 - **Safari:** a frame under a product keeps that product's own copy of the stores. Safari keys a frame's storage by the
   page that embeds it.

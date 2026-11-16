@@ -26,7 +26,7 @@ export default defineConfig(
         imageAlt: 'Polkadot logo',
       }),
       // The worker loads wasm.
-      serviceWorker({ srcDir: 'src', filename: 'app-sw.ts', plugins: () => [app.wasm()] }),
+      serviceWorker({ srcDir: 'src/serviceWorker', filename: 'app-sw.ts', plugins: () => [app.wasm()] }),
     ],
     server: {
       port: 4002,

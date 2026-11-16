@@ -511,13 +511,13 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Settings probe | `apps/host/src/runtime/createFinalizedBlockQuery.ts` (`createFinalizedBlockQuery`) |
 | Network panel | `apps/host/src/state/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
 | Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `apps/host/src/runtime/hostCallbacks/createHostBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
-| Protocol engine, a scope per tab | `apps/protocol/src/createEngine.ts` |
-| Watched chains (healing leases) | `apps/protocol/src/observeChains.ts` (`observeChains`) |
-| SharedWorker ports and heartbeat | `apps/protocol/src/createWorkerLifecycle.ts` |
+| Protocol engine, a scope per tab | `apps/protocol/src/engine/createEngine.ts` |
+| Watched chains (healing leases) | `apps/protocol/src/lightClient/observeChains.ts` (`observeChains`) |
+| SharedWorker ports and heartbeat | `apps/protocol/src/sharedWorker/createWorkerLifecycle.ts` |
 | Pausable transport | `packages/chains/src/createPausableTransport.ts` |
 | The page's network pause | `apps/host/src/runtime/createNetworkPause.ts` |
 | The host's remote pool control (`frame.pause` sender) | `packages/protocol/src/createRemotePoolControl.ts` |
-| The `frame.pause` server, in the frame and the worker | `apps/protocol/src/servePoolControl.ts` |
+| The `frame.pause` server, in the frame and the worker | `apps/protocol/src/engine/servePoolControl.ts` |
 
 ## Known limits
 

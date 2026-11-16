@@ -20,7 +20,7 @@ to the protocol iframe.
 
 | Origin | Purpose | Triggered by |
 |---|---|---|
-| Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocolSharedWorker.ts` |
+| Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/sharedWorker/protocolSharedWorker.ts` |
 | Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission, over the protocol iframe when Light Client is selected | `apps/host/src/runtime/hostCallbacks/createChainConnect.ts` |
 
 Both protocol submodes build their light client with `createLightClient` from
@@ -33,8 +33,8 @@ starts no light client.
 `createLightClient` in `packages/chains/src/createLightClient.ts` builds one light client per context over the smoldot that `@parity/truapi-provider` embeds. `createLightClientDeps` gives it its stored chain databases, its log level and its live gauge.
 
 - The engine (`startTruapiProvider`) starts on the first chain the light client opens. Every first open waits on that one start. A failed start turns the light client fatal, and a chain opened after it halts without starting the engine.
-- In the SharedWorker (`apps/protocol/src/protocolSharedWorker.ts`) smoldot runs on the worker thread, where the `Worker` constructor is unavailable. In direct mode (`initDirectMode` in `apps/protocol/src/main.ts`) it runs in the iframe.
-- `startLightClientService` in `apps/protocol/src/startLightClientService.ts` opens the chain pool on the light client, watches the relay and Bulletin, and builds the name resolver. Both submodes start it, the SharedWorker through `startProtocolWorker`.
+- In the SharedWorker (`apps/protocol/src/sharedWorker/protocolSharedWorker.ts`) smoldot runs on the worker thread, where the `Worker` constructor is unavailable. In direct mode (`initDirectMode` in `apps/protocol/src/main.ts`) it runs in the iframe.
+- `startLightClientService` in `apps/protocol/src/lightClient/startLightClientService.ts` opens the chain pool on the light client, watches the relay and Bulletin, and builds the name resolver. Both submodes start it, the SharedWorker through `startProtocolWorker`.
 
 Its members are `createChainTransport`, `isChainSupported`, `status` and `subscribe`.
 
@@ -61,13 +61,13 @@ Hub, Bulletin, and People chains. `isChainSupported` in
 
 The protocol iframe reads a `?mode=` URL parameter in `init()` (`apps/protocol/src/main.ts`), maps it to a backend with `getBackendOfFrameMode`, and dispatches in `startMode`.
 
-- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/protocolSharedWorker.ts`). Smoldot runs in the worker thread.
+- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/sharedWorker/protocolSharedWorker.ts`). Smoldot runs in the worker thread.
 - `?mode=direct` runs `initDirectMode()`, which dynamic-imports the light client (`loadProvider`), the resolver and the light client service, and runs smoldot in the iframe.
 - `?mode=rpc` runs `initRpcMode()`. No smoldot. Chain calls go to a trusted WSS JSON-RPC endpoint.
 
 The host configures the frame with the backend at boot, and the frame names it in its URL as `mode`.
 
-In direct mode the frame disposes its light client service and its engine once its page is hidden for good, on `pagehide` through `disposeOnPageHide` (`apps/protocol/src/disposeOnPageHide.ts`). In rpc mode it disposes its engine the same way. In shared-worker mode it closes its link to the worker the same way (`connectSharedWorker`), and the worker lets go of that tab's port while its light client stays up for the other tabs. A page kept in the back-forward cache keeps them.
+In direct mode the frame disposes its light client service and its engine once its page is hidden for good, on `pagehide` through `disposeOnPageHide` (`apps/protocol/src/frame/disposeOnPageHide.ts`). In rpc mode it disposes its engine the same way. In shared-worker mode it closes its link to the worker the same way (`connectSharedWorker`), and the worker lets go of that tab's port while its light client stays up for the other tabs. A page kept in the back-forward cache keeps them.
 
 ## Talking to a chain
 

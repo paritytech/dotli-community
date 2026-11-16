@@ -1,0 +1,82 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { describe, expect, it } from 'vitest';
+import type { CountAttributes, CountMetric } from '@dotli/metrics';
+import type { CallName } from '@dotli/protocol';
+import { createRefusalReporter } from './createRefusalReporter.js';
+import { InvalidInputError } from './invalidInputError.js';
+import type { FrameRefusal, FrameRoute } from '../kit/withRefusalReports.js';
+
+type Row = {
+  refusal: FrameRefusal;
+  warned: unknown[][];
+  counted: unknown[][];
+};
+
+const FAILURE = new Error('storage read failed');
+const INVALID = new InvalidInputError('Invalid siteId: evil.li');
+const BLOCKED = Object.assign(new Error('The operation is insecure'), { name: 'SecurityError' });
+
+const FAILED_METHODS: Record<FrameRoute, CallName> = {
+  auth: 'authStorageWrite',
+  mode: 'modeStorageWrite',
+  wallet: 'localWalletRead',
+  chain: 'resolveDotName',
+};
+
+/** A refusal of the route, as its handler failed with `error`. */
+function toRefusal(route: FrameRoute, error: Error = FAILURE): FrameRefusal {
+  return { route, method: FAILED_METHODS[route], error };
+}
+
+const TABLE: Row[] = [
+  {
+    refusal: toRefusal('auth', INVALID),
+    warned: [],
+    counted: [['shared_storage.rejected', { store: 'auth', reason: 'validation' }]],
+  },
+  {
+    refusal: toRefusal('auth', BLOCKED),
+    warned: [['[dot.li protocol] authStorageWrite failed', BLOCKED]],
+    counted: [['shared_storage.rejected', { store: 'auth', reason: 'SecurityError' }]],
+  },
+  { refusal: toRefusal('wallet'), warned: [['[dot.li protocol] localWalletRead failed', FAILURE]], counted: [] },
+];
+
+/** A log and a counter that keep what they were handed. */
+function createRecordingSinks() {
+  const warned: unknown[][] = [];
+  const counted: unknown[][] = [];
+  return {
+    /** The arguments of each line logged, in order. */
+    warned,
+    /** The name and attributes of each count, in order. */
+    counted,
+    /** Keeps a logged line. Never throws. */
+    warn(...args: unknown[]): void {
+      warned.push(args);
+    },
+    /** Keeps a count. Never throws. */
+    count<Outcome extends string>(metric: CountMetric<Outcome>, attributes: CountAttributes<Outcome>): void {
+      counted.push([metric.name, attributes]);
+    },
+  };
+}
+
+describe('the protocol frame refusal report', () => {
+  it.each(TABLE)(
+    'As a dotli operator, I watch a $refusal.route call fail and see it logged and counted as its route says',
+    row => {
+      // Given a reporter on its own log and counter
+      const sinks = createRecordingSinks();
+      const report = createRefusalReporter(sinks);
+
+      // When one call is refused
+      report(row.refusal);
+
+      // Then it is logged and counted as the table says
+      expect({ warned: sinks.warned, counted: sinks.counted }).toEqual({ warned: row.warned, counted: row.counted });
+    },
+  );
+});

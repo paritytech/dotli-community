@@ -39,7 +39,7 @@ export default {
     },
     'apps/sandbox': {
       // The service worker is the PWA plugin's source, named in vite.config.ts.
-      entry: ['src/app-sw.ts'],
+      entry: ['src/serviceWorker/app-sw.ts'],
     },
   },
 } satisfies KnipConfig;
