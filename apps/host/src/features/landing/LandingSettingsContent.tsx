@@ -48,9 +48,8 @@ export type LandingSettingsContentProps = {
  * The Popover remounts it per opening, so each draft starts from what is saved.
  */
 export function LandingSettingsContent(props: LandingSettingsContentProps): JSX.Element {
-  const popover = usePopover();
   return (
-    <div class={s['content']} data-sheet={popover.sheet() ? '' : undefined}>
+    <div>
       {/* Not keyed, so later writes of the saved settings do not remount the panel mid-edit. */}
       <Show when={props.settings()}>{saved => <LandingSettingsPanel {...props} saved={saved()} />}</Show>
     </div>
@@ -77,6 +76,9 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
 
   // A reset this panel did not start by clearing is an apply, from this opening or an earlier one.
   const applying = (): boolean => isResetRunning(props.reset()) && !clearing();
+  // Advanced clears at once, so its foot shows only for a draft from another category or a save that runs. A save
+  // keeps the foot, hint row included, in place until the page reloads.
+  const showFoot = (): boolean => category() !== 'advanced' || dirty() || applying();
 
   function clearCache(): void {
     setClearing(true);
@@ -109,6 +111,7 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
           block
           testId="landing-settings-categories"
         />
+        {/* Network and Transport each hold one list, so the category names it and no section label repeats it. */}
         <Show when={category() === 'network'}>
           <NetworkChoices networks={saved.enabledNetworks} value={network()} onChoose={setNetwork} />
         </Show>
@@ -136,32 +139,32 @@ function LandingSettingsPanel(props: LandingSettingsContentProps & { saved: Save
                 Clear cache
               </Button>
             </div>
+            <Hint testId="landing-settings-clear-hint">Forgets the suggested app names and reloads the page</Hint>
           </Stack>
         </Show>
       </div>
-      <SurfaceFoot
-        hint={
-          // Advanced clears at once, so the reload notice shows there only while a draft waits.
-          <Show when={category() !== 'advanced' || dirty()}>
+      <Show when={showFoot()}>
+        <SurfaceFoot
+          hint={
             <Hint icon={ReloadIcon} testId="landing-settings-apply-warning">
               {reloadHint}
             </Hint>
-          </Show>
-        }
-      >
-        <div class={s['apply']} data-testid="landing-settings-apply-row">
-          <Button
-            variant="primary"
-            block={popover.sheet()}
-            onClick={apply}
-            disabled={!dirty() || clearing() || isResetRunning(props.reset())}
-            loading={applying()}
-            aria-label={applying() ? 'Applying…' : undefined}
-          >
-            Save and apply
-          </Button>
-        </div>
-      </SurfaceFoot>
+          }
+        >
+          <div class={s['apply']} data-testid="landing-settings-apply-row">
+            <Button
+              variant="primary"
+              block={popover.sheet()}
+              onClick={apply}
+              disabled={!dirty() || clearing() || isResetRunning(props.reset())}
+              loading={applying()}
+              aria-label={applying() ? 'Applying…' : undefined}
+            >
+              Save and apply
+            </Button>
+          </div>
+        </SurfaceFoot>
+      </Show>
     </Surface>
   );
 }

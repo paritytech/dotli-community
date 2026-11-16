@@ -24,12 +24,14 @@ const VIEW_LABELS: Record<PanelView, string> = {
 
 const VIEWS: readonly TabOption<PanelView>[] = PANEL_VIEWS.map(view => ({ value: view, label: VIEW_LABELS[view] }));
 
-/** The view tabs, with the list's counts at the bar's end. */
+/** The view tabs, with the list's counts and the log's controls at the bar's end. */
 export function ViewTabs(props: {
   view: PanelView;
   counts: ListCounts;
   hidden: boolean;
   onSelect: (view: PanelView) => void;
+  /** The log's own controls, after the counts. */
+  controls: JSX.Element;
 }): JSX.Element {
   return (
     <Bar testId="td-view-bar" hidden={props.hidden}>
@@ -55,8 +57,9 @@ export function ViewTabs(props: {
             </>
           )}
         </Show>
-        <Show when={props.counts.shown}>{shown => ` ${shown()}`}</Show>
+        <Show when={props.counts.shown}>{shown => <> {shown()}</>}</Show>
       </span>
+      {props.controls}
     </Bar>
   );
 }

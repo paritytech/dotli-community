@@ -45,7 +45,7 @@ function buildIssueUrl(report: string): string {
     report,
     '```',
   ].join('\n');
-  const url = new URL('https://github.com/paritytech/dotli/issues/new');
+  const url = new URL('https://github.com/paritytech/dotli-community/issues/new');
   url.searchParams.set('body', body);
   return url.toString();
 }

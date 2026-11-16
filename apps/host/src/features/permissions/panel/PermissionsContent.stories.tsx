@@ -269,7 +269,7 @@ export const RowMarksModified: Story = {
       await expectPreset('secure', true);
       await expect(slider()).toHaveAttribute('data-marked');
       await expect(within(row('Location')).getByTestId('permissions-popover-row-modified')).toHaveAccessibleName(
-        'Changed from Secure',
+        'Differs from the Secure preset',
       );
       await expect(within(row('Camera')).queryByTestId('permissions-popover-row-modified')).toBeNull();
     });

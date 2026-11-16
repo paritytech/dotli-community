@@ -306,9 +306,9 @@ export const ClearResolutionKeepsEvents: Story = {
 /** As a developer using the debug panel, I switch tabs and each shows only the controls that apply to it. */
 export const ControlsPerTab: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Then the TrUAPI tab shows the log controls in its filter row', async () => {
+    await step('Then the TrUAPI tab shows the log controls in its view bar', async () => {
       await expect(getPart('td-filters')).not.toHaveAttribute('hidden');
-      await expect(within(getPart('td-filters')).getByTestId('td-event-controls')).toBeInTheDocument();
+      await expect(within(getPart('td-view-bar')).getByTestId('td-event-controls')).toBeInTheDocument();
     });
     await step('When I open the Resolution tab', async () => {
       await userEvent.click(getPart('td-section', { value: 'resolution' }));
@@ -446,8 +446,9 @@ export const KindCheckboxes: Story = {
     await step('When I untick both', async () => {
       await userEvent.click(getPart('td-kind', { value: 'truapi' }));
     });
-    await step('Then the list says nothing matches', async () => {
+    await step('Then the list says nothing matches and the count says none show', async () => {
       await expect(within(getPart('td-list')).getByTestId('td-empty')).toBeInTheDocument();
+      await expect(readCounts()).toBe('5 events · 0 shown');
     });
   },
 };
@@ -548,9 +549,12 @@ export const TextFiltersFlagInvalid: Story = {
       await userEvent.clear(include);
       await userEvent.paste('/(/');
     });
-    await step('Then it is flagged and inert', async () => {
+    await step('Then it is flagged, says why in view, and is inert', async () => {
       await expect(include).toHaveAttribute('aria-invalid', 'true');
-      await expect(include).toHaveAccessibleDescription('Invalid regex, so this filter is off');
+      await expect(include).toHaveAccessibleDescription('Invalid include regex, so that filter is off.');
+      await expect(
+        within(getPart('td-filters')).getByText('Invalid include regex, so that filter is off.'),
+      ).toBeVisible();
       await expect(listRows()).toHaveLength(5);
     });
     await step('When an exclude regex does not parse', async () => {
@@ -560,6 +564,7 @@ export const TextFiltersFlagInvalid: Story = {
     });
     await step('Then it is flagged and inert', async () => {
       await expect(exclude).toHaveAttribute('aria-invalid', 'true');
+      await expect(exclude).toHaveAccessibleDescription('Invalid exclude regex, so that filter is off.');
       await expect(listRows()).toHaveLength(5);
     });
   },

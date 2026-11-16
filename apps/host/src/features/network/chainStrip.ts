@@ -53,7 +53,7 @@ export function pendingBar(
   const heightPercent = Math.round(45 + Math.min(sinceLast / chain.blockTimeMs, 1) * 55);
   const leftMs = chain.blockTimeMs - sinceLast;
   return leftMs > 0
-    ? { phase: 'counting', heightPercent, text: `First block in about ${String(Math.ceil(leftMs / 1000))}s` }
+    ? { phase: 'counting', heightPercent, text: `Next block in about ${String(Math.ceil(leftMs / 1000))}s` }
     : { phase: 'due', heightPercent, text: 'Due any moment' };
 }
 

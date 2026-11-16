@@ -256,23 +256,4 @@
     width: 64px;
     height: 64px;
   }
-  /* A sheet heads the view from the start of the line, so its text follows, and only the hero stays centred. */
-  .screen[data-level='layout'] {
-    text-align: start;
-  }
-  .screen[data-level='layout'] > .heading {
-    align-self: stretch;
-  }
-  .screen[data-level='layout'] .steps,
-  .screen[data-level='layout'] .progress {
-    align-self: flex-start;
-    justify-content: flex-start;
-  }
-  .reveal[data-level='layout'] {
-    align-self: flex-start;
-    margin: 0;
-  }
-  .note[data-level='layout'] {
-    text-align: start;
-  }
 }

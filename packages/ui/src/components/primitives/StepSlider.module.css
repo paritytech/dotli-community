@@ -21,8 +21,8 @@
   height: 6px;
   transform: translateY(-50%);
   border-radius: var(--r-full);
-  background: var(--chrome-ring);
-  box-shadow: inset 0 0 0 1px var(--chrome-line);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
 }
 /* Its inset is the thumb radius, so the end stops land on the rail's rounded ends. */
 .layer {
@@ -47,7 +47,7 @@
   height: 4px;
   margin: -2px 0 0 -2px;
   border-radius: 50%;
-  background: var(--chrome-text-muted);
+  background: var(--chrome-action-dim);
 }
 /* The fill already shows how far the value goes, and a dark dot on it would read as a hole. */
 .tick[data-filled] {

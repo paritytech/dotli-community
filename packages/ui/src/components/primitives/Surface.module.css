@@ -49,27 +49,41 @@
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
-/* The hint takes the free space, so the action keeps to the right when it wraps under the hint. The hint starts at
-   the text inset of wells and callouts, so its icon lines up with theirs. */
+/* The hint takes the free space and wraps its text beside the action. Only a foot too narrow for both puts the action
+   on a row of its own, still on the right. */
 .foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-1) 0 var(--sp-3);
+  padding: var(--sp-3) var(--sp-1) 0 0;
   border-top: 1px solid var(--chrome-line);
 }
+/* Starts at the text inset of wells, choices and callouts, so a hint in the body or the foot lines up with them. */
 .hint {
   display: inline-flex;
+  padding-left: var(--sp-3);
   align-items: flex-start;
   gap: var(--sp-1_5);
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
+/* The narrowest the hint wraps to before the action takes its own row. */
 .foot > .hint {
+  flex: 1 1 144px;
+  min-width: 0;
   margin-right: auto;
+}
+/* A sheet's controls run full width, so the action takes the row under the hint. */
+.surface[data-sheet] .foot {
+  flex-direction: column;
+  align-items: stretch;
+}
+.surface[data-sheet] .foot > .hint {
+  flex: none;
+  margin-right: 0;
 }
 /* Centred on the first line, so a hint that wraps keeps its icon beside its start. */
 .hint-icon {
@@ -92,16 +106,14 @@
   .title {
     font-size: var(--fs-title-lg);
   }
-  /* Equal sides, so a full-width action sits centred. Only the hint keeps the text inset. */
+  /* Equal sides, so a full-width action sits centred. */
   .foot {
     gap: var(--sp-3);
     padding: var(--sp-3) 0 0;
   }
-  .foot > .hint {
-    padding-left: var(--sp-4);
-  }
   .hint {
     gap: var(--sp-2);
+    padding-left: var(--sp-4);
   }
   .hint-icon {
     width: 16px;

@@ -10,3 +10,9 @@
   text-align: center;
   text-wrap: balance;
 }
+/* A narrow panel stacks its panes, each short enough at the panel's least height to cut a deeper inset. */
+@container td-panel (max-width: 560px) {
+  .empty {
+    padding-block: 16px;
+  }
+}

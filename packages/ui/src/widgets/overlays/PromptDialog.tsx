@@ -143,7 +143,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
         <Show when={view().notice}>
           {notice => (
             // The one notice says the app reloads, hence the board's reload arrow.
-            <Callout icon={ReloadIcon} testId={`${root}-notice`}>
+            <Callout icon={ReloadIcon} class={s['well']} testId={`${root}-notice`}>
               {notice()}
             </Callout>
           )}

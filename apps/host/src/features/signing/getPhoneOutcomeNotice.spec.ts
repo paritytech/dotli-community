@@ -20,12 +20,12 @@ const CASES: NoticeCase[] = [
   {
     story: 'As a user, I sign on my phone and see what the review signs confirmed in Polkadot App',
     outcome: { kind: 'ok', method: 'signPayload' },
-    notice: { label: 'Transaction signed', text: `${APP} · in Polkadot App`, tone: 'ok', icon: CircleCheckIcon },
+    notice: { label: 'Transaction signed in Polkadot App', text: APP, tone: 'ok', icon: CircleCheckIcon },
   },
   {
     story: 'As a user, I sign a raw message on my phone and see the same confirmation',
     outcome: { kind: 'ok', method: 'signRawWithLegacyAccount' },
-    notice: { label: 'Transaction signed', text: `${APP} · in Polkadot App`, tone: 'ok', icon: CircleCheckIcon },
+    notice: { label: 'Transaction signed in Polkadot App', text: APP, tone: 'ok', icon: CircleCheckIcon },
   },
   {
     story: 'As a user, I share my accounts and see that they were shared',

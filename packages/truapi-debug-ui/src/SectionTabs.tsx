@@ -35,6 +35,7 @@ export function SectionTabs(props: {
       current={props.section}
       onSelect={props.onSelect}
       variant="primary"
+      scroll
       label="Panel sections"
       idPrefix={SECTION_TABS_ID}
       panelId={SECTION_PANEL_ID}

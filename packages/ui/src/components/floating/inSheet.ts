@@ -3,5 +3,11 @@
 
 import { createContext, type Accessor } from 'solid-js';
 
-/** Whether the content sits in a bottom sheet. Its own module so a providing frame doesn't pull in Surface. */
-export const InSheet = createContext<Accessor<boolean>>(() => false);
+/** The bottom sheet content sits in. `aside` is the head's slot for a chip beside the title, where the sheet has one. */
+export type Sheet = { aside?: HTMLElement };
+
+/**
+ * The sheet the content sits in, or undefined outside one. Its own module so a providing frame doesn't pull in
+ * Surface.
+ */
+export const InSheet = createContext<Accessor<Sheet | undefined>>(() => undefined);

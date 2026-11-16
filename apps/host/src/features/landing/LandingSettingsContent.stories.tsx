@@ -24,6 +24,9 @@ const clearCache = fn<() => Promise<void>>();
 function applyButton(): HTMLButtonElement {
   return query(document, '[data-testid="landing-settings-apply-row"] button', HTMLButtonElement);
 }
+function applyRow(): Element | null {
+  return document.querySelector('[data-testid="landing-settings-apply-row"]');
+}
 function clearButton(): HTMLButtonElement {
   return query(document, '[data-testid="landing-settings-clear-row"] button', HTMLButtonElement);
 }
@@ -156,8 +159,8 @@ export const ClearsTheCache: Story = {
 };
 
 /**
- * As a visitor on the landing page whose settings are being applied, I cannot press Clear cache, and Advanced with no
- * draft shows no reload notice.
+ * As a visitor on the landing page whose settings are being applied, I cannot press Clear cache, and Advanced keeps the
+ * running save and its reload notice in view.
  */
 export const ResetDisablesClear: Story = {
   tags: ['!autodocs'],
@@ -169,9 +172,26 @@ export const ResetDisablesClear: Story = {
     await ctx.step('When I switch to Advanced', async () => {
       await showCategory(ctx.userEvent.click, 'advanced');
     });
-    await ctx.step('Then Clear cache and Save and apply are both disabled, with no reload notice', async () => {
+    await ctx.step('Then Clear cache and Save and apply are both disabled, with the reload notice kept', async () => {
       await expect(clearButton()).toBeDisabled();
       await expect(applyButton()).toBeDisabled();
+      await expect(applyButton()).toHaveAttribute('aria-busy', 'true');
+      await expect(reloadHint()).toBe('Network and transport changes reload the page');
+    });
+  },
+};
+
+/** As a visitor on the landing page with no draft, I open Advanced and it offers only Clear cache, with no Save. */
+export const AdvancedOffersOnlyTheClear: Story = {
+  tags: ['!autodocs'],
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('When I switch to Advanced', async () => {
+      await showCategory(ctx.userEvent.click, 'advanced');
+    });
+    await ctx.step('Then Clear cache is there, with neither Save and apply nor a reload notice', async () => {
+      await expect(clearButton()).not.toBeDisabled();
+      await expect(applyRow()).toBeNull();
       await expect(reloadHint()).toBeUndefined();
     });
   },

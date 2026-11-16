@@ -7,7 +7,7 @@
 import { For, merge, omit, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Button, SectionLabel, Spinner, Stack, Well } from '@dotli/ui';
-import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon, PhoneCheckIcon } from '@dotli/ui/icons';
+import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
 import type { DisplayAccount } from '../siteSignIn/index.js';
 import type { DisplayCall } from '../siteSignIn/index.js';
 import type { ListedSite, SiteListScreen } from '../siteSignIn/index.js';
@@ -24,6 +24,7 @@ import type { DrawQr } from '../account/index.js';
 import { signInParts } from '../account/index.js';
 import {
   ContinueScreen,
+  PhoneIcon,
   SIGN_IN_CLOSE_ID,
   StatusScreen,
   type SignInAction,
@@ -185,7 +186,7 @@ function phoneNotToldParts(props: WindowPartsProps): SignInParts {
     title: 'Not signed out of Polkadot App',
     body: (
       <span role="alert" data-testid="session-window-failure">
-        Polkadot App could not be told. It still lists this browser.
+        Polkadot App could not be reached, so it still lists this browser as signed in.
       </span>
     ),
     actions: [
@@ -311,9 +312,7 @@ function consentParts(origin: string, group: string | null, props: WindowPartsPr
     title: 'Sign in with Polkadot',
     body: (
       <>
-        <span class={s['origin']} data-testid="session-window-site">
-          {origin}
-        </span>
+        <SiteOrigin origin={origin} testId="session-window-site" />
         {group === null ? null : (
           <span class={[s['lead'], s['group']]} data-testid="session-window-group">
             and every site of {group} that shares this sign-in
@@ -370,11 +369,23 @@ function consentParts(origin: string, group: string | null, props: WindowPartsPr
 /** What a site asks for, which names its views. */
 type SiteRoute = Extract<WindowStep, { view: 'site-failed' }>['route'];
 
+/** The site's full origin, under a label that says what the address is. */
+function SiteOrigin(props: { origin: string; testId?: string }): JSX.Element {
+  return (
+    <>
+      <span class={s['originLabel']}>Site</span>
+      <span class={s['origin']} data-testid={props.testId}>
+        {props.origin}
+      </span>
+    </>
+  );
+}
+
 /** The site's full origin over what the view says of it. */
 function SiteBody(props: { origin: string; lead: string }): JSX.Element {
   return (
     <>
-      <span class={s['origin']}>{props.origin}</span>
+      <SiteOrigin origin={props.origin} />
       <span class={s['lead']}>{props.lead}</span>
     </>
   );
@@ -409,7 +420,7 @@ const SITE_WAIT_COPY = {
  */
 function siteWaitParts(copy: SiteWaitCopy, origin: string, props: WindowPartsProps): SignInParts {
   return StatusScreen({
-    mark: copy.phone === undefined ? 'spinner' : { icon: PhoneCheckIcon },
+    mark: copy.phone === undefined ? 'spinner' : { icon: PhoneIcon },
     title: copy.title,
     body: <SiteBody origin={origin} lead={copy.lead} />,
     progress: copy.phone,
@@ -521,9 +532,12 @@ function siteFailedParts({
 
 const SITE_LIST_TITLE = 'Sites you signed in to';
 
-/** Lets an origin wrap after each dot and after its scheme, rather than in the middle of a label. */
+/**
+ * Lets an origin wrap after each dot rather than in the middle of a label. The scheme stays with the first label, so it
+ * never stands on a line alone.
+ */
 function breakableOrigin(origin: string): JSX.Element {
-  return origin.split(/(?<=\/\/|\.)/).flatMap((part, index) => (index === 0 ? [part] : [<wbr />, part]));
+  return origin.split(/(?<=\.)/).flatMap((part, index) => (index === 0 ? [part] : [<wbr />, part]));
 }
 
 /** A date as the site list writes it, in the reader's locale. */
@@ -566,7 +580,6 @@ function ListedSiteRows(props: { site: ListedSite; onRevoke: (token: string) => 
         </Show>
         <div class={s['siteUses']}>
           <span class={s['siteUse']}>{`Since ${listDate(props.site.firstUsedAt)}`}</span>
-          <span aria-hidden="true">{' · '}</span>
           <span class={s['siteUse']}>{`Last used ${listDate(props.site.lastUsedAt)}`}</span>
         </div>
       </div>

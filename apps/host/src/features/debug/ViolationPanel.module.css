@@ -20,8 +20,8 @@
   display: block;
 }
 
-/* A grip in the middle says the edge drags. It is centred on the panel's top edge, clear of the header's text, with a
-   hit area taller than the grip. */
+/* A grip in the middle says the edge drags. Its hit area is centred on the panel's top edge, while the grip itself
+   sits just inside the panel, clear of the product above and of the header's text. */
 .resizeHandle {
   position: absolute;
   top: 0;
@@ -29,9 +29,11 @@
   right: 0;
   left: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  height: 10px;
+  box-sizing: border-box;
+  height: 12px;
+  padding-bottom: var(--sp-hair);
   cursor: ns-resize;
 }
 .resizeHandle::before {
@@ -119,7 +121,6 @@
   transform: rotate(180deg);
 }
 
-/* A row scrolled half under the header fades out over the top padding, so no cut glyphs show at the edge. */
 .log {
   box-sizing: border-box;
   max-height: 160px;
@@ -127,7 +128,11 @@
   overflow-y: auto;
   /* A row scrolled into view clears the edge, not half under it. */
   scroll-padding-block: var(--sp-1) var(--sp-2);
-  mask-image: linear-gradient(to bottom, transparent, #000 var(--sp-1));
+}
+/* The log keeps to its newest row, so its height rarely holds whole rows and the top one sits cut under the header.
+   A row's height of fade hides that cut row. */
+.log[data-scrolled] {
+  mask-image: linear-gradient(to bottom, transparent var(--sp-1), #000 calc(var(--sp-1) + 1lh));
 }
 
 .panel[data-collapsed] .log {
@@ -147,10 +152,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A step under the header's title, so the header leads the log. */
 .api {
   flex-shrink: 0;
   color: var(--text-strong);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-medium);
 }
 
 .details {
@@ -160,10 +166,20 @@
   white-space: nowrap;
 }
 
-/* A phone has no room for one line per violation, so the details wrap rather than cut. */
+/* A phone has no room for one line per violation, so the details take a line of their own under the API name and
+   wrap there rather than cut. */
 @media (max-width: 560px) {
-  .details {
+  .entry {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 0;
+  }
+  .api {
     min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .details {
+    grid-column: 2;
     overflow-wrap: anywhere;
     white-space: normal;
   }

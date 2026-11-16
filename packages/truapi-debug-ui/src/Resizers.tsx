@@ -120,6 +120,7 @@ export function BodySplitter(props: {
   return (
     <Resizer
       testId="td-body-splitter"
+      class={s['grip']}
       divider
       orientation={props.stacked ? 'horizontal' : 'vertical'}
       hidden={props.hidden}

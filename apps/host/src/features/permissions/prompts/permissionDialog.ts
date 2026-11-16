@@ -34,7 +34,7 @@ export function permissionRequestDialog(request: PermissionRequest): ModalView<G
       { label: 'App', value: request.app },
       { label: 'Permission', value: PERMISSION_CATALOG[request.permission].description },
     ],
-    ...(request.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),
+    ...(request.reloads ? { notice: 'Granting this permission reloads the app.' } : {}),
     buttons: getGrantButtons({ allowOnce: request.allowOnce }),
     dismissOnBackdrop: true,
     dismissResult: 'dismissed',

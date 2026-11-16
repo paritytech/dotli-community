@@ -344,25 +344,6 @@ export function Panel(props: {
           products={snapshot().products}
           hidden={collapsed() || !eventsShown()}
           onChange={changeFilters}
-          controls={
-            <EventControls
-              paused={snapshot().paused}
-              exportJson={exportJson}
-              onTogglePause={() => {
-                store.setPaused(!store.isPaused());
-                commit(refreshSnapshot);
-              }}
-              onClear={() => {
-                store.clear();
-                // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
-                commit(() => {
-                  setSelection(null);
-                  refreshSnapshot();
-                  refreshDetail();
-                });
-              }}
-            />
-          }
         />
         <div
           id={SECTION_PANEL_ID}
@@ -372,7 +353,31 @@ export function Panel(props: {
           aria-labelledby={getTabId(SECTION_TABS_ID, section())}
         >
           <div class={s['views']} data-testid="td-views">
-            <ViewTabs view={view()} counts={counts()} hidden={!eventsShown()} onSelect={selectView} />
+            <ViewTabs
+              view={view()}
+              counts={counts()}
+              hidden={!eventsShown()}
+              onSelect={selectView}
+              controls={
+                <EventControls
+                  paused={snapshot().paused}
+                  exportJson={exportJson}
+                  onTogglePause={() => {
+                    store.setPaused(!store.isPaused());
+                    commit(refreshSnapshot);
+                  }}
+                  onClear={() => {
+                    store.clear();
+                    // The detail pane rebuilds only on request, so rebuild now or the old event lingers.
+                    commit(() => {
+                      setSelection(null);
+                      refreshSnapshot();
+                      refreshDetail();
+                    });
+                  }}
+                />
+              }
+            />
             <div
               id={VIEW_PANEL_ID}
               class={s['viewPanel']}

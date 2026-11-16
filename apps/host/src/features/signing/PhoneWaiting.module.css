@@ -14,7 +14,8 @@
   font-weight: var(--fw-regular);
   line-height: var(--lh-body);
   text-align: center;
-  text-wrap: pretty;
+  /* Two short lines of even length rather than a last line of two words. */
+  text-wrap: balance;
 }
 
 .status {
@@ -29,11 +30,4 @@
   width: 16px;
   height: 16px;
   margin: 0;
-}
-
-/* A sheet heads from the start of the line, so its lead follows. The phone and the status under it stay centred. */
-@media (max-width: 560px) {
-  .lead {
-    text-align: start;
-  }
 }

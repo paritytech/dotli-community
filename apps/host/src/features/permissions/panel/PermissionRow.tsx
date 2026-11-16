@@ -29,22 +29,28 @@ export type PermissionRowProps = {
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
   const Icon = dynamic(() => permissionIcon(props.perm.name));
+  // The whole name carries the tooltip, since the dot alone is too small to hover.
+  const modifiedText = (): string | undefined =>
+    props.changedFrom === undefined ? undefined : `Differs from the ${props.changedFrom} preset`;
   return (
     <Row
       testId="permissions-popover-row"
       label={
-        <span class={s['label']} data-modified={props.changedFrom === undefined ? undefined : ''}>
+        <span
+          class={s['label']}
+          data-modified={props.changedFrom === undefined ? undefined : ''}
+          title={modifiedText()}
+        >
           <Icon class={s['icon']} />
           <span class={s['name']} id={`permissions-popover-name-${props.perm.name}`}>
             {props.perm.label}
           </span>
-          <Show when={props.changedFrom}>
-            {preset => (
+          <Show when={modifiedText()}>
+            {text => (
               <span
                 class={s['modified']}
                 role="img"
-                aria-label={`Changed from ${preset()}`}
-                title={`Changed from ${preset()}`}
+                aria-label={text()}
                 data-testid="permissions-popover-row-modified"
               />
             )}

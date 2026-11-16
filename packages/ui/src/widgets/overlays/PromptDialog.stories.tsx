@@ -28,7 +28,7 @@ const meta = {
         { label: 'App', value: 'playground.dot' },
         { label: 'Permission', value: 'Use your camera' },
       ],
-      notice: 'Granting this permission will reload the application.',
+      notice: 'Granting this permission reloads the app.',
       buttons: [
         { label: 'Deny', variant: 'danger', result: 'denied' },
         { label: 'Always allow', variant: 'secondary', result: 'granted' },
@@ -67,7 +67,7 @@ export const PermissionRequest: Story = {
         'Permission',
       ]);
       await expect(body.getByTestId('prompt-dialog-notice')).toHaveTextContent(
-        'Granting this permission will reload the application.',
+        'Granting this permission reloads the app.',
       );
       await expect(readFooter()).toEqual([
         ['Deny', 'danger'],

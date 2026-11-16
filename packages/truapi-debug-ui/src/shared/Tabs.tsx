@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, For } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getRovingTarget } from './getRovingTarget.js';
+import { SCROLL_FADES_CLASS, wireScrollFades } from './wireScrollFades.js';
 import s from './Tabs.module.css';
 
 export type TabOption<T extends string> = {
@@ -38,9 +39,15 @@ export function Tabs<T extends string>(props: {
   testId: string;
   tabTestId: string;
   hidden?: boolean;
+  /** Keeps the tabs on one line that scrolls, fading the edges with tabs past them. */
+  scroll?: boolean;
   class?: string | undefined;
 }): JSX.Element {
   let strip: HTMLDivElement | undefined;
+  let disposeFades: (() => void) | undefined;
+  onCleanup(() => {
+    disposeFades?.();
+  });
   // A strip that scrolls brings the shown tab into view, so the tab a panel opens on is never cut off.
   createEffect(
     () => props.selected ?? props.current ?? null,
@@ -108,13 +115,21 @@ export function Tabs<T extends string>(props: {
 
   return (
     <div
-      class={[s['tabs'], props.class]}
+      class={[
+        s['tabs'],
+        props.scroll === true && s['scroll'],
+        props.scroll === true && SCROLL_FADES_CLASS,
+        props.class,
+      ]}
       data-testid={props.testId}
       role="tablist"
       aria-label={props.label}
       hidden={props.hidden}
       ref={element => {
         strip = element;
+        if (untrack(() => props.scroll) === true) {
+          disposeFades = wireScrollFades(element);
+        }
       }}
       onKeyDown={handleKeyDown}
       onFocusIn={handleFocusIn}

@@ -51,6 +51,10 @@
   .archive .content {
     padding-inline: 10px;
   }
+  /* As wide as the callout above it, as every action of the panel is on a phone. */
+  .retry {
+    align-self: stretch;
+  }
 }
 .caption {
   overflow: hidden;

@@ -4,6 +4,7 @@
 import { children, createEffect, createSignal, isHydrating, onSettled, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import { createOverflow } from '../createOverflow.js';
 import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
 import { InSheet } from './inSheet.js';
@@ -89,8 +90,9 @@ function ModalRoot(props: ModalProps): JSX.Element {
     },
   );
 
-  // Created under InSheet once, so Surface follows the form rather than keep the one it was made in.
-  const content = children(() => <InSheet value={phone}>{props.children}</InSheet>);
+  // Created under InSheet once, so Surface follows the form rather than keep the one it was made in. The content
+  // outlives the sheet, so it takes no slot in the sheet's head.
+  const content = children(() => <InSheet value={() => (phone() ? {} : undefined)}>{props.children}</InSheet>);
   const layout = (): 'center' | 'sheet' | 'topbar-end' => (phone() ? 'sheet' : (props.placement ?? 'center'));
 
   return (
@@ -169,7 +171,12 @@ function Head(props: {
 
 /** Scrolls when it outgrows the window. */
 function Body(props: { children: JSX.Element }): JSX.Element {
-  return <div class={s['body']}>{props.children}</div>;
+  const overflow = createOverflow();
+  return (
+    <div ref={overflow.ref} class={s['body']} data-overflows={overflow.overflows() ? '' : undefined}>
+      {props.children}
+    </div>
+  );
 }
 
 /** Equal-width answers, stacked in the sheet. */

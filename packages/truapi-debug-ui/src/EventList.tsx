@@ -16,7 +16,7 @@ import type { EventSeq, StoredEvent, StoredSystemEvent, StoredTruapiEvent } from
 import { getPendingKey } from './model/getPendingKey.js';
 import { formatProductId } from './model/formatProductId.js';
 import { toSystemRowData } from './model/toSystemRowData.js';
-import { toTruapiRowData } from './model/toTruapiRowData.js';
+import { toTruapiRowData, type TruapiRowData } from './model/toTruapiRowData.js';
 
 import type { KeyedSignals } from './createKeyedSignals.js';
 import { isFollowingNewest } from './pinListScroll.js';
@@ -61,6 +61,12 @@ type RenderCellsParams = {
   /** The offset from the group's anchor, or `null` for the anchor itself. */
   latency: string | null;
   context: RowContext;
+};
+
+/** A row's cells, and whether its call failed, which the row marks. */
+type RowCells = {
+  cells: JSX.Element;
+  failed: boolean;
 };
 
 type MoveMarkParams<Key> = {
@@ -198,7 +204,7 @@ export function EventList(props: {
   });
 
   return (
-    <div class={s['frame']} hidden={!props.active}>
+    <div class={s['frame']} hidden={!props.active} data-jump={unseen() > 0 ? '' : undefined}>
       <div
         class={[ITEM_LIST_CLASS, s['list']]}
         data-testid="td-list"
@@ -306,6 +312,7 @@ function renderRow({ event, store, context }: RenderRowParams): JSX.Element {
 
   const selection = (): string | undefined =>
     context.work.getRowSelection(context.selectedSeq.read(event.seq) === true, context.selectedKey.read(key) === true);
+  const { cells, failed } = renderCells({ event, latency, context });
 
   return (
     <div
@@ -313,30 +320,41 @@ function renderRow({ event, store, context }: RenderRowParams): JSX.Element {
       data-testid="td-row"
       data-selection={selection()}
       data-system={event.kind === 'system' ? '' : undefined}
+      data-failed={failed ? '' : undefined}
       data-seq={String(event.seq)}
       id={getRowId(event.seq)}
       role="option"
       aria-selected={context.selectedSeq.read(event.seq) === true ? 'true' : 'false'}
     >
       <Timestamp at={event.receivedAt} />
-      {renderCells({ event, latency, context })}
+      {cells}
     </div>
   );
 }
 
-function renderCells({ event, latency, context }: RenderCellsParams): JSX.Element {
+function renderCells({ event, latency, context }: RenderCellsParams): RowCells {
   switch (event.kind) {
-    case 'truapi':
-      return <TruapiCells event={event} latency={latency} context={context} />;
+    case 'truapi': {
+      const data = toTruapiRowData(event);
+      return {
+        cells: <TruapiCells event={event} data={data} latency={latency} context={context} />,
+        failed: data.failed,
+      };
+    }
     case 'system':
-      return <SystemCells event={event} latency={latency} />;
+      return { cells: <SystemCells event={event} latency={latency} />, failed: false };
   }
 }
 
-function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; context: RowContext }): JSX.Element {
+function TruapiCells(props: {
+  event: StoredTruapiEvent;
+  data: TruapiRowData;
+  latency: string | null;
+  context: RowContext;
+}): JSX.Element {
   const event = untrack(() => props.event);
   const context = untrack(() => props.context);
-  const data = toTruapiRowData(event);
+  const data = untrack(() => props.data);
   const pendingKey = getPendingKey(event);
   const waiting = (): number | undefined => (pendingKey === null ? undefined : context.waiting.read(pendingKey));
 
@@ -353,7 +371,9 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
       </span>
       <IdBadge id={event.requestId} testId="td-rid" title={`requestId: ${event.requestId}`} class={s['id']} />
       <span class={s['tagAndSummary']}>
-        <MethodTag kind={data.tagKind}>{data.displayTag}</MethodTag>
+        <MethodTag kind={data.tagKind} failed={data.failed}>
+          {data.displayTag}
+        </MethodTag>
         {data.summary !== '' ? (
           <span class={s['summary']} data-testid="td-summary">
             {data.summary}

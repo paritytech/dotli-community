@@ -312,10 +312,10 @@ export const CountdownTicksWhileOpen: Story = {
     await open(ctx);
     await ctx.step('Given a chain one second past its last block', async () => {
       given([chain({ latest: 10, sinceLast: 1000 })]);
-      await waitFor(() => expect(waitingText()).toBe('First block in about 5s'));
+      await waitFor(() => expect(waitingText()).toBe('Next block in about 5s'));
     });
     await ctx.step('Then a second later it counts on', async () => {
-      await waitFor(() => expect(waitingText()).toBe('First block in about 4s'));
+      await waitFor(() => expect(waitingText()).toBe('Next block in about 4s'));
     });
     await ctx.step('When I close the popover', async () => {
       await ctx.userEvent.keyboard('{Escape}');

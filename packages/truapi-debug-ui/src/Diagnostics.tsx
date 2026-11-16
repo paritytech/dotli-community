@@ -52,7 +52,7 @@ function DiagnosticsContent(props: { source: DiagnosticsSource; sharer: Diagnost
           {sharing() ? 'Sharing…' : 'Share diagnostics'}
         </Button>
         <Note testId="td-diagnostics-share-note">
-          Opens a new GitHub issue on paritytech/dotli with these diagnostics.
+          Opens a new GitHub issue on paritytech/dotli-community with these diagnostics.
         </Note>
       </Inline>
       <Columns>

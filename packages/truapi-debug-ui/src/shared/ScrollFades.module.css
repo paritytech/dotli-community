@@ -1,0 +1,22 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Fades each edge that has content scrolled past it, so a cut item reads as more to scroll to and an edge with nothing
+   beyond it stays sharp. An owner sets `--fade-size` to fit its items. */
+.fades {
+  --fade-start: 0px;
+  --fade-end: 0px;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--fade-start),
+    #000 calc(100% - var(--fade-end)),
+    transparent
+  );
+}
+.fades[data-fade-start] {
+  --fade-start: var(--fade-size, 24px);
+}
+.fades[data-fade-end] {
+  --fade-end: var(--fade-size, 24px);
+}

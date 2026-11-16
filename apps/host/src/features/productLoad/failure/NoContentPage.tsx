@@ -4,9 +4,9 @@
 // The page for a name that resolved to no content, in the error page's frame.
 
 import type { JSX } from '@solidjs/web';
-import { GlobeIcon } from '@dotli/ui/icons';
 import { ErrorActions, ErrorDetail, ErrorFrame } from '@dotli/ui';
 import { SEARCH_AGAIN_BTN_LABEL } from './errorCopy.js';
+import { SearchXIcon } from './SearchXIcon.js';
 import s from './NoContentPage.module.css';
 
 /** The domain sits on its own chip so the visitor can scan it for a typo. */
@@ -17,7 +17,7 @@ export function NoContentPage(props: {
   onSearchAgain: () => void;
 }): JSX.Element {
   return (
-    <ErrorFrame standalone={props.standalone} class={s['unreached']} icon={GlobeIcon} title="No app with this name">
+    <ErrorFrame standalone={props.standalone} class={s['unreached']} icon={SearchXIcon} title="No app with this name">
       {/* The chip stays inside the sentence, so a screen reader hears it as one. */}
       <ErrorDetail class={s['line']}>
         Check the name for a typo:{' '}

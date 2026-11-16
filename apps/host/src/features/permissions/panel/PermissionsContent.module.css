@@ -21,10 +21,19 @@
   gap: var(--sp-hair);
 }
 .notice-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
   margin: 0;
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
+}
+.notice-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--chrome-err);
 }
 .notice-detail {
   margin: 0;
@@ -34,7 +43,15 @@
   text-wrap: pretty;
 }
 @media (max-width: 560px) {
+  /* The sheet's padding is the text column, so Advanced and its wells start on it. */
+  .advanced {
+    padding: 0;
+  }
   .groups {
     gap: var(--sp-3);
+    margin: 0;
+  }
+  .group-label {
+    padding: 0;
   }
 }

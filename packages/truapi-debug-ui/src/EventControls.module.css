@@ -1,11 +1,19 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The end of the filter row. */
+/* Keeps its whole width, so the counts before it give way first. */
 .controls {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  margin-left: 8px;
   white-space: nowrap;
+}
+/* A narrow panel leaves the counts more room. */
+@container td-panel (max-width: 560px) {
+  .controls {
+    gap: 4px;
+    margin-left: 6px;
+  }
 }

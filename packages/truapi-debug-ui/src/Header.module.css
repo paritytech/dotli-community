@@ -13,11 +13,15 @@
   grid-area: header;
 }
 
-/* On a phone the panel always docks at the bottom, so the dock button goes and the header tightens. */
-@media (max-width: 560px) {
+/* A narrow panel, a phone's or the right dock's, tightens the header to leave the tabs room. */
+@container td-panel (max-width: 560px) {
   .header {
     padding: 0 8px;
   }
+}
+
+/* On a phone the panel always docks at the bottom, so the dock button goes. */
+@media (max-width: 560px) {
   /* Two classes, so it wins over the button's own display. */
   .header .dock {
     display: none;

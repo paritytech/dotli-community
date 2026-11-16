@@ -7,9 +7,11 @@ Start every non-trivial change (`docs/code/glossary.md`) with the `architecture`
 - `architecture`: decides what the change is and where it goes, then builds it in slices the owner steers.
 - `document-review`: refines a design in `docs/_plans/` before the next step.
 - `reviewer`: audits a branch or PR against the `docs/claude/` checklists.
+- `consult-oracle`: outside `architecture`, asks the `oracle` for the owner's precedent before a choice about how to
+  build, and files the owner's answers.
 
-Code and workflow corrections go to the repo, never agent memory. Each one goes to the `decision-keeper` agent first
-(docs/code/rule-extraction.md § When to run).
+Code and workflow corrections go to the repo, never agent memory. Each one goes to the `oracle` agent first, through
+`consult-oracle` (docs/code/rule-extraction.md § When to run).
 
 ## Project agent
 

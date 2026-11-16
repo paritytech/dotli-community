@@ -86,18 +86,12 @@
   color: var(--text-strong);
 }
 
+/* The well hugs its longest tip, so it does not set a third width between the title and the actions. Its tips read
+   down its start edge. */
 .tips {
-  box-sizing: border-box;
-  margin: var(--sp-6) 0 0;
-}
-/* The well hugs its longest tip, so it does not set a third width between the title and the actions. */
-.tips[data-layout='list'] {
   width: fit-content;
   max-width: 100%;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  margin: var(--sp-6) 0 0;
   text-align: left;
 }
 
@@ -151,7 +145,7 @@
     padding: 0 calc(var(--sp-4) + var(--safe-right)) var(--sp-14) calc(var(--sp-4) + var(--safe-left));
   }
 
-  .tips[data-layout='list'] {
+  .tips {
     width: 100%;
   }
 

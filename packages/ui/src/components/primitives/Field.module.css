@@ -16,9 +16,11 @@
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
 }
+/* The label is a step smaller and muted, and the weight makes the value lead even where the sizes nearly meet. */
 .value {
   color: var(--chrome-text);
   font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
@@ -27,6 +29,7 @@
   max-height: 7lh;
   overflow-y: auto;
   font-family: var(--font-mono);
+  font-weight: var(--fw-regular);
   /* A break between any two characters, which balancing needs to even out the lines of a hash. */
   word-break: break-all;
   text-wrap: balance;

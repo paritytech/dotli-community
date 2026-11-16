@@ -45,9 +45,11 @@
   color: var(--chrome-warn);
 }
 @media (max-width: 560px) {
+  /* The sheet's padding is the text column, so the preset starts on it. */
   .picker {
     gap: var(--sp-2);
     margin-top: var(--sp-1);
+    padding-inline: 0;
   }
   .readout {
     gap: var(--sp-1);

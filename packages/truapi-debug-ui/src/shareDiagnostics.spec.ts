@@ -18,7 +18,7 @@ describe('sharing diagnostics', () => {
     // Then
     expect(source.report).toHaveBeenCalledWith(SNAPSHOT);
     const url = new URL(source.openIssue.mock.calls[0]?.[0] ?? '');
-    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli/issues/new');
+    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/paritytech/dotli-community/issues/new');
     expect(url.searchParams.get('body')).toBe(
       [
         '<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->',

@@ -17,12 +17,13 @@
   flex: none;
   margin-left: auto;
 }
-.content[data-sheet] .apply {
-  flex: 1 0 100%;
-  margin-left: 0;
-}
 
 @media (max-width: 560px) {
+  /* A sheet stretches its action, so the wrapper stretches with it. */
+  .apply {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
   .sections {
     gap: var(--sp-5);
   }

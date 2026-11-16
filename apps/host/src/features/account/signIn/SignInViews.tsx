@@ -6,7 +6,7 @@
 
 import { createSignal, For, Show, untrack, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ArrowRightIcon, CheckIcon, CircleAlertIcon, PhoneCheckIcon, type IconProps } from '@dotli/ui/icons';
+import { ArrowRightIcon, CheckIcon, CircleAlertIcon, type IconProps } from '@dotli/ui/icons';
 import { LogoSymbol } from '@dotli/ui/brand';
 import { Button, ButtonLink, Callout, Chip, SectionLabel, Spinner, Well } from '@dotli/ui';
 import type { ContinueOffer } from '../../signInWindow/index.js';
@@ -14,6 +14,7 @@ import { AccountAvatar } from '../panel/AccountAvatar.js';
 import { offeredAccountName } from '../panel/accountNames.js';
 import type { DrawQr } from './qrCode.js';
 import { PairingQr } from './PairingQr.js';
+import { PhoneIcon } from './PhoneIcon.js';
 import s from './SignInViews.module.css';
 
 /**
@@ -365,7 +366,7 @@ export function ApprovingScreen(props: ApprovingScreenProps): SignInParts {
           level={props.level ?? 1}
           title={APPROVE_TITLE}
           titleId="auth-modal-title"
-          mark={<PhoneCheckIcon class={s['markIcon']} />}
+          mark={<PhoneIcon class={s['markIcon']} />}
           body={`Check your phone and approve the sign-in. ${props.closesCopy}`}
         />
         <div class={s['progress']} role="status">

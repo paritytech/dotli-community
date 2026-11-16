@@ -35,6 +35,17 @@
 .shield[data-state] .pending-glyph {
   display: none;
 }
+/* The bare shield pulses while the load is checked, so it reads as work under way, not as a failed check. */
+@media (prefers-reduced-motion: no-preference) {
+  .pending-glyph {
+    animation: pending-pulse var(--loop) ease-in-out infinite;
+  }
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
 .product-icon {
   display: block;
   width: 20px;
@@ -43,14 +54,15 @@
   object-fit: cover;
 }
 /* A known state marks the icon's corner. The disc, in the bar's dark end under the pill, cuts the shield out of any
-   icon, so it stays readable without a ring of its own. */
+   icon, so it stays readable without a ring of its own. Well under the icon's size, so it reads as a mark on the icon
+   rather than a second icon. */
 .badge {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
+  right: -4px;
+  bottom: -4px;
   display: none;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   border-radius: var(--r-full);
   background: var(--chrome-bottom);
   fill: var(--chrome-bottom);
@@ -58,4 +70,13 @@
 .shield[data-state='verified'] .verified-badge,
 .shield[data-state='trusted'] .trusted-badge {
   display: block;
+}
+/* Phone chrome draws its glyphs a size up, and the mark follows. */
+@media (max-width: 560px) {
+  .badge {
+    right: -5px;
+    bottom: -5px;
+    width: 14px;
+    height: 14px;
+  }
 }

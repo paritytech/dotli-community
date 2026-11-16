@@ -516,7 +516,7 @@ function buildPermissionView(overrides: Partial<ModalView<Choice>> = {}): ModalV
   return {
     title: 'Permission request',
     fields: [{ label: 'App', value: 'playground.dot' }],
-    notice: 'Granting this permission will reload the application.',
+    notice: 'Granting this permission reloads the app.',
     buttons: [
       { label: 'Deny', variant: 'danger', result: 'deny' },
       { label: 'Always allow', variant: 'secondary', result: 'allow' },

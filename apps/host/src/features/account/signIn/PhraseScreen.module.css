@@ -28,11 +28,12 @@
   color: var(--chrome-warn);
 }
 
-/* The label, the box and its error, kept together. */
+/* The label, the box and its error, kept together, reading from the start as a form row does. */
 .field {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1_5);
+  text-align: start;
 }
 .label {
   color: var(--chrome-text-muted);
@@ -49,7 +50,10 @@
   border-radius: var(--r-sm);
   outline: none;
   background: var(--chrome-well);
-  box-shadow: var(--chrome-shadow-inset);
+  /* A field's ring, so the box to type in never passes for the callout above it. */
+  box-shadow:
+    inset 0 0 0 1px var(--chrome-ring),
+    var(--chrome-shadow-inset);
   color: var(--chrome-text);
   font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-mono);
   resize: none;
@@ -59,8 +63,8 @@
 }
 .input[aria-invalid='true'] {
   box-shadow:
-    var(--chrome-shadow-inset),
-    inset 0 0 0 1px var(--chrome-err);
+    inset 0 0 0 1px var(--chrome-err),
+    var(--chrome-shadow-inset);
 }
 .input:focus-visible {
   outline: var(--chrome-focus-ring);
@@ -73,11 +77,4 @@
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
   line-height: var(--lh-body);
-}
-
-@media (max-width: 560px) {
-  /* A sheet heads the view from the start of the line, so its lead follows. */
-  .phrase[data-level='layout'] .intro {
-    text-align: start;
-  }
 }

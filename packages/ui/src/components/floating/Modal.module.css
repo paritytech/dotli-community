@@ -78,6 +78,7 @@
 
 /* The padding, given back by the margin, keeps a control's focus ring and its offset inside the scroll's clip. */
 .body {
+  --fade-size: 32px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -87,6 +88,10 @@
   overflow-y: auto;
   font-size: var(--fs-body);
   line-height: var(--lh-body);
+}
+/* The card's prose follows its centred head. The sheet's head reads from the start, and so does its body. */
+.card .body {
+  text-align: center;
 }
 /* A body cut off above the answers fades out at its foot, so the cut reads as more to scroll. The fade follows the
    scroll and is gone at the end. A body that does not scroll has no timeline, so it never fades. */
@@ -102,9 +107,17 @@
     animation-timeline: scroll(self);
   }
 }
+/* Without scroll timelines the fade stays while the body overflows, and room after the content lets its end scroll
+   clear of it. */
+@supports not (animation-timeline: scroll()) {
+  .body[data-overflows] {
+    padding-bottom: calc(var(--sp-1) + var(--fade-size));
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade-size)), transparent);
+  }
+}
 @keyframes modal-body-fade {
   from {
-    --modal-body-fade: 32px;
+    --modal-body-fade: var(--fade-size);
   }
   to {
     --modal-body-fade: 0px;
@@ -115,13 +128,13 @@
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
-  gap: var(--sp-2);
+  gap: var(--sp-1_5);
   margin: 0;
   padding: 0;
 }
-/* Three answers stack, as a third of the row is too narrow for a label such as "Always allow". */
-.actions:has(> :nth-child(3)) {
-  grid-auto-flow: row;
+/* Narrow sides let "Always allow" fit in a third of the row. */
+.actions > * {
+  padding: 0 var(--sp-2);
 }
 
 /* The sheet head carries the title. */
@@ -133,6 +146,10 @@
 }
 .sheetBody .actions {
   grid-auto-flow: row;
+  gap: var(--sp-2);
+}
+.sheetBody .actions > * {
+  padding: 0 var(--sp-3);
 }
 
 @keyframes modal-in {

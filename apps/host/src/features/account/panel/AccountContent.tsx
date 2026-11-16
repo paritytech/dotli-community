@@ -3,7 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { ExternalWindowIcon, GlobeIcon, InfoIcon, LogOutIcon } from '@dotli/ui/icons';
+import { InfoIcon, LogOutIcon } from '@dotli/ui/icons';
 import { Button, Callout, Chip, Surface, usePopover } from '@dotli/ui';
 import { AccountAvatar } from './AccountAvatar.js';
 import { sessionDisplayName, sessionUsername } from './accountNames.js';
@@ -13,8 +13,6 @@ import s from './AccountContent.module.css';
 export type AccountContentProps = {
   account: Account;
   onLogout: () => void;
-  /** The signed-in sites page. The link shows only with it and a signed-in account. */
-  sitesUrl?: string | undefined;
 };
 
 /** The account popover's body, its own chunk. */
@@ -43,9 +41,15 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
   return (
     <Surface width="sm" padded testId="account-content">
       <div class={s['identity']}>
-        <AccountAvatar session={props.account.session()} size="lg" decorative testId="account-avatar" />
+        <AccountAvatar
+          session={props.account.session()}
+          size="lg"
+          local={props.account.local()}
+          decorative
+          testId="account-avatar"
+        />
         <div class={s['text']}>
-          <div class={s['label']}>{unnamed() ? 'Connected with' : 'Welcome back'}</div>
+          <div class={s['label']}>{unnamed() ? 'Connected with' : 'Signed in as'}</div>
           <div
             class={s['name']}
             id={id('username')}
@@ -66,22 +70,6 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
         <Callout icon={InfoIcon}>
           <span id={id('hint')}>No username found for this account on this network.</span>
         </Callout>
-      </Show>
-      <Show when={props.account.loggedIn() ? props.sitesUrl : undefined}>
-        {url => (
-          <a
-            class={s['sites']}
-            href={url()}
-            target="_blank"
-            rel="noopener"
-            data-testid="account-sites"
-            data-initial-focus=""
-          >
-            <GlobeIcon class={s['icon']} />
-            <span class={s['sitesLabel']}>Signed-in sites</span>
-            <ExternalWindowIcon class={s['icon']} />
-          </a>
-        )}
       </Show>
       <hr class={s['divider']} />
       <Button id={id('disconnect')} block onClick={onDisconnect}>

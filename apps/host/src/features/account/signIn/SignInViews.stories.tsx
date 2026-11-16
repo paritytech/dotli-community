@@ -7,6 +7,7 @@ import { CircleCheckIcon } from '@dotli/ui/icons';
 import { byTestId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
 import { expectPhone } from '../../../testing/stories/topbarFrame.js';
+import { windowPageStory } from '../../../testing/stories/windowPage.js';
 import { drawQrCode, type DrawQr } from './qrCode.js';
 import { PhraseScreen } from './PhraseScreen.js';
 import { WindowShell } from '../../signInWindow/index.js';
@@ -32,7 +33,9 @@ const onBack = fn<() => void>();
 
 const meta = {
   title: 'Host/SignInViews',
-  parameters: { chrome: true },
+  // Every screen here shows on the window's page, which a phone fills edge to edge.
+  ...windowPageStory,
+  parameters: { ...windowPageStory.parameters, chrome: true },
   beforeEach: () => {
     for (const mock of [onCancel, onRetry, onContinue, onUseAnotherAccount]) {
       mock.mockClear();

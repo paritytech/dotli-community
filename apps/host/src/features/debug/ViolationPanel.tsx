@@ -37,6 +37,8 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   const [total, setTotal] = createSignal(0);
   const [collapsed, setCollapsed] = createSignal(false);
   const [height, setHeight] = createSignal<number | null>(null);
+  // Scrolled off its top, so a row can sit cut under the header.
+  const [scrolled, setScrolled] = createSignal(false);
   // The iframe never changes, and the component body is under Solid's `STRICT_READ_UNTRACKED` check.
   const iframe = untrack(() => props.iframe);
   let panel: HTMLDivElement | undefined;
@@ -156,11 +158,15 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
         aria-label="API violations"
         // Focusable so a keyboard can scroll the log.
         tabindex="0"
+        data-scrolled={scrolled() ? '' : undefined}
         style={{
           'max-height': openHeights()?.log,
         }}
         ref={el => {
           log = el;
+        }}
+        onScroll={event => {
+          setScrolled(event.currentTarget.scrollTop > 0);
         }}
       >
         <For each={violations()}>

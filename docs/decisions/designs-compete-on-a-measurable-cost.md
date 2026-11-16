@@ -1,0 +1,39 @@
+# Designs compete, and the elaborate ones guard a measurable cost
+
+There is a simple way to build something and more elaborate ones. The elaborate ones exist to protect something a probe
+or a measurement can show, such as the size of the eager bundle or a test setup only some files need.
+
+## How to resolve
+
+1. Build the simplest design first.
+2. Measure it against what the elaborate designs protect, or run a probe that shows whether that protection is needed.
+3. Show the owner the numbers.
+4. Keep the simple design when the numbers hold, and drop the machinery the probe shows is not needed.
+
+The owner's reason: the owner asks for the simplest form, and keeps it once a measurement backs it.
+
+## Example
+
+The elaborate design keeps a loader module per feature to protect the eager bundle:
+
+```ts
+// features/payments/lazy.ts, re-exported from features/payments/index.ts
+export const loadRefunds = () => import('./refunds/RefundsView.js');
+```
+
+The simple design writes the `import()` where it is needed:
+
+```ts
+// features/orders/OrderActions.tsx
+const { RefundsView } = await import('../payments/refunds/RefundsView.js');
+```
+
+Build the simple one, compare the eager bundle size on both, and keep the simple one when it is no larger.
+
+## Cases
+
+- Per-feature loader modules gave way to an `import()` written at each call site. The eager pages came out smaller, and
+  the owner kept it. (PR #479)
+- Per-folder test projects merged into one, once a probe showed every unit spec passing with every setup. (PR #479)
+
+Status: active

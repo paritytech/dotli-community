@@ -74,6 +74,15 @@ export function DetailPane(props: {
       pane.scrollTop = 0;
     }
   });
+  // A filter that hides the shown event brings up the note at the top that says so.
+  createEffect(
+    () => props.filteredOut,
+    filteredOut => {
+      if (filteredOut && pane !== undefined) {
+        pane.scrollTop = 0;
+      }
+    },
+  );
   function selectPair(seq: EventSeq): void {
     props.onSelectPair(seq);
   }

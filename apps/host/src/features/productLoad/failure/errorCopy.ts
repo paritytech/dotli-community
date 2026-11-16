@@ -32,7 +32,7 @@ export const HOME_BTN_LABEL = 'Go to dot.li';
 
 export const SEARCH_AGAIN_BTN_LABEL = 'Search again';
 
-export const OPEN_SETTINGS_BTN_LABEL = 'Open Settings';
+export const OPEN_SETTINGS_BTN_LABEL = 'Open settings';
 
 export const TRY_ANYWAY_BTN_LABEL = 'Try Anyway';
 

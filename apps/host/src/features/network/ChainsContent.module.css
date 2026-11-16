@@ -76,6 +76,16 @@
 .tips {
   margin-top: var(--sp-2);
 }
+/* A bare strip ends flush on its bars, so the popover leaves more room under it than under the tip, whose box draws
+   its own edge. */
+@media (min-width: 561px) {
+  .content[data-padded] {
+    padding-bottom: var(--sp-5);
+  }
+  .content[data-padded]:has(> .tips) {
+    padding-bottom: var(--sp-3);
+  }
+}
 
 @media (max-width: 560px) {
   .status {

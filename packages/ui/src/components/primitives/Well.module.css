@@ -1,7 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Every layout shares the left text inset of choices and callouts, so they line up. */
+/* Every layout shares the left text inset of choices and callouts, so they line up. A well reads from the start, even
+   inside centred content. */
 
 :where(.well) {
   box-sizing: border-box;
@@ -13,6 +14,7 @@
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
   color: var(--chrome-text);
+  text-align: start;
 }
 .well[data-layout='list'] {
   padding: 0 var(--sp-3);

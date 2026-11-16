@@ -2,6 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .stack {
+  /* How far the expanded list's scroll box reaches past the cards. */
+  --scroll-inset: var(--sp-3);
   position: fixed;
   right: var(--sp-4);
   bottom: calc(var(--sp-4) + var(--content-bottom));
@@ -36,15 +38,16 @@
   flex-direction: column;
   gap: var(--sp-1_5);
   max-height: 60dvh;
-  margin: calc(-1 * var(--sp-3));
-  padding: var(--sp-3);
+  margin: calc(-1 * var(--scroll-inset));
+  padding: var(--scroll-inset);
   overflow-y: auto;
 }
 
-/* Above the expanded list, clear of the first card's own close button, a labelled pill with no ring. */
+/* Above the expanded list and clear of its scroll box, so a card scrolled under the box's edge never runs under it.
+   A labelled pill with no ring. */
 .close-all {
   position: absolute;
-  top: calc(-1 * var(--sp-8));
+  bottom: calc(100% + var(--scroll-inset) + var(--sp-2));
   right: 0;
   z-index: 20;
   display: grid;
@@ -85,26 +88,6 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-@media (max-width: 560px) {
-  .stack[data-expanded] .cards {
-    gap: var(--sp-2);
-  }
-  .close-all {
-    top: calc(-1 * var(--sp-10));
-    height: var(--sp-8);
-    padding: 0 var(--sp-4);
-    font-size: var(--fs-small);
-  }
-  .close-all::before {
-    inset: calc(-1 * var(--sp-2));
-  }
-  .count {
-    top: calc(-1 * var(--sp-2));
-    left: calc(-1 * var(--sp-2));
-    min-width: var(--sp-6);
-    height: var(--sp-6);
-  }
-}
 /* How many toasts the collapsed pile holds, on its top-left corner. Presses fall through to the pile. */
 .count {
   position: absolute;
@@ -122,7 +105,7 @@
   background: var(--chrome-glass);
   box-shadow: var(--chrome-shadow-pop);
   color: var(--chrome-text);
-  font-size: var(--fs-label);
+  font-size: var(--fs-caption);
   font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -131,6 +114,26 @@
 /* Its own `display` would beat the browser's rule for `hidden`. */
 .count[hidden] {
   display: none;
+}
+@media (max-width: 560px) {
+  .stack[data-expanded] .cards {
+    gap: var(--sp-2);
+  }
+  .close-all {
+    height: var(--sp-8);
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-small);
+  }
+  .close-all::before {
+    inset: calc(-1 * var(--sp-2));
+  }
+  .count {
+    top: calc(-1 * var(--sp-2));
+    left: calc(-1 * var(--sp-2));
+    min-width: var(--sp-6);
+    height: var(--sp-6);
+    font-size: var(--fs-small);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .close-all {

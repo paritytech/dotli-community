@@ -34,20 +34,10 @@
   stop-opacity: 0;
 }
 
-/* Both buttons alike, an outline with no fill and small regular text, in the art's own units, so they read as a
-   picture of the app and not as controls. */
-.reject,
-.sign {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 1.5;
-}
-
-.rejectText,
-.signText {
-  fill: var(--text-muted);
-  font: var(--fw-regular) 14px var(--font-sans);
-  text-anchor: middle;
+/* Both answers alike, flat sunken bars with no ring and no words, so they read as a picture of the app and not as
+   controls. */
+.answer {
+  fill: var(--chrome-well);
 }
 
 .symbol {

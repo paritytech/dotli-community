@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import type { EventSeq, StoredEvent } from './model/storedEvent.js';
 import type { TimelineLane } from './model/buildTimeline.js';
 import { wireHoverTooltips } from './shared/wireHoverTooltips.js';
+import { SCROLL_FADES_CLASS, wireScrollFades } from './shared/wireScrollFades.js';
 import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';
 import { usePanelWork } from './panelWork.js';
@@ -33,8 +34,10 @@ export function TimelineView(props: {
   }
 
   let disposeTooltips: (() => void) | undefined;
+  let disposeFades: (() => void) | undefined;
   onCleanup(() => {
     disposeTooltips?.();
+    disposeFades?.();
   });
 
   return (
@@ -43,8 +46,11 @@ export function TimelineView(props: {
       label="Timeline"
       hidden={!props.active}
       ownFocus
+      class={SCROLL_FADES_CLASS}
       ref={element => {
         container = element;
+        // A timeline wider than the pane fades the side its lanes run on to.
+        disposeFades = wireScrollFades(element);
         disposeTooltips = wireHoverTooltips({
           root: element,
           tooltip: untrack(() => props.tooltip),

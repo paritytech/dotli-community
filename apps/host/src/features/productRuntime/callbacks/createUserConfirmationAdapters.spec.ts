@@ -683,8 +683,8 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(page.listPending()).toEqual([]);
-    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
-    expect(notices[0]?.text).toBe(`${withActiveTld('localhost:3000')} · in Polkadot App`);
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed in Polkadot App']);
+    expect(notices[0]?.text).toBe(withActiveTld('localhost:3000'));
     expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'ok', reason: 'signPayload', background: 'no' },
     ]);
@@ -732,7 +732,7 @@ describe('waiting on the phone', () => {
     const notices = await page.waitForNotices(1);
 
     // Then
-    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed in Polkadot App']);
     expect(sentry.counted('signing.phone_request')).toEqual([
       { outcome: 'ok', reason: 'signPayload', background: 'yes' },
     ]);
@@ -881,7 +881,7 @@ describe('waiting on the phone', () => {
 
     // Then
     expect(confirmed).toBe(true);
-    expect(notices.map(n => n.label)).toEqual(['Transaction signed']);
+    expect(notices.map(n => n.label)).toEqual(['Transaction signed in Polkadot App']);
   });
 
   it('As a user, I lose the connection while I wait and the waiting step closes without a toast', async () => {

@@ -48,4 +48,49 @@ describe('toTruapiRowData()', () => {
     // Then
     expect(row.summary).toBe(summary);
   });
+
+  it.each<{ story: string; message: BuildTruapiEventParams; failed: boolean }>([
+    {
+      story: 'a chain response that reports an error',
+      message: {
+        tag: 'remote_chain_head_header_response',
+        direction: 'incoming',
+        value: { tag: 'V1', value: { success: false, value: { reason: 'block not pinned' } } },
+      },
+      failed: true,
+    },
+    {
+      story: 'any other response whose result failed',
+      message: {
+        tag: 'host_account_get_response',
+        direction: 'incoming',
+        value: { tag: 'V1', value: { success: false, value: 'denied' } },
+      },
+      failed: true,
+    },
+    {
+      story: 'a response whose result succeeded',
+      message: {
+        tag: 'host_account_get_response',
+        direction: 'incoming',
+        value: { tag: 'V1', value: { success: true, value: {} } },
+      },
+      failed: false,
+    },
+  ])('As a dotli developer, I see whether a row reports a failed call for $story', ({ message, failed }) => {
+    // Given
+    const store = createEventStore({ capacity: 1 });
+    store.insertTruapi(buildTruapiEvent(message));
+
+    // When
+    const row = toTruapiRowData(
+      nth(
+        store.list().filter(event => event.kind === 'truapi'),
+        0,
+      ),
+    );
+
+    // Then
+    expect(row.failed).toBe(failed);
+  });
 });
