@@ -32,7 +32,7 @@ describe('servedRequests', () => {
     const camera = servedRequests.getDeviceRule('Camera');
     const nfc = servedRequests.getDeviceRule('NFC');
 
-    // Then
+    // Then OpenUrl is granted, the camera is the browser's, and NFC is asked
     expect([openUrl, camera, nfc]).toEqual([
       { kind: 'grant' },
       { kind: 'browser', name: 'Camera' },

@@ -44,7 +44,7 @@ describe('PERMISSION_CATALOG', () => {
       const reloads = hasFrameDirective(permission);
       const asked = getAuthorizationRequest(permission);
 
-      // Then a grant adds that directive, reloads only with one, and the core is asked that request
+      // Then it gates that directive, a change reloads only with one, and the core is asked that request
       expect(frameDirective).toBe(directive);
       expect(reloads).toBe(directive !== null);
       expect(asked).toEqual(request);

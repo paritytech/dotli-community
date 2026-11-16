@@ -214,7 +214,7 @@ export function isEnforceableDevicePermission(name: DevicePermissionName): name 
   return !AUTO_GRANT_DEVICE_PERMISSIONS.has(name);
 }
 
-/** The iframe `allow` directive a grant of `name` adds, null when it adds none. Never throws. */
+/** The iframe `allow` directive `name` gates, null where the core alone gates it. */
 export function getFrameDirective(name: EnforceablePermissionName): string | null {
   return PERMISSION_CATALOG[name].frame?.directive ?? null;
 }
