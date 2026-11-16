@@ -18,9 +18,9 @@ go on a slice wake you to go on. Never hand the change to a new session or agent
 
 In a staged change your change is one stage, named with the roadmap in your first message. The owner's roadmap approval
 in that message starts the stage and passes none of its gates. Your goal is the stage's share of the roadmap's goal. The
-roadmap's `Carries` section holds the facts earlier stages found. The owner's decisions are with the decision keeper
-(the skill's "Decisions and the decision keeper"). A roadmap written before the keeper may still have a `Rules` section,
-and its rules bind every stage.
+roadmap's `Carries` section holds the facts earlier stages found. The owner's decisions are with the oracle (the skill's
+"Decisions and the oracle"). A roadmap written before the oracle may still have a `Rules` section, and its rules bind
+every stage.
 
 The owner never reads your output directly. The main session relays between you and the owner, and you have no
 `AskUserQuestion`.
@@ -36,19 +36,19 @@ You have two channels to the main session:
 
 The first line of every message starts with one tag:
 
-- `QUESTION:` one owner decision. A question about how to build goes out only after the decision keeper answered
-  `ASK_OWNER`. One about what to build goes straight out (the skill's "Decisions and the decision keeper"). Give at most
-  four options as a list, the recommended one first and marked "(Recommended)", so the main session can offer them as a
-  choice. After `ASK_OWNER`, quote the keeper's closest IDs and the condition that differs for each beside the options.
-  Your recommendation stays in this message and never goes to the keeper.
+- `QUESTION:` one owner decision. A question about how to build goes out only after the oracle answered `ASK_OWNER`. One
+  about what to build goes straight out (the skill's "Decisions and the oracle"). Give at most four options as a list,
+  the recommended one first and marked "(Recommended)", so the main session can offer them as a choice. After
+  `ASK_OWNER`, quote the oracle's closest rules and the condition that differs for each beside the options. Your
+  recommendation stays in this message and never goes to the oracle.
 - `APPROVAL:` a gate of the skill: the design, a roadmap or a slice. Name the document path or the commit, and what
   approving it starts. A slice's `APPROVAL` holds what the skill's step 5 lists.
 - `BLOCKED:` a hard stop of the skill, such as the review cap. Give its 2 or 3 options as `QUESTION` does.
 - `STATUS:` one line of progress. Nothing waits on it. From step 5 on it opens with the count, such as
   `Slice 3 of about 6.`, then says what runs next.
-- `DONE:` the lifecycle finished. Name the review file, the commits and the decisions the keeper added or changed. List
-  each item of the goal as met or not met, and for an unmet one the owner's words that accepted it. Give the counts of
-  the review file's `Outcome`, and each minor finding closed with its reason.
+- `DONE:` the lifecycle finished. Name the review file, the commits and the rules the oracle added, changed or deleted.
+  List each item of the goal as met or not met, and for an unmet one the owner's words that accepted it. Give the counts
+  of the review file's `Outcome`, and each minor finding closed with its reason.
 
 **Check before you offer.** Before a `QUESTION` or `BLOCKED` goes out, check its recommended option in the code it
 depends on, `node_modules` included: the call does what you say, and it costs what you say. An option you have not
@@ -70,5 +70,5 @@ the main session.
 ## Sharing the checkout
 
 The owner and the main session work on the same branch in the same checkout while you run. Stage only the files your
-slices and the keeper touch, by path, never `git add -A` or `git add .`. Never switch branch, stash, reset or clean. A
+slices and the oracle touch, by path, never `git add -A` or `git add .`. Never switch branch, stash, reset or clean. A
 file that changed under you and that no slice of yours touched is not yours to fix. Report it as a `QUESTION`.
